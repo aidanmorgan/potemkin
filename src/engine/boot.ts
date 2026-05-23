@@ -4,11 +4,24 @@ import type { EventStore } from '../eventstore/store.js';
 import type { StateGraph } from '../stategraph/graph.js';
 import type { CelEvaluator } from '../cel/evaluator.js';
 import type { ContractValidator } from '../contract/validator.js';
-import type { DomainEvent } from '../types.js';
+import type { DomainEvent, JsonObject } from '../types.js';
 import type { Logger } from '../observability/logger.js';
 import type { Tracer } from '../observability/tracing.js';
 import type { EngineMetrics } from '../observability/metrics.js';
 import type { ObjectGraphSchemaRegistry } from '../schema/types.js';
+
+import { compileDsl } from '../dsl/parser.js';
+import { BootError } from '../errors.js';
+import { createCelEvaluator } from '../cel/evaluator.js';
+import { createEventStore } from '../eventstore/store.js';
+import { createStateGraph } from '../stategraph/graph.js';
+import { createContractValidator } from '../contract/validator.js';
+import { projectEvent } from './projection.js';
+import { epochAnchoredUuidv7 } from '../ids/uuidv7.js';
+import { rootLogger, childLogger } from '../observability/logger.js';
+import { getTracer, withSpan, createEngineMetrics } from '../observability/index.js';
+import { deriveSchemasFromOpenApi } from '../schema/fromOpenApi.js';
+import { staticCheckDsl } from '../schema/dslStaticChecker.js';
 
 export interface BootInput {
   readonly openapi: OpenApiDoc;
@@ -44,14 +57,205 @@ export interface BootedSystem {
  * Execute the full boot sequence:
  *  1. Compile DSL modules.
  *  2. Bind DSL to OpenAPI contract paths (validates contract coverage).
- *  3. Generate baseline (FrozenBaseline) events from `initialization` data.
- *  4. Hydrate the EventStore and StateGraph from the FrozenBaseline.
+ *  3. Derive object-graph schema registry and run static DSL check.
+ *  4. Initialise subsystems (CEL, EventStore, StateGraph, ContractValidator).
+ *  5. Generate baseline (FrozenBaseline) events from `initialization` data.
+ *  6. Hydrate the EventStore and StateGraph from the FrozenBaseline.
  *
  * @throws {BootError} BOOT_ERR_DSL_SYNTAX        — DSL parse/validation failure.
  * @throws {BootError} BOOT_ERR_CONTRACT_BIND      — contract path mapping failure.
  * @throws {BootError} BOOT_ERR_CONTRACT_LOAD      — OpenAPI load failure.
  * @throws {BootError} BOOT_ERR_BASELINE_HYDRATION — baseline projection failure.
+ * @throws {BootError} BOOT_ERR_DSL_SCHEMA_VIOLATION — static schema violations.
  */
 export async function bootSystem(input: BootInput): Promise<BootedSystem> {
-  throw new Error('NotImplemented: engine/boot.bootSystem');
+  // ── Step 1: Initialise observability ─────────────────────────────────────────
+  const logger: Logger = input.logger ?? rootLogger();
+  const tracer: Tracer = input.tracer ?? getTracer('boot');
+  const metrics: EngineMetrics = input.metrics ?? createEngineMetrics();
+
+  return withSpan(tracer, 'engine.boot', async () => {
+    const bootLog = childLogger(logger, { phase: 'boot' });
+
+    // ── Step 2: DSL Compilation ───────────────────────────────────────────────
+    const phaseStart2 = Date.now();
+    bootLog.info({ step: 'dsl_compile', moduleCount: input.dslModules.length }, 'Boot: compiling DSL modules');
+
+    // compileDsl is synchronous per its signature; throws BootError on failure (req 23)
+    const dsl: CompiledDsl = compileDsl(input.dslModules);
+
+    bootLog.info(
+      { step: 'dsl_compile', boundaryCount: dsl.boundaries.length, durationMs: Date.now() - phaseStart2 },
+      'Boot: DSL compilation complete',
+    );
+
+    // ── Step 3: Contract Binding ──────────────────────────────────────────────
+    const phaseStart3 = Date.now();
+    bootLog.info({ step: 'contract_bind', boundaryCount: dsl.boundaries.length }, 'Boot: binding DSL to OpenAPI paths');
+
+    for (const boundary of dsl.boundaries) {
+      const contractPath = boundary.contractPath;
+      if (!Object.prototype.hasOwnProperty.call(input.openapi.paths, contractPath)) {
+        throw new BootError(
+          'BOOT_ERR_DSL_REFERENCE',
+          `Boundary '${boundary.boundary}' references contractPath '${contractPath}' which is not declared in the OpenAPI spec`,
+          { boundary: boundary.boundary, path: contractPath },
+        );
+      }
+    }
+
+    bootLog.info(
+      { step: 'contract_bind', durationMs: Date.now() - phaseStart3 },
+      'Boot: contract binding complete',
+    );
+
+    // ── Step 4: Schema Registry + Static DSL Check ────────────────────────────
+    const phaseStart4 = Date.now();
+    bootLog.info({ step: 'schema_derive' }, 'Boot: deriving object-graph schema registry');
+
+    // May throw BootError(BOOT_ERR_SCHEMA_MISSING | BOOT_ERR_SCHEMA_UNSUPPORTED)
+    const schemaRegistry: ObjectGraphSchemaRegistry = deriveSchemasFromOpenApi(input.openapi, dsl.boundaries);
+
+    bootLog.info(
+      { step: 'schema_derive', durationMs: Date.now() - phaseStart4 },
+      'Boot: schema registry derived',
+    );
+
+    const phaseStart4b = Date.now();
+    bootLog.info({ step: 'dsl_static_check' }, 'Boot: running static DSL schema check');
+
+    const violations = await staticCheckDsl(dsl, schemaRegistry);
+    if (violations.length > 0) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+        `Static DSL schema check found ${violations.length} violation(s)`,
+        { violations: violations as unknown as import('../types.js').JsonObject[] },
+      );
+    }
+
+    bootLog.info(
+      { step: 'dsl_static_check', durationMs: Date.now() - phaseStart4b },
+      'Boot: static DSL check passed',
+    );
+
+    // ── Step 5: Subsystem Init ────────────────────────────────────────────────
+    const phaseStart5 = Date.now();
+    bootLog.info({ step: 'subsystem_init' }, 'Boot: initialising subsystems');
+
+    const cel: CelEvaluator = createCelEvaluator();
+    const events: EventStore = createEventStore();
+    const graph: StateGraph = createStateGraph();
+    const validator: ContractValidator = createContractValidator(input.openapi, dsl.boundaries);
+
+    bootLog.info(
+      { step: 'subsystem_init', durationMs: Date.now() - phaseStart5 },
+      'Boot: subsystems initialised',
+    );
+
+    // ── Step 6: Baseline Generation (Frozen Image) ────────────────────────────
+    const phaseStart6 = Date.now();
+    bootLog.info({ step: 'baseline_gen' }, 'Boot: generating frozen baseline events');
+
+    const baseline: DomainEvent[] = [];
+    let globalIdx = 0;
+
+    for (const boundary of dsl.boundaries) {
+      if (!boundary.initialization || boundary.initialization.length === 0) {
+        continue;
+      }
+
+      for (let i = 0; i < boundary.initialization.length; i++) {
+        const record = boundary.initialization[i] as JsonObject;
+        const aggregateId =
+          typeof record['id'] === 'string' ? record['id'] : epochAnchoredUuidv7(globalIdx);
+
+        const event: DomainEvent = Object.freeze({
+          eventId: epochAnchoredUuidv7(globalIdx),
+          type: 'BaselineEntityCreatedEvent',
+          boundary: boundary.boundary,
+          aggregateId,
+          payload: record,
+          timestamp: '1970-01-01T00:00:00.000Z',
+          sequenceVersion: 1,
+          causedBy: null,
+        });
+
+        baseline.push(event);
+        globalIdx++;
+      }
+    }
+
+    const frozenBaseline: readonly DomainEvent[] = Object.freeze([...baseline]);
+
+    bootLog.info(
+      { step: 'baseline_gen', eventCount: frozenBaseline.length, durationMs: Date.now() - phaseStart6 },
+      'Boot: frozen baseline generated',
+    );
+
+    // ── Step 7: Graph Hydration ───────────────────────────────────────────────
+    const phaseStart7 = Date.now();
+    bootLog.info({ step: 'graph_hydrate', eventCount: frozenBaseline.length }, 'Boot: hydrating event store and state graph from baseline');
+
+    try {
+      events.append(frozenBaseline);
+
+      for (const event of frozenBaseline) {
+        const boundaryConfig = dsl.byBoundaryName[event.boundary];
+        if (!boundaryConfig) {
+          throw new BootError(
+            'BOOT_ERR_BASELINE_HYDRATION',
+            `No boundary config found for baseline event boundary '${event.boundary}'`,
+            { boundary: event.boundary, eventId: event.eventId },
+          );
+        }
+
+        projectEvent({
+          event,
+          boundary: boundaryConfig,
+          graph,
+          cel,
+          logger: bootLog,
+          schemaRegistry,
+        });
+      }
+    } catch (err) {
+      if (err instanceof BootError) {
+        throw err;
+      }
+      throw new BootError(
+        'BOOT_ERR_BASELINE_HYDRATION',
+        `Baseline hydration failed: ${err instanceof Error ? err.message : String(err)}`,
+        { cause: err instanceof Error ? err.message : String(err) },
+      );
+    }
+
+    bootLog.info(
+      { step: 'graph_hydrate', entityCount: graph.size(), durationMs: Date.now() - phaseStart7 },
+      'Boot: graph hydration complete',
+    );
+
+    bootLog.info(
+      {
+        step: 'boot_complete',
+        boundaries: dsl.boundaries.length,
+        baselineEvents: frozenBaseline.length,
+        entities: graph.size(),
+      },
+      'Boot: system boot complete',
+    );
+
+    return {
+      dsl,
+      openapi: input.openapi,
+      events,
+      graph,
+      cel,
+      validator,
+      frozenBaseline,
+      logger,
+      tracer,
+      metrics,
+      schemaRegistry,
+    };
+  });
 }
