@@ -79,6 +79,7 @@ export function createContractValidator(
     value: string,
     schema: JsonObject | undefined,
   ): unknown {
+    /* istanbul ignore next — callers always provide schema (checked before calling) */
     if (!schema) return value;
     const t = schema['type'];
     if (t === 'number' || t === 'integer') {

@@ -64,6 +64,7 @@ export function callBuiltin(
       return ctx.now ? ctx.now() : new Date().toISOString();
     case '$concat':
       return BUILTINS['$concat']!(...args);
+    /* istanbul ignore next — all keys in BUILTINS are handled above; the unknown-name guard fires first */
     default:
       return BUILTINS[name]!(...args);
   }

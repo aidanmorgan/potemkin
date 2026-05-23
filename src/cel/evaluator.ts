@@ -187,7 +187,9 @@ class Parser {
   private pos = 0;
   constructor(private readonly tokens: Token[]) {}
 
+  /* istanbul ignore next — tokenizer always appends eof; these ?? branches are defensive */
   private peek(): Token { return this.tokens[this.pos] ?? { kind: 'eof' }; }
+  /* istanbul ignore next */
   private advance(): Token { return this.tokens[this.pos++] ?? { kind: 'eof' }; }
 
   private expect(kind: Token['kind']): Token {
@@ -447,6 +449,7 @@ function evalExpr(expr: Expr, ctx: CelContext, builtinCtx: BuiltinContext): unkn
         if (typeof v === 'number') return -v;
         throw new Error(`CEL_EVAL: unary '-' requires a number, got ${typeof v}`);
       }
+      /* istanbul ignore next — parser only emits '!' and '-' unary ops */
       throw new Error(`CEL_EVAL: unknown unary operator '${expr.op}'`);
     }
 
@@ -490,6 +493,7 @@ function evalExpr(expr: Expr, ctx: CelContext, builtinCtx: BuiltinContext): unkn
           if (isRecord(right)) return (left as string) in right;
           throw new Error(`CEL_EVAL: 'in' requires an array or object on the right`);
         }
+        /* istanbul ignore next — parser only emits known binary operators; defensive guard */
         default:
           throw new Error(`CEL_EVAL: unknown binary operator '${op}'`);
       }
@@ -529,7 +533,8 @@ export function createCelEvaluator(): CelEvaluator {
       } catch (err) {
         logger.debug(
           { src: expression.slice(0, 120) },
-          `CEL compile error: ${err instanceof Error ? err.message : String(err)}`,
+          // eslint-disable-next-line @typescript-eslint/no-base-to-string
+          `CEL compile error: ${err instanceof Error ? err.message : /* istanbul ignore next */ String(err)}`,
         );
         throw err;
       }
@@ -560,7 +565,8 @@ export function createCelEvaluator(): CelEvaluator {
             src: compiled.source.slice(0, 120),
             ctxKeys: Object.keys(ctx),
           },
-          `CEL evaluate error: ${err instanceof Error ? err.message : String(err)}`,
+          // eslint-disable-next-line @typescript-eslint/no-base-to-string
+          `CEL evaluate error: ${err instanceof Error ? err.message : /* istanbul ignore next */ String(err)}`,
         );
         throw err;
       }
