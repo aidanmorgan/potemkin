@@ -31,6 +31,9 @@ export class BootError extends SimError {
       | 'BOOT_ERR_CONTRACT_BIND'
       | 'BOOT_ERR_CONTRACT_LOAD'
       | 'BOOT_ERR_BASELINE_HYDRATION'
+      | 'BOOT_ERR_SCHEMA_MISSING'
+      | 'BOOT_ERR_SCHEMA_UNSUPPORTED'
+      | 'BOOT_ERR_DSL_SCHEMA_VIOLATION'
       | string,
     message: string,
     details?: JsonValue,
@@ -94,6 +97,13 @@ export class MissingPreconditionError extends SimError {
   }
 }
 
+/**
+ * Internal execution failure (HTTP 500).
+ *
+ * Sub-codes carried in `details.code`:
+ *  - `SCHEMA_PATH_UNKNOWN`  — a runtime assign/append path does not exist in the entity schema.
+ *  - `SCHEMA_TYPE_MISMATCH` — a runtime value is not assignable to the schema at the target path.
+ */
 export class InternalExecutionError extends SimError {
   readonly status = 500 as const;
   readonly code = 'INTERNAL_EXECUTION_ERROR' as const;

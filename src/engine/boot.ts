@@ -8,6 +8,7 @@ import type { DomainEvent } from '../types.js';
 import type { Logger } from '../observability/logger.js';
 import type { Tracer } from '../observability/tracing.js';
 import type { EngineMetrics } from '../observability/metrics.js';
+import type { ObjectGraphSchemaRegistry } from '../schema/types.js';
 
 export interface BootInput {
   readonly openapi: OpenApiDoc;
@@ -35,6 +36,8 @@ export interface BootedSystem {
   readonly tracer: Tracer;
   /** Active engine metrics for the running system. */
   readonly metrics: EngineMetrics;
+  /** Object-graph schema registry derived from OpenAPI component schemas at boot. */
+  readonly schemaRegistry: ObjectGraphSchemaRegistry;
 }
 
 /**

@@ -8,6 +8,7 @@ import type { Command } from '../types.js';
 import type { Logger } from '../observability/logger.js';
 import type { Tracer } from '../observability/tracing.js';
 import type { EngineMetrics } from '../observability/metrics.js';
+import type { ObjectGraphSchemaRegistry } from '../schema/types.js';
 
 export interface UowInput {
   readonly command: Command;
@@ -24,6 +25,8 @@ export interface UowInput {
   readonly tracer?: Tracer;
   /** Optional metrics for recording UoW outcomes. */
   readonly metrics?: EngineMetrics;
+  /** Optional schema registry for runtime path/type guards during projection. */
+  readonly schemaRegistry?: ObjectGraphSchemaRegistry;
 }
 
 /**

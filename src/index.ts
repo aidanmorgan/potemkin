@@ -96,3 +96,17 @@ export { extractFaultSignal } from './engine/faultSim.js';
 export type { ExpressApp } from './http/gateway.js';
 export { createGateway } from './http/gateway.js';
 export { registerAdminRoutes } from './http/adminRoutes.js';
+
+// ── Schema ────────────────────────────────────────────────────────────────────
+export type {
+  SchemaTypeKind,
+  ObjectGraphSchema,
+  BoundarySchemas,
+  ObjectGraphSchemaRegistry,
+} from './schema/types.js';
+export { deriveSchemasFromOpenApi } from './schema/fromOpenApi.js';
+export { resolvePath, isValidPath, pathExists } from './schema/pathResolver.js';
+export { typeOfJson, isAssignable, validateEntityAgainstSchema } from './schema/typeCheck.js';
+export { staticCheckDsl } from './schema/dslStaticChecker.js';
+export type { DslCheckError } from './schema/dslStaticChecker.js';
+export { guardAssignPath, guardAssignedValue } from './schema/runtimeGuard.js';

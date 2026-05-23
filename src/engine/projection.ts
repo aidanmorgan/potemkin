@@ -4,6 +4,7 @@ import type { StateGraph } from '../stategraph/graph.js';
 import type { CelEvaluator } from '../cel/evaluator.js';
 import type { ContractValidator } from '../contract/validator.js';
 import type { Logger } from '../observability/logger.js';
+import type { ObjectGraphSchemaRegistry } from '../schema/types.js';
 
 export interface ProjectionInput {
   readonly event: DomainEvent;
@@ -15,6 +16,8 @@ export interface ProjectionInput {
   readonly validator?: ContractValidator;
   /** Optional logger for projection traces. */
   readonly logger?: Logger;
+  /** Optional schema registry for runtime type-checking of assign/append operations. */
+  readonly schemaRegistry?: ObjectGraphSchemaRegistry;
 }
 
 /**
