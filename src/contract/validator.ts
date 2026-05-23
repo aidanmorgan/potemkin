@@ -51,6 +51,21 @@ export function createContractValidator(
   const ajv = new Ajv({ allErrors: true, strict: false, useDefaults: true });
   addFormats(ajv);
 
+  // F-02: Build a case-insensitive lookup map for components.schemas at construction time.
+  // Keys are lowercased; values are the original schema objects. This allows boundary names
+  // that differ in casing (e.g. "loanaccount" vs "LoanAccount") to still resolve correctly.
+  const caseInsensitiveSchemaMap = new Map<string, unknown>();
+  const rawDocForInit = doc.raw as Record<string, unknown>;
+  const componentsForInit = rawDocForInit['components'];
+  if (componentsForInit && typeof componentsForInit === 'object' && !Array.isArray(componentsForInit)) {
+    const schemasForInit = (componentsForInit as Record<string, unknown>)['schemas'];
+    if (schemasForInit && typeof schemasForInit === 'object' && !Array.isArray(schemasForInit)) {
+      for (const [key, val] of Object.entries(schemasForInit as Record<string, unknown>)) {
+        caseInsensitiveSchemaMap.set(key.toLowerCase(), val);
+      }
+    }
+  }
+
   // Cache compiled validators by schema object reference (using WeakMap) and
   // by a serialized JSON key (using Map) for primitive-keyed lookups.
   const validatorCache = new WeakMap<object, ValidateFunction>();
@@ -228,7 +243,10 @@ export function createContractValidator(
             errors: `No components.schemas section in OpenAPI document` as unknown as JsonValue,
           });
         }
-        const schema = (schemas as Record<string, unknown>)[boundary];
+        // F-02: Try exact-case lookup first; fall back to case-insensitive map.
+        const schema =
+          (schemas as Record<string, unknown>)[boundary] ??
+          caseInsensitiveSchemaMap.get(boundary.toLowerCase());
         if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
           throw new InternalExecutionError('Entity violates contract', {
             boundary,

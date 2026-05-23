@@ -10,6 +10,8 @@ export interface OpenApiParameter {
   readonly in: 'path' | 'query' | 'header';
   readonly required?: boolean;
   readonly schema?: JsonObject;
+  // F-07: Preserve vendor extension fields (x-*) from the original OpenAPI parameter.
+  readonly [key: `x-${string}`]: unknown;
 }
 
 export interface OpenApiOperation {
@@ -17,6 +19,8 @@ export interface OpenApiOperation {
   readonly requestBodySchema?: JsonObject;
   readonly responseSchemas?: Record<string, JsonObject>;
   readonly parameters?: readonly OpenApiParameter[];
+  // F-07: Preserve vendor extension fields (x-*) from the original OpenAPI operation.
+  readonly [key: `x-${string}`]: unknown;
 }
 
 export interface OpenApiPathItem {
@@ -46,11 +50,17 @@ function extractParameters(rawParams: unknown): readonly OpenApiParameter[] {
     if (typeof param['name'] !== 'string') continue;
     const inVal = param['in'];
     if (inVal !== 'path' && inVal !== 'query' && inVal !== 'header') continue;
+    // F-07: Carry through vendor extension keys (x-*).
+    const extensions: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(param)) {
+      if (k.startsWith('x-')) extensions[k] = v;
+    }
     result.push({
       name: param['name'],
       in: inVal,
       required: typeof param['required'] === 'boolean' ? param['required'] : undefined,
       schema: asJsonObject(param['schema']),
+      ...extensions,
     });
   }
   return result;
@@ -97,11 +107,18 @@ function extractOperation(rawOp: unknown): OpenApiOperation | undefined {
     }
   }
 
+  // F-07: Carry through vendor extension keys (x-*) from the raw operation.
+  const operationExtensions: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(op)) {
+    if (k.startsWith('x-')) operationExtensions[k] = v;
+  }
+
   return {
     operationId,
     requestBodySchema,
     responseSchemas: Object.keys(responseSchemas).length > 0 ? responseSchemas : undefined,
     parameters: extractParameters(op['parameters']),
+    ...operationExtensions,
   };
 }
 
@@ -134,33 +151,39 @@ function normalisePaths(rawDoc: OpenAPI.Document): Record<string, OpenApiPathIte
 }
 
 /**
- * Load and normalise an OpenAPI document from a file path string or a pre-parsed object.
+ * Load and normalise an OpenAPI document from a file path string, a pre-parsed object,
+ * or a Buffer containing UTF-8 JSON/YAML.
  * Uses @apidevtools/swagger-parser under the hood to dereference $refs.
  */
 export async function loadOpenApi(source: string | object): Promise<OpenApiDoc> {
   return withSpan(getTracer('contract'), 'contract.load', async () => {
     let parseTarget: string | OpenAPI.Document;
 
-    if (typeof source === 'string') {
-      const trimmed = source.trimStart();
+    // F-05: Detect Buffer and convert to UTF-8 string before further processing.
+    const normalizedSource: string | object = Buffer.isBuffer(source)
+      ? (source as Buffer).toString('utf8')
+      : source;
+
+    if (typeof normalizedSource === 'string') {
+      const trimmed = normalizedSource.trimStart();
       if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
         // Inline JSON string — parse first, then pass as object
-        parseTarget = JSON.parse(source) as OpenAPI.Document;
+        parseTarget = JSON.parse(normalizedSource) as OpenAPI.Document;
       } else if (
-        !source.startsWith('http://') &&
-        !source.startsWith('https://') &&
-        !source.startsWith('/') &&
-        !source.match(/^[a-zA-Z]:\\/) &&
-        (source.includes('\n') || source.includes(':'))
+        !normalizedSource.startsWith('http://') &&
+        !normalizedSource.startsWith('https://') &&
+        !normalizedSource.startsWith('/') &&
+        !normalizedSource.match(/^[a-zA-Z]:\\/) &&
+        (normalizedSource.includes('\n') || normalizedSource.includes(':'))
       ) {
         // Likely inline YAML
-        parseTarget = yaml.load(source) as OpenAPI.Document;
+        parseTarget = yaml.load(normalizedSource) as OpenAPI.Document;
       } else {
         // File path or URL — swagger-parser handles it directly
-        parseTarget = source;
+        parseTarget = normalizedSource;
       }
     } else {
-      parseTarget = source as OpenAPI.Document;
+      parseTarget = normalizedSource as OpenAPI.Document;
     }
 
     const dereferenced = await SwaggerParser.dereference(parseTarget);

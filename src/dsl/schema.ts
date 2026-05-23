@@ -8,6 +8,12 @@ import type {
   ReducerRule,
   SecondaryCommandSpec,
 } from './types.js';
+import { createCelEvaluator } from '../cel/evaluator.js';
+
+// F-04: Module-level CEL evaluator used to pre-check dispatch_commands payload
+// values for syntactic validity at boot/compile time. This surfaces CEL parse
+// errors as BOOT_ERR_DSL_SYNTAX rather than deferring them to runtime.
+const celEvaluator = createCelEvaluator();
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -123,6 +129,23 @@ function validateSecondaryCommandSpec(raw: unknown, ctx: string): SecondaryComma
   }
   const targetId = requireString(raw, 'target_id', ctx);
   const payload = requireStringStringMap(raw, 'payload', ctx);
+
+  // F-04: Pre-compile each CEL expression in payload values to catch syntax errors
+  // at boot time rather than deferring them to runtime evaluation.
+  if (payload !== undefined) {
+    for (const [fieldKey, celExpr] of Object.entries(payload)) {
+      try {
+        celEvaluator.compile(celExpr);
+      } catch (err) {
+        throw new BootError(
+          'BOOT_ERR_DSL_SYNTAX',
+          `${ctx}: payload field "${fieldKey}" is not a valid CEL expression: ${err instanceof Error ? err.message : String(err)}`,
+          { field: `payload.${fieldKey}`, context: ctx, expression: celExpr },
+        );
+      }
+    }
+  }
+
   return {
     boundary,
     intent: intentRaw,
@@ -154,7 +177,20 @@ function validateBehaviorRule(raw: unknown, index: number): BehaviorRule {
     );
   }
   const condition = requireString(matchRaw, 'condition', `${ctx}.match`);
-  const emit = requireString(raw, 'emit', ctx);
+  // F-06: Per design §7.2, `emit` is the mandatory link to the event catalog.
+  // Every behavior MUST emit an event; use `dispatch_commands` only for secondary
+  // effects that follow the primary event emission, not as a substitute for it.
+  const emitRaw = raw['emit'];
+  if (typeof emitRaw !== 'string' || emitRaw.trim() === '') {
+    throw new BootError(
+      'BOOT_ERR_DSL_SYNTAX',
+      `${ctx}: field "emit" must be a non-empty string (got ${JSON.stringify(emitRaw)}). ` +
+        `Per §7.2, every behavior must emit an event from the event_catalog. ` +
+        `Use "dispatch_commands" for secondary effects only, not as a substitute for "emit".`,
+      { field: 'emit', context: ctx },
+    );
+  }
+  const emit: string = emitRaw;
 
   let dispatchCommands: readonly SecondaryCommandSpec[] | undefined;
   const dispatchRaw = raw['dispatch_commands'];

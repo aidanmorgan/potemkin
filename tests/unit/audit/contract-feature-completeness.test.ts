@@ -158,7 +158,7 @@ paths:
   // GAP (nice-to-have): loadOpenApi does not accept a Buffer input.
   // The signature is `string | object` and Buffer is object-shaped, but swagger-parser
   // may reject a Buffer as it's not a plain object or a file path.
-  it.failing('loads from a Buffer containing JSON', async () => {
+  it('loads from a Buffer containing JSON', async () => {
     const buf = Buffer.from(JSON.stringify(minimalOpenApiObject));
     // Should parse the buffer as UTF-8 JSON; currently the loader passes Buffer
     // as-is to SwaggerParser.dereference which throws because it's not a plain object.
@@ -309,18 +309,18 @@ describe('Contract router – matchRoute', () => {
     expect(r1?.contractPath).toBe(r2?.contractPath);
   });
 
-  it('query string is NOT part of the path passed to matchRoute (caller strips it)', () => {
-    // The router matches against path only; it doesn't parse query strings itself.
-    // Callers must strip the query string before calling matchRoute.
-    // Passing a path with ?query=1 should fail to match /items.
+  it('query string is stripped automatically by matchRoute (F-01 fix)', () => {
+    // The router now strips query strings internally before matching.
+    // Callers that pass raw req.url (e.g. /items?limit=10) still match /items.
     const result = matchRoute(doc, 'GET', '/items?limit=10');
-    expect(result).toBeNull();
+    expect(result).not.toBeNull();
+    expect(result?.contractPath).toBe('/items');
   });
 
   // GAP (important): The router should ideally strip query strings automatically
   // so that /items?limit=10 still matches /items. Currently it does NOT — this
   // silently returns null instead of matching.
-  it.failing('matchRoute strips query string from path before matching', () => {
+  it('matchRoute strips query string from path before matching', () => {
     const result = matchRoute(doc, 'GET', '/items?limit=10');
     expect(result).not.toBeNull();
     expect(result?.contractPath).toBe('/items');
@@ -534,10 +534,9 @@ describe('Contract validator – validateEntity', () => {
     expect(() => v.validateEntity('LoanAccount', { status: 'active' })).toThrow(InternalExecutionError);
   });
 
-  // GAP (important): The schema lookup in validateEntity is case-sensitive.
-  // If boundary name is "loanAccount" but schema key is "LoanAccount", it throws
-  // even if the schema exists under a different casing.
-  it('schema lookup for validateEntity is case-sensitive', () => {
+  // F-02 fix: The schema lookup in validateEntity now performs a case-insensitive
+  // fallback. A boundary name "loanaccount" resolves to the "LoanAccount" schema.
+  it('schema lookup for validateEntity falls back case-insensitively (F-02 fix)', () => {
     const doc: OpenApiDoc = {
       raw: {
         components: {
@@ -552,12 +551,12 @@ describe('Contract validator – validateEntity', () => {
       paths: {},
     };
     const v = createContractValidator(doc, []);
-    // 'loanaccount' (wrong case) should throw because lookup is case-sensitive
-    expect(() => v.validateEntity('loanaccount', { id: 'x' })).toThrow(InternalExecutionError);
+    // 'loanaccount' (wrong case) now resolves to 'LoanAccount' via case-insensitive lookup
+    expect(() => v.validateEntity('loanaccount', { id: 'x' })).not.toThrow();
   });
 
   // GAP (nice-to-have): There is no case-insensitive fallback for schema lookup.
-  it.failing('validateEntity performs case-insensitive schema name lookup', () => {
+  it('validateEntity performs case-insensitive schema name lookup', () => {
     const doc: OpenApiDoc = {
       raw: {
         components: {
