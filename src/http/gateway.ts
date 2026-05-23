@@ -196,6 +196,7 @@ async function handleContractRequest(
           cel: sys.cel,
           validator: sys.validator,
           schemaRegistry: sys.schemaRegistry,
+          openapi: sys.openapi,
           logger,
           tracer: sys.tracer,
           metrics: sys.metrics,
