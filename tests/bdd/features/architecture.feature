@@ -23,7 +23,18 @@ Feature: Architectural and Ubiquitous Requirements
     Then DSL rules emit events rather than directly mutating state
 
   Scenario: REQ-6 — Boundary A can emit secondary command to boundary B
-    Then secondary commands can target other boundaries
+    Given a cross-boundary DSL is booted with Loan cascading to Customer loanIds
+    When a Loan creation command is dispatched for a known customer
+    Then the targeted Customer loanIds includes the new loan id
+    And the event log includes one event per affected boundary
 
   Scenario: REQ-7 — Primary and secondary commands form an atomic Unit of Work
     Then all events from the request are committed atomically
+
+  Scenario: REQ-7 — Failed cascade rolls back all events atomically
+    Given the banking simulator is booted
+    And a DSL whose primary command emits a successful event but the secondary command throws
+    When the primary command is sent
+    Then the UoW aborts
+    And the event log is unchanged from its pre-command state
+    And the state graph is unchanged from its pre-command state

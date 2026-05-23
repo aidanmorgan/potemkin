@@ -6,13 +6,6 @@
  *  - Simulate two concurrent PATCHes with the same If-Match → one 200, one 412.
  */
 
-// BUG NOTE: All tests in this file are it.failing because every test calls
-// createLoan() which POSTs /loans, triggering the cross-boundary cascade that
-// appends the loan id (string) to Customer.loanIds (array). The append
-// runtimeGuard checks the scalar against the array schema rather than the
-// items schema, producing SCHEMA_TYPE_MISMATCH → 500.
-// Tracked as: runtimeGuard append check should verify against items schema, not array schema.
-
 import { createTestApp, type TestApp } from './_helpers/test-app.js';
 import { executeUnitOfWork } from '../../src/engine/uow.js';
 import { nextUuidv7 } from '../../src/ids/uuidv7.js';

@@ -17,8 +17,9 @@ Feature: Object-Graph Schema Registry and Validation
     Then boot should fail with BOOT_ERR_DSL_SCHEMA_VIOLATION
 
   Scenario: REQ-46 — Wrong-typed assign value aborts UoW with SCHEMA_TYPE_MISMATCH
-    When I send a mutation that assigns a wrong type to a schema field
-    Then the UoW should abort with SCHEMA_TYPE_MISMATCH or succeed
+    Given a strict-schema boundary with an integer field is booted
+    When I send a mutation that assigns a string to the integer field on the strict boundary
+    Then the UoW should abort with status 500 and code SCHEMA_TYPE_MISMATCH
 
   Scenario: REQ-46b — Runtime guard rejects string value for number schema field
     Then the runtime type guard should reject a string value for a number field

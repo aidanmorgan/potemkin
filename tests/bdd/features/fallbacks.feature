@@ -13,9 +13,13 @@ Feature: Generic Fallbacks
     And the response body field "name" should equal "Alice"
 
   Scenario: REQ-34 — Mutation fallback generates generic update event
-    When I PATCH an entity with no matching behavior but fallback enabled
-    Then the response should be a generic update applied to the entity
-    And a generic domain event should be appended
+    Given a boundary with fallback_override true and no mutation behaviors is booted
+    And a seed entity exists in the fallback boundary
+    When I PATCH the seed entity with a payload on the fallback boundary
+    Then the fallback response status is 200
+    And the event count grew by exactly 1
+    And the new event type is System.GenericUpdateEvent
+    And the seed entity state has the payload deep-merged in
 
   Scenario: REQ-34b — Fallback mutation updates state graph via generic event
     When I PATCH customer "customer-seed-001" to update the name to "Alice Updated"

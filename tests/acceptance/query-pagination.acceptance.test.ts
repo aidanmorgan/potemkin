@@ -6,12 +6,6 @@
  *  - GET /customers?limit=2&offset=1 returns the right slice.
  */
 
-// BUG NOTE: All tests in this file are it.failing because GET /customers routes
-// to the Customer boundary which has no query behavior. runPatternMatch does not
-// implement query-intent fallback for fallback_override:true (req 33), so every
-// GET request throws UnhandledOperationError.
-// Tracked as: query-intent fallback unimplemented in runPatternMatch.
-
 import { createTestApp, type TestApp } from './_helpers/test-app.js';
 
 describe('query-pagination.acceptance', () => {

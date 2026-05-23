@@ -12,8 +12,10 @@ Feature: Observability — Libraries, Logging, and Tracing
     Then pino logs should include structured fields
     And a child logger with boundary context should be usable
 
+  @otel-spans
   Scenario: REQ-43 — OTEL span created per UoW execution
     Then the system tracer should be an OpenTelemetry tracer
     And a UoW execution should record a span
+    And at least one span named engine.uow should be exported
     And the system metrics should include commandsTotal counter
     And the engine metrics should track fault simulations
