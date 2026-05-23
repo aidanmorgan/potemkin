@@ -4,6 +4,7 @@ import type { StateGraph } from '../stategraph/graph.js';
 import type { CelEvaluator } from '../cel/evaluator.js';
 import type { OpenApiDoc } from '../contract/loader.js';
 import type { Logger } from '../observability/logger.js';
+import type { ObjectGraphSchemaRegistry } from '../schema/types.js';
 
 export interface QueryRequest {
   readonly boundary: BoundaryConfig;
@@ -15,6 +16,8 @@ export interface QueryRequest {
   readonly openapi: OpenApiDoc;
   /** Optional logger for query execution traces. */
   readonly logger?: Logger;
+  /** Optional schema registry for resolving derived property paths. */
+  readonly schemaRegistry?: ObjectGraphSchemaRegistry;
 }
 
 /**
