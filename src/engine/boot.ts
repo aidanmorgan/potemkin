@@ -5,10 +5,19 @@ import type { StateGraph } from '../stategraph/graph.js';
 import type { CelEvaluator } from '../cel/evaluator.js';
 import type { ContractValidator } from '../contract/validator.js';
 import type { DomainEvent } from '../types.js';
+import type { Logger } from '../observability/logger.js';
+import type { Tracer } from '../observability/tracing.js';
+import type { EngineMetrics } from '../observability/metrics.js';
 
 export interface BootInput {
   readonly openapi: OpenApiDoc;
   readonly dslModules: readonly { name: string; yaml: string }[];
+  /** Optional logger; boot creates a root logger if absent. */
+  readonly logger?: Logger;
+  /** Optional tracer; boot obtains the default tracer if absent. */
+  readonly tracer?: Tracer;
+  /** Optional pre-built metrics instance; boot creates one if absent. */
+  readonly metrics?: EngineMetrics;
 }
 
 export interface BootedSystem {
@@ -20,6 +29,12 @@ export interface BootedSystem {
   readonly validator: ContractValidator;
   /** Immutable copy of baseline events used for deterministic reset. */
   readonly frozenBaseline: readonly DomainEvent[];
+  /** Active logger for the running system. */
+  readonly logger: Logger;
+  /** Active tracer for the running system. */
+  readonly tracer: Tracer;
+  /** Active engine metrics for the running system. */
+  readonly metrics: EngineMetrics;
 }
 
 /**

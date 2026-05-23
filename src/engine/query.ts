@@ -3,6 +3,7 @@ import type { BoundaryConfig } from '../dsl/types.js';
 import type { StateGraph } from '../stategraph/graph.js';
 import type { CelEvaluator } from '../cel/evaluator.js';
 import type { OpenApiDoc } from '../contract/loader.js';
+import type { Logger } from '../observability/logger.js';
 
 export interface QueryRequest {
   readonly boundary: BoundaryConfig;
@@ -12,6 +13,8 @@ export interface QueryRequest {
   readonly graph: StateGraph;
   readonly cel: CelEvaluator;
   readonly openapi: OpenApiDoc;
+  /** Optional logger for query execution traces. */
+  readonly logger?: Logger;
 }
 
 /**
