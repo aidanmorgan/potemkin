@@ -15,4 +15,8 @@ module.exports = {
   testMatch: ['**/*.test.ts', '**/*.spec.ts'],
   moduleFileExtensions: ['ts', 'js', 'json'],
   setupFilesAfterEach: ['<rootDir>/tests/setup.ts'],
+  moduleNameMapper: {
+    // Strip .js extensions from imports so ts-jest can resolve .ts source files
+    '^(\\.{1,2}/.*)\\.js$': '$1',
+  },
 };
