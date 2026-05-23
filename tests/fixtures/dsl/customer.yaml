@@ -1,0 +1,53 @@
+boundary: Customer
+contract_path: /customers
+fallback_override: true
+identity:
+  creation:
+    generate: $uuidv7()
+query_mapping:
+  riskBand: "state.riskBand == query.riskBand"
+event_catalog:
+  - type: CustomerRegistered
+    payload_template:
+      id: "$concat('', command.targetId)"
+      name: "command.payload.name"
+      riskBand: "command.payload.riskBand"
+      createdAt: "$now()"
+      loanIds: "[]"
+  - type: LoanAttachedToCustomer
+    payload_template:
+      customerId: "command.targetId"
+      loanId: "command.payload.loanId"
+behaviors:
+  - name: registerCustomer
+    match:
+      intent: creation
+      condition: "true"
+    emit: CustomerRegistered
+  - name: attachLoan
+    match:
+      intent: mutation
+      condition: "command.payload.loanId != null"
+    emit: LoanAttachedToCustomer
+reducers:
+  - on: CustomerRegistered
+    assign:
+      id: "event.payload.id"
+      name: "event.payload.name"
+      riskBand: "event.payload.riskBand"
+      createdAt: "event.payload.createdAt"
+      loanIds: "event.payload.loanIds"
+  - on: LoanAttachedToCustomer
+    append:
+      loanIds: "event.payload.loanId"
+initialization:
+  - id: "00000000-0000-7000-8000-000000000001"
+    name: "Acme Coffee Ltd"
+    riskBand: LOW
+    createdAt: "1970-01-01T00:00:00.000Z"
+    loanIds: []
+  - id: "00000000-0000-7000-8000-000000000002"
+    name: "Beta Builders Inc"
+    riskBand: MED
+    createdAt: "1970-01-01T00:00:00.000Z"
+    loanIds: []
