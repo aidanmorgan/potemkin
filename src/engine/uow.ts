@@ -5,6 +5,9 @@ import type { EventStore } from '../eventstore/store.js';
 import type { CelEvaluator } from '../cel/evaluator.js';
 import type { ContractValidator } from '../contract/validator.js';
 import type { Command } from '../types.js';
+import type { Logger } from '../observability/logger.js';
+import type { Tracer } from '../observability/tracing.js';
+import type { EngineMetrics } from '../observability/metrics.js';
 
 export interface UowInput {
   readonly command: Command;
@@ -15,6 +18,12 @@ export interface UowInput {
   readonly validator: ContractValidator;
   /** Maximum secondary-command cascade depth before InfiniteLoopError. Default: 5. */
   readonly maxDepth?: number;
+  /** Optional logger for structured UoW execution traces. */
+  readonly logger?: Logger;
+  /** Optional tracer for distributed tracing spans. */
+  readonly tracer?: Tracer;
+  /** Optional metrics for recording UoW outcomes. */
+  readonly metrics?: EngineMetrics;
 }
 
 /**

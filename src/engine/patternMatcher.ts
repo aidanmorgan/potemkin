@@ -2,6 +2,7 @@ import type { Command, DomainEvent } from '../types.js';
 import type { BoundaryConfig } from '../dsl/types.js';
 import type { ShadowGraph } from '../stategraph/shadow.js';
 import type { CelEvaluator } from '../cel/evaluator.js';
+import type { Logger } from '../observability/logger.js';
 
 export interface PatternMatchInput {
   readonly command: Command;
@@ -10,6 +11,8 @@ export interface PatternMatchInput {
   readonly cel: CelEvaluator;
   readonly nextEventId: () => string;
   readonly now: () => string;
+  /** Optional logger for pattern evaluation traces. */
+  readonly logger?: Logger;
 }
 
 export interface PatternMatchOutcome {

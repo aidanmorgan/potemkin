@@ -3,6 +3,7 @@ import type { BoundaryConfig } from '../dsl/types.js';
 import type { StateGraph } from '../stategraph/graph.js';
 import type { CelEvaluator } from '../cel/evaluator.js';
 import type { ContractValidator } from '../contract/validator.js';
+import type { Logger } from '../observability/logger.js';
 
 export interface ProjectionInput {
   readonly event: DomainEvent;
@@ -12,6 +13,8 @@ export interface ProjectionInput {
   readonly cel: CelEvaluator;
   /** Optional validator; when provided the mutated buffer is validated before the atomic swap. */
   readonly validator?: ContractValidator;
+  /** Optional logger for projection traces. */
+  readonly logger?: Logger;
 }
 
 /**
