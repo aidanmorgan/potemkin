@@ -236,7 +236,33 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
   }
 
   // Step 3: Fallback Evaluation
-  if (boundary.fallbackOverride && command.intent !== 'query') {
+  if (boundary.fallbackOverride) {
+    if (command.intent === 'query') {
+      // Per req 33: query with fallback_override returns the current State Graph node directly
+      const aggregateId = command.targetId;
+      if (aggregateId === null) {
+        // Collection-level query with no behaviors matched — return empty
+        return {
+          events: [],
+          secondaryCommands: [],
+          state: null,
+        };
+      }
+      const state = shadow.get(aggregateId);
+      if (state === null) {
+        throw new EntityAbsenceError(
+          `Entity '${aggregateId}' not found in boundary '${boundary.boundary}'`,
+          { targetId: aggregateId, boundary: boundary.boundary },
+        );
+      }
+      log?.info({ intent: command.intent, aggregateId }, 'No behavior matched query — returning current state via fallback');
+      return {
+        events: [],
+        secondaryCommands: [],
+        state,
+      };
+    }
+
     log?.info({ intent: command.intent }, 'No behavior matched — applying GenericUpdateEvent fallback');
 
     const aggregateId = command.targetId ?? command.commandId;

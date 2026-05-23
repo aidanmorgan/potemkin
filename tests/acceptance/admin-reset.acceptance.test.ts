@@ -61,7 +61,7 @@ describe('admin-reset.acceptance', () => {
   });
 
   // it.failing: BUG — GET /customers/{id} throws UnhandledOperationError (Bug 2, query-intent fallback).
-  it.failing('baseline customers are present after reset', async () => {
+  it('baseline customers are present after reset', async () => {
     await app.agent.post('/customers').send({ name: 'Temp', riskBand: 'LOW' }).expect(201);
     await app.agent.post('/_admin/reset').expect(204);
 
@@ -70,7 +70,7 @@ describe('admin-reset.acceptance', () => {
   });
 
   // it.failing: BUG — GET /customers/{id} throws UnhandledOperationError (Bug 2, query-intent fallback).
-  it.failing('entities created before reset are gone after reset', async () => {
+  it('entities created before reset are gone after reset', async () => {
     const createRes = await app.agent
       .post('/customers')
       .send({ name: 'Temporary', riskBand: 'HIGH' })

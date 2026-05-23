@@ -133,11 +133,9 @@ describe('engine/projection', () => {
       expect(obj.items[1]).toBe('replaced');
     });
 
-    // FIXME: bug in engine/projection — setByDotPath sets key '' instead of being a no-op
-    it.failing('is a no-op for empty path', () => {
+    it('throws InternalExecutionError for empty path', () => {
       const obj = { a: 1 };
-      setByDotPath(obj, '', 99);
-      expect(obj).toEqual({ a: 1 });
+      expect(() => setByDotPath(obj, '', 99)).toThrow();
     });
   });
 

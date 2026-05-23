@@ -42,7 +42,7 @@ describe('concurrency-control.acceptance', () => {
     return { id: loanId, etag };
   }
 
-  it.failing('first repayment with correct sequenceVersion (via ETag / If-Match) succeeds', async () => {
+  it('first repayment with correct sequenceVersion (via ETag / If-Match) succeeds', async () => {
     const { id, etag } = await createLoan();
 
     const res = await app.agent
@@ -54,7 +54,7 @@ describe('concurrency-control.acceptance', () => {
     expect(res.body.balance).toBe(4900);
   });
 
-  it.failing('two concurrent requests with the same stale If-Match: one 200, one 412', async () => {
+  it('two concurrent requests with the same stale If-Match: one 200, one 412', async () => {
     const { id, etag } = await createLoan();
 
     // Advance the version so `etag` becomes stale
@@ -72,7 +72,7 @@ describe('concurrency-control.acceptance', () => {
     expect(staleRes.status).toBe(412);
   });
 
-  it.failing('request without If-Match against a non-required-precondition endpoint succeeds', async () => {
+  it('request without If-Match against a non-required-precondition endpoint succeeds', async () => {
     const { id } = await createLoan();
 
     // The DSL does not require precondition — no If-Match header means the check is skipped
@@ -84,15 +84,15 @@ describe('concurrency-control.acceptance', () => {
     expect(res.body.balance).toBe(4950);
   });
 
-  it.failing('UoW-level: two commands with same stale sequenceVersion: second throws 412', async () => {
+  it('UoW-level: two commands with same stale sequenceVersion: second throws 412', async () => {
     const { id } = await createLoan();
     const currentSeq = app.sys.events.currentSequenceVersion(id);
 
-    // First mutation with correct seq
+    // First mutation with correct seq — uses LoanRepay boundary which handles /loans/{id}/repay
     await executeUnitOfWork({
       command: {
         commandId: nextUuidv7(),
-        boundary: 'LoanAccount',
+        boundary: 'LoanRepay',
         intent: 'mutation',
         targetId: id,
         payload: { amount: 200 },
@@ -115,7 +115,7 @@ describe('concurrency-control.acceptance', () => {
     const secondResult = executeUnitOfWork({
       command: {
         commandId: nextUuidv7(),
-        boundary: 'LoanAccount',
+        boundary: 'LoanRepay',
         intent: 'mutation',
         targetId: id,
         payload: { amount: 200 },
@@ -137,7 +137,7 @@ describe('concurrency-control.acceptance', () => {
     await expect(secondResult).rejects.toMatchObject({ code: 'CONCURRENCY_CONFLICT' });
   });
 
-  it.failing('ETag header is returned on successful mutation', async () => {
+  it('ETag header is returned on successful mutation', async () => {
     const { id } = await createLoan();
 
     const res = await app.agent
@@ -148,7 +148,7 @@ describe('concurrency-control.acceptance', () => {
     expect(res.headers['etag']).toBeDefined();
   });
 
-  it.failing('ETag after a mutation reflects the updated sequenceVersion', async () => {
+  it('ETag after a mutation reflects the updated sequenceVersion', async () => {
     const { id, etag: creationEtag } = await createLoan();
 
     const repayRes = await app.agent

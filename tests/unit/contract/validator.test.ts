@@ -155,21 +155,32 @@ describe('contract/validator', () => {
   });
 
   describe('validateEntity', () => {
-    // FIXME: bug in contract/validator — validateEntity calls withSpan (async) without awaiting,
-    // so errors thrown inside become unhandled promise rejections that crash the process.
-    // Skipping these tests to avoid crashing the test runner until the bug is fixed.
-
-    it.skip('throws InternalExecutionError when no components section', () => {
-      // Skipped due to bug: validateEntity uses async withSpan but does not await/return it,
-      // causing thrown errors to become unhandled rejections that crash Node.
+    it('throws InternalExecutionError when no components section', () => {
+      const validator = createContractValidator(makeDoc({}, {}), boundaries);
+      expect(() => validator.validateEntity('LoanAccount', { id: 'x', amount: 100 })).toThrow(InternalExecutionError);
     });
 
-    it.skip('throws InternalExecutionError when boundary schema not found', () => {
-      // Same bug as above.
+    it('throws InternalExecutionError when boundary schema not found', () => {
+      const validator = createContractValidator(makeDoc({}, { components: { schemas: {} } }), boundaries);
+      expect(() => validator.validateEntity('NonExistent', { id: 'x' })).toThrow(InternalExecutionError);
     });
 
-    it.skip('validates entity against boundary schema successfully', () => {
-      // Same bug as above.
+    it('validates entity against boundary schema successfully', () => {
+      const validator = createContractValidator(
+        makeDoc({}, {
+          components: {
+            schemas: {
+              LoanAccount: {
+                type: 'object',
+                required: ['id', 'amount'],
+                properties: { id: { type: 'string' }, amount: { type: 'number' } },
+              },
+            },
+          },
+        }),
+        boundaries,
+      );
+      expect(() => validator.validateEntity('LoanAccount', { id: 'loan-1', amount: 500 })).not.toThrow();
     });
   });
 });

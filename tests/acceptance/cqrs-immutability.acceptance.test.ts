@@ -84,7 +84,7 @@ describe('cqrs-immutability.acceptance', () => {
   });
 
   // it.failing: BUG — POST /loans triggers loanIds append cascade, Bug 1 (SCHEMA_TYPE_MISMATCH).
-  it.failing('each loan cascade produces events for both aggregate IDs', async () => {
+  it('each loan cascade produces events for both aggregate IDs', async () => {
     const loanRes = await app.agent
       .post('/loans')
       .send({ customerId: ACME_ID, principal: 500 })
@@ -102,7 +102,7 @@ describe('cqrs-immutability.acceptance', () => {
   });
 
   // it.failing: BUG — POST /loans triggers loanIds append cascade, Bug 1 (SCHEMA_TYPE_MISMATCH).
-  it.failing('sequenceVersions for a single aggregate form a contiguous 1-based sequence', async () => {
+  it('sequenceVersions for a single aggregate form a contiguous 1-based sequence', async () => {
     const loanRes = await app.agent
       .post('/loans')
       .send({ customerId: ACME_ID, principal: 3000 })

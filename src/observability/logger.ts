@@ -6,7 +6,7 @@ export type { Logger };
 
 export interface CreateLoggerOptions {
   readonly name?: string;
-  readonly level?: pino.Level;
+  readonly level?: pino.Level | pino.LevelWithSilent;
   readonly pretty?: boolean;
   readonly bindings?: Record<string, unknown>;
 }
@@ -21,8 +21,8 @@ function resolvePrettyTransport(): LoggerOptions['transport'] {
 }
 
 export function createLogger(opts?: CreateLoggerOptions): Logger {
-  const level: pino.Level =
-    (opts?.level ?? (process.env['LOG_LEVEL'] as pino.Level | undefined)) ?? 'info';
+  const level: pino.LevelWithSilent =
+    (opts?.level ?? (process.env['LOG_LEVEL'] as pino.LevelWithSilent | undefined)) ?? 'info';
 
   const usePretty =
     opts?.pretty !== undefined
@@ -46,7 +46,7 @@ export function createLogger(opts?: CreateLoggerOptions): Logger {
   };
 
   const pinoOpts: LoggerOptions = {
-    level,
+    level: level as string,
     timestamp: pino.stdTimeFunctions.isoTime,
     transport,
   };

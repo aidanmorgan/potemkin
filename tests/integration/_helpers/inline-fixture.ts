@@ -447,7 +447,7 @@ components:
 const CUSTOMER_DSL_YAML = `
 boundary: Customer
 contract_path: /customers
-fallback_override: false
+fallback_override: true
 identity:
   creation:
     generate: "$uuidv7()"
@@ -603,7 +603,7 @@ reducers:
       balance: "state.balance - event.payload.amount"
       status: "(state.balance - event.payload.amount) <= 0 ? 'SETTLED' : state.status"
     append:
-      transactions: "{type: 'repayment', amount: event.payload.amount, at: event.timestamp}"
+      transactions: "{'type': 'repayment', 'amount': event.payload.amount, 'at': event.timestamp}"
 `;
 
 // ---------------------------------------------------------------------------

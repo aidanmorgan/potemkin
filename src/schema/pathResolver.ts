@@ -30,7 +30,9 @@ export function resolvePath(schema: ObjectGraphSchema, dotPath: string): ObjectG
       if (current.kind !== 'array' || !current.items) return null;
       current = current.items;
     } else if (current.kind === 'object') {
-      const child = current.properties?.[token];
+      const child = current.properties != null && Object.prototype.hasOwnProperty.call(current.properties, token)
+        ? current.properties[token]
+        : undefined;
       if (!child) {
         // If additionalProperties is a schema, any key is valid but returns that schema
         if (typeof current.additionalProperties === 'object') {

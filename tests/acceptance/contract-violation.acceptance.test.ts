@@ -66,7 +66,7 @@ describe('contract-violation.acceptance', () => {
 
   // it.failing: BUG — creating a loan triggers cascade (loanIds append) which fails
   // with SCHEMA_TYPE_MISMATCH due to append runtimeGuard bug.
-  it.failing('POST /loans/repay with missing amount returns 400', async () => {
+  it('POST /loans/repay with missing amount returns 400', async () => {
     // We need an existing loan first — create one
     const loanRes = await app.agent
       .post('/loans')

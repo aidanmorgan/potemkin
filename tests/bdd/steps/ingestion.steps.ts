@@ -5,7 +5,7 @@ import type { SimWorld } from '../support/world.js';
 // REQ-12: Invalid request payload rejected with contract-violation
 When('I send a POST to {string} with an invalid body', async function (this: SimWorld, path: string) {
   // Send a wrong type for 'name' (schema says string, we send a number) — this triggers AJV validation
-  await this.sendHttp('POST', path, { name: 12345, email: 'test@example.com' } as unknown as Record<string, unknown>);
+  await this.sendHttp('POST', path, { name: 12345, email: 'test@example.com' } as unknown as import('../../../src/types.js').JsonObject);
 });
 
 Then('the response should be a contract violation error', function (this: SimWorld) {
