@@ -49,12 +49,29 @@ function convertNode(raw: JsonObject, name: string): ObjectGraphSchema {
   // Handle nullable shorthand: nullable: true alongside type
   const nullable = (raw['nullable'] as boolean | undefined) ?? false;
 
-  // Handle oneOf / anyOf → union
-  if (raw['oneOf'] || raw['anyOf']) {
-    const members = ((raw['oneOf'] ?? raw['anyOf']) as JsonObject[]).map((m, i) =>
+  // Handle not: keyword
+  if (raw['not']) {
+    throw new BootError(
+      'BOOT_ERR_SCHEMA_UNSUPPORTED',
+      `'not' keyword is not supported in boundary schema '${name}'`,
+      { feature: 'not' },
+    );
+  }
+
+  // Handle oneOf → kind 'union' with unionVariant 'oneOf' (exactly one member must match)
+  if (raw['oneOf']) {
+    const members = (raw['oneOf'] as JsonObject[]).map((m, i) =>
       convertNode(m as JsonObject, `${name}[${i}]`),
     );
-    return { name, kind: 'union', union: members, nullable };
+    return { name, kind: 'union', union: members, nullable, unionVariant: 'oneOf' };
+  }
+
+  // Handle anyOf → kind 'union' with unionVariant 'anyOf' (at least one member must match)
+  if (raw['anyOf']) {
+    const members = (raw['anyOf'] as JsonObject[]).map((m, i) =>
+      convertNode(m as JsonObject, `${name}[${i}]`),
+    );
+    return { name, kind: 'union', union: members, nullable, unionVariant: 'anyOf' };
   }
 
   // Handle allOf → merge into object (best-effort: merge properties)
@@ -62,6 +79,7 @@ function convertNode(raw: JsonObject, name: string): ObjectGraphSchema {
     const merged: JsonObject = {};
     const allProps: Record<string, JsonObject> = {};
     const allRequired: string[] = [];
+    let typeOnlyKind: string | undefined;
     for (const sub of raw['allOf'] as JsonObject[]) {
       const s = sub as JsonObject;
       if (s['properties']) {
@@ -70,11 +88,18 @@ function convertNode(raw: JsonObject, name: string): ObjectGraphSchema {
       if (Array.isArray(s['required'])) {
         allRequired.push(...(s['required'] as string[]));
       }
+      // Track type from members that have no properties (type-only members)
+      if (s['type'] && !s['properties']) {
+        typeOnlyKind = s['type'] as string;
+      }
     }
     if (Object.keys(allProps).length > 0) {
       merged['type'] = 'object';
       merged['properties'] = allProps;
       if (allRequired.length > 0) merged['required'] = allRequired;
+    } else if (typeOnlyKind) {
+      // All members are type-only — preserve the type
+      merged['type'] = typeOnlyKind;
     }
     return convertNode(Object.keys(merged).length > 0 ? merged : { type: 'any' }, name);
   }
@@ -123,6 +148,9 @@ function convertNode(raw: JsonObject, name: string): ObjectGraphSchema {
       enum: raw['enum'] as string[] | undefined,
       nullable,
       description: raw['description'] as string | undefined,
+      minLength: raw['minLength'] as number | undefined,
+      maxLength: raw['maxLength'] as number | undefined,
+      pattern: raw['pattern'] as string | undefined,
     };
   }
 
@@ -140,6 +168,10 @@ function convertNode(raw: JsonObject, name: string): ObjectGraphSchema {
     nullable,
     description: raw['description'] as string | undefined,
     enum: raw['enum'] as string[] | undefined,
+    minimum: raw['minimum'] as number | undefined,
+    maximum: raw['maximum'] as number | undefined,
+    exclusiveMinimum: raw['exclusiveMinimum'] as number | undefined,
+    exclusiveMaximum: raw['exclusiveMaximum'] as number | undefined,
   };
 }
 

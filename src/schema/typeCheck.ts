@@ -2,6 +2,21 @@ import type { JsonValue, JsonObject } from '../types.js';
 import type { ObjectGraphSchema, SchemaTypeKind } from './types.js';
 import { getTracer, withSpan } from '../observability/tracing.js';
 
+// ── format validation ─────────────────────────────────────────────────────────
+
+const FORMAT_PATTERNS: Record<string, RegExp> = {
+  uuid: /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/,
+  'date-time': /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/,
+  date: /^\d{4}-\d{2}-\d{2}$/,
+  email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+};
+
+function validateFormat(value: string, format: string): boolean {
+  const pattern = FORMAT_PATTERNS[format];
+  if (!pattern) return true; // unknown format → lenient
+  return pattern.test(value);
+}
+
 // ── helpers ────────────────────────────────────────────────────────────────────
 
 export function typeOfJson(v: JsonValue): SchemaTypeKind {
@@ -38,21 +53,40 @@ export function isAssignable(value: JsonValue, target: ObjectGraphSchema): boole
 
   if (target.kind === 'null') return value === null;
 
+  // Enum check applies to all primitive kinds
+  if (target.enum && target.enum.length > 0) {
+    return (target.enum as JsonValue[]).includes(value);
+  }
+
   if (target.kind === 'integer') {
-    return kind === 'integer';
+    if (kind !== 'integer') return false;
+    const n = value as number;
+    if (target.minimum !== undefined && n < target.minimum) return false;
+    if (target.maximum !== undefined && n > target.maximum) return false;
+    if (target.exclusiveMinimum !== undefined && n <= target.exclusiveMinimum) return false;
+    if (target.exclusiveMaximum !== undefined && n >= target.exclusiveMaximum) return false;
+    return true;
   }
 
   if (target.kind === 'number') {
-    return kind === 'integer' || kind === 'number';
+    if (kind !== 'integer' && kind !== 'number') return false;
+    const n = value as number;
+    if (target.minimum !== undefined && n < target.minimum) return false;
+    if (target.maximum !== undefined && n > target.maximum) return false;
+    if (target.exclusiveMinimum !== undefined && n <= target.exclusiveMinimum) return false;
+    if (target.exclusiveMaximum !== undefined && n >= target.exclusiveMaximum) return false;
+    return true;
   }
 
   if (target.kind === 'boolean') return kind === 'boolean';
 
   if (target.kind === 'string') {
     if (kind !== 'string') return false;
-    if (target.enum && target.enum.length > 0) {
-      return (target.enum as JsonValue[]).includes(value);
-    }
+    const s = value as string;
+    if (target.minLength !== undefined && s.length < target.minLength) return false;
+    if (target.maxLength !== undefined && s.length > target.maxLength) return false;
+    if (target.pattern !== undefined && !new RegExp(target.pattern).test(s)) return false;
+    if (target.format !== undefined && !validateFormat(s, target.format)) return false;
     return true;
   }
 
@@ -131,6 +165,12 @@ function validateNode(
 
   const kind = typeOfJson(value);
 
+  // Enum check applies across all primitive kinds
+  if (schema.enum && schema.enum.length > 0 && !(schema.enum as JsonValue[]).includes(value)) {
+    errors.push({ path, reason: `value '${String(value)}' not in enum ${JSON.stringify(schema.enum)}` });
+    return;
+  }
+
   if (schema.kind === 'null') {
     if (value !== null) errors.push({ path, reason: `expected null` });
     return;
@@ -142,13 +182,36 @@ function validateNode(
   }
 
   if (schema.kind === 'integer') {
-    if (kind !== 'integer') errors.push({ path, reason: `expected integer, got ${kind}` });
+    if (kind !== 'integer') {
+      errors.push({ path, reason: `expected integer, got ${kind}` });
+      return;
+    }
+    const n = value as number;
+    if (schema.minimum !== undefined && n < schema.minimum)
+      errors.push({ path, reason: `value ${n} is less than minimum ${schema.minimum}` });
+    if (schema.maximum !== undefined && n > schema.maximum)
+      errors.push({ path, reason: `value ${n} is greater than maximum ${schema.maximum}` });
+    if (schema.exclusiveMinimum !== undefined && n <= schema.exclusiveMinimum)
+      errors.push({ path, reason: `value ${n} is not greater than exclusiveMinimum ${schema.exclusiveMinimum}` });
+    if (schema.exclusiveMaximum !== undefined && n >= schema.exclusiveMaximum)
+      errors.push({ path, reason: `value ${n} is not less than exclusiveMaximum ${schema.exclusiveMaximum}` });
     return;
   }
 
   if (schema.kind === 'number') {
-    if (kind !== 'integer' && kind !== 'number')
+    if (kind !== 'integer' && kind !== 'number') {
       errors.push({ path, reason: `expected number, got ${kind}` });
+      return;
+    }
+    const n = value as number;
+    if (schema.minimum !== undefined && n < schema.minimum)
+      errors.push({ path, reason: `value ${n} is less than minimum ${schema.minimum}` });
+    if (schema.maximum !== undefined && n > schema.maximum)
+      errors.push({ path, reason: `value ${n} is greater than maximum ${schema.maximum}` });
+    if (schema.exclusiveMinimum !== undefined && n <= schema.exclusiveMinimum)
+      errors.push({ path, reason: `value ${n} is not greater than exclusiveMinimum ${schema.exclusiveMinimum}` });
+    if (schema.exclusiveMaximum !== undefined && n >= schema.exclusiveMaximum)
+      errors.push({ path, reason: `value ${n} is not less than exclusiveMaximum ${schema.exclusiveMaximum}` });
     return;
   }
 
@@ -157,9 +220,15 @@ function validateNode(
       errors.push({ path, reason: `expected string, got ${kind}` });
       return;
     }
-    if (schema.enum && schema.enum.length > 0 && !(schema.enum as JsonValue[]).includes(value)) {
-      errors.push({ path, reason: `value '${String(value)}' not in enum ${JSON.stringify(schema.enum)}` });
-    }
+    const s = value as string;
+    if (schema.minLength !== undefined && s.length < schema.minLength)
+      errors.push({ path, reason: `string length ${s.length} is less than minLength ${schema.minLength}` });
+    if (schema.maxLength !== undefined && s.length > schema.maxLength)
+      errors.push({ path, reason: `string length ${s.length} is greater than maxLength ${schema.maxLength}` });
+    if (schema.pattern !== undefined && !new RegExp(schema.pattern).test(s))
+      errors.push({ path, reason: `string '${s}' does not match pattern ${schema.pattern}` });
+    if (schema.format !== undefined && !validateFormat(s, schema.format))
+      errors.push({ path, reason: `string '${s}' does not match format '${schema.format}'` });
     return;
   }
 

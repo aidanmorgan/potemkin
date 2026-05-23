@@ -63,30 +63,27 @@ describe('typeCheck: format enforcement', () => {
   // The schema carries `format` but isAssignable / validateEntityAgainstSchema
   // never reads it — any string passes regardless of format.
 
-  it.failing(
-    'isAssignable rejects a non-UUID string against format:uuid schema (gap: format not enforced)',
+  it(
+    'isAssignable rejects a non-UUID string against format:uuid schema',
     () => {
       expect(isAssignable('not-a-uuid', uuidSchema)).toBe(false);
     },
   );
 
-  // NOTE: the "accepts valid UUID" case trivially passes today (any string passes),
-  // so it cannot be a `it.failing`. We only mark the rejection case as failing.
-  it('currently accepts a valid UUID string because format is not checked (permissive — valid UUID still passes)', () => {
+  it('accepts a valid UUID string against format:uuid schema', () => {
     expect(isAssignable('550e8400-e29b-41d4-a716-446655440000', uuidSchema)).toBe(true);
   });
 
-  it.failing(
-    'isAssignable rejects a non-ISO-8601 string against format:date-time schema (gap: format not enforced)',
+  it(
+    'isAssignable rejects a non-ISO-8601 string against format:date-time schema',
     () => {
       expect(isAssignable('not-a-date', dateTimeSchema)).toBe(false);
     },
   );
 
-  // Baseline: any string is accepted today regardless of format
-  it('currently any string is accepted when format is set (documents the permissive behaviour)', () => {
-    expect(isAssignable('garbage', uuidSchema)).toBe(true);
-    expect(isAssignable('garbage', dateTimeSchema)).toBe(true);
+  it('rejects invalid format strings (format is now enforced)', () => {
+    expect(isAssignable('garbage', uuidSchema)).toBe(false);
+    expect(isAssignable('garbage', dateTimeSchema)).toBe(false);
   });
 });
 
@@ -99,24 +96,19 @@ describe('typeCheck: numeric enum enforcement', () => {
     enum: [200, 201, 204],
   };
 
-  it.failing(
-    'isAssignable rejects integer 404 against integer schema with enum [200,201,204] (gap: enum not checked for integer)',
+  it(
+    'isAssignable rejects integer 404 against integer schema with enum [200,201,204]',
     () => {
       expect(isAssignable(404, intEnumSchema)).toBe(false);
     },
   );
 
-  // NOTE: 200 is a valid integer so isAssignable trivially returns true today
-  // (enum is not checked for integer kind). This is not an appropriate it.failing
-  // because the assertion would pass for the wrong reason.
-  it('currently accepts integer 200 even though enum is not enforced (permissive baseline, valid value)', () => {
-    // This passes today — not because enum is enforced, but because it's a valid integer
+  it('accepts integer 200 which is in the enum [200,201,204]', () => {
     expect(isAssignable(200, intEnumSchema)).toBe(true);
   });
 
-  // Baseline: today any integer passes
-  it('currently any integer is accepted even when it is not in the enum (permissive baseline)', () => {
-    expect(isAssignable(999, intEnumSchema)).toBe(true);
+  it('rejects integer 999 that is not in the enum [200,201,204]', () => {
+    expect(isAssignable(999, intEnumSchema)).toBe(false);
   });
 });
 
@@ -124,14 +116,13 @@ describe('typeCheck: minimum / maximum / minLength / maxLength enforcement', () 
   // These OpenAPI constraint keywords are not stored in ObjectGraphSchema
   // (the type definition has no such fields) and not enforced in isAssignable.
 
-  it.failing(
-    'validateEntityAgainstSchema reports error when integer is below minimum (gap: minimum not enforced)',
+  it(
+    'validateEntityAgainstSchema reports error when integer is below minimum',
     async () => {
       const schema: ObjectGraphSchema = {
         name: 'Root',
         kind: 'object',
         properties: {
-          // @ts-expect-error — minimum is not in the current type; proves the type gap too
           age: { name: 'age', kind: 'integer', minimum: 0 },
         },
         required: ['age'],
@@ -141,14 +132,13 @@ describe('typeCheck: minimum / maximum / minLength / maxLength enforcement', () 
     },
   );
 
-  it.failing(
-    'validateEntityAgainstSchema reports error when string is shorter than minLength (gap: minLength not enforced)',
+  it(
+    'validateEntityAgainstSchema reports error when string is shorter than minLength',
     async () => {
       const schema: ObjectGraphSchema = {
         name: 'Root',
         kind: 'object',
         properties: {
-          // @ts-expect-error — minLength is not in the current type
           code: { name: 'code', kind: 'string', minLength: 3 },
         },
         required: ['code'],
@@ -179,11 +169,9 @@ describe('fromOpenApi: anyOf vs oneOf distinction', () => {
     expect(s.union).toHaveLength(2);
   });
 
-  it.failing(
-    'oneOf schema should use kind "oneOf" (semantically distinct from anyOf union) — gap: distinction lost',
+  it(
+    'oneOf schema is kind "union" with unionVariant "oneOf" (semantically distinct from anyOf union)',
     () => {
-      // Currently both are stored as 'union'; a dedicated 'oneOf' kind would
-      // allow exactly-one-match validation, but the system has no such kind.
       const doc = makeDoc({
         MyModel: {
           oneOf: [{ type: 'string' }, { type: 'integer' }],
@@ -191,8 +179,9 @@ describe('fromOpenApi: anyOf vs oneOf distinction', () => {
       });
       const reg = deriveSchemasFromOpenApi(doc, [{ boundary: 'MyModel', contractPath: '/m', fallbackOverride: false, behaviors: [], reducers: [], eventCatalog: [] }]);
       const s = reg.get('MyModel')!.entity;
-      // Hypothetical: a dedicated kind would distinguish oneOf from anyOf
-      expect(s.kind).toBe('oneOf');
+      // oneOf uses kind 'union' for runtime compatibility, distinguished by unionVariant
+      expect(s.kind).toBe('union');
+      expect(s.unionVariant).toBe('oneOf');
     },
   );
 });
@@ -207,11 +196,9 @@ describe('fromOpenApi: allOf merge — non-property sub-schemas silently discard
   // the merged object is empty and the result collapses to 'any'.
   // Example: allOf with a non-object first member and an object second member
   // where the non-object member's constraints are silently discarded.
-  it.failing(
-    'allOf where ALL members lack properties silently produces kind:any instead of honouring the type (gap: type-only allOf members ignored)',
+  it(
+    'allOf where ALL members lack properties honours the type (type-only allOf members preserved)',
     () => {
-      // Both sub-schemas have `type` but ONLY a string type — no properties to collect.
-      // The correct behaviour would be to raise a BootError or preserve the type.
       const doc = makeDoc({
         MyModel: {
           allOf: [
@@ -221,7 +208,7 @@ describe('fromOpenApi: allOf merge — non-property sub-schemas silently discard
       });
       const reg = deriveSchemasFromOpenApi(doc, [{ boundary: 'MyModel', contractPath: '/m', fallbackOverride: false, behaviors: [], reducers: [], eventCatalog: [] }]);
       const s = reg.get('MyModel')!.entity;
-      // The `type: 'string'` constraint should be respected — kind should be 'string', not 'any'
+      // The `type: 'string'` constraint is now respected
       expect(s.kind).toBe('string');
     },
   );
@@ -258,7 +245,7 @@ describe('fromOpenApi: allOf merge — non-property sub-schemas silently discard
     expect(s.required).toContain('a');
   });
 
-  it('allOf with no property-bearing sub-schemas silently produces kind:any (documents permissive behaviour)', () => {
+  it('allOf with type-only sub-schemas preserves the type', () => {
     const doc = makeDoc({
       MyModel: {
         allOf: [
@@ -269,25 +256,23 @@ describe('fromOpenApi: allOf merge — non-property sub-schemas silently discard
     });
     const reg = deriveSchemasFromOpenApi(doc, [{ boundary: 'MyModel', contractPath: '/m', fallbackOverride: false, behaviors: [], reducers: [], eventCatalog: [] }]);
     const s = reg.get('MyModel')!.entity;
-    // Current behaviour: collapses to 'any' — silently permissive
-    expect(s.kind).toBe('any');
+    // type: 'string' is now preserved from the type-only member
+    expect(s.kind).toBe('string');
   });
 });
 
 describe('fromOpenApi: not: keyword', () => {
-  it.failing(
-    'schema with "not:" should be preserved or throw a clear BootError (gap: not: silently ignored → kind:any)',
+  it(
+    'schema with "not:" throws a clear BootError',
     () => {
       const doc = makeDoc({
         MyModel: {
           not: { type: 'string' },
         } as JsonObject,
       });
-      // Currently: no properties/items → mapOasType returns 'any'; not: is silently dropped.
-      // Expected: either preserve as a dedicated 'not' kind, or throw BootError.
       expect(() =>
         deriveSchemasFromOpenApi(doc, [{ boundary: 'MyModel', contractPath: '/m', fallbackOverride: false, behaviors: [], reducers: [], eventCatalog: [] }]),
-      ).toThrow(); // BootError for unsupported feature, or return a proper 'not' schema
+      ).toThrow();
     },
   );
 });
@@ -442,8 +427,8 @@ describe('dslStaticChecker: dispatch_commands CEL expressions', () => {
   };
   const registry = makeRegistry('Ent', entitySchema);
 
-  it.failing(
-    'reports DSL_PATH_UNKNOWN when dispatch_commands[].targetId CEL references unknown state path (gap: dispatch_commands not walked)',
+  it(
+    'reports DSL_PATH_UNKNOWN when dispatch_commands[].targetId CEL references unknown state path',
     async () => {
       const dsl = makeCompiledDsl([
         {
@@ -473,8 +458,8 @@ describe('dslStaticChecker: dispatch_commands CEL expressions', () => {
     },
   );
 
-  it.failing(
-    'reports DSL_PATH_UNKNOWN when dispatch_commands[].payload CEL references unknown state path (gap: dispatch_commands payload not walked)',
+  it(
+    'reports DSL_PATH_UNKNOWN when dispatch_commands[].payload CEL references unknown state path',
     async () => {
       const dsl = makeCompiledDsl([
         {
@@ -538,8 +523,8 @@ describe('dslStaticChecker: dispatch_commands CEL expressions', () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 describe('typeCheck: enum enforcement for integer kind', () => {
   // Already covered in section A but adding a validate-path test here.
-  it.failing(
-    'validateEntityAgainstSchema reports error for integer value not in enum (gap: enum check missing for integer kind)',
+  it(
+    'validateEntityAgainstSchema reports error for integer value not in enum',
     async () => {
       const schema: ObjectGraphSchema = {
         name: 'Root',
