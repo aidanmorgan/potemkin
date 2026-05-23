@@ -24,12 +24,12 @@ describe('entity-absence.acceptance', () => {
     app.reset();
   });
 
-  it.failing('GET /loans/{unknown-uuid} returns 404', async () => {
+  it('GET /loans/{unknown-uuid} returns 404', async () => {
     const unknownId = nextUuidv7();
     await app.agent.get(`/loans/${unknownId}`).expect(404);
   });
 
-  it.failing('GET /loans/{unknown-uuid} response body contains entity absence info', async () => {
+  it('GET /loans/{unknown-uuid} response body contains entity absence info', async () => {
     const unknownId = nextUuidv7();
     const res = await app.agent.get(`/loans/${unknownId}`).expect(404);
 
@@ -37,12 +37,12 @@ describe('entity-absence.acceptance', () => {
     expect(res.body).toBeDefined();
   });
 
-  it.failing('GET /customers/{unknown-uuid} returns 404', async () => {
+  it('GET /customers/{unknown-uuid} returns 404', async () => {
     const unknownId = nextUuidv7();
     await app.agent.get(`/customers/${unknownId}`).expect(404);
   });
 
-  it.failing('a real loan can be retrieved (sanity check)', async () => {
+  it('a real loan can be retrieved (sanity check)', async () => {
     const loanRes = await app.agent
       .post('/loans')
       .send({ customerId: '00000000-0000-7000-8000-000000000001', principal: 500 })

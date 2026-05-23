@@ -100,6 +100,7 @@ function tokenize(src: string): Token[] {
       const quote = src[i]!;
       i++;
       let s = '';
+      const startPos = i - 1;
       while (i < src.length && src[i] !== quote) {
         if (src[i] === '\\') {
           i++;
@@ -117,6 +118,9 @@ function tokenize(src: string): Token[] {
           s += src[i];
         }
         i++;
+      }
+      if (i >= src.length) {
+        throw new Error(`CEL_PARSE_ERROR: unclosed string literal starting at position ${startPos}`);
       }
       i++; // closing quote
       tokens.push({ kind: 'string', value: s });

@@ -37,7 +37,7 @@ describe('customer-lifecycle.acceptance', () => {
   // it.failing: BUG — runPatternMatch does not implement query-intent fallback for
   // fallback_override:true (req 33). GET /customers/{id} routes to CustomerById
   // boundary which has no query behavior and falls through to UnhandledOperationError.
-  it.failing('GET /customers/{id} returns 200 with full customer body', async () => {
+  it('GET /customers/{id} returns 200 with full customer body', async () => {
     // Create first, then retrieve
     const createRes = await app.agent
       .post('/customers')
@@ -53,7 +53,7 @@ describe('customer-lifecycle.acceptance', () => {
     expect(getRes.body.riskBand).toBe('MED');
   });
 
-  it.failing('GET /customers/{id} returns all required fields', async () => {
+  it('GET /customers/{id} returns all required fields', async () => {
     const createRes = await app.agent
       .post('/customers')
       .send({ name: 'Full Customer', riskBand: 'HIGH' })
@@ -69,7 +69,7 @@ describe('customer-lifecycle.acceptance', () => {
 
   // it.failing: BUG — same as above; GET /customers (collection) routes to Customer
   // boundary which has no query behavior and throws UnhandledOperationError.
-  it.failing('GET /customers?riskBand=LOW returns only LOW-risk customers', async () => {
+  it('GET /customers?riskBand=LOW returns only LOW-risk customers', async () => {
     // Baseline has one LOW customer (Acme Coffee)
     // Add a HIGH customer to test filtering
     await app.agent
@@ -86,7 +86,7 @@ describe('customer-lifecycle.acceptance', () => {
     }
   });
 
-  it.failing('GET /customers without filter returns all customers', async () => {
+  it('GET /customers without filter returns all customers', async () => {
     // Baseline already has 2 customers
     const res = await app.agent.get('/customers').expect(200);
 

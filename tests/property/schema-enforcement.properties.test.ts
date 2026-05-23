@@ -176,10 +176,7 @@ describe('Schema enforcement properties', () => {
     );
   });
 
-  // BUG: pathExists returns true for Object.prototype inherited keys (e.g. "valueOf", "toString")
-  // because resolvePath uses `current.properties?.[token]` which picks up inherited methods.
-  // Fix needed in src/schema/pathResolver.ts: use hasOwnProperty check on properties object.
-  it.failing('pathExists returns false for Object.prototype inherited keys (BUG: uses bracket lookup without hasOwnProperty)', () => {
+  it('pathExists returns false for Object.prototype inherited keys', () => {
     const prototypeKeys = ['valueOf', 'toString', 'hasOwnProperty', 'isPrototypeOf'];
     for (const key of prototypeKeys) {
       expect(pathExists(registry, BOUNDARY, key)).toBe(false);

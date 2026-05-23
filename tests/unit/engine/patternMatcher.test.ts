@@ -157,15 +157,16 @@ describe('engine/patternMatcher', () => {
       expect(result.events[0]?.aggregateId).toBe('target-x');
     });
 
-    it('fallback does not apply to query intent', () => {
+    it('query with fallback_override returns empty events and null state for collection-level query', () => {
       const boundary = makeBoundary({ fallbackOverride: true, behaviors: [] });
-      expect(() =>
-        runPatternMatch(makeInput({
-          command: makeCommand({ intent: 'query', targetId: null }),
-          boundary,
-          shadow: makeNoopShadow(null),
-        })),
-      ).toThrow(UnhandledOperationError);
+      const result = runPatternMatch(makeInput({
+        command: makeCommand({ intent: 'query', targetId: null }),
+        boundary,
+        shadow: makeNoopShadow(null),
+      }));
+      expect(result.events).toHaveLength(0);
+      expect(result.secondaryCommands).toHaveLength(0);
+      expect(result.state).toBeNull();
     });
   });
 

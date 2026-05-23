@@ -6,7 +6,7 @@ import type { OpenApiDoc } from './loader.js';
 import type { BoundaryConfig } from '../dsl/types.js';
 import { ContractViolationError, InternalExecutionError } from '../errors.js';
 import { matchRoute } from './router.js';
-import { createLogger, getTracer, withSpan } from '../observability/index.js';
+import { createLogger, getTracer } from '../observability/index.js';
 
 export interface ContractValidator {
   /**
@@ -209,40 +209,45 @@ export function createContractValidator(
   }
 
   function validateEntity(boundary: string, entity: JsonObject): void {
-    withSpan(getTracer('contract'), 'contract.validateEntity', () => {
-      const rawDoc = doc.raw as Record<string, unknown>;
-      const components = rawDoc['components'];
-      if (!components || typeof components !== 'object' || Array.isArray(components)) {
-        throw new InternalExecutionError('Entity violates contract', {
-          boundary,
-          errors: `No components section in OpenAPI document` as unknown as JsonValue,
-        });
-      }
-      const schemas = (components as Record<string, unknown>)['schemas'];
-      if (!schemas || typeof schemas !== 'object' || Array.isArray(schemas)) {
-        throw new InternalExecutionError('Entity violates contract', {
-          boundary,
-          errors: `No components.schemas section in OpenAPI document` as unknown as JsonValue,
-        });
-      }
-      const schema = (schemas as Record<string, unknown>)[boundary];
-      if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
-        throw new InternalExecutionError('Entity violates contract', {
-          boundary,
-          errors: `No schema found for boundary '${boundary}'` as unknown as JsonValue,
-        });
-      }
+    const tracer = getTracer('contract');
+    tracer.startActiveSpan('contract.validateEntity', (span) => {
+      try {
+        const rawDoc = doc.raw as Record<string, unknown>;
+        const components = rawDoc['components'];
+        if (!components || typeof components !== 'object' || Array.isArray(components)) {
+          throw new InternalExecutionError('Entity violates contract', {
+            boundary,
+            errors: `No components section in OpenAPI document` as unknown as JsonValue,
+          });
+        }
+        const schemas = (components as Record<string, unknown>)['schemas'];
+        if (!schemas || typeof schemas !== 'object' || Array.isArray(schemas)) {
+          throw new InternalExecutionError('Entity violates contract', {
+            boundary,
+            errors: `No components.schemas section in OpenAPI document` as unknown as JsonValue,
+          });
+        }
+        const schema = (schemas as Record<string, unknown>)[boundary];
+        if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
+          throw new InternalExecutionError('Entity violates contract', {
+            boundary,
+            errors: `No schema found for boundary '${boundary}'` as unknown as JsonValue,
+          });
+        }
 
-      const validate = getValidator(schema as JsonObject);
-      if (!validate(entity)) {
-        logger.debug(
-          { boundary, errors: validate.errors },
-          'Entity validation failed',
-        );
-        throw new InternalExecutionError('Entity violates contract', {
-          boundary,
-          errors: validate.errors as JsonValue,
-        });
+        const validate = getValidator(schema as JsonObject);
+        if (!validate(entity)) {
+          logger.debug(
+            { boundary, errors: validate.errors },
+            'Entity validation failed',
+          );
+          throw new InternalExecutionError('Entity violates contract', {
+            boundary,
+            errors: validate.errors as JsonValue,
+          });
+        }
+      } finally {
+        span.end();
       }
     });
   }

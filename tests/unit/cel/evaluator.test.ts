@@ -25,9 +25,7 @@ describe('cel/evaluator', () => {
       expect(result).toBe(6);
     });
 
-    // FIXME: bug in cel/evaluator tokenizer — unclosed string literals are silently consumed
-    // instead of throwing a parse error. The tokenizer stops at EOF without checking closure.
-    it.failing('throws on unclosed string literal', () => {
+    it('throws on unclosed string literal', () => {
       expect(() => cel.compile('"hello')).toThrow();
     });
   });

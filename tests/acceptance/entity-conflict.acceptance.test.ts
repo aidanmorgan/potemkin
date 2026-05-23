@@ -37,7 +37,7 @@ describe('entity-conflict.acceptance', () => {
   });
 
   // it.failing: BUG — POST /loans triggers loanIds append cascade, Bug 1 (SCHEMA_TYPE_MISMATCH).
-  it.failing('creating a loan and then re-creating with the same id via UoW throws EntityConflictError', async () => {
+  it('creating a loan and then re-creating with the same id via UoW throws EntityConflictError', async () => {
     // Create a loan through the HTTP gateway
     const loanRes = await app.agent
       .post('/loans')

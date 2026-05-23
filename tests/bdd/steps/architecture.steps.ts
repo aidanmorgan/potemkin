@@ -13,7 +13,7 @@ import { BANKING_OPENAPI_YAML, CUSTOMER_DSL_YAML, CUSTOMER_COLLECTION_DSL_YAML, 
 // REQ-1: Interface Contract used as strict schema for validation and routing
 Then('requests with invalid payload are rejected with 400', async function (this: SimWorld) {
   // Posting a completely wrong content type / shape to /customers
-  await this.sendHttp('POST', `/customers/cust-${Date.now()}`, null as unknown as Record<string, unknown>);
+  await this.sendHttp('POST', `/customers/cust-${Date.now()}`, null);
   // We don't assert status here — just that the gateway returned something
   assert.ok(this.lastResponse, 'No response received');
 });

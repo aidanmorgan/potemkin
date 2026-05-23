@@ -28,7 +28,7 @@ describe('loan-lifecycle.acceptance', () => {
     app.reset();
   });
 
-  it.failing('POST /loans returns 201 with loan body', async () => {
+  it('POST /loans returns 201 with loan body', async () => {
     const res = await app.agent
       .post('/loans')
       .send({ customerId: ACME_ID, principal: 10000 })
@@ -40,7 +40,7 @@ describe('loan-lifecycle.acceptance', () => {
     expect(res.body.status).toBe('OPEN');
   });
 
-  it.failing('POST /loans causes cascade: customer loanIds contains the new loan id', async () => {
+  it('POST /loans causes cascade: customer loanIds contains the new loan id', async () => {
     const loanRes = await app.agent
       .post('/loans')
       .send({ customerId: ACME_ID, principal: 5000 })
@@ -54,7 +54,7 @@ describe('loan-lifecycle.acceptance', () => {
     expect(loanIds).toContain(loanId);
   });
 
-  it.failing('POST /loans/{id}/disburse returns 200 and updates loan status', async () => {
+  it('POST /loans/{id}/disburse returns 200 and updates loan status', async () => {
     const loanRes = await app.agent
       .post('/loans')
       .send({ customerId: ACME_ID, principal: 8000 })
@@ -70,7 +70,7 @@ describe('loan-lifecycle.acceptance', () => {
     expect(disburseRes.body.status).toBe('ACTIVE');
   });
 
-  it.failing('POST /loans/{id}/repay returns 200 and reduces balance', async () => {
+  it('POST /loans/{id}/repay returns 200 and reduces balance', async () => {
     const loanRes = await app.agent
       .post('/loans')
       .send({ customerId: ACME_ID, principal: 10000 })
@@ -86,7 +86,7 @@ describe('loan-lifecycle.acceptance', () => {
     expect(repayRes.body.balance).toBe(8000);
   });
 
-  it.failing('POST /loans/{id}/repay with full amount sets status to SETTLED', async () => {
+  it('POST /loans/{id}/repay with full amount sets status to SETTLED', async () => {
     const loanRes = await app.agent
       .post('/loans')
       .send({ customerId: ACME_ID, principal: 1000 })
@@ -103,7 +103,7 @@ describe('loan-lifecycle.acceptance', () => {
     expect(repayRes.body.status).toBe('SETTLED');
   });
 
-  it.failing('POST /loans/{id}/repay appends to the transactions array', async () => {
+  it('POST /loans/{id}/repay appends to the transactions array', async () => {
     const loanRes = await app.agent
       .post('/loans')
       .send({ customerId: ACME_ID, principal: 5000 })
@@ -121,7 +121,7 @@ describe('loan-lifecycle.acceptance', () => {
     expect(repayRes.body.transactions[0].amount).toBe(500);
   });
 
-  it.failing('multiple repayments accumulate in the transactions array', async () => {
+  it('multiple repayments accumulate in the transactions array', async () => {
     const loanRes = await app.agent
       .post('/loans')
       .send({ customerId: ACME_ID, principal: 3000 })

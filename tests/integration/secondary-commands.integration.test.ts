@@ -59,7 +59,7 @@ describe('secondary-commands.integration: LoanAccount creation cascades to Custo
   // it.failing because of BUG: guardAssignedValue for append checks value against
   // the array schema (expects array), not the items schema (expects string).
   // Tracked as: runtimeGuard SCHEMA_TYPE_MISMATCH for append operations.
-  it.failing('creating a loan produces 2 committed events (LoanCreated + customer cascade)', async () => {
+  it('creating a loan produces 2 committed events (LoanCreated + customer cascade)', async () => {
     const initialEventCount = sys.events.size();
     const cmd = makeLoanCreationCommand(ACME_ID);
 
@@ -81,7 +81,7 @@ describe('secondary-commands.integration: LoanAccount creation cascades to Custo
     expect(sys.events.size()).toBe(initialEventCount + 2);
   });
 
-  it.failing('the first event is for the LoanAccount boundary', async () => {
+  it('the first event is for the LoanAccount boundary', async () => {
     const cmd = makeLoanCreationCommand(ACME_ID);
 
     const result = await executeUnitOfWork({
@@ -101,7 +101,7 @@ describe('secondary-commands.integration: LoanAccount creation cascades to Custo
     expect(result.events[0]!.aggregateId).toBe(cmd.targetId);
   });
 
-  it.failing('the second event is for the Customer boundary (cascade)', async () => {
+  it('the second event is for the Customer boundary (cascade)', async () => {
     const cmd = makeLoanCreationCommand(ACME_ID);
 
     const result = await executeUnitOfWork({
@@ -121,7 +121,7 @@ describe('secondary-commands.integration: LoanAccount creation cascades to Custo
     expect(result.events[1]!.aggregateId).toBe(ACME_ID);
   });
 
-  it.failing('the loan account node is created in the state graph', async () => {
+  it('the loan account node is created in the state graph', async () => {
     const cmd = makeLoanCreationCommand(ACME_ID);
 
     await executeUnitOfWork({
@@ -143,7 +143,7 @@ describe('secondary-commands.integration: LoanAccount creation cascades to Custo
     expect(loan!['status']).toBe('OPEN');
   });
 
-  it.failing('the customer node loanIds array is updated with the new loan id', async () => {
+  it('the customer node loanIds array is updated with the new loan id', async () => {
     const cmd = makeLoanCreationCommand(ACME_ID);
 
     await executeUnitOfWork({
@@ -165,7 +165,7 @@ describe('secondary-commands.integration: LoanAccount creation cascades to Custo
     expect(loanIds).toContain(cmd.targetId);
   });
 
-  it.failing('both updates are atomic: either both succeed or neither does', async () => {
+  it('both updates are atomic: either both succeed or neither does', async () => {
     const beforeLoanCount = sys.graph.size();
     const cmd = makeLoanCreationCommand(ACME_ID);
 

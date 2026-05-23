@@ -238,9 +238,16 @@ async function handleContractRequest(
 
     const isMutating = intent === 'mutation' || intent === 'creation';
     if (isMutating && result.events.length > 0) {
-      const lastSeq = result.events.at(-1)?.sequenceVersion;
-      if (lastSeq !== undefined) {
-        responseHeaders['ETag'] = String(lastSeq);
+      // Use the last sequenceVersion for the primary aggregate (targetId), not the cascade events.
+      const primaryAggregateId = command.targetId;
+      const primaryEvents = primaryAggregateId !== null
+        ? result.events.filter(e => e.aggregateId === primaryAggregateId)
+        : result.events;
+      const seqForEtag = primaryEvents.length > 0
+        ? primaryEvents.at(-1)?.sequenceVersion
+        : result.events.at(-1)?.sequenceVersion;
+      if (seqForEtag !== undefined) {
+        responseHeaders['ETag'] = String(seqForEtag);
       }
     }
 

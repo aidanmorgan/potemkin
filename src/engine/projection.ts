@@ -132,7 +132,7 @@ function _projectEvent(input: ProjectionInput): void {
             }
 
             if (schemaRegistry) {
-              guardAssignedValue(schemaRegistry, boundary.boundary, dotPath, value);
+              guardAssignedValue(schemaRegistry, boundary.boundary, dotPath, value, 'append');
             }
 
             const existing = getByDotPath(buf, dotPath);
@@ -169,6 +169,9 @@ function _projectEvent(input: ProjectionInput): void {
  * Initializes missing intermediate objects/arrays as needed.
  */
 export function setByDotPath(obj: JsonObject, path: string, value: JsonValue): void {
+  if (!path || path.trim() === '') {
+    throw new InternalExecutionError('Empty assign path');
+  }
   const parts = parsePath(path);
   if (parts.length === 0) return;
 
