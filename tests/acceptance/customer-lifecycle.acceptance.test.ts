@@ -34,9 +34,6 @@ describe('customer-lifecycle.acceptance', () => {
     expect(res.body.id.length).toBeGreaterThan(0);
   });
 
-  // it.failing: BUG — runPatternMatch does not implement query-intent fallback for
-  // fallback_override:true (req 33). GET /customers/{id} routes to CustomerById
-  // boundary which has no query behavior and falls through to UnhandledOperationError.
   it('GET /customers/{id} returns 200 with full customer body', async () => {
     // Create first, then retrieve
     const createRes = await app.agent
@@ -67,8 +64,6 @@ describe('customer-lifecycle.acceptance', () => {
     expect(typeof getRes.body.riskBand).toBe('string');
   });
 
-  // it.failing: BUG — same as above; GET /customers (collection) routes to Customer
-  // boundary which has no query behavior and throws UnhandledOperationError.
   it('GET /customers?riskBand=LOW returns only LOW-risk customers', async () => {
     // Baseline has one LOW customer (Acme Coffee)
     // Add a HIGH customer to test filtering

@@ -14,19 +14,6 @@ import { loadBankingFixture } from './_helpers/inline-fixture.js';
 import { nextUuidv7 } from '../../src/ids/uuidv7.js';
 import type { Command } from '../../src/types.js';
 
-// ---------------------------------------------------------------------------
-// BUG: runtimeGuard.guardAssignedValue checks appended values against the
-// ARRAY schema (kind='array') rather than the array's ITEMS schema.
-// When a LoanAccount creation dispatches a secondary mutation to Customer,
-// the Customer reducer tries to `append loanIds: event.payload.loanId` (a string).
-// guardAssignedValue receives (string_value, loanIds_array_schema) and throws
-// SCHEMA_TYPE_MISMATCH because the string is not an array.
-//
-// The correct behaviour would be to check the value against the ITEMS schema.
-// Until the bug is fixed, all tests that trigger `append` operations are marked
-// it.failing.
-// ---------------------------------------------------------------------------
-
 describe('secondary-commands.integration: LoanAccount creation cascades to Customer', () => {
   let sys: BootedSystem;
   const ACME_ID = '00000000-0000-7000-8000-000000000001';
@@ -56,9 +43,6 @@ describe('secondary-commands.integration: LoanAccount creation cascades to Custo
     };
   }
 
-  // it.failing because of BUG: guardAssignedValue for append checks value against
-  // the array schema (expects array), not the items schema (expects string).
-  // Tracked as: runtimeGuard SCHEMA_TYPE_MISMATCH for append operations.
   it('creating a loan produces 2 committed events (LoanCreated + customer cascade)', async () => {
     const initialEventCount = sys.events.size();
     const cmd = makeLoanCreationCommand(ACME_ID);

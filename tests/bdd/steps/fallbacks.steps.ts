@@ -2,6 +2,62 @@ import { Given, When, Then } from '@cucumber/cucumber';
 import assert from 'assert';
 import type { SimWorld } from '../support/world.js';
 
+// ---------------------------------------------------------------------------
+// REQ-34: Strict fallback test fixture — a boundary with fallback_override:true and
+// NO mutation behaviors. Any mutation must be handled via System.GenericUpdateEvent.
+// ---------------------------------------------------------------------------
+
+const FALLBACK_ONLY_OPENAPI_YAML = `
+openapi: "3.0.3"
+info:
+  title: Fallback-Only Test
+  version: "1.0.0"
+paths:
+  /items/{id}:
+    patch:
+      operationId: updateItem
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Item'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Item'
+components:
+  schemas:
+    Item:
+      type: object
+      additionalProperties: true
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+`;
+
+const FALLBACK_ONLY_DSL_YAML = `
+boundary: Item
+contract_path: /items/{id}
+fallback_override: true
+behaviors: []
+event_catalog: []
+reducers: []
+initialization:
+  - id: "item-seed-001"
+    label: "original-label"
+`;
+
 // REQ-33: Read fallback returns entity from state graph when no rule matches
 When('I GET an entity with no specific query rule and fallback enabled', async function (this: SimWorld) {
   // Customer boundary has fallback_override: true
@@ -18,48 +74,73 @@ Then('the response should return the entity from the state graph', function (thi
   assert.ok(body['id'] || body['name'], 'Response body should contain entity data');
 });
 
-// REQ-34: Mutation fallback applies payload as generic update event
-When('I PATCH an entity with no matching behavior but fallback enabled', async function (this: SimWorld) {
-  // First create a customer
-  await this.sendHttp('POST', `/customers/cust-${Date.now()}`, { name: 'FallbackUser', email: 'fb@example.com' });
-  assert.strictEqual(this.lastResponse?.status, 201);
-  const id = (this.lastResponse?.body as Record<string, unknown>)['id'] as string;
-  this.ctx['fallbackEntityId'] = id;
+// REQ-34: Strict fallback test — uses a dedicated boundary with no mutation behaviors.
 
-  const before = this.getEventCount();
-  this.ctx['eventsBefore'] = before;
-
-  // PATCH with a field that won't match any specific behavior rule
-  // Customer DSL has fallback_override: true and a catch-all 'update-customer' rule
-  // But actually the Customer DSL has behaviors covering all mutation intents
-  // So we'll use the fact that Customer has fallback_override=true
-  // and send an update that doesn't match the specific condition
-  await this.sendHttp('PATCH', `/customers/${id}`, { arbitraryField: 'arbitrary-value' });
+Given('a boundary with fallback_override true and no mutation behaviors is booted', async function (this: SimWorld) {
+  await this.bootWithCustomDsl(FALLBACK_ONLY_OPENAPI_YAML, [
+    { name: 'item', yaml: FALLBACK_ONLY_DSL_YAML },
+  ]);
 });
 
-Then('the response should be a generic update applied to the entity', function (this: SimWorld) {
-  assert.ok(this.lastResponse, 'No response captured');
-  // With fallback_override, the system should return 200 even without a specific rule
-  assert.ok(
-    this.lastResponse.status === 200 || this.lastResponse.status === 422,
-    `Expected 200 (fallback applied) or 422 (no match), got ${this.lastResponse.status}`,
+Given('a seed entity exists in the fallback boundary', function (this: SimWorld) {
+  const entity = this.getState('item-seed-001');
+  assert.ok(entity !== null, 'Seed entity item-seed-001 should exist after boot');
+  assert.strictEqual(
+    (entity as Record<string, unknown>)['label'],
+    'original-label',
+    'Seed entity should have label "original-label"',
   );
 });
 
-Then('a generic domain event should be appended', function (this: SimWorld) {
-  if (this.lastResponse?.status !== 200) return; // Fallback didn't trigger, skip
+When('I PATCH the seed entity with a payload on the fallback boundary', async function (this: SimWorld) {
+  this.ctx['eventsBefore'] = this.getEventCount();
+  await this.sendHttp('PATCH', '/items/item-seed-001', { label: 'updated-label', extra: 'bonus' });
+});
 
+Then('the fallback response status is 200', function (this: SimWorld) {
+  assert.ok(this.lastResponse, 'No response captured');
+  assert.strictEqual(
+    this.lastResponse.status,
+    200,
+    `Expected 200 (fallback GenericUpdateEvent applied) but got ${this.lastResponse.status}. Body: ${JSON.stringify(this.lastResponse.body)}`,
+  );
+});
+
+Then('the event count grew by exactly 1', function (this: SimWorld) {
   const before = this.ctx['eventsBefore'] as number;
   const after = this.getEventCount();
-  assert.ok(after > before, 'A generic event should have been appended');
-
-  const events = this.getEvents();
-  const newEvents = events.slice(before);
-  // Check if one of the new events is the fallback event type
-  const hasGenericOrCustomerUpdate = newEvents.some(e =>
-    e.type === 'System.GenericUpdateEvent' || e.type === 'CustomerUpdated',
+  assert.strictEqual(
+    after,
+    before + 1,
+    `Expected event count to grow by 1 (from ${before} to ${before + 1}) but it is now ${after}`,
   );
-  assert.ok(hasGenericOrCustomerUpdate, `Expected generic or customer update event. New events: ${newEvents.map(e => e.type).join(', ')}`);
+});
+
+Then('the new event type is System.GenericUpdateEvent', function (this: SimWorld) {
+  const before = this.ctx['eventsBefore'] as number;
+  const events = this.getEvents();
+  const newEvent = events[before];
+  assert.ok(newEvent, 'There should be a new event appended');
+  assert.strictEqual(
+    newEvent.type,
+    'System.GenericUpdateEvent',
+    `Expected new event type to be 'System.GenericUpdateEvent' but got '${newEvent.type}'`,
+  );
+});
+
+Then('the seed entity state has the payload deep-merged in', function (this: SimWorld) {
+  const entity = this.getState('item-seed-001') as Record<string, unknown> | null;
+  assert.ok(entity !== null, 'Entity item-seed-001 should still exist after mutation');
+  assert.strictEqual(
+    entity['label'],
+    'updated-label',
+    `Expected entity.label to be 'updated-label' after deep-merge, got '${String(entity['label'])}'`,
+  );
+  assert.strictEqual(
+    entity['extra'],
+    'bonus',
+    `Expected entity.extra to be 'bonus' after deep-merge, got '${String(entity['extra'])}'`,
+  );
 });
 
 // Direct fallback test via mutation with specific behavior

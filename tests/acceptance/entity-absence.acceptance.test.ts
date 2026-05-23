@@ -4,12 +4,6 @@
  * Acceptance test: GET /loans/{unknown-uuid} → 404.
  */
 
-// BUG NOTE: All GET requests in this file fail with UnhandledOperationError because
-// runPatternMatch does not implement query-intent fallback for fallback_override:true.
-// Per req 33, query fallback should return the entity from state or 404.
-// Tracked as: query-intent fallback unimplemented in runPatternMatch.
-// All tests in this file are it.failing until the bug is fixed.
-
 import { createTestApp, type TestApp } from './_helpers/test-app.js';
 import { nextUuidv7 } from '../../src/ids/uuidv7.js';
 

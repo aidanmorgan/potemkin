@@ -1,7 +1,7 @@
 import { Given, When, Then } from '@cucumber/cucumber';
 import assert from 'assert';
 import type { SimWorld } from '../support/world.js';
-import { bootSystem } from '../../../src/engine/boot.js';
+import { bootSystem, createGateway } from '../../../src/index.js';
 import { loadOpenApi } from '../../../src/contract/loader.js';
 import { BootError } from '../../../src/errors.js';
 import { BANKING_OPENAPI_YAML } from '../support/world.js';
@@ -44,6 +44,78 @@ components:
           type: string
         value:
           type: string
+`;
+
+// Strict boundary OpenAPI: entity schema has additionalProperties:false and an integer `count`
+// field. The requestBody uses a permissive WidgetInput schema so the contract validator does NOT
+// reject the string — only the runtimeGuard in the projection step will catch the type mismatch.
+const STRICT_INTEGER_OPENAPI_YAML = `
+openapi: "3.0.3"
+info:
+  title: Strict Integer Schema Test
+  version: "1.0.0"
+paths:
+  /widgets/{id}:
+    patch:
+      operationId: updateWidget
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WidgetInput'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Widget'
+components:
+  schemas:
+    WidgetInput:
+      type: object
+      additionalProperties: true
+      properties:
+        count: {}
+    Widget:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        count:
+          type: integer
+`;
+
+const STRICT_INTEGER_DSL_YAML = `
+boundary: Widget
+contract_path: /widgets/{id}
+fallback_override: false
+behaviors:
+  - name: update-widget
+    match:
+      intent: mutation
+      condition: "true"
+    emit: WidgetUpdated
+event_catalog:
+  - type: WidgetUpdated
+    payload_template:
+      id: "state.id"
+      count: "payload.count"
+reducers:
+  - on: WidgetUpdated
+    assign:
+      id: "event.payload.id"
+      count: "event.payload.count"
+initialization:
+  - id: "widget-001"
+    count: 42
 `;
 
 // REQ-44: Object-Graph Schema Registry derived from OpenAPI at boot
@@ -156,29 +228,31 @@ reducers:
 });
 
 // REQ-46: Runtime type-check of assignments — mismatch aborts UoW with SCHEMA_TYPE_MISMATCH
-When('I send a mutation that assigns a wrong type to a schema field', async function (this: SimWorld) {
-  // The Customer schema has 'balance' as type: number
-  // Sending a string for it should trigger SCHEMA_TYPE_MISMATCH via runtimeGuard
-  await this.sendHttp('PATCH', '/customers/customer-seed-001', { balance: 'not-a-number' });
+
+// Boot a separate system with a strict-schema (additionalProperties:false) Widget boundary
+// that has an integer field. Assigning a string to `count` will trigger SCHEMA_TYPE_MISMATCH.
+Given('a strict-schema boundary with an integer field is booted', async function (this: SimWorld) {
+  await this.bootWithCustomDsl(STRICT_INTEGER_OPENAPI_YAML, [
+    { name: 'widget', yaml: STRICT_INTEGER_DSL_YAML },
+  ]);
 });
 
-Then('the UoW should abort with SCHEMA_TYPE_MISMATCH or succeed', function (this: SimWorld) {
+When('I send a mutation that assigns a string to the integer field on the strict boundary', async function (this: SimWorld) {
+  // widget-001 exists in the initialization seed; assign a string to the integer `count` field.
+  await this.sendHttp('PATCH', '/widgets/widget-001', { count: 'not-an-integer' });
+});
+
+Then('the UoW should abort with status 500 and code SCHEMA_TYPE_MISMATCH', function (this: SimWorld) {
   assert.ok(this.lastResponse, 'No response captured');
-  // The system must reject a wrong-type assignment. It may do so at the contract
-  // validation layer (AJV → 400 CONTRACT_VIOLATION) or at the runtime guard layer
-  // (UoW projection → 500 SCHEMA_TYPE_MISMATCH). Either is a valid rejection.
-  // A 200 success is also acceptable if the schema allows additionalProperties.
-  const isContractViolation = this.lastResponse.status === 400;
-  const isTypeMismatch =
-    this.lastResponse.status === 500 &&
-    (
-      (this.lastResponse.body as Record<string, unknown>)['code'] === 'INTERNAL_EXECUTION_ERROR' ||
-      JSON.stringify(this.lastResponse.body).includes('SCHEMA_TYPE_MISMATCH')
-    );
-  const isSuccess = this.lastResponse.status === 200;
+  assert.strictEqual(
+    this.lastResponse.status,
+    500,
+    `Expected 500 SCHEMA_TYPE_MISMATCH but got ${this.lastResponse.status}. Body: ${JSON.stringify(this.lastResponse.body)}`,
+  );
+  const bodyStr = JSON.stringify(this.lastResponse.body);
   assert.ok(
-    isContractViolation || isTypeMismatch || isSuccess,
-    `Expected rejection (400/500) or success (200) but got ${this.lastResponse.status}. Body: ${JSON.stringify(this.lastResponse.body)}`,
+    bodyStr.includes('SCHEMA_TYPE_MISMATCH'),
+    `Expected body to contain SCHEMA_TYPE_MISMATCH. Body: ${bodyStr}`,
   );
 });
 

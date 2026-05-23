@@ -1,10 +1,41 @@
-import { Given, When, Then } from '@cucumber/cucumber';
+import { Given, When, Then, Before, After } from '@cucumber/cucumber';
 import assert from 'assert';
 import type { SimWorld } from '../support/world.js';
 import pino from 'pino';
 import { createLogger, childLogger } from '../../../src/observability/logger.js';
 import { createEngineMetrics } from '../../../src/observability/metrics.js';
 import { metrics } from '@opentelemetry/api';
+import { trace, context } from '@opentelemetry/api';
+import {
+  BasicTracerProvider,
+  InMemorySpanExporter,
+  SimpleSpanProcessor,
+} from '@opentelemetry/sdk-trace-base';
+
+// ---------------------------------------------------------------------------
+// REQ-43: In-memory span exporter for BDD span content assertions.
+// Each scenario that needs span verification gets its own provider + exporter.
+// ---------------------------------------------------------------------------
+
+let _inMemoryExporter: InMemorySpanExporter | null = null;
+let _inMemoryProvider: BasicTracerProvider | null = null;
+
+Before({ tags: '@otel-spans' }, function () {
+  _inMemoryExporter = new InMemorySpanExporter();
+  _inMemoryProvider = new BasicTracerProvider();
+  _inMemoryProvider.addSpanProcessor(new SimpleSpanProcessor(_inMemoryExporter));
+  _inMemoryProvider.register();
+});
+
+After({ tags: '@otel-spans' }, async function () {
+  if (_inMemoryProvider) {
+    await _inMemoryProvider.shutdown();
+    _inMemoryProvider = null;
+  }
+  _inMemoryExporter = null;
+  // Re-register the no-op global tracer after shutdown
+  trace.disable();
+});
 
 // REQ-41: System uses well-known community libraries (pino, ajv, swagger-parser, uuidv7)
 Then('the system logger should be a pino logger', function (this: SimWorld) {
@@ -88,13 +119,39 @@ Then('the system tracer should be an OpenTelemetry tracer', function (this: SimW
 });
 
 Then('a UoW execution should record a span', async function (this: SimWorld) {
-  // Execute a UoW and verify tracer is invoked (structural check — we don't need a real exporter)
   assert.ok(this.sys, 'System not booted');
   await this.sendHttp('POST', `/customers/cust-${Date.now()}`, { name: 'SpanTest', email: 'span@example.com' });
   assert.strictEqual(this.lastResponse?.status, 201, 'Creation should succeed');
-  // The tracer was called — we can't easily check the span in-memory without an InMemorySpanExporter
-  // but we can verify the tracer is still functional after the call
+  // Tracer remains accessible and functional after the UoW (structural check for scenarios
+  // that run without the @otel-spans tag and the InMemorySpanExporter).
   assert.ok(this.sys.tracer, 'Tracer should still be accessible after UoW');
+  assert.ok(
+    typeof this.sys.tracer.startActiveSpan === 'function',
+    'Tracer should expose startActiveSpan (OTel API)',
+  );
+});
+
+Then('at least one span named engine.uow should be exported', async function (this: SimWorld) {
+  assert.ok(this.sys, 'System not booted');
+  assert.ok(
+    _inMemoryExporter !== null,
+    'InMemorySpanExporter must be set up — tag this scenario with @otel-spans',
+  );
+
+  // Run a UoW through the system tracer so spans flow through the in-memory exporter.
+  // We use the system's tracer which is tied to the global OTel provider registered in Before.
+  await this.sendHttp('POST', `/customers/cust-otel-${Date.now()}`, { name: 'OtelSpanTest', email: 'otel@example.com' });
+  assert.strictEqual(this.lastResponse?.status, 201, 'UoW must succeed so span is exported');
+
+  // Allow the SimpleSpanProcessor to flush (it's synchronous, but give it a tick)
+  await new Promise<void>((resolve) => setTimeout(resolve, 10));
+
+  const spans = _inMemoryExporter.getFinishedSpans();
+  const uowSpans = spans.filter(s => s.name === 'engine.uow');
+  assert.ok(
+    uowSpans.length >= 1,
+    `Expected at least one span named 'engine.uow' but found: [${spans.map(s => s.name).join(', ')}]`,
+  );
 });
 
 Then('the engine metrics should track fault simulations', async function (this: SimWorld) {
