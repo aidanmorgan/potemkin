@@ -60,6 +60,7 @@ export function matchRoute(
     if (!match) continue;
 
     const pathItem = doc.paths[pathTemplate];
+    /* istanbul ignore next — pathTemplate comes from Object.keys(doc.paths) so pathItem is always defined */
     if (!pathItem) continue;
 
     const operation = pathItem[lowerMethod];
