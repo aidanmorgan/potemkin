@@ -46,6 +46,7 @@ import type { ShadowGraph } from '../stategraph/shadow.js';
 
 import { createShadowGraph } from '../stategraph/shadow.js';
 import { runPatternMatch } from './patternMatcher.js';
+import { projectEvent } from './projection.js';
 import { runQuery } from './query.js';
 import { nextUuidv7 } from '../ids/uuidv7.js';
 import { createLogger } from '../observability/logger.js';
@@ -291,8 +292,8 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
         // Step 6 — Primary execution + cascading (req 19, 32)
         // -----------------------------------------------------------------------
         const stagedEvents: DomainEvent[] = [];
-        /** Count of staged events per aggregateId, used for sequence-version projection. */
-        const stagedCountByAggregate = new Map<string, number>();
+        /** Count of events staged per aggregateId within this UoW, used for monotonic sequence-version assignment. */
+        const stagedSeqDeltas = new Map<string, number>();
 
         const pendingCommands: Command[] = [command];
 
@@ -319,6 +320,8 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
             tracer,
             `engine.uow.cascade.depth-${cmd.depth}`,
             async (_childSpan) => {
+              const shadowAsGraphAdapter = shadowAsStateGraph(shadow, graph);
+
               let outcome: PatternMatchResult;
               try {
                 outcome = runPatternMatch({
@@ -330,6 +333,19 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
                   now: () => new Date().toISOString(),
                   logger,
                   schemaRegistry,
+                  nextSequenceVersion: (aggregateId) =>
+                    eventStore.currentSequenceVersion(aggregateId) +
+                    (stagedSeqDeltas.get(aggregateId) ?? 0) +
+                    1,
+                  projectToShadow: (event) =>
+                    projectEvent({
+                      event,
+                      boundary,
+                      graph: shadowAsGraphAdapter,
+                      cel,
+                      logger,
+                      schemaRegistry,
+                    }),
                 });
               } catch (err) {
                 const code =
@@ -342,9 +358,9 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
               // Accumulate staged events
               for (const evt of outcome.events) {
                 stagedEvents.push(evt);
-                stagedCountByAggregate.set(
+                stagedSeqDeltas.set(
                   evt.aggregateId,
-                  (stagedCountByAggregate.get(evt.aggregateId) ?? 0) + 1,
+                  (stagedSeqDeltas.get(evt.aggregateId) ?? 0) + 1,
                 );
               }
 

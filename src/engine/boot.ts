@@ -81,8 +81,8 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
     const phaseStart2 = Date.now();
     bootLog.info({ step: 'dsl_compile', moduleCount: input.dslModules.length }, 'Boot: compiling DSL modules');
 
-    // compileDsl is synchronous per its signature; throws BootError on failure (req 23)
-    const dsl: CompiledDsl = compileDsl(input.dslModules);
+    // compileDsl is async; throws BootError on failure (req 23)
+    const dsl: CompiledDsl = await compileDsl(input.dslModules);
 
     bootLog.info(
       { step: 'dsl_compile', boundaryCount: dsl.boundaries.length, durationMs: Date.now() - phaseStart2 },
