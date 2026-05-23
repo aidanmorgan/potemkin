@@ -2,10 +2,15 @@ import { Given, When, Then } from '@cucumber/cucumber';
 import assert from 'assert';
 import type { SimWorld } from '../support/world.js';
 
+let _stepIdCounter = 0;
+function uniqueId(prefix: string): string {
+  return `${prefix}-${Date.now()}-${++_stepIdCounter}`;
+}
+
 // REQ-20: Staged events appended atomically on UoW success
 Then('all events from the unit of work should be appended atomically', async function (this: SimWorld) {
   const before = this.getEvents().length;
-  await this.sendHttp('POST', `/customers/cust-${Date.now()}`, { name: 'Atomic', email: 'atomic@example.com' });
+  await this.sendHttp('POST', `/customers/${uniqueId('cust')}`, { name: 'Atomic', email: 'atomic@example.com' });
   assert.strictEqual(this.lastResponse?.status, 201);
   const after = this.getEvents().length;
   // Exactly one event should be added (the CustomerCreated event)
@@ -52,7 +57,7 @@ Then('the event should carry the incremented sequence version', async function (
 
 // REQ-22: State graph updated immediately after event projection
 Then('the state graph should reflect the committed event immediately', async function (this: SimWorld) {
-  await this.sendHttp('POST', `/customers/cust-${Date.now()}`, { name: 'Immediate', email: 'imm@example.com' });
+  await this.sendHttp('POST', `/customers/${uniqueId('cust')}`, { name: 'Immediate', email: 'imm@example.com' });
   assert.strictEqual(this.lastResponse?.status, 201);
   const id = (this.lastResponse?.body as Record<string, unknown>)['id'] as string;
 
@@ -65,7 +70,7 @@ Then('the state graph should reflect the committed event immediately', async fun
 
 Then('the state graph should reflect mutation events', async function (this: SimWorld) {
   // Create
-  await this.sendHttp('POST', `/customers/cust-${Date.now()}`, { name: 'MutReflect', email: 'mut@example.com' });
+  await this.sendHttp('POST', `/customers/${uniqueId('cust')}`, { name: 'MutReflect', email: 'mut@example.com' });
   assert.strictEqual(this.lastResponse?.status, 201);
   const id = (this.lastResponse?.body as Record<string, unknown>)['id'] as string;
 

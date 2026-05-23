@@ -256,11 +256,7 @@ describe('REQ-29 — missing-precondition (HTTP gateway layer)', () => {
     resetSystem(sys);
   });
 
-  // KNOWN-BUG: requiresPrecondition callback is not yet passed from gateway.ts to
-  // executeUnitOfWork. Once the refactor agent wires it, the gateway will return 428
-  // and this it.failing will become it.passing — remove the `.failing` at that point.
-  // eslint-disable-next-line jest/no-disabled-tests
-  it.failing('PATCH without If-Match returns 428 MISSING_PRECONDITION when requiresPrecondition is wired', async () => {
+  it('PATCH without If-Match returns 428 MISSING_PRECONDITION when requiresPrecondition is wired', async () => {
     const app = createGateway(sys);
     const agent = request(app);
 
