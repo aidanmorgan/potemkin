@@ -3,8 +3,8 @@ import type { BoundaryConfig } from '../dsl/types.js';
 import { ContractViolationError } from '../errors.js';
 
 export interface IntentTranslationInput {
-  method: string;
-  boundary: BoundaryConfig;
+  readonly method: string;
+  readonly boundary: BoundaryConfig;
 }
 
 /**

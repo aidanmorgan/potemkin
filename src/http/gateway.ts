@@ -46,6 +46,9 @@ import {
 } from '../errors.js';
 import type { Command, Intent } from '../types.js';
 
+/** Node.js normalises header names to lowercase; this is the lowercased If-Match header. */
+const IF_MATCH_HEADER_LC = 'if-match';
+
 /**
  * Convert an OpenAPI path template (/loans/{id}) to an Express route pattern (/loans/:id).
  */
@@ -177,8 +180,8 @@ async function handleContractRequest(
       queryParams: req.query as Record<string, string | string[]>,
       httpMethod: req.method,
       path: req.path,
-      sequenceVersion: req.headers['if-match'] !== undefined
-        ? Number(req.headers['if-match'])
+      sequenceVersion: req.headers[IF_MATCH_HEADER_LC] !== undefined
+        ? Number(req.headers[IF_MATCH_HEADER_LC])
         : undefined,
       origin: 'inbound',
       depth: 0,
@@ -197,6 +200,7 @@ async function handleContractRequest(
           validator: sys.validator,
           schemaRegistry: sys.schemaRegistry,
           openapi: sys.openapi,
+          requiresPrecondition: sys.requiresPrecondition,
           logger,
           tracer: sys.tracer,
           metrics: sys.metrics,
