@@ -69,7 +69,7 @@ export interface UowInput {
   readonly events: EventStore;
   readonly cel: CelEvaluator;
   readonly validator: ContractValidator;
-  /** Maximum secondary-command cascade depth before InfiniteLoopError. Default: 5. */
+  /** Maximum secondary-command cascade depth before InfiniteLoopError. Default: MAX_UOW_DEPTH (5). */
   readonly maxDepth?: number;
   /** Optional logger for structured UoW execution traces. */
   readonly logger?: Logger;
@@ -92,6 +92,16 @@ export interface UowInput {
    */
   readonly openapi?: OpenApiDoc;
 }
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/** Default maximum cascade depth for secondary commands (req 32). */
+const MAX_UOW_DEPTH = 5;
+
+/** Header name used for optimistic-concurrency precondition checks (REQ-29). */
+const IF_MATCH_HEADER = 'If-Match';
 
 // ---------------------------------------------------------------------------
 // Module-level concurrency locks
@@ -193,7 +203,7 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
     events: eventStore,
     cel,
     validator,
-    maxDepth = 5,
+    maxDepth = MAX_UOW_DEPTH,
     metrics,
     schemaRegistry,
   } = input;
@@ -265,9 +275,17 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
           const preconditionRequired =
             input.requiresPrecondition?.(command.boundary, command.httpMethod) ?? false;
 
+          if (preconditionRequired) {
+            logger.debug(
+              { boundary: command.boundary, method: command.httpMethod },
+              'UoW precondition enforcement: If-Match required for this operation',
+            );
+            _outerSpan.setAttribute('uow.preconditionRequired', true);
+          }
+
           if (preconditionRequired && command.sequenceVersion === undefined) {
             throw new MissingPreconditionError(
-              `If-Match required for ${command.httpMethod} ${command.boundary} but not supplied`,
+              `${IF_MATCH_HEADER} required for ${command.httpMethod} ${command.boundary} but not supplied`,
             );
           }
 

@@ -1,4 +1,4 @@
-import type { CompiledDsl } from '../dsl/types.js';
+import type { CompiledDsl, BoundaryConfig } from '../dsl/types.js';
 import type { OpenApiDoc } from '../contract/loader.js';
 import type { EventStore } from '../eventstore/store.js';
 import type { StateGraph } from '../stategraph/graph.js';
@@ -51,6 +51,50 @@ export interface BootedSystem {
   readonly metrics: EngineMetrics;
   /** Object-graph schema registry derived from OpenAPI component schemas at boot. */
   readonly schemaRegistry: ObjectGraphSchemaRegistry;
+  /**
+   * Returns true when the OpenAPI operation for (boundary, method) declares If-Match
+   * as a required header parameter (REQ-29). Used by the UoW precondition check.
+   */
+  readonly requiresPrecondition: (boundary: string, method: string) => boolean;
+}
+
+/** Header names that indicate an optimistic-concurrency precondition. */
+const IF_MATCH_HEADER_NAMES = new Set(['if-match', 'If-Match']);
+
+/**
+ * Walk the OpenAPI paths for each boundary's contractPath and record which
+ * (boundary, HTTP-method-uppercase) pairs declare If-Match as a required
+ * header parameter (REQ-29).
+ *
+ * Returns a callback suitable for `BootedSystem.requiresPrecondition`.
+ */
+function buildPreconditionMap(
+  openapi: OpenApiDoc,
+  boundaries: readonly BoundaryConfig[],
+): (boundary: string, method: string) => boolean {
+  // key: `${boundary}:${METHOD_UPPERCASE}` → true
+  const required = new Set<string>();
+
+  for (const bc of boundaries) {
+    const pathItem = openapi.paths[bc.contractPath];
+    if (!pathItem) continue;
+
+    for (const [method, operation] of Object.entries(pathItem)) {
+      if (!operation?.parameters) continue;
+      for (const param of operation.parameters) {
+        if (
+          IF_MATCH_HEADER_NAMES.has(param.name) &&
+          param.in === 'header' &&
+          param.required === true
+        ) {
+          required.add(`${bc.boundary}:${method.toUpperCase()}`);
+        }
+      }
+    }
+  }
+
+  return (boundary: string, method: string): boolean =>
+    required.has(`${boundary}:${method.toUpperCase()}`);
 }
 
 /**
@@ -244,6 +288,11 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       'Boot: system boot complete',
     );
 
+    // ── Step 8: Build requiresPrecondition callback (REQ-29) ─────────────────
+    // Walk OpenAPI paths to discover operations that declare If-Match as a
+    // required header parameter; encode as a (boundary, method) → boolean map.
+    const preconditionRequired = buildPreconditionMap(input.openapi, dsl.boundaries);
+
     return {
       dsl,
       openapi: input.openapi,
@@ -256,6 +305,7 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       tracer,
       metrics,
       schemaRegistry,
+      requiresPrecondition: preconditionRequired,
     };
   });
 }

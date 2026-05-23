@@ -5,6 +5,7 @@ import type { CelEvaluator } from '../cel/evaluator.js';
 import type { ContractValidator } from '../contract/validator.js';
 import type { Logger } from '../observability/logger.js';
 import type { ObjectGraphSchemaRegistry } from '../schema/types.js';
+import { deepClone, deepMerge } from '../stategraph/graph.js';
 import { CelPhase } from '../cel/phases.js';
 import { getTracer } from '../observability/tracing.js';
 import { SpanStatusCode } from '@opentelemetry/api';
@@ -70,12 +71,12 @@ function _projectEvent(input: ProjectionInput): void {
   try {
     // Step 2: Reducer Evaluation
     if (event.type === 'System.GenericUpdateEvent') {
-      // JSON merge fallback
-      deepMergeInto(buf, event.payload);
+      // JSON merge fallback — deep-merge payload into buf in-place
+      mergeInPlace(buf, event.payload);
       log?.debug({ payloadKeys: Object.keys(event.payload) }, 'Applied GenericUpdateEvent via deep-merge');
     } else if (event.type === 'BaselineEntityCreatedEvent') {
       // Replace buffer entirely with payload
-      replaceObject(buf, event.payload);
+      replaceInPlace(buf, event.payload);
       log?.debug({}, 'Applied BaselineEntityCreatedEvent — replaced state with payload');
     } else {
       // Find matching reducers (by event type key)
@@ -259,38 +260,23 @@ function parsePath(path: string): Array<string | number> {
 }
 
 // ---------------------------------------------------------------------------
-// Deep-clone and deep-merge helpers (local, stable implementations)
+// In-place mutation helpers that delegate to the canonical graph utilities
 // ---------------------------------------------------------------------------
 
-function deepClone<T extends JsonValue>(v: T): T {
-  return JSON.parse(JSON.stringify(v)) as T;
-}
-
 /**
- * Merge `source` into `target` in-place (mutates target).
- * Arrays in source replace arrays in target (no concat).
+ * Deep-merge `source` into `target` in-place, reusing the canonical `deepMerge`
+ * from the stategraph module so there is a single implementation site.
  */
-function deepMergeInto(target: JsonObject, source: JsonObject): void {
-  for (const [key, val] of Object.entries(source)) {
-    if (
-      val !== null &&
-      typeof val === 'object' &&
-      !Array.isArray(val) &&
-      typeof target[key] === 'object' &&
-      target[key] !== null &&
-      !Array.isArray(target[key])
-    ) {
-      deepMergeInto(target[key] as JsonObject, val as JsonObject);
-    } else {
-      target[key] = deepClone(val as JsonValue);
-    }
-  }
+function mergeInPlace(target: JsonObject, source: JsonObject): void {
+  const merged = deepMerge(target, source);
+  replaceInPlace(target, merged);
 }
 
 /**
  * Replace all keys of `target` with those of `source` in-place.
+ * Delegates per-value cloning to the canonical `deepClone` from stategraph.
  */
-function replaceObject(target: JsonObject, source: JsonObject): void {
+function replaceInPlace(target: JsonObject, source: JsonObject): void {
   for (const key of Object.keys(target)) {
     delete target[key];
   }

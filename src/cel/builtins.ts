@@ -2,9 +2,9 @@ import { CelPhase } from './phases.js';
 import { nextUuidv7 } from '../ids/uuidv7.js';
 
 export interface BuiltinContext {
-  phase: CelPhase;
-  now?: () => string;
-  uuid?: () => string;
+  readonly phase: CelPhase;
+  readonly now?: () => string;
+  readonly uuid?: () => string;
 }
 
 /** Functions banned in the Reducer phase (non-deterministic side-effects). */

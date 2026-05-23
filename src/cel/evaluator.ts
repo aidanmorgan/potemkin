@@ -18,7 +18,6 @@
 import { CelPhase } from './phases.js';
 import { callBuiltin, type BuiltinContext } from './builtins.js';
 import { createLogger } from '../observability/logger.js';
-import { getTracer, withSpan } from '../observability/tracing.js';
 
 const logger = createLogger({ name: 'cel' });
 
@@ -541,12 +540,6 @@ export function createCelEvaluator(): CelEvaluator {
       ctx: CelContext,
       phase: CelPhase,
     ): unknown {
-      // TODO: Consider wrapping in withSpan(getTracer('cel'), 'cel.evaluate', …)
-      // if perf profiling shows tracing overhead is acceptable. Skipped for now
-      // to avoid async overhead on a synchronous hot path.
-      void withSpan; // imported — available if needed
-      void getTracer;
-
       const compiled: CompiledCel =
         typeof expression === 'string' ? this.compile(expression) : expression;
 

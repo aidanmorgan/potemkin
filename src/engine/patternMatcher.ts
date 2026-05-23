@@ -5,7 +5,7 @@ import type { CelEvaluator } from '../cel/evaluator.js';
 import type { Logger } from '../observability/logger.js';
 import type { ObjectGraphSchemaRegistry } from '../schema/types.js';
 import { CelPhase } from '../cel/phases.js';
-import { getTracer, withSpan } from '../observability/tracing.js';
+import { getTracer, SpanStatusCode } from '../observability/tracing.js';
 import {
   EntityAbsenceError,
   EntityConflictError,
@@ -61,9 +61,7 @@ export interface PatternMatchOutcome {
  * @throws {UnhandledOperationError} (422) no match and no fallback.
  */
 export function runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
-  return withSpanSync(getTracer('engine'), 'engine.patternMatch', () => {
-    return _runPatternMatch(input);
-  });
+  return withSpanSync('engine.patternMatch', () => _runPatternMatch(input));
 }
 
 function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
@@ -300,22 +298,19 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
 }
 
 /**
- * Synchronous wrapper around `withSpan` for use when the implementation is synchronous.
- * `withSpan` is async, but our pattern matcher logic is sync — we wrap the result.
+ * Synchronous wrapper that starts an active span, runs `fn`, ends the span, then
+ * re-throws any error. Uses the tracer obtained via `getTracer` and the span API
+ * directly (no async overhead for this synchronous hot path).
  */
 function withSpanSync<T>(
-  tracer: Parameters<typeof withSpan>[0],
   name: string,
   fn: () => T,
 ): T {
-  // We use the sync tracer.startActiveSpan API directly here so we don't force
-  // the public function to be async when the whole call chain is sync.
-  const { trace, context, SpanStatusCode } = require('@opentelemetry/api') as typeof import('@opentelemetry/api');
-  const t = trace.getTracer('engine');
+  const tracer = getTracer('engine');
   let result!: T;
   let threw = false;
   let thrownErr: unknown;
-  t.startActiveSpan(name, (span) => {
+  tracer.startActiveSpan(name, (span) => {
     try {
       result = fn();
     } catch (err) {

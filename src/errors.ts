@@ -28,6 +28,8 @@ export class BootError extends SimError {
   constructor(
     code:
       | 'BOOT_ERR_DSL_SYNTAX'
+      | 'BOOT_ERR_DSL_REFERENCE'
+      | 'BOOT_ERR_DSL_DUPLICATE_BOUNDARY'
       | 'BOOT_ERR_CONTRACT_BIND'
       | 'BOOT_ERR_CONTRACT_LOAD'
       | 'BOOT_ERR_BASELINE_HYDRATION'

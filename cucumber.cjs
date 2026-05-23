@@ -9,7 +9,7 @@ module.exports = {
     ],
     requireModule: ['ts-node/register/transpile-only'],
     format: ['progress'],
-    strict: false,
+    strict: true,
     worldParameters: {},
   },
 };
