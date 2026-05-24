@@ -34,8 +34,8 @@ describe('http/gateway — completeness probes', () => {
 
   // ── CORS / preflight (gap: no CORS support) ─────────────────────────────────
 
-  it.failing(
-    '[GAP] OPTIONS /customers returns 204 or 200 with Access-Control-Allow-Origin header (CORS preflight)',
+  it(
+    'OPTIONS /customers returns 204 with Access-Control-Allow-Origin header (CORS preflight)',
     async () => {
       const res = await app.agent
         .options('/customers')
@@ -48,16 +48,12 @@ describe('http/gateway — completeness probes', () => {
   );
 
   it(
-    '[CURRENT] OPTIONS /customers falls through to catch-all 404 (no CORS middleware registered)',
+    'all responses include Access-Control-Allow-Origin header (CORS on every response)',
     async () => {
-      // This documents the CURRENT behaviour — OPTIONS is not handled
       const res = await app.agent
-        .options('/customers')
+        .get('/customers')
         .set('Origin', 'https://example.com');
-      // Express's app.all() will match OPTIONS too and run handleContractRequest;
-      // matchRoute will return null for OPTIONS → 405 METHOD_NOT_ALLOWED
-      expect([404, 405]).toContain(res.status);
-      expect(res.headers['access-control-allow-origin']).toBeUndefined();
+      expect(res.headers['access-control-allow-origin']).toBeDefined();
     },
   );
 
@@ -94,10 +90,10 @@ describe('http/gateway — completeness probes', () => {
     expect(res.body.name).toBe('Charset Test');
   });
 
-  it.failing(
-    '[GAP] text/json body is accepted and parsed (gateway only allows application/json types)',
+  it(
+    'text/json body is accepted and parsed (H-3: extended content-type support)',
     async () => {
-      // express.json() default type does NOT match 'text/json'
+      // express.json() type option now includes 'text/json'
       const res = await app.agent
         .post('/customers')
         .set('Content-Type', 'text/json')
@@ -109,22 +105,19 @@ describe('http/gateway — completeness probes', () => {
 
   // ── HEAD request on contract path ────────────────────────────────────────────
 
-  it.failing(
-    '[GAP] HEAD /customers returns 200 with no body (gateway responds 405 because matchRoute does not recognise HEAD)',
+  it(
+    'HEAD /customers returns 200 with no body (H-1: HEAD treated as GET per RFC 7231)',
     async () => {
-      // Express app.all() routes HEAD to handleContractRequest but matchRoute
-      // returns null for HEAD (not declared in OpenAPI). The handler then returns 405.
-      // A correct implementation would treat HEAD like GET (RFC 7231 §4.3.2).
+      // HEAD is looked up as GET — same status/headers, empty body.
       const res = await app.agent.head('/customers').expect(200);
       expect(res.text).toBeFalsy();
     },
   );
 
-  it('[CURRENT] HEAD /customers returns 405 METHOD_NOT_ALLOWED (HEAD not declared in OpenAPI)', async () => {
-    // Documents the current behaviour: HEAD is not in the OpenAPI spec so matchRoute
-    // returns null and the gateway responds 405
-    const res = await app.agent.head('/customers');
-    expect(res.status).toBe(405);
+  it('HEAD /customers returns same status as GET (RFC 7231 §4.3.2)', async () => {
+    const headRes = await app.agent.head('/customers');
+    const getRes = await app.agent.get('/customers');
+    expect(headRes.status).toBe(getRes.status);
   });
 
   // ── Response Content-Type on all JSON routes ─────────────────────────────────
@@ -165,20 +158,24 @@ describe('http/gateway — completeness probes', () => {
     },
   );
 
-  it('[CURRENT] GET /_admin/state ignores boundary query param and returns all entities', async () => {
+  it('GET /_admin/state?boundary=X returns 400 NOT_IMPLEMENTED (filter is future work)', async () => {
     const res = await app.agent
       .get('/_admin/state?boundary=Customer')
+      .expect(400);
+    expect(res.body.error).toBe('NOT_IMPLEMENTED');
+  });
+
+  it('GET /_admin/state without boundary param returns all entities', async () => {
+    const res = await app.agent
+      .get('/_admin/state')
       .expect(200);
-    // The ?boundary param is silently ignored — all entities are returned
     expect(res.body.entities).toBeDefined();
-    // No filteredByBoundary indicator in response
-    expect(res.body.filteredByBoundary).toBeUndefined();
   });
 
   // ── Admin /_admin/events — no pagination ────────────────────────────────────
 
-  it.failing(
-    '[GAP] GET /_admin/events supports ?limit= and ?offset= pagination',
+  it(
+    'GET /_admin/events supports ?limit= and ?offset= pagination (H-6)',
     async () => {
       // Create some events first
       await app.agent
@@ -193,12 +190,12 @@ describe('http/gateway — completeness probes', () => {
       const res = await app.agent
         .get('/_admin/events?limit=1&offset=0')
         .expect(200);
-      // If pagination existed, only 1 event would be returned
+      // With pagination, only 1 event returned
       expect(res.body.events.length).toBeLessThanOrEqual(1);
     },
   );
 
-  it('[CURRENT] GET /_admin/events has no pagination — returns all events', async () => {
+  it('GET /_admin/events without pagination returns all events', async () => {
     await app.agent
       .post('/customers')
       .send({ name: 'Pag1', riskBand: 'LOW' })
@@ -209,9 +206,9 @@ describe('http/gateway — completeness probes', () => {
       .expect(201);
 
     const res = await app.agent
-      .get('/_admin/events?limit=1&offset=0')
+      .get('/_admin/events')
       .expect(200);
-    // All events returned — limit/offset are silently ignored
+    // Without limit/offset, all events are returned
     expect(res.body.events.length).toBeGreaterThan(1);
   });
 
@@ -225,18 +222,16 @@ describe('http/gateway — completeness probes', () => {
     expect(typeof res.body.eventCount).toBe('number');
   });
 
-  it.failing(
-    '[GAP] GET /_admin/health includes checks array (standard monitoring shape)',
+  it(
+    'GET /_admin/health includes checks array (H-7: standard monitoring shape)',
     async () => {
       const res = await app.agent.get('/_admin/health').expect(200);
-      // Common monitoring systems (Kubernetes, AWS ELB) expect a "checks" array
-      // or at minimum a version field. Current impl lacks both.
       expect(Array.isArray(res.body.checks)).toBe(true);
     },
   );
 
-  it.failing(
-    '[GAP] GET /_admin/health includes version field',
+  it(
+    'GET /_admin/health includes version field (H-7)',
     async () => {
       const res = await app.agent.get('/_admin/health').expect(200);
       expect(typeof res.body.version).toBe('string');
@@ -265,18 +260,20 @@ describe('http/gateway — completeness probes', () => {
 
   // ── ETag format ─────────────────────────────────────────────────────────────
 
-  it('ETag value on creation response is a numeric string (sequence version)', async () => {
+  it('ETag value on creation response is a quoted numeric string (sequence version, RFC 7232)', async () => {
     const res = await app.agent
       .post('/customers')
       .send({ name: 'ETag Shape', riskBand: 'LOW' })
       .expect(201);
     const etag = res.headers['etag'];
     expect(etag).toBeDefined();
-    expect(Number.isNaN(Number(etag))).toBe(false);
+    // ETag is now quoted: "1" — strip quotes to check numeric value
+    const stripped = String(etag).replace(/^"|"$/g, '');
+    expect(Number.isNaN(Number(stripped))).toBe(false);
   });
 
-  it.failing(
-    '[GAP] ETag header is wrapped in double quotes per RFC 7232',
+  it(
+    'ETag header is wrapped in double quotes per RFC 7232 (H-4)',
     async () => {
       const res = await app.agent
         .post('/customers')

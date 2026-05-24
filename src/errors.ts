@@ -19,6 +19,38 @@ export abstract class SimError extends Error {
       details: this.details ?? null,
     };
   }
+
+  /**
+   * Reconstruct the correct SimError subclass from a plain JSON object (e.g., after
+   * JSON.parse). Discriminates on the `code` field. Returns null if the code is
+   * unrecognised. instanceof is preserved for reconstructed instances.
+   *
+   * Note: FaultSimulatedError requires extra fields (status, simulatedBody) in the
+   * JSON payload for meaningful reconstruction; without them defaults are used.
+   */
+  static fromJSON(json: Record<string, unknown>): SimError | null {
+    const code = json['code'];
+    const message = typeof json['message'] === 'string' ? json['message'] : String(code ?? 'unknown');
+    const details = (json['details'] as JsonValue | undefined) ?? undefined;
+
+    switch (code) {
+      case 'CONTRACT_VIOLATION': return new ContractViolationError(message, details);
+      case 'ENTITY_ABSENCE': return new EntityAbsenceError(message, details);
+      case 'ENTITY_CONFLICT': return new EntityConflictError(message, details);
+      case 'UNHANDLED_OPERATION': return new UnhandledOperationError(message, details);
+      case 'CONCURRENCY_CONFLICT': return new ConcurrencyConflictError(message, details);
+      case 'MISSING_PRECONDITION': return new MissingPreconditionError(message, details);
+      case 'INTERNAL_EXECUTION_ERROR': return new InternalExecutionError(message, details);
+      case 'INFINITE_LOOP': return new InfiniteLoopError(message, details);
+      case 'FAULT_SIMULATED': {
+        const status = typeof json['status'] === 'number' ? json['status'] : 500;
+        const simulatedBody = (json['simulatedBody'] as JsonValue | undefined) ?? null;
+        const simulatedHeaders = (json['simulatedHeaders'] as Record<string, string> | undefined);
+        return new FaultSimulatedError(status, simulatedBody, simulatedHeaders, details);
+      }
+      default: return null;
+    }
+  }
 }
 
 // Boot-time error — no HTTP status (thrown before server starts)

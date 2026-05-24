@@ -27,17 +27,35 @@ export interface StateGraph {
   size(): number;
 }
 
-/** Produce a deep clone of any JsonValue without shared references. */
-export function deepClone<T extends JsonValue>(v: T): T {
+/**
+ * Produce a deep clone of any JsonValue without shared references.
+ *
+ * JsonValue is acyclic by type definition, but a defensive cycle-detection guard is
+ * included to produce a clear error if the type boundary is breached at runtime
+ * (e.g., via `as unknown as JsonValue` coercion). Without this, circular refs cause
+ * a RangeError (maximum call stack exceeded) with no useful context.
+ */
+export function deepClone<T extends JsonValue>(v: T, _seen?: WeakMap<object, true>): T {
   if (v === null) return null as T;
   if (typeof v !== 'object') return v;
+
+  // Initialise cycle-detection map on the first recursive call.
+  const seen = _seen ?? new WeakMap<object, true>();
+  if (seen.has(v as object)) {
+    throw new Error('deepClone: circular reference detected');
+  }
+  seen.set(v as object, true);
+
   if (Array.isArray(v)) {
-    return (v as JsonValue[]).map((item) => deepClone(item)) as T;
+    const result = (v as JsonValue[]).map((item) => deepClone(item, seen)) as T;
+    seen.delete(v as object);
+    return result;
   }
   const result: JsonObject = {};
   for (const key of Object.keys(v as JsonObject)) {
-    result[key] = deepClone((v as JsonObject)[key]);
+    result[key] = deepClone((v as JsonObject)[key], seen);
   }
+  seen.delete(v as object);
   return result as T;
 }
 

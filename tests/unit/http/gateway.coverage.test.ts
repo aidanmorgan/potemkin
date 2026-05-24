@@ -332,8 +332,8 @@ describe('http/gateway.ts — defensive guard coverage', () => {
         .send({ label: 'trigger-cascade' });
 
       expect(res.status).toBe(201);
-      // ETag should be set to 7 via the fallback line 250
-      expect(res.headers['etag']).toBe('7');
+      // ETag should be set to "7" (RFC 7232 quoted) via the fallback line 250
+      expect(res.headers['etag']).toBe('"7"');
     });
   });
 
@@ -433,7 +433,7 @@ describe('http/gateway.ts — null targetId creation (lines 247-250)', () => {
 
     // The null-targetId DSL uses fallback_override:true → 200 fallback or 201 from our mock
     expect(res.status).toBe(201);
-    // ETag should be set from the event's sequenceVersion via the else branch
-    expect(res.headers['etag']).toBe('3');
+    // ETag should be set to "3" (RFC 7232 quoted) via the else branch
+    expect(res.headers['etag']).toBe('"3"');
   });
 });
