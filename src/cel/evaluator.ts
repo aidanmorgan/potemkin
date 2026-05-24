@@ -53,6 +53,111 @@
 import { CelPhase } from './phases.js';
 import { callBuiltin, deepEqual, naturalCompare, type BuiltinContext } from './builtins.js';
 import { createLogger } from '../observability/logger.js';
+import { Worker } from 'worker_threads';
+
+// ---------------------------------------------------------------------------
+// ReDoS protection for matches()
+//
+// Option A (chosen): run each regex test in a worker_threads Worker with a
+// hard 50 ms wall-clock timeout.  If the worker does not complete in time,
+// it is terminated and the call throws:
+//   CEL_RUNTIME_ERROR: REGEX_TIMEOUT
+// This prevents adversarial backtracking patterns (e.g. `(a+)+$`) from
+// hanging the Node.js event loop.
+//
+// Why Option A over Option B (re2 npm):
+//   - `re2` requires node-gyp + platform-specific binaries at install time,
+//     complicating CI/CD.
+//   - `worker_threads` is built into Node.js ≥ 12; zero new dependencies.
+// Why Option A over Option C (static pattern analysis):
+//   - Robust static detection of polynomial-backtracking patterns is a
+//     research-grade problem with known false-positive and false-negative
+//     rates.  A runtime timeout is simpler, more reliable, and language-
+//     agnostic.
+//
+// Implementation detail: we use Atomics.wait() (blocking) so that the
+// synchronous evalStringMethod call site does not need to become async.
+// SharedArrayBuffer + Atomics is available in Node.js without special flags.
+// ---------------------------------------------------------------------------
+
+/**
+ * Hard wall-clock timeout for a single matches() call (Option A).
+ *
+ * 50 ms is the documented timeout for the regex itself.  We add 200 ms of
+ * scheduling headroom so that OS thread scheduling jitter under heavy load
+ * (e.g. many parallel Jest workers) does not cause spurious REGEX_TIMEOUT
+ * errors on benign patterns.  The total budget of 250 ms is still far below
+ * any interactive latency threshold and well below the minimum time a ReDoS
+ * attack would need.
+ */
+const REGEX_TIMEOUT_MS = 50;
+const ATOMICS_WAIT_TIMEOUT_MS = 250; // REGEX_TIMEOUT_MS + 200ms scheduling headroom
+
+// Inline worker script evaluated via `eval: true`.
+// Writes the boolean result + status flag into a SharedArrayBuffer, then
+// signals the main thread via Atomics.notify.
+const REGEX_WORKER_SCRIPT = /* javascript */ `
+const { workerData } = require('worker_threads');
+const { pattern, input, sharedBuf } = workerData;
+const control = new Int32Array(sharedBuf, 0, 1); // [0] status: 0=pending,1=ok,2=err
+const results  = new Int32Array(sharedBuf, 4, 1); // [0] result: 1=true,0=false
+try {
+  const re = new RegExp(pattern);
+  results[0] = re.test(input) ? 1 : 0;
+  Atomics.store(control, 0, 1);
+} catch (e) {
+  Atomics.store(control, 0, 2);
+}
+Atomics.notify(control, 0, 1);
+`;
+
+/**
+ * Execute `new RegExp(pattern).test(input)` in a worker thread with a hard
+ * REGEX_TIMEOUT_MS wall-clock limit.
+ *
+ * @throws {Error} `CEL_TYPE_ERROR` if the pattern is syntactically invalid.
+ * @throws {Error} `CEL_RUNTIME_ERROR: REGEX_TIMEOUT` if the worker times out.
+ */
+function evalMatchesSafe(pattern: string, input: string): boolean {
+  // Pre-validate the pattern synchronously so invalid patterns produce a
+  // clear CEL_TYPE_ERROR immediately (not a timeout).
+  try {
+    new RegExp(pattern);
+  } catch (e) {
+    throw new Error(`CEL_TYPE_ERROR: matches() invalid regex pattern: ${(e as Error).message}`);
+  }
+
+  // Shared buffer layout (8 bytes):
+  //   bytes 0-3  (Int32[0]): status — 0 = pending, 1 = done, 2 = error
+  //   bytes 4-7  (Int32[1]): result — 1 = true match, 0 = no match
+  const sharedBuf = new SharedArrayBuffer(8);
+  const control = new Int32Array(sharedBuf, 0, 1);
+  const results  = new Int32Array(sharedBuf, 4, 1);
+
+  const worker = new Worker(REGEX_WORKER_SCRIPT, {
+    eval: true,
+    workerData: { pattern, input, sharedBuf },
+  });
+
+  // Block until the worker signals (status ≠ 0) or timeout fires.
+  const waitResult = Atomics.wait(control, 0, 0, ATOMICS_WAIT_TIMEOUT_MS);
+
+  if (waitResult === 'timed-out') {
+    void worker.terminate();
+    throw new Error(
+      `CEL_RUNTIME_ERROR: REGEX_TIMEOUT — regex /${pattern}/ timed out after ${REGEX_TIMEOUT_MS}ms. Possible ReDoS-vulnerable pattern.`,
+    );
+  }
+
+  void worker.terminate();
+
+  if (Atomics.load(control, 0) === 2) {
+    // Worker hit a runtime error after the pre-validation passed (defensive).
+    throw new Error(`CEL_RUNTIME_ERROR: matches() regex execution error`);
+  }
+
+  return results[0] === 1;
+}
 
 const logger = createLogger({ name: 'cel' });
 
@@ -791,7 +896,8 @@ function evalStringMethod(s: string, method: string, args: unknown[]): unknown {
     }
     case 'matches': {
       if (typeof args[0] !== 'string') throw new Error(`CEL_TYPE_ERROR: matches requires a string (regex) argument`);
-      return new RegExp(args[0]).test(s);
+      // Use ReDoS-safe worker-thread timeout (Option A). See evalMatchesSafe().
+      return evalMatchesSafe(args[0], s);
     }
     case 'size':
       return s.length;

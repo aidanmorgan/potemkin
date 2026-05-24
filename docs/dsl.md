@@ -208,7 +208,7 @@ match:
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `name` | string | yes | Human-readable guard name for trace logs |
-| `condition` | CEL string | yes | Boolean expression (also accepts `expression` as alias) |
+| `condition` | CEL string | yes | Boolean expression |
 | `error_code` | string | no | Error code included in the 422 response body |
 | `message` | string | no | Human-readable error message in the 422 body |
 
@@ -258,13 +258,6 @@ A CEL invariant evaluated against the shadow graph **after** the behavior's even
 
 ```yaml
 postcondition: "state.balance >= 0"
-```
-
-The field may also be provided as an object with an `expression` key:
-
-```yaml
-postcondition:
-  expression: "state.balance >= 0"
 ```
 
 A violated postcondition returns HTTP 500 with code `POSTCONDITION_VIOLATED`.
@@ -592,19 +585,17 @@ When CEL is not expressive enough for a particular computation, you may declare 
 ```yaml
 scripts:
   - name: computeRiskScore
-    source: |
+    code: |
       export default function(ctx) {
         const utilisation = ctx.state.balance / ctx.state.creditLimit;
         return Math.round(utilisation * ctx.command.payload.riskMultiplier * 100);
       }
 ```
 
-> ⚠️ The YAML field name is `source` (aligns with design.md) but the schema validator also accepts `code`. Prefer `source` for forward compatibility.
-
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `name` | string | yes | Unique identifier within the boundary. Referenced as `ts:<name>`. |
-| `source` | string | yes | TypeScript source. Must have a default-exported function. |
+| `code` | string | yes | TypeScript source. Must have a default-exported function. |
 
 ### `ts:` sentinel
 
@@ -630,7 +621,7 @@ The sentinel is permitted in:
 
 ### Boot-time compilation
 
-At boot, each `scripts[].source` is transpiled from TypeScript to JavaScript using `esbuild.transformSync`. This is transpile-only — no TypeScript type-checking is performed. The compiled JavaScript is cached in the execution matrix.
+At boot, each `scripts[].code` is transpiled from TypeScript to JavaScript using `esbuild.transformSync`. This is transpile-only — no TypeScript type-checking is performed. The compiled JavaScript is cached in the execution matrix.
 
 - Syntax error → `BOOT_ERR_SCRIPT_SYNTAX` (boot halt)
 - `ts:` sentinel referencing unknown script → `BOOT_ERR_DSL_SYNTAX` (boot halt)
@@ -988,7 +979,7 @@ The boot sequence performs the following validation steps in order:
 
 7. **Object-Graph Schema Registry** — `assign`/`append` dot-paths are validated against the entity schema derived from the OpenAPI components. Unknown paths produce `BOOT_ERR_DSL_SCHEMA_VIOLATION`.
 
-8. **Script transpilation** — `scripts[].source` entries are transpiled via `esbuild.transformSync`. Syntax failures produce `BOOT_ERR_SCRIPT_SYNTAX`.
+8. **Script transpilation** — `scripts[].code` entries are transpiled via `esbuild.transformSync`. Syntax failures produce `BOOT_ERR_SCRIPT_SYNTAX`.
 
 9. **Initialization ingestion** — Seed records are projected into the initial state graph. Projection errors abort boot.
 
@@ -1004,6 +995,18 @@ The boot sequence performs the following validation steps in order:
 | Reducer determinism | `$uuidv7`/`$now`/`now`/`timestamp` banned | `CEL_PHASE_BANNED` |
 | `emit` + `emit_when` co-presence | Mutually exclusive | `BOOT_ERR_DSL_SYNTAX` (boot halt) |
 | Script name characters | `[A-Za-z_][A-Za-z0-9_]*` | `BOOT_ERR_DSL_SYNTAX` (boot halt) |
+
+### Legacy field names
+
+The schema validator accepts the following legacy field name aliases for backward compatibility. They parse identically to the canonical names but emit a `DEBUG`-level log at boot time: `DSL: deprecated field 'X', use 'Y' instead`.
+
+| Canonical (preferred) | Legacy (accepted) | Location |
+|---|---|---|
+| `scripts[].code` | `scripts[].source` | `scripts[]` block |
+| `requires[].condition` | `requires[].expression` | `match.requires[]` block |
+| `postcondition: "<expr>"` | `postcondition: {expression: "<expr>"}` | `behaviors[]` |
+
+New DSL files should use the canonical names. Legacy names will continue to be accepted indefinitely but may be removed in a future major version.
 
 ### Reducer determinism guarantee
 
