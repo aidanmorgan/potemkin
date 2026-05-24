@@ -42,7 +42,7 @@ export const CUSTOMER_SCHEMA: ObjectGraphSchema = {
 };
 
 export const LOAN_SCHEMA: ObjectGraphSchema = {
-  name: 'LoanAccount',
+  name: 'Lead',
   kind: 'object',
   additionalProperties: false,
   properties: {
@@ -57,21 +57,21 @@ export const LOAN_SCHEMA: ObjectGraphSchema = {
   },
 };
 
-export function makeBankingRegistry(): ObjectGraphSchemaRegistry {
+export function makeCrmRegistry(): ObjectGraphSchemaRegistry {
   const customerBoundary: BoundarySchemas = {
     boundary: 'Customer',
     entity: CUSTOMER_SCHEMA,
     arrayPaths: ['tags'],
   };
-  const loanBoundary: BoundarySchemas = {
-    boundary: 'LoanAccount',
+  const leadBoundary: BoundarySchemas = {
+    boundary: 'Lead',
     entity: LOAN_SCHEMA,
     arrayPaths: [],
   };
 
   const map: Record<string, BoundarySchemas> = {
     Customer: customerBoundary,
-    LoanAccount: loanBoundary,
+    Lead: leadBoundary,
   };
 
   return {
@@ -134,7 +134,7 @@ export function bootFreshSimulation() {
     graph: createStateGraph(),
     cel: createCelEvaluator(),
     dsl: makeCompiledDsl(),
-    registry: makeBankingRegistry(),
+    registry: makeCrmRegistry(),
   };
 }
 

@@ -11,7 +11,7 @@ const cel = createCelEvaluator();
 function makeCommand(overrides: Partial<Command> = {}): Command {
   return {
     commandId: 'cmd-1',
-    boundary: 'LoanAccount',
+    boundary: 'Lead',
     intent: 'creation',
     targetId: null,
     payload: { principal: 100000 },
@@ -27,9 +27,9 @@ function makeCommand(overrides: Partial<Command> = {}): Command {
 function makeEvent(overrides: Partial<DomainEvent> = {}): DomainEvent {
   return {
     eventId: 'evt-1',
-    boundary: 'LoanAccount',
+    boundary: 'Lead',
     aggregateId: 'loan-1',
-    type: 'LoanOpened',
+    type: 'LeadCreated',
     payload: { principal: 100000 },
     timestamp: '2024-01-01T00:00:00.000Z',
     sequenceVersion: 1,
@@ -41,7 +41,7 @@ function makeEvent(overrides: Partial<DomainEvent> = {}): DomainEvent {
 const loanApprovalSaga: SagaConfig = {
   name: 'LoanApproval',
   trigger: {
-    boundary: 'LoanAccount',
+    boundary: 'Lead',
     intent: 'creation',
     condition: 'command.payload.principal > 50000',
   },

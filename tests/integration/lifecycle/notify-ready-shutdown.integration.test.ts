@@ -137,7 +137,7 @@ describe('lifecycle: notify-ready integration', () => {
     expect(Array.isArray(body.contractPaths)).toBe(true);
     expect(typeof body.routesChecksum).toBe('string');
     expect(typeof body.fixturesChecksum).toBe('string');
-    // contractPaths should be non-empty (banking fixture has several paths)
+    // contractPaths should be non-empty (CRM fixture has several paths)
     expect((body.contractPaths as string[]).length).toBeGreaterThan(0);
     // Paths should be sorted
     const paths = body.contractPaths as string[];

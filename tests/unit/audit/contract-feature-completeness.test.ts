@@ -500,7 +500,7 @@ describe('Contract validator – validateEntity', () => {
       raw: {
         components: {
           schemas: {
-            LoanAccount: {
+            Lead: {
               type: 'object',
               properties: { id: { type: 'string' }, status: { type: 'string' } },
               required: ['id'],
@@ -511,7 +511,7 @@ describe('Contract validator – validateEntity', () => {
       paths: {},
     };
     const v = createContractValidator(doc, []);
-    expect(() => v.validateEntity('LoanAccount', { id: 'abc', status: 'active' })).not.toThrow();
+    expect(() => v.validateEntity('Lead', { id: 'abc', status: 'active' })).not.toThrow();
   });
 
   it('throws InternalExecutionError when entity violates the boundary schema', () => {
@@ -519,7 +519,7 @@ describe('Contract validator – validateEntity', () => {
       raw: {
         components: {
           schemas: {
-            LoanAccount: {
+            Lead: {
               type: 'object',
               properties: { id: { type: 'string' } },
               required: ['id'],
@@ -531,17 +531,17 @@ describe('Contract validator – validateEntity', () => {
     };
     const v = createContractValidator(doc, []);
     // Missing required 'id' field
-    expect(() => v.validateEntity('LoanAccount', { status: 'active' })).toThrow(InternalExecutionError);
+    expect(() => v.validateEntity('Lead', { status: 'active' })).toThrow(InternalExecutionError);
   });
 
   // F-02 fix: The schema lookup in validateEntity now performs a case-insensitive
-  // fallback. A boundary name "loanaccount" resolves to the "LoanAccount" schema.
+  // fallback. A boundary name "lead" resolves to the "Lead" schema.
   it('schema lookup for validateEntity falls back case-insensitively (F-02 fix)', () => {
     const doc: OpenApiDoc = {
       raw: {
         components: {
           schemas: {
-            LoanAccount: {
+            Lead: {
               type: 'object',
               properties: { id: { type: 'string' } },
             },
@@ -551,8 +551,8 @@ describe('Contract validator – validateEntity', () => {
       paths: {},
     };
     const v = createContractValidator(doc, []);
-    // 'loanaccount' (wrong case) now resolves to 'LoanAccount' via case-insensitive lookup
-    expect(() => v.validateEntity('loanaccount', { id: 'x' })).not.toThrow();
+    // 'lead' (wrong case) now resolves to 'Lead' via case-insensitive lookup
+    expect(() => v.validateEntity('lead', { id: 'x' })).not.toThrow();
   });
 
   // GAP (nice-to-have): There is no case-insensitive fallback for schema lookup.
@@ -561,7 +561,7 @@ describe('Contract validator – validateEntity', () => {
       raw: {
         components: {
           schemas: {
-            LoanAccount: {
+            Lead: {
               type: 'object',
               properties: { id: { type: 'string' } },
             },
@@ -572,7 +572,7 @@ describe('Contract validator – validateEntity', () => {
     };
     const v = createContractValidator(doc, []);
     // Should succeed even with wrong-cased boundary name
-    expect(() => v.validateEntity('loanaccount', { id: 'x' })).not.toThrow();
+    expect(() => v.validateEntity('lead', { id: 'x' })).not.toThrow();
   });
 });
 

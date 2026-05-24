@@ -10,13 +10,13 @@
 import * as fc from 'fast-check';
 import { guardAssignPath, guardAssignedValue } from '../../src/schema/runtimeGuard';
 import { pathExists } from '../../src/schema/pathResolver';
-import { makeBankingRegistry, CUSTOMER_SCHEMA } from './_helpers/fixtures';
+import { makeCrmRegistry, CUSTOMER_SCHEMA } from './_helpers/fixtures';
 import { InternalExecutionError } from '../../src/errors';
 
 const RUN_COUNT = 200;
 const SEED = 42;
 
-const registry = makeBankingRegistry();
+const registry = makeCrmRegistry();
 const BOUNDARY = 'Customer';
 
 // ---------------------------------------------------------------------------

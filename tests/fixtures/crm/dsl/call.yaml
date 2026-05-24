@@ -5,9 +5,9 @@ identity:
   creation:
     generate: $uuidv7()
 query_mapping:
-  leadId: "state.leadId == query.leadId"
-  agentId: "state.agentId == query.agentId"
-  campaignId: "state.campaignId == query.campaignId"
+  leadId: "state.leadId == param"
+  agentId: "state.agentId == param"
+  campaignId: "state.campaignId == param"
 
 event_catalog:
   # REQ-65: schema_ref on CallLogged event

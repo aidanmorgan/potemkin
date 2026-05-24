@@ -6,7 +6,7 @@
  *  - Second throws ConcurrencyConflictError.
  *
  * We use the Customer boundary directly (no cascade) to avoid the known
- * append-runtime-guard bug that affects LoanAccount creation.
+ * append-runtime-guard bug that affects Lead creation.
  * We create customers and then mutate them using the attach-loan behavior.
  */
 

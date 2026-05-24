@@ -6,7 +6,7 @@
  *  - POST /leads/{id}/contact → 200, status updated to CONTACTED
  *  - POST /leads/{id}/qualify → 200, status updated to QUALIFIED (requires CONTACTED + call)
  *
- * This replaces the banking loan-lifecycle tests with the CRM equivalent:
+ * This replaces the old banking lifecycle tests with the CRM equivalent:
  *  - Loan creation + cascade → Call logging + cascade (callId on lead)
  *  - Loan disburse (state transition) → Lead contact (state transition)
  *  - Loan repay (state transition + balance) → Lead qualify (state transition)

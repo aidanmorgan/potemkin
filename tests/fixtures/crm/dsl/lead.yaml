@@ -5,9 +5,9 @@ identity:
   creation:
     generate: $uuidv7()
 query_mapping:
-  status: "state.status == query.status"
-  campaignId: "state.assignedCampaignId == query.campaignId"
-  agentId: "state.assignedAgentId == query.agentId"
+  status: "state.status == param"
+  campaignId: "state.assignedCampaignId == param"
+  agentId: "state.assignedAgentId == param"
 
 # REQ-66: inline TypeScript script for lead scoring
 scripts:
@@ -46,7 +46,7 @@ event_catalog:
 
   - type: LeadDisqualified
     payload_template:
-      reason: "command.payload.reason != null ? command.payload.reason : 'Not qualified'"
+      reason: "has(command.payload.reason) ? command.payload.reason : 'Not qualified'"
 
   - type: LeadConverted
     payload_template:
@@ -55,7 +55,7 @@ event_catalog:
   - type: LeadMarkedDNC
     payload_template:
       dncAt: "$now()"
-      reason: "command.payload.reason != null ? command.payload.reason : 'No reason given'"
+      reason: "has(command.payload.reason) ? command.payload.reason : 'No reason given'"
 
   - type: CallIdAppended
     payload_template:
@@ -68,7 +68,7 @@ behaviors:
   - name: appendCallId
     match:
       intent: mutation
-      condition: "command.payload.callId != null"
+      condition: "has(command.payload.callId)"
     emit: CallIdAppended
 
   # Create lead with inline TS scoring (REQ-66/67)

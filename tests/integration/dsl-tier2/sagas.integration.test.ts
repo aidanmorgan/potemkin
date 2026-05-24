@@ -19,12 +19,12 @@ const GLOBAL_YAML = `
 sagas:
   - name: LoanApproval
     trigger:
-      boundary: LoanAccount
+      boundary: Lead
       intent: creation
       condition: "command.payload.principal > 50000"
     steps:
       - name: reserveCredit
-        boundary: LoanAccount
+        boundary: Lead
         intent: mutation
         target_id: '"dummy-id"'
         payload:
@@ -38,7 +38,7 @@ sagas:
 function makeCmd(overrides: Partial<Command> = {}): Command {
   return {
     commandId: 'cmd-1',
-    boundary: 'LoanAccount',
+    boundary: 'Lead',
     intent: 'creation',
     targetId: null,
     payload: { principal: 100000 },
@@ -54,7 +54,7 @@ function makeCmd(overrides: Partial<Command> = {}): Command {
 function makeEvt(overrides: Partial<DomainEvent> = {}): DomainEvent {
   return {
     eventId: 'evt-1',
-    boundary: 'LoanAccount',
+    boundary: 'Lead',
     aggregateId: 'loan-1',
     type: 'LoanOpened',
     payload: { principal: 100000 },
@@ -71,7 +71,7 @@ describe('DSL Tier-2: Sagas — schema parsing', () => {
     expect(dsl.sagas).toHaveLength(1);
     const saga = dsl.sagas![0];
     expect(saga.name).toBe('LoanApproval');
-    expect(saga.trigger.boundary).toBe('LoanAccount');
+    expect(saga.trigger.boundary).toBe('Lead');
     expect(saga.trigger.intent).toBe('creation');
     expect(saga.steps).toHaveLength(1);
     expect(saga.steps[0].name).toBe('reserveCredit');
@@ -124,14 +124,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/LoanAccount'
+              $ref: '#/components/schemas/Lead'
       responses:
         '201':
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LoanAccount'
+                $ref: '#/components/schemas/Lead'
     put:
       operationId: updateLoan
       requestBody:
@@ -139,25 +139,25 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/LoanAccount'
+              $ref: '#/components/schemas/Lead'
       responses:
         '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LoanAccount'
+                $ref: '#/components/schemas/Lead'
 components:
   schemas:
-    LoanAccount:
+    Lead:
       type: object
       additionalProperties: true
 `;
     const openapi = await loadOpenApi(OPENAPI_YAML);
 
-    // Minimal DSL with LoanAccount boundary - fallback only
+    // Minimal DSL with Lead boundary - fallback only
     const LOAN_DSL = `
-boundary: LoanAccount
+boundary: Lead
 contract_path: /loans
 fallback_override: true
 behaviors: []

@@ -624,11 +624,11 @@ reducers:
   // ── MissingPreconditionError → 428 ──────────────────────────────────────────
 
   it('MissingPreconditionError (If-Match required) maps to 428 via gateway', async () => {
-    // Use the banking fixture which has some operations. To trigger 428,
+    // Use the CRM fixture which has some operations. To trigger 428,
     // we need an operation with requiresPrecondition: true.
     // The inline fixture doesn't set If-Match required, but we can check the
     // response directly by using the UoW-level check.
-    // Since the banking fixture doesn't have If-Match required on its operations,
+    // Since the CRM fixture doesn't have If-Match required on its operations,
     // we test 428 through the custom conflict fixture with requiresPrecondition.
 
     // Build a custom fixture with If-Match required

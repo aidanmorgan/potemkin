@@ -157,7 +157,7 @@ describe('contract/validator', () => {
   describe('validateEntity', () => {
     it('throws InternalExecutionError when no components section', () => {
       const validator = createContractValidator(makeDoc({}, {}), boundaries);
-      expect(() => validator.validateEntity('LoanAccount', { id: 'x', amount: 100 })).toThrow(InternalExecutionError);
+      expect(() => validator.validateEntity('Lead', { id: 'x', amount: 100 })).toThrow(InternalExecutionError);
     });
 
     it('throws InternalExecutionError when boundary schema not found', () => {
@@ -170,7 +170,7 @@ describe('contract/validator', () => {
         makeDoc({}, {
           components: {
             schemas: {
-              LoanAccount: {
+              Lead: {
                 type: 'object',
                 required: ['id', 'amount'],
                 properties: { id: { type: 'string' }, amount: { type: 'number' } },
@@ -180,7 +180,7 @@ describe('contract/validator', () => {
         }),
         boundaries,
       );
-      expect(() => validator.validateEntity('LoanAccount', { id: 'loan-1', amount: 500 })).not.toThrow();
+      expect(() => validator.validateEntity('Lead', { id: 'loan-1', amount: 500 })).not.toThrow();
     });
   });
 });

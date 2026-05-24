@@ -15,9 +15,9 @@ const cel = createCelEvaluator();
 function makeEvent(overrides: Partial<DomainEvent> = {}): DomainEvent {
   return {
     eventId: 'evt-1',
-    boundary: 'Customer',
+    boundary: 'Lead',
     aggregateId: 'cust-1',
-    type: 'CustomerRegistered',
+    type: 'LeadCreated',
     payload: { name: 'Alice', customerId: 'cust-1' },
     timestamp: '2024-01-01T00:00:00.000Z',
     sequenceVersion: 1,
@@ -29,10 +29,10 @@ function makeEvent(overrides: Partial<DomainEvent> = {}): DomainEvent {
 const customerSummaryProjection: DerivedProjectionConfig = {
   name: 'CustomerSummary',
   key: 'event.aggregateId',
-  subscribe: ['Customer:CustomerRegistered', 'LoanAccount:LoanOpened'],
+  subscribe: ['Lead:LeadCreated', 'Lead:OpportunityCreated'],
   reduce: [
     {
-      on: 'CustomerRegistered',
+      on: 'LeadCreated',
       assign: {
         customer_id: 'event.aggregateId',
         name: 'event.payload.name',
@@ -40,7 +40,7 @@ const customerSummaryProjection: DerivedProjectionConfig = {
       },
     },
     {
-      on: 'LoanOpened',
+      on: 'OpportunityCreated',
       assign: {
         // Use coalesce so null/undefined state.total_loans defaults to 0
         total_loans: 'coalesce(state.total_loans, 0) + 1',
@@ -73,16 +73,16 @@ describe('projections/engine - derived projections', () => {
     // Open a loan
     const loanEvent = makeEvent({
       eventId: 'evt-2',
-      boundary: 'LoanAccount',
+      boundary: 'Lead',
       aggregateId: 'loan-1',
-      type: 'LoanOpened',
+      type: 'OpportunityCreated',
       payload: { customerId: 'cust-1' },
       causedBy: 'cmd-2',
     });
     applyEventToDerivedProjections(loanEvent, [customerSummaryProjection], registry, cel);
 
     const result = getDerivedProjection(registry, 'CustomerSummary');
-    // LoanOpened key expression uses event.aggregateId = 'loan-1', not customerId
+    // LeadCreated key expression uses event.aggregateId = 'loan-1', not customerId
     // So it creates a new derived entity for 'loan-1'
     expect(result!['loan-1']).toMatchObject({ total_loans: 1 });
   });
@@ -98,8 +98,8 @@ describe('projections/engine - derived projections', () => {
     const otherProjection: DerivedProjectionConfig = {
       name: 'OtherSummary',
       key: 'event.aggregateId',
-      subscribe: ['Customer:CustomerRegistered'],
-      reduce: [{ on: 'CustomerRegistered', assign: { id: 'event.aggregateId' } }],
+      subscribe: ['Lead:LeadCreated'],
+      reduce: [{ on: 'LeadCreated', assign: { id: 'event.aggregateId' } }],
     };
 
     const registry = createDerivedProjectionRegistry();
@@ -117,8 +117,8 @@ describe('projections/engine - derived projections', () => {
     const proj: DerivedProjectionConfig = {
       name: 'SimpleSummary',
       key: 'event.aggregateId',
-      subscribe: ['CustomerRegistered'],   // no boundary prefix
-      reduce: [{ on: 'CustomerRegistered', assign: { id: 'event.aggregateId' } }],
+      subscribe: ['LeadCreated'],   // no boundary prefix
+      reduce: [{ on: 'LeadCreated', assign: { id: 'event.aggregateId' } }],
     };
     const registry = createDerivedProjectionRegistry();
     applyEventToDerivedProjections(makeEvent(), [proj], registry, cel);

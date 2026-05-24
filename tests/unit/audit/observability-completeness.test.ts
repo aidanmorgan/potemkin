@@ -89,12 +89,12 @@ describe('observability/metrics — emission completeness (REQ-43)', () => {
       const metrics = createEngineMetrics(otel.meter);
 
       // Load the full system so we can run a real UoW
-      const { loadBankingFixture } = await import(
+      const { loadInlineCrmFixture } = await import(
         '../../integration/_helpers/inline-fixture.js'
       );
       const { bootSystem } = await import('../../../src/engine/boot.js');
       const { executeUnitOfWork } = await import('../../../src/engine/uow.js');
-      const fixture = await loadBankingFixture();
+      const fixture = await loadInlineCrmFixture();
       const sys = await bootSystem(fixture);
       const { nextUuidv7 } = await import('../../../src/ids/uuidv7.js');
 
@@ -137,12 +137,12 @@ describe('observability/metrics — emission completeness (REQ-43)', () => {
       const otel = buildInMemoryOtel();
       const metrics = createEngineMetrics(otel.meter);
 
-      const { loadBankingFixture } = await import(
+      const { loadInlineCrmFixture } = await import(
         '../../integration/_helpers/inline-fixture.js'
       );
       const { bootSystem } = await import('../../../src/engine/boot.js');
       const { executeUnitOfWork } = await import('../../../src/engine/uow.js');
-      const fixture = await loadBankingFixture();
+      const fixture = await loadInlineCrmFixture();
       const sys = await bootSystem(fixture);
       const { nextUuidv7 } = await import('../../../src/ids/uuidv7.js');
 
@@ -187,12 +187,12 @@ describe('observability/metrics — emission completeness (REQ-43)', () => {
       const otel = buildInMemoryOtel();
       const metrics = createEngineMetrics(otel.meter);
 
-      const { loadBankingFixture } = await import(
+      const { loadInlineCrmFixture } = await import(
         '../../integration/_helpers/inline-fixture.js'
       );
       const { bootSystem } = await import('../../../src/engine/boot.js');
       const { executeUnitOfWork } = await import('../../../src/engine/uow.js');
-      const fixture = await loadBankingFixture();
+      const fixture = await loadInlineCrmFixture();
       const sys = await bootSystem(fixture);
       const { nextUuidv7 } = await import('../../../src/ids/uuidv7.js');
 
@@ -245,12 +245,12 @@ describe('observability/metrics — emission completeness (REQ-43)', () => {
       const otel = buildInMemoryOtel();
       const metrics = createEngineMetrics(otel.meter);
 
-      const { loadBankingFixture } = await import(
+      const { loadInlineCrmFixture } = await import(
         '../../integration/_helpers/inline-fixture.js'
       );
       const { bootSystem } = await import('../../../src/engine/boot.js');
       const { executeUnitOfWork } = await import('../../../src/engine/uow.js');
-      const fixture = await loadBankingFixture();
+      const fixture = await loadInlineCrmFixture();
       const sys = await bootSystem(fixture);
       const { nextUuidv7 } = await import('../../../src/ids/uuidv7.js');
 
@@ -297,12 +297,12 @@ describe('observability/metrics — emission completeness (REQ-43)', () => {
       const otel = buildInMemoryOtel();
       const metrics = createEngineMetrics(otel.meter);
 
-      const { loadBankingFixture } = await import(
+      const { loadInlineCrmFixture } = await import(
         '../../integration/_helpers/inline-fixture.js'
       );
       const { bootSystem } = await import('../../../src/engine/boot.js');
       const { executeUnitOfWork } = await import('../../../src/engine/uow.js');
-      const fixture = await loadBankingFixture();
+      const fixture = await loadInlineCrmFixture();
       const sys = await bootSystem(fixture);
       const { nextUuidv7 } = await import('../../../src/ids/uuidv7.js');
 
@@ -360,12 +360,12 @@ describe('observability/metrics — emission completeness (REQ-43)', () => {
       const otel = buildInMemoryOtel();
       const metrics = createEngineMetrics(otel.meter);
 
-      const { loadBankingFixture } = await import(
+      const { loadInlineCrmFixture } = await import(
         '../../integration/_helpers/inline-fixture.js'
       );
       const { bootSystem } = await import('../../../src/engine/boot.js');
       const { executeUnitOfWork } = await import('../../../src/engine/uow.js');
-      const fixture = await loadBankingFixture();
+      const fixture = await loadInlineCrmFixture();
       const sys = await bootSystem(fixture);
       const { nextUuidv7 } = await import('../../../src/ids/uuidv7.js');
 
@@ -434,12 +434,12 @@ describe('observability/tracing — span completeness (REQ-43)', () => {
       const otel = buildInMemoryOtel();
       const metrics = createEngineMetrics(otel.meter);
 
-      const { loadBankingFixture } = await import(
+      const { loadInlineCrmFixture } = await import(
         '../../integration/_helpers/inline-fixture.js'
       );
       const { bootSystem } = await import('../../../src/engine/boot.js');
       const { executeUnitOfWork } = await import('../../../src/engine/uow.js');
-      const fixture = await loadBankingFixture();
+      const fixture = await loadInlineCrmFixture();
       const sys = await bootSystem(fixture);
       const { nextUuidv7 } = await import('../../../src/ids/uuidv7.js');
 
@@ -482,12 +482,12 @@ describe('observability/tracing — span completeness (REQ-43)', () => {
     it('http.request span is created for each inbound HTTP request', async () => {
       const otel = buildInMemoryOtel();
 
-      const { loadBankingFixture } = await import(
+      const { loadInlineCrmFixture } = await import(
         '../../integration/_helpers/inline-fixture.js'
       );
       const { bootSystem } = await import('../../../src/engine/boot.js');
       const { createGateway } = await import('../../../src/http/gateway.js');
-      const fixture = await loadBankingFixture();
+      const fixture = await loadInlineCrmFixture();
       // Inject our test tracer via BootInput
       const sys = await bootSystem({ ...fixture, tracer: otel.tracer });
 
@@ -511,12 +511,12 @@ describe('observability/tracing — span completeness (REQ-43)', () => {
     it('http.admin.health span is created for GET /_admin/health', async () => {
       const otel = buildInMemoryOtel();
 
-      const { loadBankingFixture } = await import(
+      const { loadInlineCrmFixture } = await import(
         '../../integration/_helpers/inline-fixture.js'
       );
       const { bootSystem } = await import('../../../src/engine/boot.js');
       const { createGateway } = await import('../../../src/http/gateway.js');
-      const fixture = await loadBankingFixture();
+      const fixture = await loadInlineCrmFixture();
       const sys = await bootSystem({ ...fixture, tracer: otel.tracer });
 
       const app = createGateway(sys);
@@ -536,12 +536,12 @@ describe('observability/tracing — span completeness (REQ-43)', () => {
     it('http.admin.state span is created for GET /_admin/state', async () => {
       const otel = buildInMemoryOtel();
 
-      const { loadBankingFixture } = await import(
+      const { loadInlineCrmFixture } = await import(
         '../../integration/_helpers/inline-fixture.js'
       );
       const { bootSystem } = await import('../../../src/engine/boot.js');
       const { createGateway } = await import('../../../src/http/gateway.js');
-      const fixture = await loadBankingFixture();
+      const fixture = await loadInlineCrmFixture();
       const sys = await bootSystem({ ...fixture, tracer: otel.tracer });
 
       const app = createGateway(sys);
@@ -561,12 +561,12 @@ describe('observability/tracing — span completeness (REQ-43)', () => {
     it('http.admin.events span is created for GET /_admin/events', async () => {
       const otel = buildInMemoryOtel();
 
-      const { loadBankingFixture } = await import(
+      const { loadInlineCrmFixture } = await import(
         '../../integration/_helpers/inline-fixture.js'
       );
       const { bootSystem } = await import('../../../src/engine/boot.js');
       const { createGateway } = await import('../../../src/http/gateway.js');
-      const fixture = await loadBankingFixture();
+      const fixture = await loadInlineCrmFixture();
       const sys = await bootSystem({ ...fixture, tracer: otel.tracer });
 
       const app = createGateway(sys);
@@ -586,12 +586,12 @@ describe('observability/tracing — span completeness (REQ-43)', () => {
     it('http.admin.reset span is created for POST /_admin/reset', async () => {
       const otel = buildInMemoryOtel();
 
-      const { loadBankingFixture } = await import(
+      const { loadInlineCrmFixture } = await import(
         '../../integration/_helpers/inline-fixture.js'
       );
       const { bootSystem } = await import('../../../src/engine/boot.js');
       const { createGateway } = await import('../../../src/http/gateway.js');
-      const fixture = await loadBankingFixture();
+      const fixture = await loadInlineCrmFixture();
       const sys = await bootSystem({ ...fixture, tracer: otel.tracer });
 
       const app = createGateway(sys);
@@ -618,11 +618,11 @@ describe('observability/tracing — span completeness (REQ-43)', () => {
         // This test confirms the span exists (no gap here).
         const otel = buildInMemoryOtel();
 
-        const { loadBankingFixture } = await import(
+        const { loadInlineCrmFixture } = await import(
           '../../integration/_helpers/inline-fixture.js'
         );
         const { bootSystem } = await import('../../../src/engine/boot.js');
-        const fixture = await loadBankingFixture();
+        const fixture = await loadInlineCrmFixture();
 
         await bootSystem({ ...fixture, tracer: otel.tracer });
         await otel.tracerProvider.forceFlush();
@@ -644,12 +644,12 @@ describe('observability/tracing — span completeness (REQ-43)', () => {
         const otel = buildInMemoryOtel();
         const metrics = createEngineMetrics(otel.meter);
 
-        const { loadBankingFixture } = await import(
+        const { loadInlineCrmFixture } = await import(
           '../../integration/_helpers/inline-fixture.js'
         );
         const { bootSystem } = await import('../../../src/engine/boot.js');
         const { executeUnitOfWork } = await import('../../../src/engine/uow.js');
-        const fixture = await loadBankingFixture();
+        const fixture = await loadInlineCrmFixture();
         const sys = await bootSystem(fixture);
         const { nextUuidv7 } = await import('../../../src/ids/uuidv7.js');
 
@@ -697,12 +697,12 @@ describe('observability/tracing — span completeness (REQ-43)', () => {
         const otel = buildInMemoryOtel();
         const metrics = createEngineMetrics(otel.meter);
 
-        const { loadBankingFixture } = await import(
+        const { loadInlineCrmFixture } = await import(
           '../../integration/_helpers/inline-fixture.js'
         );
         const { bootSystem } = await import('../../../src/engine/boot.js');
         const { executeUnitOfWork } = await import('../../../src/engine/uow.js');
-        const fixture = await loadBankingFixture();
+        const fixture = await loadInlineCrmFixture();
         const sys = await bootSystem(fixture);
         const { nextUuidv7 } = await import('../../../src/ids/uuidv7.js');
 
@@ -750,12 +750,12 @@ describe('observability/tracing — span completeness (REQ-43)', () => {
         const otel = buildInMemoryOtel();
         const metrics = createEngineMetrics(otel.meter);
 
-        const { loadBankingFixture } = await import(
+        const { loadInlineCrmFixture } = await import(
           '../../integration/_helpers/inline-fixture.js'
         );
         const { bootSystem } = await import('../../../src/engine/boot.js');
         const { executeUnitOfWork } = await import('../../../src/engine/uow.js');
-        const fixture = await loadBankingFixture();
+        const fixture = await loadInlineCrmFixture();
         const sys = await bootSystem(fixture);
         const { nextUuidv7 } = await import('../../../src/ids/uuidv7.js');
 
@@ -855,12 +855,12 @@ describe('observability/logger — structured log bindings (REQ-42)', () => {
       return originalChild(bindings);
     };
 
-    const { loadBankingFixture } = await import(
+    const { loadInlineCrmFixture } = await import(
       '../../integration/_helpers/inline-fixture.js'
     );
     const { bootSystem } = await import('../../../src/engine/boot.js');
     const { executeUnitOfWork } = await import('../../../src/engine/uow.js');
-    const fixture = await loadBankingFixture();
+    const fixture = await loadInlineCrmFixture();
     const sys = await bootSystem(fixture);
     const { nextUuidv7 } = await import('../../../src/ids/uuidv7.js');
 
@@ -913,12 +913,12 @@ describe('observability/logger — structured log bindings (REQ-42)', () => {
         return originalChild(bindings);
       };
 
-      const { loadBankingFixture } = await import(
+      const { loadInlineCrmFixture } = await import(
         '../../integration/_helpers/inline-fixture.js'
       );
       const { bootSystem } = await import('../../../src/engine/boot.js');
       const { executeUnitOfWork } = await import('../../../src/engine/uow.js');
-      const fixture = await loadBankingFixture();
+      const fixture = await loadInlineCrmFixture();
       const sys = await bootSystem(fixture);
       const { nextUuidv7 } = await import('../../../src/ids/uuidv7.js');
 
@@ -969,12 +969,12 @@ describe('observability/logger — structured log bindings (REQ-42)', () => {
         return originalChild(bindings);
       };
 
-      const { loadBankingFixture } = await import(
+      const { loadInlineCrmFixture } = await import(
         '../../integration/_helpers/inline-fixture.js'
       );
       const { bootSystem } = await import('../../../src/engine/boot.js');
       const { executeUnitOfWork } = await import('../../../src/engine/uow.js');
-      const fixture = await loadBankingFixture();
+      const fixture = await loadInlineCrmFixture();
       const sys = await bootSystem(fixture);
       const { nextUuidv7 } = await import('../../../src/ids/uuidv7.js');
 
@@ -1035,12 +1035,12 @@ describe('observability/logger — structured log bindings (REQ-42)', () => {
       }
       patchLogger(baseLogger);
 
-      const { loadBankingFixture } = await import(
+      const { loadInlineCrmFixture } = await import(
         '../../integration/_helpers/inline-fixture.js'
       );
       const { bootSystem } = await import('../../../src/engine/boot.js');
       const { executeUnitOfWork } = await import('../../../src/engine/uow.js');
-      const fixture = await loadBankingFixture();
+      const fixture = await loadInlineCrmFixture();
       const sys = await bootSystem(fixture);
       const { nextUuidv7 } = await import('../../../src/ids/uuidv7.js');
 

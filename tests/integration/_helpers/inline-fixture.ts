@@ -37,7 +37,7 @@ export interface CrmFixture extends BootInput {
   };
 }
 
-export async function loadBankingFixture(): Promise<CrmFixture> {
+export async function loadInlineCrmFixture(): Promise<CrmFixture> {
   const base = await loadCrmFixture();
   return {
     ...base,

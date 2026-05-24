@@ -27,10 +27,10 @@ describe('DSL Tier-2: Derived Projections — unit-level', () => {
     const proj: DerivedProjectionConfig = {
       name: 'LoanSummary',
       key: 'event.aggregateId',
-      subscribe: ['LoanAccount:LoanOpened'],
+      subscribe: ['Lead:LeadCreated'],
       reduce: [
         {
-          on: 'LoanOpened',
+          on: 'LeadCreated',
           assign: {
             loan_id: 'event.aggregateId',
             amount: 'event.payload.amount',
@@ -42,9 +42,9 @@ describe('DSL Tier-2: Derived Projections — unit-level', () => {
     const registry = createDerivedProjectionRegistry();
     const event: DomainEvent = {
       eventId: 'evt-1',
-      boundary: 'LoanAccount',
+      boundary: 'Lead',
       aggregateId: 'loan-42',
-      type: 'LoanOpened',
+      type: 'LeadCreated',
       payload: { amount: 5000 },
       timestamp: '2024-01-01T00:00:00.000Z',
       sequenceVersion: 1,
