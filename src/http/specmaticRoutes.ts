@@ -2,14 +2,18 @@
  * Specmatic compatibility routes — /_specmatic/* admin endpoints.
  *
  * Endpoints:
- *  POST   /_specmatic/expectations        — register a dynamic expectation
- *  DELETE /_specmatic/expectations/:id    — remove expectation by id
- *  DELETE /_specmatic/expectations        — clear all expectations
- *  GET    /_specmatic/expectations        — list all expectations
- *  POST   /_specmatic/http-stub           — register transient stub
- *  DELETE /_specmatic/http-stub/:id       — remove stub by id
- *  GET    /_specmatic/health              — Specmatic-style health endpoint
- *  GET    /actuator/health                — Spring Boot / Specmatic probe alias
+ *  POST   /_specmatic/expectations            — register a dynamic expectation
+ *  POST   /_specmatic/expectations/sequenced  — register a sequenced stub (multiple responses)
+ *  DELETE /_specmatic/expectations/:id        — remove expectation by id
+ *  DELETE /_specmatic/expectations            — clear all expectations
+ *  POST   /_specmatic/expectations/clear      — alias for DELETE /_specmatic/expectations
+ *  GET    /_specmatic/expectations            — list all expectations
+ *  POST   /_specmatic/http-stub               — register transient stub
+ *  DELETE /_specmatic/http-stub/:id           — remove stub by id
+ *  GET    /_specmatic/state                   — Specmatic-style state endpoint (empty shape)
+ *  POST   /_specmatic/state                   — no-op state setter (Specmatic CLI compat)
+ *  GET    /_specmatic/health                  — Specmatic-style health endpoint
+ *  GET    /actuator/health                    — Spring Boot / Specmatic probe alias
  *
  * All success responses carry X-Specmatic-Result: success.
  * All error responses carry X-Specmatic-Result: failure.
@@ -17,6 +21,9 @@
  * Body format for POST endpoints (Specmatic wire format):
  *   { "http-request": { "method": "...", "path": "...", ... },
  *     "http-response": { "status": 200, "body": ..., "headers": {...} } }
+ *
+ * Sequenced stub format:
+ *   { "http-request": {...}, "http-responses": [resp1, resp2, ...] }
  */
 
 import type { Express, Request, Response, NextFunction } from 'express';
@@ -155,6 +162,95 @@ function validateStubResponseContract(
 export function registerSpecmaticRoutes(app: Express, sys: BootedSystem): void {
   const specLog = childLogger(sys.logger, { name: 'specmatic' });
 
+  // ── POST /_specmatic/expectations/sequenced ────────────────────────────────
+  // Must be registered BEFORE /_specmatic/expectations to avoid route shadowing.
+  app.post(
+    '/_specmatic/expectations/sequenced',
+    (req: Request, res: Response, next: NextFunction) => {
+      withSpan(sys.tracer, 'http.specmatic.add_sequenced', async () => {
+        const body = req.body as unknown;
+        if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+          sendFailure(res, 400, { error: 'STUB_BODY_INVALID', message: 'Request body must be a JSON object' });
+          return;
+        }
+
+        const record = body as Record<string, unknown>;
+        const rawReq = record['http-request'];
+        const rawResponses = record['http-responses'];
+
+        if (!rawReq || typeof rawReq !== 'object' || Array.isArray(rawReq)) {
+          sendFailure(res, 400, { error: 'STUB_BODY_INVALID', message: 'Missing or invalid "http-request" field' });
+          return;
+        }
+        if (!Array.isArray(rawResponses) || rawResponses.length === 0) {
+          sendFailure(res, 400, { error: 'STUB_BODY_INVALID', message: '"http-responses" must be a non-empty array' });
+          return;
+        }
+
+        const reqObj = rawReq as Record<string, unknown>;
+        if (typeof reqObj['method'] !== 'string') {
+          sendFailure(res, 400, { error: 'STUB_BODY_INVALID', message: '"http-request.method" must be a string' });
+          return;
+        }
+        if (typeof reqObj['path'] !== 'string') {
+          sendFailure(res, 400, { error: 'STUB_BODY_INVALID', message: '"http-request.path" must be a string' });
+          return;
+        }
+
+        const responses: ExpectationResponse[] = [];
+        for (let i = 0; i < rawResponses.length; i++) {
+          const r = rawResponses[i] as unknown;
+          if (typeof r !== 'object' || r === null || Array.isArray(r)) {
+            sendFailure(res, 400, { error: 'STUB_BODY_INVALID', message: `"http-responses[${i}]" must be an object` });
+            return;
+          }
+          const rObj = r as Record<string, unknown>;
+          if (typeof rObj['status'] !== 'number') {
+            sendFailure(res, 400, { error: 'STUB_BODY_INVALID', message: `"http-responses[${i}].status" must be a number` });
+            return;
+          }
+          responses.push({
+            status: rObj['status'] as number,
+            headers: isStringRecord(rObj['headers']) ? (rObj['headers'] as Record<string, string>) : undefined,
+            body: rObj['body'] !== undefined ? (rObj['body'] as JsonValue) : undefined,
+          });
+        }
+
+        const request: ExpectationRequest = {
+          method: reqObj['method'] as string,
+          path: reqObj['path'] as string,
+          headers: isStringRecord(reqObj['headers']) ? (reqObj['headers'] as Record<string, string>) : undefined,
+          queryParameters: isStringOrArrayRecord(reqObj['query'])
+            ? (reqObj['query'] as Record<string, string | string[]>)
+            : undefined,
+          body: reqObj['body'] !== undefined ? (reqObj['body'] as JsonValue) : undefined,
+        };
+
+        const expectation = sys.expectations.addSequenced(request, responses, { source: 'dynamic' });
+
+        specLog.info(
+          { expectationId: expectation.id, method: request.method, path: request.path, responseCount: responses.length },
+          'Sequenced stub added',
+        );
+        sendSuccess(res, 200, { ...expectation });
+      }).catch(next);
+    },
+  );
+
+  // ── POST /_specmatic/expectations/clear ────────────────────────────────────
+  // Alias for DELETE /_specmatic/expectations — some Specmatic clients POST to clear.
+  app.post(
+    '/_specmatic/expectations/clear',
+    (req: Request, res: Response, next: NextFunction) => {
+      withSpan(sys.tracer, 'http.specmatic.clear_expectations_post', async () => {
+        const count = sys.expectations.size();
+        sys.expectations.clear();
+        specLog.info({ cleared: count }, 'All expectations cleared (POST alias)');
+        sendSuccess(res, 200, { cleared: count });
+      }).catch(next);
+    },
+  );
+
   // ── POST /_specmatic/expectations ──────────────────────────────────────────
   app.post(
     '/_specmatic/expectations',
@@ -253,6 +349,36 @@ export function registerSpecmaticRoutes(app: Express, sys: BootedSystem): void {
         const removed = sys.expectations.remove(id);
         specLog.info({ expectationId: id, removed }, 'Stub removal attempt');
         sendSuccess(res, 200, { id, removed });
+      }).catch(next);
+    },
+  );
+
+  // ── GET /_specmatic/state ──────────────────────────────────────────────────
+  // Specmatic-style state endpoint. Their CLI hits this for Gherkin-style scenario state
+  // which we don't support — return the canonical empty shape.
+  app.get(
+    '/_specmatic/state',
+    (_req: Request, res: Response, next: NextFunction) => {
+      withSpan(sys.tracer, 'http.specmatic.get_state', async () => {
+        sendSuccess(res, 200, {
+          scenarios: [],
+          expectations: sys.expectations.size(),
+          stubs: sys.expectations.size(),
+          state: {},
+        });
+      }).catch(next);
+    },
+  );
+
+  // ── POST /_specmatic/state ─────────────────────────────────────────────────
+  // No-op state setter. Specmatic CLI posts scenario state here; our CQRS state graph
+  // is the real state model so we accept and discard the body per design.
+  app.post(
+    '/_specmatic/state',
+    (_req: Request, res: Response, next: NextFunction) => {
+      withSpan(sys.tracer, 'http.specmatic.set_state', async () => {
+        // No-op: accept and discard body.
+        sendSuccess(res, 200, { status: 'OK' });
       }).catch(next);
     },
   );

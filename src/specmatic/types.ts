@@ -29,6 +29,15 @@ export interface Expectation {
   readonly source: 'dynamic' | 'file';
   readonly filePath?: string;                   // when source === 'file'
   readonly transient: boolean;                  // true if registered via /_specmatic/http-stub
+  /**
+   * Sequenced stub support (T2): when present, `responses` replaces the single `response`.
+   * `consumed` tracks how many responses have been served. When consumed >= responses.length
+   * the stub is exhausted and will no longer match.
+   *
+   * The `response` field holds the current (next-to-serve) response for backward compat.
+   */
+  readonly responses?: readonly ExpectationResponse[];
+  consumed?: number;                            // mutable counter — intentionally not readonly
 }
 
 export interface MatchResult {
@@ -45,6 +54,16 @@ export interface ExpectationStore {
     req: ExpectationRequest,
     res: ExpectationResponse,
     options?: { transient?: boolean; source?: 'dynamic' | 'file'; filePath?: string },
+  ): Expectation;
+  /**
+   * Register a sequenced stub: the same request matcher is bound to an ordered list of responses.
+   * The first match consumes resp[0], the second consumes resp[1], etc.
+   * Once all responses are consumed the stub is exhausted and no longer matches.
+   */
+  addSequenced(
+    req: ExpectationRequest,
+    responses: ExpectationResponse[],
+    options?: { source?: 'dynamic' | 'file'; filePath?: string },
   ): Expectation;
   remove(id: string): boolean;
   clear(): void;

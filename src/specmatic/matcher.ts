@@ -66,9 +66,26 @@ export function matchPath(matcherPath: string, requestPath: string): boolean {
 }
 
 /**
- * Match headers — subset match.
- * Every header declared in the matcher must be present in the request with the same value.
- * Header name comparison is case-insensitive (HTTP spec §3.2); value comparison is exact.
+ * Wildcard patterns — a matcher value equal to any of these strings matches any request value.
+ * Supported aliases: "(anyvalue)", "(any)", "(string)", "*"
+ */
+const WILDCARD_PATTERNS = new Set(['(anyvalue)', '(any)', '(string)', '*']);
+
+function isWildcard(value: string): boolean {
+  return WILDCARD_PATTERNS.has(value);
+}
+
+/**
+ * Match headers — subset match with wildcard and optional-header support.
+ *
+ * Extended semantics (T2):
+ *  - Matcher value of "(anyvalue)", "(any)", "(string)", or "*" matches any present value.
+ *  - Matcher header name prefixed with "?" (e.g. "?X-Trace-Id") is OPTIONAL: if the header
+ *    is absent from the request the matcher still passes; if present the value is checked
+ *    (including wildcard support). This allows "match if present, ignore if absent" semantics.
+ *
+ * Every header declared in the matcher must be present in the request with the same value
+ * (unless optional or wildcard). Header name comparison is case-insensitive (HTTP spec §3.2).
  * Extra headers in the request are ignored.
  */
 export function matchHeaders(
@@ -83,16 +100,32 @@ export function matchHeaders(
     lcRequest[k.toLowerCase()] = v;
   }
 
-  for (const [key, expectedValue] of Object.entries(matcherHeaders)) {
+  for (const [rawKey, expectedValue] of Object.entries(matcherHeaders)) {
+    // A leading '?' marks the header as optional (match if present, ignore if absent).
+    const optional = rawKey.startsWith('?');
+    const key = optional ? rawKey.slice(1) : rawKey;
+
     const actual = lcRequest[key.toLowerCase()];
-    if (actual === undefined) return false;
+    if (actual === undefined) {
+      // Optional header may be absent
+      if (optional) continue;
+      return false;
+    }
+    // Wildcard: matches any present value
+    if (isWildcard(expectedValue)) continue;
     if (actual !== expectedValue) return false;
   }
   return true;
 }
 
 /**
- * Match query parameters — per-key exact equality.
+ * Match query parameters — per-key exact equality with ANY-value wildcard support.
+ *
+ * Extended semantics (T2):
+ *  - A matcher value of "(anyvalue)", "(any)", "(string)", or "*" matches any present value
+ *    for that key. The key must still be PRESENT in the request.
+ *  - For array values, a single wildcard string in the matcher matches any single-element array.
+ *
  * Every key present in the matcher must appear in the request with matching value(s).
  * String-vs-array comparison: a single matcher string matches a single-element array
  * and vice versa for convenience.
@@ -111,9 +144,15 @@ export function matchQueryParams(
     const expected = Array.isArray(expectedValue) ? expectedValue : [expectedValue];
     const actual = Array.isArray(actualValue) ? actualValue : [actualValue];
 
+    // Single wildcard matcher value: key must be present (checked above) with any value.
+    // For single-wildcard arrays, treat as "match any single value present".
+    if (expected.length === 1 && isWildcard(expected[0]!)) continue;
+
     if (expected.length !== actual.length) return false;
     for (let i = 0; i < expected.length; i++) {
-      if (expected[i] !== actual[i]) return false;
+      const exp = expected[i]!;
+      if (isWildcard(exp)) continue;
+      if (exp !== actual[i]) return false;
     }
   }
   return true;

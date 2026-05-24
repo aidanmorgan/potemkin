@@ -124,10 +124,7 @@ describe('expectations-crud.integration', () => {
     expect(res.body.error).toBe('STUB_BODY_INVALID');
   });
 
-  // BUG: Express json middleware passes SyntaxError to the generic error handler which
-  // returns 500 instead of 400. Specmatic expects 400 for malformed request bodies.
-  // See: src/http/gateway.ts error handler (line ~148) — does not check for SyntaxError.
-  it.failing('POST expectation with malformed JSON → 400 (currently returns 500 — bug in error handler)', async () => {
+  it('POST expectation with malformed JSON → 400 (body-parse error handler in gateway)', async () => {
     const res = await agent
       .post('/_specmatic/expectations')
       .set('Content-Type', 'application/json')
