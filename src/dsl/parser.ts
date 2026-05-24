@@ -1,8 +1,8 @@
 import * as yaml from 'js-yaml';
 import { BootError } from '../errors.js';
 import { createLogger, getTracer, withSpan } from '../observability/index.js';
-import { validateBoundaryConfig } from './schema.js';
-import type { BoundaryConfig, CompiledDsl } from './types.js';
+import { validateBoundaryConfig, validateGlobalConfig } from './schema.js';
+import type { BoundaryConfig, CompiledDsl, SagaConfig, IdempotencyConfig, DerivedProjectionConfig } from './types.js';
 import { buildScriptRegistry } from '../scripts/registry.js';
 
 const log = createLogger({ name: 'dsl' });
@@ -31,6 +31,10 @@ export function parseDslYaml(text: string): BoundaryConfig {
 /**
  * Compile multiple named YAML modules into a unified, indexed CompiledDsl.
  * REQ-68: Also builds the script registry from all declared scripts.
+ *
+ * Accepts an optional `globalYaml` string that can declare top-level Tier-2 fields:
+ *   sagas, idempotency, derived_projections.  When absent these are omitted.
+ *
  * @throws {BootError} with code `BOOT_ERR_DSL_SYNTAX` on any parse or validation failure.
  * @throws {BootError} with code `BOOT_ERR_DSL_DUPLICATE_BOUNDARY` on duplicate boundary names
  *   or contract paths.
@@ -38,6 +42,7 @@ export function parseDslYaml(text: string): BoundaryConfig {
  */
 export async function compileDsl(
   modules: readonly { name: string; yaml: string }[],
+  globalYaml?: string,
 ): Promise<CompiledDsl> {
   return withSpan(getTracer('dsl'), 'dsl.compile', (_span) => {
     log.info({ moduleCount: modules.length }, 'Compiling DSL modules');
@@ -91,10 +96,36 @@ export async function compileDsl(
       'DSL compilation complete',
     );
 
+    // ── Tier-2: parse optional global config ───────────────────────────────────
+    let sagas: readonly SagaConfig[] | undefined;
+    let idempotency: IdempotencyConfig | undefined;
+    let derivedProjections: readonly DerivedProjectionConfig[] | undefined;
+
+    if (globalYaml) {
+      let rawGlobal: unknown;
+      try {
+        rawGlobal = yaml.load(globalYaml);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        throw new BootError(
+          'BOOT_ERR_DSL_SYNTAX',
+          `Global config YAML parse error: ${message}`,
+          { message, source: globalYaml.slice(0, 200) },
+        );
+      }
+      const globalConfig = validateGlobalConfig(rawGlobal);
+      sagas = globalConfig.sagas;
+      idempotency = globalConfig.idempotency;
+      derivedProjections = globalConfig.derivedProjections;
+    }
+
     const partialDsl: Omit<CompiledDsl, 'scriptRegistry'> = {
       boundaries: boundaries as readonly BoundaryConfig[],
       byContractPath,
       byBoundaryName,
+      ...(sagas !== undefined ? { sagas } : {}),
+      ...(idempotency !== undefined ? { idempotency } : {}),
+      ...(derivedProjections !== undefined ? { derivedProjections } : {}),
     };
 
     // REQ-68: Build script registry — transpiles all TS scripts at compile time.

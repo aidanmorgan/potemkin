@@ -51,8 +51,13 @@ import {
   ContractViolationError,
   InternalExecutionError,
   FaultSimulatedError,
+  AuthenticationRequiredError,
+  AuthorizationDeniedError,
+  IdempotencyConflictError,
 } from '../errors.js';
 import type { Command, Intent } from '../types.js';
+import { extractActor } from '../identity/actorExtractor.js';
+import { getIdempotencyStore } from '../idempotency/store.js';
 
 /** Node.js normalises header names to lowercase; this is the lowercased If-Match header. */
 const IF_MATCH_HEADER_LC = 'if-match';
@@ -273,6 +278,9 @@ async function handleContractRequest(
       }
     }
 
+    // REQ-84: Extract actor from Authorization Bearer header
+    const actor = extractActor(req.headers['authorization'] as string | undefined) ?? undefined;
+
     // 6. Build Command (req 14).
     const command: Command = {
       commandId: nextUuidv7(),
@@ -290,7 +298,50 @@ async function handleContractRequest(
         : undefined,
       origin: 'inbound',
       depth: 0,
+      ...(actor !== undefined ? { actor } : {}),
     };
+
+    // 6b. REQ-81/82/83: Idempotency check
+    const idempotencyKey = req.headers['idempotency-key'] as string | undefined;
+    const idempotencyCfg = sys.dsl.idempotency;
+    const idempotencyEnabled = idempotencyCfg?.enabled ?? false;
+
+    if (idempotencyEnabled && idempotencyKey && intent !== 'query') {
+      const store = getIdempotencyStore();
+      const requestBody: JsonValue = (req.body as JsonValue | null | undefined) ?? {};
+      const hashIncludesBody = idempotencyCfg?.hashIncludesBody ?? true;
+
+      try {
+        const checkResult = store.check({
+          method: effectiveMethod,
+          path: req.path,
+          idempotencyKey,
+          body: requestBody,
+          hashIncludesBody,
+        });
+
+        if (checkResult.hit) {
+          const cached = checkResult.response;
+          logger.debug({ idempotencyKey }, 'Idempotency replay — returning cached response');
+          const replayHeaders: Record<string, string> = {
+            ...(cached.headers ?? {}),
+            'X-Idempotency-Replay': 'true',
+          };
+          if (isHead) {
+            res.status(cached.status).set(replayHeaders).end();
+          } else {
+            res.status(cached.status).set(replayHeaders).json(cached.body ?? null);
+          }
+          return;
+        }
+      } catch (err) {
+        if (err instanceof IdempotencyConflictError) {
+          res.status(409).json(err.toJSON());
+          return;
+        }
+        throw err;
+      }
+    }
 
     // 7. Execute Unit of Work (reqs 15, 7, 20-22).
     let result;
@@ -309,12 +360,17 @@ async function handleContractRequest(
           logger,
           tracer: sys.tracer,
           metrics: sys.metrics,
+          derivedProjections: sys.derivedProjections,
         }),
       );
     } catch (err) {
       logger.error({ err }, 'UoW execution error');
-      // 8. Error → HTTP mapping (reqs 25-32).
-      if (err instanceof EntityAbsenceError) {
+      // 8. Error → HTTP mapping (reqs 25-32, REQ-84/85/86).
+      if (err instanceof AuthenticationRequiredError) {
+        res.status(401).json(err.toJSON());
+      } else if (err instanceof AuthorizationDeniedError) {
+        res.status(403).json(err.toJSON());
+      } else if (err instanceof EntityAbsenceError) {
         res.status(404).json(err.toJSON());
       } else if (err instanceof EntityConflictError) {
         res.status(409).json(err.toJSON());
@@ -358,6 +414,32 @@ async function handleContractRequest(
       if (seqForEtag !== undefined) {
         // RFC 7232 §2.3: ETag must be a quoted string (H-4).
         responseHeaders['ETag'] = '"' + String(seqForEtag) + '"';
+      }
+    }
+
+    // 6c. REQ-81/83: Record idempotency entry after successful execution
+    if (idempotencyEnabled && idempotencyKey && intent !== 'query') {
+      const store = getIdempotencyStore();
+      const requestBody: JsonValue = (req.body as JsonValue | null | undefined) ?? {};
+      const hashIncludesBody = idempotencyCfg?.hashIncludesBody ?? true;
+      const ttlMs = (idempotencyCfg?.ttlSeconds ?? 86400) * 1000;
+      try {
+        store.record({
+          method: effectiveMethod,
+          path: req.path,
+          idempotencyKey,
+          body: requestBody,
+          hashIncludesBody,
+          response: {
+            status: result.status,
+            body: result.body,
+            headers: responseHeaders,
+          },
+          ttlMs,
+        });
+      } catch {
+        // Non-fatal: log but don't fail the response
+        logger.warn({ idempotencyKey }, 'Failed to record idempotency entry');
       }
     }
 

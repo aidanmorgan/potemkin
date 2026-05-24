@@ -51,6 +51,9 @@ export abstract class SimError extends Error {
       case 'STUB_NOT_FOUND': return new StubNotFoundError(message, details);
       case 'STUB_VALIDATION_FAILED': return new StubValidationFailedError(message, details);
       case 'STUB_BODY_INVALID': return new StubBodyInvalidError(message, details);
+      case 'AUTH_MISSING': return new AuthenticationRequiredError(message, details);
+      case 'AUTH_INSUFFICIENT_SCOPES': return new AuthorizationDeniedError(message, details);
+      case 'IDEMPOTENCY_KEY_CONFLICT': return new IdempotencyConflictError(message, details);
       default: return null;
     }
   }
@@ -196,6 +199,47 @@ export class StubValidationFailedError extends SimError {
 export class StubBodyInvalidError extends SimError {
   readonly status = 400 as const;
   readonly code = 'STUB_BODY_INVALID' as const;
+
+  constructor(message: string, details?: JsonValue) {
+    super(message, details);
+  }
+}
+
+// ── Tier-2 errors ─────────────────────────────────────────────────────────────
+
+/**
+ * Actor is required for a scoped behavior but was not present in the request (HTTP 401).
+ * code: 'AUTH_MISSING'
+ */
+export class AuthenticationRequiredError extends SimError {
+  readonly status = 401 as const;
+  readonly code = 'AUTH_MISSING' as const;
+
+  constructor(message: string, details?: JsonValue) {
+    super(message, details);
+  }
+}
+
+/**
+ * Actor's scopes are insufficient for the matched behavior (HTTP 403).
+ * code: 'AUTH_INSUFFICIENT_SCOPES'
+ */
+export class AuthorizationDeniedError extends SimError {
+  readonly status = 403 as const;
+  readonly code = 'AUTH_INSUFFICIENT_SCOPES' as const;
+
+  constructor(message: string, details?: JsonValue) {
+    super(message, details);
+  }
+}
+
+/**
+ * Idempotency key reused with a different request body (HTTP 409).
+ * code: 'IDEMPOTENCY_KEY_CONFLICT'
+ */
+export class IdempotencyConflictError extends SimError {
+  readonly status = 409 as const;
+  readonly code = 'IDEMPOTENCY_KEY_CONFLICT' as const;
 
   constructor(message: string, details?: JsonValue) {
     super(message, details);

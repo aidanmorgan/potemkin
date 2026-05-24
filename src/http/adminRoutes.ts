@@ -21,6 +21,7 @@ import type { Express, Request, Response, NextFunction } from 'express';
 import type { BootedSystem } from '../engine/boot.js';
 import { resetSystem } from '../engine/reset.js';
 import { withSpan } from '../observability/tracing.js';
+import { getDerivedProjection } from '../projections/engine.js';
 
 // Read package.json version at module load time.
 let _pkgVersion = 'unknown';
@@ -116,6 +117,23 @@ export function registerAdminRoutes(app: Express, sys: BootedSystem): void {
         events = events.slice(offset, offset + limit);
 
         res.status(200).json({ events });
+      }).catch(next);
+    },
+  );
+
+  // GET /_admin/derived/:name — derived projection state (REQ-90).
+  app.get(
+    '/_admin/derived/:name',
+    adminAuthMiddleware,
+    (req: Request, res: Response, next: NextFunction) => {
+      withSpan(sys.tracer, 'http.admin.derived', async () => {
+        const name = Array.isArray(req.params['name']) ? req.params['name'][0] : req.params['name'];
+        const result = getDerivedProjection(sys.derivedProjections, name as string);
+        if (result === null) {
+          res.status(404).json({ error: 'NOT_FOUND', message: `No derived projection named "${name}"` });
+          return;
+        }
+        res.status(200).json(result);
       }).catch(next);
     },
   );

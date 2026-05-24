@@ -197,3 +197,105 @@ CEL expressiveness is insufficient.
     exposing `uuidv7()`, `now()`, and `concat(…parts)` convenience functions), and
     `logger` (a scoped pino child-logger).  The `ScriptContext` shape shall constitute
     the canonical contract between the engine and all inline scripts.
+
+---
+
+## 14. Sagas and Compensation
+
+73. **WHEN** the global DSL configuration declares a `sagas[]` block, **the System
+    shall** treat each entry as a multi-step workflow triggered by a matching boundary
+    event; **IF** the trigger boundary, intent, and CEL condition all match a committed
+    domain event, **THEN the System shall** execute the saga steps sequentially
+    after the primary Unit of Work has committed (post-commit model).
+
+74. **WHEN** a saga step executes, **the System shall** dispatch a secondary Command
+    to the step's declared boundary and await its Unit of Work before proceeding to
+    the next step; **IF** the command raises an error, **THEN the System shall** treat
+    the step as failed.
+
+75. **WHEN** a saga step fails, **the System shall** execute the compensation handlers
+    for all previously completed steps in reverse order; each compensation handler shall
+    be dispatched as a secondary Command to the same boundary as its step.
+
+76. **WHEN** a compensation handler itself throws an unhandled error, **the System
+    shall** emit a `SagaCompensationFailed` saga lifecycle event and continue executing
+    the remaining compensation handlers; **it shall NOT** abort the compensation chain.
+
+77. **The System shall** record the following saga lifecycle events to the EventStore
+    under the `__saga__` boundary with the saga instance ID as aggregateId:
+    `SagaStarted`, `SagaStepCompleted`, `SagaStepFailed`, `SagaCompensated`,
+    `SagaCompensationFailed`, `SagaCompleted`, and `SagaFailed`.
+
+78. **WHEN** all saga steps complete successfully, **the System shall** emit
+    `SagaCompleted`; **WHEN** any step fails after compensation, **the System shall**
+    emit `SagaFailed`.
+
+79. **The System shall** execute sagas post-commit (after the primary UoW's events are
+    durable) so that each saga step and its compensation form independent local
+    transactions with compensating transactions — consistent with the standard Saga
+    pattern.
+
+80. **WHEN** a saga trigger is declared with a CEL `condition` expression, **the System
+    shall** evaluate it against the triggering Command and Domain Event context;
+    **IF** the condition evaluates to `false`, **THEN the System shall** not start
+    the saga instance.
+
+---
+
+## 15. Idempotency
+
+81. **WHEN** the global DSL configuration declares an `idempotency` block with
+    `enabled: true`, **the System shall** inspect every non-`query` inbound HTTP
+    request for an `Idempotency-Key` header; **IF** the header is present and the
+    key has been seen before within the configured TTL window, **THEN the System
+    shall** return the original cached response without re-executing the Unit of Work,
+    adding the header `X-Idempotency-Replay: true` to the response.
+
+82. **WHEN** an `Idempotency-Key` is reused with a different request body (and
+    `hash_includes_body` is `true`), **the System shall** return HTTP 409 with error
+    code `IDEMPOTENCY_KEY_CONFLICT` rather than executing or replaying.
+
+83. **WHEN** `hash_includes_body` is `false`, **the System shall** deduplicate
+    requests by key and path alone, ignoring differences in the request body.
+
+---
+
+## 16. Actor Identity and RBAC
+
+84. **WHEN** an inbound HTTP request carries an `Authorization: Bearer <token>` header
+    whose token matches the simulation format `<actorId>:<scope1>,<scope2>,...`,
+    **the System shall** parse the token and attach an `actor` object of shape
+    `{ id: string; scopes: string[] }` to the Command envelope.
+
+85. **WHEN** a `behaviors[]` entry declares `match.required_scopes`, **the System
+    shall** evaluate the actor's scopes before processing the behavior; **IF** no actor
+    is present, **THEN the System shall** throw `AuthenticationRequiredError`
+    (HTTP 401, code `AUTH_MISSING`).
+
+86. **WHEN** an actor is present but its scopes are not a superset of the behavior's
+    `match.required_scopes`, **the System shall** throw `AuthorizationDeniedError`
+    (HTTP 403, code `AUTH_INSUFFICIENT_SCOPES`).
+
+87. **The System shall** treat the `Authorization: Bearer <actorId>:<scopes>` format
+    as a simulation shortcut only; no signature verification is performed.  This
+    behaviour shall be clearly documented as unsuitable for production use.
+
+---
+
+## 17. Derived Projections
+
+88. **WHEN** the global DSL configuration declares a `derived_projections[]` block,
+    **the System shall** route every committed domain event whose `<Boundary>:<EventType>`
+    or `<EventType>` appears in the projection's `subscribe` list to that projection's
+    reducer; **the System shall** maintain derived projection state in a separate
+    registry (not the main State Graph).
+
+89. **WHEN** a derived projection `key` CEL expression is evaluated against a matching
+    event, **the System shall** use the returned string as the key for the derived entity
+    within that projection's state map; **IF** the key expression returns a non-string
+    value or throws, **THEN the System shall** skip the event for that projection.
+
+90. **The System shall** expose a read endpoint `GET /_admin/derived/:name` that
+    returns the full derived state map for the named projection as a JSON object keyed
+    by derived entity key; **IF** the projection name does not exist, **THEN the System
+    shall** return HTTP 404.

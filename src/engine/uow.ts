@@ -43,6 +43,7 @@ import type { EngineMetrics } from '../observability/metrics.js';
 import type { ObjectGraphSchemaRegistry } from '../schema/types.js';
 import type { OpenApiDoc } from '../contract/loader.js';
 import type { ShadowGraph } from '../stategraph/shadow.js';
+import type { DerivedProjectionRegistry } from '../projections/types.js';
 
 import { createShadowGraph } from '../stategraph/shadow.js';
 import { runPatternMatch } from './patternMatcher.js';
@@ -57,6 +58,8 @@ import {
   MissingPreconditionError,
   InternalExecutionError,
 } from '../errors.js';
+import { applyEventToDerivedProjections } from '../projections/engine.js';
+import { findTriggeredSagas, runSaga } from '../sagas/orchestrator.js';
 
 // ---------------------------------------------------------------------------
 // Public interface
@@ -91,6 +94,11 @@ export interface UowInput {
    * read operations. Must be supplied when intent === 'query'.
    */
   readonly openapi?: OpenApiDoc;
+  /**
+   * REQ-88: Optional derived projection registry. When supplied, committed events are
+   * also routed to subscribed derived projections.
+   */
+  readonly derivedProjections?: DerivedProjectionRegistry;
 }
 
 // ---------------------------------------------------------------------------
@@ -415,6 +423,47 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
           boundary: command.boundary,
         });
         shadow.commitInto(graph);
+
+        // REQ-88: Apply derived projections for committed events
+        if (input.derivedProjections && dsl.derivedProjections && dsl.derivedProjections.length > 0) {
+          for (const evt of stagedEvents) {
+            applyEventToDerivedProjections(
+              evt,
+              dsl.derivedProjections,
+              input.derivedProjections,
+              cel,
+              logger,
+            );
+          }
+        }
+
+        // REQ-73/79: Post-commit saga dispatch (fire-and-forget; non-blocking in background)
+        // We run sagas after commit so that compensation events are truly compensating,
+        // not pre-staged alongside the primary event.
+        if (dsl.sagas && dsl.sagas.length > 0 && stagedEvents.length > 0) {
+          for (const evt of stagedEvents) {
+            const triggeredSagas = findTriggeredSagas(dsl.sagas, command, evt, cel);
+            for (const saga of triggeredSagas) {
+              // Fire-and-forget — saga failures are recorded in the event log but do not
+              // abort the primary UoW's response.
+              runSaga({
+                saga,
+                triggerCommand: command,
+                triggerEvent: evt,
+                dsl,
+                graph,
+                events: eventStore,
+                cel,
+                validator,
+                logger,
+                schemaRegistry,
+                openapi: input.openapi,
+              }).catch((err: unknown) => {
+                logger.error({ err, sagaName: saga.name }, 'Saga execution failed unexpectedly');
+              });
+            }
+          }
+        }
 
         // -----------------------------------------------------------------------
         // Step 8 — Response construction
