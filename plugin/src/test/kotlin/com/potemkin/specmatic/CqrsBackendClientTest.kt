@@ -3,8 +3,8 @@ package com.potemkin.specmatic
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.specmatic.core.HttpRequest
 import io.specmatic.core.value.StringValue
-import mockwebserver3.MockResponse
-import mockwebserver3.MockWebServer
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test

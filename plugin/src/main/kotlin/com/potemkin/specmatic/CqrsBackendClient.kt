@@ -23,7 +23,7 @@ import java.util.concurrent.TimeUnit
  *
  * 4xx responses from the engine are treated as deliberate client errors and are propagated.
  */
-class CqrsBackendClient(
+open class CqrsBackendClient(
     private val backendUrl: String,
     timeoutMs: Long = 5_000,
 ) {
@@ -48,7 +48,7 @@ class CqrsBackendClient(
      * - The engine returns 5xx
      * - The response body is not valid JSON / cannot be deserialised
      */
-    fun forward(httpRequest: HttpRequest): HttpStubResponse? {
+    open fun forward(httpRequest: HttpRequest): HttpStubResponse? {
         val forwardedReq = buildForwardedRequest(httpRequest)
         val bodyJson = try {
             mapper.writeValueAsString(forwardedReq)
