@@ -265,7 +265,7 @@ describe('DSL §7.2 – Behaviors Block', () => {
   // GAP (nice-to-have): dispatch_commands[].payload values are stored as plain strings,
   // but there is NO validation that they are syntactically valid CEL expressions.
   // The schema uses requireStringStringMap which only checks value is a string.
-  it.failing('throws BootError when dispatch_commands payload value is not a valid CEL string (e.g. bare "{ broken")', () => {
+  it('throws BootError when dispatch_commands payload value is not a valid CEL string (e.g. bare "{ broken")', () => {
     // The schema currently accepts any string as payload value; it does NOT parse CEL syntax.
     expect(() =>
       validateBoundaryConfig({

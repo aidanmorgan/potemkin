@@ -49,14 +49,30 @@ export function matchRoute(
 ): MatchedRoute | null {
   const lowerMethod = method.toLowerCase();
 
-  // Sort by descending static-prefix length for deterministic specificity
-  const sortedPaths = Object.keys(doc.paths).sort(
-    (a, b) => staticPrefixLength(b) - staticPrefixLength(a),
-  );
+  // F-01: Strip query string from path before matching so that callers passing
+  // raw req.url (e.g. /items?limit=10) still match the /items template.
+  const normalizedPath = path.split('?')[0]!;
+
+  // Count the number of parameter (wildcard) segments in a path template.
+  // Used as a secondary sort key: fewer params = more specific = wins ties.
+  function paramSegmentCount(pathTemplate: string): number {
+    return pathTemplate.split('/').filter((seg) => seg.startsWith('{')).length;
+  }
+
+  // F-03: Sort by descending static-prefix length for deterministic specificity.
+  // Tie-break: fewer param segments wins. Final tie-break: lexicographic order
+  // for full determinism regardless of insertion order.
+  const sortedPaths = Object.keys(doc.paths).sort((a, b) => {
+    const staticDiff = staticPrefixLength(b) - staticPrefixLength(a);
+    if (staticDiff !== 0) return staticDiff;
+    const paramDiff = paramSegmentCount(a) - paramSegmentCount(b);
+    if (paramDiff !== 0) return paramDiff;
+    return a < b ? -1 : a > b ? 1 : 0;
+  });
 
   for (const pathTemplate of sortedPaths) {
     const regex = templateToRegex(pathTemplate);
-    const match = regex.exec(path);
+    const match = regex.exec(normalizedPath);
     if (!match) continue;
 
     const pathItem = doc.paths[pathTemplate];
