@@ -358,10 +358,15 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
                   schemaRegistry,
                   tracer,
                   scriptRegistry: input.dsl.scriptRegistry,
-                  nextSequenceVersion: (aggregateId) =>
-                    eventStore.currentSequenceVersion(aggregateId) +
-                    (stagedSeqDeltas.get(aggregateId) ?? 0) +
-                    1,
+                  nextSequenceVersion: (aggregateId) => {
+                    const delta = stagedSeqDeltas.get(aggregateId) ?? 0;
+                    const next = eventStore.currentSequenceVersion(aggregateId) + delta + 1;
+                    // Eagerly advance the delta so that multiple events emitted within a single
+                    // runPatternMatch call (e.g. emit_when multi-match) each get a unique,
+                    // monotonically-increasing sequence version.
+                    stagedSeqDeltas.set(aggregateId, delta + 1);
+                    return next;
+                  },
                   projectToShadow: (event) =>
                     projectEvent({
                       event,
@@ -384,12 +389,10 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
               }
 
               // Accumulate staged events
+              // Note: stagedSeqDeltas is already updated eagerly by nextSequenceVersion
+              // (called inside runPatternMatch), so we do NOT update it again here.
               for (const evt of outcome.events) {
                 stagedEvents.push(evt);
-                stagedSeqDeltas.set(
-                  evt.aggregateId,
-                  (stagedSeqDeltas.get(evt.aggregateId) ?? 0) + 1,
-                );
                 // O-7 fix: log event staging with eventId and aggregateId bindings per REQ-42.
                 const evtLog = logger.child({ eventId: evt.eventId, aggregateId: evt.aggregateId });
                 evtLog.debug({ eventType: evt.type }, 'UoW staged event');

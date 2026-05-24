@@ -138,7 +138,7 @@ type Expr =
   | { kind: 'method';         receiver: Expr; method: string; args: Expr[] }
   | { kind: 'nullSafeMethod'; receiver: Expr; method: string; args: Expr[] }
   | { kind: 'comprehension';  kind2: 'all' | 'exists' | 'exists_one' | 'filter' | 'map';
-                               receiver: Expr; varName: string; body: Expr }
+                               receiver: Expr; varName: string; body: Expr; nullSafe?: boolean }
   | { kind: 'unary';          op: string; operand: Expr }
   | { kind: 'binary';         op: string; left: Expr; right: Expr }
   | { kind: 'ternary';        cond: Expr; then: Expr; else: Expr }
@@ -442,7 +442,7 @@ class Parser {
           const { varName, body } = this.parseComprehensionArgs();
           this.expect('rparen');
           const compKind = methodName as 'all' | 'exists' | 'exists_one' | 'filter' | 'map';
-          expr = { kind: 'comprehension', kind2: compKind, receiver: expr, varName, body };
+          expr = { kind: 'comprehension', kind2: compKind, receiver: expr, varName, body, nullSafe: isNullSafe };
         } else if (RECEIVER_METHODS.has(methodName) && this.peek().kind === 'lparen') {
           // Receiver method call
           this.advance(); // consume '('
@@ -934,12 +934,18 @@ function evalMapMethod(m: Record<string, unknown>, method: string, args: unknown
 type ComprehensionKind = 'all' | 'exists' | 'exists_one' | 'filter' | 'map';
 
 function evalComprehension(
-  expr: { kind: 'comprehension'; kind2: ComprehensionKind; receiver: Expr; varName: string; body: Expr },
+  expr: { kind: 'comprehension'; kind2: ComprehensionKind; receiver: Expr; varName: string; body: Expr; nullSafe?: boolean },
   ctx: CelContext,
   builtinCtx: BuiltinContext,
   scopes: Scope[],
 ): unknown {
   const collection = evalExpr(expr.receiver, ctx, builtinCtx, scopes);
+
+  // REQ-49 / null-safe comprehension fix: if the receiver is null/undefined and the
+  // macro was invoked with ?. (nullSafe flag), short-circuit to null instead of throwing.
+  if ((collection === null || collection === undefined) && expr.nullSafe) {
+    return null;
+  }
 
   let items: unknown[];
   if (Array.isArray(collection)) {

@@ -92,21 +92,49 @@ describe('null-safety: combined with coalesce', () => {
 });
 
 describe('null-safety: combined with comprehension', () => {
-  // BUG: lst?.filter(x, ...) does not short-circuit when lst is null.
-  // The parser produces a `comprehension` node (not `nullSafeMethod`) for
-  // comprehension macros even when preceded by `?.`, so null-safe semantics
-  // are NOT applied. This is a real evaluator bug: the null check happens in
-  // `evalComprehension` which throws CEL_EVAL error instead of returning null.
-  // Tracking: dsl-builder.ts null-safety comprehension issue.
-  it.failing('lst?.filter(x, x > 0) — list is null, short-circuits to null [BUG: comprehension nodes ignore null-safe ?. operator]', () => {
-    // Expected: null (null-safe short-circuit)
-    // Actual: throws 'CEL_EVAL: comprehension receiver must be a list or map, got object'
+  it('lst?.filter(x, x > 0) — list is null, short-circuits to null', () => {
+    // Fixed: null-safe comprehension now short-circuits instead of throwing
     expect(ev('lst?.filter(x, x > 0)', { lst: null })).toBeNull();
   });
 
   it('lst?.filter(x, x > 0) — list is present, filters normally', () => {
     // Non-null receiver: normal filter works fine (null-safe is a no-op here)
     expect(ev('lst?.filter(x, x > 0)', { lst: [1, -2, 3] })).toEqual([1, 3]);
+  });
+
+  it('lst?.map(x, x * 2) — list is null → null', () => {
+    expect(ev('lst?.map(x, x * 2)', { lst: null })).toBeNull();
+  });
+
+  it('lst?.map(x, x * 2) — list is present, maps normally', () => {
+    expect(ev('lst?.map(x, x * 2)', { lst: [1, 2, 3] })).toEqual([2, 4, 6]);
+  });
+
+  it('lst?.all(x, x > 0) — list is null → null', () => {
+    expect(ev('lst?.all(x, x > 0)', { lst: null })).toBeNull();
+  });
+
+  it('lst?.all(x, x > 0) — list is present, evaluates predicate', () => {
+    expect(ev('lst?.all(x, x > 0)', { lst: [1, 2, 3] })).toBe(true);
+    expect(ev('lst?.all(x, x > 0)', { lst: [1, -1, 3] })).toBe(false);
+  });
+
+  it('lst?.exists(x, x > 5) — list is null → null', () => {
+    expect(ev('lst?.exists(x, x > 5)', { lst: null })).toBeNull();
+  });
+
+  it('lst?.exists(x, x > 5) — list is present, finds matching element', () => {
+    expect(ev('lst?.exists(x, x > 5)', { lst: [3, 7, 1] })).toBe(true);
+    expect(ev('lst?.exists(x, x > 5)', { lst: [1, 2, 3] })).toBe(false);
+  });
+
+  it('lst?.exists_one(x, x == 2) — list is null → null', () => {
+    expect(ev('lst?.exists_one(x, x == 2)', { lst: null })).toBeNull();
+  });
+
+  it('lst?.exists_one(x, x == 2) — list is present, checks exactly-one', () => {
+    expect(ev('lst?.exists_one(x, x == 2)', { lst: [1, 2, 3] })).toBe(true);
+    expect(ev('lst?.exists_one(x, x == 2)', { lst: [2, 2, 3] })).toBe(false);
   });
 
   it('lst?.size() — list is null → null', () => {
@@ -116,6 +144,10 @@ describe('null-safety: combined with comprehension', () => {
 
   it('lst?.size() — list is present → length', () => {
     expect(ev('lst?.size()', { lst: [1, 2, 3] })).toBe(3);
+  });
+
+  it('coalesce(lst?.filter(x, x > 0), []) — returns empty list when lst is null', () => {
+    expect(ev('coalesce(lst?.filter(x, x > 0), [])', { lst: null })).toEqual([]);
   });
 });
 
