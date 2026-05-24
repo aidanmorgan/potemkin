@@ -11,6 +11,8 @@ import org.slf4j.LoggerFactory
  * via [CqrsBackendClient].
  *
  * Contract:
+ * - Returns `null` for any (method, path) tuple that was registered as a Specmatic stub via
+ *   [FixturesClient.excludedPaths] → Specmatic serves the registered stub directly.
  * - Returns `null` for any path that is NOT a discovered stateful route → Specmatic continues.
  * - Returns `null` when the backend client cannot reach the engine → Specmatic falls through.
  * - Returns the engine's response for matched paths that the engine handles successfully.
@@ -19,6 +21,7 @@ import org.slf4j.LoggerFactory
 class StatefulRequestHandler(
     private val discovery: RoutesDiscoveryClient,
     private val client: CqrsBackendClient,
+    private val fixtures: FixturesClient? = null,
 ) : RequestHandler {
 
     override val name: String = "potemkin-stateful"
@@ -27,7 +30,20 @@ class StatefulRequestHandler(
 
     override fun handleRequest(httpRequest: HttpRequest): HttpStubResponse? {
         return try {
-            if (!discovery.isStateful(httpRequest.path ?: "")) {
+            // If this (method, path) was registered as a Specmatic fixture stub, let Specmatic
+            // serve it directly. The plugin must not intercept it.
+            val method = (httpRequest.method ?: "").uppercase()
+            val path = httpRequest.path ?: ""
+            if (fixtures != null && fixtures.excludedPaths().contains(method to path)) {
+                log.debug(
+                    "Skipping fixture-excluded path '{} {}' — Specmatic stub will serve it",
+                    method,
+                    path,
+                )
+                return null
+            }
+
+            if (!discovery.isStateful(path)) {
                 return null  // Not our path — let Specmatic handle it.
             }
 
