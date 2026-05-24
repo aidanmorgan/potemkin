@@ -7,30 +7,23 @@
 #   1. File path given by the POTEMKIN_PLUGIN_CONFIG environment variable
 #   2. ./potemkin-plugin.yaml  (this file's intended location)
 #   3. ./potemkin-plugin.json
-#   4. Built-in defaults (backendUrl: http://localhost:3000, no paths intercepted)
+#   4. Built-in defaults (backendUrl: http://localhost:3000)
+#
+# NOTE: Routes are discovered at runtime — no static pathPatterns configuration is needed.
+# On startup the plugin calls GET <backendUrl>/_engine/routes to fetch the list of paths
+# owned by the Node engine. The route list is cached with a TTL (default 30 s) and
+# refreshed in the background as it expires.
 
 # URL of the Potemkin Node CQRS engine.
-# The plugin will POST to <backendUrl>/_engine/forward for each intercepted request.
+# The plugin will:
+#   - GET  <backendUrl>/_engine/routes   to discover which paths to intercept
+#   - POST <backendUrl>/_engine/forward  for each intercepted request
 backendUrl: "http://localhost:3000"
 
-# Timeout in milliseconds for calls to the Node engine.
+# Timeout in milliseconds for forwarding calls to the Node engine.
 # On timeout the plugin returns null and Specmatic falls through to its own stub matching.
 forwardTimeoutMs: 5000
 
-# List of URL path patterns to intercept and forward to the Node engine.
-# Requests whose paths do NOT match any pattern are left to Specmatic's own stub matching.
-#
-# Pattern syntax:
-#   /exact/path        — exact literal match
-#   /items/*           — matches exactly one additional path segment  (e.g. /items/123)
-#   /loans/**          — matches any number of path segments           (e.g. /loans/123/repayments)
-#   /customers/{id}    — named single-segment capture                  (e.g. /customers/abc)
-#   /a/{b}/c           — mixed named-captures and literals
-#
-# An empty list (the default) means no requests are intercepted — safe to use while testing.
-pathPatterns:
-  - "/loans/**"
-  - "/customers/**"
-  - "/accounts/**"
-  - "/accounts/{id}"
-  - "/products/*"
+# Back-off interval in milliseconds before retrying the /_engine/routes discovery endpoint
+# after a failed fetch. During the back-off period the stale (or empty) route list is kept.
+discoveryRefreshOnFailureMs: 5000

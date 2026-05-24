@@ -4,6 +4,7 @@ import io.specmatic.core.HttpRequest
 import io.specmatic.core.HttpResponse
 import io.specmatic.core.value.StringValue
 import io.specmatic.stub.HttpStubResponse
+import okhttp3.OkHttpClient
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -12,15 +13,24 @@ import kotlin.test.assertNull
 /**
  * Unit tests for [StatefulRequestHandler].
  *
- * Uses hand-rolled fakes for [PathMatcher] and [CqrsBackendClient] to keep the tests fast
- * and dependency-free.
+ * Uses hand-rolled fakes for [RoutesDiscoveryClient] and [CqrsBackendClient] to keep tests
+ * fast and dependency-free.
  */
 class StatefulRequestHandlerTest {
 
     // ---- fakes --------------------------------------------------------------------------
 
-    private class FixedPathMatcher(private val result: Boolean) : PathMatcher(emptyList()) {
-        override fun matches(path: String?): Boolean = result
+    /**
+     * Fake discovery client that always returns a fixed answer for [isStateful].
+     * Uses a no-op OkHttpClient so construction never hits the network.
+     */
+    private class FixedDiscoveryClient(
+        private val result: Boolean,
+    ) : RoutesDiscoveryClient(
+        backendUrl = "http://unused",
+        httpClient = noOpHttpClient(),
+    ) {
+        override fun isStateful(path: String): Boolean = result
     }
 
     /**
@@ -48,7 +58,7 @@ class StatefulRequestHandlerTest {
     fun `path matches and client returns response - handler returns response`() {
         val expectedResponse = cannedResponse(200)
         val client = FakeClient(expectedResponse)
-        val handler = StatefulRequestHandler(FixedPathMatcher(true), client)
+        val handler = StatefulRequestHandler(FixedDiscoveryClient(true), client)
 
         val result = handler.handleRequest(request())
 
@@ -59,7 +69,7 @@ class StatefulRequestHandlerTest {
     @Test
     fun `path does not match - returns null without calling client`() {
         val client = FakeClient(cannedResponse())
-        val handler = StatefulRequestHandler(FixedPathMatcher(false), client)
+        val handler = StatefulRequestHandler(FixedDiscoveryClient(false), client)
 
         val result = handler.handleRequest(request("/products/1"))
 
@@ -70,7 +80,7 @@ class StatefulRequestHandlerTest {
     @Test
     fun `path matches but client returns null (engine unreachable) - handler returns null`() {
         val client = FakeClient(null)
-        val handler = StatefulRequestHandler(FixedPathMatcher(true), client)
+        val handler = StatefulRequestHandler(FixedDiscoveryClient(true), client)
 
         val result = handler.handleRequest(request())
 
@@ -85,7 +95,7 @@ class StatefulRequestHandlerTest {
                 throw RuntimeException("Unexpected crash")
             }
         }
-        val handler = StatefulRequestHandler(FixedPathMatcher(true), crashingClient)
+        val handler = StatefulRequestHandler(FixedDiscoveryClient(true), crashingClient)
 
         // Must not throw — must return null gracefully.
         val result = handler.handleRequest(request())
@@ -95,14 +105,14 @@ class StatefulRequestHandlerTest {
 
     @Test
     fun `handler name is correct`() {
-        val handler = StatefulRequestHandler(FixedPathMatcher(true), FakeClient(null))
+        val handler = StatefulRequestHandler(FixedDiscoveryClient(true), FakeClient(null))
         assertEquals("potemkin-stateful", handler.name)
     }
 
     @Test
     fun `4xx response from client is propagated`() {
         val notFound = cannedResponse(404)
-        val handler = StatefulRequestHandler(FixedPathMatcher(true), FakeClient(notFound))
+        val handler = StatefulRequestHandler(FixedDiscoveryClient(true), FakeClient(notFound))
 
         val result = handler.handleRequest(request())
 
@@ -110,3 +120,15 @@ class StatefulRequestHandlerTest {
         assertEquals(404, result.response.status)
     }
 }
+
+// ---- test helpers -----------------------------------------------------------------------
+
+/**
+ * Creates an OkHttpClient that immediately fails all requests.
+ * Used to prevent discovery client construction from hitting the network in tests.
+ */
+private fun noOpHttpClient(): OkHttpClient = OkHttpClient.Builder()
+    .addInterceptor { _ ->
+        throw java.io.IOException("no-op client — no real requests allowed in tests")
+    }
+    .build()

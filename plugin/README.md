@@ -1,6 +1,8 @@
 # potemkin-stateful-plugin
 
-A Kotlin/Gradle Specmatic plugin that hooks into Specmatic's `RequestHandler` extension point and forwards intercepted HTTP requests to the Potemkin Node CQRS engine. Rather than duplicating Specmatic's stub-matching logic in TypeScript, this plugin lets Specmatic own all API contract validation while the Node engine owns stateful CQRS processing for the paths you care about.
+A Kotlin/Gradle Specmatic plugin that hooks into Specmatic's `RequestHandler` extension point and forwards intercepted HTTP requests to the Potemkin Node CQRS engine. Rather than duplicating Specmatic's stub-matching logic in TypeScript, this plugin lets Specmatic own all API contract validation while the Node engine owns stateful CQRS processing for the paths it declares.
+
+Routes are **discovered at runtime** — no static `pathPatterns` configuration is needed.
 
 ---
 
@@ -33,17 +35,8 @@ The fat-JAR bundles all transitive dependencies (OkHttp, Jackson, SnakeYAML, SLF
    ```yaml
    backendUrl: "http://localhost:3000"
    forwardTimeoutMs: 5000
-   pathPatterns:
-     - "/loans/**"
-     - "/customers/{id}"
+   discoveryRefreshOnFailureMs: 5000
    ```
-   Path-pattern syntax:
-   | Pattern | Matches |
-   |---|---|
-   | `/exact/path` | that path only |
-   | `/items/*` | `/items/123` (one segment) |
-   | `/loans/**` | `/loans`, `/loans/123`, `/loans/123/repayments` |
-   | `/customers/{id}` | `/customers/abc` (one segment, named capture ignored at runtime) |
 
 4. **Start the Specmatic stub server** with the plugin on the classpath:
    ```sh
@@ -57,7 +50,46 @@ The fat-JAR bundles all transitive dependencies (OkHttp, Jackson, SnakeYAML, SLF
    ```sh
    npm run start
    ```
-   The engine must expose `POST /_engine/forward` on the port configured in `potemkin-plugin.yaml` (default `http://localhost:3000`).
+   The engine must expose:
+   - `GET  /_engine/routes`   — returns the list of stateful paths to intercept.
+   - `POST /_engine/forward`  — handles forwarded requests for those paths.
+
+---
+
+## Route discovery
+
+On startup the plugin calls `GET <backendUrl>/_engine/routes` and builds an in-memory path matcher from the response. The response shape is:
+
+```json
+{
+  "paths": ["/customers", "/customers/{id}", "/loans"]
+}
+```
+
+Paths use OpenAPI-style template syntax (`{id}` matches one path segment, equivalent to `*`).
+
+### Refresh cadence
+
+- The route list is cached using the TTL from `Cache-Control: max-age=N` (default: **30 s** if the header is absent).
+- On each `isStateful()` call the plugin checks whether the TTL has expired. If so, a **background refresh** is triggered — the request in flight is not blocked.
+- The refresh sends an `If-None-Match` header with the last ETag. If the engine returns `304 Not Modified`, the path list is unchanged and the TTL is reset.
+- On a **failed refresh** (network error, unexpected status), the stale route list is kept and the next retry is delayed by `discoveryRefreshOnFailureMs` (default: **5 s**).
+
+### Behaviour on startup failure
+
+If the initial `GET /_engine/routes` request fails (engine not yet running, network error), the plugin starts with an empty route list and all requests fall through to Specmatic's own stub matching. Discovery is retried automatically on the next request after the back-off period.
+
+---
+
+## Configuration reference
+
+| Field | Default | Description |
+|---|---|---|
+| `backendUrl` | `http://localhost:3000` | Base URL of the Node CQRS engine. |
+| `forwardTimeoutMs` | `5000` | Timeout (ms) for `POST /_engine/forward` calls. |
+| `discoveryRefreshOnFailureMs` | `5000` | Back-off (ms) before retrying discovery after a failed fetch. |
+
+> **Note:** `pathPatterns` is no longer used. If present in an existing config file it is silently ignored (a warning is logged). Remove it to suppress the warning.
 
 ---
 
@@ -75,8 +107,8 @@ cd plugin
 **Plugin not loading (no "Potemkin plugin initialising" log line)**  
 The JAR is not on the Specmatic classpath. Verify you are using `-cp specmatic.jar:potemkin-stateful-plugin.jar` (not `-jar specmatic.jar`, which ignores the classpath).
 
-**All requests fall through to Specmatic stubs despite matching patterns**  
-Check that `pathPatterns` is set in `potemkin-plugin.yaml` — the default is an empty list (no interception). The config file must be in the current working directory from which Specmatic is launched, or pointed to by the `POTEMKIN_PLUGIN_CONFIG` environment variable.
+**All requests fall through to Specmatic stubs**  
+Check that the Node engine is running and reachable at `backendUrl`. On startup, look for the "initial fetch succeeded" log line. If you see "initial fetch failed", the engine was not available at startup and discovery will retry automatically.
 
 **"Connection refused" in plugin logs**  
 The Node engine is not running or is bound to a different port. Start the engine first, or update `backendUrl` in `potemkin-plugin.yaml`.

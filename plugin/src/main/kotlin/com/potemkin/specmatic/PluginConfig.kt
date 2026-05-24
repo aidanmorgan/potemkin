@@ -11,17 +11,20 @@ import java.io.File
  *  1. POTEMKIN_PLUGIN_CONFIG env var (path to a YAML or JSON file)
  *  2. ./potemkin-plugin.yaml in the current working directory
  *  3. ./potemkin-plugin.json in the current working directory
- *  4. Built-in defaults (safe: no paths intercepted)
+ *  4. Built-in defaults
+ *
+ * Routes to intercept are no longer configured statically via `pathPatterns`. Instead the plugin
+ * discovers them at runtime by calling GET /_engine/routes on the Node engine.
  *
  * @param backendUrl Base URL of the Node CQRS engine, e.g. "http://localhost:3000".
- * @param pathPatterns Path patterns to intercept. Empty list means nothing is intercepted (safe default).
- *   Supported syntax: "/loans/STARSTAR" (multi-segment), "/items/STAR" (single segment), "/customers/{id}" (named).
  * @param forwardTimeoutMs Timeout for calls to the Node engine in milliseconds.
+ * @param discoveryRefreshOnFailureMs Back-off interval (ms) before retrying route discovery
+ *   after a failed fetch (default 5 s).
  */
 data class PluginConfig(
     val backendUrl: String = "http://localhost:3000",
-    val pathPatterns: List<String> = emptyList(),
     val forwardTimeoutMs: Long = 5_000,
+    val discoveryRefreshOnFailureMs: Long = 5_000,
 ) {
     companion object {
         private val log = LoggerFactory.getLogger(PluginConfig::class.java)
@@ -54,8 +57,8 @@ data class PluginConfig(
             }
 
             log.info(
-                "No Potemkin plugin config file found; using defaults (no paths intercepted). " +
-                    "Create potemkin-plugin.yaml in the working directory to configure interception.",
+                "No Potemkin plugin config file found; using defaults. " +
+                    "Create potemkin-plugin.yaml in the working directory to configure the backend URL.",
             )
             return PluginConfig()
         }
@@ -66,16 +69,21 @@ data class PluginConfig(
 
             val backendUrl = raw["backendUrl"] as? String ?: "http://localhost:3000"
             val forwardTimeoutMs = (raw["forwardTimeoutMs"] as? Number)?.toLong() ?: 5_000L
+            val discoveryRefreshOnFailureMs =
+                (raw["discoveryRefreshOnFailureMs"] as? Number)?.toLong() ?: 5_000L
 
-            val patterns: List<String> = when (val p = raw["pathPatterns"]) {
-                is List<*> -> p.filterIsInstance<String>()
-                else -> emptyList()
+            if (raw.containsKey("pathPatterns")) {
+                log.warn(
+                    "potemkin-plugin config: 'pathPatterns' is no longer used — routes are " +
+                        "discovered at runtime via GET /_engine/routes. Remove 'pathPatterns' from " +
+                        "your config file to suppress this warning.",
+                )
             }
 
             return PluginConfig(
                 backendUrl = backendUrl,
-                pathPatterns = patterns,
                 forwardTimeoutMs = forwardTimeoutMs,
+                discoveryRefreshOnFailureMs = discoveryRefreshOnFailureMs,
             )
         }
     }

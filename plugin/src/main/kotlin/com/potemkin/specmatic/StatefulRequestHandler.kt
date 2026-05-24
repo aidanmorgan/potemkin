@@ -6,17 +6,18 @@ import io.specmatic.stub.RequestHandler
 import org.slf4j.LoggerFactory
 
 /**
- * Specmatic [RequestHandler] that intercepts requests whose paths match the configured patterns
- * and forwards them to the Node CQRS engine via [CqrsBackendClient].
+ * Specmatic [RequestHandler] that intercepts requests whose paths are owned by the Node CQRS
+ * engine (as discovered at runtime via [RoutesDiscoveryClient]) and forwards them to the engine
+ * via [CqrsBackendClient].
  *
  * Contract:
- * - Returns `null` for any path that does NOT match the configured patterns → Specmatic continues.
+ * - Returns `null` for any path that is NOT a discovered stateful route → Specmatic continues.
  * - Returns `null` when the backend client cannot reach the engine → Specmatic falls through.
  * - Returns the engine's response for matched paths that the engine handles successfully.
  * - NEVER throws — all exceptions are caught internally so Specmatic is never disrupted.
  */
 class StatefulRequestHandler(
-    private val matcher: PathMatcher,
+    private val discovery: RoutesDiscoveryClient,
     private val client: CqrsBackendClient,
 ) : RequestHandler {
 
@@ -26,7 +27,7 @@ class StatefulRequestHandler(
 
     override fun handleRequest(httpRequest: HttpRequest): HttpStubResponse? {
         return try {
-            if (!matcher.matches(httpRequest.path)) {
+            if (!discovery.isStateful(httpRequest.path ?: "")) {
                 return null  // Not our path — let Specmatic handle it.
             }
 
