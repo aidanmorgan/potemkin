@@ -48,6 +48,9 @@ export abstract class SimError extends Error {
         const simulatedHeaders = (json['simulatedHeaders'] as Record<string, string> | undefined);
         return new FaultSimulatedError(status, simulatedBody, simulatedHeaders, details);
       }
+      case 'STUB_NOT_FOUND': return new StubNotFoundError(message, details);
+      case 'STUB_VALIDATION_FAILED': return new StubValidationFailedError(message, details);
+      case 'STUB_BODY_INVALID': return new StubBodyInvalidError(message, details);
       default: return null;
     }
   }
@@ -153,6 +156,46 @@ export class InternalExecutionError extends SimError {
 export class InfiniteLoopError extends SimError {
   readonly status = 508 as const;
   readonly code = 'INFINITE_LOOP' as const;
+
+  constructor(message: string, details?: JsonValue) {
+    super(message, details);
+  }
+}
+
+/**
+ * Stub not found (HTTP 404).
+ * Raised when /_specmatic/expectations/:id targets a non-existent id.
+ * `details.code` = 'STUB_NOT_FOUND'.
+ */
+export class StubNotFoundError extends SimError {
+  readonly status = 404 as const;
+  readonly code = 'STUB_NOT_FOUND' as const;
+
+  constructor(message: string, details?: JsonValue) {
+    super(message, details);
+  }
+}
+
+/**
+ * Stub response body fails OpenAPI contract validation (HTTP 400).
+ * `details.code` = 'STUB_VALIDATION_FAILED'.
+ */
+export class StubValidationFailedError extends SimError {
+  readonly status = 400 as const;
+  readonly code = 'STUB_VALIDATION_FAILED' as const;
+
+  constructor(message: string, details?: JsonValue) {
+    super(message, details);
+  }
+}
+
+/**
+ * Stub request body is malformed / cannot be parsed (HTTP 400).
+ * `details.code` = 'STUB_BODY_INVALID'.
+ */
+export class StubBodyInvalidError extends SimError {
+  readonly status = 400 as const;
+  readonly code = 'STUB_BODY_INVALID' as const;
 
   constructor(message: string, details?: JsonValue) {
     super(message, details);
