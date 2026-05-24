@@ -71,11 +71,15 @@ type Token =
 // AST types
 // ---------------------------------------------------------------------------
 
+/** CEL receiver-style string/array methods: `expr.method(args)` */
+const RECEIVER_METHODS = new Set(['startsWith', 'endsWith', 'contains', 'size', 'matches']);
+
 type Expr =
   | { kind: 'literal';   value: string | number | boolean | null }
   | { kind: 'ident';     name: string }
   | { kind: 'member';    obj: Expr; key: Expr }        // a.b or a["b"] or a[0]
   | { kind: 'call';      fn: string; args: Expr[] }    // $func(…)
+  | { kind: 'method';    receiver: Expr; method: string; args: Expr[] } // expr.method(args)
   | { kind: 'unary';     op: string; operand: Expr }
   | { kind: 'binary';    op: string; left: Expr; right: Expr }
   | { kind: 'ternary';   cond: Expr; then: Expr; else: Expr }
@@ -324,8 +328,20 @@ class Parser {
         this.advance();
         const t = this.advance();
         if (t.kind !== 'ident') throw new Error(`CEL_PARSE: expected identifier after '.'`);
-        const key: Expr = { kind: 'literal', value: t.value };
-        expr = { kind: 'member', obj: expr, key };
+        // Check if this is a receiver-method call: expr.method(args)
+        if (RECEIVER_METHODS.has(t.value) && this.peek().kind === 'lparen') {
+          this.advance(); // consume '('
+          const args: Expr[] = [];
+          while (this.peek().kind !== 'rparen') {
+            if (args.length > 0) this.expect('comma');
+            args.push(this.parseTernary());
+          }
+          this.expect('rparen');
+          expr = { kind: 'method', receiver: expr, method: t.value, args };
+        } else {
+          const key: Expr = { kind: 'literal', value: t.value };
+          expr = { kind: 'member', obj: expr, key };
+        }
       } else if (this.peek().kind === 'lbracket') {
         this.advance();
         const key = this.parseTernary();
@@ -429,6 +445,9 @@ function evalExpr(expr: Expr, ctx: CelContext, builtinCtx: BuiltinContext): unkn
         return obj[key];
       }
       if (typeof key === 'number' && Array.isArray(obj)) {
+        if (key < 0 || key >= obj.length) {
+          throw new Error(`CEL_RUNTIME_ERROR: index out of range [${key}] with length ${obj.length}`);
+        }
         return obj[key];
       }
       throw new Error(
@@ -437,8 +456,54 @@ function evalExpr(expr: Expr, ctx: CelContext, builtinCtx: BuiltinContext): unkn
     }
 
     case 'call': {
+      // has(x.field) is a special macro: checks field presence without evaluation
+      if (expr.fn === 'has' && expr.args.length === 1) {
+        const arg = expr.args[0];
+        if (!arg) throw new Error(`CEL_EVAL: has() requires exactly one argument`);
+        if (arg.kind === 'member' && arg.key.kind === 'literal' && typeof arg.key.value === 'string') {
+          const objVal = evalExpr(arg.obj, ctx, builtinCtx);
+          if (isRecord(objVal)) return arg.key.value in objVal;
+          if (Array.isArray(objVal)) return false;
+          return false;
+        }
+        throw new Error(`CEL_EVAL: has() argument must be a field access expression like has(obj.field)`);
+      }
       const args = expr.args.map(a => evalExpr(a, ctx, builtinCtx));
       return callBuiltin(expr.fn, args, builtinCtx);
+    }
+
+    case 'method': {
+      const receiver = evalExpr(expr.receiver, ctx, builtinCtx);
+      const args = expr.args.map(a => evalExpr(a, ctx, builtinCtx));
+      switch (expr.method) {
+        case 'startsWith': {
+          if (typeof receiver !== 'string') throw new Error(`CEL_EVAL: startsWith requires a string receiver`);
+          if (typeof args[0] !== 'string') throw new Error(`CEL_EVAL: startsWith requires a string argument`);
+          return receiver.startsWith(args[0]);
+        }
+        case 'endsWith': {
+          if (typeof receiver !== 'string') throw new Error(`CEL_EVAL: endsWith requires a string receiver`);
+          if (typeof args[0] !== 'string') throw new Error(`CEL_EVAL: endsWith requires a string argument`);
+          return receiver.endsWith(args[0]);
+        }
+        case 'contains': {
+          if (typeof receiver !== 'string') throw new Error(`CEL_EVAL: contains requires a string receiver`);
+          if (typeof args[0] !== 'string') throw new Error(`CEL_EVAL: contains requires a string argument`);
+          return receiver.includes(args[0]);
+        }
+        case 'matches': {
+          if (typeof receiver !== 'string') throw new Error(`CEL_EVAL: matches requires a string receiver`);
+          if (typeof args[0] !== 'string') throw new Error(`CEL_EVAL: matches requires a string (regex) argument`);
+          return new RegExp(args[0]).test(receiver);
+        }
+        case 'size': {
+          if (typeof receiver === 'string') return receiver.length;
+          if (Array.isArray(receiver)) return receiver.length;
+          throw new Error(`CEL_EVAL: size() requires a string or array receiver`);
+        }
+        default:
+          throw new Error(`CEL_EVAL: unknown receiver method '${expr.method}'`);
+      }
     }
 
     case 'unary': {
@@ -485,8 +550,16 @@ function evalExpr(expr: Expr, ctx: CelContext, builtinCtx: BuiltinContext): unkn
         }
         case '-': return (left as number) - (right as number);
         case '*': return (left as number) * (right as number);
-        case '/': return (left as number) / (right as number);
-        case '%': return (left as number) % (right as number);
+        case '/': {
+          const divisor = right as number;
+          if (divisor === 0) throw new Error(`CEL_RUNTIME_ERROR: divide by zero`);
+          return (left as number) / divisor;
+        }
+        case '%': {
+          const modulus = right as number;
+          if (modulus === 0) throw new Error(`CEL_RUNTIME_ERROR: divide by zero`);
+          return (left as number) % modulus;
+        }
         case 'in': {
           if (Array.isArray(right)) return right.includes(left);
           if (isRecord(right)) return (left as string) in right;

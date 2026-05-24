@@ -92,20 +92,17 @@ describe('CEL feature: array indexing', () => {
 
   // CEL spec does NOT define negative indexing — negative indices should
   // produce an error or undefined rather than Python-style wrap-around.
-  // Current implementation: JavaScript arr[-1] is `undefined` (no error thrown).
-  // This documents the gap: CEL should throw an error for out-of-range index.
-  it.failing(
-    'arr[-1] should throw a range error, not silently return undefined (gap: negative index unchecked)',
+  it(
+    'arr[-1] should throw a range error, not silently return undefined',
     () => {
       // CEL spec: index out of range is a runtime error.
       expect(() => ev('arr[-1]', { arr: [1, 2, 3] })).toThrow();
     },
   );
 
-  it('arr[10] for out-of-bounds integer returns undefined (currently silently)', () => {
-    // Documents current permissive behaviour — no error on OOB.
-    const result = ev('arr[10]', { arr: [1, 2, 3] });
-    expect(result).toBeUndefined();
+  it('arr[10] for out-of-bounds integer throws a range error', () => {
+    // CEL spec: out-of-bounds index access is a runtime error.
+    expect(() => ev('arr[10]', { arr: [1, 2, 3] })).toThrow(/index out of range/);
   });
 });
 
@@ -117,29 +114,29 @@ describe('CEL feature: string receiver methods', () => {
   // NOT support method calls of the form `expr.method(args)`.  Parsing
   // `"hello".startsWith("h")` leaves the `(...)` as trailing tokens → parse error.
 
-  it.failing(
-    'string.startsWith(prefix) — method-call syntax not yet supported (gap: no receiver-method dispatch)',
+  it(
+    'string.startsWith(prefix) — receiver method dispatch',
     () => {
       expect(ev('"hello".startsWith("h")')).toBe(true);
     },
   );
 
-  it.failing(
-    'string.endsWith(suffix) — method-call syntax not yet supported',
+  it(
+    'string.endsWith(suffix) — receiver method dispatch',
     () => {
       expect(ev('"hello".endsWith("lo")')).toBe(true);
     },
   );
 
-  it.failing(
-    'string.contains(sub) — method-call syntax not yet supported',
+  it(
+    'string.contains(sub) — receiver method dispatch',
     () => {
       expect(ev('"hello world".contains("world")')).toBe(true);
     },
   );
 
-  it.failing(
-    'string.size() — method-call syntax not yet supported',
+  it(
+    'string.size() — receiver method dispatch',
     () => {
       expect(ev('"hello".size()')).toBe(5);
     },
@@ -150,15 +147,15 @@ describe('CEL feature: string receiver methods', () => {
 describe('CEL feature: has() built-in macro', () => {
   // CEL defines `has(x.field)` as a presence-check macro. The current
   // evaluator has no `has` builtin and no macro expansion.
-  it.failing(
-    'has(obj.field) returns true when field is present (gap: has() not implemented)',
+  it(
+    'has(obj.field) returns true when field is present',
     () => {
       expect(ev('has(obj.field)', { obj: { field: 'v' } })).toBe(true);
     },
   );
 
-  it.failing(
-    'has(obj.missing) returns false when field is absent (gap: has() not implemented)',
+  it(
+    'has(obj.missing) returns false when field is absent',
     () => {
       expect(ev('has(obj.missing)', { obj: {} })).toBe(false);
     },
@@ -181,8 +178,8 @@ describe('CEL feature: null-safe member access', () => {
 describe('CEL feature: division by zero', () => {
   // CEL spec: integer / 0 is a runtime error.
   // Current implementation: returns Infinity (JS behaviour), no error.
-  it.failing(
-    '1 / 0 should throw a division-by-zero error (gap: no divide-by-zero guard)',
+  it(
+    '1 / 0 throws a division-by-zero error',
     () => {
       expect(() => ev('1 / 0')).toThrow();
     },

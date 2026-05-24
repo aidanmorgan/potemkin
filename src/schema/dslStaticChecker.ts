@@ -71,6 +71,36 @@ export async function staticCheckDsl(
             }
           }
         }
+
+        // ── Dispatch commands ─────────────────────────────────────────────
+        for (const cmd of behavior.dispatchCommands ?? []) {
+          // Check targetId CEL expression
+          for (const p of extractStatePaths(cmd.targetId)) {
+            if (!pathExists(registry, boundary, p)) {
+              errors.push({
+                code: 'DSL_PATH_UNKNOWN',
+                boundary,
+                location: `behavior:${behavior.name}:dispatchCommands:targetId`,
+                detail: `Unknown state path 'state.${p}' in dispatchCommands targetId`,
+              });
+              log.warn({ boundary, path: p, behavior: behavior.name }, 'DSL_PATH_UNKNOWN in dispatchCommands targetId');
+            }
+          }
+          // Check payload CEL expressions
+          for (const [field, cel] of Object.entries(cmd.payload ?? {})) {
+            for (const p of extractStatePaths(cel)) {
+              if (!pathExists(registry, boundary, p)) {
+                errors.push({
+                  code: 'DSL_PATH_UNKNOWN',
+                  boundary,
+                  location: `behavior:${behavior.name}:dispatchCommands:payload:${field}`,
+                  detail: `Unknown state path 'state.${p}' in dispatchCommands payload`,
+                });
+                log.warn({ boundary, path: p, behavior: behavior.name }, 'DSL_PATH_UNKNOWN in dispatchCommands payload');
+              }
+            }
+          }
+        }
       }
 
       // ── Reducers ───────────────────────────────────────────────────────────
