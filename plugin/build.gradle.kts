@@ -42,13 +42,33 @@ dependencies {
     // Logging facade; Specmatic provides an SLF4J implementation on its classpath.
     implementation("org.slf4j:slf4j-api:2.0.9")
 
+    // Coroutines — used by HealthMonitor probe loop and FixtureLifecycleManager refresh loop.
+    // Specmatic bundles coroutines transitively; we declare it explicitly for compile-time safety.
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0")
+
+    // Resilience4j — retry + circuit breaker for ResilientForwarder.
+    implementation("io.github.resilience4j:resilience4j-retry:2.2.0")
+    implementation("io.github.resilience4j:resilience4j-circuitbreaker:2.2.0")
+    implementation("io.github.resilience4j:resilience4j-kotlin:2.2.0")
+
+    // Ktor server (Netty engine) — ControlServer. Matches Specmatic's bundled Ktor 2.3.13.
+    implementation("io.ktor:ktor-server-core-jvm:2.3.13")
+    implementation("io.ktor:ktor-server-netty-jvm:2.3.13")
+    implementation("io.ktor:ktor-server-content-negotiation-jvm:2.3.13")
+    implementation("io.ktor:ktor-serialization-jackson-jvm:2.3.13")
+
     // Test dependencies
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.0")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.0")
 
     // Specmatic types needed in tests.
     testImplementation("io.specmatic:specmatic-core:2.6.0")
+
+    // Ktor test client for ControlServerTest.
+    testImplementation("io.ktor:ktor-server-test-host-jvm:2.3.13")
+    testImplementation("io.ktor:ktor-client-content-negotiation-jvm:2.3.13")
 
     // SLF4J simple binding for tests (avoids "no binding" warning).
     testRuntimeOnly("org.slf4j:slf4j-simple:2.0.9")
