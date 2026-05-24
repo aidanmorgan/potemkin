@@ -22,15 +22,18 @@ class PluginInitializer : StubInitializer {
         log.info("Potemkin plugin initialising…")
         val config = PluginConfig.load()
         log.info(
-            "Potemkin plugin config: backendUrl={}, pathPatterns={}, forwardTimeoutMs={}",
+            "Potemkin plugin config: backendUrl={}, forwardTimeoutMs={}, discoveryRefreshOnFailureMs={}",
             config.backendUrl,
-            config.pathPatterns,
             config.forwardTimeoutMs,
+            config.discoveryRefreshOnFailureMs,
         )
         val client = CqrsBackendClient(config.backendUrl, config.forwardTimeoutMs)
-        val matcher = PathMatcher(config.pathPatterns)
-        val handler = StatefulRequestHandler(matcher, client)
+        val discovery = RoutesDiscoveryClient(config.backendUrl, config.discoveryRefreshOnFailureMs)
+        val handler = StatefulRequestHandler(discovery, client)
         httpStub.registerHandler(handler)
-        log.info("Potemkin StatefulRequestHandler registered (intercepting {} pattern(s))", config.pathPatterns.size)
+        log.info(
+            "Potemkin StatefulRequestHandler registered — routes discovered via {}/_engine/routes",
+            config.backendUrl,
+        )
     }
 }
