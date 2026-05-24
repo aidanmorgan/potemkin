@@ -12,8 +12,9 @@
  */
 
 import type { RequestHandler, Request, Response } from 'express';
+import { createHash } from 'node:crypto';
 import type { BootedSystem } from '../engine/boot.js';
-import type { ForwardedRequest, ForwardedResponse } from './types.js';
+import type { ForwardedRequest, ForwardedResponse, RoutesDiscoveryResponse } from './types.js';
 import type { Command, Intent, JsonObject, JsonValue } from '../types.js';
 import { matchRoute } from '../contract/router.js';
 import { translateIntent } from '../engine/router.js';
@@ -370,4 +371,71 @@ export function healthHandler(_req: Request, res: Response): void {
     engine: 'potemkin-stateful',
     version: PKG_VERSION,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Routes discovery handler
+// ---------------------------------------------------------------------------
+
+/** Default TTL in seconds for the routes discovery response. */
+const DEFAULT_ROUTES_TTL = 30;
+
+/**
+ * Compute a stable SHA-256 hex checksum over an alphabetically-sorted list of
+ * contract paths.  The paths are joined with newlines before hashing so that
+ * an empty list and a single empty-string path produce different digests.
+ */
+function computePathsChecksum(sortedPaths: readonly string[]): string {
+  return createHash('sha256').update(sortedPaths.join('\n')).digest('hex');
+}
+
+/**
+ * Resolve the TTL in seconds from the ENGINE_ROUTES_TTL_SECONDS environment
+ * variable, falling back to DEFAULT_ROUTES_TTL when the variable is absent or
+ * not a positive integer.
+ */
+function resolveRoutesTtl(): number {
+  const raw = process.env['ENGINE_ROUTES_TTL_SECONDS'];
+  if (raw !== undefined) {
+    const parsed = Number(raw);
+    if (Number.isInteger(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  return DEFAULT_ROUTES_TTL;
+}
+
+/**
+ * Create an Express request handler that implements GET /_engine/routes.
+ *
+ * The handler returns a RoutesDiscoveryResponse containing the sorted list of
+ * contract paths that the engine owns, a checksum for change-detection, and
+ * caching hints.  It supports conditional requests via If-None-Match / ETag.
+ */
+export function createRoutesHandler(sys: BootedSystem): RequestHandler {
+  return function routesHandler(req: Request, res: Response): void {
+    const sortedPaths = Object.keys(sys.dsl.byContractPath).sort();
+    const checksum = computePathsChecksum(sortedPaths);
+    const ttlSeconds = resolveRoutesTtl();
+
+    // Conditional request: respond 304 when the client's ETag matches.
+    const ifNoneMatch = req.headers['if-none-match'];
+    if (ifNoneMatch === checksum) {
+      res.status(304).end();
+      return;
+    }
+
+    const body: RoutesDiscoveryResponse = {
+      paths: sortedPaths,
+      engine: 'potemkin-stateful',
+      version: PKG_VERSION,
+      ttlSeconds,
+      generatedAt: new Date().toISOString(),
+      checksum,
+    };
+
+    res.setHeader('Cache-Control', `max-age=${ttlSeconds}, public`);
+    res.setHeader('ETag', checksum);
+    res.status(200).json(body);
+  };
 }

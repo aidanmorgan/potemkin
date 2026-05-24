@@ -121,8 +121,8 @@ export type { ExpressApp } from './http/gateway.js';
 export { createGateway } from './http/gateway.js';
 
 // ── Forwarding (/_engine/*) ───────────────────────────────────────────────────
-export type { ForwardedRequest, ForwardedResponse } from './forwarding/index.js';
-export { createForwardingHandler, healthHandler } from './forwarding/index.js';
+export type { ForwardedRequest, ForwardedResponse, RoutesDiscoveryResponse } from './forwarding/index.js';
+export { createForwardingHandler, healthHandler, createRoutesHandler } from './forwarding/index.js';
 export { registerAdminRoutes } from './http/adminRoutes.js';
 
 // ── Schema ────────────────────────────────────────────────────────────────────
