@@ -10,6 +10,7 @@ import type { Tracer } from '../observability/tracing.js';
 import type { EngineMetrics } from '../observability/metrics.js';
 import type { ObjectGraphSchemaRegistry } from '../schema/types.js';
 import type { ExpectationStore } from '../specmatic/types.js';
+import type { DerivedProjectionRegistry } from '../projections/types.js';
 
 import fs from 'fs';
 import { compileDsl } from '../dsl/parser.js';
@@ -27,6 +28,7 @@ import { staticCheckDsl } from '../schema/dslStaticChecker.js';
 import { createExpectationStore } from '../specmatic/expectationStore.js';
 import { loadExpectationsFromDirectory } from '../specmatic/loader.js';
 import { loadSpecmaticConfig } from '../specmatic/config.js';
+import { createDerivedProjectionRegistry, applyEventToDerivedProjections } from '../projections/engine.js';
 
 export interface BootInput {
   readonly openapi: OpenApiDoc;
@@ -83,6 +85,11 @@ export interface BootedSystem {
    * The gateway consults this before dispatching to the CQRS pipeline.
    */
   readonly expectations: ExpectationStore;
+  /**
+   * REQ-88/90: Derived projection registry — keyed by projection name.
+   * Populated by applyEventToDerivedProjections after each committed event.
+   */
+  readonly derivedProjections: DerivedProjectionRegistry;
 }
 
 /** Header names that indicate an optimistic-concurrency precondition. */
@@ -349,7 +356,23 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
     // required header parameter; encode as a (boundary, method) → boolean map.
     const preconditionRequired = buildPreconditionMap(input.openapi, dsl.boundaries);
 
-    // ── Step 9: Expectation store (Specmatic stub support) ───────────────────
+    // ── Step 9: Derived projection registry (REQ-88) ─────────────────────────
+    const derivedProjections = createDerivedProjectionRegistry();
+
+    // Hydrate derived projections from baseline
+    if (dsl.derivedProjections && dsl.derivedProjections.length > 0) {
+      for (const event of frozenBaseline) {
+        applyEventToDerivedProjections(
+          event,
+          dsl.derivedProjections,
+          derivedProjections,
+          cel,
+          bootLog,
+        );
+      }
+    }
+
+    // ── Step 10: Expectation store (Specmatic stub support) ──────────────────
     const expectations = createExpectationStore();
 
     if (input.specmaticStubDir) {
@@ -424,6 +447,7 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       schemaRegistry,
       requiresPrecondition: preconditionRequired,
       expectations,
+      derivedProjections,
     };
   });
 }

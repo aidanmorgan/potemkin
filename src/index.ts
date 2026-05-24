@@ -6,6 +6,7 @@ export type {
   JsonValue,
   Intent,
   Origin,
+  Actor,
   Command,
   DomainEvent,
   ExecutionResult,
@@ -27,6 +28,9 @@ export {
   StubNotFoundError,
   StubValidationFailedError,
   StubBodyInvalidError,
+  AuthenticationRequiredError,
+  AuthorizationDeniedError,
+  IdempotencyConflictError,
 } from './errors.js';
 
 // ── IDs ───────────────────────────────────────────────────────────────────────
@@ -51,8 +55,16 @@ export type {
   ScriptDeclaration,
   BoundaryConfig,
   CompiledDsl,
+  SagaConfig,
+  SagaStep,
+  SagaTrigger,
+  SagaCompensation,
+  IdempotencyConfig,
+  DerivedProjectionConfig,
+  DerivedProjectionReduceEntry,
 } from './dsl/types.js';
-export { validateBoundaryConfig } from './dsl/schema.js';
+export { validateBoundaryConfig, validateGlobalConfig } from './dsl/schema.js';
+export type { GlobalConfig } from './dsl/schema.js';
 export { parseDslYaml, compileDsl } from './dsl/parser.js';
 
 // ── Scripts (inline TypeScript escape hatch) ───────────────────────────────────
@@ -146,3 +158,22 @@ export { typeOfJson, isAssignable, validateEntityAgainstSchema } from './schema/
 export { staticCheckDsl } from './schema/dslStaticChecker.js';
 export type { DslCheckError } from './schema/dslStaticChecker.js';
 export { guardAssignPath, guardAssignedValue } from './schema/runtimeGuard.js';
+
+// ── Identity (REQ-84) ─────────────────────────────────────────────────────────
+export { extractActor } from './identity/actorExtractor.js';
+export { checkScopes } from './identity/scopeChecker.js';
+
+// ── Idempotency (REQ-81) ──────────────────────────────────────────────────────
+export type { IdempotencyStore, IdempotencyEntry, CachedResponse } from './idempotency/store.js';
+export { createIdempotencyStore, getIdempotencyStore, resetIdempotencyStore } from './idempotency/store.js';
+
+// ── Sagas (REQ-73) ────────────────────────────────────────────────────────────
+export { runSaga, findTriggeredSagas } from './sagas/orchestrator.js';
+
+// ── Derived Projections (REQ-88) ──────────────────────────────────────────────
+export type { DerivedStateMap, DerivedProjectionRegistry } from './projections/types.js';
+export {
+  createDerivedProjectionRegistry,
+  applyEventToDerivedProjections,
+  getDerivedProjection,
+} from './projections/engine.js';

@@ -3,6 +3,8 @@ import type { DomainEvent, JsonObject } from '../types.js';
 import { projectEvent } from './projection.js';
 import { childLogger } from '../observability/logger.js';
 import { withSpan } from '../observability/tracing.js';
+import { applyEventToDerivedProjections } from '../projections/engine.js';
+import { resetIdempotencyStore } from '../idempotency/store.js';
 
 /**
  * Perform an ephemeral reset of the running system.
@@ -67,6 +69,25 @@ export function resetSystem(sys: BootedSystem): void {
           schemaRegistry: sys.schemaRegistry,
         });
       }
+
+      // ── Step 5: Reset derived projections ──────────────────────────────────
+      if (sys.derivedProjections) {
+        sys.derivedProjections.clear();
+        if (sys.dsl.derivedProjections && sys.dsl.derivedProjections.length > 0) {
+          for (const event of rehydratedEvents) {
+            applyEventToDerivedProjections(
+              event,
+              sys.dsl.derivedProjections,
+              sys.derivedProjections,
+              sys.cel,
+              resetLog,
+            );
+          }
+        }
+      }
+
+      // ── Step 6: Reset idempotency store ────────────────────────────────────
+      resetIdempotencyStore();
 
       const durationMs = Date.now() - start;
       const entityCount = sys.graph.size();

@@ -14,6 +14,7 @@ import {
   UnhandledOperationError,
   InternalExecutionError,
 } from '../errors.js';
+import { checkScopes } from '../identity/scopeChecker.js';
 import { invokeScript } from '../scripts/sandbox.js';
 import { nextUuidv7 } from '../ids/uuidv7.js';
 import { deepClone, deepMerge } from '../stategraph/graph.js';
@@ -171,6 +172,12 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
       },
       logger: log ?? logger ?? ({ child: () => ({} as Logger), info: () => {}, debug: () => {}, warn: () => {}, error: () => {} } as unknown as Logger),
     });
+
+    // REQ-84: RBAC scope check — before requires and condition
+    if (behavior.match.requiredScopes && behavior.match.requiredScopes.length > 0) {
+      // throws AuthenticationRequiredError (401) or AuthorizationDeniedError (403)
+      checkScopes(command.actor, behavior.match.requiredScopes, behavior.name);
+    }
 
     // REQ-61: evaluate requires[] FIRST (before match.condition)
     if (behavior.match.requires && behavior.match.requires.length > 0) {

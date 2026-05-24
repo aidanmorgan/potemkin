@@ -10,6 +10,13 @@ import type {
   RequiresGuard,
   ScriptDeclaration,
   SecondaryCommandSpec,
+  SagaConfig,
+  SagaStep,
+  SagaTrigger,
+  SagaCompensation,
+  IdempotencyConfig,
+  DerivedProjectionConfig,
+  DerivedProjectionReduceEntry,
 } from './types.js';
 import { createCelEvaluator } from '../cel/evaluator.js';
 
@@ -287,6 +294,29 @@ function validateBehaviorRule(raw: unknown, index: number): BehaviorRule {
   const condition = requireString(matchRaw, 'condition', `${ctx}.match`);
   validateCelOrScript(condition, `${ctx}.match.condition`, 'behavior');
 
+  // REQ-84: parse required_scopes[] array
+  let requiredScopes: readonly string[] | undefined;
+  const requiredScopesRaw = matchRaw['required_scopes'];
+  if (requiredScopesRaw !== undefined && requiredScopesRaw !== null) {
+    if (!Array.isArray(requiredScopesRaw)) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `${ctx}.match: "required_scopes" must be an array`,
+        { field: 'match.required_scopes', context: ctx },
+      );
+    }
+    requiredScopes = requiredScopesRaw.map((item, i) => {
+      if (typeof item !== 'string' || item.trim() === '') {
+        throw new BootError(
+          'BOOT_ERR_DSL_SYNTAX',
+          `${ctx}.match.required_scopes[${i}]: must be a non-empty string`,
+          { context: ctx },
+        );
+      }
+      return item;
+    });
+  }
+
   // REQ-61: parse requires[] array
   let requires: readonly RequiresGuard[] | undefined;
   const requiresRaw = matchRaw['requires'];
@@ -408,6 +438,7 @@ function validateBehaviorRule(raw: unknown, index: number): BehaviorRule {
       intent: intentRaw,
       condition,
       ...(requires !== undefined ? { requires } : {}),
+      ...(requiredScopes !== undefined ? { requiredScopes } : {}),
     },
     ...(emit !== undefined ? { emit } : {}),
     ...(emitWhen !== undefined ? { emitWhen } : {}),
@@ -799,5 +830,188 @@ export function validateBoundaryConfig(raw: unknown): BoundaryConfig {
     eventCatalog,
     ...(initialization !== undefined ? { initialization } : {}),
     ...(scripts !== undefined ? { scripts } : {}),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Tier-2: Global config validation (sagas, idempotency, derived_projections)
+// ---------------------------------------------------------------------------
+
+function validateSagaCompensation(raw: unknown, ctx: string): SagaCompensation {
+  if (!isRecord(raw)) {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}: must be an object`, { context: ctx });
+  }
+  const intentRaw = requireString(raw, 'intent', ctx);
+  if (intentRaw !== 'creation' && intentRaw !== 'mutation' && intentRaw !== 'query') {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}: intent must be creation|mutation|query`, { context: ctx });
+  }
+  const targetId = optionalString(raw, 'target_id', ctx);
+  const payload = requireStringStringMap(raw, 'payload', ctx);
+  return {
+    intent: intentRaw,
+    ...(targetId !== undefined ? { targetId } : {}),
+    ...(payload !== undefined ? { payload } : {}),
+  };
+}
+
+function validateSagaStep(raw: unknown, idx: number): SagaStep {
+  const ctx = `sagas[].steps[${idx}]`;
+  if (!isRecord(raw)) {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}: must be an object`, { context: ctx });
+  }
+  const name = requireString(raw, 'name', ctx);
+  const boundary = requireString(raw, 'boundary', ctx);
+  const intentRaw = requireString(raw, 'intent', ctx);
+  if (intentRaw !== 'creation' && intentRaw !== 'mutation' && intentRaw !== 'query') {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}: intent must be creation|mutation|query`, { context: ctx });
+  }
+  const targetId = optionalString(raw, 'target_id', ctx);
+  const payload = requireStringStringMap(raw, 'payload', ctx);
+  let compensation: SagaCompensation | undefined;
+  if (raw['compensation'] !== undefined && raw['compensation'] !== null) {
+    compensation = validateSagaCompensation(raw['compensation'], `${ctx}.compensation`);
+  }
+  return {
+    name,
+    boundary,
+    intent: intentRaw,
+    ...(targetId !== undefined ? { targetId } : {}),
+    ...(payload !== undefined ? { payload } : {}),
+    ...(compensation !== undefined ? { compensation } : {}),
+  };
+}
+
+function validateSagaTrigger(raw: unknown, ctx: string): SagaTrigger {
+  if (!isRecord(raw)) {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}: must be an object`, { context: ctx });
+  }
+  const boundary = requireString(raw, 'boundary', ctx);
+  const intentRaw = requireString(raw, 'intent', ctx);
+  if (intentRaw !== 'creation' && intentRaw !== 'mutation' && intentRaw !== 'query') {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}: intent must be creation|mutation|query`, { context: ctx });
+  }
+  const condition = requireString(raw, 'condition', ctx);
+  try {
+    celEvaluator.compile(condition);
+  } catch (err) {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.condition: invalid CEL: ${err instanceof Error ? err.message : String(err)}`, { context: ctx });
+  }
+  return { boundary, intent: intentRaw, condition };
+}
+
+function validateSagaConfig(raw: unknown, idx: number): SagaConfig {
+  const ctx = `sagas[${idx}]`;
+  if (!isRecord(raw)) {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}: must be an object`, { context: ctx });
+  }
+  const name = requireString(raw, 'name', ctx);
+  if (!isRecord(raw['trigger'])) {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}: "trigger" must be an object`, { context: ctx });
+  }
+  const trigger = validateSagaTrigger(raw['trigger'], `${ctx}.trigger`);
+  if (!Array.isArray(raw['steps'])) {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}: "steps" must be an array`, { context: ctx });
+  }
+  const steps = (raw['steps'] as unknown[]).map((s, i) => validateSagaStep(s, i));
+  return { name, trigger, steps };
+}
+
+function validateIdempotencyConfig(raw: unknown): IdempotencyConfig {
+  const ctx = 'idempotency';
+  if (!isRecord(raw)) {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}: must be an object`, { context: ctx });
+  }
+  const enabled = raw['enabled'] !== false; // default true
+  const ttlSeconds = typeof raw['ttl_seconds'] === 'number' ? raw['ttl_seconds'] : 86400;
+  const hashIncludesBody = raw['hash_includes_body'] !== false; // default true
+  return { enabled, ttlSeconds, hashIncludesBody };
+}
+
+function validateDerivedProjectionReduceEntry(raw: unknown, idx: number): DerivedProjectionReduceEntry {
+  const ctx = `derived_projections[].reduce[${idx}]`;
+  if (!isRecord(raw)) {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}: must be an object`, { context: ctx });
+  }
+  const on = requireString(raw, 'on', ctx);
+  const assign = requireStringStringMap(raw, 'assign', ctx);
+  const append = requireStringStringMap(raw, 'append', ctx);
+  return {
+    on,
+    ...(assign !== undefined ? { assign } : {}),
+    ...(append !== undefined ? { append } : {}),
+  };
+}
+
+function validateDerivedProjectionConfig(raw: unknown, idx: number): DerivedProjectionConfig {
+  const ctx = `derived_projections[${idx}]`;
+  if (!isRecord(raw)) {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}: must be an object`, { context: ctx });
+  }
+  const name = requireString(raw, 'name', ctx);
+  const key = requireString(raw, 'key', ctx);
+  try {
+    celEvaluator.compile(key);
+  } catch (err) {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.key: invalid CEL: ${err instanceof Error ? err.message : String(err)}`, { context: ctx });
+  }
+
+  if (!Array.isArray(raw['subscribe'])) {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}: "subscribe" must be an array`, { context: ctx });
+  }
+  const subscribe = (raw['subscribe'] as unknown[]).map((s, i) => {
+    if (typeof s !== 'string') {
+      throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.subscribe[${i}]: must be a string`, { context: ctx });
+    }
+    return s;
+  });
+
+  if (!Array.isArray(raw['reduce'])) {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}: "reduce" must be an array`, { context: ctx });
+  }
+  const reduce = (raw['reduce'] as unknown[]).map((r, i) => validateDerivedProjectionReduceEntry(r, i));
+
+  return { name, key, subscribe, reduce };
+}
+
+export interface GlobalConfig {
+  readonly sagas?: readonly SagaConfig[];
+  readonly idempotency?: IdempotencyConfig;
+  readonly derivedProjections?: readonly DerivedProjectionConfig[];
+}
+
+/**
+ * Validate a raw global config object (top-level Tier-2 fields).
+ * This is parsed from an optional globalYaml string in compileDsl.
+ */
+export function validateGlobalConfig(raw: unknown): GlobalConfig {
+  if (!isRecord(raw)) {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', 'Global config must be a YAML mapping object', { received: typeof raw });
+  }
+
+  let sagas: readonly SagaConfig[] | undefined;
+  if (raw['sagas'] !== undefined && raw['sagas'] !== null) {
+    if (!Array.isArray(raw['sagas'])) {
+      throw new BootError('BOOT_ERR_DSL_SYNTAX', 'Global config: "sagas" must be an array', { field: 'sagas' });
+    }
+    sagas = (raw['sagas'] as unknown[]).map((s, i) => validateSagaConfig(s, i));
+  }
+
+  let idempotency: IdempotencyConfig | undefined;
+  if (raw['idempotency'] !== undefined && raw['idempotency'] !== null) {
+    idempotency = validateIdempotencyConfig(raw['idempotency']);
+  }
+
+  let derivedProjections: readonly DerivedProjectionConfig[] | undefined;
+  if (raw['derived_projections'] !== undefined && raw['derived_projections'] !== null) {
+    if (!Array.isArray(raw['derived_projections'])) {
+      throw new BootError('BOOT_ERR_DSL_SYNTAX', 'Global config: "derived_projections" must be an array', { field: 'derived_projections' });
+    }
+    derivedProjections = (raw['derived_projections'] as unknown[]).map((p, i) => validateDerivedProjectionConfig(p, i));
+  }
+
+  return {
+    ...(sagas !== undefined ? { sagas } : {}),
+    ...(idempotency !== undefined ? { idempotency } : {}),
+    ...(derivedProjections !== undefined ? { derivedProjections } : {}),
   };
 }
