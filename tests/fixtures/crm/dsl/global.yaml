@@ -1,0 +1,72 @@
+# The Nuisance Bureau CRM — Global configuration
+# Contains: idempotency, sagas (with compensation), derived projections
+# REQ-81/82/83: Idempotency config
+idempotency:
+  enabled: true
+  ttl_seconds: 86400
+  hash_includes_body: true
+
+# REQ-73–80: Sagas with compensation
+sagas:
+  # Lead Conversion Saga: creates an Opportunity when a lead is converted
+  # Steps: create opportunity → if fails, revert lead status
+  - name: LeadConversionSaga
+    trigger:
+      boundary: Lead
+      intent: mutation
+      condition: "event.type == 'LeadConverted'"
+    steps:
+      - name: createOpportunity
+        boundary: Opportunity
+        intent: creation
+        target_id: "$uuidv7()"
+        payload:
+          leadId: "event.aggregateId"
+          agentId: "event.payload.agentId"
+          campaignId: "event.payload.campaignId"
+          value: "command.payload.value"
+          probability: "command.payload.probability"
+          expectedCloseDate: "command.payload.expectedCloseDate"
+        compensation:
+          intent: mutation
+          payload:
+            revertStatus: "true"
+
+# REQ-88/89/90: Derived projections aggregating across boundaries
+derived_projections:
+  # CampaignDashboard: aggregates lead count and conversion rate per campaign
+  - name: CampaignDashboard
+    key: "event.payload.campaignId != null ? event.payload.campaignId : event.payload.assignedCampaignId"
+    subscribe:
+      - "Lead:LeadCreated"
+      - "Lead:LeadConverted"
+      - "Call:CallLogged"
+      - "Opportunity:OpportunityWon"
+    reduce:
+      - on: "Lead:LeadCreated"
+        assign:
+          totalLeads: "state.totalLeads != null ? state.totalLeads + 1 : 1"
+          totalConversions: "state.totalConversions != null ? state.totalConversions : 0"
+      - on: "Lead:LeadConverted"
+        assign:
+          totalConversions: "state.totalConversions != null ? state.totalConversions + 1 : 1"
+      - on: "Call:CallLogged"
+        assign:
+          totalCalls: "state.totalCalls != null ? state.totalCalls + 1 : 1"
+      - on: "Opportunity:OpportunityWon"
+        assign:
+          wonCount: "state.wonCount != null ? state.wonCount + 1 : 1"
+
+  # AgentPerformance: tracks per-agent call and conversion metrics
+  - name: AgentPerformance
+    key: "event.payload.agentId != null ? event.payload.agentId : event.aggregateId"
+    subscribe:
+      - "Call:CallLogged"
+      - "Agent:AgentConversionIncremented"
+    reduce:
+      - on: "Call:CallLogged"
+        assign:
+          callCount: "state.callCount != null ? state.callCount + 1 : 1"
+      - on: "Agent:AgentConversionIncremented"
+        assign:
+          conversionCount: "state.conversionCount != null ? state.conversionCount + 1 : 1"

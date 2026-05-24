@@ -1,0 +1,129 @@
+boundary: Agent
+contract_path: /agents
+fallback_override: true
+identity:
+  creation:
+    generate: $uuidv7()
+query_mapping:
+  currentStatus: "state.currentStatus == query.currentStatus"
+
+event_catalog:
+  - type: AgentCreated
+    payload_template:
+      id: "command.targetId"
+      name: "command.payload.name"
+      email: "command.payload.email"
+      dailyCallQuota: "command.payload.dailyCallQuota"
+      skills: "command.payload.skills"
+
+  - type: AgentStatusChanged
+    payload_template:
+      newStatus: "command.payload.currentStatus"
+      changedAt: "$now()"
+
+  - type: AgentCallCountIncremented
+    payload_template:
+      callId: "command.payload.callId"
+      incrementAt: "$now()"
+
+  - type: AgentConversionIncremented
+    payload_template:
+      incrementAt: "$now()"
+
+behaviors:
+  # Create agent — REQ-61: match.requires to validate quota > 0
+  - name: createAgent
+    match:
+      intent: creation
+      condition: "true"
+      requires:
+        - name: valid-quota
+          condition: "command.payload.dailyCallQuota > 0"
+          error_code: INVALID_QUOTA
+          error_message: "Daily call quota must be greater than zero"
+    emit: AgentCreated
+
+  # Update status — REQ-64: emit_when with 2 branches based on new status
+  - name: updateAgentStatus
+    match:
+      intent: mutation
+      condition: "$concat('/agents/', command.targetId, '/status') == command.path"
+    emit_when:
+      - when: "command.payload.currentStatus == 'AVAILABLE' || command.payload.currentStatus == 'BREAK' || command.payload.currentStatus == 'OFFLINE'"
+        emit: AgentStatusChanged
+      - when: "command.payload.currentStatus == 'ON_CALL'"
+        emit: AgentStatusChanged
+
+  # Increment call count (secondary command from call logging)
+  - name: incrementCallCount
+    match:
+      intent: mutation
+      condition: "command.payload.callId != null && command.payload.incrementCall == true"
+    emit: AgentCallCountIncremented
+
+  # Increment conversions (secondary command from opportunity win)
+  - name: incrementConversions
+    match:
+      intent: mutation
+      condition: "command.payload.incrementConversions == true"
+    emit: AgentConversionIncremented
+
+reducers:
+  - on: AgentCreated
+    assign:
+      id: "event.payload.id"
+      name: "event.payload.name"
+      email: "event.payload.email"
+      dailyCallQuota: "event.payload.dailyCallQuota"
+      dailyCallCount: "0"
+      currentStatus: "'AVAILABLE'"
+      assignedCampaignIds: "[]"
+      totalConversions: "0"
+      skills: "event.payload.skills != null ? event.payload.skills : []"
+
+  - on: AgentStatusChanged
+    assign:
+      currentStatus: "event.payload.newStatus"
+      lastActiveAt: "event.payload.changedAt"
+
+  - on: AgentCallCountIncremented
+    assign:
+      dailyCallCount: "state.dailyCallCount + 1"
+
+  - on: AgentConversionIncremented
+    assign:
+      totalConversions: "state.totalConversions + 1"
+
+initialization:
+  - id: "00000000-0000-7000-8000-000000000003"
+    name: "Alice Thompson"
+    email: "alice@nuisance-bureau.com"
+    skills: ["B2B", "SaaS"]
+    dailyCallQuota: 40
+    dailyCallCount: 0
+    currentStatus: "AVAILABLE"
+    assignedCampaignIds: ["00000000-0000-7000-8000-000000000001"]
+    totalConversions: 12
+    lastActiveAt: "1970-01-01T00:00:00.000Z"
+
+  - id: "00000000-0000-7000-8000-000000000004"
+    name: "Bob Martinez"
+    email: "bob@nuisance-bureau.com"
+    skills: ["Enterprise", "Finance"]
+    dailyCallQuota: 35
+    dailyCallCount: 0
+    currentStatus: "AVAILABLE"
+    assignedCampaignIds: ["00000000-0000-7000-8000-000000000001"]
+    totalConversions: 8
+    lastActiveAt: "1970-01-01T00:00:00.000Z"
+
+  - id: "00000000-0000-7000-8000-000000000005"
+    name: "Carla Nguyen"
+    email: "carla@nuisance-bureau.com"
+    skills: ["SMB", "Retail"]
+    dailyCallQuota: 50
+    dailyCallCount: 0
+    currentStatus: "OFFLINE"
+    assignedCampaignIds: []
+    totalConversions: 5
+    lastActiveAt: "1970-01-01T00:00:00.000Z"

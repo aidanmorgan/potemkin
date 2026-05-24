@@ -1,0 +1,134 @@
+boundary: Opportunity
+contract_path: /opportunities
+fallback_override: true
+identity:
+  creation:
+    generate: $uuidv7()
+query_mapping:
+  stage: "state.stage == query.stage"
+  agentId: "state.agentId == query.agentId"
+  campaignId: "state.campaignId == query.campaignId"
+
+event_catalog:
+  - type: OpportunityCreated
+    payload_template:
+      id: "command.targetId"
+      leadId: "command.payload.leadId"
+      agentId: "command.payload.agentId"
+      campaignId: "command.payload.campaignId"
+      value: "command.payload.value"
+      probability: "command.payload.probability"
+      expectedCloseDate: "command.payload.expectedCloseDate"
+
+  - type: OpportunityAdvanced
+    payload_template:
+      newStage: "state.stage == 'PROPOSED' ? 'NEGOTIATING' : 'NEGOTIATING'"
+      probability: "command.payload.probability"
+      advancedAt: "$now()"
+
+  # REQ-65: schema_ref on OpportunityWon event
+  - type: OpportunityWon
+    schema_ref: "#/components/schemas/OpportunityWon"
+    payload_template:
+      id: "command.targetId"
+      leadId: "state.leadId"
+      agentId: "state.agentId"
+      campaignId: "state.campaignId"
+      value: "state.value"
+      closedAt: "$now()"
+
+  - type: OpportunityLost
+    payload_template:
+      closureReason: "command.payload.closureReason"
+      closedAt: "$now()"
+
+behaviors:
+  # Create opportunity (called via saga from lead conversion)
+  - name: createOpportunity
+    match:
+      intent: creation
+      condition: "true"
+      requires:
+        - name: positive-value
+          condition: "command.payload.value > 0"
+          error_code: INVALID_OPPORTUNITY_VALUE
+          error_message: "Opportunity value must be greater than zero"
+    emit: OpportunityCreated
+
+  # Advance opportunity — REQ-61: requires not in terminal state
+  - name: advanceOpportunity
+    match:
+      intent: mutation
+      condition: "$concat('/opportunities/', command.targetId, '/advance') == command.path"
+      requires:
+        - name: not-closed
+          condition: "state.stage != 'WON' && state.stage != 'LOST'"
+          error_code: OPPORTUNITY_CLOSED
+          error_message: "Cannot advance a closed opportunity"
+        - name: not-negotiating
+          condition: "state.stage != 'NEGOTIATING'"
+          error_code: ALREADY_NEGOTIATING
+          error_message: "Opportunity is already at NEGOTIATING stage"
+    emit: OpportunityAdvanced
+
+  # Close as WON — REQ-62: postcondition ensures value > 0 after winning
+  - name: closeWon
+    match:
+      intent: mutation
+      condition: "$concat('/opportunities/', command.targetId, '/close') == command.path && command.payload.outcome == 'WON'"
+      requires:
+        - name: must-be-negotiating
+          condition: "state.stage == 'NEGOTIATING' || state.stage == 'PROPOSED'"
+          error_code: CANNOT_WIN
+          error_message: "Opportunity must be in PROPOSED or NEGOTIATING stage to be won"
+    emit: OpportunityWon
+    postcondition: "state.stage == 'WON' && state.value > 0"
+    # REQ-63: conditional dispatch to agent metrics
+    dispatch_commands:
+      - boundary: Agent
+        intent: mutation
+        target_id: "state.agentId"
+        payload:
+          incrementConversions: "true"
+        condition: "state.agentId != null"
+
+  # Close as LOST — REQ-64: emit_when with alternative
+  - name: closeLost
+    match:
+      intent: mutation
+      condition: "$concat('/opportunities/', command.targetId, '/close') == command.path && command.payload.outcome == 'LOST'"
+    emit_when:
+      - when: "state.stage == 'NEGOTIATING'"
+        emit: OpportunityLost
+      - when: "state.stage == 'PROPOSED'"
+        emit: OpportunityLost
+
+reducers:
+  - on: OpportunityCreated
+    assign:
+      id: "event.payload.id"
+      leadId: "event.payload.leadId"
+      agentId: "event.payload.agentId"
+      campaignId: "event.payload.campaignId"
+      stage: "'PROPOSED'"
+      value: "event.payload.value"
+      probability: "event.payload.probability != null ? event.payload.probability : 50"
+      expectedCloseDate: "event.payload.expectedCloseDate"
+
+  - on: OpportunityAdvanced
+    assign:
+      stage: "'NEGOTIATING'"
+      probability: "event.payload.probability != null ? event.payload.probability : state.probability"
+
+  - on: OpportunityWon
+    assign:
+      stage: "'WON'"
+      closedAt: "event.payload.closedAt"
+
+  - on: OpportunityLost
+    assign:
+      stage: "'LOST'"
+      closedAt: "event.payload.closedAt"
+      closureReason: "event.payload.closureReason"
+
+initialization: []
