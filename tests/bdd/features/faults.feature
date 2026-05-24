@@ -1,22 +1,22 @@
 Feature: Faults, Concurrency, and Errors
 
   Background:
-    Given the banking simulator is booted
+    Given the CRM simulator is booted
 
   Scenario: REQ-23 — Boot fails fast on DSL syntax error
     When I attempt to boot the simulator with DSL "boundary: [invalid yaml{"
     Then boot should fail with code "BOOT_ERR_DSL_SYNTAX"
 
   Scenario: REQ-24 — Invalid request returns 400 CONTRACT_VIOLATION
-    When I send a POST to "/customers/req24-test" with an invalid body
+    When I send a POST to "/leads/req24-test" with an invalid body
     Then the response status should be 400 with code "CONTRACT_VIOLATION"
 
   Scenario: REQ-25 — Mutation of absent entity returns 404 ENTITY_ABSENCE
-    When I PATCH a non-existent loan
+    When I PATCH a non-existent opportunity
     Then the response should be 404 ENTITY_ABSENCE
 
   Scenario: REQ-26 — Creation of existing entity returns 409 ENTITY_CONFLICT
-    Given the seed customer "customer-seed-001" exists in the system
+    Given the seed lead "lead-seed-001" exists in the system
     When I send a creation request targeting an existing entity id
     Then the response should be 409 ENTITY_CONFLICT
 

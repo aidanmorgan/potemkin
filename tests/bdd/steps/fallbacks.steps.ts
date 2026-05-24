@@ -60,10 +60,10 @@ initialization:
 
 // REQ-33: Read fallback returns entity from state graph when no rule matches
 When('I GET an entity with no specific query rule and fallback enabled', async function (this: SimWorld) {
-  // Customer boundary has fallback_override: true
-  // GET /customers/customer-seed-001 — Customer DSL has no 'query' behavior rule
+  // Lead boundary has fallback_override: true
+  // GET /leads/lead-seed-001 — Lead DSL has no 'query' behavior rule
   // but fallback is enabled so it should return the entity from the state graph
-  await this.sendHttp('GET', '/customers/customer-seed-001');
+  await this.sendHttp('GET', '/leads/lead-seed-001');
 });
 
 Then('the response should return the entity from the state graph', function (this: SimWorld) {
@@ -71,7 +71,7 @@ Then('the response should return the entity from the state graph', function (thi
   // Should succeed with 200 and the entity body
   assert.strictEqual(this.lastResponse.status, 200, `Expected 200 but got ${this.lastResponse.status}. Body: ${JSON.stringify(this.lastResponse.body)}`);
   const body = this.lastResponse.body as Record<string, unknown>;
-  assert.ok(body['id'] || body['name'], 'Response body should contain entity data');
+  assert.ok(body['id'] || body['companyName'], 'Response body should contain entity data');
 });
 
 // REQ-34: Strict fallback test — uses a dedicated boundary with no mutation behaviors.
@@ -144,15 +144,15 @@ Then('the seed entity state has the payload deep-merged in', function (this: Sim
 });
 
 // Direct fallback test via mutation with specific behavior
-When('I PATCH customer {string} to update the name to {string}', async function (this: SimWorld, id: string, name: string) {
+When('I PATCH lead {string} to update the companyName to {string}', async function (this: SimWorld, id: string, companyName: string) {
   const before = this.getEventCount();
   this.ctx['eventsBefore'] = before;
-  await this.sendHttp('PATCH', `/customers/${id}`, { name });
+  await this.sendHttp('PATCH', `/leads/${id}`, { companyName });
 });
 
-Then('the state graph entity {string} should have name {string}', function (this: SimWorld, id: string, expectedName: string) {
+Then('the state graph entity {string} should have companyName {string}', function (this: SimWorld, id: string, expectedName: string) {
   const entity = this.getState(id);
   assert.ok(entity !== null, `Entity '${id}' should exist`);
   const e = entity as Record<string, unknown>;
-  assert.strictEqual(e['name'], expectedName, `Entity name should be '${expectedName}' but was '${String(e['name'])}'`);
+  assert.strictEqual(e['companyName'], expectedName, `Entity companyName should be '${expectedName}' but was '${String(e['companyName'])}'`);
 });

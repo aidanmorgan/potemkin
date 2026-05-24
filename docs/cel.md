@@ -270,7 +270,7 @@ x == 1 ? "one" : x == 2 ? "two" : "other"
 ```cel
 command.payload.amount
 state.transactions
-event.payload.customerId
+event.payload.leadId
 ```
 
 ### 5.2 Index Access
@@ -734,14 +734,14 @@ Source: `src/cel/builtins.ts`; phase rules in `src/cel/phases.ts`
 ```cel
 $uuidv7()                    // "0190abcd-1234-7xxx-xxxx-xxxxxxxxxxxx"
 $now()                       // "2024-01-15T10:00:00.123Z"
-$concat("LOAN-", id)         // "LOAN-abc123"
-$concat('/loans/', command.targetId, '/disburse')
+$concat("LEAD-", id)         // "LEAD-abc123"
+$concat('/leads/', command.targetId, '/qualify')
 ```
 
 `$concat` is safe to use in reducers. It is especially useful for constructing path-matching strings in behavior conditions:
 
 ```cel
-command.path == $concat('/loans/', command.targetId, '/disburse')
+command.path == $concat('/leads/', command.targetId, '/qualify')
 ```
 
 ---
@@ -822,32 +822,32 @@ Source: `src/cel/evaluator.ts` (the `evaluate` method wraps evaluation in a try/
 
 ### 11.1 Simple Match Condition
 
-From `tests/fixtures/dsl/loan-account.yaml`:
+From `tests/fixtures/crm/dsl/lead.yaml`:
 
 ```cel
-// Disburse behavior — only fires on the correct path with a positive amount
-command.path == $concat('/loans/', command.targetId, '/disburse')
-  && command.payload.amount > 0
-  && state.status != 'SETTLED'
+// Qualify behavior — only fires on the correct path with a positive score
+command.path == $concat('/leads/', command.targetId, '/qualify')
+  && command.payload.score > 0
+  && state.status != 'CONVERTED'
 ```
 
 ### 11.2 Conditional Status Assignment in Reducer
 
 ```cel
-// Assign 'SETTLED' if balance reaches zero, otherwise keep 'ACTIVE'
-state.balance - event.payload.amount == 0 ? 'SETTLED' : 'ACTIVE'
+// Assign 'CONVERTED' if score reaches threshold, otherwise keep 'QUALIFIED'
+state.score + event.payload.scoreBoost >= 100 ? 'CONVERTED' : 'QUALIFIED'
 ```
 
-### 11.3 Comprehension over Transactions
+### 11.3 Comprehension over Call History
 
 ```cel
-// Check that a disbursement exists for amounts over 1000
-state.transactions.exists(t, t.kind == 'DISBURSEMENT' && t.amount > 1000)
+// Check that a qualifying call exists with duration over 60 seconds
+state.callIds.exists(id, id.startsWith('call-') && id != '')
 
-// Count disbursement transactions
-state.transactions.filter(t, t.kind == 'DISBURSEMENT').size()
+// Count outbound calls
+state.callIds.filter(id, id != '').size()
 
-// Sum disbursement amounts (reduce via map + manual sum is not available;
+// Check if any campaign is still active (reduce via map + manual sum is not available;
 // use state tracking via reducer assign instead)
 ```
 
@@ -878,30 +878,35 @@ state?.metadata?.tags?.contains("vip") == true
 ### 11.6 Complex Condition with Multiple Comprehensions
 
 ```cel
-// All transactions within limit AND at least one is a disbursement
-state.transactions.all(t, t.amount < 10000)
-  && state.transactions.exists(t, t.kind == 'DISBURSEMENT')
+// All opportunities within value limit AND at least one is negotiating
+state.opportunityIds.all(id, id.startsWith('opp-'))
+  && state.opportunityIds.exists(id, id != '')
 ```
 
 ### 11.7 Append a Map Literal in a Reducer
 
-From `tests/fixtures/dsl/loan-account.yaml`:
+From `tests/fixtures/crm/dsl/call.yaml`:
 
 ```yaml
 append:
-  transactions: "{'txId': event.payload.txId, 'kind': 'DISBURSEMENT', 'amount': event.payload.amount, 'at': event.payload.at}"
+  callIds: "event.payload.callId"
 ```
 
-The value is a CEL map literal constructed from event payload fields.
+The value is a CEL expression constructed from event payload fields. For richer map literals:
+
+```yaml
+append:
+  callLog: "{'callId': event.payload.callId, 'outcome': event.payload.outcome, 'at': event.payload.at}"
+```
 
 ### 11.8 Regex Pattern Matching
 
 ```cel
 // Full string match with anchors
-state.label.matches("^LOAN-[0-9]+$")
+state.label.matches("^LEAD-[0-9]+$")
 
 // Enum membership test (alternative to `in`)
-state.status.matches("ACTIVE|DRAFT|SETTLED")
+state.status.matches("new|qualified|converted|lost")
 ```
 
 ---

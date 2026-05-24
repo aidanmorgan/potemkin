@@ -1,7 +1,7 @@
 Feature: System Reset and Lifecycle
 
   Background:
-    Given the banking simulator is booted
+    Given the CRM simulator is booted
 
   Scenario: REQ-37 — Reset clears all events from the event log
     Given I have created some entities after boot

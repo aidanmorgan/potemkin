@@ -8,10 +8,10 @@ import {
   createStateGraph,
 } from '../../../src/index.js';
 import { loadOpenApi } from '../../../src/contract/loader.js';
-import { BANKING_OPENAPI_YAML, CUSTOMER_DSL_YAML, CUSTOMER_COLLECTION_DSL_YAML, LOAN_DSL_YAML, LOAN_COLLECTION_DSL_YAML } from '../support/world.js';
+import { CRM_OPENAPI_YAML, LEAD_DSL_YAML, LEAD_COLLECTION_DSL_YAML, OPPORTUNITY_DSL_YAML, OPPORTUNITY_COLLECTION_DSL_YAML } from '../support/world.js';
 
 // ---------------------------------------------------------------------------
-// REQ-6 cross-boundary fixture: Loan boundary cascades to Customer.loanIds
+// REQ-6 cross-boundary fixture: Opportunity boundary cascades to Lead.opportunityIds
 // ---------------------------------------------------------------------------
 
 const CROSS_BOUNDARY_OPENAPI_YAML = `
@@ -20,9 +20,9 @@ info:
   title: Cross-Boundary Test
   version: "1.0.0"
 paths:
-  /cb-loans/{id}:
+  /cb-opportunities/{id}:
     post:
-      operationId: createCbLoan
+      operationId: createCbOpportunity
       parameters:
         - name: id
           in: path
@@ -34,16 +34,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CbLoan'
+              $ref: '#/components/schemas/CbOpportunity'
       responses:
         '201':
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CbLoan'
-  /cb-customers/{id}:
+                $ref: '#/components/schemas/CbOpportunity'
+  /cb-leads/{id}:
     patch:
-      operationId: updateCbCustomer
+      operationId: updateCbLead
       parameters:
         - name: id
           in: path
@@ -55,93 +55,93 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CbCustomer'
+              $ref: '#/components/schemas/CbLead'
       responses:
         '200':
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CbCustomer'
+                $ref: '#/components/schemas/CbLead'
 components:
   schemas:
-    CbLoan:
+    CbOpportunity:
       type: object
       additionalProperties: true
       properties:
         id:
           type: string
-        customerId:
+        leadId:
           type: string
-    CbCustomer:
+    CbLead:
       type: object
       additionalProperties: true
       properties:
         id:
           type: string
-        loanIds:
+        opportunityIds:
           type: array
           items:
             type: string
 `;
 
-const CROSS_BOUNDARY_LOAN_DSL_YAML = `
-boundary: CbLoan
-contract_path: /cb-loans/{id}
+const CROSS_BOUNDARY_OPPORTUNITY_DSL_YAML = `
+boundary: CbOpportunity
+contract_path: /cb-opportunities/{id}
 fallback_override: false
 identity:
   creation:
     generate: "$uuidv7()"
 behaviors:
-  - name: create-cb-loan
+  - name: create-cb-opportunity
     match:
       intent: creation
       condition: "true"
-    emit: CbLoanCreated
+    emit: CbOpportunityCreated
     dispatch_commands:
-      - boundary: CbCustomer
+      - boundary: CbLead
         intent: mutation
-        target_id: "command.payload.customerId"
+        target_id: "command.payload.leadId"
         payload:
-          loanId: "command.targetId"
+          opportunityId: "command.targetId"
 event_catalog:
-  - type: CbLoanCreated
+  - type: CbOpportunityCreated
     payload_template:
       id: "command.targetId"
-      customerId: "command.payload.customerId"
+      leadId: "command.payload.leadId"
 reducers:
-  - on: CbLoanCreated
+  - on: CbOpportunityCreated
     assign:
       id: "event.payload.id"
-      customerId: "event.payload.customerId"
+      leadId: "event.payload.leadId"
 `;
 
-const CROSS_BOUNDARY_CUSTOMER_DSL_YAML = `
-boundary: CbCustomer
-contract_path: /cb-customers/{id}
+const CROSS_BOUNDARY_LEAD_DSL_YAML = `
+boundary: CbLead
+contract_path: /cb-leads/{id}
 fallback_override: false
 behaviors:
-  - name: attach-loan
+  - name: attach-opportunity
     match:
       intent: mutation
       condition: "true"
-    emit: CbLoanAttached
+    emit: CbOpportunityAttached
 event_catalog:
-  - type: CbLoanAttached
+  - type: CbOpportunityAttached
     payload_template:
-      loanId: "payload.loanId"
+      opportunityId: "payload.opportunityId"
 reducers:
-  - on: CbLoanAttached
+  - on: CbOpportunityAttached
     append:
-      loanIds: "event.payload.loanId"
+      opportunityIds: "event.payload.opportunityId"
 initialization:
-  - id: "cb-customer-001"
-    loanIds: []
+  - id: "cb-lead-001"
+    opportunityIds: []
 `;
 
 // REQ-1: Interface Contract used as strict schema for validation and routing
 Then('requests with invalid payload are rejected with 400', async function (this: SimWorld) {
-  // Posting a completely wrong content type / shape to /customers
-  await this.sendHttp('POST', `/customers/cust-${Date.now()}`, null);
+  // Posting a completely wrong content type / shape to /leads
+  await this.sendHttp('POST', `/leads/lead-${Date.now()}`, null);
   // We don't assert status here — just that the gateway returned something
   assert.ok(this.lastResponse, 'No response received');
 });
@@ -176,7 +176,7 @@ Then('the state graph entity count should match committed events', function (thi
 // REQ-5: Behavioral logic encapsulated
 Then('DSL rules emit events rather than directly mutating state', async function (this: SimWorld) {
   const evBefore = this.getEventCount();
-  await this.sendHttp('POST', `/customers/cust-${Date.now()}`, { name: 'Bob', email: 'bob@example.com' });
+  await this.sendHttp('POST', `/leads/lead-${Date.now()}`, { companyName: 'Bob Corp', contactName: 'Bob', email: 'bob@example.com' });
   assert.strictEqual(this.lastResponse?.status, 201, 'Creation should succeed');
   const evAfter = this.getEventCount();
   assert.ok(evAfter > evBefore, 'A domain event should have been appended');
@@ -184,10 +184,10 @@ Then('DSL rules emit events rather than directly mutating state', async function
 
 // REQ-6: Cross-boundary communication via secondary commands
 
-Given('a cross-boundary DSL is booted with Loan cascading to Customer loanIds', async function (this: SimWorld) {
+Given('a cross-boundary DSL is booted with Opportunity cascading to Lead opportunityIds', async function (this: SimWorld) {
   await this.bootWithCustomDsl(CROSS_BOUNDARY_OPENAPI_YAML, [
-    { name: 'cbLoan', yaml: CROSS_BOUNDARY_LOAN_DSL_YAML },
-    { name: 'cbCustomer', yaml: CROSS_BOUNDARY_CUSTOMER_DSL_YAML },
+    { name: 'cbOpportunity', yaml: CROSS_BOUNDARY_OPPORTUNITY_DSL_YAML },
+    { name: 'cbLead', yaml: CROSS_BOUNDARY_LEAD_DSL_YAML },
   ]);
   assert.ok(this.sys, 'System should be booted');
   assert.ok(
@@ -196,28 +196,28 @@ Given('a cross-boundary DSL is booted with Loan cascading to Customer loanIds', 
   );
 });
 
-When('a Loan creation command is dispatched for a known customer', async function (this: SimWorld) {
+When('an Opportunity creation command is dispatched for a known lead', async function (this: SimWorld) {
   this.ctx['eventsBefore'] = this.getEventCount();
-  await this.sendHttp('POST', '/cb-loans/new-loan-001', { customerId: 'cb-customer-001' });
+  await this.sendHttp('POST', '/cb-opportunities/new-opp-001', { leadId: 'cb-lead-001' });
   assert.ok(this.lastResponse, 'No response received');
   assert.strictEqual(
     this.lastResponse.status,
     201,
-    `Expected 201 for loan creation but got ${this.lastResponse.status}. Body: ${JSON.stringify(this.lastResponse.body)}`,
+    `Expected 201 for opportunity creation but got ${this.lastResponse.status}. Body: ${JSON.stringify(this.lastResponse.body)}`,
   );
-  this.ctx['createdLoanId'] = (this.lastResponse.body as Record<string, unknown>)['id'] as string;
+  this.ctx['createdOpportunityId'] = (this.lastResponse.body as Record<string, unknown>)['id'] as string;
 });
 
-Then('the targeted Customer loanIds includes the new loan id', function (this: SimWorld) {
-  const loanId = this.ctx['createdLoanId'] as string;
-  assert.ok(loanId, 'Loan id should have been captured from creation response');
-  const customer = this.getState('cb-customer-001') as Record<string, unknown> | null;
-  assert.ok(customer !== null, 'Customer cb-customer-001 should exist in state graph');
-  const loanIds = customer['loanIds'] as string[];
-  assert.ok(Array.isArray(loanIds), 'Customer loanIds should be an array');
+Then('the targeted Lead opportunityIds includes the new opportunity id', function (this: SimWorld) {
+  const oppId = this.ctx['createdOpportunityId'] as string;
+  assert.ok(oppId, 'Opportunity id should have been captured from creation response');
+  const lead = this.getState('cb-lead-001') as Record<string, unknown> | null;
+  assert.ok(lead !== null, 'Lead cb-lead-001 should exist in state graph');
+  const opportunityIds = lead['opportunityIds'] as string[];
+  assert.ok(Array.isArray(opportunityIds), 'Lead opportunityIds should be an array');
   assert.ok(
-    loanIds.includes(loanId),
-    `Customer loanIds should contain loan '${loanId}' after cascade. Got: ${JSON.stringify(loanIds)}`,
+    opportunityIds.includes(oppId),
+    `Lead opportunityIds should contain opportunity '${oppId}' after cascade. Got: ${JSON.stringify(opportunityIds)}`,
   );
 });
 
@@ -232,12 +232,12 @@ Then('the event log includes one event per affected boundary', function (this: S
   );
   const boundaries = new Set(newEvents.map(e => e.boundary));
   assert.ok(
-    boundaries.has('CbLoan'),
-    `Expected event from CbLoan boundary. Events: ${newEvents.map(e => e.boundary).join(', ')}`,
+    boundaries.has('CbOpportunity'),
+    `Expected event from CbOpportunity boundary. Events: ${newEvents.map(e => e.boundary).join(', ')}`,
   );
   assert.ok(
-    boundaries.has('CbCustomer'),
-    `Expected event from CbCustomer boundary. Events: ${newEvents.map(e => e.boundary).join(', ')}`,
+    boundaries.has('CbLead'),
+    `Expected event from CbLead boundary. Events: ${newEvents.map(e => e.boundary).join(', ')}`,
   );
 });
 
@@ -250,9 +250,9 @@ When('I store the created resource id from the response', function (this: SimWor
 
 // REQ-7: Atomic Unit of Work
 Then('all events from the request are committed atomically', async function (this: SimWorld) {
-  // Create a customer, confirm event log grows by exactly 1
+  // Create a lead, confirm event log grows by exactly 1
   const before = this.getEventCount();
-  await this.sendHttp('POST', `/customers/cust-${Date.now()}`, { name: 'Carol', email: 'carol@example.com' });
+  await this.sendHttp('POST', `/leads/lead-${Date.now()}`, { companyName: 'Carol Corp', contactName: 'Carol', email: 'carol@example.com' });
   assert.strictEqual(this.lastResponse?.status, 201);
   const after = this.getEventCount();
   assert.ok(after > before, 'At least one event should have been appended');
@@ -263,7 +263,7 @@ Then('all events from the request are committed atomically', async function (thi
 });
 
 // Step used in architecture.feature background / shared Given
-Given('a freshly booted system with banking fixtures', async function (this: SimWorld) {
+Given('a freshly booted system with CRM fixtures', async function (this: SimWorld) {
   await this.ensureBooted();
   await this.resetState();
 });

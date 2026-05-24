@@ -1,7 +1,7 @@
 Feature: Execution, Pattern Matching and State Boundaries
 
   Background:
-    Given the banking simulator is booted
+    Given the CRM simulator is booted
 
   Scenario: REQ-16 — Pattern matcher evaluates command against behavior rules
     Then the pattern matcher should evaluate the command and produce an event

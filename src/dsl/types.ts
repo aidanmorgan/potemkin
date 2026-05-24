@@ -123,7 +123,7 @@ export interface IdempotencyConfig {
 
 /** REQ-88: Key expression (CEL) for derived projection — which entity gets updated */
 export interface DerivedProjectionReduceEntry {
-  readonly on: string;                            // event type (e.g. "Customer:CustomerRegistered" or just "CustomerRegistered")
+  readonly on: string;                            // event type (e.g. "Lead:LeadCreated" or just "LeadCreated")
   readonly assign?: Record<string, string>;        // dot-path → CEL
   readonly append?: Record<string, string>;        // array path → CEL
 }

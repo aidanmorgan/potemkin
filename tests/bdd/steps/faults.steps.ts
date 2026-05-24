@@ -4,12 +4,12 @@ import type { SimWorld } from '../support/world.js';
 import { bootSystem } from '../../../src/engine/boot.js';
 import { loadOpenApi } from '../../../src/contract/loader.js';
 import { BootError } from '../../../src/errors.js';
-import { BANKING_OPENAPI_YAML } from '../support/world.js';
+import { CRM_OPENAPI_YAML } from '../support/world.js';
 
 // REQ-23: Boot halts on DSL syntax error
 When('I attempt to boot the simulator with DSL {string}', async function (this: SimWorld, dslYaml: string) {
   try {
-    const openapi = await loadOpenApi(BANKING_OPENAPI_YAML);
+    const openapi = await loadOpenApi(CRM_OPENAPI_YAML);
     await bootSystem({
       openapi,
       dslModules: [{ name: 'bad-module', yaml: dslYaml }],
@@ -39,8 +39,8 @@ Then('the response status should be 400 with code {string}', function (this: Sim
 });
 
 // REQ-25: Entity absence on mutation of missing resource
-When('I PATCH a non-existent loan', async function (this: SimWorld) {
-  await this.sendHttp('PATCH', '/loans/00000000-0000-7000-8000-999999999999', { status: 'active' });
+When('I PATCH a non-existent opportunity', async function (this: SimWorld) {
+  await this.sendHttp('PATCH', '/opportunities/00000000-0000-7000-8000-999999999999', { stage: 'negotiating' });
 });
 
 Then('the response should be 404 ENTITY_ABSENCE', function (this: SimWorld) {
@@ -52,36 +52,30 @@ Then('the response should be 404 ENTITY_ABSENCE', function (this: SimWorld) {
 });
 
 // REQ-26: Entity conflict on creation of already-present resource
-When('I POST to create a loan that already exists with id {string}', async function (this: SimWorld, id: string) {
+When('I POST to create an opportunity that already exists with id {string}', async function (this: SimWorld, id: string) {
   // First make sure it exists
-  await this.sendHttp('PATCH', `/loans/${id}`, { amount: 1 });
-  // Now ensure it's there via state graph
-  // Try to CREATE with the same id — but loan POST goes to /loans (collection)
-  // We test entity conflict by direct customer creation with duplicate id
-  await this.sendHttp('POST', `/customers/${id}`, { name: 'Duplicate', email: 'dup@example.com' });
+  await this.sendHttp('PATCH', `/opportunities/${id}`, { value: 1 });
+  // Now try to CREATE with the same id
+  await this.sendHttp('POST', `/leads/${id}`, { companyName: 'Duplicate', contactName: 'Dup', email: 'dup@example.com' });
 });
 
-When('I attempt to create the same customer twice with the same id', async function (this: SimWorld) {
+When('I attempt to create the same lead twice with the same id', async function (this: SimWorld) {
   // Create once
-  await this.sendHttp('POST', `/customers/cust-${Date.now()}`, { name: 'UniqueUser', email: 'unique@example.com' });
+  await this.sendHttp('POST', `/leads/lead-${Date.now()}`, { companyName: 'UniqueUser', contactName: 'Unique', email: 'unique@example.com' });
   assert.strictEqual(this.lastResponse?.status, 201);
   const id = (this.lastResponse?.body as Record<string, unknown>)['id'] as string;
   this.ctx['duplicateId'] = id;
-
-  // The second creation has to target the specific resource path if it's id-based
-  // Since /customers uses creation intent with generated ID, conflict means sending same ID
-  // We'll test via attempting a PATCH with creation intent (using the seed customer that already exists)
 });
 
-Given('the seed customer {string} exists in the system', function (this: SimWorld, id: string) {
+Given('the seed lead {string} exists in the system', function (this: SimWorld, id: string) {
   const entity = this.getState(id);
-  assert.ok(entity !== null, `Seed customer '${id}' should exist`);
+  assert.ok(entity !== null, `Seed lead '${id}' should exist`);
 });
 
 When('I send a creation request targeting an existing entity id', async function (this: SimWorld) {
-  // customer-seed-001 already exists from initialization
-  // POST to /customers/customer-seed-001 with creation intent → 409 ENTITY_CONFLICT
-  await this.sendHttp('POST', '/customers/customer-seed-001', { name: 'Conflict User', email: 'conflict@example.com' });
+  // lead-seed-001 already exists from initialization
+  // POST to /leads/lead-seed-001 with creation intent → 409 ENTITY_CONFLICT
+  await this.sendHttp('POST', '/leads/lead-seed-001', { companyName: 'Conflict Corp', contactName: 'Conflict User', email: 'conflict@example.com' });
 });
 
 Then('the response should be 409 ENTITY_CONFLICT', function (this: SimWorld) {
@@ -94,10 +88,10 @@ Then('the response should be 409 ENTITY_CONFLICT', function (this: SimWorld) {
 
 // REQ-27: No rule match and no fallback → 422 UNHANDLED_OPERATION
 When('I send a mutation that has no matching behavior and no fallback', async function (this: SimWorld) {
-  // loan-seed-001 exists (status: pending), send a PATCH that won't match any rule
-  // LoanAccount DSL has no fallback_override and requires status:'active'|'closed' or amount!=null
+  // opportunity-seed-001 exists (stage: proposed), send a PATCH that won't match any rule
+  // Opportunity DSL has no fallback_override and requires stage:'negotiating'|'won' or value!=null
   // Send a payload with no recognized field
-  await this.sendHttp('PATCH', '/loans/loan-seed-001', { unknownField: 'no match' });
+  await this.sendHttp('PATCH', '/opportunities/opportunity-seed-001', { unknownField: 'no match' });
 });
 
 Then('the response should be 422 UNHANDLED_OPERATION', function (this: SimWorld) {
@@ -110,14 +104,14 @@ Then('the response should be 422 UNHANDLED_OPERATION', function (this: SimWorld)
 
 // REQ-28: Concurrency conflict on sequence version mismatch
 When('I send a mutation with a wrong sequence version', async function (this: SimWorld) {
-  // Create a customer
-  await this.sendHttp('POST', `/customers/cust-${Date.now()}`, { name: 'ConcTest', email: 'conc@example.com' });
+  // Create a lead
+  await this.sendHttp('POST', `/leads/lead-${Date.now()}`, { companyName: 'ConcTest Corp', contactName: 'ConcTest', email: 'conc@example.com' });
   assert.strictEqual(this.lastResponse?.status, 201);
   const id = (this.lastResponse?.body as Record<string, unknown>)['id'] as string;
   this.ctx['concTestId'] = id;
 
   // Send PATCH with wrong If-Match
-  await this.sendHttp('PATCH', `/customers/${id}`, { name: 'Updated' }, { 'If-Match': '999' });
+  await this.sendHttp('PATCH', `/leads/${id}`, { companyName: 'Updated Corp' }, { 'If-Match': '999' });
 });
 
 Then('the response should be 412 CONCURRENCY_CONFLICT', function (this: SimWorld) {
@@ -140,13 +134,13 @@ When('I test missing precondition via direct UoW', async function (this: SimWorl
     await executeUnitOfWork({
       command: {
         commandId: nextUuidv7(),
-        boundary: 'Customer',
+        boundary: 'Lead',
         intent: 'mutation',
-        targetId: 'customer-seed-001',
-        payload: { name: 'Test' },
+        targetId: 'lead-seed-001',
+        payload: { companyName: 'Test Corp' },
         queryParams: {},
         httpMethod: 'PATCH',
-        path: '/customers/customer-seed-001',
+        path: '/leads/lead-seed-001',
         origin: 'inbound',
         depth: 0,
       },
@@ -217,7 +211,7 @@ Then('no events should have been appended', function (this: SimWorld) {
 // REQ-31: Fault simulation signal
 When('I send a request with fault signal header returning 503', async function (this: SimWorld) {
   const faultHeader = JSON.stringify({ status: 503, body: { error: 'SIMULATED_SERVICE_UNAVAILABLE' } });
-  await this.sendHttp('GET', '/loans/loan-seed-001', undefined, { 'x-specmatic-fault': faultHeader });
+  await this.sendHttp('GET', '/opportunities/opportunity-seed-001', undefined, { 'x-specmatic-fault': faultHeader });
 });
 
 Then('the response should be the simulated fault', function (this: SimWorld) {
@@ -237,13 +231,13 @@ When('I trigger a self-referential cascade that exceeds max depth', async functi
     await executeUnitOfWork({
       command: {
         commandId: nextUuidv7(),
-        boundary: 'Customer',
+        boundary: 'Lead',
         intent: 'mutation',
-        targetId: 'customer-seed-001',
-        payload: { name: 'Loop' },
+        targetId: 'lead-seed-001',
+        payload: { companyName: 'Loop Corp' },
         queryParams: {},
         httpMethod: 'PATCH',
-        path: '/customers/customer-seed-001',
+        path: '/leads/lead-seed-001',
         origin: 'secondary',
         depth: 6, // exceeds maxDepth=5
       },

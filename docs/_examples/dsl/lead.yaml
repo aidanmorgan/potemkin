@@ -1,0 +1,77 @@
+boundary: Lead
+contract_path: /leads
+fallback_override: true
+identity:
+  creation:
+    generate: "$uuidv7()"
+query_mapping:
+  status: "state.status == query.status"
+  campaignId: "state.campaignId == query.campaignId"
+event_catalog:
+  - type: LeadCreated
+    payload_template:
+      id: "$concat('', command.targetId)"
+      companyName: "command.payload.companyName"
+      contactName: "command.payload.contactName"
+      email: "command.payload.email"
+      status: "'new'"
+      score: "0"
+      createdAt: "$now()"
+      opportunityIds: "[]"
+      callIds: "[]"
+  - type: LeadStatusUpdated
+    payload_template:
+      leadId: "command.targetId"
+      status: "command.payload.status"
+      updatedAt: "$now()"
+behaviors:
+  - name: createLead
+    match:
+      intent: creation
+      condition: "command.payload.companyName != null && command.payload.email != null"
+    emit: LeadCreated
+  - name: updateStatus
+    match:
+      intent: mutation
+      requires:
+        - name: validStatus
+          condition: "command.payload.status == 'new' || command.payload.status == 'qualified' || command.payload.status == 'converted' || command.payload.status == 'lost'"
+          error_code: INVALID_STATUS
+          message: "status must be new, qualified, converted, or lost"
+      condition: "command.payload.status != null"
+    emit: LeadStatusUpdated
+    postcondition: "state.status != null"
+reducers:
+  - on: LeadCreated
+    assign:
+      id: "event.payload.id"
+      companyName: "event.payload.companyName"
+      contactName: "event.payload.contactName"
+      email: "event.payload.email"
+      status: "event.payload.status"
+      score: "event.payload.score"
+      createdAt: "event.payload.createdAt"
+      opportunityIds: "event.payload.opportunityIds"
+      callIds: "event.payload.callIds"
+  - on: LeadStatusUpdated
+    assign:
+      status: "event.payload.status"
+initialization:
+  - id: "00000000-0000-7000-8000-000000000001"
+    companyName: "Apex Solutions Ltd"
+    contactName: "Alice"
+    email: "alice@apex.example.com"
+    status: "new"
+    score: 0
+    createdAt: "1970-01-01T00:00:00.000Z"
+    opportunityIds: []
+    callIds: []
+  - id: "00000000-0000-7000-8000-000000000002"
+    companyName: "Beta Builders Inc"
+    contactName: "Bob"
+    email: "bob@beta.example.com"
+    status: "qualified"
+    score: 42
+    createdAt: "1970-01-01T00:00:00.000Z"
+    opportunityIds: []
+    callIds: []

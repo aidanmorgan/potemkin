@@ -15,7 +15,7 @@ Then('the reset response status should be 204', function (this: SimWorld) {
 
 Given('I have created some entities after boot', async function (this: SimWorld) {
   const countBefore = this.getEntityCount();
-  await this.sendHttp('POST', `/customers/cust-${Date.now()}`, { name: 'ResetUser', email: 'reset@example.com' });
+  await this.sendHttp('POST', `/leads/lead-${Date.now()}`, { companyName: 'Reset Corp', contactName: 'ResetUser', email: 'reset@example.com' });
   assert.strictEqual(this.lastResponse?.status, 201);
   const countAfter = this.getEntityCount();
   assert.ok(countAfter > countBefore, 'Entity count should increase after creation');
@@ -48,10 +48,10 @@ Then('all non-baseline entities should be gone', function (this: SimWorld) {
 
 Then('the baseline entities should be restored', function (this: SimWorld) {
   // Seeded data should be back
-  const customer = this.getState('customer-seed-001');
-  assert.ok(customer !== null, 'Seed customer should be restored after reset');
-  const loan = this.getState('loan-seed-001');
-  assert.ok(loan !== null, 'Seed loan should be restored after reset');
+  const lead = this.getState('lead-seed-001');
+  assert.ok(lead !== null, 'Seed lead should be restored after reset');
+  const opportunity = this.getState('opportunity-seed-001');
+  assert.ok(opportunity !== null, 'Seed opportunity should be restored after reset');
 });
 
 // REQ-40: All state in volatile memory — no disk IO
@@ -81,8 +81,8 @@ Then('the event log does not persist to disk', function (this: SimWorld) {
 });
 
 When('I add entities and then reset the system', async function (this: SimWorld) {
-  // Add a customer
-  await this.sendHttp('POST', `/customers/cust-${Date.now()}`, { name: 'PreResetUser', email: 'preresetuser@example.com' });
+  // Add a lead
+  await this.sendHttp('POST', `/leads/lead-${Date.now()}`, { companyName: 'PreReset Corp', contactName: 'PreResetUser', email: 'preresetuser@example.com' });
   assert.strictEqual(this.lastResponse?.status, 201);
   this.ctx['extraEntityId'] = (this.lastResponse.body as Record<string, unknown>)['id'] as string;
 

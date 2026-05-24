@@ -6,7 +6,7 @@ import type { SimWorld } from '../support/world.js';
 // Background / boot steps
 // ---------------------------------------------------------------------------
 
-Given('the banking simulator is booted', async function (this: SimWorld) {
+Given('the CRM simulator is booted', async function (this: SimWorld) {
   await this.ensureBooted();
 });
 

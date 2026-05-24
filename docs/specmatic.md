@@ -90,7 +90,7 @@ To run Specmatic contract tests directly from the command line:
 java -cp "specmatic.jar:potemkin-plugin.jar" \
   io.specmatic.core.TestRunner \
   --testBaseURL=http://127.0.0.1:4000 \
-  path/to/banking.yaml
+  path/to/nuisance-bureau.yaml
 ```
 
 The plugin intercepts all `handleRequest()` calls before Specmatic's default behaviour.
@@ -136,17 +136,17 @@ The plugin converts each Specmatic `HttpRequest` to an HTTP POST sent to the Nod
 ```json
 {
   "method": "POST",
-  "path": "/loans",
+  "path": "/leads",
   "headers": {
     "Content-Type": "application/json",
     "Authorization": "Bearer test-token"
   },
   "query": {
-    "status": "ACTIVE"
+    "stage": "negotiating"
   },
   "body": {
-    "customerId": "00000000-0000-7000-8000-000000000001",
-    "principal": 5000
+    "companyName": "Apex Solutions",
+    "contactName": "Alice"
   }
 }
 ```
@@ -174,10 +174,10 @@ a JSON object shaped to match `HttpStubResponse`:
     "ETag": "\"3\""
   },
   "body": {
-    "id": "loan-001",
-    "customerId": "00000000-0000-7000-8000-000000000001",
-    "principal": 5000,
-    "status": "ACTIVE"
+    "id": "lead-001",
+    "companyName": "Apex Solutions",
+    "contactName": "Alice",
+    "status": "new"
   }
 }
 ```

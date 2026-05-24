@@ -3,12 +3,12 @@ import assert from 'assert';
 import type { SimWorld } from '../support/world.js';
 import { bootSystem, createGateway } from '../../../src/index.js';
 import { loadOpenApi } from '../../../src/contract/loader.js';
-import { BANKING_OPENAPI_YAML } from '../support/world.js';
+import { CRM_OPENAPI_YAML } from '../support/world.js';
 
 // REQ-16: Pattern Matcher evaluates command against behavior rules
 Then('the pattern matcher should evaluate the command and produce an event', async function (this: SimWorld) {
   const before = this.getEventCount();
-  await this.sendHttp('POST', `/customers/cust-${Date.now()}`, { name: 'Tester', email: 'test@example.com' });
+  await this.sendHttp('POST', `/leads/lead-${Date.now()}`, { companyName: 'Tester Corp', contactName: 'Tester', email: 'test@example.com' });
   assert.strictEqual(this.lastResponse?.status, 201);
   const after = this.getEventCount();
   assert.ok(after > before, 'Pattern matcher should have produced and appended an event');
@@ -16,34 +16,31 @@ Then('the pattern matcher should evaluate the command and produce an event', asy
 
 // REQ-17: Only first matching rule fires
 Then('when multiple rules could match, only the first fires', async function (this: SimWorld) {
-  // Create a loan in pending state
-  await this.sendHttp('POST', `/customers/cust-${Date.now()}`, { name: 'MultiRule', email: 'multi@example.com' });
-  const customerId = (this.lastResponse?.body as Record<string, unknown>)['id'] as string;
+  // Create a lead
+  await this.sendHttp('POST', `/leads/lead-${Date.now()}`, { companyName: 'MultiRule Corp', contactName: 'MultiRule', email: 'multi@example.com' });
+  const leadId = (this.lastResponse?.body as Record<string, unknown>)['id'] as string;
 
-  // Create a loan
-  const loanRes = await (() => {
-    // Create loan via /loans/{id} with POST (creation intent)
-    const newLoanId = `loan-${Date.now()}`;
-    return this.sendHttp('POST', `/loans/${newLoanId}`, { customerId, amount: 10000 });
-  })();
-  assert.strictEqual(this.lastResponse?.status, 201, `Expected loan creation to succeed, got ${this.lastResponse?.status}`);
-  const loanId = (this.lastResponse?.body as Record<string, unknown>)['id'] as string;
+  // Create an opportunity
+  const newOppId = `opp-${Date.now()}`;
+  await this.sendHttp('POST', `/opportunities/${newOppId}`, { leadId, value: 10000 });
+  assert.strictEqual(this.lastResponse?.status, 201, `Expected opportunity creation to succeed, got ${this.lastResponse?.status}`);
+  const oppId = (this.lastResponse?.body as Record<string, unknown>)['id'] as string;
 
-  // PATCH with status=active should match 'activate-loan' (first matching rule), not update-loan-amount
+  // PATCH with stage=negotiating should match 'negotiate-opportunity' (first matching rule)
   const eventsBefore = this.getEventCount();
-  await this.sendHttp('PATCH', `/loans/${loanId}`, { status: 'active' });
+  await this.sendHttp('PATCH', `/opportunities/${oppId}`, { stage: 'negotiating' });
   assert.strictEqual(this.lastResponse?.status, 200);
 
   const eventsAfter = this.getEventCount();
   const newEvents = this.getEvents().slice(eventsBefore);
   // Only one event should have been produced (first match only)
   assert.strictEqual(newEvents.length, 1, 'Only one event should be produced (first match wins)');
-  assert.strictEqual(newEvents[0]?.type, 'LoanActivated', 'First matching rule should produce LoanActivated');
+  assert.strictEqual(newEvents[0]?.type, 'OpportunityNegotiating', 'First matching rule should produce OpportunityNegotiating');
 });
 
 // REQ-18: Matched rule produces domain event, not direct mutation
 Then('the state transition should be traceable to a domain event', async function (this: SimWorld) {
-  await this.sendHttp('POST', `/customers/cust-${Date.now()}`, { name: 'Traceable', email: 'trace@example.com' });
+  await this.sendHttp('POST', `/leads/lead-${Date.now()}`, { companyName: 'Traceable Corp', contactName: 'Traceable', email: 'trace@example.com' });
   assert.strictEqual(this.lastResponse?.status, 201);
   const body = this.lastResponse?.body as Record<string, unknown>;
   const id = body['id'] as string;

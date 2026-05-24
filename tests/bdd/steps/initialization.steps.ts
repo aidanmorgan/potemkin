@@ -5,11 +5,11 @@ import { bootSystem } from '../../../src/engine/boot.js';
 import { loadOpenApi } from '../../../src/contract/loader.js';
 import { BootError } from '../../../src/errors.js';
 import {
-  BANKING_OPENAPI_YAML,
-  CUSTOMER_DSL_YAML,
-  CUSTOMER_COLLECTION_DSL_YAML,
-  LOAN_DSL_YAML,
-  LOAN_COLLECTION_DSL_YAML,
+  CRM_OPENAPI_YAML,
+  LEAD_DSL_YAML,
+  LEAD_COLLECTION_DSL_YAML,
+  OPPORTUNITY_DSL_YAML,
+  OPPORTUNITY_COLLECTION_DSL_YAML,
 } from '../support/world.js';
 
 // REQ-8: Boot compiles all DSL modules
@@ -71,28 +71,28 @@ Then('the state graph should be non-empty after boot', function (this: SimWorld)
 
 Then('baseline entities should appear in the state graph', function (this: SimWorld) {
   assert.ok(this.sys, 'System not booted');
-  const customer = this.getState('customer-seed-001');
-  assert.ok(customer !== null, 'Seeded customer should be in state graph');
+  const lead = this.getState('lead-seed-001');
+  assert.ok(lead !== null, 'Seeded lead should be in state graph');
 });
 
-Then('the seeded customer should be in the state graph', function (this: SimWorld) {
+Then('the seeded lead should be in the state graph', function (this: SimWorld) {
   assert.ok(this.sys, 'System not booted');
-  const customer = this.getState('customer-seed-001');
-  assert.ok(customer !== null, 'customer-seed-001 should exist in state graph');
-  const c = customer as Record<string, unknown>;
-  assert.strictEqual(c['name'], 'Alice', 'Seeded customer name should be Alice');
+  const lead = this.getState('lead-seed-001');
+  assert.ok(lead !== null, 'lead-seed-001 should exist in state graph');
+  const l = lead as Record<string, unknown>;
+  assert.strictEqual(l['contactName'], 'Alice', 'Seeded lead contactName should be Alice');
 });
 
-Then('the seeded loan should be in the state graph', function (this: SimWorld) {
+Then('the seeded opportunity should be in the state graph', function (this: SimWorld) {
   assert.ok(this.sys, 'System not booted');
-  const loan = this.getState('loan-seed-001');
-  assert.ok(loan !== null, 'loan-seed-001 should exist in state graph');
+  const opportunity = this.getState('opportunity-seed-001');
+  assert.ok(opportunity !== null, 'opportunity-seed-001 should exist in state graph');
 });
 
 // Boot error checks (for REQ-23)
 When('I attempt to boot with DSL {string}', async function (this: SimWorld, dslYaml: string) {
   try {
-    const openapi = await loadOpenApi(BANKING_OPENAPI_YAML);
+    const openapi = await loadOpenApi(CRM_OPENAPI_YAML);
     await bootSystem({
       openapi,
       dslModules: [{ name: 'bad-dsl', yaml: dslYaml }],
