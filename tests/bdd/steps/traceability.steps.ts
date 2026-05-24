@@ -12,14 +12,12 @@ interface TraceabilityCtx {
 const CTX_KEY = '__traceability__';
 
 Given(
-  'the requirements files at {string} and {string}',
-  function (this: Record<string, unknown>, reqFile: string, addendumFile: string) {
+  'the requirements file at {string}',
+  function (this: Record<string, unknown>, reqFile: string) {
     const root = path.resolve(process.cwd());
     const reqPath = path.join(root, reqFile);
-    const addendumPath = path.join(root, addendumFile);
 
     const reqText = fs.readFileSync(reqPath, 'utf8');
-    const addendumText = fs.readFileSync(addendumPath, 'utf8');
 
     // Extract numbered requirements: lines like "1. **The System shall**..." or "41. **The System shall**..."
     const reqNumbers: number[] = [];
@@ -28,14 +26,6 @@ Given(
     let m: RegExpExecArray | null;
     while ((m = re.exec(reqText)) !== null) {
       reqNumbers.push(parseInt(m[1], 10));
-    }
-
-    const re2 = /^(\d+)\.\s+\*\*The System shall/gim;
-    while ((m = re2.exec(addendumText)) !== null) {
-      const n = parseInt(m[1], 10);
-      if (!reqNumbers.includes(n)) {
-        reqNumbers.push(n);
-      }
     }
 
     reqNumbers.sort((a, b) => a - b);
