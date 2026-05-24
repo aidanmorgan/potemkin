@@ -1,7 +1,7 @@
 Feature: Initialization and Bootstrapping
 
   Background:
-    Given the banking simulator is booted
+    Given the CRM simulator is booted
 
   Scenario: REQ-8 — System boot compiles distributed DSL modules into unified execution matrix
     Then the compiled DSL should have at least 2 boundaries
@@ -17,5 +17,5 @@ Feature: Initialization and Bootstrapping
 
   Scenario: REQ-11 — State Graph reflects baseline after boot
     Then the state graph should be non-empty after boot
-    And the seeded customer should be in the state graph
-    And the seeded loan should be in the state graph
+    And the seeded lead should be in the state graph
+    And the seeded opportunity should be in the state graph

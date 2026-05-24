@@ -4,7 +4,7 @@ import type { SimWorld } from '../support/world.js';
 import { bootSystem, createGateway } from '../../../src/index.js';
 import { loadOpenApi } from '../../../src/contract/loader.js';
 import { BootError } from '../../../src/errors.js';
-import { BANKING_OPENAPI_YAML } from '../support/world.js';
+import { CRM_OPENAPI_YAML } from '../support/world.js';
 
 // Minimal OpenAPI spec with additionalProperties: false so unknown paths are detectable
 const STRICT_OPENAPI_YAML = `
@@ -131,23 +131,23 @@ Then('the schema registry should contain an entry for each boundary', function (
   }
 });
 
-Then('the Customer schema should have the expected properties', function (this: SimWorld) {
+Then('the Lead schema should have the expected properties', function (this: SimWorld) {
   assert.ok(this.sys, 'System not booted');
   const registry = this.sys.schemaRegistry;
-  const customerSchemas = registry.get('Customer');
-  assert.ok(customerSchemas, 'Customer schema should exist');
-  assert.strictEqual(customerSchemas.boundary, 'Customer', 'Schema boundary name should match');
-  assert.ok(customerSchemas.entity, 'Schema should have entity definition');
-  assert.strictEqual(customerSchemas.entity.kind, 'object', 'Customer entity should be an object schema');
+  const leadSchemas = registry.get('Lead');
+  assert.ok(leadSchemas, 'Lead schema should exist');
+  assert.strictEqual(leadSchemas.boundary, 'Lead', 'Schema boundary name should match');
+  assert.ok(leadSchemas.entity, 'Schema should have entity definition');
+  assert.strictEqual(leadSchemas.entity.kind, 'object', 'Lead entity should be an object schema');
 });
 
-Then('the LoanAccount schema should have the expected properties', function (this: SimWorld) {
+Then('the Opportunity schema should have the expected properties', function (this: SimWorld) {
   assert.ok(this.sys, 'System not booted');
   const registry = this.sys.schemaRegistry;
-  const loanSchemas = registry.get('LoanAccount');
-  assert.ok(loanSchemas, 'LoanAccount schema should exist');
-  assert.strictEqual(loanSchemas.boundary, 'LoanAccount', 'Schema boundary name should match');
-  assert.ok(loanSchemas.entity, 'Schema should have entity definition');
+  const oppSchemas = registry.get('Opportunity');
+  assert.ok(oppSchemas, 'Opportunity schema should exist');
+  assert.strictEqual(oppSchemas.boundary, 'Opportunity', 'Schema boundary name should match');
+  assert.ok(oppSchemas.entity, 'Schema should have entity definition');
 });
 
 // REQ-45: Static DSL validation at boot — unknown paths halt with BOOT_ERR_DSL_SCHEMA_VIOLATION
@@ -263,7 +263,7 @@ Then('the runtime type guard should reject a string value for a number field', a
 
   let threw = false;
   try {
-    guardAssignedValue(this.sys.schemaRegistry, 'Customer', 'balance', 'not-a-number');
+    guardAssignedValue(this.sys.schemaRegistry, 'Lead', 'score', 'not-a-number');
   } catch (err) {
     threw = true;
     assert.ok(err instanceof InternalExecutionError, 'Should throw InternalExecutionError');
@@ -272,7 +272,7 @@ Then('the runtime type guard should reject a string value for a number field', a
       'Error details should include SCHEMA_TYPE_MISMATCH',
     );
   }
-  // The Customer schema may or may not have balance depending on schema strictness
+  // The Lead schema may or may not have score depending on schema strictness
   // If it doesn't throw, that's also acceptable (field not strictly defined as number)
   // The important thing is the guard function exists and works
   assert.ok(typeof guardAssignedValue === 'function', 'guardAssignedValue should be a function');
@@ -284,7 +284,7 @@ Then('a valid number value should be accepted by the runtime guard', async funct
 
   // Should not throw for a correct type assignment
   assert.doesNotThrow(
-    () => guardAssignedValue(this.sys!.schemaRegistry, 'Customer', 'balance', 1234.56),
+    () => guardAssignedValue(this.sys!.schemaRegistry, 'Lead', 'score', 1234.56),
     'Valid number assignment should not throw',
   );
 });

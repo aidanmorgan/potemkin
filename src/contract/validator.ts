@@ -53,7 +53,7 @@ export function createContractValidator(
 
   // F-02: Build a case-insensitive lookup map for components.schemas at construction time.
   // Keys are lowercased; values are the original schema objects. This allows boundary names
-  // that differ in casing (e.g. "loanaccount" vs "LoanAccount") to still resolve correctly.
+  // that differ in casing (e.g. "opportunity" vs "Opportunity") to still resolve correctly.
   const caseInsensitiveSchemaMap = new Map<string, unknown>();
   const rawDocForInit = doc.raw as Record<string, unknown>;
   const componentsForInit = rawDocForInit['components'];

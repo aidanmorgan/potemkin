@@ -1,7 +1,7 @@
 Feature: Observability — Libraries, Logging, and Tracing
 
   Background:
-    Given the banking simulator is booted
+    Given the CRM simulator is booted
 
   Scenario: REQ-41 — System boots using pino, ajv, swagger-parser, uuidv7
     Then the system logger should be a pino logger

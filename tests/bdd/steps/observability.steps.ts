@@ -67,17 +67,17 @@ Then('the schema registry should be derived from OpenAPI using swagger-parser', 
   assert.ok(registry, 'Schema registry should be present');
   assert.ok(typeof registry.get === 'function', 'Registry should have get method');
   // Should have entries for our boundaries
-  const customerSchema = registry.get('Customer');
-  assert.ok(customerSchema, 'Customer schema should be derived from OpenAPI');
-  const loanSchema = registry.get('LoanAccount');
-  assert.ok(loanSchema, 'LoanAccount schema should be derived from OpenAPI');
+  const leadSchema = registry.get('Lead');
+  assert.ok(leadSchema, 'Lead schema should be derived from OpenAPI');
+  const opportunitySchema = registry.get('Opportunity');
+  assert.ok(opportunitySchema, 'Opportunity schema should be derived from OpenAPI');
 });
 
 // REQ-42: Structured pino logs emitted at major lifecycle events
 Then('a child logger with boundary context should be usable', function (this: SimWorld) {
   assert.ok(this.sys, 'System not booted');
   const childLog = childLogger(this.sys.logger, {
-    boundary: 'Customer',
+    boundary: 'Lead',
     commandId: 'test-cmd-001',
   });
   // Should not throw
@@ -120,7 +120,7 @@ Then('the system tracer should be an OpenTelemetry tracer', function (this: SimW
 
 Then('a UoW execution should record a span', async function (this: SimWorld) {
   assert.ok(this.sys, 'System not booted');
-  await this.sendHttp('POST', `/customers/cust-${Date.now()}`, { name: 'SpanTest', email: 'span@example.com' });
+  await this.sendHttp('POST', `/leads/lead-${Date.now()}`, { companyName: 'SpanTest Corp', contactName: 'SpanTest', email: 'span@example.com' });
   assert.strictEqual(this.lastResponse?.status, 201, 'Creation should succeed');
   // Tracer remains accessible and functional after the UoW (structural check for scenarios
   // that run without the @otel-spans tag and the InMemorySpanExporter).
@@ -140,7 +140,7 @@ Then('at least one span named engine.uow should be exported', async function (th
 
   // Run a UoW through the system tracer so spans flow through the in-memory exporter.
   // We use the system's tracer which is tied to the global OTel provider registered in Before.
-  await this.sendHttp('POST', `/customers/cust-otel-${Date.now()}`, { name: 'OtelSpanTest', email: 'otel@example.com' });
+  await this.sendHttp('POST', `/leads/lead-otel-${Date.now()}`, { companyName: 'OtelSpanTest Corp', contactName: 'OtelSpanTest', email: 'otel@example.com' });
   assert.strictEqual(this.lastResponse?.status, 201, 'UoW must succeed so span is exported');
 
   // Allow the SimpleSpanProcessor to flush (it's synchronous, but give it a tick)
@@ -157,7 +157,7 @@ Then('at least one span named engine.uow should be exported', async function (th
 Then('the engine metrics should track fault simulations', async function (this: SimWorld) {
   assert.ok(this.sys, 'System not booted');
   const faultHeader = JSON.stringify({ status: 503, body: { error: 'FAULT' } });
-  await this.sendHttp('GET', '/loans/loan-seed-001', undefined, { 'x-specmatic-fault': faultHeader });
+  await this.sendHttp('GET', '/opportunities/opportunity-seed-001', undefined, { 'x-specmatic-fault': faultHeader });
   assert.strictEqual(this.lastResponse?.status, 503);
   // metrics.faultsSimulatedTotal should have been incremented (structural check)
   assert.ok(this.sys.metrics.faultsSimulatedTotal, 'faultsSimulatedTotal metric should be accessible');

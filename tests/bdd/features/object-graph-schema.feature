@@ -1,12 +1,12 @@
 Feature: Object-Graph Schema Registry and Validation
 
   Background:
-    Given the banking simulator is booted
+    Given the CRM simulator is booted
 
   Scenario: REQ-44 — Schema registry contains entry for each boundary after boot
     Then the schema registry should contain an entry for each boundary
-    And the Customer schema should have the expected properties
-    And the LoanAccount schema should have the expected properties
+    And the Lead schema should have the expected properties
+    And the Opportunity schema should have the expected properties
 
   Scenario: REQ-45 — DSL with unknown state path fails boot with BOOT_ERR_DSL_SCHEMA_VIOLATION
     When I attempt to boot with a DSL referencing an unknown state path

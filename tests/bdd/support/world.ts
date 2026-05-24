@@ -12,17 +12,17 @@ import type { OpenApiDoc } from '../../../src/contract/loader.js';
 setDefaultTimeout(15_000);
 
 // ---------------------------------------------------------------------------
-// Inline minimal banking fixture OpenAPI spec
+// Inline minimal CRM fixture OpenAPI spec (The Nuisance Bureau)
 // ---------------------------------------------------------------------------
-export const BANKING_OPENAPI_YAML = `
+export const CRM_OPENAPI_YAML = `
 openapi: "3.0.3"
 info:
-  title: Banking Simulator
+  title: The Nuisance Bureau CRM Simulator
   version: "1.0.0"
 paths:
-  /customers/{id}:
+  /leads/{id}:
     post:
-      operationId: createCustomer
+      operationId: createLead
       parameters:
         - name: id
           in: path
@@ -34,15 +34,15 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Customer'
+              $ref: '#/components/schemas/Lead'
       responses:
         '201':
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Customer'
+                $ref: '#/components/schemas/Lead'
     get:
-      operationId: getCustomer
+      operationId: getLead
       parameters:
         - name: id
           in: path
@@ -54,9 +54,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Customer'
+                $ref: '#/components/schemas/Lead'
     patch:
-      operationId: updateCustomer
+      operationId: updateLead
       parameters:
         - name: id
           in: path
@@ -73,16 +73,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Customer'
+              $ref: '#/components/schemas/Lead'
       responses:
         '200':
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Customer'
-  /loans/{id}:
+                $ref: '#/components/schemas/Lead'
+  /opportunities/{id}:
     post:
-      operationId: createLoan
+      operationId: createOpportunity
       parameters:
         - name: id
           in: path
@@ -94,15 +94,15 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/LoanAccount'
+              $ref: '#/components/schemas/Opportunity'
       responses:
         '201':
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LoanAccount'
+                $ref: '#/components/schemas/Opportunity'
     get:
-      operationId: getLoan
+      operationId: getOpportunity
       parameters:
         - name: id
           in: path
@@ -114,9 +114,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LoanAccount'
+                $ref: '#/components/schemas/Opportunity'
     patch:
-      operationId: updateLoan
+      operationId: updateOpportunity
       parameters:
         - name: id
           in: path
@@ -133,45 +133,47 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/LoanAccount'
+              $ref: '#/components/schemas/Opportunity'
       responses:
         '200':
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LoanAccount'
+                $ref: '#/components/schemas/Opportunity'
 components:
   schemas:
-    Customer:
+    Lead:
       type: object
       properties:
         id:
           type: string
-        name:
+        companyName:
+          type: string
+        contactName:
           type: string
         email:
           type: string
         status:
           type: string
-          enum: [active, inactive]
-        balance:
+          enum: [new, contacted, qualified, disqualified, converted]
+        score:
           type: number
-        fullName:
+        fullContact:
           type: string
-          x-derived: "state.name"
+          x-derived: "state.contactName"
       additionalProperties: true
-    LoanAccount:
+    Opportunity:
       type: object
       properties:
         id:
           type: string
-        customerId:
+        leadId:
           type: string
-        amount:
+        value:
           type: number
-        status:
+        stage:
           type: string
-          enum: [pending, active, closed]
+          enum: [proposed, negotiating, won, lost]
         tags:
           type: array
           items:
@@ -180,177 +182,182 @@ components:
 `;
 
 // ---------------------------------------------------------------------------
-// Inline DSL modules for banking simulation
+// Inline DSL modules for CRM simulation (The Nuisance Bureau)
 // ---------------------------------------------------------------------------
-export const CUSTOMER_DSL_YAML = `
-boundary: Customer
-contract_path: /customers/{id}
+export const LEAD_DSL_YAML = `
+boundary: Lead
+contract_path: /leads/{id}
 fallback_override: true
 identity:
   creation:
     generate: "$uuidv7()"
 behaviors:
-  - name: get-customer
+  - name: get-lead
     match:
       intent: query
       condition: "true"
-    emit: CustomerQueried
-  - name: create-customer
+    emit: LeadQueried
+  - name: create-lead
     match:
       intent: creation
       condition: "true"
-    emit: CustomerCreated
-  - name: update-customer
+    emit: LeadCreated
+  - name: update-lead
     match:
       intent: mutation
       condition: "true"
-    emit: CustomerUpdated
+    emit: LeadUpdated
 event_catalog:
-  - type: CustomerQueried
+  - type: LeadQueried
     payload_template:
       noop: "'queried'"
-  - type: CustomerCreated
+  - type: LeadCreated
     payload_template:
       id: "command.targetId"
-      name: "payload.name"
+      companyName: "payload.companyName"
+      contactName: "payload.contactName"
       email: "payload.email"
-      status: "'active'"
-  - type: CustomerUpdated
+      status: "'new'"
+  - type: LeadUpdated
     payload_template:
       id: "state.id"
-      name: "'name' in payload ? payload.name : state.name"
+      companyName: "'companyName' in payload ? payload.companyName : state.companyName"
+      contactName: "'contactName' in payload ? payload.contactName : state.contactName"
       email: "'email' in payload ? payload.email : state.email"
       status: "'status' in payload ? payload.status : state.status"
 reducers:
-  - on: CustomerQueried
+  - on: LeadQueried
     assign:
       noop: "event.payload.noop"
-  - on: CustomerCreated
+  - on: LeadCreated
     assign:
       id: "event.payload.id"
-      name: "event.payload.name"
+      companyName: "event.payload.companyName"
+      contactName: "event.payload.contactName"
       email: "event.payload.email"
       status: "event.payload.status"
-  - on: CustomerUpdated
+  - on: LeadUpdated
     assign:
-      name: "event.payload.name"
+      companyName: "event.payload.companyName"
+      contactName: "event.payload.contactName"
       email: "event.payload.email"
       status: "event.payload.status"
 initialization:
-  - id: "customer-seed-001"
-    name: "Alice"
-    email: "alice@example.com"
-    status: "active"
+  - id: "lead-seed-001"
+    companyName: "Apex Solutions"
+    contactName: "Alice"
+    email: "alice@apex.example.com"
+    status: "new"
 `;
 
 // Keep for backward compatibility — not used in shared boot
-export const CUSTOMER_COLLECTION_DSL_YAML_UNUSED = '';
+export const LEAD_COLLECTION_DSL_YAML_UNUSED = '';
 
-export const CUSTOMER_COLLECTION_DSL_YAML = CUSTOMER_DSL_YAML; // alias — kept for step imports
+export const LEAD_COLLECTION_DSL_YAML = LEAD_DSL_YAML; // alias — kept for step imports
 
-export const LOAN_DSL_YAML = `
-boundary: LoanAccount
-contract_path: /loans/{id}
+export const OPPORTUNITY_DSL_YAML = `
+boundary: Opportunity
+contract_path: /opportunities/{id}
 fallback_override: false
 identity:
   creation:
     generate: "$uuidv7()"
 query_mapping:
-  status: "state.status == param"
+  stage: "state.stage == param"
 behaviors:
-  - name: create-loan
+  - name: create-opportunity
     match:
       intent: creation
       condition: "true"
-    emit: LoanCreated
-  - name: activate-loan
+    emit: OpportunityCreated
+  - name: negotiate-opportunity
     match:
       intent: mutation
-      condition: "payload.status == 'active'"
-    emit: LoanActivated
-  - name: close-loan
+      condition: "payload.stage == 'negotiating'"
+    emit: OpportunityNegotiating
+  - name: close-opportunity
     match:
       intent: mutation
-      condition: "payload.status == 'closed'"
-    emit: LoanClosed
-  - name: update-loan-amount
+      condition: "payload.stage == 'won'"
+    emit: OpportunityWon
+  - name: update-opportunity
     match:
       intent: mutation
-      condition: "'amount' in payload"
-    emit: LoanUpdated
+      condition: "'value' in payload"
+    emit: OpportunityUpdated
 event_catalog:
-  - type: LoanCreated
+  - type: OpportunityCreated
     payload_template:
       id: "command.targetId"
-      customerId: "payload.customerId"
-      amount: "payload.amount"
-      status: "'pending'"
-  - type: LoanActivated
+      leadId: "payload.leadId"
+      value: "payload.value"
+      stage: "'proposed'"
+  - type: OpportunityNegotiating
     payload_template:
       id: "state.id"
-      status: "'active'"
-  - type: LoanClosed
+      stage: "'negotiating'"
+  - type: OpportunityWon
     payload_template:
       id: "state.id"
-      status: "'closed'"
-  - type: LoanUpdated
+      stage: "'won'"
+  - type: OpportunityUpdated
     payload_template:
       id: "state.id"
-      amount: "payload.amount"
-      status: "state.status"
+      value: "payload.value"
+      stage: "state.stage"
 reducers:
-  - on: LoanCreated
+  - on: OpportunityCreated
     assign:
       id: "event.payload.id"
-      customerId: "event.payload.customerId"
-      amount: "event.payload.amount"
-      status: "event.payload.status"
-  - on: LoanActivated
+      leadId: "event.payload.leadId"
+      value: "event.payload.value"
+      stage: "event.payload.stage"
+  - on: OpportunityNegotiating
     assign:
-      status: "event.payload.status"
-  - on: LoanClosed
+      stage: "event.payload.stage"
+  - on: OpportunityWon
     assign:
-      status: "event.payload.status"
-  - on: LoanUpdated
+      stage: "event.payload.stage"
+  - on: OpportunityUpdated
     assign:
-      amount: "event.payload.amount"
-      status: "event.payload.status"
+      value: "event.payload.value"
+      stage: "event.payload.stage"
 initialization:
-  - id: "loan-seed-001"
-    customerId: "customer-seed-001"
-    amount: 50000
-    status: "pending"
+  - id: "opportunity-seed-001"
+    leadId: "lead-seed-001"
+    value: 50000
+    stage: "proposed"
 `;
 
-export const LOAN_COLLECTION_DSL_YAML = `
-boundary: LoanCollection
-contract_path: /loans
+export const OPPORTUNITY_COLLECTION_DSL_YAML = `
+boundary: OpportunityCollection
+contract_path: /opportunities
 fallback_override: true
 query_mapping:
-  status: "state.status == param"
+  stage: "state.stage == param"
 behaviors:
-  - name: list-loans
+  - name: list-opportunities
     match:
       intent: query
       condition: "true"
-    emit: LoanListQueried
+    emit: OpportunityListQueried
 event_catalog:
-  - type: LoanListQueried
+  - type: OpportunityListQueried
     payload_template:
       result: "'listed'"
 reducers:
-  - on: LoanListQueried
+  - on: OpportunityListQueried
     assign:
       result: "event.payload.result"
 initialization:
-  - id: "loan-seed-001"
-    customerId: "customer-seed-001"
-    amount: 50000
-    status: "pending"
-  - id: "loan-seed-002"
-    customerId: "customer-seed-001"
-    amount: 20000
-    status: "active"
+  - id: "opportunity-seed-001"
+    leadId: "lead-seed-001"
+    value: 50000
+    stage: "proposed"
+  - id: "opportunity-seed-002"
+    leadId: "lead-seed-001"
+    value: 20000
+    stage: "negotiating"
 `;
 
 // ---------------------------------------------------------------------------
@@ -387,14 +394,14 @@ export class SimWorld extends World {
       return;
     }
 
-    const openapi = await loadOpenApi(BANKING_OPENAPI_YAML);
+    const openapi = await loadOpenApi(CRM_OPENAPI_YAML);
     _sharedOpenapi = openapi;
 
     const sys = await bootSystem({
       openapi,
       dslModules: [
-        { name: 'customer', yaml: CUSTOMER_DSL_YAML },
-        { name: 'loan', yaml: LOAN_DSL_YAML },
+        { name: 'lead', yaml: LEAD_DSL_YAML },
+        { name: 'opportunity', yaml: OPPORTUNITY_DSL_YAML },
       ],
     });
 

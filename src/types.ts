@@ -14,7 +14,7 @@ export interface Actor {
 
 export interface Command {
   readonly commandId: string;          // UUIDv7
-  readonly boundary: string;           // logical namespace (e.g. "LoanAccount")
+  readonly boundary: string;           // logical namespace (e.g. "Opportunity")
   readonly intent: Intent;
   readonly targetId: string | null;    // null for collection queries
   readonly payload: JsonObject;

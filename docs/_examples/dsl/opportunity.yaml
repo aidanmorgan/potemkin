@@ -1,0 +1,84 @@
+boundary: Opportunity
+contract_path: /opportunities
+fallback_override: false
+identity:
+  creation:
+    generate: "$uuidv7()"
+event_catalog:
+  - type: OpportunityCreated
+    payload_template:
+      id: "command.targetId"
+      leadId: "command.payload.leadId"
+      value: "command.payload.value"
+      stage: "'proposed'"
+      createdAt: "$now()"
+  - type: OpportunityProgressed
+    payload_template:
+      progressedAt: "$now()"
+      stage: "command.payload.stage"
+  - type: OpportunityWon
+    payload_template:
+      wonAt: "$now()"
+  - type: OpportunityLost
+    payload_template:
+      reason: "command.payload.reason"
+      lostAt: "$now()"
+behaviors:
+  - name: createOpportunity
+    match:
+      intent: creation
+      condition: "command.payload.leadId != null && command.payload.value > 0"
+    emit: OpportunityCreated
+    dispatch_commands:
+      - boundary: Lead
+        intent: mutation
+        target_id: "command.payload.leadId"
+        payload:
+          opportunityId: "command.targetId"
+        condition: "command.payload.leadId != null"
+  - name: progressStage
+    match:
+      intent: mutation
+      condition: >-
+        command.path == $concat('/opportunities/', command.targetId, '/progress')
+        && command.payload.stage != null
+        && state.stage != 'won'
+        && state.stage != 'lost'
+    emit: OpportunityProgressed
+  - name: closeWon
+    match:
+      intent: mutation
+      condition: >-
+        command.path == $concat('/opportunities/', command.targetId, '/close-won')
+        && state.stage != 'won'
+        && state.stage != 'lost'
+    emit_when:
+      - when: "state.stage != 'won'"
+        emit: OpportunityWon
+  - name: closeLost
+    match:
+      intent: mutation
+      condition: >-
+        command.path == $concat('/opportunities/', command.targetId, '/close-lost')
+        && state.stage != 'won'
+        && state.stage != 'lost'
+    emit: OpportunityLost
+reducers:
+  - on: OpportunityCreated
+    assign:
+      id: "event.payload.id"
+      leadId: "event.payload.leadId"
+      value: "event.payload.value"
+      stage: "event.payload.stage"
+      createdAt: "event.payload.createdAt"
+  - on: OpportunityProgressed
+    assign:
+      stage: "event.payload.stage"
+  - on: OpportunityWon
+    assign:
+      stage: "'won'"
+  - on: OpportunityLost
+    assign:
+      stage: "'lost'"
+      lostReason: "event.payload.reason"
+initialization: []

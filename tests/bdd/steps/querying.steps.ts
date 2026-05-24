@@ -7,24 +7,24 @@ import { runQuery } from '../../../src/engine/query.js';
 // We test filtering/pagination via direct runQuery calls since our HTTP
 // test fixtures don't include a collection endpoint.
 
-Given('there are multiple loans with different statuses', async function (this: SimWorld) {
-  // loan-seed-001 (pending) is already seeded at boot
-  // Create an active loan
-  const activeLoanId = `loan-active-${Date.now()}`;
-  await this.sendHttp('POST', `/loans/${activeLoanId}`, {
-    customerId: 'customer-seed-001',
-    amount: 25000,
+Given('there are multiple opportunities with different stages', async function (this: SimWorld) {
+  // opportunity-seed-001 (proposed) is already seeded at boot
+  // Create a negotiating opportunity
+  const negotiatingOppId = `opp-negotiating-${Date.now()}`;
+  await this.sendHttp('POST', `/opportunities/${negotiatingOppId}`, {
+    leadId: 'lead-seed-001',
+    value: 25000,
   });
   if (this.lastResponse?.status === 201) {
-    await this.sendHttp('PATCH', `/loans/${activeLoanId}`, { status: 'active' });
+    await this.sendHttp('PATCH', `/opportunities/${negotiatingOppId}`, { stage: 'negotiating' });
   }
-  this.ctx['activeLoanId'] = activeLoanId;
+  this.ctx['negotiatingOppId'] = negotiatingOppId;
 });
 
-When('I query the LoanAccount boundary with no filters', function (this: SimWorld) {
+When('I query the Opportunity boundary with no filters', function (this: SimWorld) {
   assert.ok(this.sys, 'System not booted');
-  const boundary = this.sys.dsl.byBoundaryName['LoanAccount'];
-  assert.ok(boundary, 'LoanAccount boundary should exist');
+  const boundary = this.sys.dsl.byBoundaryName['Opportunity'];
+  assert.ok(boundary, 'Opportunity boundary should exist');
   const result = runQuery({
     boundary,
     targetId: null,
@@ -38,14 +38,14 @@ When('I query the LoanAccount boundary with no filters', function (this: SimWorl
   this.ctx['queryResult'] = result;
 });
 
-When('I query the LoanAccount boundary with status filter {string}', function (this: SimWorld, status: string) {
+When('I query the Opportunity boundary with stage filter {string}', function (this: SimWorld, stage: string) {
   assert.ok(this.sys, 'System not booted');
-  const boundary = this.sys.dsl.byBoundaryName['LoanAccount'];
-  assert.ok(boundary, 'LoanAccount boundary should exist');
+  const boundary = this.sys.dsl.byBoundaryName['Opportunity'];
+  assert.ok(boundary, 'Opportunity boundary should exist');
   const result = runQuery({
     boundary,
     targetId: null,
-    queryParams: { status },
+    queryParams: { stage },
     graph: this.sys.graph,
     cel: this.sys.cel,
     openapi: this.sys.openapi,
@@ -55,10 +55,10 @@ When('I query the LoanAccount boundary with status filter {string}', function (t
   this.ctx['queryResult'] = result;
 });
 
-When('I query the LoanAccount boundary with limit {int}', function (this: SimWorld, limit: number) {
+When('I query the Opportunity boundary with limit {int}', function (this: SimWorld, limit: number) {
   assert.ok(this.sys, 'System not booted');
-  const boundary = this.sys.dsl.byBoundaryName['LoanAccount'];
-  assert.ok(boundary, 'LoanAccount boundary should exist');
+  const boundary = this.sys.dsl.byBoundaryName['Opportunity'];
+  assert.ok(boundary, 'Opportunity boundary should exist');
   const result = runQuery({
     boundary,
     targetId: null,
@@ -72,10 +72,10 @@ When('I query the LoanAccount boundary with limit {int}', function (this: SimWor
   this.ctx['queryResult'] = result;
 });
 
-When('I query the LoanAccount boundary with offset {int} and limit {int}', function (this: SimWorld, offset: number, limit: number) {
+When('I query the Opportunity boundary with offset {int} and limit {int}', function (this: SimWorld, offset: number, limit: number) {
   assert.ok(this.sys, 'System not booted');
-  const boundary = this.sys.dsl.byBoundaryName['LoanAccount'];
-  assert.ok(boundary, 'LoanAccount boundary should exist');
+  const boundary = this.sys.dsl.byBoundaryName['Opportunity'];
+  assert.ok(boundary, 'Opportunity boundary should exist');
   const result = runQuery({
     boundary,
     targetId: null,
@@ -100,11 +100,11 @@ Then('the query result should contain at least {int} items', function (this: Sim
   assert.ok(result.length >= min, `Expected at least ${min} items, got ${result.length}`);
 });
 
-Then('all query result items should have status {string}', function (this: SimWorld, status: string) {
+Then('all query result items should have stage {string}', function (this: SimWorld, stage: string) {
   const result = this.ctx['queryResult'] as Array<Record<string, unknown>>;
   assert.ok(Array.isArray(result), 'Query result should be an array');
   for (const item of result) {
-    assert.strictEqual(item['status'], status, `Item ${String(item['id'])} should have status '${status}'`);
+    assert.strictEqual(item['stage'], stage, `Item ${String(item['id'])} should have stage '${stage}'`);
   }
 });
 
@@ -119,18 +119,18 @@ When('I GET the admin state endpoint', async function (this: SimWorld) {
   await this.sendHttp('GET', '/_admin/state');
 });
 
-Then('the admin state should contain loan entities', function (this: SimWorld) {
+Then('the admin state should contain opportunity entities', function (this: SimWorld) {
   assert.ok(this.lastResponse, 'No response');
   assert.strictEqual(this.lastResponse.status, 200);
   const body = this.lastResponse.body as Record<string, unknown>;
   const entities = body['entities'] as Record<string, unknown>;
-  const loanIds = Object.keys(entities).filter(k => k.startsWith('loan-'));
-  assert.ok(loanIds.length > 0, 'Admin state should contain loan entities');
+  const oppIds = Object.keys(entities).filter(k => k.startsWith('opportunity-'));
+  assert.ok(oppIds.length > 0, 'Admin state should contain opportunity entities');
 });
 
 // REQ-36: Derived Properties dynamically computed and appended
-When('I GET customer {string}', async function (this: SimWorld, id: string) {
-  await this.sendHttp('GET', `/customers/${id}`);
+When('I GET lead {string}', async function (this: SimWorld, id: string) {
+  await this.sendHttp('GET', `/leads/${id}`);
 });
 
 Then('the response should contain the derived property {string}', function (this: SimWorld, propName: string) {
@@ -143,24 +143,24 @@ Then('the response should contain the derived property {string}', function (this
   );
 });
 
-Then('the derived property {string} should equal the customer name', function (this: SimWorld, propName: string) {
+Then('the derived property {string} should equal the lead contactName', function (this: SimWorld, propName: string) {
   assert.ok(this.lastResponse, 'No response captured');
   const body = this.lastResponse.body as Record<string, unknown>;
   assert.strictEqual(
     body[propName],
-    body['name'],
-    `Derived property '${propName}' should equal the name field`,
+    body['contactName'],
+    `Derived property '${propName}' should equal the contactName field`,
   );
 });
 
 // REQ-36b: Direct runQuery test for derived properties
-Then('running a direct query for customer should include derived properties', function (this: SimWorld) {
+Then('running a direct query for lead should include derived properties', function (this: SimWorld) {
   assert.ok(this.sys, 'System not booted');
-  const boundary = this.sys.dsl.byBoundaryName['Customer'];
-  assert.ok(boundary, 'Customer boundary should exist');
+  const boundary = this.sys.dsl.byBoundaryName['Lead'];
+  assert.ok(boundary, 'Lead boundary should exist');
   const result = runQuery({
     boundary,
-    targetId: 'customer-seed-001',
+    targetId: 'lead-seed-001',
     queryParams: {},
     graph: this.sys.graph,
     cel: this.sys.cel,
@@ -170,26 +170,26 @@ Then('running a direct query for customer should include derived properties', fu
   }) as Record<string, unknown>;
   assert.ok(result, 'Query should return a result');
   assert.ok(
-    Object.prototype.hasOwnProperty.call(result, 'fullName'),
-    `Query result should contain derived property 'fullName'. Got: ${JSON.stringify(result)}`,
+    Object.prototype.hasOwnProperty.call(result, 'fullContact'),
+    `Query result should contain derived property 'fullContact'. Got: ${JSON.stringify(result)}`,
   );
-  assert.strictEqual(result['fullName'], result['name'], "fullName derived property should equal name");
+  assert.strictEqual(result['fullContact'], result['contactName'], "fullContact derived property should equal contactName");
 });
 
-// Alias step used in queries feature
-When('I GET the loans collection with no filters', async function (this: SimWorld) {
+// Alias steps used in queries feature
+When('I GET the opportunities collection with no filters', async function (this: SimWorld) {
   await this.sendHttp('GET', '/_admin/state');
 });
 
-When('I GET the loans collection with status filter {string}', async function (this: SimWorld, status: string) {
+When('I GET the opportunities collection with stage filter {string}', async function (this: SimWorld, stage: string) {
   // Use direct query to demonstrate filtering
   assert.ok(this.sys, 'System not booted');
-  const boundary = this.sys.dsl.byBoundaryName['LoanAccount'];
-  assert.ok(boundary, 'LoanAccount boundary should exist');
+  const boundary = this.sys.dsl.byBoundaryName['Opportunity'];
+  assert.ok(boundary, 'Opportunity boundary should exist');
   const result = runQuery({
     boundary,
     targetId: null,
-    queryParams: { status },
+    queryParams: { stage },
     graph: this.sys.graph,
     cel: this.sys.cel,
     openapi: this.sys.openapi,
@@ -203,10 +203,10 @@ When('I GET the loans collection with status filter {string}', async function (t
   };
 });
 
-When('I GET the loans collection with limit {int}', async function (this: SimWorld, limit: number) {
+When('I GET the opportunities collection with limit {int}', async function (this: SimWorld, limit: number) {
   assert.ok(this.sys, 'System not booted');
-  const boundary = this.sys.dsl.byBoundaryName['LoanAccount'];
-  assert.ok(boundary, 'LoanAccount boundary should exist');
+  const boundary = this.sys.dsl.byBoundaryName['Opportunity'];
+  assert.ok(boundary, 'Opportunity boundary should exist');
   const result = runQuery({
     boundary,
     targetId: null,
@@ -219,10 +219,10 @@ When('I GET the loans collection with limit {int}', async function (this: SimWor
   this.lastResponse = { status: 200, body: result, headers: {} };
 });
 
-When('I GET the loans collection with offset {int} and limit {int}', async function (this: SimWorld, offset: number, limit: number) {
+When('I GET the opportunities collection with offset {int} and limit {int}', async function (this: SimWorld, offset: number, limit: number) {
   assert.ok(this.sys, 'System not booted');
-  const boundary = this.sys.dsl.byBoundaryName['LoanAccount'];
-  assert.ok(boundary, 'LoanAccount boundary should exist');
+  const boundary = this.sys.dsl.byBoundaryName['Opportunity'];
+  assert.ok(boundary, 'Opportunity boundary should exist');
   const result = runQuery({
     boundary,
     targetId: null,
@@ -235,18 +235,18 @@ When('I GET the loans collection with offset {int} and limit {int}', async funct
   this.lastResponse = { status: 200, body: result, headers: {} };
 });
 
-Then('the response should be a paginated subset of loans', function (this: SimWorld) {
+Then('the response should be a paginated subset of opportunities', function (this: SimWorld) {
   assert.ok(this.lastResponse, 'No response captured');
   assert.strictEqual(this.lastResponse.status, 200, `Expected 200`);
   assert.ok(Array.isArray(this.lastResponse.body), 'Response body should be an array');
 });
 
-Then('all returned loans should have status {string}', function (this: SimWorld, status: string) {
+Then('all returned opportunities should have stage {string}', function (this: SimWorld, stage: string) {
   assert.ok(this.lastResponse, 'No response captured');
   assert.ok(Array.isArray(this.lastResponse.body), 'Response body should be an array');
-  const loans = this.lastResponse.body as Array<Record<string, unknown>>;
-  for (const loan of loans) {
-    assert.strictEqual(loan['status'], status, `Loan ${String(loan['id'])} should have status '${status}'`);
+  const opps = this.lastResponse.body as Array<Record<string, unknown>>;
+  for (const opp of opps) {
+    assert.strictEqual(opp['stage'], stage, `Opportunity ${String(opp['id'])} should have stage '${stage}'`);
   }
 });
 

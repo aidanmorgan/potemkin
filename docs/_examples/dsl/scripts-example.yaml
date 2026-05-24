@@ -1,16 +1,17 @@
-boundary: RiskScoring
-contract_path: /risk-assessments
+boundary: LeadScoring
+contract_path: /lead-scores
 fallback_override: false
 identity:
   creation:
     generate: "$uuidv7()"
 scripts:
-  - name: computeRiskScore
+  - name: computeScore
     source: |
       export default function(ctx) {
-        const utilisation = ctx.state.balance / ctx.state.creditLimit;
-        const multiplier = ctx.command.payload.riskMultiplier ?? 1.0;
-        return Math.round(utilisation * multiplier * 100);
+        const source = ctx.command.payload.source ?? 'COLD_LIST';
+        const baseScore = { REFERRAL: 80, PARTNER: 70, WEBSITE: 50, COLD_LIST: 20 };
+        const multiplier = ctx.command.payload.scoreMultiplier ?? 1.0;
+        return Math.round((baseScore[source] ?? 30) * multiplier);
       }
   - name: buildAuditTrail
     source: |
@@ -23,36 +24,36 @@ scripts:
         };
       }
 event_catalog:
-  - type: RiskAssessmentCreated
+  - type: LeadScoreCreated
     payload_template:
       id: "command.targetId"
-      customerId: "command.payload.customerId"
-      score: "ts:computeRiskScore"
+      leadId: "command.payload.leadId"
+      score: "ts:computeScore"
       createdAt: "$now()"
-  - type: RiskAssessmentUpdated
+  - type: LeadScoreUpdated
     payload_template:
-      score: "ts:computeRiskScore"
+      score: "ts:computeScore"
       audit: "ts:buildAuditTrail"
       updatedAt: "$now()"
 behaviors:
-  - name: createAssessment
+  - name: createScore
     match:
       intent: creation
-      condition: "command.payload.customerId != null"
-    emit: RiskAssessmentCreated
-  - name: updateAssessment
+      condition: "command.payload.leadId != null"
+    emit: LeadScoreCreated
+  - name: updateScore
     match:
       intent: mutation
-      condition: "command.payload.riskMultiplier != null"
-    emit: RiskAssessmentUpdated
+      condition: "command.payload.scoreMultiplier != null"
+    emit: LeadScoreUpdated
 reducers:
-  - on: RiskAssessmentCreated
+  - on: LeadScoreCreated
     assign:
       id: "event.payload.id"
-      customerId: "event.payload.customerId"
+      leadId: "event.payload.leadId"
       score: "event.payload.score"
       createdAt: "event.payload.createdAt"
-  - on: RiskAssessmentUpdated
+  - on: LeadScoreUpdated
     assign:
       score: "event.payload.score"
 initialization: []

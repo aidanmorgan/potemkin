@@ -1,10 +1,10 @@
 Feature: Architectural and Ubiquitous Requirements
 
   Background:
-    Given the banking simulator is booted
+    Given the CRM simulator is booted
 
   Scenario: REQ-1 — Interface Contract is the authoritative schema source
-    When I send "POST /customers/arch-test-001" with body "{ \"name\": \"Bob\", \"email\": \"bob@example.com\" }"
+    When I send "POST /leads/arch-test-001" with body "{ \"companyName\": \"Acme\", \"contactName\": \"Bob\", \"email\": \"bob@example.com\" }"
     Then the response status should be 201
     And requests with invalid payload are rejected with 400
 
@@ -12,7 +12,7 @@ Feature: Architectural and Ubiquitous Requirements
     Then the event store and state graph are separate stores
 
   Scenario: REQ-3 — Appended events cannot be modified
-    When I send "POST /customers/arch-test-003" with body "{ \"name\": \"Eve\", \"email\": \"eve@example.com\" }"
+    When I send "POST /leads/arch-test-003" with body "{ \"companyName\": \"Eve Corp\", \"contactName\": \"Eve\", \"email\": \"eve@example.com\" }"
     Then the response status should be 201
     And events in the event log should be frozen
 
@@ -23,16 +23,16 @@ Feature: Architectural and Ubiquitous Requirements
     Then DSL rules emit events rather than directly mutating state
 
   Scenario: REQ-6 — Boundary A can emit secondary command to boundary B
-    Given a cross-boundary DSL is booted with Loan cascading to Customer loanIds
-    When a Loan creation command is dispatched for a known customer
-    Then the targeted Customer loanIds includes the new loan id
+    Given a cross-boundary DSL is booted with Opportunity cascading to Lead opportunityIds
+    When an Opportunity creation command is dispatched for a known lead
+    Then the targeted Lead opportunityIds includes the new opportunity id
     And the event log includes one event per affected boundary
 
   Scenario: REQ-7 — Primary and secondary commands form an atomic Unit of Work
     Then all events from the request are committed atomically
 
   Scenario: REQ-7 — Failed cascade rolls back all events atomically
-    Given the banking simulator is booted
+    Given the CRM simulator is booted
     And a DSL whose primary command emits a successful event but the secondary command throws
     When the primary command is sent
     Then the UoW aborts

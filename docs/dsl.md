@@ -36,8 +36,8 @@ One YAML file per boundary is the standard convention:
 
 ```
 sim/
-  customer.yaml        # Customer boundary
-  loan-account.yaml    # LoanAccount boundary
+  lead.yaml            # Lead boundary
+  opportunity.yaml     # Opportunity boundary
   global.yaml          # sagas, idempotency, derived_projections (Tier 2)
 ```
 
@@ -60,8 +60,8 @@ A boundary file is a YAML mapping. The top-level keys are:
 
 | YAML key (snake_case) | TypeScript field (camelCase) | Type | Required | Description |
 |---|---|---|---|---|
-| `boundary` | `boundary` | `string` | yes | Logical namespace for this aggregate (e.g. `LoanAccount`). Used in event routing and cross-boundary dispatch. |
-| `contract_path` | `contractPath` | `string` | yes | The OpenAPI route this boundary handles (e.g. `/loans`). |
+| `boundary` | `boundary` | `string` | yes | Logical namespace for this aggregate (e.g. `Opportunity`). Used in event routing and cross-boundary dispatch. |
+| `contract_path` | `contractPath` | `string` | yes | The OpenAPI route this boundary handles (e.g. `/opportunities`). |
 | `fallback_override` | `fallbackOverride` | `boolean` | no (default `false`) | When `true`, unmatched commands use a generic CRUD fallback instead of returning an error. |
 | `identity` | `identity` | object | no | Identity generation config for creation intents. |
 | `identity.creation.generate` | `identity.creation.generate` | CEL string | no | Expression producing the aggregate ID on creation. Typically `"$uuidv7()"`. |
@@ -99,11 +99,11 @@ Maps URL query parameter keys to CEL boolean expressions used to filter the stat
 
 ```yaml
 query_mapping:
-  riskBand: "state.riskBand == query.riskBand"
   status: "state.status == query.status"
+  campaignId: "state.assignedCampaignId == query.campaignId"
 ```
 
-A `GET /customers?riskBand=LOW` request returns only entities where `state.riskBand == "LOW"`.
+A `GET /leads?status=NEW` request returns only entities where `state.status == "NEW"`.
 
 ---
 
@@ -113,18 +113,17 @@ The `event_catalog` block declares the named event types that behaviors may emit
 
 ```yaml
 event_catalog:
-  - type: LoanOpened
+  - type: LeadCreated
     payload_template:
       id: "command.targetId"
-      customerId: "command.payload.customerId"
-      principal: "command.payload.principal"
-      openedAt: "$now()"
-  - type: LoanDisbursed
-    schema_ref: "#/components/schemas/LoanDisbursedEvent"
+      companyName: "command.payload.companyName"
+      contactName: "command.payload.contactName"
+      score: "ts:computeScore"
+      createdAt: "$now()"
+  - type: LeadConverted
+    schema_ref: "#/components/schemas/LeadCreated"
     payload_template:
-      txId: "$uuidv7()"
-      amount: "command.payload.amount"
-      at: "$now()"
+      convertedAt: "$now()"
 ```
 
 | Field | Type | Required | Description |
@@ -159,17 +158,18 @@ See `src/engine/projection.ts` for the AJV validation implementation.
 
 ```yaml
 behaviors:
-  - name: openLoan
+  - name: createLead
     match:
       intent: creation
-      condition: "command.payload.principal > 0"
-    emit: LoanOpened
+      condition: "true"
+    emit: LeadCreated
     dispatch_commands:
-      - boundary: Customer
+      - boundary: Campaign
         intent: mutation
-        target_id: "command.payload.customerId"
+        target_id: "command.payload.assignedCampaignId"
         payload:
-          loanId: "command.targetId"
+          leadSource: "command.payload.source"
+        condition: "command.payload.assignedCampaignId != null"
 ```
 
 ### `match.intent`
@@ -185,7 +185,7 @@ One of `creation`, `mutation`, or `query`. Behaviors with a non-matching intent 
 A CEL boolean expression evaluated against the command and current shadow-graph state. When `true`, the behavior is selected. The CEL context variables are `command`, `state`, and `payload` (alias for `command.payload`).
 
 ```yaml
-condition: "command.path == $concat('/loans/', command.targetId, '/disburse') && command.payload.amount > 0"
+condition: "command.path == $concat('/leads/', command.targetId, '/qualify') && state.status == 'CONTACTED'"
 ```
 
 See [CEL — see docs/cel.md](./cel.md) for the full expression language reference.
@@ -198,11 +198,15 @@ Named guard conditions evaluated **before** `match.condition`. If any guard eval
 match:
   intent: mutation
   requires:
-    - name: validRiskBand
-      condition: "command.payload.riskBand == 'LOW' || command.payload.riskBand == 'MED' || command.payload.riskBand == 'HIGH'"
-      error_code: INVALID_RISK_BAND
-      message: "riskBand must be LOW, MED, or HIGH"
-  condition: "command.payload.riskBand != null"
+    - name: not-dnc
+      condition: "state.status != 'DNC'"
+      error_code: LEAD_IS_DNC
+      message: "Cannot contact a lead that has been marked Do Not Call"
+    - name: not-converted
+      condition: "state.status != 'CONVERTED'"
+      error_code: LEAD_ALREADY_CONVERTED
+      message: "Cannot contact a lead that has already been converted"
+  condition: "$concat('/leads/', command.targetId, '/contact') == command.path"
 ```
 
 | Field | Type | Required | Description |
@@ -221,7 +225,7 @@ List of scope strings that the caller's actor must possess. Evaluated before `re
 ```yaml
 match:
   intent: creation
-  required_scopes: [admin, loan:write]
+  required_scopes: [admin, lead:write]
   condition: "true"
 ```
 
@@ -230,7 +234,7 @@ match:
 The event catalog key to emit when the behavior matches. The payload template for that event type is evaluated and the resulting domain event is staged in the Unit of Work.
 
 ```yaml
-emit: LoanOpened
+emit: LeadCreated
 ```
 
 ### `emit_when[]` (Tier 1)
@@ -268,12 +272,12 @@ Secondary commands queued for execution within the same Unit of Work. Each secon
 
 ```yaml
 dispatch_commands:
-  - boundary: Customer
+  - boundary: Lead
     intent: mutation
-    target_id: "command.payload.customerId"
+    target_id: "command.payload.leadId"
     payload:
-      loanId: "command.targetId"
-    condition: "command.payload.customerId != null"
+      opportunityId: "command.targetId"
+    condition: "command.payload.leadId != null"
 ```
 
 | Field | Type | Required | Description |
@@ -307,20 +311,21 @@ Reducers project domain events onto aggregate state. Each reducer subscribes to 
 
 ```yaml
 reducers:
-  - on: LoanOpened
+  - on: LeadCreated
     assign:
       id: "event.payload.id"
-      customerId: "event.payload.customerId"
-      principal: "event.payload.principal"
-      balance: "0"
-      status: "'DRAFT'"
-      transactions: "[]"
-  - on: LoanDisbursed
+      companyName: "event.payload.companyName"
+      contactName: "event.payload.contactName"
+      status: "'NEW'"
+      score: "event.payload.score"
+      createdAt: "event.payload.createdAt"
+      callIds: "[]"
+  - on: LeadContacted
     assign:
-      balance: "state.balance + event.payload.amount"
-      status: "'ACTIVE'"
+      status: "'CONTACTED'"
+      lastContactedAt: "event.payload.lastContactedAt"
     append:
-      transactions: "{'txId': event.payload.txId, 'kind': 'DISBURSEMENT', 'amount': event.payload.amount, 'at': event.payload.at}"
+      callIds: "event.payload.callId"
 ```
 
 | Field | Type | Required | Description |
@@ -369,29 +374,30 @@ Sagas are declared in the **global config file** (not inside a boundary file).
 
 ```yaml
 sagas:
-  - name: LoanApproval
+  - name: LeadConversion
     trigger:
-      boundary: LoanAccount
-      intent: creation
-      condition: "command.payload.principal > 50000"
+      boundary: Lead
+      intent: mutation
+      condition: "$concat('/leads/', command.targetId, '/convert') == command.path"
     steps:
-      - name: reserveCredit
-        boundary: CreditBureau
-        intent: mutation
-        target_id: "command.payload.customerId"
+      - name: createOpportunity
+        boundary: Opportunity
+        intent: creation
+        target_id: "$uuidv7()"
         payload:
-          amount: "command.payload.principal"
+          leadId: "command.targetId"
+          value: "command.payload.value"
         compensation:
           intent: mutation
-          target_id: "command.payload.customerId"
+          target_id: "command.payload.opportunityId"
           payload:
-            release: "command.payload.principal"
-      - name: notifyRiskTeam
+            stage: "'withdrawn'"
+      - name: notifySalesTeam
         boundary: Notification
         intent: creation
         payload:
-          subject: "'Large loan approval required'"
-          loanId: "command.targetId"
+          subject: "'New opportunity created'"
+          leadId: "command.targetId"
 ```
 
 ### DSL schema
@@ -485,12 +491,12 @@ The engine supports a lightweight simulation of bearer-token authentication. No 
 Authorization: Bearer <actorId>:<scope1>,<scope2>,...
 ```
 
-Example: `Authorization: Bearer alice:admin,loan:write`
+Example: `Authorization: Bearer alice:admin,lead:write`
 
 The engine parses this into an `actor` object attached to the command envelope:
 
 ```typescript
-{ id: "alice", scopes: ["admin", "loan:write"] }
+{ id: "alice", scopes: ["admin", "lead:write"] }
 ```
 
 > ⚠️ This format is a simulation shortcut only. It is not suitable for production use. No cryptographic verification is performed.
@@ -501,12 +507,12 @@ Declared on individual behaviors. All listed scopes must be present in the actor
 
 ```yaml
 behaviors:
-  - name: approveLoan
+  - name: markLeadDNC
     match:
       intent: mutation
-      required_scopes: [admin, loan:approve]
-      condition: "true"
-    emit: LoanApproved
+      required_scopes: [manager]
+      condition: "$concat('/leads/', command.targetId, '/dnc') == command.path"
+    emit: LeadMarkedDNC
 ```
 
 ### Error semantics
@@ -526,20 +532,20 @@ Derived projections aggregate events from multiple boundaries into a separate re
 
 ```yaml
 derived_projections:
-  - name: CustomerSummary
+  - name: LeadSummary
     key: "event.aggregateId"
     subscribe:
-      - Customer:CustomerRegistered
-      - LoanAccount:LoanOpened
+      - Lead:LeadCreated
+      - Opportunity:OpportunityCreated
     reduce:
-      - on: CustomerRegistered
+      - on: LeadCreated
         assign:
-          customer_id: "event.aggregateId"
-          name: "event.payload.name"
-          total_loans: "0"
-      - on: LoanOpened
+          lead_id: "event.aggregateId"
+          companyName: "event.payload.companyName"
+          total_opportunities: "0"
+      - on: OpportunityCreated
         assign:
-          total_loans: "coalesce(state.total_loans, 0) + 1"
+          total_opportunities: "coalesce(state.total_opportunities, 0) + 1"
 ```
 
 | Field | Required | Description |
@@ -565,8 +571,8 @@ Returns the full derived state map as JSON:
 
 ```json
 {
-  "cust-001": { "customer_id": "cust-001", "name": "Acme", "total_loans": 3 },
-  "cust-002": { "customer_id": "cust-002", "name": "Beta", "total_loans": 1 }
+  "lead-001": { "lead_id": "lead-001", "companyName": "Apex Solutions", "total_opportunities": 3 },
+  "lead-002": { "lead_id": "lead-002", "companyName": "Beta Corp", "total_opportunities": 1 }
 }
 ```
 
@@ -584,11 +590,12 @@ When CEL is not expressive enough for a particular computation, you may declare 
 
 ```yaml
 scripts:
-  - name: computeRiskScore
+  - name: computeScore
     code: |
       export default function(ctx) {
-        const utilisation = ctx.state.balance / ctx.state.creditLimit;
-        return Math.round(utilisation * ctx.command.payload.riskMultiplier * 100);
+        const source = ctx.command.payload.source;
+        const baseScore = { REFERRAL: 80, PARTNER: 70, WEBSITE: 50, COLD_LIST: 20 };
+        return baseScore[source] ?? 30;
       }
 ```
 
@@ -603,9 +610,9 @@ Use `ts:<name>` in place of a CEL expression string:
 
 ```yaml
 event_catalog:
-  - type: RiskAssessmentCreated
+  - type: LeadCreated
     payload_template:
-      score: "ts:computeRiskScore"
+      score: "ts:computeScore"
 ```
 
 The sentinel is permitted in:
@@ -671,11 +678,16 @@ The `initialization` array seeds baseline state at boot. Each entry is an arbitr
 
 ```yaml
 initialization:
-  - id: "00000000-0000-7000-8000-000000000001"
-    name: "Acme Coffee Ltd"
-    riskBand: LOW
+  - id: "00000000-0000-7000-8000-000000000010"
+    companyName: "Apex Solutions Ltd"
+    contactName: "Jordan Walsh"
+    phone: "+61 2 9000 0001"
+    email: "jordan@apexsolutions.com"
+    source: "WEBSITE"
+    status: "NEW"
+    score: 50
     createdAt: "1970-01-01T00:00:00.000Z"
-    loanIds: []
+    callIds: []
 ```
 
 Each entry is translated into a `BaselineEntityCreatedEvent` whose payload is the entry object. These events are appended to the event log and projected via the normal projection engine. The aggregate ID is taken from the `id` field of the entry.
@@ -684,7 +696,7 @@ Each entry is translated into a `BaselineEntityCreatedEvent` whose payload is th
 
 Baseline events are assigned **static UUIDv7s anchored at Unix epoch 0**, making the post-reset state mathematically identical to the boot state. The `FrozenBaseline` array is kept in memory and replayed verbatim on `POST /_admin/reset` — the engine never re-evaluates initialization records at runtime.
 
-This is the mechanism that ensures `GET /customers` returns the same seed data after a reset as it does after cold boot.
+This is the mechanism that ensures `GET /leads` returns the same seed data after a reset as it does after cold boot.
 
 ---
 
@@ -724,43 +736,40 @@ This is the mechanism that ensures `GET /customers` returns the same seed data a
 
 ## 13. Complete worked example
 
-This example uses both boundary files from `docs/_examples/dsl/` and the global config to walk through a realistic loan-opening scenario.
+This example uses both boundary files from `docs/_examples/dsl/` and the global config to walk through a realistic lead-to-opportunity conversion scenario in The Nuisance Bureau CRM.
 
 ### The boundaries
 
-**Customer** (`docs/_examples/dsl/customer.yaml`): Manages customer profiles. `fallback_override: true` so GET requests work without explicit query behaviors.
+**Lead** (`docs/_examples/dsl/lead.yaml`): Manages CRM leads with lifecycle transitions (NEW → CONTACTED → QUALIFIED → CONVERTED). `fallback_override: true` so GET requests work without explicit query behaviors. Uses an inline TypeScript script for lead scoring.
 
-**LoanAccount** (`docs/_examples/dsl/loan-account.yaml`): Manages loan accounts with three behaviors: `openLoan`, `disburse`, and `repay`. The `repay` behavior uses `emit_when` to emit either `LoanRepaid` or `LoanSettled` based on remaining balance.
+**Opportunity** (`docs/_examples/dsl/opportunity.yaml`): Manages sales opportunities with three behaviors: `createOpportunity`, `advanceOpportunity`, and `closeWon`/`closeLost`. The `closeLost` behavior uses `emit_when` to emit `OpportunityLost` from either PROPOSED or NEGOTIATING stage.
 
-### Request trace: `POST /loans`
+### Request trace: `POST /leads` (create a new lead)
 
 Payload:
 
 ```json
-{ "customerId": "00000000-0000-7000-8000-000000000001", "principal": 10000 }
+{ "companyName": "Apex Solutions Ltd", "contactName": "Jordan Walsh", "phone": "+61 2 9000 0001", "email": "jordan@apexsolutions.com", "source": "WEBSITE" }
 ```
 
 1. **Contract Gateway** validates the payload against the OpenAPI spec.
-2. **Command Router** translates to a `creation` command for the `LoanAccount` boundary. A new UUIDv7 is generated as `targetId` (via `identity.creation.generate`).
-3. **Pattern Matcher** iterates `LoanAccount.behaviors`:
-   - `openLoan`: intent matches `creation`, `command.payload.principal > 0` → `true`. Match!
-4. **Event hydration**: `LoanOpened` payload template evaluated — `id`, `customerId`, `principal`, `openedAt` populated.
-5. **Shadow projection**: `LoanOpened` projected into shadow graph. Loan state now has `balance: 0, status: 'DRAFT'`.
-6. **Secondary command**: `dispatch_commands` queues a `mutation` command to `Customer` with `target_id = "00000000-0000-7000-8000-000000000001"` and `payload.loanId = <new-loan-id>`.
-7. **Secondary execution**: `Customer.attachLoan` behavior matches, emits `LoanAttachedToCustomer`.
-8. **UoW commit**: Both events (`LoanOpened`, `LoanAttachedToCustomer`) are appended atomically to the event log.
-9. **Global projection**: Both events projected to global state graph. Customer's `loanIds` array now includes the new loan ID.
-10. **Response**: HTTP 201 with the new loan entity.
+2. **Command Router** translates to a `creation` command for the `Lead` boundary. A new UUIDv7 is generated as `targetId` (via `identity.creation.generate`).
+3. **Pattern Matcher** iterates `Lead.behaviors`:
+   - `createLead`: intent matches `creation`, `true` → `true`. Match!
+4. **Event hydration**: `LeadCreated` payload template evaluated — `id`, `companyName`, `contactName`, `score` (via `ts:computeScore`) populated.
+5. **Shadow projection**: `LeadCreated` projected into shadow graph. Lead state now has `status: 'NEW'`.
+6. **UoW commit**: `LeadCreated` event appended atomically to the event log.
+7. **Response**: HTTP 201 with the new lead entity.
 
-### Request trace: `POST /loans/<id>/repay` (full repayment)
+### Request trace: `POST /opportunities/<id>/close` (close as LOST)
 
-Payload: `{ "amount": 10000 }` (equal to `state.balance`)
+Payload: `{ "outcome": "LOST", "closureReason": "Budget constraints" }`
 
-1. Pattern matcher evaluates `repay` behavior — `command.payload.amount <= state.balance` → `true`.
+1. Pattern matcher evaluates `closeLost` behavior — `command.payload.outcome == 'LOST'` → `true`.
 2. `emit_when` evaluates:
-   - Entry 1: `command.payload.amount < state.balance` → `10000 < 10000` → `false`. Skip.
-   - Entry 2: `command.payload.amount == state.balance` → `true`. Emit `LoanSettled`.
-3. `LoanSettled` reducer sets `balance: 0, status: 'SETTLED'`.
+   - Entry 1: `state.stage == 'NEGOTIATING'` → depends on current stage.
+   - Entry 2: `state.stage == 'PROPOSED'` → if true, emit `OpportunityLost`.
+3. `OpportunityLost` reducer sets `stage: 'LOST'`, records `closedAt` and `closureReason`.
 
 ### Testing the fixture (jest + supertest)
 
@@ -768,7 +777,7 @@ Payload: `{ "amount": 10000 }` (equal to `state.balance`)
 import request from 'supertest';
 import { buildApp } from '../src/app.js';
 
-describe('LoanAccount boundary', () => {
+describe('Lead boundary', () => {
   let app: Express;
 
   beforeEach(async () => {
@@ -776,42 +785,38 @@ describe('LoanAccount boundary', () => {
     await request(app).post('/_admin/reset').expect(204);
   });
 
-  it('opens a loan and attaches it to the customer', async () => {
+  it('creates a lead and scores it by source', async () => {
     const res = await request(app)
-      .post('/loans')
-      .send({ customerId: '00000000-0000-7000-8000-000000000001', principal: 5000 })
+      .post('/leads')
+      .send({ companyName: 'Apex Solutions', contactName: 'Jordan', phone: '+61 2 9000 0001', email: 'jordan@apex.com', source: 'REFERRAL' })
       .expect(201);
 
-    const loanId = res.body.id;
-
-    const customer = await request(app)
-      .get('/customers/00000000-0000-7000-8000-000000000001')
-      .expect(200);
-
-    expect(customer.body.loanIds).toContain(loanId);
+    expect(res.body.score).toBe(80); // REFERRAL score
+    expect(res.body.status).toBe('NEW');
   });
 
-  it('settles a loan when the repayment equals the balance', async () => {
-    const loanRes = await request(app)
-      .post('/loans')
-      .send({ customerId: '00000000-0000-7000-8000-000000000001', principal: 1000 })
+  it('converts a qualified lead to an opportunity', async () => {
+    const leadRes = await request(app)
+      .post('/leads')
+      .send({ companyName: 'Beta Corp', contactName: 'Alex', phone: '+61 2 9000 0002', email: 'alex@beta.com', source: 'WEBSITE' })
       .expect(201);
 
-    const id = loanRes.body.id;
+    const leadId = leadRes.body.id;
 
     await request(app)
-      .post(`/loans/${id}/disburse`)
-      .send({ amount: 1000 })
+      .post(`/leads/${leadId}/contact`)
       .expect(200);
 
     await request(app)
-      .post(`/loans/${id}/repay`)
-      .send({ amount: 1000 })
+      .post(`/leads/${leadId}/qualify`)
       .expect(200);
 
-    const loan = await request(app).get(`/loans/${id}`).expect(200);
-    expect(loan.body.status).toBe('SETTLED');
-    expect(loan.body.balance).toBe(0);
+    const oppRes = await request(app)
+      .post(`/leads/${leadId}/convert`)
+      .send({ value: 5000 })
+      .expect(200);
+
+    expect(oppRes.body.status).toBe('CONVERTED');
   });
 });
 ```
@@ -822,7 +827,7 @@ describe('LoanAccount boundary', () => {
 
 ### Cross-boundary aggregation
 
-Use `dispatch_commands` to push state references between boundaries when one aggregate needs to know about another. In the loan example, `openLoan` dispatches to `Customer` to attach the loan ID. This keeps each boundary authoritative over its own state while still linking related entities.
+Use `dispatch_commands` to push state references between boundaries when one aggregate needs to know about another. In the CRM example, `createOpportunity` dispatches to `Lead` to attach the opportunity ID. This keeps each boundary authoritative over its own state while still linking related entities.
 
 For **read-side aggregation** without mutations, use derived projections (Section 9). Derived projections subscribe to events from multiple boundaries and maintain a separate read model — they do not interfere with the primary state graph.
 
@@ -832,35 +837,36 @@ For workflows requiring coordination across more than two boundaries — such as
 
 ```yaml
 sagas:
-  - name: LoanApproval
+  - name: LeadConversion
     trigger:
-      boundary: LoanAccount
-      intent: creation
-      condition: "command.payload.principal > 50000"
+      boundary: Lead
+      intent: mutation
+      condition: "$concat('/leads/', command.targetId, '/convert') == command.path"
     steps:
-      - name: reserveCredit
-        boundary: CreditBureau
-        intent: mutation
-        target_id: "command.payload.customerId"
+      - name: createOpportunity
+        boundary: Opportunity
+        intent: creation
+        target_id: "$uuidv7()"
         payload:
-          amount: "command.payload.principal"
+          leadId: "command.targetId"
+          value: "command.payload.value"
         compensation:
           intent: mutation
-          target_id: "command.payload.customerId"
+          target_id: "command.payload.opportunityId"
           payload:
-            release: "command.payload.principal"
+            stage: "'withdrawn'"
 ```
 
 ### Tag-based filtering via `query_mapping`
 
 ```yaml
 query_mapping:
-  status: "state.status == query.status"
-  riskBand: "state.riskBand == query.riskBand"
-  minPrincipal: "state.principal >= int(query.minPrincipal)"
+  stage: "state.stage == query.stage"
+  campaignId: "state.campaignId == query.campaignId"
+  minValue: "state.value >= double(query.minValue)"
 ```
 
-Multiple filter parameters compose as AND: `GET /loans?status=ACTIVE&minPrincipal=5000` returns only active loans with principal ≥ 5 000. Type-coercion functions from CEL (`int()`, `double()`) are useful here since query parameters arrive as strings.
+Multiple filter parameters compose as AND: `GET /opportunities?stage=negotiating&minValue=5000` returns only negotiating opportunities with value ≥ 5 000. Type-coercion functions from CEL (`int()`, `double()`) are useful here since query parameters arrive as strings.
 
 ### Derived KPIs via `derived_projections`
 
@@ -868,22 +874,22 @@ Cross-boundary metrics that would otherwise require joining two state graphs in 
 
 ```yaml
 derived_projections:
-  - name: CustomerSummary
+  - name: LeadSummary
     key: "event.aggregateId"
     subscribe:
-      - Customer:CustomerRegistered
-      - LoanAccount:LoanOpened
+      - Lead:LeadCreated
+      - Opportunity:OpportunityCreated
     reduce:
-      - on: CustomerRegistered
+      - on: LeadCreated
         assign:
-          name: "event.payload.name"
-          total_loans: "0"
-      - on: LoanOpened
+          companyName: "event.payload.companyName"
+          total_opportunities: "0"
+      - on: OpportunityCreated
         assign:
-          total_loans: "coalesce(state.total_loans, 0) + 1"
+          total_opportunities: "coalesce(state.total_opportunities, 0) + 1"
 ```
 
-Poll `GET /_admin/derived/CustomerSummary` to retrieve the aggregated map.
+Poll `GET /_admin/derived/LeadSummary` to retrieve the aggregated map.
 
 ### Long-running scripts (caution)
 

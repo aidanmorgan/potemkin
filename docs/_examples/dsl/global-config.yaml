@@ -4,43 +4,44 @@ idempotency:
   hash_includes_body: true
 
 sagas:
-  - name: LoanApproval
+  - name: LeadConversion
     trigger:
-      boundary: LoanAccount
-      intent: creation
-      condition: "command.payload.principal > 50000"
+      boundary: Lead
+      intent: mutation
+      condition: "$concat('/leads/', command.targetId, '/convert') == command.path"
     steps:
-      - name: reserveCredit
-        boundary: CreditBureau
-        intent: mutation
-        target_id: "command.payload.customerId"
+      - name: createOpportunity
+        boundary: Opportunity
+        intent: creation
+        target_id: "$uuidv7()"
         payload:
-          amount: "command.payload.principal"
+          leadId: "command.targetId"
+          value: "command.payload.value"
         compensation:
           intent: mutation
-          target_id: "command.payload.customerId"
+          target_id: "command.payload.opportunityId"
           payload:
-            release: "command.payload.principal"
-      - name: notifyRiskTeam
+            stage: "'withdrawn'"
+      - name: notifySalesTeam
         boundary: Notification
         intent: creation
         payload:
-          subject: "'Large loan approval required'"
-          loanId: "command.targetId"
-          principal: "command.payload.principal"
+          subject: "'New opportunity created'"
+          leadId: "command.targetId"
+          value: "command.payload.value"
 
 derived_projections:
-  - name: CustomerSummary
+  - name: LeadSummary
     key: "event.aggregateId"
     subscribe:
-      - Customer:CustomerRegistered
-      - LoanAccount:LoanOpened
+      - Lead:LeadCreated
+      - Opportunity:OpportunityCreated
     reduce:
-      - on: CustomerRegistered
+      - on: LeadCreated
         assign:
-          customer_id: "event.aggregateId"
-          name: "event.payload.name"
-          total_loans: "0"
-      - on: LoanOpened
+          lead_id: "event.aggregateId"
+          companyName: "event.payload.companyName"
+          total_opportunities: "0"
+      - on: OpportunityCreated
         assign:
-          total_loans: "coalesce(state.total_loans, 0) + 1"
+          total_opportunities: "coalesce(state.total_opportunities, 0) + 1"

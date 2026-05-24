@@ -1,7 +1,7 @@
 Feature: Event Sourcing and CQRS Projections
 
   Background:
-    Given the banking simulator is booted
+    Given the CRM simulator is booted
 
   Scenario: REQ-20 — Events are appended atomically after UoW completion
     Then all events from the unit of work should be appended atomically
