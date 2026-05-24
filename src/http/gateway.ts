@@ -34,7 +34,6 @@ import type { JsonObject, JsonValue } from '../types.js';
 export type ExpressApp = Express;
 import type { BootedSystem } from '../engine/boot.js';
 import { registerAdminRoutes } from './adminRoutes.js';
-import { registerSpecmaticRoutes } from './specmaticRoutes.js';
 import { extractFaultSignal } from '../engine/faultSim.js';
 import { matchRoute } from '../contract/router.js';
 import { translateIntent } from '../engine/router.js';
@@ -126,9 +125,6 @@ export function createGateway(sys: BootedSystem): Express {
   // Admin routes registered first so they always win over dynamic OpenAPI routes.
   registerAdminRoutes(app, sys);
 
-  // Specmatic /_specmatic/* and /actuator/health endpoints.
-  registerSpecmaticRoutes(app, sys);
-
   // Register one catch-all route handler per OpenAPI contract path.
   for (const contractPath of Object.keys(sys.dsl.byContractPath)) {
     const expressPath = expressifyPath(contractPath);
@@ -204,52 +200,6 @@ async function handleContractRequest(
         res.status(fault.status).json(fault.body);
       }
       return;
-    }
-
-    // 2b. Specmatic expectation store match — consult BEFORE CQRS dispatch.
-    //     If a stub matches, respond directly and skip the CQRS pipeline entirely.
-    //     The CQRS pipeline acts as the "generative fallback" for unmatched requests.
-    {
-      // Normalise request headers to plain string map (Node lowercases names already).
-      const flatHeaders: Record<string, string> = {};
-      for (const [k, v] of Object.entries(req.headers)) {
-        if (typeof v === 'string') flatHeaders[k] = v;
-        else if (Array.isArray(v)) flatHeaders[k] = v.join(', ');
-      }
-
-      const stubMatch = sys.expectations.match({
-        method: req.method,
-        path: req.path,
-        headers: flatHeaders,
-        query: req.query as Record<string, string | string[]>,
-        body: (req.body as JsonValue) ?? null,
-      });
-
-      if (stubMatch.matched && stubMatch.expectation) {
-        const exp = stubMatch.expectation;
-        logger.debug({ expectationId: exp.id, transient: exp.transient }, 'Stub matched — bypassing CQRS');
-
-        // Remove transient stubs after a single use.
-        if (exp.transient) {
-          sys.expectations.remove(exp.id);
-        }
-
-        const responseHeaders: Record<string, string> = {
-          ...(exp.response.headers ?? {}),
-          'X-Specmatic-Result': 'success',
-          'X-Specmatic-Expectation-Id': exp.id,
-        };
-
-        if (isHead) {
-          res.status(exp.response.status).set(responseHeaders).end();
-        } else {
-          res
-            .status(exp.response.status)
-            .set(responseHeaders)
-            .json(exp.response.body ?? null);
-        }
-        return;
-      }
     }
 
     // 3. Lookup matching contract route (method + path).

@@ -9,10 +9,8 @@ import type { Logger } from '../observability/logger.js';
 import type { Tracer } from '../observability/tracing.js';
 import type { EngineMetrics } from '../observability/metrics.js';
 import type { ObjectGraphSchemaRegistry } from '../schema/types.js';
-import type { ExpectationStore } from '../specmatic/types.js';
 import type { DerivedProjectionRegistry } from '../projections/types.js';
 
-import fs from 'fs';
 import { compileDsl } from '../dsl/parser.js';
 import { BootError } from '../errors.js';
 import { createCelEvaluator } from '../cel/evaluator.js';
@@ -25,9 +23,6 @@ import { rootLogger, childLogger } from '../observability/logger.js';
 import { getTracer, withSpan, createEngineMetrics } from '../observability/index.js';
 import { deriveSchemasFromOpenApi } from '../schema/fromOpenApi.js';
 import { staticCheckDsl } from '../schema/dslStaticChecker.js';
-import { createExpectationStore } from '../specmatic/expectationStore.js';
-import { loadExpectationsFromDirectory } from '../specmatic/loader.js';
-import { loadSpecmaticConfig } from '../specmatic/config.js';
 import { createDerivedProjectionRegistry, applyEventToDerivedProjections } from '../projections/engine.js';
 
 export interface BootInput {
@@ -39,23 +34,6 @@ export interface BootInput {
   readonly tracer?: Tracer;
   /** Optional pre-built metrics instance; boot creates one if absent. */
   readonly metrics?: EngineMetrics;
-  /**
-   * Optional directory to pre-populate the expectation store from Specmatic stub files.
-   * Every *.json file matching the Specmatic externalised stub format will be loaded.
-   * T1+: if absent, the expectation store starts empty.
-   */
-  readonly specmaticStubDir?: string;
-  /**
-   * T2: optional Specmatic config for config-file-driven stub directory auto-load.
-   *  - configPath: absolute path to specmatic.yaml/json; its stubs[] paths are resolved
-   *    relative to the config file's directory and loaded as stub directories.
-   *  - stubDirs: explicit list of stub directory paths; loaded in addition to any
-   *    directories derived from configPath.
-   */
-  readonly specmaticConfig?: {
-    readonly configPath?: string;
-    readonly stubDirs?: string[];
-  };
 }
 
 export interface BootedSystem {
@@ -80,11 +58,6 @@ export interface BootedSystem {
    * as a required header parameter (REQ-29). Used by the UoW precondition check.
    */
   readonly requiresPrecondition: (boundary: string, method: string) => boolean;
-  /**
-   * In-memory expectation store for Specmatic stub/service-virtualisation support.
-   * The gateway consults this before dispatching to the CQRS pipeline.
-   */
-  readonly expectations: ExpectationStore;
   /**
    * REQ-88/90: Derived projection registry — keyed by projection name.
    * Populated by applyEventToDerivedProjections after each committed event.
@@ -372,67 +345,6 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       }
     }
 
-    // ── Step 10: Expectation store (Specmatic stub support) ──────────────────
-    const expectations = createExpectationStore();
-
-    if (input.specmaticStubDir) {
-      bootLog.info({ step: 'stub_load', dir: input.specmaticStubDir }, 'Boot: loading Specmatic stub files');
-      try {
-        const stubs = await loadExpectationsFromDirectory(input.specmaticStubDir);
-        for (const stub of stubs) {
-          expectations.add(stub.request, stub.response, { source: 'file', filePath: stub.filePath });
-        }
-        bootLog.info(
-          { step: 'stub_load', loaded: stubs.length },
-          'Boot: Specmatic stubs loaded',
-        );
-      } catch (err) {
-        // Non-fatal: log warning but don't abort boot
-        bootLog.warn({ step: 'stub_load', err: err instanceof Error ? err.message : String(err) }, 'Boot: failed to load Specmatic stub files');
-      }
-    }
-
-    // T2: stub-dir auto-load via specmaticConfig
-    if (input.specmaticConfig) {
-      const { configPath, stubDirs: explicitStubDirs = [] } = input.specmaticConfig;
-      const dirsToLoad: string[] = [...explicitStubDirs];
-
-      if (configPath) {
-        try {
-          const raw = await fs.promises.readFile(configPath, 'utf-8');
-          const cfg = loadSpecmaticConfig(raw);
-          // Resolve stub dirs relative to the config file's directory
-          const configDir = configPath.replace(/[/\\][^/\\]+$/, '') || '.';
-          for (const stubDir of cfg.stubs) {
-            const resolved = stubDir.startsWith('/') ? stubDir : `${configDir}/${stubDir}`;
-            dirsToLoad.push(resolved);
-          }
-          bootLog.info({ step: 'stub_autoload', configPath, dirsFromConfig: cfg.stubs.length }, 'Boot: parsed Specmatic config for stub dirs');
-        } catch (err) {
-          bootLog.warn({ step: 'stub_autoload', configPath, err: err instanceof Error ? err.message : String(err) }, 'Boot: failed to read specmaticConfig.configPath');
-        }
-      }
-
-      if (dirsToLoad.length > 0) {
-        let totalLoaded = 0;
-        for (const dir of dirsToLoad) {
-          try {
-            const stubs = await loadExpectationsFromDirectory(dir);
-            for (const stub of stubs) {
-              expectations.add(stub.request, stub.response, { source: 'file', filePath: stub.filePath });
-            }
-            totalLoaded += stubs.length;
-          } catch (err) {
-            bootLog.warn({ step: 'stub_autoload', dir, err: err instanceof Error ? err.message : String(err) }, 'Boot: failed to load stub dir');
-          }
-        }
-        bootLog.info(
-          { step: 'stub_autoload', loaded: totalLoaded, dirs: dirsToLoad.length },
-          `Boot: loaded ${totalLoaded} expectations from ${dirsToLoad.length} directories`,
-        );
-      }
-    }
-
     return {
       dsl,
       openapi: input.openapi,
@@ -446,7 +358,6 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       metrics,
       schemaRegistry,
       requiresPrecondition: preconditionRequired,
-      expectations,
       derivedProjections,
     };
   });
