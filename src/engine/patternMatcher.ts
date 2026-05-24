@@ -5,6 +5,7 @@ import type { CelEvaluator } from '../cel/evaluator.js';
 import type { Logger } from '../observability/logger.js';
 import type { Tracer } from '../observability/tracing.js';
 import type { ObjectGraphSchemaRegistry } from '../schema/types.js';
+import type { ScriptRegistry, ScriptContext } from '../scripts/types.js';
 import { CelPhase } from '../cel/phases.js';
 import { getTracer, SpanStatusCode } from '../observability/tracing.js';
 import {
@@ -13,6 +14,12 @@ import {
   UnhandledOperationError,
   InternalExecutionError,
 } from '../errors.js';
+import { invokeScript } from '../scripts/sandbox.js';
+import { nextUuidv7 } from '../ids/uuidv7.js';
+import { deepClone, deepMerge } from '../stategraph/graph.js';
+
+// REQ-67: sentinel prefix for inline TypeScript references
+const TS_SENTINEL = 'ts:';
 
 export interface PatternMatchInput {
   readonly command: Command;
@@ -43,6 +50,8 @@ export interface PatternMatchInput {
    * getTracer('engine') when absent.
    */
   readonly tracer?: Tracer;
+  /** REQ-67/68: Optional script registry for ts: sentinel resolution */
+  readonly scriptRegistry?: ScriptRegistry;
 }
 
 export interface PatternMatchOutcome {
@@ -73,8 +82,48 @@ export function runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
   return withSpanSync('engine.patternMatch', () => _runPatternMatch(input), input.tracer);
 }
 
+// ---------------------------------------------------------------------------
+// Helper: evaluate a CEL or ts: expression
+// ---------------------------------------------------------------------------
+
+function evaluateExpr(
+  expr: string,
+  celCtx: Record<string, unknown>,
+  phase: CelPhase,
+  cel: CelEvaluator,
+  scriptRegistry: ScriptRegistry | undefined,
+  boundary: string,
+  scriptCtxBuilder: () => ScriptContext,
+): unknown {
+  if (expr.startsWith(TS_SENTINEL)) {
+    // REQ-71 defense-in-depth: if a ts: ref reaches reducer phase at runtime
+    if (phase === CelPhase.Reducer) {
+      throw new InternalExecutionError(
+        `ts: sentinel "${expr}" reached Reducer phase — this is forbidden (REQ-71)`,
+        { code: 'SCRIPT_IN_REDUCER_PHASE', expr },
+      );
+    }
+    const scriptName = expr.slice(TS_SENTINEL.length);
+    if (!scriptRegistry) {
+      throw new InternalExecutionError(
+        `ts: sentinel "${expr}" used but no script registry available`,
+        { code: 'SCRIPT_EXECUTION_FAILED', scriptName },
+      );
+    }
+    const handle = scriptRegistry.get(boundary, scriptName);
+    if (!handle) {
+      throw new InternalExecutionError(
+        `Script "${scriptName}" not found in registry for boundary "${boundary}"`,
+        { code: 'SCRIPT_EXECUTION_FAILED', scriptName, boundary },
+      );
+    }
+    return invokeScript(handle, scriptCtxBuilder());
+  }
+  return cel.evaluate(expr, celCtx, phase);
+}
+
 function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
-  const { command, boundary, shadow, cel, nextEventId, now, logger, nextSequenceVersion, projectToShadow } = input;
+  const { command, boundary, shadow, cel, nextEventId, now, logger, nextSequenceVersion, projectToShadow, scriptRegistry } = input;
   const log = logger?.child({ component: 'patternMatcher', commandId: command.commandId, boundary: command.boundary });
 
   // Step 1: Context Assembly
@@ -110,11 +159,59 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
       payload: command.payload,
     };
 
+    const buildScriptCtx = (): ScriptContext => ({
+      command,
+      state: existingState,
+      payload: command.payload as JsonObject,
+      helpers: {
+        uuid: () => nextUuidv7(),
+        now: () => new Date().toISOString(),
+        deepClone: <T>(v: T) => deepClone(v as JsonValue) as unknown as T,
+        deepMerge: (a: JsonObject, b: JsonObject) => deepMerge(a, b),
+      },
+      logger: log ?? logger ?? ({ child: () => ({} as Logger), info: () => {}, debug: () => {}, warn: () => {}, error: () => {} } as unknown as Logger),
+    });
+
+    // REQ-61: evaluate requires[] FIRST (before match.condition)
+    if (behavior.match.requires && behavior.match.requires.length > 0) {
+      let requiresFailed = false;
+      for (const req of behavior.match.requires) {
+        let condResult: unknown;
+        try {
+          condResult = evaluateExpr(
+            req.condition, celCtx, CelPhase.Behavior, cel, scriptRegistry,
+            boundary.boundary, buildScriptCtx,
+          );
+        } catch (err) {
+          // If evaluation throws, treat as failed requirement
+          condResult = false;
+          log?.debug({ behaviorName: behavior.name, requiresName: req.name, err }, 'Requires condition evaluation error');
+        }
+
+        if (condResult !== true) {
+          log?.info({ behaviorName: behavior.name, requiresName: req.name }, 'Requires guard failed — returning 422');
+          // REQ-61: throw UnhandledOperationError with 422 and details
+          throw new UnhandledOperationError(
+            req.errorMessage || `Precondition "${req.name}" failed`,
+            {
+              code: req.errorCode || 'PRECONDITION_FAILED',
+              message: req.errorMessage,
+              requirement: req.name,
+            },
+          );
+        }
+      }
+      if (requiresFailed) continue; // unreachable but kept for safety
+    }
+
     log?.debug({ behaviorName: behavior.name }, 'Evaluating behavior condition');
 
     let matched: boolean;
     try {
-      const result = cel.evaluate(behavior.match.condition, celCtx, CelPhase.Behavior);
+      const result = evaluateExpr(
+        behavior.match.condition, celCtx, CelPhase.Behavior, cel, scriptRegistry,
+        boundary.boundary, buildScriptCtx,
+      );
       matched = result === true;
     } catch (err) {
       log?.debug({ behaviorName: behavior.name, err }, 'Behavior condition evaluation error — treating as no-match');
@@ -126,23 +223,11 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
       continue;
     }
 
-    log?.info({ behaviorName: behavior.name, emit: behavior.emit }, 'Behavior matched');
-
-    // Look up event catalog entry
-    const catalogEntry = boundary.eventCatalog.find(e => e.type === behavior.emit);
-    if (!catalogEntry) {
-      throw new InternalExecutionError(`Unknown emit reference '${behavior.emit}' in boundary '${boundary.boundary}'`, {
-        emit: behavior.emit,
-        boundary: boundary.boundary,
-      });
-    }
-
-    // Determine aggregateId
+    // Determine aggregateId (needed for payload template evaluation)
     let aggregateId: string;
     if (command.targetId != null) {
       aggregateId = command.targetId;
     } else if (command.intent === 'creation') {
-      // Auto-generate via identity config
       const generateExpr = boundary.identity?.creation?.generate;
       if (generateExpr) {
         const generated = cel.evaluate(generateExpr, celCtx, CelPhase.EventHydration);
@@ -156,41 +241,171 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
         aggregateId = nextEventId();
       }
     } else {
-      // collection-level non-creation — use commandId as a stable key
       aggregateId = command.commandId;
     }
 
-    const eventId = nextEventId();
+    // -----------------------------------------------------------------------
+    // Emit resolution: emit (single) or emit_when (conditional multi-emit)
+    // -----------------------------------------------------------------------
+    // REQ-64: if emit is present, fire it unconditionally. Then process emit_when entries.
+    const allStagedEvents: DomainEvent[] = [];
 
-    // Evaluate payload template
-    const payloadCtx = {
-      command: command as unknown as Record<string, unknown>,
-      state: shadow.get(aggregateId) ?? {},
-      payload: command.payload,
+    // Helper to emit a single event by catalog type
+    const emitEventByType = (eventType: string, currentAggId: string): DomainEvent => {
+      const catalogEntry = boundary.eventCatalog.find(e => e.type === eventType);
+      if (!catalogEntry) {
+        throw new InternalExecutionError(`Unknown emit reference '${eventType}' in boundary '${boundary.boundary}'`, {
+          emit: eventType,
+          boundary: boundary.boundary,
+        });
+      }
+
+      const eventId = nextEventId();
+      // Use current shadow state for payload context
+      const payloadCtx = {
+        command: command as unknown as Record<string, unknown>,
+        state: shadow.get(currentAggId) ?? {},
+        payload: command.payload,
+      };
+
+      const buildPayloadScriptCtx = (): ScriptContext => ({
+        command,
+        state: shadow.get(currentAggId),
+        payload: command.payload as JsonObject,
+        helpers: {
+          uuid: () => nextUuidv7(),
+          now: () => new Date().toISOString(),
+          deepClone: <T>(v: T) => deepClone(v as JsonValue) as unknown as T,
+          deepMerge: (a: JsonObject, b: JsonObject) => deepMerge(a, b),
+        },
+        logger: log ?? logger ?? ({ child: () => ({} as Logger), info: () => {}, debug: () => {}, warn: () => {}, error: () => {} } as unknown as Logger),
+      });
+
+      const eventPayload: JsonObject = {};
+      for (const [field, expr] of Object.entries(catalogEntry.payloadTemplate)) {
+        const value = evaluateExpr(
+          expr, payloadCtx, CelPhase.EventHydration, cel, scriptRegistry,
+          boundary.boundary, buildPayloadScriptCtx,
+        );
+        eventPayload[field] = value as JsonValue;
+      }
+
+      const sequenceVersion = nextSequenceVersion(currentAggId);
+
+      const domainEvent: DomainEvent = {
+        eventId,
+        boundary: command.boundary,
+        aggregateId: currentAggId,
+        type: catalogEntry.type,
+        payload: eventPayload,
+        timestamp: now(),
+        sequenceVersion,
+        causedBy: command.commandId,
+      };
+
+      log?.debug({ eventId, eventType: catalogEntry.type, aggregateId: currentAggId }, 'Domain event constructed');
+
+      // Immediately project into shadow for causal consistency
+      projectToShadow(domainEvent);
+
+      return domainEvent;
     };
-    const eventPayload: JsonObject = {};
-    for (const [field, expr] of Object.entries(catalogEntry.payloadTemplate)) {
-      const value = cel.evaluate(expr, payloadCtx, CelPhase.EventHydration);
-      eventPayload[field] = value as JsonValue;
+
+    // Fire unconditional `emit` (if present)
+    if (behavior.emit !== undefined) {
+      log?.info({ behaviorName: behavior.name, emit: behavior.emit }, 'Behavior matched — emitting');
+      const evt = emitEventByType(behavior.emit, aggregateId);
+      allStagedEvents.push(evt);
     }
 
-    const sequenceVersion = nextSequenceVersion(aggregateId);
+    // REQ-64: Process emit_when entries (after shadow is updated by unconditional emit)
+    if (behavior.emitWhen && behavior.emitWhen.length > 0) {
+      log?.info({ behaviorName: behavior.name }, 'Behavior matched — processing emit_when');
+      for (const ewEntry of behavior.emitWhen) {
+        // Evaluate when condition against CURRENT shadow state
+        const emitWhenCtx = {
+          command: command as unknown as Record<string, unknown>,
+          state: shadow.get(aggregateId) ?? {},
+          payload: command.payload,
+        };
+        const buildEmitWhenScriptCtx = (): ScriptContext => ({
+          command,
+          state: shadow.get(aggregateId),
+          payload: command.payload as JsonObject,
+          helpers: {
+            uuid: () => nextUuidv7(),
+            now: () => new Date().toISOString(),
+            deepClone: <T>(v: T) => deepClone(v as JsonValue) as unknown as T,
+            deepMerge: (a: JsonObject, b: JsonObject) => deepMerge(a, b),
+          },
+          logger: log ?? logger ?? ({ child: () => ({} as Logger), info: () => {}, debug: () => {}, warn: () => {}, error: () => {} } as unknown as Logger),
+        });
 
-    const domainEvent: DomainEvent = {
-      eventId,
-      boundary: command.boundary,
-      aggregateId,
-      type: catalogEntry.type,
-      payload: eventPayload,
-      timestamp: now(),
-      sequenceVersion,
-      causedBy: command.commandId,
-    };
+        let whenResult: unknown;
+        try {
+          whenResult = evaluateExpr(
+            ewEntry.when, emitWhenCtx, CelPhase.Behavior, cel, scriptRegistry,
+            boundary.boundary, buildEmitWhenScriptCtx,
+          );
+        } catch (err) {
+          log?.debug({ behaviorName: behavior.name, when: ewEntry.when, err }, 'emit_when condition error');
+          whenResult = false;
+        }
 
-    log?.debug({ eventId, eventType: catalogEntry.type, aggregateId }, 'Domain event constructed');
+        if (whenResult === true) {
+          log?.debug({ behaviorName: behavior.name, emit: ewEntry.emit }, 'emit_when matched');
+          const evt = emitEventByType(ewEntry.emit, aggregateId);
+          allStagedEvents.push(evt);
+        }
+      }
+    }
 
-    // Immediately project into shadow for causal consistency
-    projectToShadow(domainEvent);
+    // REQ-62: Evaluate postcondition AFTER projection
+    if (behavior.postcondition !== undefined) {
+      const postState = shadow.get(aggregateId);
+      const postCtx = {
+        command: command as unknown as Record<string, unknown>,
+        state: postState ?? {},
+        event: allStagedEvents.length > 0
+          ? (allStagedEvents[0] as unknown as Record<string, unknown>)
+          : {},
+        payload: command.payload,
+      };
+      const buildPostScriptCtx = (): ScriptContext => ({
+        command,
+        state: postState,
+        event: allStagedEvents[0],
+        payload: command.payload as JsonObject,
+        helpers: {
+          uuid: () => nextUuidv7(),
+          now: () => new Date().toISOString(),
+          deepClone: <T>(v: T) => deepClone(v as JsonValue) as unknown as T,
+          deepMerge: (a: JsonObject, b: JsonObject) => deepMerge(a, b),
+        },
+        logger: log ?? logger ?? ({ child: () => ({} as Logger), info: () => {}, debug: () => {}, warn: () => {}, error: () => {} } as unknown as Logger),
+      });
+
+      let postResult: unknown;
+      try {
+        postResult = evaluateExpr(
+          behavior.postcondition, postCtx, CelPhase.Behavior, cel, scriptRegistry,
+          boundary.boundary, buildPostScriptCtx,
+        );
+      } catch (err) {
+        throw new InternalExecutionError(
+          `Postcondition evaluation failed for behavior "${behavior.name}": ${err instanceof Error ? err.message : String(err)}`,
+          { code: 'POSTCONDITION_VIOLATED', behavior: behavior.name, expression: behavior.postcondition },
+        );
+      }
+
+      if (postResult !== true) {
+        log?.warn({ behaviorName: behavior.name, postcondition: behavior.postcondition }, 'Postcondition violated');
+        throw new InternalExecutionError(
+          `Postcondition violated for behavior "${behavior.name}"`,
+          { code: 'POSTCONDITION_VIOLATED', behavior: behavior.name, expression: behavior.postcondition },
+        );
+      }
+    }
 
     // Build secondary commands
     const secondaryCommands: Command[] = [];
@@ -200,17 +415,56 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
         command: command as unknown as Record<string, unknown>,
         state: postProjectionState,
         payload: command.payload,
-        event: domainEvent,
+        event: allStagedEvents.length > 0
+          ? (allStagedEvents[0] as unknown as Record<string, unknown>)
+          : {},
       };
+      const buildDispatchScriptCtx = (): ScriptContext => ({
+        command,
+        state: postProjectionState,
+        event: allStagedEvents[0],
+        payload: command.payload as JsonObject,
+        helpers: {
+          uuid: () => nextUuidv7(),
+          now: () => new Date().toISOString(),
+          deepClone: <T>(v: T) => deepClone(v as JsonValue) as unknown as T,
+          deepMerge: (a: JsonObject, b: JsonObject) => deepMerge(a, b),
+        },
+        logger: log ?? logger ?? ({ child: () => ({} as Logger), info: () => {}, debug: () => {}, warn: () => {}, error: () => {} } as unknown as Logger),
+      });
 
       for (const spec of behavior.dispatchCommands) {
-        const targetIdVal = cel.evaluate(spec.targetId, dispatchCtx, CelPhase.Behavior);
+        // REQ-63: evaluate condition if present; skip on false
+        if (spec.condition !== undefined) {
+          let condResult: unknown;
+          try {
+            condResult = evaluateExpr(
+              spec.condition, dispatchCtx, CelPhase.Behavior, cel, scriptRegistry,
+              boundary.boundary, buildDispatchScriptCtx,
+            );
+          } catch (err) {
+            log?.debug({ condition: spec.condition, err }, 'dispatch_commands condition error — skipping');
+            condResult = false;
+          }
+          if (condResult !== true) {
+            log?.debug({ condition: spec.condition }, 'dispatch_commands condition false — skipping');
+            continue;
+          }
+        }
+
+        const targetIdVal = evaluateExpr(
+          spec.targetId, dispatchCtx, CelPhase.Behavior, cel, scriptRegistry,
+          boundary.boundary, buildDispatchScriptCtx,
+        );
         const resolvedTargetId = typeof targetIdVal === 'string' ? targetIdVal : null;
 
         const secondaryPayload: JsonObject = {};
         if (spec.payload) {
           for (const [field, expr] of Object.entries(spec.payload)) {
-            const val = cel.evaluate(expr, dispatchCtx, CelPhase.Behavior);
+            const val = evaluateExpr(
+              expr, dispatchCtx, CelPhase.Behavior, cel, scriptRegistry,
+              boundary.boundary, buildDispatchScriptCtx,
+            );
             secondaryPayload[field] = val as JsonValue;
           }
         }
@@ -236,7 +490,7 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
     const finalState = shadow.get(aggregateId);
 
     return {
-      events: [domainEvent],
+      events: allStagedEvents,
       secondaryCommands,
       state: finalState,
     };

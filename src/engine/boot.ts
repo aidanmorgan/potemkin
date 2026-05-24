@@ -146,6 +146,33 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
           { boundary: boundary.boundary, path: contractPath },
         );
       }
+
+      // REQ-65: Boot-time resolution of schema_ref fields in event_catalog
+      const rawDoc = input.openapi.raw as Record<string, unknown>;
+      const components = rawDoc['components'] as Record<string, unknown> | undefined;
+      const schemas = components?.['schemas'] as Record<string, unknown> | undefined;
+
+      for (const entry of boundary.eventCatalog) {
+        if (entry.schemaRef) {
+          const match = /^#\/components\/schemas\/(.+)$/.exec(entry.schemaRef);
+          if (!match) {
+            throw new BootError(
+              'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+              `Boundary '${boundary.boundary}': event_catalog entry '${entry.type}' has invalid schema_ref format "${entry.schemaRef}" — expected "#/components/schemas/SchemaName"`,
+              { boundary: boundary.boundary, eventType: entry.type, schemaRef: entry.schemaRef },
+            );
+          }
+          const schemaName = match[1];
+          if (!schemas || !Object.prototype.hasOwnProperty.call(schemas, schemaName)) {
+            throw new BootError(
+              'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+              `Boundary '${boundary.boundary}': event_catalog entry '${entry.type}' schema_ref "${entry.schemaRef}" cannot be resolved — schema "${schemaName}" not found in OpenAPI components/schemas`,
+              { boundary: boundary.boundary, eventType: entry.type, schemaRef: entry.schemaRef },
+            );
+          }
+          bootLog.debug({ boundary: boundary.boundary, eventType: entry.type, schemaRef: entry.schemaRef }, 'Boot: schema_ref resolved');
+        }
+      }
     }
 
     bootLog.info(

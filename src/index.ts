@@ -40,14 +40,26 @@ export { createCelEvaluator } from './cel/evaluator.js';
 export type {
   EventCatalogEntry,
   BehaviorRule,
+  RequiresGuard,
+  EmitWhenEntry,
   SecondaryCommandSpec,
   ReducerRule,
   IdentityConfig,
+  ScriptDeclaration,
   BoundaryConfig,
   CompiledDsl,
 } from './dsl/types.js';
 export { validateBoundaryConfig } from './dsl/schema.js';
 export { parseDslYaml, compileDsl } from './dsl/parser.js';
+
+// ── Scripts (inline TypeScript escape hatch) ───────────────────────────────────
+export type {
+  ScriptContext,
+  ScriptHelpers,
+  ScriptHandle,
+  ScriptRegistry,
+} from './scripts/types.js';
+export { buildScriptRegistry } from './scripts/registry.js';
 
 // ── Contract ──────────────────────────────────────────────────────────────────
 export type {
