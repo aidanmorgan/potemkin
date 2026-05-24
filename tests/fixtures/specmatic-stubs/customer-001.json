@@ -1,0 +1,17 @@
+{
+  "http-request": {
+    "method": "GET",
+    "path": "/customers/seed-1"
+  },
+  "http-response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "id": "seed-1",
+      "name": "Seed Customer One",
+      "riskBand": "LOW"
+    }
+  }
+}
