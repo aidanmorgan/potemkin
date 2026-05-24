@@ -101,13 +101,13 @@ describe('observability/metrics — emission completeness (REQ-43)', () => {
       await executeUnitOfWork({
         command: {
           commandId: nextUuidv7(),
-          boundary: 'Customer',
+          boundary: 'Lead',
           intent: 'creation',
           targetId: nextUuidv7(),
-          payload: { name: 'MetricTest', riskBand: 'LOW' },
+          payload: { companyName: 'MetricTest Corp', contactName: 'Metric User', phone: '+61 2 9000 0001', email: 'metric@test.com', source: 'WEBSITE' },
           queryParams: {},
           httpMethod: 'POST',
-          path: '/customers',
+          path: '/leads',
           origin: 'inbound',
           depth: 0,
         },
@@ -149,13 +149,13 @@ describe('observability/metrics — emission completeness (REQ-43)', () => {
       await executeUnitOfWork({
         command: {
           commandId: nextUuidv7(),
-          boundary: 'Customer',
+          boundary: 'Lead',
           intent: 'creation',
           targetId: nextUuidv7(),
-          payload: { name: 'DurationTest', riskBand: 'MED' },
+          payload: { companyName: 'DurationTest Corp', contactName: 'Duration User', phone: '+61 2 9000 0002', email: 'duration@test.com', source: 'REFERRAL' },
           queryParams: {},
           httpMethod: 'POST',
-          path: '/customers',
+          path: '/leads',
           origin: 'inbound',
           depth: 0,
         },
@@ -201,13 +201,13 @@ describe('observability/metrics — emission completeness (REQ-43)', () => {
         await executeUnitOfWork({
           command: {
             commandId: nextUuidv7(),
-            boundary: 'Customer',
+            boundary: 'Lead',
             intent: 'mutation',
-            targetId: '00000000-0000-7000-8000-000000000001',
+            targetId: '00000000-0000-7000-8000-000000000010',
             payload: {},
             queryParams: {},
             httpMethod: 'PATCH',
-            path: '/customers/00000000-0000-7000-8000-000000000001',
+            path: '/leads/00000000-0000-7000-8000-000000000010',
             origin: 'inbound',
             depth: 0,
             sequenceVersion: 9999,
@@ -257,13 +257,13 @@ describe('observability/metrics — emission completeness (REQ-43)', () => {
       await executeUnitOfWork({
         command: {
           commandId: nextUuidv7(),
-          boundary: 'Customer',
+          boundary: 'Lead',
           intent: 'creation',
           targetId: nextUuidv7(),
-          payload: { name: 'EventsTest', riskBand: 'LOW' },
+          payload: { companyName: 'EventsTest Corp', contactName: 'Events User', phone: '+61 2 9000 0003', email: 'events@test.com', source: 'WEBSITE' },
           queryParams: {},
           httpMethod: 'POST',
-          path: '/customers',
+          path: '/leads',
           origin: 'inbound',
           depth: 0,
         },
@@ -310,13 +310,13 @@ describe('observability/metrics — emission completeness (REQ-43)', () => {
         await executeUnitOfWork({
           command: {
             commandId: nextUuidv7(),
-            boundary: 'Customer',
+            boundary: 'Lead',
             intent: 'mutation',
-            targetId: '00000000-0000-7000-8000-000000000001',
+            targetId: '00000000-0000-7000-8000-000000000010',
             payload: {},
             queryParams: {},
             httpMethod: 'PATCH',
-            path: '/customers/00000000-0000-7000-8000-000000000001',
+            path: '/leads/00000000-0000-7000-8000-000000000010',
             origin: 'inbound',
             depth: 0,
             sequenceVersion: 9999,
@@ -372,13 +372,13 @@ describe('observability/metrics — emission completeness (REQ-43)', () => {
       const result = await executeUnitOfWork({
         command: {
           commandId: nextUuidv7(),
-          boundary: 'Customer',
+          boundary: 'Lead',
           intent: 'creation',
           targetId: nextUuidv7(),
           payload: {},
           queryParams: {},
           httpMethod: 'POST',
-          path: '/customers',
+          path: '/leads',
           origin: 'inbound',
           depth: 0,
           faultSignal: JSON.stringify({ status: 503, body: { error: 'fault' } }),
@@ -416,7 +416,7 @@ describe('observability/metrics — emission completeness (REQ-43)', () => {
       const faultPayload = JSON.stringify({ status: 503, body: { error: 'gateway-fault' } });
 
       const res = await app.agent
-        .get('/customers')
+        .get('/leads')
         .set('x-specmatic-fault', faultPayload)
         .expect(503);
       expect(res.body.error).toBe('gateway-fault');
@@ -446,13 +446,13 @@ describe('observability/tracing — span completeness (REQ-43)', () => {
       await executeUnitOfWork({
         command: {
           commandId: nextUuidv7(),
-          boundary: 'Customer',
+          boundary: 'Lead',
           intent: 'creation',
           targetId: nextUuidv7(),
-          payload: { name: 'SpanTest', riskBand: 'LOW' },
+          payload: { companyName: 'SpanTest Corp', contactName: 'Span User', phone: '+61 2 9000 0004', email: 'span@test.com', source: 'WEBSITE' },
           queryParams: {},
           httpMethod: 'POST',
-          path: '/customers',
+          path: '/leads',
           origin: 'inbound',
           depth: 0,
         },
@@ -495,7 +495,7 @@ describe('observability/tracing — span completeness (REQ-43)', () => {
       const request = (await import('supertest')).default;
       const agent = request(app);
 
-      await agent.get('/customers').expect(200);
+      await agent.get('/leads').expect(200);
 
       await otel.tracerProvider.forceFlush();
 
@@ -656,13 +656,13 @@ describe('observability/tracing — span completeness (REQ-43)', () => {
         await executeUnitOfWork({
           command: {
             commandId: nextUuidv7(),
-            boundary: 'Customer',
+            boundary: 'Lead',
             intent: 'creation',
             targetId: nextUuidv7(),
-            payload: { name: 'PatternSpan', riskBand: 'LOW' },
+            payload: { companyName: 'PatternSpan Corp', contactName: 'Pattern User', phone: '+61 2 9000 0005', email: 'pattern@test.com', source: 'WEBSITE' },
             queryParams: {},
             httpMethod: 'POST',
-            path: '/customers',
+            path: '/leads',
             origin: 'inbound',
             depth: 0,
           },
@@ -709,13 +709,13 @@ describe('observability/tracing — span completeness (REQ-43)', () => {
         await executeUnitOfWork({
           command: {
             commandId: nextUuidv7(),
-            boundary: 'Customer',
+            boundary: 'Lead',
             intent: 'creation',
             targetId: nextUuidv7(),
-            payload: { name: 'ProjectSpan', riskBand: 'LOW' },
+            payload: { companyName: 'ProjectSpan Corp', contactName: 'Project User', phone: '+61 2 9000 0006', email: 'project@test.com', source: 'WEBSITE' },
             queryParams: {},
             httpMethod: 'POST',
-            path: '/customers',
+            path: '/leads',
             origin: 'inbound',
             depth: 0,
           },
@@ -762,13 +762,13 @@ describe('observability/tracing — span completeness (REQ-43)', () => {
         await executeUnitOfWork({
           command: {
             commandId: nextUuidv7(),
-            boundary: 'Customer',
+            boundary: 'Lead',
             intent: 'query',
             targetId: null,
             payload: {},
             queryParams: {},
             httpMethod: 'GET',
-            path: '/customers',
+            path: '/leads',
             origin: 'inbound',
             depth: 0,
           },
@@ -822,7 +822,7 @@ describe('observability/logger — structured log bindings (REQ-42)', () => {
     const pino = require('pino') as (opts: unknown, dest: unknown) => import('pino').Logger;
     const baseLogger = pino({ level: 'info' }, dest);
     const child = baseLogger.child({
-      boundary: 'Customer',
+      boundary: 'Lead',
       commandId: 'cmd-abc',
       aggregateId: 'agg-xyz',
     });
@@ -833,7 +833,7 @@ describe('observability/logger — structured log bindings (REQ-42)', () => {
     setImmediate(() => {
       const allOutput = lines.join('');
       const parsed = JSON.parse(allOutput) as Record<string, unknown>;
-      expect(parsed['boundary']).toBe('Customer');
+      expect(parsed['boundary']).toBe('Lead');
       expect(parsed['commandId']).toBe('cmd-abc');
       expect(parsed['aggregateId']).toBe('agg-xyz');
       expect(parsed['eventId']).toBe('evt-001');
@@ -867,13 +867,13 @@ describe('observability/logger — structured log bindings (REQ-42)', () => {
     await executeUnitOfWork({
       command: {
         commandId: 'test-cmd-123',
-        boundary: 'Customer',
+        boundary: 'Lead',
         intent: 'creation',
         targetId: nextUuidv7(),
-        payload: { name: 'LogTest', riskBand: 'LOW' },
+        payload: { companyName: 'LogTest Corp', contactName: 'Log User', phone: '+61 2 9000 0007', email: 'log@test.com', source: 'WEBSITE' },
         queryParams: {},
         httpMethod: 'POST',
-        path: '/customers',
+        path: '/leads',
         origin: 'inbound',
         depth: 0,
       },
@@ -892,7 +892,7 @@ describe('observability/logger — structured log bindings (REQ-42)', () => {
     // The UoW calls logger.child({ name: 'uow', commandId, boundary, intent })
     const uowBinding = capturedBindings.find((b) => b['commandId'] === 'test-cmd-123');
     expect(uowBinding).toBeDefined();
-    expect(uowBinding?.['boundary']).toBe('Customer');
+    expect(uowBinding?.['boundary']).toBe('Lead');
   });
 
   it(
@@ -925,13 +925,13 @@ describe('observability/logger — structured log bindings (REQ-42)', () => {
       await executeUnitOfWork({
         command: {
           commandId: nextUuidv7(),
-          boundary: 'Customer',
+          boundary: 'Lead',
           intent: 'creation',
           targetId: nextUuidv7(),
-          payload: { name: 'EventIdLog', riskBand: 'LOW' },
+          payload: { companyName: 'EventIdLog Corp', contactName: 'EventId User', phone: '+61 2 9000 0008', email: 'eventid@test.com', source: 'WEBSITE' },
           queryParams: {},
           httpMethod: 'POST',
-          path: '/customers',
+          path: '/leads',
           origin: 'inbound',
           depth: 0,
         },
@@ -982,13 +982,13 @@ describe('observability/logger — structured log bindings (REQ-42)', () => {
       await executeUnitOfWork({
         command: {
           commandId: nextUuidv7(),
-          boundary: 'Customer',
+          boundary: 'Lead',
           intent: 'creation',
           targetId,
-          payload: { name: 'AggIdLog', riskBand: 'LOW' },
+          payload: { companyName: 'AggIdLog Corp', contactName: 'AggId User', phone: '+61 2 9000 0009', email: 'aggid@test.com', source: 'WEBSITE' },
           queryParams: {},
           httpMethod: 'POST',
-          path: '/customers',
+          path: '/leads',
           origin: 'inbound',
           depth: 0,
         },
@@ -1047,13 +1047,13 @@ describe('observability/logger — structured log bindings (REQ-42)', () => {
       await executeUnitOfWork({
         command: {
           commandId: 'uow-gap-test',
-          boundary: 'Customer',
+          boundary: 'Lead',
           intent: 'creation',
           targetId: nextUuidv7(),
-          payload: { name: 'UoWGap', riskBand: 'LOW' },
+          payload: { companyName: 'UoWGap Corp', contactName: 'UoW User', phone: '+61 2 9000 0010', email: 'uow@test.com', source: 'WEBSITE' },
           queryParams: {},
           httpMethod: 'POST',
-          path: '/customers',
+          path: '/leads',
           origin: 'inbound',
           depth: 0,
         },

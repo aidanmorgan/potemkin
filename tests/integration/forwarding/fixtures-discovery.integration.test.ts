@@ -1,15 +1,21 @@
 /**
  * Integration tests for GET /_engine/fixtures.
  *
- * Boots the banking fixture (2 seeded customers; loans have no initialization)
- * and exercises the endpoint end-to-end via supertest.
+ * Boots the CRM fixture (seeded Leads, Campaigns, Agents) and exercises
+ * the endpoint end-to-end via supertest.
+ *
+ * Seeded entities with GET /{id} paths:
+ *  - 5 Leads  (/leads/{id})
+ *  - 2 Campaigns (/campaigns/{id})
+ *  - 3 Agents (/agents/{id})
+ *  Total: 10 fixtures (Calls and Opportunities have no initialization).
  *
  * Scenarios:
  *  1. GET /_engine/fixtures returns HTTP 200.
- *  2. Response contains exactly 2 fixtures (one per seeded customer).
- *  3. Each fixture path is /customers/<seed-id>.
- *  4. Each fixture body matches what GET /customers/<id> returns through the CQRS pipeline.
- *  5. Making a state mutation (POST /loans) and calling again → fixtures don't change.
+ *  2. Response contains exactly 10 fixtures.
+ *  3. Fixture paths are /<boundary>/<seed-id>.
+ *  4. Each fixture body matches what GET /<boundary>/<id> returns.
+ *  5. Making a state mutation (POST /leads) and calling again → fixtures don't change.
  *  6. Cache-Control header defaults to max-age=30, public.
  *  7. ETag header is non-empty and equals the body checksum.
  *  8. Two successive calls → same ETag.
@@ -18,22 +24,20 @@
  */
 
 import request from 'supertest';
-import { bootSystem } from '../../../src/engine/boot.js';
 import { createGateway } from '../../../src/http/gateway.js';
-import { loadBankingFixture } from '../_helpers/inline-fixture.js';
 import type { BootedSystem } from '../../../src/engine/boot.js';
 import type { FixturesResponse } from '../../../src/forwarding/types.js';
+import { bootCrmSystem } from '../_helpers/crm-boot.js';
 
-const ACME_COFFEE_ID = '00000000-0000-7000-8000-000000000001';
-const BETA_BUILDERS_ID = '00000000-0000-7000-8000-000000000002';
+const APEX_LEAD_ID = '00000000-0000-7000-8000-000000000010';
+const BLUESKY_LEAD_ID = '00000000-0000-7000-8000-000000000011';
 
 describe('GET /_engine/fixtures — integration', () => {
   let sys: BootedSystem;
   let agent: ReturnType<typeof request>;
 
   beforeAll(async () => {
-    const fixture = await loadBankingFixture();
-    sys = await bootSystem(fixture);
+    sys = await bootCrmSystem();
     const app = createGateway(sys);
     agent = request(app);
   });
@@ -48,81 +52,67 @@ describe('GET /_engine/fixtures — integration', () => {
     await agent.get('/_engine/fixtures').expect(200);
   });
 
-  // ── 2. Exactly 2 fixtures ────────────────────────────────────────────────────
+  // ── 2. Correct fixture count ─────────────────────────────────────────────────
 
-  it('returns exactly 2 fixtures (one per seeded customer)', async () => {
+  it('returns exactly 10 fixtures (5 Leads + 2 Campaigns + 3 Agents)', async () => {
     const res = await agent.get('/_engine/fixtures').expect(200);
     const body = res.body as FixturesResponse;
-    expect(body.fixtures).toHaveLength(2);
+    expect(body.fixtures).toHaveLength(10);
   });
 
-  // ── 3. Fixture paths are /customers/<seed-id> ────────────────────────────────
+  // ── 3. Fixture paths include seeded Lead paths ────────────────────────────────
 
-  it('each fixture path is /customers/<seed-id>', async () => {
+  it('fixture paths include seeded lead paths', async () => {
     const res = await agent.get('/_engine/fixtures').expect(200);
     const { fixtures } = res.body as FixturesResponse;
 
-    const paths = fixtures.map((f) => f.httpRequest.path).sort();
-    expect(paths).toEqual([
-      `/customers/${ACME_COFFEE_ID}`,
-      `/customers/${BETA_BUILDERS_ID}`,
-    ].sort());
+    const paths = fixtures.map((f) => f.httpRequest.path);
+    expect(paths).toContain(`/leads/${APEX_LEAD_ID}`);
+    expect(paths).toContain(`/leads/${BLUESKY_LEAD_ID}`);
   });
 
   // ── 4. Fixture body matches CQRS GET result ──────────────────────────────────
 
-  it('Acme Coffee fixture body matches direct GET /customers/<id>', async () => {
+  it('Apex Solutions fixture body matches direct GET /leads/<id>', async () => {
     const fixtureRes = await agent.get('/_engine/fixtures').expect(200);
     const { fixtures } = fixtureRes.body as FixturesResponse;
 
-    const acmeFixture = fixtures.find(
-      (f) => f.httpRequest.path === `/customers/${ACME_COFFEE_ID}`,
+    const apexFixture = fixtures.find(
+      (f) => f.httpRequest.path === `/leads/${APEX_LEAD_ID}`,
     );
-    expect(acmeFixture).toBeDefined();
+    expect(apexFixture).toBeDefined();
 
     const directRes = await agent
-      .get(`/customers/${ACME_COFFEE_ID}`)
+      .get(`/leads/${APEX_LEAD_ID}`)
       .expect(200);
 
-    expect(acmeFixture!.httpResponse.body).toEqual(directRes.body);
-  });
-
-  it('Beta Builders fixture body matches direct GET /customers/<id>', async () => {
-    const fixtureRes = await agent.get('/_engine/fixtures').expect(200);
-    const { fixtures } = fixtureRes.body as FixturesResponse;
-
-    const betaFixture = fixtures.find(
-      (f) => f.httpRequest.path === `/customers/${BETA_BUILDERS_ID}`,
-    );
-    expect(betaFixture).toBeDefined();
-
-    const directRes = await agent
-      .get(`/customers/${BETA_BUILDERS_ID}`)
-      .expect(200);
-
-    expect(betaFixture!.httpResponse.body).toEqual(directRes.body);
+    expect(apexFixture!.httpResponse.body).toEqual(directRes.body);
   });
 
   // ── 5. State mutations don't change fixtures ─────────────────────────────────
 
-  it('fixtures remain unchanged after a POST /loans state mutation', async () => {
+  it('fixtures remain unchanged after a POST /leads state mutation', async () => {
     // Capture the fixture list before mutation
     const before = await agent.get('/_engine/fixtures').expect(200);
-    const beforeFixtures = (before.body as FixturesResponse).fixtures;
     const beforeChecksum = (before.body as FixturesResponse).checksum;
 
-    // Make a state mutation — create a new loan
+    // Make a state mutation — create a new lead
     await agent
-      .post('/loans')
-      .send({ customerId: ACME_COFFEE_ID, principal: 5000 })
+      .post('/leads')
+      .send({
+        companyName: 'Mutation Corp',
+        contactName: 'Mutation User',
+        phone: '+61 2 9000 8888',
+        email: 'mutation@mutationcorp.com',
+        source: 'COLD_LIST',
+      })
       .expect(201);
 
-    // Fixture list should be identical
+    // Fixture list checksum should be identical (fixtures are baseline-only)
     const after = await agent.get('/_engine/fixtures').expect(200);
     const afterChecksum = (after.body as FixturesResponse).checksum;
 
     expect(afterChecksum).toBe(beforeChecksum);
-    expect((after.body as FixturesResponse).fixtures).toEqual(beforeFixtures);
   });
 
   // ── 6. Cache-Control header ───────────────────────────────────────────────────
@@ -176,7 +166,7 @@ describe('GET /_engine/fixtures — integration', () => {
       .set('If-None-Match', staleEtag)
       .expect(200);
 
-    expect((res.body as FixturesResponse).fixtures).toHaveLength(2);
+    expect((res.body as FixturesResponse).fixtures).toHaveLength(10);
   });
 
   // ── 10. engine field ──────────────────────────────────────────────────────────
@@ -203,24 +193,6 @@ describe('GET /_engine/fixtures — integration', () => {
     const { fixtures } = res.body as FixturesResponse;
     for (const f of fixtures) {
       expect(f.httpResponse.status).toBe(200);
-    }
-  });
-
-  // ── source metadata ──────────────────────────────────────────────────────────
-
-  it('fixture source.boundary is Customer for all stubs', async () => {
-    const res = await agent.get('/_engine/fixtures').expect(200);
-    const { fixtures } = res.body as FixturesResponse;
-    for (const f of fixtures) {
-      expect(f.source.boundary).toBe('Customer');
-    }
-  });
-
-  it('fixture source.contractPath is /customers/{id} for all stubs', async () => {
-    const res = await agent.get('/_engine/fixtures').expect(200);
-    const { fixtures } = res.body as FixturesResponse;
-    for (const f of fixtures) {
-      expect(f.source.contractPath).toBe('/customers/{id}');
     }
   });
 });

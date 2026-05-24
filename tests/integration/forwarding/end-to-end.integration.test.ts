@@ -1,16 +1,16 @@
 /**
  * Integration tests for POST /_engine/forward and GET /_engine/health.
  *
- * These tests boot the banking fixture and exercise the forwarding surface
+ * These tests boot the CRM fixture and exercise the forwarding surface
  * end-to-end, verifying that the engine correctly processes forwarded
  * requests and returns well-formed ForwardedResponse objects.
  *
  * Scenarios:
- *  1. POST /_engine/forward with method=POST, path=/customers → 201 + state graph updated.
- *  2. The cascade case: POST /loans dispatches secondary cmd to Customer (loanIds updated).
+ *  1. POST /_engine/forward with method=POST, path=/leads → 201 + state graph updated.
+ *  2. The cascade case: POST /calls dispatches secondary cmd to Lead (callIds updated).
  *  3. Idempotency-key honoured: second identical forwarded request replays cached response.
  *  4. GET /_engine/health returns expected shape.
- *  5. GET /customers via forwarding returns all seeded customers.
+ *  5. GET /leads via forwarding returns all seeded leads.
  *  6. 404 for entity not found via forwarding.
  *  7. 412 for ConcurrencyConflictError via forwarding.
  *  8. Fault simulation via forwarded x-specmatic-fault header.
@@ -21,22 +21,25 @@ import { bootSystem } from '../../../src/engine/boot.js';
 import { createGateway } from '../../../src/http/gateway.js';
 import { resetSystem } from '../../../src/engine/reset.js';
 import { resetIdempotencyStore } from '../../../src/idempotency/store.js';
-import { loadBankingFixture } from '../_helpers/inline-fixture.js';
 import { loadOpenApi } from '../../../src/contract/loader.js';
 import { compileDsl } from '../../../src/dsl/parser.js';
 import type { BootedSystem, BootInput } from '../../../src/engine/boot.js';
 import type { ForwardedRequest } from '../../../src/forwarding/types.js';
 import { nextUuidv7 } from '../../../src/ids/uuidv7.js';
+import { bootCrmSystem } from '../_helpers/crm-boot.js';
 
-const ACME_COFFEE_ID = '00000000-0000-7000-8000-000000000001';
+// Seeded lead: Apex Solutions (NEW status, no calls)
+const APEX_LEAD_ID = '00000000-0000-7000-8000-000000000010';
+// Seeded campaign and agent for call logging
+const CAMPAIGN_ID = '00000000-0000-7000-8000-000000000001';
+const AGENT_ID = '00000000-0000-7000-8000-000000000003';
 
 describe('/_engine/forward — end-to-end integration', () => {
   let sys: BootedSystem;
   let agent: ReturnType<typeof request>;
 
   beforeAll(async () => {
-    const fixture = await loadBankingFixture();
-    sys = await bootSystem(fixture);
+    sys = await bootCrmSystem();
     const app = createGateway(sys);
     agent = request(app);
   });
@@ -46,66 +49,81 @@ describe('/_engine/forward — end-to-end integration', () => {
     resetIdempotencyStore();
   });
 
-  // ── 1. Create customer via forwarding ─────────────────────────────────────────
+  // ── 1. Create lead via forwarding ─────────────────────────────────────────────
 
-  it('POST /customers via forwarding returns 201 and the new customer in body', async () => {
+  it('POST /leads via forwarding returns 201 and the new lead in body', async () => {
     const fwd: ForwardedRequest = {
       method: 'POST',
-      path: '/customers',
+      path: '/leads',
       headers: {},
       query: {},
-      body: { name: 'Integration Corp', riskBand: 'LOW' },
+      body: {
+        companyName: 'Integration Corp',
+        contactName: 'Integration User',
+        phone: '+61 2 9000 1111',
+        email: 'integration@integcorp.com',
+        source: 'WEBSITE',
+      },
     };
 
     const res = await agent.post('/_engine/forward').send(fwd).expect(200);
 
     expect(res.body.status).toBe(201);
-    expect(res.body.body.name).toBe('Integration Corp');
-    expect(res.body.body.riskBand).toBe('LOW');
+    expect(res.body.body.companyName).toBe('Integration Corp');
+    expect(res.body.body.source).toBe('WEBSITE');
     expect(typeof res.body.body.id).toBe('string');
   });
 
-  it('state graph contains the new customer after creation via forwarding', async () => {
+  it('state graph contains the new lead after creation via forwarding', async () => {
     const fwd: ForwardedRequest = {
       method: 'POST',
-      path: '/customers',
+      path: '/leads',
       headers: {},
       query: {},
-      body: { name: 'Graph Check Corp', riskBand: 'MED' },
+      body: {
+        companyName: 'Graph Check Corp',
+        contactName: 'Graph Check User',
+        phone: '+61 2 9000 2222',
+        email: 'graphcheck@corp.com',
+        source: 'REFERRAL',
+      },
     };
 
     const res = await agent.post('/_engine/forward').send(fwd).expect(200);
-    const customerId = res.body.body.id as string;
+    const leadId = res.body.body.id as string;
 
-    const stateNode = sys.graph.get(customerId);
+    const stateNode = sys.graph.get(leadId);
     expect(stateNode).not.toBeNull();
-    expect(stateNode!['name']).toBe('Graph Check Corp');
+    expect(stateNode!['companyName']).toBe('Graph Check Corp');
   });
 
-  // ── 2. Cascade: creating a loan updates customer loanIds ──────────────────────
+  // ── 2. Cascade: logging a call updates lead callIds ───────────────────────────
 
-  it('POST /loans via forwarding dispatches cascade to Customer (loanIds updated)', async () => {
+  it('POST /calls via forwarding dispatches cascade to Lead (callIds updated)', async () => {
     const fwd: ForwardedRequest = {
       method: 'POST',
-      path: '/loans',
+      path: '/calls',
       headers: {},
       query: {},
-      body: { customerId: ACME_COFFEE_ID, principal: 10000 },
+      body: {
+        leadId: APEX_LEAD_ID,
+        agentId: AGENT_ID,
+        campaignId: CAMPAIGN_ID,
+        outcome: 'INTERESTED',
+      },
     };
 
     const res = await agent.post('/_engine/forward').send(fwd).expect(200);
     expect(res.body.status).toBe(201);
 
-    const loanId = res.body.body.id as string;
+    const callId = res.body.body.id as string;
 
-    // Customer's loanIds should now contain the new loan
-    const customer = sys.graph.get(ACME_COFFEE_ID);
-    expect(customer).not.toBeNull();
-    const loanIds = customer!['loanIds'] as string[];
-    expect(loanIds).toContain(loanId);
+    // Lead's callIds should now contain the new call
+    const lead = sys.graph.get(APEX_LEAD_ID);
+    expect(lead).not.toBeNull();
+    const callIds = lead!['callIds'] as string[];
+    expect(callIds).toContain(callId);
   });
-
-  // ── 3. Idempotency key is honoured (tested in dedicated describe below) ────────
 
   // ── 4. Health endpoint ───────────────────────────────────────────────────────
 
@@ -116,12 +134,12 @@ describe('/_engine/forward — end-to-end integration', () => {
     expect(typeof res.body.version).toBe('string');
   });
 
-  // ── 5. GET /customers via forwarding ─────────────────────────────────────────
+  // ── 5. GET /leads via forwarding ─────────────────────────────────────────────
 
-  it('GET /customers via forwarding returns all seeded customers', async () => {
+  it('GET /leads via forwarding returns all seeded leads', async () => {
     const fwd: ForwardedRequest = {
       method: 'GET',
-      path: '/customers',
+      path: '/leads',
       headers: {},
       query: {},
       body: null,
@@ -130,7 +148,7 @@ describe('/_engine/forward — end-to-end integration', () => {
     const res = await agent.post('/_engine/forward').send(fwd).expect(200);
     expect(res.body.status).toBe(200);
     expect(Array.isArray(res.body.body)).toBe(true);
-    expect((res.body.body as unknown[]).length).toBeGreaterThanOrEqual(2);
+    expect((res.body.body as unknown[]).length).toBeGreaterThanOrEqual(5);
   });
 
   // ── 6. 404 for entity not found ──────────────────────────────────────────────
@@ -139,7 +157,7 @@ describe('/_engine/forward — end-to-end integration', () => {
     const unknownId = nextUuidv7();
     const fwd: ForwardedRequest = {
       method: 'GET',
-      path: `/loans/${unknownId}`,
+      path: `/leads/${unknownId}`,
       headers: {},
       query: {},
       body: null,
@@ -152,21 +170,27 @@ describe('/_engine/forward — end-to-end integration', () => {
   // ── 7. 412 for ConcurrencyConflictError ──────────────────────────────────────
 
   it('returns ForwardedResponse.status 412 when If-Match version mismatches', async () => {
-    // Create a loan first
+    // Create a lead first
     const createRes = await agent.post('/_engine/forward').send({
       method: 'POST',
-      path: '/loans',
+      path: '/leads',
       headers: {},
       query: {},
-      body: { customerId: ACME_COFFEE_ID, principal: 5000 },
+      body: {
+        companyName: 'Concurrency Corp',
+        contactName: 'Concurrency User',
+        phone: '+61 2 9000 9988',
+        email: 'cc@concurrency.com',
+        source: 'WEBSITE',
+      },
     } as ForwardedRequest).expect(200);
     expect(createRes.body.status).toBe(201);
-    const loanId = createRes.body.body.id as string;
+    const leadId = createRes.body.body.id as string;
 
-    // Disburse with wrong version
+    // Contact the lead with wrong version
     const res = await agent.post('/_engine/forward').send({
       method: 'POST',
-      path: `/loans/${loanId}/disburse`,
+      path: `/leads/${leadId}/contact`,
       headers: { 'if-match': '9999' },
       query: {},
       body: {},
@@ -180,7 +204,7 @@ describe('/_engine/forward — end-to-end integration', () => {
     const faultPayload = JSON.stringify({ status: 503, body: { error: 'SERVICE_UNAVAILABLE' } });
     const fwd: ForwardedRequest = {
       method: 'GET',
-      path: '/customers',
+      path: '/leads',
       headers: { 'x-specmatic-fault': faultPayload },
       query: {},
       body: null,
@@ -194,10 +218,9 @@ describe('/_engine/forward — end-to-end integration', () => {
   // ── 9. Inner GET forwarded correctly (method param drives intent) ─────────────
 
   it('forwarding always uses POST to /_engine/forward regardless of inner method', async () => {
-    // The endpoint is always POST /_engine/forward; the inner method is in the body.
     const fwd: ForwardedRequest = {
       method: 'GET',
-      path: '/customers',
+      path: '/leads',
       headers: {},
       query: {},
       body: null,
@@ -216,10 +239,16 @@ describe('/_engine/forward — end-to-end integration', () => {
   it('ForwardedResponse contains etag header for creation commands', async () => {
     const fwd: ForwardedRequest = {
       method: 'POST',
-      path: '/customers',
+      path: '/leads',
       headers: {},
       query: {},
-      body: { name: 'ETag Integration Corp', riskBand: 'HIGH' },
+      body: {
+        companyName: 'ETag Integration Corp',
+        contactName: 'ETag User',
+        phone: '+61 2 9000 7777',
+        email: 'etag@integration.com',
+        source: 'PARTNER',
+      },
     };
 
     const res = await agent.post('/_engine/forward').send(fwd).expect(200);

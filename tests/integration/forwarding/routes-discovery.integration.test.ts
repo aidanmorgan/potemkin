@@ -1,13 +1,13 @@
 /**
  * Integration tests for GET /_engine/routes.
  *
- * Boots the banking fixture and exercises the routes discovery endpoint
+ * Boots the CRM fixture and exercises the routes discovery endpoint
  * end-to-end via supertest, verifying that the engine returns the correct
- * set of banking contract paths with correct response shape and headers.
+ * set of CRM contract paths with correct response shape and headers.
  *
  * Scenarios:
  *  1. GET /_engine/routes returns HTTP 200.
- *  2. Response contains the expected banking paths, sorted alphabetically.
+ *  2. Response contains the expected CRM paths, sorted alphabetically.
  *  3. ETag header is non-empty and equal to the body checksum.
  *  4. Two successive calls with no boot-state change → same ETag.
  *  5. If-None-Match with the current ETag → 304 Not Modified.
@@ -16,20 +16,34 @@
  */
 
 import request from 'supertest';
-import { bootSystem } from '../../../src/engine/boot.js';
 import { createGateway } from '../../../src/http/gateway.js';
-import { loadBankingFixture } from '../_helpers/inline-fixture.js';
 import type { BootedSystem } from '../../../src/engine/boot.js';
 import type { RoutesDiscoveryResponse } from '../../../src/forwarding/types.js';
+import { bootCrmSystem } from '../_helpers/crm-boot.js';
 
-// Expected banking contract paths (sorted alphabetically).
-const EXPECTED_BANKING_PATHS = [
-  '/customers',
-  '/customers/{id}',
-  '/loans',
-  '/loans/{id}',
-  '/loans/{id}/disburse',
-  '/loans/{id}/repay',
+// Expected CRM contract paths (sorted alphabetically).
+const EXPECTED_CRM_PATHS = [
+  '/agents',
+  '/agents/{id}',
+  '/agents/{id}/status',
+  '/calls',
+  '/calls/{id}',
+  '/campaigns',
+  '/campaigns/{id}',
+  '/campaigns/{id}/activate',
+  '/campaigns/{id}/complete',
+  '/campaigns/{id}/pause',
+  '/leads',
+  '/leads/{id}',
+  '/leads/{id}/contact',
+  '/leads/{id}/convert',
+  '/leads/{id}/disqualify',
+  '/leads/{id}/dnc',
+  '/leads/{id}/qualify',
+  '/opportunities',
+  '/opportunities/{id}',
+  '/opportunities/{id}/advance',
+  '/opportunities/{id}/close',
 ];
 
 describe('GET /_engine/routes — integration', () => {
@@ -37,8 +51,7 @@ describe('GET /_engine/routes — integration', () => {
   let agent: ReturnType<typeof request>;
 
   beforeAll(async () => {
-    const fixture = await loadBankingFixture();
-    sys = await bootSystem(fixture);
+    sys = await bootCrmSystem();
     const app = createGateway(sys);
     agent = request(app);
   });
@@ -53,14 +66,14 @@ describe('GET /_engine/routes — integration', () => {
     await agent.get('/_engine/routes').expect(200);
   });
 
-  // ── 2. Correct banking paths, sorted ─────────────────────────────────────────
+  // ── 2. Correct CRM paths, sorted ─────────────────────────────────────────────
 
-  it('returns all banking contract paths sorted alphabetically', async () => {
+  it('returns all CRM contract paths sorted alphabetically', async () => {
     const res = await agent.get('/_engine/routes').expect(200);
     const body = res.body as RoutesDiscoveryResponse;
 
     expect(Array.isArray(body.paths)).toBe(true);
-    expect(body.paths).toEqual(EXPECTED_BANKING_PATHS);
+    expect(body.paths).toEqual(EXPECTED_CRM_PATHS);
   });
 
   // ── 3. ETag header is non-empty and equals checksum ──────────────────────────

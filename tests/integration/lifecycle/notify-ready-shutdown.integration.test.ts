@@ -20,7 +20,7 @@ import type { Express } from 'express';
 import { bootSystem } from '../../../src/engine/boot.js';
 import { createPluginControlClient } from '../../../src/lifecycle/pluginControlClient.js';
 import type { ReadyNotification, ShutdownNotification } from '../../../src/lifecycle/types.js';
-import { loadBankingFixture } from '../_helpers/inline-fixture.js';
+import { loadCrmFixture } from '../../fixtures/index.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -112,7 +112,7 @@ describe('lifecycle: notify-ready integration', () => {
   });
 
   it('sends POST /ready within 500 ms of boot completion', async () => {
-    const fixture = await loadBankingFixture();
+    const fixture = await loadCrmFixture();
     const bootCompletedAt = Date.now();
 
     await bootSystem({ ...fixture, pluginControl: { url: controlUrl } });
@@ -124,7 +124,7 @@ describe('lifecycle: notify-ready integration', () => {
   });
 
   it('POST /ready payload matches ReadyNotification shape', async () => {
-    const fixture = await loadBankingFixture();
+    const fixture = await loadCrmFixture();
     await bootSystem({ ...fixture, pluginControl: { url: controlUrl } });
 
     const cap = await waitForCapture(captured, '/ready', 500);
@@ -145,14 +145,14 @@ describe('lifecycle: notify-ready integration', () => {
   });
 
   it('bootSystem attaches pluginControl client to BootedSystem', async () => {
-    const fixture = await loadBankingFixture();
+    const fixture = await loadCrmFixture();
     const sys = await bootSystem({ ...fixture, pluginControl: { url: controlUrl } });
 
     expect(sys.pluginControl).toBeDefined();
   });
 
   it('boot port is unused by default (no pluginControl property on BootedSystem)', async () => {
-    const fixture = await loadBankingFixture();
+    const fixture = await loadCrmFixture();
     // Boot without pluginControl URL
     const sys = await bootSystem({ ...fixture });
 
@@ -217,7 +217,7 @@ describe('lifecycle: notify-shutdown integration', () => {
 describe('lifecycle: plugin control server DOWN', () => {
   it('boot still succeeds when plugin control server is unreachable', async () => {
     // Use a port that is almost certainly not listening.
-    const fixture = await loadBankingFixture();
+    const fixture = await loadCrmFixture();
 
     // bootSystem must not throw even though the control server is down.
     const sys = await bootSystem({

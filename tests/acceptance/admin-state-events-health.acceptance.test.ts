@@ -7,6 +7,14 @@
 
 import { createTestApp, type TestApp } from './_helpers/test-app.js';
 
+// CRM baseline: 5 Leads + 2 Campaigns + 3 Agents = 10 seeded entities
+const BASELINE_ENTITY_COUNT = 10;
+const BASELINE_EVENT_COUNT = 10;
+
+// Seeded entity IDs
+const APEX_LEAD_ID = '00000000-0000-7000-8000-000000000010';
+const BLUESKY_LEAD_ID = '00000000-0000-7000-8000-000000000011';
+
 describe('admin-state-events-health.acceptance', () => {
   let app: TestApp;
 
@@ -31,12 +39,12 @@ describe('admin-state-events-health.acceptance', () => {
     expect(typeof res.body.entities).toBe('object');
   });
 
-  it('GET /_admin/state entities contain the 2 baseline customers', async () => {
+  it('GET /_admin/state entities contain seeded leads and other CRM entities', async () => {
     const res = await app.agent.get('/_admin/state').expect(200);
 
     const keys = Object.keys(res.body.entities);
-    expect(keys).toContain('00000000-0000-7000-8000-000000000001');
-    expect(keys).toContain('00000000-0000-7000-8000-000000000002');
+    expect(keys).toContain(APEX_LEAD_ID);
+    expect(keys).toContain(BLUESKY_LEAD_ID);
   });
 
   it('GET /_admin/state entity count matches graph size', async () => {
@@ -62,10 +70,10 @@ describe('admin-state-events-health.acceptance', () => {
     expect(Array.isArray(res.body.events)).toBe(true);
   });
 
-  it('GET /_admin/events baseline has 2 events', async () => {
+  it('GET /_admin/events baseline has correct seeded event count', async () => {
     const res = await app.agent.get('/_admin/events').expect(200);
 
-    expect(res.body.events.length).toBe(2);
+    expect(res.body.events.length).toBe(BASELINE_EVENT_COUNT);
   });
 
   it('GET /_admin/events each event has eventId, boundary, aggregateId, type, sequenceVersion', async () => {
@@ -81,12 +89,11 @@ describe('admin-state-events-health.acceptance', () => {
   });
 
   it('GET /_admin/events?aggregateId=X filters events by aggregate', async () => {
-    const ACME_ID = '00000000-0000-7000-8000-000000000001';
-    const res = await app.agent.get(`/_admin/events?aggregateId=${ACME_ID}`).expect(200);
+    const res = await app.agent.get(`/_admin/events?aggregateId=${APEX_LEAD_ID}`).expect(200);
 
     expect(Array.isArray(res.body.events)).toBe(true);
     for (const evt of res.body.events) {
-      expect(evt.aggregateId).toBe(ACME_ID);
+      expect(evt.aggregateId).toBe(APEX_LEAD_ID);
     }
   });
 
@@ -109,16 +116,16 @@ describe('admin-state-events-health.acceptance', () => {
     expect(typeof res.body.eventCount).toBe('number');
   });
 
-  it('GET /_admin/health entityCount is 2 at baseline', async () => {
+  it('GET /_admin/health entityCount is correct at baseline', async () => {
     const res = await app.agent.get('/_admin/health').expect(200);
 
-    expect(res.body.entityCount).toBe(2);
+    expect(res.body.entityCount).toBe(BASELINE_ENTITY_COUNT);
   });
 
-  it('GET /_admin/health eventCount is 2 at baseline', async () => {
+  it('GET /_admin/health eventCount is correct at baseline', async () => {
     const res = await app.agent.get('/_admin/health').expect(200);
 
-    expect(res.body.eventCount).toBe(2);
+    expect(res.body.eventCount).toBe(BASELINE_EVENT_COUNT);
   });
 
   it('GET /_admin/health returns an uptime field', async () => {

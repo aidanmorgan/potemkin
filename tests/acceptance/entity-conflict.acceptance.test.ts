@@ -3,19 +3,9 @@
  *
  * Acceptance test: verify 409 Entity Conflict.
  *
- * The banking DSL auto-generates IDs, so we can't POST a duplicate customer via
- * a client-provided id through the normal HTTP path. Instead we verify via:
- *  1. The cascade case: creating a LoanAccount for a customer that already has
- *     that loan would produce an EntityConflictError if re-dispatched.
- *  2. Directly using the UoW layer to force a creation command against an
- *     already-present targetId, which should be surfaced as 409 via the gateway.
- *
- * For the acceptance layer, the most reliable path is to inject the id at the DSL
- * level. Since the fixture uses auto-generated IDs, we instead test that the
- * system correctly rejects a second request that shares a fixed target ID — using
- * a custom DSL that allows client-provided IDs in a separate test context.
- *
- * We also test the 409 scenario via the admin state + direct UoW approach.
+ * Since the CRM DSL auto-generates IDs, we use:
+ *  1. Direct UoW layer: try to create an entity at an already-existing seeded ID.
+ *  2. Logging a call, then logging another call with the same target ID via UoW.
  */
 
 import { createTestApp, type TestApp } from './_helpers/test-app.js';
@@ -23,7 +13,10 @@ import { executeUnitOfWork } from '../../src/engine/uow.js';
 import { nextUuidv7 } from '../../src/ids/uuidv7.js';
 import { EntityConflictError } from '../../src/errors.js';
 
-const ACME_ID = '00000000-0000-7000-8000-000000000001';
+// Apex Solutions is a seeded Lead
+const APEX_LEAD_ID = '00000000-0000-7000-8000-000000000010';
+const AGENT_ID = '00000000-0000-7000-8000-000000000003';
+const CAMPAIGN_ID = '00000000-0000-7000-8000-000000000001';
 
 describe('entity-conflict.acceptance', () => {
   let app: TestApp;
@@ -36,27 +29,37 @@ describe('entity-conflict.acceptance', () => {
     app.reset();
   });
 
-  it('creating a loan and then re-creating with the same id via UoW throws EntityConflictError', async () => {
-    // Create a loan through the HTTP gateway
-    const loanRes = await app.agent
-      .post('/loans')
-      .send({ customerId: ACME_ID, principal: 2000 })
+  it('creating a call and then re-creating with the same id via UoW throws EntityConflictError', async () => {
+    // Create a call through the HTTP gateway
+    const callRes = await app.agent
+      .post('/calls')
+      .send({
+        leadId: APEX_LEAD_ID,
+        agentId: AGENT_ID,
+        campaignId: CAMPAIGN_ID,
+        outcome: 'INTERESTED',
+      })
       .expect(201);
 
-    const loanId = loanRes.body.id as string;
+    const callId = callRes.body.id as string;
 
     // Now attempt to create another entity with the SAME targetId through the UoW
     await expect(
       executeUnitOfWork({
         command: {
           commandId: nextUuidv7(),
-          boundary: 'LoanAccount',
+          boundary: 'Call',
           intent: 'creation',
-          targetId: loanId,
-          payload: { customerId: ACME_ID, principal: 3000 },
+          targetId: callId,
+          payload: {
+            leadId: APEX_LEAD_ID,
+            agentId: AGENT_ID,
+            campaignId: CAMPAIGN_ID,
+            outcome: 'NO_ANSWER',
+          },
           queryParams: {},
           httpMethod: 'POST',
-          path: '/loans',
+          path: '/calls',
           origin: 'inbound',
           depth: 0,
         },
@@ -70,20 +73,26 @@ describe('entity-conflict.acceptance', () => {
     ).rejects.toBeInstanceOf(EntityConflictError);
   });
 
-  it('attempting to create a loan with the same id as a baseline customer triggers 409 in UoW', async () => {
-    // ACME_ID is already in the state graph as a Customer entity.
-    // Trying to create a Customer with that id should yield EntityConflictError.
+  it('attempting to create a lead with the same id as a baseline lead triggers EntityConflictError in UoW', async () => {
+    // APEX_LEAD_ID is already in the state graph as a Lead entity.
+    // Trying to create a Lead with that id should yield EntityConflictError.
     await expect(
       executeUnitOfWork({
         command: {
           commandId: nextUuidv7(),
-          boundary: 'Customer',
+          boundary: 'Lead',
           intent: 'creation',
-          targetId: ACME_ID,
-          payload: { name: 'Duplicate', riskBand: 'LOW' },
+          targetId: APEX_LEAD_ID,
+          payload: {
+            companyName: 'Duplicate Corp',
+            contactName: 'Duplicate User',
+            phone: '+61 2 9000 9999',
+            email: 'dup@dup.com',
+            source: 'WEBSITE',
+          },
           queryParams: {},
           httpMethod: 'POST',
-          path: '/customers',
+          path: '/leads',
           origin: 'inbound',
           depth: 0,
         },
@@ -102,13 +111,19 @@ describe('entity-conflict.acceptance', () => {
       await executeUnitOfWork({
         command: {
           commandId: nextUuidv7(),
-          boundary: 'Customer',
+          boundary: 'Lead',
           intent: 'creation',
-          targetId: ACME_ID,
-          payload: { name: 'Dup', riskBand: 'LOW' },
+          targetId: APEX_LEAD_ID,
+          payload: {
+            companyName: 'Dup Corp',
+            contactName: 'Dup User',
+            phone: '+61 2 9000 8888',
+            email: 'dup2@dup.com',
+            source: 'WEBSITE',
+          },
           queryParams: {},
           httpMethod: 'POST',
-          path: '/customers',
+          path: '/leads',
           origin: 'inbound',
           depth: 0,
         },

@@ -21,6 +21,14 @@
 import request from 'supertest';
 import { createTestApp, type TestApp } from '../../acceptance/_helpers/test-app.js';
 
+const LEAD_PAYLOAD = {
+  companyName: 'Test Corp',
+  contactName: 'Jane Doe',
+  phone: '+61400000001',
+  email: 'jane@testcorp.com',
+  source: 'WEBSITE',
+};
+
 describe('http/gateway — completeness probes', () => {
   let app: TestApp;
 
@@ -35,10 +43,10 @@ describe('http/gateway — completeness probes', () => {
   // ── CORS / preflight (gap: no CORS support) ─────────────────────────────────
 
   it(
-    'OPTIONS /customers returns 204 with Access-Control-Allow-Origin header (CORS preflight)',
+    'OPTIONS /leads returns 204 with Access-Control-Allow-Origin header (CORS preflight)',
     async () => {
       const res = await app.agent
-        .options('/customers')
+        .options('/leads')
         .set('Origin', 'https://example.com')
         .set('Access-Control-Request-Method', 'POST');
       // CORS-aware server should respond 200/204 with Access-Control-Allow-Origin
@@ -51,7 +59,7 @@ describe('http/gateway — completeness probes', () => {
     'all responses include Access-Control-Allow-Origin header (CORS on every response)',
     async () => {
       const res = await app.agent
-        .get('/customers')
+        .get('/leads')
         .set('Origin', 'https://example.com');
       expect(res.headers['access-control-allow-origin']).toBeDefined();
     },
@@ -64,8 +72,8 @@ describe('http/gateway — completeness probes', () => {
     // by sending a malformed If-Match that causes parseInt to produce NaN,
     // then UoW gets sequenceVersion=NaN — this exercises the error handler.
     const res = await app.agent
-      .post('/customers')
-      .send({ name: 'BodyTest', riskBand: 'LOW' })
+      .post('/leads')
+      .send(LEAD_PAYLOAD)
       .set('Content-Type', 'application/json');
     // Baseline: a valid request should succeed (not 500); confirm JSON.
     expect(res.status).toBe(201);
@@ -83,11 +91,11 @@ describe('http/gateway — completeness probes', () => {
 
   it('application/json; charset=utf-8 body is parsed correctly', async () => {
     const res = await app.agent
-      .post('/customers')
+      .post('/leads')
       .set('Content-Type', 'application/json; charset=utf-8')
-      .send(JSON.stringify({ name: 'Charset Test', riskBand: 'LOW' }))
+      .send(JSON.stringify({ ...LEAD_PAYLOAD, companyName: 'Charset Test' }))
       .expect(201);
-    expect(res.body.name).toBe('Charset Test');
+    expect(res.body.companyName).toBe('Charset Test');
   });
 
   it(
@@ -95,48 +103,48 @@ describe('http/gateway — completeness probes', () => {
     async () => {
       // express.json() type option now includes 'text/json'
       const res = await app.agent
-        .post('/customers')
+        .post('/leads')
         .set('Content-Type', 'text/json')
-        .send(JSON.stringify({ name: 'TextJson', riskBand: 'LOW' }))
+        .send(JSON.stringify({ ...LEAD_PAYLOAD, companyName: 'TextJson' }))
         .expect(201);
-      expect(res.body.name).toBe('TextJson');
+      expect(res.body.companyName).toBe('TextJson');
     },
   );
 
   // ── HEAD request on contract path ────────────────────────────────────────────
 
   it(
-    'HEAD /customers returns 200 with no body (H-1: HEAD treated as GET per RFC 7231)',
+    'HEAD /leads returns 200 with no body (H-1: HEAD treated as GET per RFC 7231)',
     async () => {
       // HEAD is looked up as GET — same status/headers, empty body.
-      const res = await app.agent.head('/customers').expect(200);
+      const res = await app.agent.head('/leads').expect(200);
       expect(res.text).toBeFalsy();
     },
   );
 
-  it('HEAD /customers returns same status as GET (RFC 7231 §4.3.2)', async () => {
-    const headRes = await app.agent.head('/customers');
-    const getRes = await app.agent.get('/customers');
+  it('HEAD /leads returns same status as GET (RFC 7231 §4.3.2)', async () => {
+    const headRes = await app.agent.head('/leads');
+    const getRes = await app.agent.get('/leads');
     expect(headRes.status).toBe(getRes.status);
   });
 
   // ── Response Content-Type on all JSON routes ─────────────────────────────────
 
-  it('GET /customers sets Content-Type: application/json', async () => {
-    const res = await app.agent.get('/customers').expect(200);
+  it('GET /leads sets Content-Type: application/json', async () => {
+    const res = await app.agent.get('/leads').expect(200);
     expect(res.headers['content-type']).toMatch(/application\/json/);
   });
 
-  it('POST /customers 201 sets Content-Type: application/json', async () => {
+  it('POST /leads 201 sets Content-Type: application/json', async () => {
     const res = await app.agent
-      .post('/customers')
-      .send({ name: 'CT Test', riskBand: 'LOW' })
+      .post('/leads')
+      .send({ ...LEAD_PAYLOAD, companyName: 'CT Test' })
       .expect(201);
     expect(res.headers['content-type']).toMatch(/application\/json/);
   });
 
   it('405 METHOD_NOT_ALLOWED sets Content-Type: application/json', async () => {
-    const res = await app.agent.delete('/customers').expect(405);
+    const res = await app.agent.delete('/leads').expect(405);
     expect(res.headers['content-type']).toMatch(/application\/json/);
   });
 
@@ -147,7 +155,7 @@ describe('http/gateway — completeness probes', () => {
     async () => {
       // adminRoutes.ts:86-90: ?boundary= filter is not yet implemented — returns 400
       const res = await app.agent
-        .get('/_admin/state?boundary=Customer')
+        .get('/_admin/state?boundary=Lead')
         .expect(400);
       expect(res.body).toMatchObject({
         error: 'NOT_IMPLEMENTED',
@@ -157,7 +165,7 @@ describe('http/gateway — completeness probes', () => {
 
   it('GET /_admin/state?boundary=X returns 400 NOT_IMPLEMENTED (filter is future work)', async () => {
     const res = await app.agent
-      .get('/_admin/state?boundary=Customer')
+      .get('/_admin/state?boundary=Lead')
       .expect(400);
     expect(res.body.error).toBe('NOT_IMPLEMENTED');
   });
@@ -176,12 +184,12 @@ describe('http/gateway — completeness probes', () => {
     async () => {
       // Create some events first
       await app.agent
-        .post('/customers')
-        .send({ name: 'P1', riskBand: 'LOW' })
+        .post('/leads')
+        .send({ ...LEAD_PAYLOAD, companyName: 'P1' })
         .expect(201);
       await app.agent
-        .post('/customers')
-        .send({ name: 'P2', riskBand: 'MED' })
+        .post('/leads')
+        .send({ ...LEAD_PAYLOAD, companyName: 'P2' })
         .expect(201);
 
       const res = await app.agent
@@ -194,12 +202,12 @@ describe('http/gateway — completeness probes', () => {
 
   it('GET /_admin/events without pagination returns all events', async () => {
     await app.agent
-      .post('/customers')
-      .send({ name: 'Pag1', riskBand: 'LOW' })
+      .post('/leads')
+      .send({ ...LEAD_PAYLOAD, companyName: 'Pag1' })
       .expect(201);
     await app.agent
-      .post('/customers')
-      .send({ name: 'Pag2', riskBand: 'MED' })
+      .post('/leads')
+      .send({ ...LEAD_PAYLOAD, companyName: 'Pag2' })
       .expect(201);
 
     const res = await app.agent
@@ -275,8 +283,8 @@ describe('http/gateway — completeness probes', () => {
 
   it('ETag value on creation response is a quoted numeric string (sequence version, RFC 7232)', async () => {
     const res = await app.agent
-      .post('/customers')
-      .send({ name: 'ETag Shape', riskBand: 'LOW' })
+      .post('/leads')
+      .send({ ...LEAD_PAYLOAD, companyName: 'ETag Shape' })
       .expect(201);
     const etag = res.headers['etag'];
     expect(etag).toBeDefined();
@@ -289,8 +297,8 @@ describe('http/gateway — completeness probes', () => {
     'ETag header is wrapped in double quotes per RFC 7232 (H-4)',
     async () => {
       const res = await app.agent
-        .post('/customers')
-        .send({ name: 'ETag RFC', riskBand: 'LOW' })
+        .post('/leads')
+        .send({ ...LEAD_PAYLOAD, companyName: 'ETag RFC' })
         .expect(201);
       const etag = res.headers['etag'];
       // RFC 7232 §2.3: ETag value must be enclosed in double quotes: ETag: "1"

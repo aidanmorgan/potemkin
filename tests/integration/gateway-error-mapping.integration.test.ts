@@ -14,7 +14,7 @@ import type { Express } from 'express';
 import { bootSystem } from '../../src/engine/boot.js';
 import { createGateway } from '../../src/http/gateway.js';
 import { loadOpenApi } from '../../src/contract/loader.js';
-import { loadBankingFixture } from '../integration/_helpers/inline-fixture.js';
+import { loadCrmFixture } from '../fixtures/index.js';
 import { createTestApp, type TestApp } from '../acceptance/_helpers/test-app.js';
 import { nextUuidv7 } from '../../src/ids/uuidv7.js';
 import { resetSystem } from '../../src/engine/reset.js';
@@ -410,7 +410,7 @@ describe('gateway — error mapping integration', () => {
     });
 
     const res = await app.agent
-      .get('/customers')
+      .get('/leads')
       .set('x-specmatic-fault', faultWithHeaders)
       .expect(429);
 
@@ -426,8 +426,14 @@ describe('gateway — error mapping integration', () => {
     });
 
     const res = await app.agent
-      .post('/loans')
-      .send({ customerId: '00000000-0000-7000-8000-000000000001', principal: 1000 })
+      .post('/leads')
+      .send({
+        companyName: 'Fault Corp',
+        contactName: 'Fault User',
+        phone: '+61 2 9000 0001',
+        email: 'fault@fault.com',
+        source: 'COLD_LIST',
+      })
       .set('x-specmatic-fault', faultWithoutHeaders)
       .expect(503);
 
@@ -439,8 +445,8 @@ describe('gateway — error mapping integration', () => {
   it('ContractViolationError from pre-validation maps to 400', async () => {
     // Send invalid body that fails the schema (missing required fields)
     const res = await app.agent
-      .post('/customers')
-      .send({ name: 'Test' }) // missing required 'riskBand'
+      .post('/leads')
+      .send({ companyName: 'Test' }) // missing required 'contactName', 'phone', 'email', 'source'
       .expect(400);
 
     expect(res.body.error).toBeDefined();
@@ -541,8 +547,8 @@ reducers:
   it('validates request body type and returns 400 on contract violation', async () => {
     // Send a body with wrong type (number where string expected) → 400
     const res = await app.agent
-      .post('/customers')
-      .send({ name: 42, riskBand: true })
+      .post('/leads')
+      .send({ companyName: 42, source: true })
       .expect(400);
 
     expect(res.body).toBeDefined();
@@ -551,13 +557,13 @@ reducers:
   // ── Lines 101-103: Express error handler (unhandled error forwarded via next(err)) ──
 
   it('Express error handler catches json parse errors and returns 5xx', async () => {
-    const fixture = await loadBankingFixture();
+    const fixture = await loadCrmFixture();
     const sys = await bootSystem(fixture);
     const expressApp = createGateway(sys);
 
     // Malformed JSON body → express.json throws SyntaxError → forwarded to Express error middleware
     const res = await request(expressApp)
-      .post('/customers')
+      .post('/leads')
       .set('Content-Type', 'application/json')
       .send('{ malformed json here }');
 
@@ -576,8 +582,14 @@ reducers:
     // This line is a defensive guard. The test verifies the gateway handles
     // the happy path (validation passes) without error.
     const res = await app.agent
-      .post('/customers')
-      .send({ name: 'Valid Customer', riskBand: 'LOW' })
+      .post('/leads')
+      .send({
+        companyName: 'Valid Corp',
+        contactName: 'Valid User',
+        phone: '+61 2 9000 1111',
+        email: 'valid@validcorp.com',
+        source: 'WEBSITE',
+      })
       .expect(201);
 
     expect(res.body.id).toBeDefined();
@@ -586,15 +598,22 @@ reducers:
   // ── ConcurrencyConflictError → 412 (already covered, verify) ───────────────
 
   it('ConcurrencyConflictError from wrong sequenceVersion maps to 412', async () => {
+    // Create a lead, then try to contact it with a stale If-Match version
     const createRes = await app.agent
-      .post('/loans')
-      .send({ customerId: '00000000-0000-7000-8000-000000000001', principal: 5000 })
+      .post('/leads')
+      .send({
+        companyName: 'Concurrency Corp',
+        contactName: 'Concurrency User',
+        phone: '+61 2 9000 5555',
+        email: 'concurrency@corp.com',
+        source: 'WEBSITE',
+      })
       .expect(201);
 
-    const loanId = createRes.body.id;
+    const leadId = createRes.body.id;
 
     const res = await app.agent
-      .post(`/loans/${loanId}/disburse`)
+      .post(`/leads/${leadId}/contact`)
       .set('If-Match', '9999')
       .send({})
       .expect(412);
@@ -694,14 +713,20 @@ reducers: []
 
   it('ETag is set on mutation response with events', async () => {
     const res = await app.agent
-      .post('/customers')
-      .send({ name: 'ETag Coverage', riskBand: 'LOW' })
+      .post('/leads')
+      .send({
+        companyName: 'ETag Corp',
+        contactName: 'ETag User',
+        phone: '+61 2 9000 6666',
+        email: 'etag@etagcorp.com',
+        source: 'WEBSITE',
+      })
       .expect(201);
     expect(res.headers['etag']).toBeDefined();
   });
 
-  it('GET /customers returns 200 body as array', async () => {
-    const res = await app.agent.get('/customers').expect(200);
+  it('GET /leads returns 200 body as array', async () => {
+    const res = await app.agent.get('/leads').expect(200);
     expect(Array.isArray(res.body)).toBe(true);
   });
 });

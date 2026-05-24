@@ -10,7 +10,9 @@
 import { createTestApp, type TestApp } from './_helpers/test-app.js';
 import { createHash } from 'crypto';
 
-const ACME_ID = '00000000-0000-7000-8000-000000000001';
+const APEX_LEAD_ID = '00000000-0000-7000-8000-000000000010';
+const AGENT_ID = '00000000-0000-7000-8000-000000000003';
+const CAMPAIGN_ID = '00000000-0000-7000-8000-000000000001';
 
 function hashEvents(events: unknown[]): string {
   return createHash('sha256').update(JSON.stringify(events)).digest('hex');
@@ -28,17 +30,23 @@ describe('cqrs-immutability.acceptance', () => {
   });
 
   it('sequenceVersion is monotonically increasing per aggregate across events', async () => {
-    // Create a customer to generate some events
+    // Create a lead to generate some events
     const createRes = await app.agent
-      .post('/customers')
-      .send({ name: 'CQRS Test Customer', riskBand: 'MED' })
+      .post('/leads')
+      .send({
+        companyName: 'CQRS Test Corp',
+        contactName: 'CQRS User',
+        phone: '+61 2 9000 1111',
+        email: 'cqrs@testcorp.com',
+        source: 'WEBSITE',
+      })
       .expect(201);
 
-    const customerId = createRes.body.id as string;
+    const leadId = createRes.body.id as string;
 
     // Retrieve events for this aggregate
     const eventsRes = await app.agent
-      .get(`/_admin/events?aggregateId=${customerId}`)
+      .get(`/_admin/events?aggregateId=${leadId}`)
       .expect(200);
 
     const events = eventsRes.body.events as Array<{ sequenceVersion: number }>;
@@ -49,12 +57,12 @@ describe('cqrs-immutability.acceptance', () => {
     }
   });
 
-  it('baseline events have sequenceVersion = 1', async () => {
-    const acmeEvents = await app.agent
-      .get(`/_admin/events?aggregateId=${ACME_ID}`)
+  it('baseline lead events have sequenceVersion = 1', async () => {
+    const apexEvents = await app.agent
+      .get(`/_admin/events?aggregateId=${APEX_LEAD_ID}`)
       .expect(200);
 
-    const events = acmeEvents.body.events as Array<{ sequenceVersion: number }>;
+    const events = apexEvents.body.events as Array<{ sequenceVersion: number }>;
     expect(events.length).toBe(1);
     expect(events[0]!.sequenceVersion).toBe(1);
   });
@@ -66,8 +74,17 @@ describe('cqrs-immutability.acceptance', () => {
     const beforeHash = hashEvents(beforeEvents);
     const beforeCount = beforeEvents.length;
 
-    // Add a new customer (which appends new events)
-    await app.agent.post('/customers').send({ name: 'New', riskBand: 'LOW' }).expect(201);
+    // Add a new lead (which appends new events)
+    await app.agent
+      .post('/leads')
+      .send({
+        companyName: 'New Corp',
+        contactName: 'New User',
+        phone: '+61 2 9000 2222',
+        email: 'new@newcorp.com',
+        source: 'COLD_LIST',
+      })
+      .expect(201);
 
     // Retrieve events again
     const after = await app.agent.get('/_admin/events').expect(200);
@@ -83,40 +100,59 @@ describe('cqrs-immutability.acceptance', () => {
     expect(originalHash).toBe(beforeHash);
   });
 
-  it('each loan cascade produces events for both aggregate IDs', async () => {
-    const loanRes = await app.agent
-      .post('/loans')
-      .send({ customerId: ACME_ID, principal: 500 })
+  it('each call log cascade produces events for both aggregate IDs', async () => {
+    const callRes = await app.agent
+      .post('/calls')
+      .send({
+        leadId: APEX_LEAD_ID,
+        agentId: AGENT_ID,
+        campaignId: CAMPAIGN_ID,
+        outcome: 'INTERESTED',
+      })
       .expect(201);
 
-    const loanId = loanRes.body.id as string;
+    const callId = callRes.body.id as string;
 
-    // Loan events
-    const loanEvents = await app.agent.get(`/_admin/events?aggregateId=${loanId}`).expect(200);
-    expect(loanEvents.body.events.length).toBeGreaterThanOrEqual(1);
+    // Call events
+    const callEvents = await app.agent.get(`/_admin/events?aggregateId=${callId}`).expect(200);
+    expect(callEvents.body.events.length).toBeGreaterThanOrEqual(1);
 
-    // Customer events (should now have 2: baseline + cascade)
-    const customerEvents = await app.agent.get(`/_admin/events?aggregateId=${ACME_ID}`).expect(200);
-    expect(customerEvents.body.events.length).toBeGreaterThanOrEqual(2);
+    // Lead events (should now have 2: baseline + cascade callIdAppended)
+    const leadEvents = await app.agent.get(`/_admin/events?aggregateId=${APEX_LEAD_ID}`).expect(200);
+    expect(leadEvents.body.events.length).toBeGreaterThanOrEqual(2);
   });
 
   it('sequenceVersions for a single aggregate form a contiguous 1-based sequence', async () => {
-    const loanRes = await app.agent
-      .post('/loans')
-      .send({ customerId: ACME_ID, principal: 3000 })
+    const callRes = await app.agent
+      .post('/calls')
+      .send({
+        leadId: APEX_LEAD_ID,
+        agentId: AGENT_ID,
+        campaignId: CAMPAIGN_ID,
+        outcome: 'NO_ANSWER',
+      })
       .expect(201);
 
-    const loanId = loanRes.body.id as string;
+    const callId = callRes.body.id as string;
 
-    // Add a repayment to generate another event
-    await app.agent.post(`/loans/${loanId}/repay`).send({ amount: 500 }).expect(200);
+    // Log another call to the same lead to generate more events
+    await app.agent
+      .post('/calls')
+      .send({
+        leadId: APEX_LEAD_ID,
+        agentId: AGENT_ID,
+        campaignId: CAMPAIGN_ID,
+        outcome: 'CALLBACK_SCHEDULED',
+      })
+      .expect(201);
 
+    // Check lead events for contiguous sequence
     const eventsRes = await app.agent
-      .get(`/_admin/events?aggregateId=${loanId}`)
+      .get(`/_admin/events?aggregateId=${APEX_LEAD_ID}`)
       .expect(200);
 
     const events = eventsRes.body.events as Array<{ sequenceVersion: number }>;
-    expect(events.length).toBeGreaterThanOrEqual(2);
+    expect(events.length).toBeGreaterThanOrEqual(3); // baseline + 2 cascade appends
 
     // Versions should be 1, 2, 3, ... (contiguous starting from 1)
     for (let i = 0; i < events.length; i++) {

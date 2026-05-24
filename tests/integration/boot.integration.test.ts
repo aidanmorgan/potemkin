@@ -1,26 +1,29 @@
 /**
  * boot.integration.test.ts
  *
- * Integration test: boot end-to-end with the banking fixture.
+ * Integration test: boot end-to-end with the CRM fixture.
  * Asserts:
- *  - FrozenBaseline contains 2 customer events with epoch-anchored UUIDv7 eventIds.
- *  - State Graph has 2 customers post-boot.
+ *  - FrozenBaseline contains seeded entities (5 Leads + 2 Campaigns + 3 Agents).
+ *  - State Graph has all seeded nodes post-boot.
  */
 
 import { bootSystem } from '../../src/engine/boot.js';
-import { loadBankingFixture } from './_helpers/inline-fixture.js';
+import { loadCrmFixture } from '../fixtures/index.js';
 import { isUuidv7 } from '../../src/ids/uuidv7.js';
 
-describe('boot.integration: banking fixture boot sequence', () => {
-  it('produces a FrozenBaseline with exactly 2 CustomerCreated events', async () => {
-    const fixture = await loadBankingFixture();
+// Seeded entity counts: 5 Leads + 2 Campaigns + 3 Agents = 10 (Calls have no initialization)
+const SEEDED_COUNT = 10;
+
+describe('boot.integration: CRM fixture boot sequence', () => {
+  it('produces a FrozenBaseline with seeded entity events', async () => {
+    const fixture = await loadCrmFixture();
     const sys = await bootSystem(fixture);
 
-    expect(sys.frozenBaseline).toHaveLength(2);
+    expect(sys.frozenBaseline).toHaveLength(SEEDED_COUNT);
   });
 
   it('baseline events have type BaselineEntityCreatedEvent', async () => {
-    const fixture = await loadBankingFixture();
+    const fixture = await loadCrmFixture();
     const sys = await bootSystem(fixture);
 
     for (const evt of sys.frozenBaseline) {
@@ -29,7 +32,7 @@ describe('boot.integration: banking fixture boot sequence', () => {
   });
 
   it('baseline event IDs are valid UUIDv7 strings', async () => {
-    const fixture = await loadBankingFixture();
+    const fixture = await loadCrmFixture();
     const sys = await bootSystem(fixture);
 
     for (const evt of sys.frozenBaseline) {
@@ -38,55 +41,53 @@ describe('boot.integration: banking fixture boot sequence', () => {
   });
 
   it('baseline event timestamps are anchored at epoch 0 (1970-01-01T00:00:00.000Z)', async () => {
-    const fixture = await loadBankingFixture();
+    const fixture = await loadCrmFixture();
     const sys = await bootSystem(fixture);
 
-    // Epoch-anchored UUIDv7s must have the upper 48 bits (timestamp) set to 0.
-    // We verify via the timestamp field, which boot.ts always sets to the epoch string.
     for (const evt of sys.frozenBaseline) {
       expect(evt.timestamp).toBe('1970-01-01T00:00:00.000Z');
     }
   });
 
-  it('state graph contains 2 nodes after boot', async () => {
-    const fixture = await loadBankingFixture();
+  it('state graph contains seeded nodes after boot', async () => {
+    const fixture = await loadCrmFixture();
     const sys = await bootSystem(fixture);
 
-    expect(sys.graph.size()).toBe(2);
+    expect(sys.graph.size()).toBe(SEEDED_COUNT);
   });
 
-  it('state graph contains Acme Coffee with id 00000000-0000-7000-8000-000000000001', async () => {
-    const fixture = await loadBankingFixture();
+  it('state graph contains Apex Solutions with id 00000000-0000-7000-8000-000000000010', async () => {
+    const fixture = await loadCrmFixture();
     const sys = await bootSystem(fixture);
 
-    const acme = sys.graph.get('00000000-0000-7000-8000-000000000001');
-    expect(acme).not.toBeNull();
-    expect(acme!['name']).toBe('Acme Coffee');
-    expect(acme!['riskBand']).toBe('LOW');
+    const apex = sys.graph.get('00000000-0000-7000-8000-000000000010');
+    expect(apex).not.toBeNull();
+    expect(apex!['companyName']).toBe('Apex Solutions Ltd');
+    expect(apex!['status']).toBe('NEW');
   });
 
-  it('state graph contains Beta Builders with id 00000000-0000-7000-8000-000000000002', async () => {
-    const fixture = await loadBankingFixture();
+  it('state graph contains BlueSky Tech with id 00000000-0000-7000-8000-000000000011', async () => {
+    const fixture = await loadCrmFixture();
     const sys = await bootSystem(fixture);
 
-    const beta = sys.graph.get('00000000-0000-7000-8000-000000000002');
-    expect(beta).not.toBeNull();
-    expect(beta!['name']).toBe('Beta Builders');
-    expect(beta!['riskBand']).toBe('MED');
+    const bluesky = sys.graph.get('00000000-0000-7000-8000-000000000011');
+    expect(bluesky).not.toBeNull();
+    expect(bluesky!['companyName']).toBe('BlueSky Tech');
+    expect(bluesky!['status']).toBe('CONTACTED');
   });
 
-  it('event store contains exactly 2 events after boot', async () => {
-    const fixture = await loadBankingFixture();
+  it('event store contains exactly seeded count of events after boot', async () => {
+    const fixture = await loadCrmFixture();
     const sys = await bootSystem(fixture);
 
-    expect(sys.events.size()).toBe(2);
+    expect(sys.events.size()).toBe(SEEDED_COUNT);
   });
 
   it('frozen baseline event IDs are deterministic across multiple boots', async () => {
-    const fixture1 = await loadBankingFixture();
+    const fixture1 = await loadCrmFixture();
     const sys1 = await bootSystem(fixture1);
 
-    const fixture2 = await loadBankingFixture();
+    const fixture2 = await loadCrmFixture();
     const sys2 = await bootSystem(fixture2);
 
     const ids1 = sys1.frozenBaseline.map(e => e.eventId);
