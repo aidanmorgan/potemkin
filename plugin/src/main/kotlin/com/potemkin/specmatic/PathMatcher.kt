@@ -12,12 +12,12 @@ package com.potemkin.specmatic
  *
  * Patterns are compiled to regular expressions once at construction time.
  */
-class PathMatcher(patterns: List<String>) {
+open class PathMatcher(patterns: List<String>) {
 
     private val compiled: List<Regex> = patterns.map { compile(it) }
 
     /** Returns true if [path] matches at least one configured pattern. */
-    fun matches(path: String?): Boolean {
+    open fun matches(path: String?): Boolean {
         if (path == null) return false
         // Normalise away trailing slashes for comparison purposes.
         val normalised = path.trimEnd('/')
@@ -35,30 +35,22 @@ class PathMatcher(patterns: List<String>) {
          *   anything else - literal, regex-escaped
          */
         internal fun compile(pattern: String): Regex {
-            val trimmed = pattern.trimEnd('/')
-            val sb = StringBuilder()
+            // Normalise: strip trailing slash, ensure exactly one leading slash.
+            val normalised = "/" + pattern.trimStart('/').trimEnd('/')
+            // Split on the leading slash to get the non-empty segments.
+            val segments = normalised.removePrefix("/").split("/")
+            // Start the buffer with the mandatory leading slash.
+            val sb = StringBuilder("/")
 
-            val segments = trimmed.split("/")
-            var first = true
-
-            for (seg in segments) {
-                if (first && seg.isEmpty()) {
-                    // Leading slash → emit literal slash anchor
-                    sb.append("/")
-                    first = false
-                    continue
-                }
-                if (!first) {
-                    sb.append("/")
-                }
-                first = false
+            for ((index, seg) in segments.withIndex()) {
+                // Append segment separator before every segment except the first.
+                if (index > 0) sb.append("/")
 
                 when {
                     seg == "**" -> {
-                        // Replace the preceding "/" we just emitted with an optional-slash-then-anything.
-                        if (sb.endsWith("/")) {
-                            sb.deleteCharAt(sb.length - 1)
-                        }
+                        // Delete the preceding separator (or the initial '/') so that
+                        // "/loans" + "/**" becomes "/loans(/.*)?", not "/loans/(/.*)?".
+                        sb.deleteCharAt(sb.length - 1)
                         sb.append("(/.*)?")
                     }
                     seg == "*" -> sb.append("[^/]+")

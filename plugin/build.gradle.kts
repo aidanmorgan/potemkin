@@ -2,7 +2,7 @@ import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 
 plugins {
     kotlin("jvm") version "2.2.0"
-    id("com.github.johnrengelman.shadow") version "8.1.1"
+    id("com.gradleup.shadow") version "8.3.6"
 }
 
 group = "com.potemkin"
@@ -28,7 +28,7 @@ repositories {
 
 dependencies {
     // Specmatic provides its own classes at runtime via the classpath; compileOnly keeps them out of our fat-jar.
-    compileOnly("io.specmatic:specmatic-core:2.46.1")
+    compileOnly("io.specmatic:specmatic-core:2.6.0")
 
     // HTTP client to call the Node engine's /_engine/forward endpoint.
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
@@ -48,7 +48,7 @@ dependencies {
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
 
     // Specmatic types needed in tests.
-    testImplementation("io.specmatic:specmatic-core:2.46.1")
+    testImplementation("io.specmatic:specmatic-core:2.6.0")
 
     // SLF4J simple binding for tests (avoids "no binding" warning).
     testRuntimeOnly("org.slf4j:slf4j-simple:2.0.9")
