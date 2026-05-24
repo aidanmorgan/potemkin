@@ -5,9 +5,9 @@ identity:
   creation:
     generate: $uuidv7()
 query_mapping:
-  stage: "state.stage == query.stage"
-  agentId: "state.agentId == query.agentId"
-  campaignId: "state.campaignId == query.campaignId"
+  stage: "state.stage == param"
+  agentId: "state.agentId == param"
+  campaignId: "state.campaignId == param"
 
 event_catalog:
   - type: OpportunityCreated

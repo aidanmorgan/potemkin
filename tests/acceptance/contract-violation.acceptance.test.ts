@@ -1,7 +1,7 @@
 /**
  * contract-violation.acceptance.test.ts
  *
- * Acceptance test: POST /customers with missing required `riskBand` → 400 CONTRACT_VIOLATION.
+ * Acceptance test: POST /leads with missing required fields → 400 CONTRACT_VIOLATION.
  */
 
 import { createTestApp, type TestApp } from './_helpers/test-app.js';
@@ -17,64 +17,86 @@ describe('contract-violation.acceptance', () => {
     app.reset();
   });
 
-  it('POST /customers with missing riskBand returns 400', async () => {
+  it('POST /leads with missing source returns 400', async () => {
     await app.agent
-      .post('/customers')
-      .send({ name: 'No Risk Band Customer' })
-      // missing required `riskBand`
+      .post('/leads')
+      .send({
+        companyName: 'No Source Corp',
+        contactName: 'No Source User',
+        phone: '+61 2 9000 1111',
+        email: 'nosource@corp.com',
+        // missing required `source`
+      })
       .expect(400);
   });
 
-  it('POST /customers with missing riskBand returns CONTRACT_VIOLATION error code', async () => {
+  it('POST /leads with missing source returns CONTRACT_VIOLATION error code', async () => {
     const res = await app.agent
-      .post('/customers')
-      .send({ name: 'No Risk Band Customer' })
+      .post('/leads')
+      .send({
+        companyName: 'No Source Corp',
+        contactName: 'No Source User',
+        phone: '+61 2 9000 1111',
+        email: 'nosource@corp.com',
+      })
       .expect(400);
 
     expect(res.body).toMatchObject({ error: 'CONTRACT_VIOLATION' });
   });
 
-  it('POST /customers with missing name returns 400', async () => {
+  it('POST /leads with missing companyName returns 400', async () => {
     await app.agent
-      .post('/customers')
-      .send({ riskBand: 'LOW' })
+      .post('/leads')
+      .send({
+        contactName: 'No Company User',
+        phone: '+61 2 9000 2222',
+        email: 'nocompany@corp.com',
+        source: 'WEBSITE',
+      })
       .expect(400);
   });
 
-  it('POST /customers with empty body returns 400', async () => {
+  it('POST /leads with empty body returns 400', async () => {
     await app.agent
-      .post('/customers')
+      .post('/leads')
       .send({})
       .expect(400);
   });
 
-  it('POST /loans with missing principal returns 400', async () => {
+  it('POST /calls with missing outcome returns 400', async () => {
     await app.agent
-      .post('/loans')
-      .send({ customerId: '00000000-0000-7000-8000-000000000001' })
-      // missing required `principal`
+      .post('/calls')
+      .send({
+        leadId: '00000000-0000-7000-8000-000000000010',
+        agentId: '00000000-0000-7000-8000-000000000003',
+        campaignId: '00000000-0000-7000-8000-000000000001',
+        // missing required `outcome`
+      })
       .expect(400);
   });
 
-  it('POST /loans with missing customerId returns 400', async () => {
+  it('POST /calls with missing leadId returns 400', async () => {
     await app.agent
-      .post('/loans')
-      .send({ principal: 1000 })
-      // missing required `customerId`
+      .post('/calls')
+      .send({
+        agentId: '00000000-0000-7000-8000-000000000003',
+        campaignId: '00000000-0000-7000-8000-000000000001',
+        outcome: 'INTERESTED',
+        // missing required `leadId`
+      })
       .expect(400);
   });
 
-  it('POST /loans/repay with missing amount returns 400', async () => {
-    // We need an existing loan first — create one
-    const loanRes = await app.agent
-      .post('/loans')
-      .send({ customerId: '00000000-0000-7000-8000-000000000001', principal: 1000 })
-      .expect(201);
-
+  it('POST /leads with invalid source enum returns 400', async () => {
     await app.agent
-      .post(`/loans/${loanRes.body.id}/repay`)
-      .send({})
-      // missing required `amount`
+      .post('/leads')
+      .send({
+        companyName: 'Bad Source Corp',
+        contactName: 'Bad Source User',
+        phone: '+61 2 9000 3333',
+        email: 'badsource@corp.com',
+        source: 'INVALID_SOURCE',
+      })
       .expect(400);
   });
 });

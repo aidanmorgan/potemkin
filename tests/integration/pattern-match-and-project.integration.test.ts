@@ -10,7 +10,7 @@
 import { bootSystem, type BootedSystem } from '../../src/engine/boot.js';
 import { executeUnitOfWork } from '../../src/engine/uow.js';
 import { resetSystem } from '../../src/engine/reset.js';
-import { loadBankingFixture } from './_helpers/inline-fixture.js';
+import { loadCrmFixture } from '../fixtures/index.js';
 import { nextUuidv7 } from '../../src/ids/uuidv7.js';
 import type { Command } from '../../src/types.js';
 
@@ -18,7 +18,7 @@ describe('pattern-match-and-project.integration', () => {
   let sys: BootedSystem;
 
   beforeEach(async () => {
-    const fixture = await loadBankingFixture();
+    const fixture = await loadCrmFixture();
     sys = await bootSystem(fixture);
   });
 
@@ -26,17 +26,23 @@ describe('pattern-match-and-project.integration', () => {
     resetSystem(sys);
   });
 
-  function makeCreateCustomerCommand(overrides: Partial<Command> = {}): Command {
+  function makeCreateLeadCommand(overrides: Partial<Command> = {}): Command {
     const id = nextUuidv7();
     return {
       commandId: nextUuidv7(),
-      boundary: 'Customer',
+      boundary: 'Lead',
       intent: 'creation',
       targetId: id,
-      payload: { name: 'Test Customer', riskBand: 'HIGH' },
+      payload: {
+        companyName: 'Test Corp',
+        contactName: 'Test User',
+        phone: '+61 2 9000 1234',
+        email: 'test@testcorp.com',
+        source: 'WEBSITE',
+      },
       queryParams: {},
       httpMethod: 'POST',
-      path: '/customers',
+      path: '/leads',
       origin: 'inbound',
       depth: 0,
       ...overrides,
@@ -45,7 +51,7 @@ describe('pattern-match-and-project.integration', () => {
 
   it('executing a creation command appends exactly 1 event to the event store', async () => {
     const initialSize = sys.events.size();
-    const cmd = makeCreateCustomerCommand();
+    const cmd = makeCreateLeadCommand();
 
     await executeUnitOfWork({
       command: cmd,
@@ -64,7 +70,7 @@ describe('pattern-match-and-project.integration', () => {
   });
 
   it('the committed event has the correct boundary and aggregateId', async () => {
-    const cmd = makeCreateCustomerCommand();
+    const cmd = makeCreateLeadCommand();
 
     const result = await executeUnitOfWork({
       command: cmd,
@@ -80,12 +86,12 @@ describe('pattern-match-and-project.integration', () => {
     });
 
     expect(result.events).toHaveLength(1);
-    expect(result.events[0]!.boundary).toBe('Customer');
+    expect(result.events[0]!.boundary).toBe('Lead');
     expect(result.events[0]!.aggregateId).toBe(cmd.targetId);
   });
 
   it('state graph is mutated to contain the new entity after command execution', async () => {
-    const cmd = makeCreateCustomerCommand();
+    const cmd = makeCreateLeadCommand();
 
     await executeUnitOfWork({
       command: cmd,
@@ -102,12 +108,12 @@ describe('pattern-match-and-project.integration', () => {
 
     const entity = sys.graph.get(cmd.targetId!);
     expect(entity).not.toBeNull();
-    expect(entity!['name']).toBe('Test Customer');
-    expect(entity!['riskBand']).toBe('HIGH');
+    expect(entity!['companyName']).toBe('Test Corp');
+    expect(entity!['source']).toBe('WEBSITE');
   });
 
   it('sequence version for the new aggregate is incremented to 1', async () => {
-    const cmd = makeCreateCustomerCommand();
+    const cmd = makeCreateLeadCommand();
 
     await executeUnitOfWork({
       command: cmd,
@@ -127,7 +133,7 @@ describe('pattern-match-and-project.integration', () => {
   });
 
   it('execution result has status 201 for a creation command', async () => {
-    const cmd = makeCreateCustomerCommand();
+    const cmd = makeCreateLeadCommand();
 
     const result = await executeUnitOfWork({
       command: cmd,
@@ -147,7 +153,7 @@ describe('pattern-match-and-project.integration', () => {
 
   it('state graph total size increases by 1 after a creation command', async () => {
     const before = sys.graph.size();
-    const cmd = makeCreateCustomerCommand();
+    const cmd = makeCreateLeadCommand();
 
     await executeUnitOfWork({
       command: cmd,

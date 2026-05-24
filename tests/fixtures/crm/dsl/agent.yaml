@@ -5,7 +5,7 @@ identity:
   creation:
     generate: $uuidv7()
 query_mapping:
-  currentStatus: "state.currentStatus == query.currentStatus"
+  currentStatus: "state.currentStatus == param"
 
 event_catalog:
   - type: AgentCreated
@@ -58,7 +58,7 @@ behaviors:
   - name: incrementCallCount
     match:
       intent: mutation
-      condition: "command.payload.callId != null && command.payload.incrementCall == true"
+      condition: "has(command.payload.callId) && command.payload.callId != null && command.payload.incrementCall == true"
     emit: AgentCallCountIncremented
 
   # Increment conversions (secondary command from opportunity win)

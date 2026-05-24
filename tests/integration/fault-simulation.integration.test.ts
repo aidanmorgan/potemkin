@@ -9,7 +9,7 @@
 import { bootSystem, type BootedSystem } from '../../src/engine/boot.js';
 import { executeUnitOfWork } from '../../src/engine/uow.js';
 import { resetSystem } from '../../src/engine/reset.js';
-import { loadBankingFixture } from './_helpers/inline-fixture.js';
+import { loadCrmFixture } from '../fixtures/index.js';
 import { createEngineMetrics } from '../../src/observability/metrics.js';
 import { createInMemoryOtel, collectMetricDataPoints } from './_helpers/otel.js';
 import { nextUuidv7 } from '../../src/ids/uuidv7.js';
@@ -18,7 +18,7 @@ describe('fault-simulation.integration: faultSignal on Command bypasses executio
   let sys: BootedSystem;
 
   beforeEach(async () => {
-    const fixture = await loadBankingFixture();
+    const fixture = await loadCrmFixture();
     sys = await bootSystem(fixture);
   });
 
@@ -32,13 +32,19 @@ describe('fault-simulation.integration: faultSignal on Command bypasses executio
     const result = await executeUnitOfWork({
       command: {
         commandId: nextUuidv7(),
-        boundary: 'Customer',
+        boundary: 'Lead',
         intent: 'creation',
         targetId: nextUuidv7(),
-        payload: { name: 'Should Never Be Created', riskBand: 'LOW' },
+        payload: {
+          companyName: 'Ghost Corp',
+          contactName: 'Ghost User',
+          phone: '+61 2 9000 0000',
+          email: 'ghost@ghost.com',
+          source: 'COLD_LIST',
+        },
         queryParams: {},
         httpMethod: 'POST',
-        path: '/customers',
+        path: '/leads',
         origin: 'inbound',
         depth: 0,
         faultSignal,
@@ -61,13 +67,19 @@ describe('fault-simulation.integration: faultSignal on Command bypasses executio
     const result = await executeUnitOfWork({
       command: {
         commandId: nextUuidv7(),
-        boundary: 'Customer',
+        boundary: 'Lead',
         intent: 'creation',
         targetId: nextUuidv7(),
-        payload: { name: 'Ghost Customer', riskBand: 'LOW' },
+        payload: {
+          companyName: 'Ghost Corp',
+          contactName: 'Ghost User',
+          phone: '+61 2 9000 0000',
+          email: 'ghost@ghost.com',
+          source: 'COLD_LIST',
+        },
         queryParams: {},
         httpMethod: 'POST',
-        path: '/customers',
+        path: '/leads',
         origin: 'inbound',
         depth: 0,
         faultSignal,
@@ -90,13 +102,19 @@ describe('fault-simulation.integration: faultSignal on Command bypasses executio
     await executeUnitOfWork({
       command: {
         commandId: nextUuidv7(),
-        boundary: 'Customer',
+        boundary: 'Lead',
         intent: 'creation',
         targetId: nextUuidv7(),
-        payload: { name: 'Ghost Customer', riskBand: 'LOW' },
+        payload: {
+          companyName: 'Ghost Corp',
+          contactName: 'Ghost User',
+          phone: '+61 2 9000 0000',
+          email: 'ghost@ghost.com',
+          source: 'COLD_LIST',
+        },
         queryParams: {},
         httpMethod: 'POST',
-        path: '/customers',
+        path: '/leads',
         origin: 'inbound',
         depth: 0,
         faultSignal,
@@ -119,13 +137,19 @@ describe('fault-simulation.integration: faultSignal on Command bypasses executio
     await executeUnitOfWork({
       command: {
         commandId: nextUuidv7(),
-        boundary: 'Customer',
+        boundary: 'Lead',
         intent: 'creation',
         targetId: nextUuidv7(),
-        payload: { name: 'Ghost', riskBand: 'LOW' },
+        payload: {
+          companyName: 'Ghost Corp',
+          contactName: 'Ghost User',
+          phone: '+61 2 9000 0000',
+          email: 'ghost@ghost.com',
+          source: 'COLD_LIST',
+        },
         queryParams: {},
         httpMethod: 'POST',
-        path: '/customers',
+        path: '/leads',
         origin: 'inbound',
         depth: 0,
         faultSignal,
@@ -150,13 +174,19 @@ describe('fault-simulation.integration: faultSignal on Command bypasses executio
     await executeUnitOfWork({
       command: {
         commandId: nextUuidv7(),
-        boundary: 'Customer',
+        boundary: 'Lead',
         intent: 'creation',
         targetId: nextUuidv7(),
-        payload: { name: 'Ghost', riskBand: 'LOW' },
+        payload: {
+          companyName: 'Ghost Corp',
+          contactName: 'Ghost User',
+          phone: '+61 2 9000 0000',
+          email: 'ghost@ghost.com',
+          source: 'COLD_LIST',
+        },
         queryParams: {},
         httpMethod: 'POST',
-        path: '/customers',
+        path: '/leads',
         origin: 'inbound',
         depth: 0,
         faultSignal,
@@ -189,13 +219,19 @@ describe('fault-simulation.integration: faultSignal on Command bypasses executio
     const result = await executeUnitOfWork({
       command: {
         commandId: nextUuidv7(),
-        boundary: 'Customer',
+        boundary: 'Lead',
         intent: 'creation',
         targetId: nextUuidv7(),
-        payload: { name: 'Ghost', riskBand: 'LOW' },
+        payload: {
+          companyName: 'Ghost Corp',
+          contactName: 'Ghost User',
+          phone: '+61 2 9000 0000',
+          email: 'ghost@ghost.com',
+          source: 'COLD_LIST',
+        },
         queryParams: {},
         httpMethod: 'POST',
-        path: '/customers',
+        path: '/leads',
         origin: 'inbound',
         depth: 0,
         faultSignal,

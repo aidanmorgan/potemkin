@@ -9,7 +9,7 @@
 import { bootSystem, type BootedSystem } from '../../src/engine/boot.js';
 import { executeUnitOfWork } from '../../src/engine/uow.js';
 import { resetSystem } from '../../src/engine/reset.js';
-import { loadBankingFixture } from './_helpers/inline-fixture.js';
+import { loadCrmFixture } from '../fixtures/index.js';
 import { nextUuidv7 } from '../../src/ids/uuidv7.js';
 
 describe('reset.integration: ephemeral reset reverts to post-boot baseline', () => {
@@ -20,7 +20,7 @@ describe('reset.integration: ephemeral reset reverts to post-boot baseline', () 
   let baselineGraphEntries: Array<{ id: string; snapshot: string }>;
 
   beforeEach(async () => {
-    const fixture = await loadBankingFixture();
+    const fixture = await loadCrmFixture();
     sys = await bootSystem(fixture);
 
     // Capture baseline
@@ -31,18 +31,24 @@ describe('reset.integration: ephemeral reset reverts to post-boot baseline', () 
     }));
   });
 
-  async function createCustomer(): Promise<string> {
+  async function createLead(): Promise<string> {
     const id = nextUuidv7();
     await executeUnitOfWork({
       command: {
         commandId: nextUuidv7(),
-        boundary: 'Customer',
+        boundary: 'Lead',
         intent: 'creation',
         targetId: id,
-        payload: { name: 'Temp Customer', riskBand: 'HIGH' },
+        payload: {
+          companyName: 'Temp Lead Corp',
+          contactName: 'Test User',
+          phone: '+61 2 9000 9999',
+          email: 'temp@test.com',
+          source: 'COLD_LIST',
+        },
         queryParams: {},
         httpMethod: 'POST',
-        path: '/customers',
+        path: '/leads',
         origin: 'inbound',
         depth: 0,
       },
@@ -56,15 +62,11 @@ describe('reset.integration: ephemeral reset reverts to post-boot baseline', () 
     return id;
   }
 
-  // Note: createLoan is NOT used in tests because the loan cascade dispatches
-  // a secondary mutation to Customer which triggers the append runtimeGuard bug.
-  // We use only createCustomer for mutation-based reset testing.
-
   it('event log size is restored to baseline after reset', async () => {
     const baselineSize = sys.events.size();
 
-    await createCustomer();
-    await createCustomer();
+    await createLead();
+    await createLead();
 
     expect(sys.events.size()).toBeGreaterThan(baselineSize);
 
@@ -76,8 +78,8 @@ describe('reset.integration: ephemeral reset reverts to post-boot baseline', () 
   it('state graph size is restored to baseline after reset', async () => {
     const baselineGraphSize = sys.graph.size();
 
-    await createCustomer();
-    await createCustomer();
+    await createLead();
+    await createLead();
 
     expect(sys.graph.size()).toBeGreaterThan(baselineGraphSize);
 
@@ -87,7 +89,7 @@ describe('reset.integration: ephemeral reset reverts to post-boot baseline', () 
   });
 
   it('frozen baseline event IDs are identical before and after reset', async () => {
-    await createCustomer();
+    await createLead();
     resetSystem(sys);
 
     const postResetIds = sys.frozenBaseline.map(e => e.eventId);
@@ -95,7 +97,7 @@ describe('reset.integration: ephemeral reset reverts to post-boot baseline', () 
   });
 
   it('event log event IDs match the frozen baseline after reset', async () => {
-    await createCustomer();
+    await createLead();
     resetSystem(sys);
 
     const eventLogIds = sys.events.all().map(e => e.eventId);
@@ -103,8 +105,8 @@ describe('reset.integration: ephemeral reset reverts to post-boot baseline', () 
   });
 
   it('state graph entries are identical to baseline after reset', async () => {
-    await createCustomer();
-    await createCustomer();
+    await createLead();
+    await createLead();
 
     resetSystem(sys);
 
@@ -119,24 +121,25 @@ describe('reset.integration: ephemeral reset reverts to post-boot baseline', () 
   });
 
   it('mutated entities are gone after reset', async () => {
-    const customerId1 = await createCustomer();
-    const customerId2 = await createCustomer();
+    const leadId1 = await createLead();
+    const leadId2 = await createLead();
 
-    expect(sys.graph.get(customerId1)).not.toBeNull();
-    expect(sys.graph.get(customerId2)).not.toBeNull();
+    expect(sys.graph.get(leadId1)).not.toBeNull();
+    expect(sys.graph.get(leadId2)).not.toBeNull();
 
     resetSystem(sys);
 
-    expect(sys.graph.get(customerId1)).toBeNull();
-    expect(sys.graph.get(customerId2)).toBeNull();
+    expect(sys.graph.get(leadId1)).toBeNull();
+    expect(sys.graph.get(leadId2)).toBeNull();
   });
 
-  it('baseline customers are present in the state graph after reset', async () => {
-    await createCustomer();
+  it('seeded leads are present in the state graph after reset', async () => {
+    await createLead();
     resetSystem(sys);
 
-    expect(sys.graph.get('00000000-0000-7000-8000-000000000001')).not.toBeNull();
-    expect(sys.graph.get('00000000-0000-7000-8000-000000000002')).not.toBeNull();
+    // Apex Solutions and BlueSky Tech are seeded leads
+    expect(sys.graph.get('00000000-0000-7000-8000-000000000010')).not.toBeNull();
+    expect(sys.graph.get('00000000-0000-7000-8000-000000000011')).not.toBeNull();
   });
 
   it('multiple resets produce identical states', async () => {

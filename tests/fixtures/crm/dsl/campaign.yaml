@@ -5,7 +5,7 @@ identity:
   creation:
     generate: $uuidv7()
 query_mapping:
-  status: "state.status == query.status"
+  status: "state.status == param"
 
 event_catalog:
   - type: CampaignCreated
@@ -82,7 +82,7 @@ behaviors:
   - name: updateLeadSource
     match:
       intent: mutation
-      condition: "command.payload.leadSource != null"
+      condition: "has(command.payload.leadSource) && command.payload.leadSource != null"
     emit: CampaignLeadSourceUpdated
 
 reducers:

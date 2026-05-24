@@ -5,9 +5,9 @@ identity:
   creation:
     generate: $uuidv7()
 query_mapping:
-  leadId: "state.leadId == query.leadId"
-  agentId: "state.agentId == query.agentId"
-  campaignId: "state.campaignId == query.campaignId"
+  leadId: "state.leadId == param"
+  agentId: "state.agentId == param"
+  campaignId: "state.campaignId == param"
 
 event_catalog:
   # REQ-65: schema_ref on CallLogged event
@@ -18,11 +18,11 @@ event_catalog:
       leadId: "command.payload.leadId"
       agentId: "command.payload.agentId"
       campaignId: "command.payload.campaignId"
-      startedAt: "command.payload.startedAt != null ? command.payload.startedAt : $now()"
-      endedAt: "command.payload.endedAt != null ? command.payload.endedAt : $now()"
-      durationSeconds: "command.payload.durationSeconds != null ? command.payload.durationSeconds : 0"
+      startedAt: "has(command.payload.startedAt) && command.payload.startedAt != null ? command.payload.startedAt : $now()"
+      endedAt: "has(command.payload.endedAt) && command.payload.endedAt != null ? command.payload.endedAt : $now()"
+      durationSeconds: "has(command.payload.durationSeconds) && command.payload.durationSeconds != null ? command.payload.durationSeconds : 0"
       outcome: "command.payload.outcome"
-      notes: "command.payload.notes != null ? command.payload.notes : ''"
+      notes: "has(command.payload.notes) && command.payload.notes != null ? command.payload.notes : ''"
 
 behaviors:
   # Log call — REQ-61: match.requires to validate outcome is provided

@@ -16,6 +16,19 @@ import request from 'supertest';
 import { createTestApp, type TestApp } from '../../acceptance/_helpers/test-app.js';
 import { nextUuidv7 } from '../../../src/ids/uuidv7.js';
 
+const LEAD_PAYLOAD = {
+  companyName: 'Fwd Corp',
+  contactName: 'Jane Doe',
+  phone: '+61400000001',
+  email: 'jane@fwdcorp.com',
+  source: 'WEBSITE',
+};
+
+// Seeded lead IDs from CRM fixture
+const APEX_LEAD_ID = '00000000-0000-7000-8000-000000000010';
+const CAMPAIGN_ID = '00000000-0000-7000-8000-000000000001';
+const AGENT_ID = '00000000-0000-7000-8000-000000000003';
+
 describe('forwarding/handler — createForwardingHandler', () => {
   let app: TestApp;
 
@@ -49,7 +62,7 @@ describe('forwarding/handler — createForwardingHandler', () => {
   it('returns HTTP 400 when method is missing', async () => {
     const res = await app.agent
       .post('/_engine/forward')
-      .send({ path: '/customers', headers: {}, query: {}, body: null })
+      .send({ path: '/leads', headers: {}, query: {}, body: null })
       .expect(400);
     expect(res.body.error).toBe('MALFORMED_FORWARDED_REQUEST');
   });
@@ -57,7 +70,7 @@ describe('forwarding/handler — createForwardingHandler', () => {
   it('returns HTTP 400 when headers is not an object', async () => {
     const res = await app.agent
       .post('/_engine/forward')
-      .send({ method: 'GET', path: '/customers', headers: 'bad', query: {}, body: null })
+      .send({ method: 'GET', path: '/leads', headers: 'bad', query: {}, body: null })
       .expect(400);
     expect(res.body.error).toBe('MALFORMED_FORWARDED_REQUEST');
   });
@@ -73,21 +86,21 @@ describe('forwarding/handler — createForwardingHandler', () => {
     expect(res.body.body.error).toBe('NO_ROUTE');
   });
 
-  // ── Successful creation (POST /customers) ────────────────────────────────────
+  // ── Successful creation (POST /leads) ────────────────────────────────────────
 
-  it('returns ForwardedResponse with status 201 for POST /customers', async () => {
+  it('returns ForwardedResponse with status 201 for POST /leads', async () => {
     const res = await app.agent
       .post('/_engine/forward')
       .send({
         method: 'POST',
-        path: '/customers',
+        path: '/leads',
         headers: {},
         query: {},
-        body: { name: 'Fwd Corp', riskBand: 'LOW' },
+        body: LEAD_PAYLOAD,
       })
       .expect(200);
     expect(res.body.status).toBe(201);
-    expect(res.body.body.name).toBe('Fwd Corp');
+    expect(res.body.body.companyName).toBe('Fwd Corp');
   });
 
   it('returns ForwardedResponse with etag header for creation that produces events', async () => {
@@ -95,24 +108,24 @@ describe('forwarding/handler — createForwardingHandler', () => {
       .post('/_engine/forward')
       .send({
         method: 'POST',
-        path: '/customers',
+        path: '/leads',
         headers: {},
         query: {},
-        body: { name: 'ETag Fwd', riskBand: 'MED' },
+        body: { ...LEAD_PAYLOAD, companyName: 'ETag Fwd' },
       })
       .expect(200);
     expect(res.body.status).toBe(201);
     expect(res.body.headers['etag']).toBeDefined();
   });
 
-  // ── Successful query (GET /customers) ────────────────────────────────────────
+  // ── Successful query (GET /leads) ────────────────────────────────────────────
 
-  it('returns ForwardedResponse with status 200 for GET /customers', async () => {
+  it('returns ForwardedResponse with status 200 for GET /leads', async () => {
     const res = await app.agent
       .post('/_engine/forward')
       .send({
         method: 'GET',
-        path: '/customers',
+        path: '/leads',
         headers: {},
         query: {},
         body: null,
@@ -124,13 +137,13 @@ describe('forwarding/handler — createForwardingHandler', () => {
 
   // ── Error → status mapping ────────────────────────────────────────────────────
 
-  it('returns ForwardedResponse with status 404 for EntityAbsenceError (GET unknown loan)', async () => {
+  it('returns ForwardedResponse with status 404 for EntityAbsenceError (GET unknown call)', async () => {
     const unknownId = nextUuidv7();
     const res = await app.agent
       .post('/_engine/forward')
       .send({
         method: 'GET',
-        path: `/loans/${unknownId}`,
+        path: `/calls/${unknownId}`,
         headers: {},
         query: {},
         body: null,
@@ -140,80 +153,77 @@ describe('forwarding/handler — createForwardingHandler', () => {
   });
 
   it('returns ForwardedResponse with status 409 for EntityConflictError (duplicate creation)', async () => {
-    // First create a customer to get an id
+    // First create a lead to get an id
     const createRes = await app.agent
       .post('/_engine/forward')
       .send({
         method: 'POST',
-        path: '/customers',
+        path: '/leads',
         headers: {},
         query: {},
-        body: { name: 'Conflict Test', riskBand: 'LOW' },
+        body: LEAD_PAYLOAD,
       })
       .expect(200);
     expect(createRes.body.status).toBe(201);
-    const customerId = createRes.body.body.id as string;
 
-    // Now create a loan for a non-existent customer → EntityAbsenceError (404)
-    // To get a 409, we need to trigger EntityConflictError (duplicate targetId).
-    // The engine currently generates a new UUIDv7 for each creation, so direct 409
-    // testing requires inserting a known ID. Baseline IDs are seeded — we exercise
-    // the error mapping by verifying the LoanAccount creation for the new customer works.
-    const loanRes = await app.agent
+    // Log a call for the seeded lead (APEX), verify it succeeds
+    const callRes = await app.agent
       .post('/_engine/forward')
       .send({
         method: 'POST',
-        path: '/loans',
+        path: '/calls',
         headers: {},
         query: {},
-        body: { customerId, principal: 5000 },
+        body: {
+          leadId: APEX_LEAD_ID,
+          agentId: AGENT_ID,
+          campaignId: CAMPAIGN_ID,
+          outcome: 'INTERESTED',
+        },
       })
       .expect(200);
-    expect(loanRes.body.status).toBe(201);
+    expect(callRes.body.status).toBe(201);
   });
 
   it('returns ForwardedResponse with status 412 for ConcurrencyConflictError', async () => {
-    // Create loan then disburse with wrong If-Match → 412
+    // Create lead then contact with wrong If-Match → 412
     const createRes = await app.agent
       .post('/_engine/forward')
       .send({
         method: 'POST',
-        path: '/loans',
+        path: '/leads',
         headers: {},
         query: {},
-        body: { customerId: '00000000-0000-7000-8000-000000000001', principal: 1000 },
+        body: LEAD_PAYLOAD,
       })
       .expect(200);
     expect(createRes.body.status).toBe(201);
-    const loanId = createRes.body.body.id as string;
+    const leadId = createRes.body.body.id as string;
 
     const res = await app.agent
       .post('/_engine/forward')
       .send({
         method: 'POST',
-        path: `/loans/${loanId}/disburse`,
+        path: `/leads/${leadId}/contact`,
         headers: { 'if-match': '9999' },
         query: {},
-        body: {},
+        body: { notes: 'test' },
       })
       .expect(200);
     expect(res.body.status).toBe(412);
   });
 
   it('returns ForwardedResponse with status 422 for UnhandledOperationError (no matching behavior)', async () => {
-    // Disbursing a non-existent loan will give a 404 (EntityAbsenceError).
-    // The gateway returns 422 for UnhandledOperationError; the forwarding handler uses same mapping.
-    // We exercise via a boundary with no fallback and no matching condition:
-    // just verify the 404 path on a disburse for unknown loan id.
+    // GET on an unknown call id → EntityAbsenceError (404)
     const unknownId = nextUuidv7();
     const res = await app.agent
       .post('/_engine/forward')
       .send({
         method: 'POST',
-        path: `/loans/${unknownId}/disburse`,
+        path: `/leads/${unknownId}/contact`,
         headers: {},
         query: {},
-        body: {},
+        body: { notes: 'test' },
       })
       .expect(200);
     // EntityAbsenceError (entity not found) maps to 404
@@ -228,7 +238,7 @@ describe('forwarding/handler — createForwardingHandler', () => {
       .post('/_engine/forward')
       .send({
         method: 'GET',
-        path: '/customers',
+        path: '/leads',
         headers: { 'x-specmatic-fault': faultPayload },
         query: {},
         body: null,
@@ -248,7 +258,7 @@ describe('forwarding/handler — createForwardingHandler', () => {
       .post('/_engine/forward')
       .send({
         method: 'GET',
-        path: '/customers',
+        path: '/leads',
         headers: { 'x-specmatic-fault': faultPayload },
         query: {},
         body: null,
@@ -265,7 +275,7 @@ describe('forwarding/handler — createForwardingHandler', () => {
       .post('/_engine/forward')
       .send({
         method: 'GET',
-        path: '/customers',
+        path: '/leads',
         headers: {},
         query: {},
         body: null,

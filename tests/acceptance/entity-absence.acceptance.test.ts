@@ -1,7 +1,7 @@
 /**
  * entity-absence.acceptance.test.ts
  *
- * Acceptance test: GET /loans/{unknown-uuid} → 404.
+ * Acceptance test: GET /leads/{unknown-uuid} → 404.
  */
 
 import { createTestApp, type TestApp } from './_helpers/test-app.js';
@@ -18,30 +18,36 @@ describe('entity-absence.acceptance', () => {
     app.reset();
   });
 
-  it('GET /loans/{unknown-uuid} returns 404', async () => {
+  it('GET /leads/{unknown-uuid} returns 404', async () => {
     const unknownId = nextUuidv7();
-    await app.agent.get(`/loans/${unknownId}`).expect(404);
+    await app.agent.get(`/leads/${unknownId}`).expect(404);
   });
 
-  it('GET /loans/{unknown-uuid} response body contains entity absence info', async () => {
+  it('GET /leads/{unknown-uuid} response body contains entity absence info', async () => {
     const unknownId = nextUuidv7();
-    const res = await app.agent.get(`/loans/${unknownId}`).expect(404);
+    const res = await app.agent.get(`/leads/${unknownId}`).expect(404);
 
     // Response should be a JSON body (not empty)
     expect(res.body).toBeDefined();
   });
 
-  it('GET /customers/{unknown-uuid} returns 404', async () => {
+  it('GET /campaigns/{unknown-uuid} returns 404', async () => {
     const unknownId = nextUuidv7();
-    await app.agent.get(`/customers/${unknownId}`).expect(404);
+    await app.agent.get(`/campaigns/${unknownId}`).expect(404);
   });
 
-  it('a real loan can be retrieved (sanity check)', async () => {
-    const loanRes = await app.agent
-      .post('/loans')
-      .send({ customerId: '00000000-0000-7000-8000-000000000001', principal: 500 })
+  it('a real lead can be retrieved (sanity check)', async () => {
+    const leadRes = await app.agent
+      .post('/leads')
+      .send({
+        companyName: 'Sanity Corp',
+        contactName: 'Sanity User',
+        phone: '+61 2 9000 9999',
+        email: 'sanity@sanity.com',
+        source: 'WEBSITE',
+      })
       .expect(201);
 
-    await app.agent.get(`/loans/${loanRes.body.id}`).expect(200);
+    await app.agent.get(`/leads/${leadRes.body.id}`).expect(200);
   });
 });

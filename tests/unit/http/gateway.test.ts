@@ -15,6 +15,19 @@ import request from 'supertest';
 import { createTestApp, type TestApp } from '../../acceptance/_helpers/test-app.js';
 import { nextUuidv7 } from '../../../src/ids/uuidv7.js';
 
+const LEAD_PAYLOAD = {
+  companyName: 'Gateway Test Corp',
+  contactName: 'Test User',
+  phone: '+61 2 9000 1234',
+  email: 'test@gatewaycorp.com',
+  source: 'WEBSITE',
+};
+
+// Seeded IDs from CRM fixture
+const APEX_LEAD_ID = '00000000-0000-7000-8000-000000000010';
+const CAMPAIGN_ID = '00000000-0000-7000-8000-000000000001';
+const AGENT_ID = '00000000-0000-7000-8000-000000000003';
+
 describe('http/gateway — branch coverage', () => {
   let app: TestApp;
 
@@ -41,13 +54,13 @@ describe('http/gateway — branch coverage', () => {
   // ── 405 method not allowed ───────────────────────────────────────────────────
 
   it('returns 405 METHOD_NOT_ALLOWED for unsupported method on known contract path', async () => {
-    // DELETE is not defined in the OpenAPI spec for /customers
-    const res = await app.agent.delete('/customers').expect(405);
+    // DELETE is not defined in the OpenAPI spec for /leads
+    const res = await app.agent.delete('/leads').expect(405);
     expect(res.body).toMatchObject({ error: 'METHOD_NOT_ALLOWED' });
   });
 
-  it('returns 405 for PATCH on /loans (not in spec)', async () => {
-    const res = await app.agent.patch('/loans').expect(405);
+  it('returns 405 for PATCH on /calls (not defined in spec)', async () => {
+    const res = await app.agent.patch('/calls').expect(405);
     expect(res.body.error).toBe('METHOD_NOT_ALLOWED');
   });
 
@@ -55,37 +68,30 @@ describe('http/gateway — branch coverage', () => {
 
   it('returns 404 when entity does not exist (EntityAbsenceError)', async () => {
     const unknownId = nextUuidv7();
-    const res = await app.agent.get(`/loans/${unknownId}`).expect(404);
+    const res = await app.agent.get(`/calls/${unknownId}`).expect(404);
     expect(res.body).toBeDefined();
   });
 
   // ── 409 EntityConflictError ──────────────────────────────────────────────────
 
   it('returns 409 when creating an entity that already exists', async () => {
-    // Create a customer first with a fixed targetId — use POST then try again
-    // (the fixture doesn't allow PUT with explicit id; seed id already exists)
-    // Easier: POST twice for customers with the same seed ID approach isn't available,
-    // but we can create a customer then confirm POST /customers returns 201 (idempotent not 409).
-    // Instead, test seeded customer conflict via initialization duplicate (not directly possible).
-    // Skip 409 direct test — it requires explicit ID creation which the fixture doesn't support.
-    // This test just verifies the gateway handles a successful 201 correctly.
+    // Create a lead first — this should succeed with 201
     const res = await app.agent
-      .post('/customers')
-      .send({ name: 'New Corp', riskBand: 'LOW' })
+      .post('/leads')
+      .send(LEAD_PAYLOAD)
       .expect(201);
     expect(res.body).toBeDefined();
   });
 
   // ── 422 UnhandledOperationError ──────────────────────────────────────────────
 
-  it('returns 422 for unhandled operation — disburse on non-existent loan', async () => {
+  it('returns 404 for operation on non-existent entity — contact unknown lead', async () => {
     const unknownId = nextUuidv7();
-    // LoanDisburse boundary doesn't have fallback_override, and loan doesn't exist
+    // Lead doesn't exist → EntityAbsenceError (404)
     const res = await app.agent
-      .post(`/loans/${unknownId}/disburse`)
+      .post(`/leads/${unknownId}/contact`)
       .send({})
       .expect(404);
-    // EntityAbsenceError (entity not found) rather than UnhandledOperationError
     expect(res.body).toBeDefined();
   });
 
@@ -94,7 +100,7 @@ describe('http/gateway — branch coverage', () => {
   it('fault simulation: x-specmatic-fault header returns the simulated status', async () => {
     const faultPayload = JSON.stringify({ status: 503, body: { error: 'SERVICE_UNAVAILABLE' } });
     const res = await app.agent
-      .get('/customers')
+      .get('/leads')
       .set('x-specmatic-fault', faultPayload)
       .expect(503);
     expect(res.body).toMatchObject({ error: 'SERVICE_UNAVAILABLE' });
@@ -107,7 +113,7 @@ describe('http/gateway — branch coverage', () => {
       headers: { 'Retry-After': '60' },
     });
     const res = await app.agent
-      .get('/customers')
+      .get('/leads')
       .set('x-specmatic-fault', faultPayload)
       .expect(429);
     expect(res.headers['retry-after']).toBe('60');
@@ -115,47 +121,52 @@ describe('http/gateway — branch coverage', () => {
 
   // ── ETag header on mutation/creation ─────────────────────────────────────────
 
-  it('POST /customers sets ETag header on 201 response', async () => {
+  it('POST /leads sets ETag header on 201 response', async () => {
     const res = await app.agent
-      .post('/customers')
-      .send({ name: 'ETag Test', riskBand: 'LOW' })
+      .post('/leads')
+      .send({ ...LEAD_PAYLOAD, companyName: 'ETag Test' })
       .expect(201);
     expect(res.headers['etag']).toBeDefined();
   });
 
-  it('POST /loans sets ETag header on 201 response', async () => {
+  it('POST /calls sets ETag header on 201 response', async () => {
     const res = await app.agent
-      .post('/loans')
-      .send({ customerId: '00000000-0000-7000-8000-000000000001', principal: 1000 })
+      .post('/calls')
+      .send({
+        leadId: APEX_LEAD_ID,
+        agentId: AGENT_ID,
+        campaignId: CAMPAIGN_ID,
+        outcome: 'INTERESTED',
+      })
       .expect(201);
     expect(res.headers['etag']).toBeDefined();
   });
 
   // ── query (GET) requests — no ETag expected ───────────────────────────────────
 
-  it('GET /customers returns 200 with array body', async () => {
-    const res = await app.agent.get('/customers').expect(200);
+  it('GET /leads returns 200 with array body', async () => {
+    const res = await app.agent.get('/leads').expect(200);
     expect(Array.isArray(res.body)).toBe(true);
   });
 
-  it('GET /customers returns the seeded customers', async () => {
-    const res = await app.agent.get('/customers').expect(200);
-    expect(res.body.length).toBeGreaterThanOrEqual(2);
+  it('GET /leads returns the seeded leads', async () => {
+    const res = await app.agent.get('/leads').expect(200);
+    expect(res.body.length).toBeGreaterThanOrEqual(5);
   });
 
   // ── If-Match header (sequenceVersion) ────────────────────────────────────────
 
   it('request with If-Match header is forwarded as sequenceVersion', async () => {
-    // Create a loan, then try to disburse with wrong sequenceVersion → 412
+    // Create a lead, then contact with wrong sequenceVersion → 412
     const createRes = await app.agent
-      .post('/loans')
-      .send({ customerId: '00000000-0000-7000-8000-000000000001', principal: 2000 })
+      .post('/leads')
+      .send({ ...LEAD_PAYLOAD, companyName: 'IfMatch Test' })
       .expect(201);
-    const loanId = createRes.body.id;
+    const leadId = createRes.body.id;
 
     // Use a wrong sequence version → expect 412 ConcurrencyConflictError
     const res = await app.agent
-      .post(`/loans/${loanId}/disburse`)
+      .post(`/leads/${leadId}/contact`)
       .set('If-Match', '9999')
       .send({})
       .expect(412);
@@ -166,8 +177,8 @@ describe('http/gateway — branch coverage', () => {
 
   it('creation with no id in path generates a UUID targetId', async () => {
     const res = await app.agent
-      .post('/customers')
-      .send({ name: 'Generated ID', riskBand: 'MED' })
+      .post('/leads')
+      .send({ ...LEAD_PAYLOAD, companyName: 'Generated ID' })
       .expect(201);
     // id should be a UUID-like string
     expect(typeof res.body.id).toBe('string');

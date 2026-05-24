@@ -22,9 +22,15 @@ describe('fault-simulation.acceptance', () => {
     const fault = JSON.stringify({ status: 503, body: { error: 'SERVICE_UNAVAILABLE' } });
 
     await app.agent
-      .post('/customers')
+      .post('/leads')
       .set('x-specmatic-fault', fault)
-      .send({ name: 'Ghost', riskBand: 'LOW' })
+      .send({
+        companyName: 'Ghost Corp',
+        contactName: 'Ghost User',
+        phone: '+61 2 9000 0000',
+        email: 'ghost@ghost.com',
+        source: 'COLD_LIST',
+      })
       .expect(503);
   });
 
@@ -32,9 +38,15 @@ describe('fault-simulation.acceptance', () => {
     const fault = JSON.stringify({ status: 503, body: { error: 'SERVICE_UNAVAILABLE', detail: 'planned' } });
 
     const res = await app.agent
-      .post('/customers')
+      .post('/leads')
       .set('x-specmatic-fault', fault)
-      .send({ name: 'Ghost', riskBand: 'LOW' });
+      .send({
+        companyName: 'Ghost Corp',
+        contactName: 'Ghost User',
+        phone: '+61 2 9000 0000',
+        email: 'ghost@ghost.com',
+        source: 'COLD_LIST',
+      });
 
     expect(res.body).toEqual({ error: 'SERVICE_UNAVAILABLE', detail: 'planned' });
   });
@@ -44,9 +56,15 @@ describe('fault-simulation.acceptance', () => {
     const fault = JSON.stringify({ status: 503, body: {} });
 
     await app.agent
-      .post('/customers')
+      .post('/leads')
       .set('x-specmatic-fault', fault)
-      .send({ name: 'Ghost', riskBand: 'LOW' });
+      .send({
+        companyName: 'Ghost Corp',
+        contactName: 'Ghost User',
+        phone: '+61 2 9000 0000',
+        email: 'ghost@ghost.com',
+        source: 'COLD_LIST',
+      });
 
     expect(app.sys.graph.size()).toBe(graphSizeBefore);
   });
@@ -55,7 +73,7 @@ describe('fault-simulation.acceptance', () => {
     const fault = JSON.stringify({ status: 429, body: { error: 'RATE_LIMITED' } });
 
     const res = await app.agent
-      .get('/customers')
+      .get('/leads')
       .set('x-specmatic-fault', fault)
       .expect(429);
 
@@ -70,7 +88,7 @@ describe('fault-simulation.acceptance', () => {
     });
 
     const res = await app.agent
-      .get('/customers')
+      .get('/leads')
       .set('x-specmatic-fault', fault);
 
     expect(res.headers['retry-after']).toBe('120');
@@ -78,8 +96,14 @@ describe('fault-simulation.acceptance', () => {
 
   it('a request without the fault header is processed normally', async () => {
     await app.agent
-      .post('/customers')
-      .send({ name: 'Real Customer', riskBand: 'LOW' })
+      .post('/leads')
+      .send({
+        companyName: 'Real Corp',
+        contactName: 'Real User',
+        phone: '+61 2 9000 1111',
+        email: 'real@realcorp.com',
+        source: 'WEBSITE',
+      })
       .expect(201);
   });
 });
