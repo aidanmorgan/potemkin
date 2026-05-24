@@ -1,0 +1,1381 @@
+openapi: "3.0.3"
+info:
+  title: The Nuisance Bureau CRM API
+  version: "1.0.0"
+  description: |
+    The Nuisance Bureau CRM domain for outbound calling campaigns.
+    Models Lead, Campaign, Agent, Call, and Opportunity boundaries.
+
+paths:
+  # ── Leads ──────────────────────────────────────────────────────────────────
+  /leads:
+    get:
+      operationId: listLeads
+      summary: List leads
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [NEW, CONTACTED, QUALIFIED, DISQUALIFIED, CONVERTED, DNC]
+        - name: campaignId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: agentId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        "200":
+          description: List of leads
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Lead"
+    post:
+      operationId: createLead
+      summary: Create a new lead
+      parameters:
+        - name: If-Match
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [companyName, contactName, phone, email, source]
+              properties:
+                companyName:
+                  type: string
+                  minLength: 1
+                contactName:
+                  type: string
+                  minLength: 1
+                phone:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                source:
+                  type: string
+                  enum: [WEBSITE, COLD_LIST, REFERRAL, PARTNER]
+      responses:
+        "201":
+          description: Lead created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /leads/{id}:
+    get:
+      operationId: getLead
+      summary: Get a lead by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Lead found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+        "404":
+          description: Lead not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      operationId: patchLead
+      summary: Partially update a lead
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: If-Match
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Updated lead
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+        "404":
+          description: Lead not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /leads/{id}/contact:
+    post:
+      operationId: contactLead
+      summary: Mark lead as contacted
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: If-Match
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              properties:
+                notes:
+                  type: string
+      responses:
+        "200":
+          description: Lead contacted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+        "404":
+          description: Lead not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Transition not allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /leads/{id}/qualify:
+    post:
+      operationId: qualifyLead
+      summary: Qualify a lead
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: If-Match
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Lead qualified
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+        "404":
+          description: Lead not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Transition not allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /leads/{id}/disqualify:
+    post:
+      operationId: disqualifyLead
+      summary: Disqualify a lead
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: If-Match
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              properties:
+                reason:
+                  type: string
+      responses:
+        "200":
+          description: Lead disqualified
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+        "404":
+          description: Lead not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Transition not allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /leads/{id}/convert:
+    post:
+      operationId: convertLead
+      summary: Convert a qualified lead to an opportunity
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: If-Match
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [value]
+              properties:
+                value:
+                  type: number
+                  minimum: 0
+                probability:
+                  type: number
+                  minimum: 0
+                  maximum: 100
+                expectedCloseDate:
+                  type: string
+                  format: date
+      responses:
+        "200":
+          description: Lead converted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+        "404":
+          description: Lead not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Transition not allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /leads/{id}/dnc:
+    post:
+      operationId: dncLead
+      summary: Mark lead as Do Not Call (requires manager scope)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: If-Match
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              properties:
+                reason:
+                  type: string
+      responses:
+        "200":
+          description: Lead marked DNC
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Lead not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ── Campaigns ──────────────────────────────────────────────────────────────
+  /campaigns:
+    get:
+      operationId: listCampaigns
+      summary: List campaigns
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [DRAFT, ACTIVE, PAUSED, COMPLETED]
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        "200":
+          description: List of campaigns
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Campaign"
+    post:
+      operationId: createCampaign
+      summary: Create a new campaign
+      parameters:
+        - name: If-Match
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name, targetSource, script, startedAt, endedAt]
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                targetSource:
+                  type: string
+                  enum: [WEBSITE, COLD_LIST, REFERRAL, PARTNER]
+                script:
+                  type: string
+                startedAt:
+                  type: string
+                  format: date-time
+                endedAt:
+                  type: string
+                  format: date-time
+                targetCalls:
+                  type: integer
+                  minimum: 0
+                targetConversions:
+                  type: integer
+                  minimum: 0
+      responses:
+        "201":
+          description: Campaign created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /campaigns/{id}:
+    get:
+      operationId: getCampaign
+      summary: Get a campaign by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Campaign found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+        "404":
+          description: Campaign not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /campaigns/{id}/activate:
+    patch:
+      operationId: activateCampaign
+      summary: Activate a campaign
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: If-Match
+          in: header
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Campaign activated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+        "404":
+          description: Campaign not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Cannot activate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /campaigns/{id}/pause:
+    patch:
+      operationId: pauseCampaign
+      summary: Pause a campaign
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: If-Match
+          in: header
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Campaign paused
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+        "404":
+          description: Campaign not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Cannot pause
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /campaigns/{id}/complete:
+    patch:
+      operationId: completeCampaign
+      summary: Complete a campaign
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: If-Match
+          in: header
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Campaign completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+        "404":
+          description: Campaign not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ── Agents ─────────────────────────────────────────────────────────────────
+  /agents:
+    get:
+      operationId: listAgents
+      summary: List agents
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [AVAILABLE, ON_CALL, BREAK, OFFLINE]
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        "200":
+          description: List of agents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Agent"
+    post:
+      operationId: createAgent
+      summary: Create a new agent
+      parameters:
+        - name: If-Match
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name, email, dailyCallQuota]
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                email:
+                  type: string
+                  format: email
+                dailyCallQuota:
+                  type: integer
+                  minimum: 1
+                skills:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "201":
+          description: Agent created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /agents/{id}:
+    get:
+      operationId: getAgent
+      summary: Get an agent by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Agent found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /agents/{id}/status:
+    patch:
+      operationId: updateAgentStatus
+      summary: Update agent availability status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: If-Match
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [currentStatus]
+              properties:
+                currentStatus:
+                  type: string
+                  enum: [AVAILABLE, ON_CALL, BREAK, OFFLINE]
+      responses:
+        "200":
+          description: Agent status updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ── Calls ──────────────────────────────────────────────────────────────────
+  /calls:
+    get:
+      operationId: listCalls
+      summary: List calls
+      parameters:
+        - name: leadId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: agentId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: campaignId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        "200":
+          description: List of calls
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Call"
+    post:
+      operationId: logCall
+      summary: Log a completed call
+      parameters:
+        - name: If-Match
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [leadId, agentId, campaignId, outcome]
+              properties:
+                leadId:
+                  type: string
+                  format: uuid
+                agentId:
+                  type: string
+                  format: uuid
+                campaignId:
+                  type: string
+                  format: uuid
+                startedAt:
+                  type: string
+                  format: date-time
+                endedAt:
+                  type: string
+                  format: date-time
+                durationSeconds:
+                  type: integer
+                  minimum: 0
+                outcome:
+                  type: string
+                  enum: [NO_ANSWER, CALLBACK_SCHEDULED, INTERESTED, NOT_INTERESTED, CONVERTED, DNC_REQUESTED]
+                notes:
+                  type: string
+                recordingUrl:
+                  type: string
+      responses:
+        "201":
+          description: Call logged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Call"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /calls/{id}:
+    get:
+      operationId: getCall
+      summary: Get a call by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Call found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Call"
+        "404":
+          description: Call not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ── Opportunities ──────────────────────────────────────────────────────────
+  /opportunities:
+    get:
+      operationId: listOpportunities
+      summary: List opportunities
+      parameters:
+        - name: stage
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [PROPOSED, NEGOTIATING, WON, LOST]
+        - name: agentId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: campaignId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        "200":
+          description: List of opportunities
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Opportunity"
+
+  /opportunities/{id}:
+    get:
+      operationId: getOpportunity
+      summary: Get an opportunity by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Opportunity found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Opportunity"
+        "404":
+          description: Opportunity not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /opportunities/{id}/advance:
+    patch:
+      operationId: advanceOpportunity
+      summary: Advance opportunity to next stage
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: If-Match
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              properties:
+                probability:
+                  type: number
+                  minimum: 0
+                  maximum: 100
+      responses:
+        "200":
+          description: Opportunity advanced
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Opportunity"
+        "404":
+          description: Opportunity not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Cannot advance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /opportunities/{id}/close:
+    patch:
+      operationId: closeOpportunity
+      summary: Close an opportunity (WON or LOST)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: If-Match
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [outcome]
+              properties:
+                outcome:
+                  type: string
+                  enum: [WON, LOST]
+                closureReason:
+                  type: string
+                value:
+                  type: number
+                  minimum: 0
+      responses:
+        "200":
+          description: Opportunity closed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Opportunity"
+        "404":
+          description: Opportunity not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Cannot close
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+components:
+  schemas:
+    Lead:
+      type: object
+      additionalProperties: false
+      required: [id, companyName, contactName, phone, email, source, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        companyName:
+          type: string
+          minLength: 1
+        contactName:
+          type: string
+          minLength: 1
+        phone:
+          type: string
+        email:
+          type: string
+        source:
+          type: string
+          enum: [WEBSITE, COLD_LIST, REFERRAL, PARTNER]
+        status:
+          type: string
+          enum: [NEW, CONTACTED, QUALIFIED, DISQUALIFIED, CONVERTED, DNC]
+        score:
+          type: integer
+          minimum: 0
+          maximum: 100
+        createdAt:
+          type: string
+          format: date-time
+        lastContactedAt:
+          type: string
+          format: date-time
+        assignedCampaignId:
+          type: string
+          format: uuid
+        assignedAgentId:
+          type: string
+          format: uuid
+        callIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          default: []
+        notes:
+          type: array
+          items:
+            type: string
+          default: []
+
+    Campaign:
+      type: object
+      additionalProperties: false
+      required: [id, name, status, targetSource, script]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+        status:
+          type: string
+          enum: [DRAFT, ACTIVE, PAUSED, COMPLETED]
+        targetSource:
+          type: string
+          enum: [WEBSITE, COLD_LIST, REFERRAL, PARTNER]
+        script:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+        assignedAgentIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          default: []
+        targetCalls:
+          type: integer
+          minimum: 0
+        actualCalls:
+          type: integer
+          minimum: 0
+          default: 0
+        targetConversions:
+          type: integer
+          minimum: 0
+        actualConversions:
+          type: integer
+          minimum: 0
+          default: 0
+
+    Agent:
+      type: object
+      additionalProperties: false
+      required: [id, name, email, dailyCallQuota, dailyCallCount, currentStatus]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+        email:
+          type: string
+        skills:
+          type: array
+          items:
+            type: string
+          default: []
+        dailyCallQuota:
+          type: integer
+          minimum: 1
+        dailyCallCount:
+          type: integer
+          minimum: 0
+          default: 0
+        currentStatus:
+          type: string
+          enum: [AVAILABLE, ON_CALL, BREAK, OFFLINE]
+        assignedCampaignIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          default: []
+        totalConversions:
+          type: integer
+          minimum: 0
+          default: 0
+        lastActiveAt:
+          type: string
+          format: date-time
+
+    Call:
+      type: object
+      additionalProperties: false
+      required: [id, leadId, agentId, campaignId, outcome]
+      properties:
+        id:
+          type: string
+          format: uuid
+        leadId:
+          type: string
+          format: uuid
+        agentId:
+          type: string
+          format: uuid
+        campaignId:
+          type: string
+          format: uuid
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+        durationSeconds:
+          type: integer
+          minimum: 0
+        outcome:
+          type: string
+          enum: [NO_ANSWER, CALLBACK_SCHEDULED, INTERESTED, NOT_INTERESTED, CONVERTED, DNC_REQUESTED]
+        notes:
+          type: string
+        recordingUrl:
+          type: string
+
+    Opportunity:
+      type: object
+      additionalProperties: false
+      required: [id, leadId, agentId, campaignId, stage, value]
+      properties:
+        id:
+          type: string
+          format: uuid
+        leadId:
+          type: string
+          format: uuid
+        agentId:
+          type: string
+          format: uuid
+        campaignId:
+          type: string
+          format: uuid
+        stage:
+          type: string
+          enum: [PROPOSED, NEGOTIATING, WON, LOST]
+        value:
+          type: number
+          minimum: 0
+        probability:
+          type: number
+          minimum: 0
+          maximum: 100
+        expectedCloseDate:
+          type: string
+          format: date
+        closedAt:
+          type: string
+          format: date-time
+        closureReason:
+          type: string
+
+    LeadCreated:
+      type: object
+      required: [id, companyName, contactName, phone, email, source, status, score, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        companyName:
+          type: string
+        contactName:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+        source:
+          type: string
+        status:
+          type: string
+        score:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        callIds:
+          type: array
+          items:
+            type: string
+        notes:
+          type: array
+          items:
+            type: string
+
+    CallLogged:
+      type: object
+      required: [id, leadId, agentId, campaignId, outcome]
+      properties:
+        id:
+          type: string
+          format: uuid
+        leadId:
+          type: string
+          format: uuid
+        agentId:
+          type: string
+          format: uuid
+        campaignId:
+          type: string
+          format: uuid
+        outcome:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+        durationSeconds:
+          type: integer
+        notes:
+          type: string
+
+    OpportunityWon:
+      type: object
+      required: [id, leadId, agentId, campaignId, value, closedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        leadId:
+          type: string
+          format: uuid
+        agentId:
+          type: string
+          format: uuid
+        campaignId:
+          type: string
+          format: uuid
+        value:
+          type: number
+        closedAt:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true

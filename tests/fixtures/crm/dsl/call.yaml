@@ -1,0 +1,75 @@
+boundary: Call
+contract_path: /calls
+fallback_override: true
+identity:
+  creation:
+    generate: $uuidv7()
+query_mapping:
+  leadId: "state.leadId == query.leadId"
+  agentId: "state.agentId == query.agentId"
+  campaignId: "state.campaignId == query.campaignId"
+
+event_catalog:
+  # REQ-65: schema_ref on CallLogged event
+  - type: CallLogged
+    schema_ref: "#/components/schemas/CallLogged"
+    payload_template:
+      id: "command.targetId"
+      leadId: "command.payload.leadId"
+      agentId: "command.payload.agentId"
+      campaignId: "command.payload.campaignId"
+      startedAt: "command.payload.startedAt != null ? command.payload.startedAt : $now()"
+      endedAt: "command.payload.endedAt != null ? command.payload.endedAt : $now()"
+      durationSeconds: "command.payload.durationSeconds != null ? command.payload.durationSeconds : 0"
+      outcome: "command.payload.outcome"
+      notes: "command.payload.notes != null ? command.payload.notes : ''"
+
+behaviors:
+  # Log call — REQ-61: match.requires to validate outcome is provided
+  # REQ-63: dispatch_commands with condition
+  # Multi-emit: updates Lead.callIds + Agent.dailyCallCount
+  - name: logCall
+    match:
+      intent: creation
+      condition: "true"
+      requires:
+        - name: valid-outcome
+          condition: "command.payload.outcome != null"
+          error_code: MISSING_OUTCOME
+          error_message: "Call outcome is required"
+        - name: valid-lead
+          condition: "command.payload.leadId != null"
+          error_code: MISSING_LEAD
+          error_message: "Call must be associated with a lead"
+    emit: CallLogged
+    dispatch_commands:
+      # Append callId to the Lead's callIds array
+      - boundary: Lead
+        intent: mutation
+        target_id: "command.payload.leadId"
+        payload:
+          callId: "command.targetId"
+        condition: "command.payload.leadId != null"
+      # Increment agent's daily call count
+      - boundary: Agent
+        intent: mutation
+        target_id: "command.payload.agentId"
+        payload:
+          callId: "command.targetId"
+          incrementCall: "true"
+        condition: "command.payload.agentId != null"
+
+reducers:
+  - on: CallLogged
+    assign:
+      id: "event.payload.id"
+      leadId: "event.payload.leadId"
+      agentId: "event.payload.agentId"
+      campaignId: "event.payload.campaignId"
+      startedAt: "event.payload.startedAt"
+      endedAt: "event.payload.endedAt"
+      durationSeconds: "event.payload.durationSeconds"
+      outcome: "event.payload.outcome"
+      notes: "event.payload.notes"
+
+initialization: []

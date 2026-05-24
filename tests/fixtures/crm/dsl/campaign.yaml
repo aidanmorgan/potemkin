@@ -1,0 +1,145 @@
+boundary: Campaign
+contract_path: /campaigns
+fallback_override: true
+identity:
+  creation:
+    generate: $uuidv7()
+query_mapping:
+  status: "state.status == query.status"
+
+event_catalog:
+  - type: CampaignCreated
+    payload_template:
+      id: "command.targetId"
+      name: "command.payload.name"
+      targetSource: "command.payload.targetSource"
+      script: "command.payload.script"
+      startedAt: "command.payload.startedAt"
+      endedAt: "command.payload.endedAt"
+      targetCalls: "command.payload.targetCalls"
+      targetConversions: "command.payload.targetConversions"
+
+  - type: CampaignActivated
+    payload_template:
+      activatedAt: "$now()"
+
+  - type: CampaignPaused
+    payload_template:
+      pausedAt: "$now()"
+
+  - type: CampaignCompleted
+    payload_template:
+      completedAt: "$now()"
+
+  - type: CampaignLeadSourceUpdated
+    payload_template:
+      leadSource: "command.payload.leadSource"
+
+behaviors:
+  # Create campaign — REQ-61: match.requires to enforce startedAt < endedAt
+  - name: createCampaign
+    match:
+      intent: creation
+      condition: "true"
+      requires:
+        - name: valid-date-range
+          condition: "command.payload.startedAt < command.payload.endedAt"
+          error_code: INVALID_DATE_RANGE
+          error_message: "Campaign startedAt must be before endedAt"
+    emit: CampaignCreated
+
+  # Activate campaign — REQ-61: requires DRAFT/PAUSED status (path-guarded)
+  - name: activateCampaign
+    match:
+      intent: mutation
+      condition: "$concat('/campaigns/', command.targetId, '/activate') == command.path"
+      requires:
+        - name: must-be-draft-or-paused
+          condition: "$concat('/campaigns/', command.targetId, '/activate') != command.path || state.status == 'DRAFT' || state.status == 'PAUSED'"
+          error_code: CAMPAIGN_NOT_ACTIVATABLE
+          error_message: "Campaign must be in DRAFT or PAUSED status to activate"
+    emit: CampaignActivated
+
+  # Pause campaign — REQ-64: emit_when with multiple branches
+  - name: pauseCampaign
+    match:
+      intent: mutation
+      condition: "$concat('/campaigns/', command.targetId, '/pause') == command.path && state.status == 'ACTIVE'"
+    emit_when:
+      - when: "state.actualCalls != null && state.actualCalls > 0"
+        emit: CampaignPaused
+      - when: "state.actualCalls == null || state.actualCalls == 0"
+        emit: CampaignPaused
+
+  # Complete campaign
+  - name: completeCampaign
+    match:
+      intent: mutation
+      condition: "$concat('/campaigns/', command.targetId, '/complete') == command.path && (state.status == 'ACTIVE' || state.status == 'PAUSED')"
+    emit: CampaignCompleted
+
+  # Receive secondary command from Lead creation (dispatch_commands from lead.yaml)
+  - name: updateLeadSource
+    match:
+      intent: mutation
+      condition: "command.payload.leadSource != null"
+    emit: CampaignLeadSourceUpdated
+
+reducers:
+  - on: CampaignCreated
+    assign:
+      id: "event.payload.id"
+      name: "event.payload.name"
+      status: "'DRAFT'"
+      targetSource: "event.payload.targetSource"
+      script: "event.payload.script"
+      startedAt: "event.payload.startedAt"
+      endedAt: "event.payload.endedAt"
+      targetCalls: "event.payload.targetCalls"
+      targetConversions: "event.payload.targetConversions"
+      actualCalls: "0"
+      actualConversions: "0"
+      assignedAgentIds: "[]"
+
+  - on: CampaignActivated
+    assign:
+      status: "'ACTIVE'"
+
+  - on: CampaignPaused
+    assign:
+      status: "'PAUSED'"
+
+  - on: CampaignCompleted
+    assign:
+      status: "'COMPLETED'"
+
+  - on: CampaignLeadSourceUpdated
+    assign:
+      actualCalls: "state.actualCalls != null ? state.actualCalls + 1 : 1"
+
+initialization:
+  - id: "00000000-0000-7000-8000-000000000001"
+    name: "Q1 Website Leads"
+    status: "ACTIVE"
+    targetSource: "WEBSITE"
+    script: "Hello, I'm calling from The Nuisance Bureau regarding your recent inquiry..."
+    startedAt: "1970-01-01T00:00:00.000Z"
+    endedAt: "1970-12-31T23:59:59.000Z"
+    targetCalls: 500
+    targetConversions: 50
+    actualCalls: 0
+    actualConversions: 0
+    assignedAgentIds: []
+
+  - id: "00000000-0000-7000-8000-000000000002"
+    name: "Partner Referral Drive"
+    status: "DRAFT"
+    targetSource: "PARTNER"
+    script: "Hi, I'm reaching out on behalf of our mutual partner..."
+    startedAt: "1970-06-01T00:00:00.000Z"
+    endedAt: "1970-09-30T23:59:59.000Z"
+    targetCalls: 200
+    targetConversions: 30
+    actualCalls: 0
+    actualConversions: 0
+    assignedAgentIds: []
