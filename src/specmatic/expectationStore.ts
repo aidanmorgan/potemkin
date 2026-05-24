@@ -53,6 +53,29 @@ export function createExpectationStore(): ExpectationStore {
     return expectation;
   }
 
+  function addSequenced(
+    req: ExpectationRequest,
+    responses: ExpectationResponse[],
+    options?: { source?: 'dynamic' | 'file'; filePath?: string },
+  ): Expectation {
+    if (responses.length === 0) {
+      throw new Error('addSequenced requires at least one response');
+    }
+    const expectation: Expectation = {
+      id: nextUuidv7(),
+      request: req,
+      response: responses[0]!,
+      responses,
+      consumed: 0,
+      createdAt: new Date().toISOString(),
+      source: options?.source ?? 'dynamic',
+      filePath: options?.filePath,
+      transient: false,
+    };
+    store.set(expectation.id, expectation);
+    return expectation;
+  }
+
   function remove(id: string): boolean {
     return store.delete(id);
   }
@@ -81,6 +104,14 @@ export function createExpectationStore(): ExpectationStore {
     const reasons: string[] = [];
 
     for (const candidate of candidates) {
+      // Sequenced stub exhaustion check: skip if all responses already consumed
+      if (candidate.responses !== undefined && candidate.consumed !== undefined) {
+        if (candidate.consumed >= candidate.responses.length) {
+          reasons.push(`[${candidate.id}] sequenced stub exhausted (consumed=${candidate.consumed}/${candidate.responses.length})`);
+          continue;
+        }
+      }
+
       const r = candidate.request;
       const rejections: string[] = [];
 
@@ -101,6 +132,19 @@ export function createExpectationStore(): ExpectationStore {
       }
 
       if (rejections.length === 0) {
+        // For sequenced stubs: advance consumed counter and return the next response
+        if (candidate.responses !== undefined && candidate.consumed !== undefined) {
+          const responseIndex = candidate.consumed;
+          const nextResponse = candidate.responses[responseIndex]!;
+          // Mutate consumed counter (intentionally mutable per type definition)
+          candidate.consumed++;
+          // Return a synthetic expectation with the appropriate response for this call
+          const resolved: Expectation = {
+            ...candidate,
+            response: nextResponse,
+          };
+          return { matched: true, expectation: resolved, reasons: [] };
+        }
         return { matched: true, expectation: candidate, reasons: [] };
       }
 
@@ -110,5 +154,5 @@ export function createExpectationStore(): ExpectationStore {
     return { matched: false, reasons };
   }
 
-  return { add, remove, clear, list, match, size };
+  return { add, addSequenced, remove, clear, list, match, size };
 }

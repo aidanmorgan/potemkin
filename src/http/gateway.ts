@@ -143,6 +143,22 @@ export function createGateway(sys: BootedSystem): Express {
     res.status(404).json({ error: 'NO_ROUTE', path: req.path });
   });
 
+  // Body-parse error handler — express.json() sets 'body' on SyntaxError when JSON is malformed.
+  // Must be declared before the generic error handler so it catches SyntaxError first.
+  app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
+    if (err instanceof SyntaxError && 'body' in err) {
+      if (res.headersSent) return;
+      res.setHeader('X-Specmatic-Result', 'failure');
+      res.status(400).json({
+        error: 'CONTRACT_VIOLATION',
+        code: 'MALFORMED_JSON',
+        message: err.message,
+      });
+      return;
+    }
+    next(err);
+  });
+
   // Express error-handler middleware — catches anything forwarded via next(err).
   app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
     sys.logger.error({ err }, 'Unhandled error in Express error handler');
