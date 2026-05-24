@@ -13,10 +13,84 @@
  *                     supplies only a subset. If matcher supplies a key, request MUST
  *                     match it exactly.
  *  - body:            deep structural equality when matcher.body is present;
- *                     absent matcher.body matches any request body
+ *                     absent matcher.body matches any request body.
+ *                     Body leaves may use type-pattern strings like "(number)" to
+ *                     match by type rather than exact value.
  */
 
 import type { JsonValue } from '../types.js';
+
+// ---------------------------------------------------------------------------
+// Type-pattern matchers for body leaves
+// ---------------------------------------------------------------------------
+
+/**
+ * UUID v4 regex — standard 8-4-4-4-12 hex format.
+ */
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * ISO-8601 datetime regex — covers "YYYY-MM-DDTHH:mm:ss[.sss][Z|±HH:MM]".
+ */
+const DATETIME_REGEX = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+
+/**
+ * ISO date regex — "YYYY-MM-DD".
+ */
+const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Check whether a string token is a Specmatic type-pattern.
+ * A type-pattern is either `*` or a parenthesised name: `(string)`, `(number)`, etc.
+ */
+export function isTypePattern(token: string): boolean {
+  return token === '*' || /^\(.*\)$/.test(token);
+}
+
+/**
+ * Match a request value against a Specmatic type-pattern string.
+ * Returns true if the pattern is satisfied, false otherwise.
+ *
+ * Supported patterns:
+ *  (string)              — any string value
+ *  (number)              — any number (integer or floating-point)
+ *  (integer)             — integer number (no fractional part)
+ *  (boolean)             — boolean true or false
+ *  (null)                — null
+ *  (anyvalue) / (any) / * — any value of any type
+ *  (uuid)                — string in UUID v4 format
+ *  (datetime) / (date-time) — ISO-8601 datetime string
+ *  (date)                — ISO date string (YYYY-MM-DD)
+ */
+export function matchTypePattern(pattern: string, value: unknown): boolean {
+  const p = pattern.toLowerCase();
+  switch (p) {
+    case '(string)':
+      return typeof value === 'string';
+    case '(number)':
+      return typeof value === 'number';
+    case '(integer)':
+      return typeof value === 'number' && Number.isInteger(value);
+    case '(boolean)':
+      return typeof value === 'boolean';
+    case '(null)':
+      return value === null;
+    case '(anyvalue)':
+    case '(any)':
+    case '*':
+      return true;
+    case '(uuid)':
+      return typeof value === 'string' && UUID_REGEX.test(value);
+    case '(datetime)':
+    case '(date-time)':
+      return typeof value === 'string' && DATETIME_REGEX.test(value);
+    case '(date)':
+      return typeof value === 'string' && DATE_REGEX.test(value);
+    default:
+      // Unknown pattern — fall back to exact equality with the pattern string itself.
+      return value === pattern;
+  }
+}
 
 /**
  * Deep-equality check — hand-rolled since fast-deep-equal is not in deps.
@@ -159,10 +233,71 @@ export function matchQueryParams(
 }
 
 /**
- * Match request body — deep structural equality.
- * If matcher.body is undefined/null the check is skipped (any body matches).
+ * Deep-match two JSON values where matcher leaves may be type-pattern strings.
+ *
+ * Walk the matcher tree alongside the request tree:
+ *  - Matcher leaf is a type-pattern string (e.g. "(number)", "*") → test request
+ *    value against the pattern; does NOT require string type on request side.
+ *  - Matcher leaf is any other primitive → require strict equality.
+ *  - Matcher is an object → request must also be a plain object with identical
+ *    keys; each value is compared recursively (key order insensitive).
+ *  - Matcher is an array → request must be an array of the same length; elements
+ *    compared recursively in order.
+ *  - Matcher is null → matches request null only.
+ */
+function deepMatchWithPatterns(matcher: unknown, request: unknown): boolean {
+  // --- type-pattern leaf (checked before null so (null) and (any) work correctly) ---
+  if (typeof matcher === 'string' && isTypePattern(matcher)) {
+    return matchTypePattern(matcher, request);
+  }
+
+  // --- null ---
+  if (matcher === null) return request === null;
+  if (request === null) return false;
+
+  // --- primitive leaf (non-pattern string, number, boolean) ---
+  if (typeof matcher !== 'object') {
+    return matcher === request;
+  }
+
+  // --- array ---
+  if (Array.isArray(matcher)) {
+    if (!Array.isArray(request)) return false;
+    if (matcher.length !== request.length) return false;
+    for (let i = 0; i < matcher.length; i++) {
+      if (!deepMatchWithPatterns(matcher[i], request[i])) return false;
+    }
+    return true;
+  }
+
+  // --- plain object ---
+  if (Array.isArray(request) || typeof request !== 'object') return false;
+  const mObj = matcher as Record<string, unknown>;
+  const rObj = request as Record<string, unknown>;
+  const mKeys = Object.keys(mObj);
+  const rKeys = Object.keys(rObj);
+  if (mKeys.length !== rKeys.length) return false;
+  for (const k of mKeys) {
+    if (!Object.prototype.hasOwnProperty.call(rObj, k)) return false;
+    if (!deepMatchWithPatterns(mObj[k], rObj[k])) return false;
+  }
+  return true;
+}
+
+/**
+ * Match request body.
+ *
+ * When `matcher.body` is undefined or null the check is skipped (any body matches).
+ *
+ * Otherwise the matcher body is walked alongside the request body:
+ *  - Scalar leaves that are type-pattern strings (`(number)`, `(string)`, `(boolean)`,
+ *    `(integer)`, `(null)`, `(any)`, `(anyvalue)`, `*`, `(uuid)`, `(datetime)`,
+ *    `(date-time)`, `(date)`) match by type/format rather than exact value.
+ *  - All other leaves require strict equality.
+ *  - Objects: key-order insensitive; all matcher keys must be present with matching values.
+ *  - Arrays: order-sensitive; lengths must match.
  */
 export function matchBody(matcherBody: JsonValue | undefined, requestBody: JsonValue): boolean {
   if (matcherBody === undefined || matcherBody === null) return true;
-  return deepEqual(matcherBody, requestBody);
+  return deepMatchWithPatterns(matcherBody, requestBody);
 }

@@ -275,19 +275,21 @@ export function registerSpecmaticRoutes(app: Express, sys: BootedSystem): void {
   );
 
   // ── DELETE /_specmatic/expectations/:id ────────────────────────────────────
+  // Always returns 200, matching Specmatic JVM HttpStub behaviour.
+  // Body: { "removed": boolean } — true when an expectation was actually deleted,
+  // false when no expectation with that id was found (idempotent / tolerant removal).
   app.delete(
     '/_specmatic/expectations/:id',
     (req: Request, res: Response, next: NextFunction) => {
       withSpan(sys.tracer, 'http.specmatic.remove_expectation', async () => {
         const id = String(req.params['id'] ?? '');
         const removed = sys.expectations.remove(id);
-        if (!removed) {
-          specLog.warn({ expectationId: id }, 'Expectation not found for removal');
-          sendFailure(res, 404, { error: 'STUB_NOT_FOUND', message: `No expectation with id ${id}` });
-          return;
+        if (removed) {
+          specLog.info({ expectationId: id }, 'Expectation removed');
+        } else {
+          specLog.debug({ expectationId: id }, 'Expectation not found for removal (tolerant)');
         }
-        specLog.info({ expectationId: id }, 'Expectation removed');
-        sendSuccess(res, 200, { id });
+        sendSuccess(res, 200, { removed });
       }).catch(next);
     },
   );
