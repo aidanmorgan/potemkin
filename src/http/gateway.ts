@@ -57,6 +57,7 @@ import {
 import type { Command, Intent } from '../types.js';
 import { extractActor } from '../identity/actorExtractor.js';
 import { getIdempotencyStore } from '../idempotency/store.js';
+import { createForwardingHandler, healthHandler } from '../forwarding/handler.js';
 
 /** Node.js normalises header names to lowercase; this is the lowercased If-Match header. */
 const IF_MATCH_HEADER_LC = 'if-match';
@@ -124,6 +125,11 @@ export function createGateway(sys: BootedSystem): Express {
 
   // Admin routes registered first so they always win over dynamic OpenAPI routes.
   registerAdminRoutes(app, sys);
+
+  // /_engine/* routes — Kotlin Specmatic plugin forwarding surface.
+  // Registered BEFORE the dynamic contract routes so they always win.
+  app.post('/_engine/forward', express.json({ strict: false, limit: '5mb' }), createForwardingHandler(sys));
+  app.get('/_engine/health', healthHandler);
 
   // Register one catch-all route handler per OpenAPI contract path.
   for (const contractPath of Object.keys(sys.dsl.byContractPath)) {
