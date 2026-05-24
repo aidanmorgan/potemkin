@@ -1,0 +1,84 @@
+boundary: LoanAccount
+contract_path: /loans
+fallback_override: false
+identity:
+  creation:
+    generate: "$uuidv7()"
+event_catalog:
+  - type: LoanOpened
+    payload_template:
+      id: "command.targetId"
+      customerId: "command.payload.customerId"
+      principal: "command.payload.principal"
+      openedAt: "$now()"
+  - type: LoanDisbursed
+    payload_template:
+      txId: "$uuidv7()"
+      amount: "command.payload.amount"
+      at: "$now()"
+  - type: LoanRepaid
+    payload_template:
+      txId: "$uuidv7()"
+      amount: "command.payload.amount"
+      at: "$now()"
+  - type: LoanSettled
+    payload_template:
+      at: "$now()"
+behaviors:
+  - name: openLoan
+    match:
+      intent: creation
+      condition: "command.payload.principal > 0"
+    emit: LoanOpened
+    dispatch_commands:
+      - boundary: Customer
+        intent: mutation
+        target_id: "command.payload.customerId"
+        payload:
+          loanId: "command.targetId"
+  - name: disburse
+    match:
+      intent: mutation
+      condition: >-
+        command.path == $concat('/loans/', command.targetId, '/disburse')
+        && command.payload.amount > 0
+        && state.status != 'SETTLED'
+    emit: LoanDisbursed
+  - name: repay
+    match:
+      intent: mutation
+      condition: >-
+        command.path == $concat('/loans/', command.targetId, '/repay')
+        && command.payload.amount > 0
+        && command.payload.amount <= state.balance
+    emit_when:
+      - when: "command.payload.amount < state.balance"
+        emit: LoanRepaid
+      - when: "command.payload.amount == state.balance"
+        emit: LoanSettled
+reducers:
+  - on: LoanOpened
+    assign:
+      id: "event.payload.id"
+      customerId: "event.payload.customerId"
+      principal: "event.payload.principal"
+      balance: "0"
+      status: "'DRAFT'"
+      openedAt: "event.payload.openedAt"
+      transactions: "[]"
+  - on: LoanDisbursed
+    assign:
+      balance: "state.balance + event.payload.amount"
+      status: "'ACTIVE'"
+    append:
+      transactions: "{'txId': event.payload.txId, 'kind': 'DISBURSEMENT', 'amount': event.payload.amount, 'at': event.payload.at}"
+  - on: LoanRepaid
+    assign:
+      balance: "state.balance - event.payload.amount"
+    append:
+      transactions: "{'txId': event.payload.txId, 'kind': 'REPAYMENT', 'amount': event.payload.amount, 'at': event.payload.at}"
+  - on: LoanSettled
+    assign:
+      balance: "0"
+      status: "'SETTLED'"
+initialization: []

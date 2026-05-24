@@ -1,0 +1,58 @@
+boundary: RiskScoring
+contract_path: /risk-assessments
+fallback_override: false
+identity:
+  creation:
+    generate: "$uuidv7()"
+scripts:
+  - name: computeRiskScore
+    source: |
+      export default function(ctx) {
+        const utilisation = ctx.state.balance / ctx.state.creditLimit;
+        const multiplier = ctx.command.payload.riskMultiplier ?? 1.0;
+        return Math.round(utilisation * multiplier * 100);
+      }
+  - name: buildAuditTrail
+    source: |
+      export default function(ctx) {
+        return {
+          actor: ctx.command.actor?.id ?? 'system',
+          action: ctx.command.intent,
+          at: ctx.helpers.now(),
+          requestId: ctx.command.commandId,
+        };
+      }
+event_catalog:
+  - type: RiskAssessmentCreated
+    payload_template:
+      id: "command.targetId"
+      customerId: "command.payload.customerId"
+      score: "ts:computeRiskScore"
+      createdAt: "$now()"
+  - type: RiskAssessmentUpdated
+    payload_template:
+      score: "ts:computeRiskScore"
+      audit: "ts:buildAuditTrail"
+      updatedAt: "$now()"
+behaviors:
+  - name: createAssessment
+    match:
+      intent: creation
+      condition: "command.payload.customerId != null"
+    emit: RiskAssessmentCreated
+  - name: updateAssessment
+    match:
+      intent: mutation
+      condition: "command.payload.riskMultiplier != null"
+    emit: RiskAssessmentUpdated
+reducers:
+  - on: RiskAssessmentCreated
+    assign:
+      id: "event.payload.id"
+      customerId: "event.payload.customerId"
+      score: "event.payload.score"
+      createdAt: "event.payload.createdAt"
+  - on: RiskAssessmentUpdated
+    assign:
+      score: "event.payload.score"
+initialization: []
