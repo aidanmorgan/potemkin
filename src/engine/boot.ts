@@ -9,6 +9,7 @@ import type { Logger } from '../observability/logger.js';
 import type { Tracer } from '../observability/tracing.js';
 import type { EngineMetrics } from '../observability/metrics.js';
 import type { ObjectGraphSchemaRegistry } from '../schema/types.js';
+import type { ExpectationStore } from '../specmatic/types.js';
 
 import { compileDsl } from '../dsl/parser.js';
 import { BootError } from '../errors.js';
@@ -22,6 +23,8 @@ import { rootLogger, childLogger } from '../observability/logger.js';
 import { getTracer, withSpan, createEngineMetrics } from '../observability/index.js';
 import { deriveSchemasFromOpenApi } from '../schema/fromOpenApi.js';
 import { staticCheckDsl } from '../schema/dslStaticChecker.js';
+import { createExpectationStore } from '../specmatic/expectationStore.js';
+import { loadExpectationsFromDirectory } from '../specmatic/loader.js';
 
 export interface BootInput {
   readonly openapi: OpenApiDoc;
@@ -32,6 +35,12 @@ export interface BootInput {
   readonly tracer?: Tracer;
   /** Optional pre-built metrics instance; boot creates one if absent. */
   readonly metrics?: EngineMetrics;
+  /**
+   * Optional directory to pre-populate the expectation store from Specmatic stub files.
+   * Every *.json file matching the Specmatic externalised stub format will be loaded.
+   * T1+: if absent, the expectation store starts empty.
+   */
+  readonly specmaticStubDir?: string;
 }
 
 export interface BootedSystem {
@@ -56,6 +65,11 @@ export interface BootedSystem {
    * as a required header parameter (REQ-29). Used by the UoW precondition check.
    */
   readonly requiresPrecondition: (boundary: string, method: string) => boolean;
+  /**
+   * In-memory expectation store for Specmatic stub/service-virtualisation support.
+   * The gateway consults this before dispatching to the CQRS pipeline.
+   */
+  readonly expectations: ExpectationStore;
 }
 
 /** Header names that indicate an optimistic-concurrency precondition. */
@@ -322,6 +336,26 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
     // required header parameter; encode as a (boundary, method) → boolean map.
     const preconditionRequired = buildPreconditionMap(input.openapi, dsl.boundaries);
 
+    // ── Step 9: Expectation store (Specmatic stub support) ───────────────────
+    const expectations = createExpectationStore();
+
+    if (input.specmaticStubDir) {
+      bootLog.info({ step: 'stub_load', dir: input.specmaticStubDir }, 'Boot: loading Specmatic stub files');
+      try {
+        const stubs = await loadExpectationsFromDirectory(input.specmaticStubDir);
+        for (const stub of stubs) {
+          expectations.add(stub.request, stub.response, { source: 'file', filePath: stub.filePath });
+        }
+        bootLog.info(
+          { step: 'stub_load', loaded: stubs.length },
+          'Boot: Specmatic stubs loaded',
+        );
+      } catch (err) {
+        // Non-fatal: log warning but don't abort boot
+        bootLog.warn({ step: 'stub_load', err: err instanceof Error ? err.message : String(err) }, 'Boot: failed to load Specmatic stub files');
+      }
+    }
+
     return {
       dsl,
       openapi: input.openapi,
@@ -335,6 +369,7 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       metrics,
       schemaRegistry,
       requiresPrecondition: preconditionRequired,
+      expectations,
     };
   });
 }
