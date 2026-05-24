@@ -25,9 +25,6 @@ export {
   InternalExecutionError,
   InfiniteLoopError,
   FaultSimulatedError,
-  StubNotFoundError,
-  StubValidationFailedError,
-  StubBodyInvalidError,
   AuthenticationRequiredError,
   AuthorizationDeniedError,
   IdempotencyConflictError,
@@ -123,27 +120,6 @@ export { extractFaultSignal } from './engine/faultSim.js';
 export type { ExpressApp } from './http/gateway.js';
 export { createGateway } from './http/gateway.js';
 export { registerAdminRoutes } from './http/adminRoutes.js';
-export { registerSpecmaticRoutes } from './http/specmaticRoutes.js';
-
-// ── Specmatic compatibility surface ──────────────────────────────────────────
-export type {
-  ExpectationRequest,
-  ExpectationResponse,
-  Expectation,
-  MatchResult,
-  ExpectationStore,
-} from './specmatic/types.js';
-export { createExpectationStore } from './specmatic/expectationStore.js';
-export {
-  matchMethod,
-  matchPath,
-  matchHeaders,
-  matchQueryParams,
-  matchBody,
-} from './specmatic/matcher.js';
-export { loadExpectationsFromDirectory } from './specmatic/loader.js';
-export { loadSpecmaticConfig } from './specmatic/config.js';
-export type { SpecmaticConfig } from './specmatic/config.js';
 
 // ── Schema ────────────────────────────────────────────────────────────────────
 export type {
