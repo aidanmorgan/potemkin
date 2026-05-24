@@ -110,11 +110,8 @@ it('CONTRACT: fault signal headers field with non-object value (array) is exclud
 
 // ── FAULT SIM: AUDIT GAP — headers with null value ───────────────────────────
 
-it.failing('AUDIT GAP: fault signal with headers: null — headers field is excluded but not validated as null', () => {
-  // faultSim.ts line 73: headers !== undefined && typeof === object && !Array.isArray
-  // If headers is null: typeof null === 'object' and !Array.isArray(null) is true.
-  // So null would pass the type check and be returned as headers!
-  // This is a shape validation gap: null is not a valid Record<string,string>.
+it('FIX N1: fault signal with headers: null — null is now explicitly excluded and headers is undefined', () => {
+  // faultSim.ts N1 fix: explicit null check before typeof check prevents null passing through.
   const signal = extractFaultSignal({
     'x-specmatic-fault': JSON.stringify({
       status: 503,
@@ -123,9 +120,8 @@ it.failing('AUDIT GAP: fault signal with headers: null — headers field is excl
     }),
   });
 
-  // Expected: headers should be undefined (null is not a valid headers object)
-  // Observed: null passes the typeof check and !Array.isArray(null) check → set as headers
-  expect(signal?.headers).toBeUndefined(); // Will fail — actual value is null (cast to Record<string,string>)
+  // Fixed: null is explicitly rejected; headers should be undefined
+  expect(signal?.headers).toBeUndefined();
 });
 
 // ── FAULT SIM: VERIFIED — body can be any JsonValue ──────────────────────────
@@ -172,15 +168,11 @@ it('CONTRACT: parsed JSON that is null throws ContractViolationError', () => {
 
 // ── FAULT SIM: AUDIT GAP — status must be a valid HTTP status code ─────────────
 
-it.failing('AUDIT GAP: fault signal with status=-1 is accepted without validation (any number accepted)', () => {
-  // faultSim.ts line 59: typeof obj['status'] !== 'number' → only type-checks, not range.
-  // Negative or out-of-range HTTP status codes are accepted silently.
-  // This means a fault signal can inject invalid HTTP status codes into the response.
-  const signal = extractFaultSignal({
-    'x-specmatic-fault': JSON.stringify({ status: -1, body: {} }),
-  });
-
-  // Expected: should throw ContractViolationError for invalid HTTP status
-  // Observed: silently accepted, signal.status === -1
-  expect(signal).toBeNull(); // Will fail — actual signal is not null
+it('FIX N2: fault signal with status=-1 throws ContractViolationError (status range validation)', () => {
+  // faultSim.ts N2 fix: added range validation — status must be 100–599.
+  expect(() => {
+    extractFaultSignal({
+      'x-specmatic-fault': JSON.stringify({ status: -1, body: {} }),
+    });
+  }).toThrow(ContractViolationError);
 });

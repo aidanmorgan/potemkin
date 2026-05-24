@@ -60,6 +60,15 @@ export function extractFaultSignal(
     throw new ContractViolationError('Malformed x-specmatic-fault header', { raw });
   }
 
+  // Validate status is a valid HTTP status code (100–599)
+  const statusVal = obj['status'] as number;
+  if (statusVal < 100 || statusVal > 599) {
+    throw new ContractViolationError('Malformed x-specmatic-fault header', {
+      reason: 'status out of range',
+      status: statusVal,
+    });
+  }
+
   // `body` is required and must be a JsonValue (any non-undefined value qualifies at
   // parse time; deep structural validation is not required here).
   if (!('body' in obj)) {
@@ -69,7 +78,9 @@ export function extractFaultSignal(
   const signal: FaultSignal = {
     status: obj['status'] as number,
     body: obj['body'] as JsonValue,
+    // Explicitly reject null: typeof null === 'object' passes the naive check.
     headers:
+      obj['headers'] !== null &&
       obj['headers'] !== undefined &&
       typeof obj['headers'] === 'object' &&
       !Array.isArray(obj['headers'])

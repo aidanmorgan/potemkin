@@ -4,6 +4,7 @@ import type { StateGraph } from '../stategraph/graph.js';
 import type { CelEvaluator } from '../cel/evaluator.js';
 import type { ContractValidator } from '../contract/validator.js';
 import type { Logger } from '../observability/logger.js';
+import type { Tracer } from '../observability/tracing.js';
 import type { ObjectGraphSchemaRegistry } from '../schema/types.js';
 import { deepClone, deepMerge } from '../stategraph/graph.js';
 import { CelPhase } from '../cel/phases.js';
@@ -24,6 +25,12 @@ export interface ProjectionInput {
   readonly logger?: Logger;
   /** Optional schema registry for runtime type-checking of assign/append operations. */
   readonly schemaRegistry?: ObjectGraphSchemaRegistry;
+  /**
+   * Optional tracer for the engine.project span. When provided, the span is emitted
+   * via this tracer (enabling injection by UoW for testability). Falls back to
+   * getTracer('engine') when absent.
+   */
+  readonly tracer?: Tracer;
 }
 
 /**
@@ -40,7 +47,9 @@ export interface ProjectionInput {
  * @throws {InternalExecutionError} (500) if CEL evaluation or validation fails.
  */
 export function projectEvent(input: ProjectionInput): void {
-  const tracer = getTracer('engine');
+  // O-5 fix: use injected tracer when provided (enables span capture in tests).
+  // Falls back to getTracer('engine') for production/boot/reset paths.
+  const tracer = input.tracer ?? getTracer('engine');
   tracer.startActiveSpan('engine.project', (span) => {
     try {
       _projectEvent(input);
@@ -103,6 +112,16 @@ function _projectEvent(input: ProjectionInput): void {
               throw new InternalExecutionError(
                 `CEL evaluation failed for assign path '${dotPath}': ${err instanceof Error ? err.message : String(err)}`,
                 { dotPath, expr, eventType: event.type },
+              );
+            }
+
+            // N3 fix: explicitly reject undefined to preserve JsonObject type contract.
+            // CEL returning undefined (e.g. accessing a missing field) must not silently
+            // store undefined on the entity, which would violate the JsonValue contract.
+            if (value === undefined) {
+              throw new InternalExecutionError(
+                `CEL expression returned undefined for assign path '${dotPath}' — this violates the JsonObject contract`,
+                { code: 'SCHEMA_TYPE_MISMATCH', reason: 'CEL expression returned undefined', dotPath, expr, eventType: event.type },
               );
             }
 

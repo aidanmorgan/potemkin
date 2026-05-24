@@ -1,9 +1,11 @@
 import type { JsonValue, JsonObject } from '../types.js';
 import type { BoundaryConfig } from '../dsl/types.js';
 import type { StateGraph } from '../stategraph/graph.js';
+import type { EventStore } from '../eventstore/store.js';
 import type { CelEvaluator } from '../cel/evaluator.js';
 import type { OpenApiDoc } from '../contract/loader.js';
 import type { Logger } from '../observability/logger.js';
+import type { Tracer } from '../observability/tracing.js';
 import type { ObjectGraphSchemaRegistry } from '../schema/types.js';
 import { CelPhase } from '../cel/phases.js';
 import { getTracer } from '../observability/tracing.js';
@@ -22,6 +24,18 @@ export interface QueryRequest {
   readonly logger?: Logger;
   /** Optional schema registry for resolving derived property paths. */
   readonly schemaRegistry?: ObjectGraphSchemaRegistry;
+  /**
+   * Optional event store used to scope collection queries to the requested boundary.
+   * When provided, entities are filtered to those whose first event has a matching boundary.
+   * When absent (e.g. in tests that populate the graph directly), no boundary filter is applied.
+   */
+  readonly events?: EventStore;
+  /**
+   * Optional tracer for the engine.query span. When provided, the span is emitted
+   * via this tracer (enabling injection by UoW for testability). Falls back to
+   * getTracer('engine') when absent.
+   */
+  readonly tracer?: Tracer;
 }
 
 /**
@@ -35,7 +49,9 @@ export interface QueryRequest {
  * @throws {EntityAbsenceError} (404) if a single-entity lookup finds no match.
  */
 export function runQuery(req: QueryRequest): JsonValue {
-  const tracer = getTracer('engine');
+  // O-6 fix: use injected tracer when provided (enables span capture in tests).
+  // Falls back to getTracer('engine') for production paths.
+  const tracer = req.tracer ?? getTracer('engine');
   let result: JsonValue = null;
   let threw = false;
   let thrownErr: unknown;
@@ -58,7 +74,7 @@ export function runQuery(req: QueryRequest): JsonValue {
 }
 
 function _runQuery(req: QueryRequest): JsonValue {
-  const { boundary, targetId, queryParams, graph, cel, openapi, logger } = req;
+  const { boundary, targetId, queryParams, graph, cel, openapi, logger, events } = req;
   const log = logger?.child({ component: 'query', boundary: boundary.boundary, targetId });
 
   if (targetId !== null) {
@@ -77,8 +93,20 @@ function _runQuery(req: QueryRequest): JsonValue {
     return entity;
   }
 
-  // Collection query
-  let entities = graph.values() as readonly JsonObject[];
+  // Collection query — scope to this boundary when event store is available.
+  // C1 fix: without boundary scoping, graph.values() returns ALL entities across ALL boundaries
+  // sharing the same StateGraph, causing cross-boundary data leakage.
+  // Strategy: inspect the first event for each entity's targetId to find its originating boundary.
+  let graphKeys = graph.keys() as readonly string[];
+  if (events !== undefined) {
+    const boundaryName = boundary.boundary;
+    graphKeys = graphKeys.filter((key) => {
+      const entityEvents = events.byAggregate(key);
+      if (entityEvents.length === 0) return false;
+      return entityEvents[0].boundary === boundaryName;
+    });
+  }
+  let entities = graphKeys.map((k) => graph.get(k)!).filter(Boolean) as readonly JsonObject[];
 
   // Apply queryMapping filters
   const appliedFilters: string[] = [];
@@ -184,7 +212,12 @@ function applyDerivedProperties(
       result[propName] = value as JsonValue;
       log?.debug({ propName, boundary: boundary.boundary }, 'Derived property computed');
     } catch (err) {
-      log?.debug({ propName, expr, err }, 'Derived property computation failed — skipping');
+      // I2 fix: log at warn (not debug) so misconfigured x-derived expressions are visible.
+      // Set the derived property to null as a sentinel for partial responses rather than
+      // throwing, which would abort the entire query for a single bad expression. Callers
+      // can detect misconfiguration via the null value and logs. (Documented in-code trade-off.)
+      log?.warn({ propName, expr, err }, 'Derived property CEL evaluation failed — setting to null');
+      result[propName] = null;
     }
   }
 

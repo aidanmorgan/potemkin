@@ -171,48 +171,21 @@ it('CONTRACT: individual frozenBaseline events are Object.frozen (immutable)', a
 
 // ── AUDIT GAP: reset immutability — baseline payload must not be mutated in memory ─
 
-it.failing('AUDIT GAP: frozenBaseline payload mutation between boot and reset corrupts reset state', () => {
-  // Design expectation: frozenBaseline is immutable so reset always restores identical state.
-  // Observed: boot.ts line 216 freezes the event object, but payload is a plain JsonObject.
-  // The payload field on the frozen event object cannot be reassigned, BUT if the object
-  // pointed to by payload is not itself frozen, it could be mutated.
-  //
-  // boot.ts line 216: Object.freeze({...event, payload: record}) — record is NOT deep-frozen.
-  // If someone does frozenBaseline[0].payload.label = 'mutated', the freeze won't prevent it
-  // because Object.freeze is shallow.
-  //
-  // reset.ts line 40-43: copies payload via JSON.parse(JSON.stringify(...)) which DOES create
-  // a fresh copy — so reset is actually protected. But the gap is: the frozenBaseline ITSELF
-  // can have its payload mutated between boot and reset, corrupting subsequent resets.
-  //
-  // This test is it.failing because we expect mutation to be blocked (i.e., throw in strict mode),
-  // but in practice the payload object is not frozen and silent mutation is possible.
+it('FIX I1: frozenBaseline payloads are deeply frozen — mutation attempt throws TypeError', async () => {
+  // I1 fix: boot.ts now applies deepFreeze instead of Object.freeze, making the payload
+  // recursively immutable. In strict mode (TypeScript output), attempting to assign to a
+  // frozen property throws TypeError, preventing silent corruption between boot and reset.
+  const openapi = await loadOpenApi(MINIMAL_OPENAPI);
+  const sys = await bootSystem({
+    openapi,
+    dslModules: [{ name: 'thing', yaml: THING_WITH_INIT_DSL }],
+  });
 
-  // Simulate the gap: attempt to mutate a baseline event's payload
-  async function run() {
-    const openapi = await loadOpenApi(MINIMAL_OPENAPI);
-    const sys = await bootSystem({
-      openapi,
-      dslModules: [{ name: 'thing', yaml: THING_WITH_INIT_DSL }],
-    });
-
-    const payload = sys.frozenBaseline[0].payload as Record<string, unknown>;
-    // This should throw TypeError in strict mode if payload is frozen, but it doesn't
-    // because the freeze is shallow — the payload object itself is not frozen.
+  const payload = sys.frozenBaseline[0].payload as Record<string, unknown>;
+  // Now that deepFreeze is applied, mutation should throw TypeError in strict mode
+  expect(() => {
     payload['label'] = 'MUTATED';
-
-    resetSystem(sys);
-
-    // After reset, the label should be restored to 'Alpha' from frozenBaseline.
-    // But since the frozenBaseline payload was mutated (not frozen), and reset.ts
-    // clones via JSON.parse(JSON.stringify(ev.payload)) at the time of reset,
-    // the cloned payload will have 'MUTATED' as the label.
-    const restored = sys.graph.get('thing-alpha');
-    expect(restored?.label).toBe('Alpha'); // This will fail — it's 'MUTATED'
-  }
-
-  // We can't call async from inside it.failing directly; wrap:
-  return run();
+  }).toThrow(TypeError);
 });
 
 // ── VERIFIED: reset restores EXACT baseline event order ──────────────────────
@@ -285,10 +258,8 @@ it('CONTRACT: frozenBaseline array is frozen (cannot push/pop)', async () => {
   expect(Object.isFrozen(sys.frozenBaseline)).toBe(true);
 });
 
-it.failing('AUDIT GAP: frozenBaseline event payloads are NOT deeply frozen — shallow mutation possible', () => {
-  // This documents the immutability gap: Object.freeze on the event is shallow.
-  // The payload property of each baseline event is a plain object and can be mutated.
-  // Severity: important — silent mutation of frozenBaseline corrupts subsequent resets.
+it('FIX I1: frozenBaseline event payloads ARE deeply frozen — Object.freeze is deep via deepFreeze', () => {
+  // boot.ts I1 fix: deepFreeze replaces Object.freeze so payload is recursively frozen.
   async function run() {
     const openapi = await loadOpenApi(MINIMAL_OPENAPI);
     const sys = await bootSystem({
