@@ -1,0 +1,32 @@
+boundary: LeadQualify
+contract_path: /leads/{id}/qualify
+fallback_override: false
+
+event_catalog:
+  - type: LeadQualified
+    payload_template:
+      qualifiedAt: "$now()"
+
+behaviors:
+  # REQ-61: requires guard using CEL comprehension (filter/exists)
+  - name: qualifyLead
+    match:
+      intent: mutation
+      condition: "true"
+      requires:
+        - name: must-be-contacted
+          condition: "state.status == 'CONTACTED'"
+          error_code: LEAD_NOT_CONTACTED
+          error_message: "Lead must be in CONTACTED status to be qualified"
+        - name: has-calls
+          condition: "state.callIds.exists(c, true)"
+          error_code: NO_CALLS_RECORDED
+          error_message: "Lead must have at least one recorded call to be qualified"
+    emit: LeadQualified
+
+reducers:
+  - on: LeadQualified
+    assign:
+      status: "'QUALIFIED'"
+
+initialization: []

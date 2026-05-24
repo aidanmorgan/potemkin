@@ -5,9 +5,9 @@ identity:
   creation:
     generate: $uuidv7()
 query_mapping:
-  status: "state.status == param"
-  campaignId: "state.assignedCampaignId == param"
-  agentId: "state.assignedAgentId == param"
+  status: "state.status == query.status"
+  campaignId: "state.assignedCampaignId == query.campaignId"
+  agentId: "state.assignedAgentId == query.agentId"
 
 # REQ-66: inline TypeScript script for lead scoring
 scripts:
@@ -68,7 +68,7 @@ behaviors:
   - name: appendCallId
     match:
       intent: mutation
-      condition: "has(command.payload.callId) && command.payload.callId != null"
+      condition: "command.payload.callId != null"
     emit: CallIdAppended
 
   # Create lead with inline TS scoring (REQ-66/67)
@@ -84,7 +84,7 @@ behaviors:
         target_id: "command.payload.assignedCampaignId"
         payload:
           leadSource: "command.payload.source"
-        condition: "has(command.payload.assignedCampaignId) && command.payload.assignedCampaignId != null"
+        condition: "command.payload?.assignedCampaignId != null"
 
   # Contact lead — REQ-61: match.requires with error_code/error_message
   # REQ-64: emit_when with 2+ alternatives

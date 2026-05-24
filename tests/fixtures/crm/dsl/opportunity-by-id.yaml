@@ -1,0 +1,7 @@
+boundary: OpportunityById
+contract_path: /opportunities/{id}
+fallback_override: true
+event_catalog: []
+behaviors: []
+reducers: []
+initialization: []

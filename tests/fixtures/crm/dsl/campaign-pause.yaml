@@ -1,0 +1,27 @@
+boundary: CampaignPause
+contract_path: /campaigns/{id}/pause
+fallback_override: false
+
+event_catalog:
+  - type: CampaignPaused
+    payload_template:
+      pausedAt: "$now()"
+
+behaviors:
+  # REQ-64: emit_when with multiple branches
+  - name: pauseCampaign
+    match:
+      intent: mutation
+      condition: "state.status == 'ACTIVE'"
+    emit_when:
+      - when: "state.actualCalls != null && state.actualCalls > 0"
+        emit: CampaignPaused
+      - when: "state.actualCalls == null || state.actualCalls == 0"
+        emit: CampaignPaused
+
+reducers:
+  - on: CampaignPaused
+    assign:
+      status: "'PAUSED'"
+
+initialization: []

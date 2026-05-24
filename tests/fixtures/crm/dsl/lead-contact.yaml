@@ -1,0 +1,38 @@
+boundary: LeadContact
+contract_path: /leads/{id}/contact
+fallback_override: false
+
+event_catalog:
+  - type: LeadContacted
+    payload_template:
+      lastContactedAt: "$now()"
+
+behaviors:
+  # REQ-61: match.requires with error_code/error_message
+  # REQ-64: emit_when with 2+ alternatives
+  - name: contactLead
+    match:
+      intent: mutation
+      condition: "true"
+      requires:
+        - name: not-dnc
+          condition: "state.status != 'DNC'"
+          error_code: LEAD_IS_DNC
+          error_message: "Cannot contact a lead that has been marked Do Not Call"
+        - name: not-converted
+          condition: "state.status != 'CONVERTED'"
+          error_code: LEAD_ALREADY_CONVERTED
+          error_message: "Cannot contact a lead that has already been converted"
+    emit_when:
+      - when: "state.status == 'NEW' || state.status == 'CONTACTED'"
+        emit: LeadContacted
+      - when: "state.status == 'QUALIFIED'"
+        emit: LeadContacted
+
+reducers:
+  - on: LeadContacted
+    assign:
+      status: "'CONTACTED'"
+      lastContactedAt: "event.payload.lastContactedAt"
+
+initialization: []

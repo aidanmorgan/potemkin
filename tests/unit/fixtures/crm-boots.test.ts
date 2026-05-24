@@ -27,7 +27,8 @@ describe('CRM Fixture Boot', () => {
     expect(boundaryNames).toContain('Agent');
     expect(boundaryNames).toContain('Call');
     expect(boundaryNames).toContain('Opportunity');
-    expect(sys.dsl.boundaries).toHaveLength(5);
+    // 5 primary + 5 by-id + 5 lead-action + 3 campaign-action + 1 agent-action + 2 opportunity-action
+    expect(sys.dsl.boundaries).toHaveLength(21);
   });
 
   it('byBoundaryName index contains all 5 boundaries', async () => {

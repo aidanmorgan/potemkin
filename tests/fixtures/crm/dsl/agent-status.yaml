@@ -1,0 +1,29 @@
+boundary: AgentStatus
+contract_path: /agents/{id}/status
+fallback_override: false
+
+event_catalog:
+  - type: AgentStatusChanged
+    payload_template:
+      newStatus: "command.payload.currentStatus"
+      changedAt: "$now()"
+
+behaviors:
+  # REQ-64: emit_when with 2 branches based on new status
+  - name: updateAgentStatus
+    match:
+      intent: mutation
+      condition: "true"
+    emit_when:
+      - when: "command.payload.currentStatus == 'AVAILABLE' || command.payload.currentStatus == 'BREAK' || command.payload.currentStatus == 'OFFLINE'"
+        emit: AgentStatusChanged
+      - when: "command.payload.currentStatus == 'ON_CALL'"
+        emit: AgentStatusChanged
+
+reducers:
+  - on: AgentStatusChanged
+    assign:
+      currentStatus: "event.payload.newStatus"
+      lastActiveAt: "event.payload.changedAt"
+
+initialization: []

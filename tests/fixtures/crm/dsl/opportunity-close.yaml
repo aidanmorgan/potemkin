@@ -1,0 +1,66 @@
+boundary: OpportunityClose
+contract_path: /opportunities/{id}/close
+fallback_override: false
+
+event_catalog:
+  - type: OpportunityWon
+    schema_ref: "#/components/schemas/OpportunityWon"
+    payload_template:
+      id: "command.targetId"
+      leadId: "state.leadId"
+      agentId: "state.agentId"
+      campaignId: "state.campaignId"
+      value: "state.value"
+      closedAt: "$now()"
+
+  - type: OpportunityLost
+    payload_template:
+      closureReason: "command.payload?.closureReason != null ? command.payload.closureReason : 'No reason given'"
+      closedAt: "$now()"
+
+behaviors:
+  # REQ-62: postcondition on WON
+  - name: closeWon
+    match:
+      intent: mutation
+      condition: "command.payload.outcome == 'WON'"
+      requires:
+        - name: must-be-active-stage
+          condition: "command.payload.outcome != 'WON' || state.stage == 'NEGOTIATING' || state.stage == 'PROPOSED'"
+          error_code: CANNOT_WIN
+          error_message: "Opportunity must be in PROPOSED or NEGOTIATING stage to be won"
+    emit: OpportunityWon
+    postcondition: "state.stage == 'WON' && state.value > 0"
+    # REQ-63: conditional dispatch to agent metrics
+    dispatch_commands:
+      - boundary: Agent
+        intent: mutation
+        target_id: "state.agentId"
+        payload:
+          incrementConversions: "true"
+        condition: "state.agentId != null"
+
+  # REQ-64: emit_when with alternative
+  - name: closeLost
+    match:
+      intent: mutation
+      condition: "command.payload.outcome == 'LOST'"
+    emit_when:
+      - when: "state.stage == 'NEGOTIATING'"
+        emit: OpportunityLost
+      - when: "state.stage == 'PROPOSED'"
+        emit: OpportunityLost
+
+reducers:
+  - on: OpportunityWon
+    assign:
+      stage: "'WON'"
+      closedAt: "event.payload.closedAt"
+
+  - on: OpportunityLost
+    assign:
+      stage: "'LOST'"
+      closedAt: "event.payload.closedAt"
+      closureReason: "event.payload.closureReason"
+
+initialization: []

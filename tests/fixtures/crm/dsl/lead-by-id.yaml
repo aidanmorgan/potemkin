@@ -1,0 +1,7 @@
+boundary: LeadById
+contract_path: /leads/{id}
+fallback_override: true
+event_catalog: []
+behaviors: []
+reducers: []
+initialization: []

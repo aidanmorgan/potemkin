@@ -1368,6 +1368,40 @@ components:
           type: string
           format: date-time
 
+    # Sub-path boundary schemas — mirrors of parent schemas to satisfy schema registry
+    LeadById:
+      $ref: "#/components/schemas/Lead"
+    LeadContact:
+      $ref: "#/components/schemas/Lead"
+    LeadQualify:
+      $ref: "#/components/schemas/Lead"
+    LeadDisqualify:
+      $ref: "#/components/schemas/Lead"
+    LeadConvert:
+      $ref: "#/components/schemas/Lead"
+    LeadDNC:
+      $ref: "#/components/schemas/Lead"
+    CampaignById:
+      $ref: "#/components/schemas/Campaign"
+    CampaignActivate:
+      $ref: "#/components/schemas/Campaign"
+    CampaignPause:
+      $ref: "#/components/schemas/Campaign"
+    CampaignComplete:
+      $ref: "#/components/schemas/Campaign"
+    AgentById:
+      $ref: "#/components/schemas/Agent"
+    AgentStatus:
+      $ref: "#/components/schemas/Agent"
+    CallById:
+      $ref: "#/components/schemas/Call"
+    OpportunityById:
+      $ref: "#/components/schemas/Opportunity"
+    OpportunityAdvance:
+      $ref: "#/components/schemas/Opportunity"
+    OpportunityClose:
+      $ref: "#/components/schemas/Opportunity"
+
     Error:
       type: object
       required: [error]

@@ -1,0 +1,34 @@
+boundary: OpportunityAdvance
+contract_path: /opportunities/{id}/advance
+fallback_override: false
+
+event_catalog:
+  - type: OpportunityAdvanced
+    payload_template:
+      probability: "command.payload?.probability != null ? command.payload.probability : state.probability"
+      advancedAt: "$now()"
+
+behaviors:
+  # REQ-61: requires not in terminal state
+  - name: advanceOpportunity
+    match:
+      intent: mutation
+      condition: "true"
+      requires:
+        - name: not-closed
+          condition: "state.stage != 'WON' && state.stage != 'LOST'"
+          error_code: OPPORTUNITY_CLOSED
+          error_message: "Cannot advance a closed opportunity"
+        - name: not-negotiating
+          condition: "state.stage != 'NEGOTIATING'"
+          error_code: ALREADY_NEGOTIATING
+          error_message: "Opportunity is already at NEGOTIATING stage"
+    emit: OpportunityAdvanced
+
+reducers:
+  - on: OpportunityAdvanced
+    assign:
+      stage: "'NEGOTIATING'"
+      probability: "event.payload.probability"
+
+initialization: []

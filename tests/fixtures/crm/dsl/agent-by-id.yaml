@@ -1,0 +1,7 @@
+boundary: AgentById
+contract_path: /agents/{id}
+fallback_override: true
+event_catalog: []
+behaviors: []
+reducers: []
+initialization: []

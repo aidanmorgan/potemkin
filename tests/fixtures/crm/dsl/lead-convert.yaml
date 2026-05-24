@@ -1,0 +1,24 @@
+boundary: LeadConvert
+contract_path: /leads/{id}/convert
+fallback_override: false
+
+event_catalog:
+  - type: LeadConverted
+    payload_template:
+      convertedAt: "$now()"
+
+behaviors:
+  # REQ-62: postcondition
+  - name: convertLead
+    match:
+      intent: mutation
+      condition: "state.status == 'QUALIFIED'"
+    emit: LeadConverted
+    postcondition: "state.status == 'CONVERTED'"
+
+reducers:
+  - on: LeadConverted
+    assign:
+      status: "'CONVERTED'"
+
+initialization: []

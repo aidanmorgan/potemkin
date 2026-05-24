@@ -1,0 +1,7 @@
+boundary: CallById
+contract_path: /calls/{id}
+fallback_override: true
+event_catalog: []
+behaviors: []
+reducers: []
+initialization: []

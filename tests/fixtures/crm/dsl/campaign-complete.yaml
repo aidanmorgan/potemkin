@@ -1,0 +1,22 @@
+boundary: CampaignComplete
+contract_path: /campaigns/{id}/complete
+fallback_override: false
+
+event_catalog:
+  - type: CampaignCompleted
+    payload_template:
+      completedAt: "$now()"
+
+behaviors:
+  - name: completeCampaign
+    match:
+      intent: mutation
+      condition: "state.status == 'ACTIVE' || state.status == 'PAUSED'"
+    emit: CampaignCompleted
+
+reducers:
+  - on: CampaignCompleted
+    assign:
+      status: "'COMPLETED'"
+
+initialization: []

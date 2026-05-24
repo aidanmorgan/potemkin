@@ -1,0 +1,7 @@
+boundary: CampaignById
+contract_path: /campaigns/{id}
+fallback_override: true
+event_catalog: []
+behaviors: []
+reducers: []
+initialization: []

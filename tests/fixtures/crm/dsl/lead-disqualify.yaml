@@ -1,0 +1,22 @@
+boundary: LeadDisqualify
+contract_path: /leads/{id}/disqualify
+fallback_override: false
+
+event_catalog:
+  - type: LeadDisqualified
+    payload_template:
+      reason: "command.payload?.reason != null ? command.payload.reason : 'Not qualified'"
+
+behaviors:
+  - name: disqualifyLead
+    match:
+      intent: mutation
+      condition: "state.status == 'CONTACTED' || state.status == 'QUALIFIED'"
+    emit: LeadDisqualified
+
+reducers:
+  - on: LeadDisqualified
+    assign:
+      status: "'DISQUALIFIED'"
+
+initialization: []

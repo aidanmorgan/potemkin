@@ -1,0 +1,28 @@
+boundary: CampaignActivate
+contract_path: /campaigns/{id}/activate
+fallback_override: false
+
+event_catalog:
+  - type: CampaignActivated
+    payload_template:
+      activatedAt: "$now()"
+
+behaviors:
+  # REQ-61: requires guard — must be in DRAFT or PAUSED status
+  - name: activateCampaign
+    match:
+      intent: mutation
+      condition: "true"
+      requires:
+        - name: must-be-draft-or-paused
+          condition: "state.status == 'DRAFT' || state.status == 'PAUSED'"
+          error_code: CAMPAIGN_NOT_ACTIVATABLE
+          error_message: "Campaign must be in DRAFT or PAUSED status to activate"
+    emit: CampaignActivated
+
+reducers:
+  - on: CampaignActivated
+    assign:
+      status: "'ACTIVE'"
+
+initialization: []

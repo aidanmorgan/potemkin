@@ -1,0 +1,26 @@
+boundary: LeadDNC
+contract_path: /leads/{id}/dnc
+fallback_override: false
+
+event_catalog:
+  - type: LeadMarkedDNC
+    payload_template:
+      dncAt: "$now()"
+      reason: "command.payload?.reason != null ? command.payload.reason : 'No reason given'"
+
+behaviors:
+  # REQ-84/85/86: RBAC required_scopes
+  - name: markLeadDNC
+    match:
+      intent: mutation
+      condition: "true"
+      required_scopes:
+        - manager
+    emit: LeadMarkedDNC
+
+reducers:
+  - on: LeadMarkedDNC
+    assign:
+      status: "'DNC'"
+
+initialization: []
