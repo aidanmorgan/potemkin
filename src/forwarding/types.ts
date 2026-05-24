@@ -38,3 +38,24 @@ export interface ForwardedResponse {
   /** Response body. */
   readonly body: JsonValue;
 }
+
+/**
+ * Response shape for GET /_engine/routes.
+ * The Kotlin Specmatic plugin calls this endpoint at startup (and periodically)
+ * to discover which contract paths the engine owns, without requiring pre-configured
+ * path patterns on the plugin side.
+ */
+export interface RoutesDiscoveryResponse {
+  /** Contract paths the engine owns, sorted alphabetically. e.g. ['/customers', '/customers/{id}'] */
+  readonly paths: readonly string[];
+  /** Engine identifier, always 'potemkin-stateful'. */
+  readonly engine: string;
+  /** Package version from package.json. */
+  readonly version: string;
+  /** Suggested cache TTL in seconds for clients. Configurable via ENGINE_ROUTES_TTL_SECONDS env var. */
+  readonly ttlSeconds: number;
+  /** ISO-8601 timestamp of when this response was generated. */
+  readonly generatedAt: string;
+  /** SHA-256 hex digest of the sorted paths joined with newlines. Clients can detect path-set changes. */
+  readonly checksum: string;
+}
