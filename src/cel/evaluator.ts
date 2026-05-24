@@ -1,22 +1,57 @@
 /**
- * CEL evaluator — Path B: hand-rolled recursive-descent parser + evaluator.
+ * CEL evaluator — hand-rolled recursive-descent parser + evaluator.
  *
- * Rationale: `cel-js` is not in dependencies and adding an unknown third-party
- * CEL implementation risks subtle semantic differences. A focused ~350-line
- * implementation that exactly covers the DSL subset is safer and simpler.
+ * Full Grammar (EBNF, simplified):
  *
- * Supported subset:
- *   - Literals: string, number, boolean (true/false), null
- *   - Identifiers from context (state, command, event, payload, …)
- *   - Property access: a.b  and  a["b"]  and  a[0]
- *   - Function calls: $uuidv7(), $now(), $concat(…)
- *   - Operators: ==, !=, <, <=, >, >=, &&, ||, !, +, -, *, /, %, ternary ?:
- *   - String concatenation via +
- *   - Membership: "x" in ["x","y"]  or  "x" in {"x": 1}
+ *   expression  = ternary
+ *   ternary     = or ( '?' ternary ':' ternary )?
+ *   or          = and ( '||' and )*
+ *   and         = equality ( '&&' equality )*
+ *   equality    = in ( ('==' | '!=') in )*
+ *   in_expr     = comparison ( 'in' comparison )*
+ *   comparison  = addSub ( ('<' | '<=' | '>' | '>=') addSub )*
+ *   addSub      = mulDiv ( ('+' | '-') mulDiv )*
+ *   mulDiv      = unary ( ('*' | '/' | '%') unary )*
+ *   unary       = ('!' | '-') unary | postfix
+ *   postfix     = primary ( '.' ident ( '(' args ')' )?
+ *                          | '?.' ident ( '(' args ')' )?
+ *                          | '[' expr ']'
+ *                          | '?[' expr ']'
+ *                          )*
+ *   primary     = string | number | bool | null
+ *               | ident ( '(' args ')' )?      -- call or identifier
+ *               | '(' expr ')'                  -- grouped
+ *               | '[' ( expr (',' expr)* ','? )? ']'   -- list literal
+ *               | '{' ( entry (',' entry)* ','? )? '}' -- map literal
+ *   entry       = expr ':' expr
+ *   args        = ( expr (',' expr)* )?
+ *
+ * Comprehension macros (parsed as method calls on a receiver list):
+ *   lst.all(x, pred)       → all elements satisfy pred
+ *   lst.exists(x, pred)    → at least one element satisfies pred
+ *   lst.exists_one(x, pred)→ exactly one element satisfies pred
+ *   lst.filter(x, pred)    → filtered list
+ *   lst.map(x, transform)  → mapped list
+ *
+ * New tokens: '?.' (null-safe dot), '?[' (null-safe bracket)
+ *
+ * Supported builtins (top-level calls):
+ *   $uuidv7, $now, $concat, int, double, string, bool, bytes,
+ *   abs, min, max, floor, ceil, round, pow, sqrt,
+ *   size, keys, values, range,
+ *   type, coalesce, default, timestamp, duration, now
+ *
+ * Receiver methods:
+ *   String: startsWith, endsWith, contains, size, matches, replace, split,
+ *           substring, indexOf, lastIndexOf, lowerAscii, upperAscii,
+ *           trim, trimStart, trimEnd, charAt
+ *   List:   size, contains, indexOf, lastIndexOf, sort, reverse, join,
+ *           flatten, distinct
+ *   Map:    size, has, keys, values
  */
 
 import { CelPhase } from './phases.js';
-import { callBuiltin, type BuiltinContext } from './builtins.js';
+import { callBuiltin, deepEqual, naturalCompare, type BuiltinContext } from './builtins.js';
 import { createLogger } from '../observability/logger.js';
 
 const logger = createLogger({ name: 'cel' });
@@ -49,12 +84,12 @@ export interface CelEvaluator {
 // ---------------------------------------------------------------------------
 
 type Token =
-  | { kind: 'string';  value: string }
-  | { kind: 'number';  value: number }
-  | { kind: 'bool';    value: boolean }
+  | { kind: 'string';      value: string }
+  | { kind: 'number';      value: number }
+  | { kind: 'bool';        value: boolean }
   | { kind: 'null' }
-  | { kind: 'ident';   value: string }
-  | { kind: 'op';      value: string }
+  | { kind: 'ident';       value: string }
+  | { kind: 'op';          value: string }
   | { kind: 'lparen' }
   | { kind: 'rparen' }
   | { kind: 'lbracket' }
@@ -63,6 +98,8 @@ type Token =
   | { kind: 'rbrace' }
   | { kind: 'comma' }
   | { kind: 'dot' }
+  | { kind: 'nullDot' }        // ?.
+  | { kind: 'nullBracket' }    // ?[
   | { kind: 'colon' }
   | { kind: 'question' }
   | { kind: 'eof' };
@@ -71,20 +108,42 @@ type Token =
 // AST types
 // ---------------------------------------------------------------------------
 
-/** CEL receiver-style string/array methods: `expr.method(args)` */
-const RECEIVER_METHODS = new Set(['startsWith', 'endsWith', 'contains', 'size', 'matches']);
+/** CEL receiver-style string/array/map methods: `expr.method(args)` */
+const STRING_METHODS = new Set([
+  'startsWith', 'endsWith', 'contains', 'size', 'matches', 'replace',
+  'split', 'substring', 'indexOf', 'lastIndexOf', 'lowerAscii', 'upperAscii',
+  'trim', 'trimStart', 'trimEnd', 'charAt',
+]);
+const LIST_METHODS = new Set([
+  'size', 'contains', 'indexOf', 'lastIndexOf', 'sort', 'reverse',
+  'join', 'flatten', 'distinct',
+]);
+const MAP_METHODS = new Set(['size', 'has', 'keys', 'values']);
+const COMPREHENSION_METHODS = new Set(['all', 'exists', 'exists_one', 'filter', 'map']);
+
+// All methods that should be parsed as method calls (not member access)
+const RECEIVER_METHODS = new Set([
+  ...STRING_METHODS,
+  ...LIST_METHODS,
+  ...MAP_METHODS,
+  ...COMPREHENSION_METHODS,
+]);
 
 type Expr =
-  | { kind: 'literal';   value: string | number | boolean | null }
-  | { kind: 'ident';     name: string }
-  | { kind: 'member';    obj: Expr; key: Expr }        // a.b or a["b"] or a[0]
-  | { kind: 'call';      fn: string; args: Expr[] }    // $func(…)
-  | { kind: 'method';    receiver: Expr; method: string; args: Expr[] } // expr.method(args)
-  | { kind: 'unary';     op: string; operand: Expr }
-  | { kind: 'binary';    op: string; left: Expr; right: Expr }
-  | { kind: 'ternary';   cond: Expr; then: Expr; else: Expr }
-  | { kind: 'array';     elements: Expr[] }
-  | { kind: 'object';    entries: Array<{ key: Expr; value: Expr }> };
+  | { kind: 'literal';        value: string | number | boolean | null }
+  | { kind: 'ident';          name: string }
+  | { kind: 'member';         obj: Expr; key: Expr }
+  | { kind: 'nullSafeMember'; obj: Expr; key: Expr }
+  | { kind: 'call';           fn: string; args: Expr[] }
+  | { kind: 'method';         receiver: Expr; method: string; args: Expr[] }
+  | { kind: 'nullSafeMethod'; receiver: Expr; method: string; args: Expr[] }
+  | { kind: 'comprehension';  kind2: 'all' | 'exists' | 'exists_one' | 'filter' | 'map';
+                               receiver: Expr; varName: string; body: Expr }
+  | { kind: 'unary';          op: string; operand: Expr }
+  | { kind: 'binary';         op: string; left: Expr; right: Expr }
+  | { kind: 'ternary';        cond: Expr; then: Expr; else: Expr }
+  | { kind: 'array';          elements: Expr[] }
+  | { kind: 'object';         entries: Array<{ key: Expr; value: Expr }> };
 
 // ---------------------------------------------------------------------------
 // Tokenizer
@@ -98,7 +157,7 @@ function tokenize(src: string): Token[] {
     // Skip whitespace
     if (/\s/.test(src[i]!)) { i++; continue; }
 
-    // String literals
+    // String literals (single or double quoted)
     if (src[i] === '"' || src[i] === "'") {
       const quote = src[i]!;
       i++;
@@ -130,6 +189,24 @@ function tokenize(src: string): Token[] {
       continue;
     }
 
+    // Raw string literals r'...' or r"..."
+    if (src[i] === 'r' && (src[i + 1] === '"' || src[i + 1] === "'")) {
+      const quote = src[i + 1]!;
+      i += 2;
+      let s = '';
+      const startPos = i - 2;
+      while (i < src.length && src[i] !== quote) {
+        s += src[i];
+        i++;
+      }
+      if (i >= src.length) {
+        throw new Error(`CEL_PARSE_ERROR: unclosed raw string literal starting at position ${startPos}`);
+      }
+      i++; // closing quote
+      tokens.push({ kind: 'string', value: s });
+      continue;
+    }
+
     // Numbers
     if (/[0-9]/.test(src[i]!) || (src[i] === '-' && /[0-9]/.test(src[i + 1] ?? ''))) {
       let n = '';
@@ -150,10 +227,24 @@ function tokenize(src: string): Token[] {
       continue;
     }
 
-    // Two-character operators
+    // Two-character operators (check before single-char)
     const two = src.slice(i, i + 2);
     if (['==', '!=', '<=', '>=', '&&', '||'].includes(two)) {
       tokens.push({ kind: 'op', value: two });
+      i += 2;
+      continue;
+    }
+
+    // '?.' null-safe member access
+    if (two === '?.') {
+      tokens.push({ kind: 'nullDot' });
+      i += 2;
+      continue;
+    }
+
+    // '?[' null-safe index access
+    if (two === '?[') {
+      tokens.push({ kind: 'nullBracket' });
       i += 2;
       continue;
     }
@@ -260,7 +351,6 @@ class Parser {
 
   private parseIn(): Expr {
     let left = this.parseComparison();
-    // `in` is an identifier token
     while (this.peek().kind === 'ident' && (this.peek() as { kind: 'ident'; value: string }).value === 'in') {
       this.advance();
       const right = this.parseComparison();
@@ -312,7 +402,6 @@ class Parser {
       return { kind: 'unary', op: '!', operand };
     }
     if (this.peekOp('-')) {
-      // Could be a unary minus; check next token is not a number literal (already handled in tokenizer)
       this.advance();
       const operand = this.parseUnary();
       return { kind: 'unary', op: '-', operand };
@@ -320,33 +409,75 @@ class Parser {
     return this.parsePostfix();
   }
 
+  /**
+   * Parse a method call argument list: ident, body
+   * For comprehensions like lst.all(x, predicate)
+   */
+  private parseComprehensionArgs(): { varName: string; body: Expr } {
+    const varTok = this.advance();
+    if (varTok.kind !== 'ident') {
+      throw new Error(`CEL_PARSE: comprehension expects identifier as first argument`);
+    }
+    this.expect('comma');
+    const body = this.parseTernary();
+    return { varName: varTok.value, body };
+  }
+
   private parsePostfix(): Expr {
     let expr = this.parsePrimary();
 
     for (;;) {
-      if (this.peek().kind === 'dot') {
+      const tok = this.peek();
+
+      if (tok.kind === 'dot' || tok.kind === 'nullDot') {
+        const isNullSafe = tok.kind === 'nullDot';
         this.advance();
         const t = this.advance();
-        if (t.kind !== 'ident') throw new Error(`CEL_PARSE: expected identifier after '.'`);
-        // Check if this is a receiver-method call: expr.method(args)
-        if (RECEIVER_METHODS.has(t.value) && this.peek().kind === 'lparen') {
+        if (t.kind !== 'ident') throw new Error(`CEL_PARSE: expected identifier after '${isNullSafe ? '?.' : '.'}'`);
+        const methodName = t.value;
+
+        // Check if this is a comprehension macro
+        if (COMPREHENSION_METHODS.has(methodName) && this.peek().kind === 'lparen') {
+          this.advance(); // consume '('
+          const { varName, body } = this.parseComprehensionArgs();
+          this.expect('rparen');
+          const compKind = methodName as 'all' | 'exists' | 'exists_one' | 'filter' | 'map';
+          expr = { kind: 'comprehension', kind2: compKind, receiver: expr, varName, body };
+        } else if (RECEIVER_METHODS.has(methodName) && this.peek().kind === 'lparen') {
+          // Receiver method call
           this.advance(); // consume '('
           const args: Expr[] = [];
           while (this.peek().kind !== 'rparen') {
             if (args.length > 0) this.expect('comma');
+            // Allow trailing comma before ')'
+            if (this.peek().kind === 'rparen') break;
             args.push(this.parseTernary());
           }
           this.expect('rparen');
-          expr = { kind: 'method', receiver: expr, method: t.value, args };
+          if (isNullSafe) {
+            expr = { kind: 'nullSafeMethod', receiver: expr, method: methodName, args };
+          } else {
+            expr = { kind: 'method', receiver: expr, method: methodName, args };
+          }
         } else {
-          const key: Expr = { kind: 'literal', value: t.value };
-          expr = { kind: 'member', obj: expr, key };
+          // Member access
+          const key: Expr = { kind: 'literal', value: methodName };
+          if (isNullSafe) {
+            expr = { kind: 'nullSafeMember', obj: expr, key };
+          } else {
+            expr = { kind: 'member', obj: expr, key };
+          }
         }
-      } else if (this.peek().kind === 'lbracket') {
+      } else if (tok.kind === 'lbracket') {
         this.advance();
         const key = this.parseTernary();
         this.expect('rbracket');
         expr = { kind: 'member', obj: expr, key };
+      } else if (tok.kind === 'nullBracket') {
+        this.advance();
+        const key = this.parseTernary();
+        this.expect('rbracket');
+        expr = { kind: 'nullSafeMember', obj: expr, key };
       } else {
         break;
       }
@@ -371,6 +502,8 @@ class Parser {
         const args: Expr[] = [];
         while (this.peek().kind !== 'rparen') {
           if (args.length > 0) this.expect('comma');
+          // Allow trailing comma
+          if (this.peek().kind === 'rparen') break;
           args.push(this.parseTernary());
         }
         this.expect('rparen');
@@ -391,6 +524,8 @@ class Parser {
       const elements: Expr[] = [];
       while (this.peek().kind !== 'rbracket') {
         if (elements.length > 0) this.expect('comma');
+        // Allow trailing comma
+        if (this.peek().kind === 'rbracket') break;
         elements.push(this.parseTernary());
       }
       this.expect('rbracket');
@@ -402,6 +537,8 @@ class Parser {
       const entries: Array<{ key: Expr; value: Expr }> = [];
       while (this.peek().kind !== 'rbrace') {
         if (entries.length > 0) this.expect('comma');
+        // Allow trailing comma
+        if (this.peek().kind === 'rbrace') break;
         const key = this.parseTernary();
         this.expect('colon');
         const value = this.parseTernary();
@@ -421,6 +558,21 @@ function parse(src: string): Expr {
 }
 
 // ---------------------------------------------------------------------------
+// Scope — chained variable bindings for comprehensions
+// ---------------------------------------------------------------------------
+
+type Scope = Map<string, unknown>;
+
+function scopeLookup(scopes: Scope[], name: string): { found: true; value: unknown } | { found: false } {
+  for (let i = scopes.length - 1; i >= 0; i--) {
+    if (scopes[i]!.has(name)) {
+      return { found: true, value: scopes[i]!.get(name) };
+    }
+  }
+  return { found: false };
+}
+
+// ---------------------------------------------------------------------------
 // Evaluator
 // ---------------------------------------------------------------------------
 
@@ -428,19 +580,22 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
-function evalExpr(expr: Expr, ctx: CelContext, builtinCtx: BuiltinContext): unknown {
+function evalExpr(expr: Expr, ctx: CelContext, builtinCtx: BuiltinContext, scopes: Scope[] = []): unknown {
   switch (expr.kind) {
     case 'literal':
       return expr.value;
 
     case 'ident': {
+      // Check scopes first (comprehension variables)
+      const scopeResult = scopeLookup(scopes, expr.name);
+      if (scopeResult.found) return scopeResult.value;
       if (expr.name in ctx) return ctx[expr.name];
       throw new Error(`CEL_EVAL: undefined identifier '${expr.name}'`);
     }
 
     case 'member': {
-      const obj = evalExpr(expr.obj, ctx, builtinCtx);
-      const key = evalExpr(expr.key, ctx, builtinCtx);
+      const obj = evalExpr(expr.obj, ctx, builtinCtx, scopes);
+      const key = evalExpr(expr.key, ctx, builtinCtx, scopes);
       if (typeof key === 'string' && isRecord(obj)) {
         return obj[key];
       }
@@ -455,59 +610,53 @@ function evalExpr(expr: Expr, ctx: CelContext, builtinCtx: BuiltinContext): unkn
       );
     }
 
+    case 'nullSafeMember': {
+      const obj = evalExpr(expr.obj, ctx, builtinCtx, scopes);
+      if (obj === null || obj === undefined) return null;
+      const key = evalExpr(expr.key, ctx, builtinCtx, scopes);
+      if (typeof key === 'string' && isRecord(obj)) {
+        return obj[key] ?? null;
+      }
+      if (typeof key === 'number' && Array.isArray(obj)) {
+        if (key < 0 || key >= obj.length) return null;
+        return obj[key] ?? null;
+      }
+      return null;
+    }
+
     case 'call': {
       // has(x.field) is a special macro: checks field presence without evaluation
       if (expr.fn === 'has' && expr.args.length === 1) {
         const arg = expr.args[0];
         if (!arg) throw new Error(`CEL_EVAL: has() requires exactly one argument`);
         if (arg.kind === 'member' && arg.key.kind === 'literal' && typeof arg.key.value === 'string') {
-          const objVal = evalExpr(arg.obj, ctx, builtinCtx);
+          const objVal = evalExpr(arg.obj, ctx, builtinCtx, scopes);
           if (isRecord(objVal)) return arg.key.value in objVal;
           if (Array.isArray(objVal)) return false;
           return false;
         }
         throw new Error(`CEL_EVAL: has() argument must be a field access expression like has(obj.field)`);
       }
-      const args = expr.args.map(a => evalExpr(a, ctx, builtinCtx));
+      const args = expr.args.map(a => evalExpr(a, ctx, builtinCtx, scopes));
       return callBuiltin(expr.fn, args, builtinCtx);
     }
 
     case 'method': {
-      const receiver = evalExpr(expr.receiver, ctx, builtinCtx);
-      const args = expr.args.map(a => evalExpr(a, ctx, builtinCtx));
-      switch (expr.method) {
-        case 'startsWith': {
-          if (typeof receiver !== 'string') throw new Error(`CEL_EVAL: startsWith requires a string receiver`);
-          if (typeof args[0] !== 'string') throw new Error(`CEL_EVAL: startsWith requires a string argument`);
-          return receiver.startsWith(args[0]);
-        }
-        case 'endsWith': {
-          if (typeof receiver !== 'string') throw new Error(`CEL_EVAL: endsWith requires a string receiver`);
-          if (typeof args[0] !== 'string') throw new Error(`CEL_EVAL: endsWith requires a string argument`);
-          return receiver.endsWith(args[0]);
-        }
-        case 'contains': {
-          if (typeof receiver !== 'string') throw new Error(`CEL_EVAL: contains requires a string receiver`);
-          if (typeof args[0] !== 'string') throw new Error(`CEL_EVAL: contains requires a string argument`);
-          return receiver.includes(args[0]);
-        }
-        case 'matches': {
-          if (typeof receiver !== 'string') throw new Error(`CEL_EVAL: matches requires a string receiver`);
-          if (typeof args[0] !== 'string') throw new Error(`CEL_EVAL: matches requires a string (regex) argument`);
-          return new RegExp(args[0]).test(receiver);
-        }
-        case 'size': {
-          if (typeof receiver === 'string') return receiver.length;
-          if (Array.isArray(receiver)) return receiver.length;
-          throw new Error(`CEL_EVAL: size() requires a string or array receiver`);
-        }
-        default:
-          throw new Error(`CEL_EVAL: unknown receiver method '${expr.method}'`);
-      }
+      return evalMethod(expr.receiver, expr.method, expr.args, ctx, builtinCtx, scopes, false);
+    }
+
+    case 'nullSafeMethod': {
+      const receiver = evalExpr(expr.receiver, ctx, builtinCtx, scopes);
+      if (receiver === null || receiver === undefined) return null;
+      return evalMethod(expr.receiver, expr.method, expr.args, ctx, builtinCtx, scopes, false);
+    }
+
+    case 'comprehension': {
+      return evalComprehension(expr, ctx, builtinCtx, scopes);
     }
 
     case 'unary': {
-      const v = evalExpr(expr.operand, ctx, builtinCtx);
+      const v = evalExpr(expr.operand, ctx, builtinCtx, scopes);
       if (expr.op === '!') return !v;
       if (expr.op === '-') {
         if (typeof v === 'number') return -v;
@@ -522,22 +671,22 @@ function evalExpr(expr: Expr, ctx: CelContext, builtinCtx: BuiltinContext): unkn
 
       // Short-circuit operators
       if (op === '&&') {
-        const l = evalExpr(expr.left, ctx, builtinCtx);
+        const l = evalExpr(expr.left, ctx, builtinCtx, scopes);
         if (!l) return l;
-        return evalExpr(expr.right, ctx, builtinCtx);
+        return evalExpr(expr.right, ctx, builtinCtx, scopes);
       }
       if (op === '||') {
-        const l = evalExpr(expr.left, ctx, builtinCtx);
+        const l = evalExpr(expr.left, ctx, builtinCtx, scopes);
         if (l) return l;
-        return evalExpr(expr.right, ctx, builtinCtx);
+        return evalExpr(expr.right, ctx, builtinCtx, scopes);
       }
 
-      const left = evalExpr(expr.left, ctx, builtinCtx);
-      const right = evalExpr(expr.right, ctx, builtinCtx);
+      const left = evalExpr(expr.left, ctx, builtinCtx, scopes);
+      const right = evalExpr(expr.right, ctx, builtinCtx, scopes);
 
       switch (op) {
-        case '==': return left === right;
-        case '!=': return left !== right;
+        case '==': return deepEqual(left, right);
+        case '!=': return !deepEqual(left, right);
         case '<':  return (left as number) < (right as number);
         case '<=': return (left as number) <= (right as number);
         case '>':  return (left as number) > (right as number);
@@ -561,7 +710,7 @@ function evalExpr(expr: Expr, ctx: CelContext, builtinCtx: BuiltinContext): unkn
           return (left as number) % modulus;
         }
         case 'in': {
-          if (Array.isArray(right)) return right.includes(left);
+          if (Array.isArray(right)) return right.some(v => deepEqual(v, left));
           if (isRecord(right)) return (left as string) in right;
           throw new Error(`CEL_EVAL: 'in' requires an array or object on the right`);
         }
@@ -572,22 +721,280 @@ function evalExpr(expr: Expr, ctx: CelContext, builtinCtx: BuiltinContext): unkn
     }
 
     case 'ternary': {
-      const cond = evalExpr(expr.cond, ctx, builtinCtx);
-      return cond ? evalExpr(expr.then, ctx, builtinCtx) : evalExpr(expr.else, ctx, builtinCtx);
+      const cond = evalExpr(expr.cond, ctx, builtinCtx, scopes);
+      return cond ? evalExpr(expr.then, ctx, builtinCtx, scopes) : evalExpr(expr.else, ctx, builtinCtx, scopes);
     }
 
     case 'array': {
-      return expr.elements.map(e => evalExpr(e, ctx, builtinCtx));
+      return expr.elements.map(e => evalExpr(e, ctx, builtinCtx, scopes));
     }
 
     case 'object': {
       const obj: Record<string, unknown> = {};
       for (const entry of expr.entries) {
-        const k = evalExpr(entry.key, ctx, builtinCtx);
+        const k = evalExpr(entry.key, ctx, builtinCtx, scopes);
         if (typeof k !== 'string') throw new Error(`CEL_EVAL: object key must be a string`);
-        obj[k] = evalExpr(entry.value, ctx, builtinCtx);
+        obj[k] = evalExpr(entry.value, ctx, builtinCtx, scopes);
       }
       return obj;
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Method dispatch
+// ---------------------------------------------------------------------------
+
+function evalMethod(
+  receiverExpr: Expr,
+  method: string,
+  argExprs: Expr[],
+  ctx: CelContext,
+  builtinCtx: BuiltinContext,
+  scopes: Scope[],
+  _nullSafe: boolean,
+): unknown {
+  const receiver = evalExpr(receiverExpr, ctx, builtinCtx, scopes);
+  const args = argExprs.map(a => evalExpr(a, ctx, builtinCtx, scopes));
+
+  // String methods
+  if (typeof receiver === 'string') {
+    return evalStringMethod(receiver, method, args);
+  }
+
+  // List methods
+  if (Array.isArray(receiver)) {
+    return evalListMethod(receiver, method, args);
+  }
+
+  // Map methods
+  if (isRecord(receiver)) {
+    return evalMapMethod(receiver, method, args);
+  }
+
+  throw new Error(`CEL_EVAL: method '${method}' called on unsupported type ${typeof receiver}`);
+}
+
+function evalStringMethod(s: string, method: string, args: unknown[]): unknown {
+  switch (method) {
+    case 'startsWith': {
+      if (typeof args[0] !== 'string') throw new Error(`CEL_TYPE_ERROR: startsWith requires a string argument`);
+      return s.startsWith(args[0]);
+    }
+    case 'endsWith': {
+      if (typeof args[0] !== 'string') throw new Error(`CEL_TYPE_ERROR: endsWith requires a string argument`);
+      return s.endsWith(args[0]);
+    }
+    case 'contains': {
+      if (typeof args[0] !== 'string') throw new Error(`CEL_TYPE_ERROR: contains requires a string argument`);
+      return s.includes(args[0]);
+    }
+    case 'matches': {
+      if (typeof args[0] !== 'string') throw new Error(`CEL_TYPE_ERROR: matches requires a string (regex) argument`);
+      return new RegExp(args[0]).test(s);
+    }
+    case 'size':
+      return s.length;
+    case 'replace': {
+      if (typeof args[0] !== 'string' || typeof args[1] !== 'string')
+        throw new Error(`CEL_TYPE_ERROR: replace requires string arguments`);
+      const [oldStr, newStr, maxN] = args;
+      if (maxN !== undefined) {
+        if (typeof maxN !== 'number') throw new Error(`CEL_TYPE_ERROR: replace n must be a number`);
+        let result = s;
+        let count = 0;
+        const n = Math.trunc(maxN as number);
+        while (count < n && result.includes(oldStr as string)) {
+          result = result.replace(oldStr as string, newStr as string);
+          count++;
+        }
+        return result;
+      }
+      return s.split(oldStr as string).join(newStr as string);
+    }
+    case 'split': {
+      if (typeof args[0] !== 'string') throw new Error(`CEL_TYPE_ERROR: split requires a string separator`);
+      return s.split(args[0]);
+    }
+    case 'substring': {
+      if (typeof args[0] !== 'number') throw new Error(`CEL_TYPE_ERROR: substring requires a number start`);
+      const start = Math.trunc(args[0]);
+      if (args.length >= 2) {
+        if (typeof args[1] !== 'number') throw new Error(`CEL_TYPE_ERROR: substring end must be a number`);
+        return s.substring(start, Math.trunc(args[1] as number));
+      }
+      return s.substring(start);
+    }
+    case 'indexOf': {
+      if (typeof args[0] !== 'string') throw new Error(`CEL_TYPE_ERROR: indexOf requires a string argument`);
+      return s.indexOf(args[0]);
+    }
+    case 'lastIndexOf': {
+      if (typeof args[0] !== 'string') throw new Error(`CEL_TYPE_ERROR: lastIndexOf requires a string argument`);
+      return s.lastIndexOf(args[0]);
+    }
+    case 'lowerAscii':
+      return s.toLowerCase();
+    case 'upperAscii':
+      return s.toUpperCase();
+    case 'trim':
+      return s.trim();
+    case 'trimStart':
+      return s.trimStart();
+    case 'trimEnd':
+      return s.trimEnd();
+    case 'charAt': {
+      if (typeof args[0] !== 'number') throw new Error(`CEL_TYPE_ERROR: charAt requires a number argument`);
+      const idx = Math.trunc(args[0]);
+      if (idx < 0 || idx >= s.length) throw new Error(`CEL_RUNTIME_ERROR: charAt index out of range`);
+      return s.charAt(idx);
+    }
+    default:
+      throw new Error(`CEL_EVAL: unknown string method '${method}'`);
+  }
+}
+
+function evalListMethod(lst: unknown[], method: string, args: unknown[]): unknown {
+  switch (method) {
+    case 'size':
+      return lst.length;
+    case 'contains':
+      return lst.some(v => deepEqual(v, args[0]));
+    case 'indexOf': {
+      const idx = lst.findIndex(v => deepEqual(v, args[0]));
+      return idx;
+    }
+    case 'lastIndexOf': {
+      let last = -1;
+      for (let i = 0; i < lst.length; i++) {
+        if (deepEqual(lst[i], args[0])) last = i;
+      }
+      return last;
+    }
+    case 'sort': {
+      const copy = [...lst];
+      copy.sort(naturalCompare);
+      return copy;
+    }
+    case 'reverse': {
+      return [...lst].reverse();
+    }
+    case 'join': {
+      const sep = args[0] ?? '';
+      if (typeof sep !== 'string') throw new Error(`CEL_TYPE_ERROR: join separator must be a string`);
+      return lst.map(v => String(v)).join(sep);
+    }
+    case 'flatten': {
+      const result: unknown[] = [];
+      for (const item of lst) {
+        if (Array.isArray(item)) {
+          result.push(...item);
+        } else {
+          result.push(item);
+        }
+      }
+      return result;
+    }
+    case 'distinct': {
+      const seen: unknown[] = [];
+      for (const item of lst) {
+        if (!seen.some(s => deepEqual(s, item))) {
+          seen.push(item);
+        }
+      }
+      return seen;
+    }
+    default:
+      throw new Error(`CEL_EVAL: unknown list method '${method}'`);
+  }
+}
+
+function evalMapMethod(m: Record<string, unknown>, method: string, args: unknown[]): unknown {
+  switch (method) {
+    case 'size':
+      return Object.keys(m).length;
+    case 'has': {
+      const key = args[0];
+      if (typeof key !== 'string') throw new Error(`CEL_TYPE_ERROR: map.has() requires a string key`);
+      return key in m;
+    }
+    case 'keys':
+      return Object.keys(m);
+    case 'values':
+      return Object.values(m);
+    default:
+      throw new Error(`CEL_EVAL: unknown map method '${method}'`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Comprehension evaluation
+// ---------------------------------------------------------------------------
+
+type ComprehensionKind = 'all' | 'exists' | 'exists_one' | 'filter' | 'map';
+
+function evalComprehension(
+  expr: { kind: 'comprehension'; kind2: ComprehensionKind; receiver: Expr; varName: string; body: Expr },
+  ctx: CelContext,
+  builtinCtx: BuiltinContext,
+  scopes: Scope[],
+): unknown {
+  const collection = evalExpr(expr.receiver, ctx, builtinCtx, scopes);
+
+  let items: unknown[];
+  if (Array.isArray(collection)) {
+    items = collection;
+  } else if (isRecord(collection)) {
+    // For maps, iterate over keys
+    items = Object.keys(collection);
+  } else {
+    throw new Error(`CEL_EVAL: comprehension receiver must be a list or map, got ${typeof collection}`);
+  }
+
+  switch (expr.kind2) {
+    case 'all': {
+      for (const item of items) {
+        const scope = new Map([[expr.varName, item]]);
+        const result = evalExpr(expr.body, ctx, builtinCtx, [...scopes, scope]);
+        if (!result) return false;
+      }
+      return true;
+    }
+    case 'exists': {
+      for (const item of items) {
+        const scope = new Map([[expr.varName, item]]);
+        const result = evalExpr(expr.body, ctx, builtinCtx, [...scopes, scope]);
+        if (result) return true;
+      }
+      return false;
+    }
+    case 'exists_one': {
+      let count = 0;
+      for (const item of items) {
+        const scope = new Map([[expr.varName, item]]);
+        const result = evalExpr(expr.body, ctx, builtinCtx, [...scopes, scope]);
+        if (result) count++;
+        if (count > 1) return false;
+      }
+      return count === 1;
+    }
+    case 'filter': {
+      const filtered: unknown[] = [];
+      for (const item of items) {
+        const scope = new Map([[expr.varName, item]]);
+        const result = evalExpr(expr.body, ctx, builtinCtx, [...scopes, scope]);
+        if (result) filtered.push(item);
+      }
+      return filtered;
+    }
+    case 'map': {
+      const mapped: unknown[] = [];
+      for (const item of items) {
+        const scope = new Map([[expr.varName, item]]);
+        const result = evalExpr(expr.body, ctx, builtinCtx, [...scopes, scope]);
+        mapped.push(result);
+      }
+      return mapped;
     }
   }
 }
@@ -624,7 +1031,7 @@ export function createCelEvaluator(): CelEvaluator {
       const builtinCtx: BuiltinContext = { phase };
 
       try {
-        return evalExpr(compiled._ast, ctx, builtinCtx);
+        return evalExpr(compiled._ast, ctx, builtinCtx, []);
       } catch (err) {
         logger.debug(
           {
