@@ -51,6 +51,8 @@ event_catalog:
   - type: LeadConverted
     payload_template:
       convertedAt: "$now()"
+      agentId: "state.assignedAgentId"
+      campaignId: "state.assignedCampaignId"
 
   - type: LeadMarkedDNC
     payload_template:

@@ -12,7 +12,7 @@ sagas:
   # Steps: create opportunity → if fails, revert lead status
   - name: LeadConversionSaga
     trigger:
-      boundary: Lead
+      boundary: LeadConvert
       intent: mutation
       condition: "event.type == 'LeadConverted'"
     steps:

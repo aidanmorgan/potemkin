@@ -6,6 +6,8 @@ event_catalog:
   - type: LeadConverted
     payload_template:
       convertedAt: "$now()"
+      agentId: "state.assignedAgentId"
+      campaignId: "state.assignedCampaignId"
 
 behaviors:
   # REQ-62: postcondition

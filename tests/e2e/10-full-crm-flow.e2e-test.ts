@@ -66,7 +66,7 @@ describeWithJava('10 — Full CRM happy-path flow', () => {
    * Fix: add agentId + campaignId to LeadConverted payload_template in lead.yaml, or
    * change the saga step to use `state.assignedAgentId` / `state.assignedCampaignId`.
    */
-  it.failing('complete Lead lifecycle: create → contact → qualify → convert → close WON [BUG: saga step uses wrong event fields]', async () => {
+  it('complete Lead lifecycle: create → contact → qualify → convert → close WON [BUG: saga step uses wrong event fields]', async () => {
     // Step 1: Create lead
     const createRes = await fwd(app.engineUrl, 'POST', '/leads', {
       companyName: 'Happy Path Corp',

@@ -64,7 +64,7 @@ describeWithJava('12 — Saga: LeadConversionSaga creates Opportunity on convert
    * Fix: update the saga step to use `state.assignedAgentId` or add agentId/campaignId
    * to the LeadConverted payload_template.
    */
-  it.failing('converting a qualified lead triggers the saga and creates an Opportunity [BUG: saga payload uses wrong event fields]', async () => {
+  it('converting a qualified lead triggers the saga and creates an Opportunity [BUG: saga payload uses wrong event fields]', async () => {
     // Create fresh lead
     const createRes = await fwd(app.engineUrl, 'POST', '/leads', {
       companyName: 'Saga Test Corp',
@@ -107,7 +107,7 @@ describeWithJava('12 — Saga: LeadConversionSaga creates Opportunity on convert
     expect(sagaOpp!['value']).toBe(25000);
   }, 60_000);
 
-  it.failing('saga Opportunity has correct leadId linking it to the converted Lead [BUG: same saga payload issue]', async () => {
+  it('saga Opportunity has correct leadId linking it to the converted Lead [BUG: same saga payload issue]', async () => {
     // Create + contact + qualify + convert a second lead
     const createRes = await fwd(app.engineUrl, 'POST', '/leads', {
       companyName: 'Saga Link Corp',

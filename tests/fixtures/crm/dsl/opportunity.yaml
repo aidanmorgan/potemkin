@@ -14,11 +14,11 @@ event_catalog:
     payload_template:
       id: "command.targetId"
       leadId: "command.payload.leadId"
-      agentId: "command.payload.agentId"
-      campaignId: "command.payload.campaignId"
+      agentId: "coalesce(command.payload.agentId, null)"
+      campaignId: "coalesce(command.payload.campaignId, null)"
       value: "command.payload.value"
-      probability: "command.payload.probability"
-      expectedCloseDate: "command.payload.expectedCloseDate"
+      probability: "coalesce(command.payload.probability, 50)"
+      expectedCloseDate: "coalesce(command.payload.expectedCloseDate, null)"
 
   - type: OpportunityAdvanced
     payload_template:
@@ -108,12 +108,12 @@ reducers:
     assign:
       id: "event.payload.id"
       leadId: "event.payload.leadId"
-      agentId: "event.payload.agentId"
-      campaignId: "event.payload.campaignId"
+      agentId: "coalesce(event.payload.agentId, null)"
+      campaignId: "coalesce(event.payload.campaignId, null)"
       stage: "'PROPOSED'"
       value: "event.payload.value"
-      probability: "event.payload.probability != null ? event.payload.probability : 50"
-      expectedCloseDate: "event.payload.expectedCloseDate"
+      probability: "has(event.payload.probability) ? event.payload.probability : 50"
+      expectedCloseDate: "coalesce(event.payload.expectedCloseDate, null)"
 
   - on: OpportunityAdvanced
     assign:

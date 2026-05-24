@@ -1251,7 +1251,7 @@ components:
     Opportunity:
       type: object
       additionalProperties: false
-      required: [id, leadId, agentId, campaignId, stage, value]
+      required: [id, leadId, stage, value]
       properties:
         id:
           type: string
@@ -1262,9 +1262,11 @@ components:
         agentId:
           type: string
           format: uuid
+          nullable: true
         campaignId:
           type: string
           format: uuid
+          nullable: true
         stage:
           type: string
           enum: [PROPOSED, NEGOTIATING, WON, LOST]
@@ -1278,11 +1280,14 @@ components:
         expectedCloseDate:
           type: string
           format: date
+          nullable: true
         closedAt:
           type: string
           format: date-time
+          nullable: true
         closureReason:
           type: string
+          nullable: true
 
     LeadCreated:
       type: object
@@ -1348,7 +1353,7 @@ components:
 
     OpportunityWon:
       type: object
-      required: [id, leadId, agentId, campaignId, value, closedAt]
+      required: [id, leadId, value, closedAt]
       properties:
         id:
           type: string
@@ -1359,9 +1364,11 @@ components:
         agentId:
           type: string
           format: uuid
+          nullable: true
         campaignId:
           type: string
           format: uuid
+          nullable: true
         value:
           type: number
         closedAt:
