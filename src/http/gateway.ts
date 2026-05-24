@@ -2,14 +2,21 @@
  * HTTP Gateway — Contract-aware ingestion pipeline (design §2.1, §4.1)
  *
  * Pipeline per inbound request:
- *  1. Fault-signal check (x-specmatic-fault header) — short-circuit before any state access.
- *  2. Contract-route lookup (matchRoute) — 404 if no OpenAPI path matches, 405 if method unknown.
- *  3. Request validation (ContractValidator.validateRequest) — 400 CONTRACT_VIOLATION on failure.
- *  4. Identity/intent resolution — translate HTTP method → Intent; derive or generate targetId.
- *  5. Command construction — typed Command built from request data.
- *  6. Unit-of-Work execution (executeUnitOfWork) — full CQRS/ES dispatch with 2PC commit.
- *  7. Error → HTTP status mapping (§3.x error codes to RFC-standard status codes).
- *  8. Response serialisation — status + headers + JSON body + optional ETag.
+ *  1. CORS preflight check — OPTIONS requests are handled immediately with 204 + CORS headers.
+ *  2. Fault-signal check (x-specmatic-fault header) — short-circuit before any state access.
+ *  3. Contract-route lookup (matchRoute) — 404 if no OpenAPI path matches, 405 if method unknown.
+ *     HEAD requests are treated as GET (RFC 7231 §4.3.2): if HEAD, look up route as 'GET' and
+ *     run the GET pipeline, then respond with the same status/headers but empty body.
+ *  4. Request validation (ContractValidator.validateRequest) — 400 CONTRACT_VIOLATION on failure.
+ *  5. Identity/intent resolution — translate HTTP method → Intent; derive or generate targetId.
+ *  6. Command construction — typed Command built from request data.
+ *  7. Unit-of-Work execution (executeUnitOfWork) — full CQRS/ES dispatch with 2PC commit.
+ *  8. Error → HTTP status mapping (§3.x error codes to RFC-standard status codes).
+ *  9. Response serialisation — status + headers + JSON body + optional ETag.
+ *
+ * CORS design: Access-Control-Allow-Origin is configurable via ALLOWED_ORIGINS env var
+ * (comma-separated list; default '*'). All responses include CORS headers so that
+ * browser clients can use the sim from any origin without a reverse proxy.
  *
  * OTel HTTP instrumentation is provided automatically by @opentelemetry/instrumentation-express
  * when initTracing() is called at process startup. We do NOT manually wrap request handlers;
@@ -50,6 +57,23 @@ import type { Command, Intent } from '../types.js';
 const IF_MATCH_HEADER_LC = 'if-match';
 
 /**
+ * Resolve the CORS allowed-origin value.
+ *  - ALLOWED_ORIGINS env var: comma-separated list of allowed origins (e.g. "https://app.com,https://dev.com")
+ *  - Default: '*' (allow all origins — appropriate for a local simulation server)
+ * In production, set ALLOWED_ORIGINS to a specific origin to restrict access.
+ */
+function getAllowedOrigin(requestOrigin: string | undefined): string {
+  const raw = process.env['ALLOWED_ORIGINS'] ?? '*';
+  if (raw === '*') return '*';
+  const allowed = raw.split(',').map((s) => s.trim());
+  if (requestOrigin && allowed.includes(requestOrigin)) return requestOrigin;
+  return allowed[0] ?? '*';
+}
+
+const CORS_ALLOW_METHODS = 'GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS';
+const CORS_ALLOW_HEADERS = 'Content-Type, If-Match, x-specmatic-fault';
+
+/**
  * Convert an OpenAPI path template (/loans/{id}) to an Express route pattern (/loans/:id).
  */
 function expressifyPath(contractPath: string): string {
@@ -72,7 +96,26 @@ export function createGateway(sys: BootedSystem): Express {
   const app = express();
 
   // Parse JSON bodies — strict:false allows non-object/array top-level values; 5 MB limit.
-  app.use(express.json({ strict: false, limit: '5mb' }));
+  // type option extended to handle 'text/json' and 'application/*+json' variants (H-3).
+  app.use(express.json({ strict: false, limit: '5mb', type: ['application/json', 'text/json', 'application/*+json'] }));
+
+  // CORS middleware — add Access-Control-* headers to every response (H-2).
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const origin = getAllowedOrigin(req.headers['origin']);
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Methods', CORS_ALLOW_METHODS);
+    res.setHeader('Access-Control-Allow-Headers', CORS_ALLOW_HEADERS);
+    next();
+  });
+
+  // OPTIONS preflight handler — respond 204 immediately before any route matching (H-2).
+  app.options('*', (req: Request, res: Response) => {
+    const origin = getAllowedOrigin(req.headers['origin']);
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Methods', CORS_ALLOW_METHODS);
+    res.setHeader('Access-Control-Allow-Headers', CORS_ALLOW_HEADERS);
+    res.status(204).end();
+  });
 
   // Admin routes registered first so they always win over dynamic OpenAPI routes.
   registerAdminRoutes(app, sys);
@@ -117,6 +160,9 @@ async function handleContractRequest(
 ): Promise<void> {
   // 1. Per-request Pino child logger with tracing bindings.
   const requestId = nextUuidv7();
+  // HEAD requests are handled as GET (RFC 7231 §4.3.2) — normalise the effective method.
+  const isHead = req.method === 'HEAD';
+  const effectiveMethod = isHead ? 'GET' : req.method;
   const logger = sys.logger.child({ requestId, method: req.method, path: req.path });
 
   await withSpan(sys.tracer, 'http.request', async (_span) => {
@@ -127,12 +173,17 @@ async function handleContractRequest(
       if (fault.headers) {
         res.set(fault.headers);
       }
-      res.status(fault.status).json(fault.body);
+      if (isHead) {
+        res.status(fault.status).end();
+      } else {
+        res.status(fault.status).json(fault.body);
+      }
       return;
     }
 
     // 3. Lookup matching contract route (method + path).
-    const route = matchRoute(sys.openapi, req.method, req.path);
+    // HEAD is looked up as GET per RFC 7231 §4.3.2.
+    const route = matchRoute(sys.openapi, effectiveMethod, req.path);
     if (route === null) {
       // The Express route matched the path template but no OpenAPI operation covers this method.
       // Distinguish: did path match but method not → 405; path itself unrecognised → 404.
@@ -142,9 +193,10 @@ async function handleContractRequest(
     }
 
     // 4. Contract validation (req 12, 24).
+    // Use effectiveMethod so HEAD requests are validated as GET.
     try {
       sys.validator.validateRequest(
-        req.method,
+        effectiveMethod,
         route.contractPath,
         (req.body as JsonValue | null | undefined) ?? {},
         req.query as Record<string, string | string[]>,
@@ -160,7 +212,8 @@ async function handleContractRequest(
 
     // 5. Identity resolution & intent translation (reqs 13-14, design §4.1).
     const boundary = sys.dsl.byContractPath[route.contractPath];
-    const intent: Intent = translateIntent({ method: req.method, boundary });
+    // Use effectiveMethod so HEAD commands are translated the same as GET.
+    const intent: Intent = translateIntent({ method: effectiveMethod, boundary });
 
     let targetId: string | null = route.pathParams['id'] ?? null;
     if (intent === 'creation' && targetId === null) {
@@ -178,10 +231,12 @@ async function handleContractRequest(
       targetId,
       payload: (req.body as JsonObject | null | undefined) ?? {},
       queryParams: req.query as Record<string, string | string[]>,
-      httpMethod: req.method,
+      httpMethod: effectiveMethod,
       path: req.path,
+      // If-Match may carry a quoted ETag value ("1") or an unquoted integer (1).
+      // Strip optional surrounding double-quotes before parsing to an integer (RFC 7232).
       sequenceVersion: req.headers[IF_MATCH_HEADER_LC] !== undefined
-        ? Number(req.headers[IF_MATCH_HEADER_LC])
+        ? Number(String(req.headers[IF_MATCH_HEADER_LC]).replace(/^"|"$/g, ''))
         : undefined,
       origin: 'inbound',
       depth: 0,
@@ -251,10 +306,16 @@ async function handleContractRequest(
         ? primaryEvents.at(-1)?.sequenceVersion
         : result.events.at(-1)?.sequenceVersion;
       if (seqForEtag !== undefined) {
-        responseHeaders['ETag'] = String(seqForEtag);
+        // RFC 7232 §2.3: ETag must be a quoted string (H-4).
+        responseHeaders['ETag'] = '"' + String(seqForEtag) + '"';
       }
     }
 
-    res.status(result.status).set(responseHeaders).json(result.body);
+    // HEAD response: same status + headers as GET, but empty body (RFC 7231 §4.3.2).
+    if (isHead) {
+      res.status(result.status).set(responseHeaders).end();
+    } else {
+      res.status(result.status).set(responseHeaders).json(result.body);
+    }
   }, { 'http.method': req.method, 'http.path': req.path, requestId });
 }

@@ -152,6 +152,8 @@ describe('concurrency-control.acceptance', () => {
     const mutationEtag = repayRes.headers['etag'];
     expect(mutationEtag).toBeDefined();
     expect(mutationEtag).not.toBe(creationEtag);
-    expect(Number(mutationEtag)).toBeGreaterThan(Number(creationEtag));
+    // ETag is a quoted string per RFC 7232; strip quotes before numeric comparison.
+    const stripQuotes = (s: string) => String(s).replace(/^"|"$/g, '');
+    expect(Number(stripQuotes(mutationEtag))).toBeGreaterThan(Number(stripQuotes(creationEtag)));
   });
 });

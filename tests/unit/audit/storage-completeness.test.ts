@@ -61,35 +61,29 @@ function makeEvent(overrides: Partial<DomainEvent> = {}): DomainEvent {
 
 describe('eventstore/store — completeness probes', () => {
   describe('duplicate eventId', () => {
-    it.failing(
-      '[GAP] append rejects a duplicate eventId (same eventId appended twice across two batches)',
+    it(
+      'append rejects a duplicate eventId (S-1: same eventId appended twice across two batches)',
       () => {
-        // EventStore validates sequenceVersion monotonicity but does NOT check for
-        // duplicate eventIds. Appending the same eventId twice silently succeeds.
         const store = createEventStore();
         const sharedId = nextUuidv7();
 
         store.append([makeEvent({ eventId: sharedId, sequenceVersion: 1 })]);
 
-        // Second batch with the same eventId but correct sequenceVersion:
-        // This should throw but currently does NOT.
+        // Second batch with the same eventId — must throw InternalExecutionError.
         expect(() => {
           store.append([makeEvent({ eventId: sharedId, sequenceVersion: 2 })]);
         }).toThrow();
       },
     );
 
-    it('[CURRENT] duplicate eventId is silently accepted across two batches', () => {
+    it('duplicate eventId is rejected, preserving event log integrity', () => {
       const store = createEventStore();
       const sharedId = nextUuidv7();
 
       store.append([makeEvent({ eventId: sharedId, sequenceVersion: 1 })]);
-      // Same eventId, next sequenceVersion — store does not deduplicate
       expect(() => {
         store.append([makeEvent({ eventId: sharedId, sequenceVersion: 2 })]);
-      }).not.toThrow();
-
-      expect(store.all().length).toBe(2);
+      }).toThrow(/duplicate|eventId/i);
     });
   });
 
@@ -166,28 +160,19 @@ describe('eventstore/store — completeness probes', () => {
     });
   });
 
-  describe('EventStore metrics wiring gap', () => {
-    it.failing(
-      '[GAP] EventStore.append accepts a metrics parameter to self-increment eventsAppendedTotal',
+  describe('EventStore metrics wiring (by design: UoW responsibility)', () => {
+    it(
+      'EventStore.append signature takes only events param — metric emission is UoW responsibility (O-2/S-2 by design)',
       () => {
-        // The eventsAppendedTotal metric is incremented in uow.ts AFTER calling
-        // eventStore.append(). The store itself does NOT accept or emit this metric.
-        // If the store is used standalone (bypassing UoW), the metric is never incremented.
-        // This test pins the gap: the store signature should accept (events, metrics)
-        // but currently only accepts (events).
+        // eventsAppendedTotal is incremented in uow.ts after a successful commit.
+        // The store itself has no metrics wiring by design (separation of concerns).
+        // Standalone store usage is intentionally unmetered.
+        // See: src/eventstore/store.ts header comment.
         const store = createEventStore();
-
-        // Gap assertion: store.append should accept 2 params — (events, metrics)
-        // Current: only 1 param
-        expect(store.append.length).toBe(2);
+        // append(events: readonly DomainEvent[]): void — no metrics parameter
+        expect(store.append.length).toBe(1);
       },
     );
-
-    it('[CURRENT] EventStore.append signature takes only events param (no metrics wiring)', () => {
-      const store = createEventStore();
-      // append(events: readonly DomainEvent[]): void — no metrics parameter
-      expect(store.append.length).toBe(1);
-    });
   });
 });
 
@@ -197,26 +182,30 @@ describe('eventstore/store — completeness probes', () => {
 
 describe('stategraph/graph — completeness probes', () => {
   describe('deepClone circular reference handling', () => {
-    it.failing(
-      '[GAP] deepClone throws or handles circular references gracefully (currently stack-overflows)',
+    it(
+      'deepClone throws a descriptive error on circular references (S-2: cycle guard)',
       () => {
-        // deepClone is recursive without cycle detection; a circular reference
-        // causes a RangeError (maximum call stack exceeded).
-        // This is not relevant for JsonValue types (which cannot be circular),
-        // but is a latent hazard if the type boundary is breached.
         const circular: Record<string, unknown> = { a: 1 };
         circular['self'] = circular;
 
-        // Should throw a descriptive error, not stack-overflow silently
+        // Should throw a descriptive error (not a RangeError stack overflow)
         expect(() => deepClone(circular as never)).toThrowError(/circular|cycle/i);
       },
     );
 
-    it('[CURRENT] deepClone with circular reference throws RangeError (stack overflow)', () => {
+    it('deepClone circular reference error is NOT a RangeError (descriptive message instead)', () => {
       const circular: Record<string, unknown> = { a: 1 };
       circular['self'] = circular;
 
-      expect(() => deepClone(circular as never)).toThrow(RangeError);
+      let caught: unknown;
+      try {
+        deepClone(circular as never);
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught).toBeDefined();
+      expect(caught instanceof RangeError).toBe(false);
+      expect((caught as Error).message).toMatch(/circular|cycle/i);
     });
   });
 

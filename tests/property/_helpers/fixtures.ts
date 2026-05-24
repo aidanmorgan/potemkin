@@ -145,8 +145,17 @@ export function bootFreshSimulation() {
 export function makeEvent(
   overrides: Partial<DomainEvent> & { aggregateId: string; sequenceVersion: number },
 ): DomainEvent {
+  // Derive a stable eventId from both aggregateId and sequenceVersion so that
+  // events for different aggregates with the same sequenceVersion have distinct IDs.
+  // This is important now that the EventStore enforces eventId uniqueness (S-1).
+  const aggHash = overrides.aggregateId
+    .split('')
+    .reduce((h, c) => ((h * 31 + c.charCodeAt(0)) & 0xffffff), 0)
+    .toString(16)
+    .padStart(6, '0');
+  const seqHex = String(overrides.sequenceVersion).padStart(6, '0');
   return {
-    eventId: `00000000-0000-7000-8000-${String(overrides.sequenceVersion).padStart(12, '0')}`,
+    eventId: `00000000-0000-7000-8000-${aggHash}${seqHex}`,
     boundary: 'Customer',
     type: 'Customer.Created',
     payload: {} as JsonObject,

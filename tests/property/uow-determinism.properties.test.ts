@@ -38,9 +38,17 @@ function buildCreateCustomerEvents(
   email: string,
   seqBase: number,
 ): DomainEvent[] {
+  // Incorporate aggregateId into eventId so that events for different aggregates
+  // at the same seqBase have distinct IDs (EventStore now enforces uniqueness per S-1).
+  const aggHash = aggregateId
+    .split('')
+    .reduce((h, c) => ((h * 31 + c.charCodeAt(0)) & 0xffffff), 0)
+    .toString(16)
+    .padStart(6, '0');
+  const seqHex = String(seqBase).padStart(6, '0');
   return [
     {
-      eventId: `00000000-0000-7001-8000-${String(seqBase).padStart(12, '0')}`,
+      eventId: `00000000-0000-7001-8000-${aggHash}${seqHex}`,
       boundary: 'Customer',
       aggregateId,
       type: 'Customer.Created',
