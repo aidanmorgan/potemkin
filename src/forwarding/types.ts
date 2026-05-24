@@ -40,6 +40,54 @@ export interface ForwardedResponse {
 }
 
 /**
+ * A single deterministic GET-by-id stub produced from a baseline-seeded entity.
+ * Shaped so the Kotlin Specmatic plugin can push it directly into Specmatic's stub registry.
+ */
+export interface FixtureStub {
+  readonly httpRequest: {
+    /** Always 'GET' — fixtures are deterministic reads (REQ-10/11/39). */
+    readonly method: 'GET';
+    /** Bound path with the seeded id substituted, e.g. '/customers/00000000-0000-7000-8000-000000000001'. */
+    readonly path: string;
+    readonly headers?: Record<string, string>;
+    readonly queryParameters?: Record<string, string | string[]>;
+  };
+  readonly httpResponse: {
+    /** Typically 200. */
+    readonly status: number;
+    /** Response headers, always includes content-type. */
+    readonly headers: Record<string, string>;
+    /** The entity body as it would be returned by a live GET. */
+    readonly body: JsonValue;
+  };
+  readonly source: {
+    /** Which boundary this fixture belongs to. */
+    readonly boundary: string;
+    /** The seeded aggregate id. */
+    readonly aggregateId: string;
+    /** The OpenAPI path template, e.g. '/customers/{id}'. */
+    readonly contractPath: string;
+  };
+}
+
+/**
+ * Response shape for GET /_engine/fixtures.
+ * The Kotlin Specmatic plugin calls this endpoint at startup to seed its stub registry.
+ */
+export interface FixturesResponse {
+  /** Engine identifier, always 'potemkin-stateful'. */
+  readonly engine: string;
+  /** Package version from package.json. */
+  readonly version: string;
+  /** ISO-8601 timestamp of when this response was generated. */
+  readonly generatedAt: string;
+  /** SHA-256 hex digest over the serialised stubs sorted by path. Used for ETag / change detection. */
+  readonly checksum: string;
+  /** The list of fixture stubs derived from baseline-seeded entities. */
+  readonly fixtures: readonly FixtureStub[];
+}
+
+/**
  * Response shape for GET /_engine/routes.
  * The Kotlin Specmatic plugin calls this endpoint at startup (and periodically)
  * to discover which contract paths the engine owns, without requiring pre-configured

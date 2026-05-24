@@ -14,7 +14,8 @@
 import type { RequestHandler, Request, Response } from 'express';
 import { createHash } from 'node:crypto';
 import type { BootedSystem } from '../engine/boot.js';
-import type { ForwardedRequest, ForwardedResponse, RoutesDiscoveryResponse } from './types.js';
+import type { ForwardedRequest, ForwardedResponse, RoutesDiscoveryResponse, FixturesResponse } from './types.js';
+import { deriveFixtures } from './fixtures.js';
 import type { Command, Intent, JsonObject, JsonValue } from '../types.js';
 import { matchRoute } from '../contract/router.js';
 import { translateIntent } from '../engine/router.js';
@@ -432,6 +433,70 @@ export function createRoutesHandler(sys: BootedSystem): RequestHandler {
       ttlSeconds,
       generatedAt: new Date().toISOString(),
       checksum,
+    };
+
+    res.setHeader('Cache-Control', `max-age=${ttlSeconds}, public`);
+    res.setHeader('ETag', checksum);
+    res.status(200).json(body);
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Fixtures handler
+// ---------------------------------------------------------------------------
+
+/**
+ * Compute a SHA-256 hex checksum over the serialised FixtureStub list.
+ * Stubs are sorted by their bound path before serialisation so the checksum
+ * is deterministic regardless of insertion order.
+ */
+function computeFixturesChecksum(
+  stubs: readonly import('./types.js').FixtureStub[],
+): string {
+  const sorted = [...stubs].sort((a, b) =>
+    a.httpRequest.path.localeCompare(b.httpRequest.path),
+  );
+  return createHash('sha256').update(JSON.stringify(sorted)).digest('hex');
+}
+
+/**
+ * Create an Express request handler that implements GET /_engine/fixtures.
+ *
+ * Derives a deterministic list of FixtureStubs from the booted system's baseline
+ * events, serialises them, and returns a FixturesResponse.  Supports conditional
+ * requests via If-None-Match / ETag (304 Not Modified when checksum matches).
+ *
+ * Cache-Control and ETag use the same TTL env var as GET /_engine/routes.
+ */
+export function createFixturesHandler(sys: BootedSystem): RequestHandler {
+  // Lazily cached fixture list — derived once at first request and reused.
+  // The checksum doubles as the ETag for conditional requests.
+  let cachedStubs: readonly import('./types.js').FixtureStub[] | null = null;
+  let cachedChecksum: string | null = null;
+
+  return function fixturesHandler(req: Request, res: Response): void {
+    // Derive fixtures on first call and cache (they are a boot-time snapshot).
+    if (cachedStubs === null) {
+      cachedStubs = deriveFixtures(sys);
+      cachedChecksum = computeFixturesChecksum(cachedStubs);
+    }
+
+    const checksum = cachedChecksum!;
+    const ttlSeconds = resolveRoutesTtl();
+
+    // Conditional request: respond 304 when the client's ETag matches.
+    const ifNoneMatch = req.headers['if-none-match'];
+    if (ifNoneMatch === checksum) {
+      res.status(304).end();
+      return;
+    }
+
+    const body: FixturesResponse = {
+      engine: 'potemkin-stateful',
+      version: PKG_VERSION,
+      generatedAt: new Date().toISOString(),
+      checksum,
+      fixtures: cachedStubs,
     };
 
     res.setHeader('Cache-Control', `max-age=${ttlSeconds}, public`);
