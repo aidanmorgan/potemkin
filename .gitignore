@@ -4,3 +4,7 @@ coverage/
 .env
 *.log
 .DS_Store
+# Specmatic CLI jar cache (tests/integration/specmatic-cli/.cache/)
+tests/integration/specmatic-cli/.cache/
+# Specmatic test reports generated at runtime
+build/

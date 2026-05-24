@@ -1,0 +1,64 @@
+openapi: "3.0.3"
+info:
+  title: Banking Simulation API (Specmatic CLI fixture)
+  version: "1.0.0"
+  description: |
+    Minimal banking spec used by Specmatic CLI contract tests.
+    Covers only the GET /customers collection endpoint which the inline
+    banking fixture initialises with two seed customers (Acme Coffee, Beta
+    Builders), so Specmatic can generate valid contract tests that pass
+    against the running engine without requiring inline examples for all paths.
+
+    Other paths are intentionally excluded to keep the test scope focused and
+    deterministic: the Specmatic CLI generates random path-param values for
+    /customers/{id} which will 404 on an unknown entity.
+
+paths:
+  /customers:
+    get:
+      operationId: listCustomers
+      summary: List all customers
+      parameters:
+        - name: riskBand
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of customers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Customer"
+
+components:
+  schemas:
+    Customer:
+      type: object
+      required: [id, name, riskBand]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        riskBand:
+          type: string
+        createdAt:
+          type: string
+        loanIds:
+          type: array
+          items:
+            type: string
