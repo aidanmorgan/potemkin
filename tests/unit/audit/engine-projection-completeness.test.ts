@@ -89,10 +89,9 @@ it('CONTRACT: atomic swap (graph.set) occurs after validateEntity (write-after-v
 
 // ── AUDIT GAP: reducer assign with CEL returning undefined ────────────────────
 
-it.failing('AUDIT GAP: reducer assign where CEL returns undefined — entity gets undefined property (design violation)', () => {
-  // Observed: projection.ts line 101: value = cel.evaluate(...) cast to JsonValue
-  // If CEL returns undefined (e.g. accessing a missing field), it is set on the entity as undefined.
-  // This violates JsonObject type contract and may cause silent data corruption.
+it('FIX N3: reducer assign where CEL returns undefined throws InternalExecutionError (JsonObject contract enforced)', () => {
+  // projection.ts N3 fix: explicit undefined guard added. CEL returning undefined throws
+  // InternalExecutionError with SCHEMA_TYPE_MISMATCH code, preventing JsonObject corruption.
   const undefinedCel = {
     compile: (e: string) => ({ source: e }),
     evaluate: () => undefined,
@@ -105,18 +104,15 @@ it.failing('AUDIT GAP: reducer assign where CEL returns undefined — entity get
     reducers: [{ on: 'Ev', assign: { newField: 'undefinedExpr' } }],
   });
 
-  projectEvent({
-    event: makeDomainEvent({ type: 'Ev', payload: {} }),
-    boundary,
-    graph,
-    cel: undefinedCel,
-    // No validator — so no guard
-  });
-
-  const state = graph.get('agg-1');
-  // The test "fails" by design: we expect the engine to reject/skip undefined values,
-  // but it actually sets them. The it.failing marker captures this gap.
-  expect(state?.newField).not.toBeUndefined();
+  // Fixed: should now throw InternalExecutionError instead of silently setting undefined
+  expect(() =>
+    projectEvent({
+      event: makeDomainEvent({ type: 'Ev', payload: {} }),
+      boundary,
+      graph,
+      cel: undefinedCel,
+    }),
+  ).toThrow(InternalExecutionError);
 });
 
 // ── VERIFIED: GenericUpdateEvent deep-merges payload ─────────────────────────

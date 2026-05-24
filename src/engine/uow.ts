@@ -218,6 +218,13 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
   const tracer = input.tracer ?? getTracer('engine');
   const startMs = Date.now();
 
+  // O-1 fix: increment commandsTotal for EVERY command entering executeUnitOfWork,
+  // including the fault-sim short-circuit path that bypasses the outer span.
+  metrics?.commandsTotal.add(1, {
+    boundary: command.boundary,
+    intent: command.intent,
+  });
+
   // -------------------------------------------------------------------------
   // Step 1 — Fault-sim short-circuit (req 31)
   // -------------------------------------------------------------------------
@@ -253,10 +260,6 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
     tracer,
     'engine.uow',
     async (_outerSpan) => {
-      metrics?.commandsTotal.add(1, {
-        boundary: command.boundary,
-        intent: command.intent,
-      });
 
       // -----------------------------------------------------------------------
       // Step 3 — Concurrency lock
@@ -318,7 +321,9 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
         while (pendingCommands.length > 0) {
           const cmd = pendingCommands.shift()!;
 
-          if (cmd.depth > maxDepth) {
+          // I3 fix: use >= so that depth === maxDepth is the last rejected level.
+          // With MAX_UOW_DEPTH=5, depth 5 throws (depth 4 is the last allowed).
+          if (cmd.depth >= maxDepth) {
             throw new InfiniteLoopError(
               `Cascade depth ${cmd.depth} exceeds maxDepth ${maxDepth} at boundary ${cmd.boundary}`,
               { depth: cmd.depth, maxDepth, boundary: cmd.boundary },
@@ -351,6 +356,7 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
                   now: () => new Date().toISOString(),
                   logger,
                   schemaRegistry,
+                  tracer,
                   nextSequenceVersion: (aggregateId) =>
                     eventStore.currentSequenceVersion(aggregateId) +
                     (stagedSeqDeltas.get(aggregateId) ?? 0) +
@@ -363,13 +369,15 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
                       cel,
                       logger,
                       schemaRegistry,
+                      tracer,
                     }),
                 });
               } catch (err) {
                 const code =
                   err instanceof Error ? (err as { code?: string }).code ?? err.message : String(err);
                 logger.warn({ err, code, commandId: cmd.commandId }, 'UoW aborted');
-                metrics?.uowAbortsTotal.add(1, { boundary: cmd.boundary });
+                // Note: uowAbortsTotal is incremented by the outer catch block, which covers
+                // all error types including ConcurrencyConflictError and MissingPreconditionError.
                 throw err;
               }
 
@@ -380,6 +388,9 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
                   evt.aggregateId,
                   (stagedSeqDeltas.get(evt.aggregateId) ?? 0) + 1,
                 );
+                // O-7 fix: log event staging with eventId and aggregateId bindings per REQ-42.
+                const evtLog = logger.child({ eventId: evt.eventId, aggregateId: evt.aggregateId });
+                evtLog.debug({ eventType: evt.type }, 'UoW staged event');
               }
 
               // Enqueue secondary commands for next iterations
@@ -425,6 +436,8 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
             openapi: input.openapi,
             logger,
             schemaRegistry,
+            events: eventStore,
+            tracer,
           });
           status = 200;
         } else if (command.intent === 'creation') {
@@ -455,6 +468,12 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
           events: stagedEvents,
         } satisfies ExecutionResult;
       } catch (err) {
+        // O-3 fix: increment uowAbortsTotal for ANY exception that aborts the UoW,
+        // not just PatternMatch failures (covers ConcurrencyConflictError,
+        // MissingPreconditionError, etc.). The inner catch inside the cascade span
+        // still handles pattern-match-specific logging; this outer catch ensures
+        // the metric is always incremented on abort.
+        metrics?.uowAbortsTotal.add(1, { boundary: command.boundary });
         if (outcome === 'error') {
           const elapsedMs = Date.now() - startMs;
           metrics?.commandDurationMs.record(elapsedMs, {

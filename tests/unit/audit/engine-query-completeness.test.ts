@@ -7,6 +7,7 @@
 
 import { runQuery } from '../../../src/engine/query';
 import { createStateGraph } from '../../../src/stategraph/graph';
+import { createEventStore } from '../../../src/eventstore/store';
 import { createCelEvaluator } from '../../../src/cel/evaluator';
 import { EntityAbsenceError } from '../../../src/errors';
 import { makeBoundary } from '../_helpers';
@@ -221,13 +222,12 @@ it('CONTRACT: derived properties are applied to single-entity query result', () 
   expect(result.tripled).toBe(45);
 });
 
-// ── AUDIT GAP: derived property CEL error is silently skipped ────────────────
+// ── FIX I2: derived property CEL error is now logged at warn and returns null ──
 
-it('AUDIT GAP (documented): derived property CEL evaluation failure silently skips the property — no error surfaced to caller', () => {
-  // query.ts lines 183-188: catch block logs and silently skips failed derived props.
-  // Design implication: a misconfigured x-derived expression never surfaces as an error.
-  // This is a silent-skip that could produce subtly wrong API responses.
-  // This test documents the actual behaviour (silent skip) rather than the desired behaviour.
+it('FIX I2: derived property CEL evaluation failure logs warn and sets property to null (not silently absent)', () => {
+  // I2 fix: catch block now logs at warn and sets the derived property to null.
+  // This makes misconfigured x-derived expressions detectable via logs and null sentinel.
+  // Should NOT throw — partial responses are returned with null for failed derived props.
 
   const alwaysThrowCel = {
     compile: (e: string) => ({ source: e }),
@@ -241,7 +241,7 @@ it('AUDIT GAP (documented): derived property CEL evaluation failure silently ski
 
   const openapi = makeOpenApiWithDerived('TestBoundary', { computed: 'state.value * 2' });
 
-  // Should NOT throw — the error is silently caught
+  // Should NOT throw — the error is caught and property set to null
   let result: any;
   expect(() => {
     result = runQuery({
@@ -254,8 +254,9 @@ it('AUDIT GAP (documented): derived property CEL evaluation failure silently ski
     });
   }).not.toThrow();
 
-  // The derived property 'computed' is silently absent (gap: no error indicator)
-  expect('computed' in result).toBe(false);
+  // The derived property 'computed' is present but null (sentinel for failed computation)
+  expect('computed' in result).toBe(true);
+  expect(result.computed).toBeNull();
 });
 
 // ── AUDIT GAP: collection query when boundary has no schema → no derived props ─
@@ -293,16 +294,42 @@ it('CONTRACT: single entity query throws EntityAbsenceError for absent targetId'
   ).toThrow(EntityAbsenceError);
 });
 
-// ── AUDIT GAP: collection query does not filter by boundary — returns ALL graph entries ─
+// ── FIX: collection query now filters by boundary using event store ───────────
 
-it.failing('AUDIT GAP: collection query returns ALL graph entries regardless of boundary — no boundary-scoping filter', () => {
-  // query.ts line 81: graph.values() returns ALL entities across ALL boundaries.
-  // There is no filter to restrict results to only the entities belonging to this boundary.
-  // This is a critical gap if boundaries share a single StateGraph (which they do in this impl).
-  // A Widget collection query would return Accounts too!
+it('FIX C1: collection query scopes results to the requested boundary via event store', () => {
+  // query.ts C1 fix: events store is used to filter entities to those originating
+  // from the requested boundary. Without this, graph.values() leaks all boundaries.
   const graph = createStateGraph();
+  const events = createEventStore();
+
+  // Populate events with the correct boundary for each entity
+  events.append([
+    {
+      eventId: 'evt-widget-1',
+      boundary: 'Widget',
+      aggregateId: 'widget-1',
+      type: 'BaselineEntityCreatedEvent',
+      payload: { id: 'widget-1', type: 'Widget' },
+      timestamp: '1970-01-01T00:00:00.000Z',
+      sequenceVersion: 1,
+      causedBy: null,
+    },
+  ]);
+  events.append([
+    {
+      eventId: 'evt-account-1',
+      boundary: 'Account',
+      aggregateId: 'account-1',
+      type: 'BaselineEntityCreatedEvent',
+      payload: { id: 'account-1', type: 'Account' },
+      timestamp: '1970-01-01T00:00:00.000Z',
+      sequenceVersion: 1,
+      causedBy: null,
+    },
+  ]);
+
   graph.set('widget-1', { id: 'widget-1', type: 'Widget' });
-  graph.set('account-1', { id: 'account-1', type: 'Account' }); // different boundary's entity
+  graph.set('account-1', { id: 'account-1', type: 'Account' });
 
   const result = runQuery({
     boundary: makeBoundary({ boundary: 'Widget' }),
@@ -311,9 +338,10 @@ it.failing('AUDIT GAP: collection query returns ALL graph entries regardless of 
     graph,
     cel,
     openapi: { raw: {}, paths: {} },
+    events,
   }) as any[];
 
-  // Expected: only Widget entities (1 result)
-  // Observed: all entities in graph regardless of boundary (2 results)
+  // Only Widget entities should be returned, not Account entities
   expect(result).toHaveLength(1);
+  expect(result[0].id).toBe('widget-1');
 });

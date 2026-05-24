@@ -3,6 +3,7 @@ import type { BoundaryConfig } from '../dsl/types.js';
 import type { ShadowGraph } from '../stategraph/shadow.js';
 import type { CelEvaluator } from '../cel/evaluator.js';
 import type { Logger } from '../observability/logger.js';
+import type { Tracer } from '../observability/tracing.js';
 import type { ObjectGraphSchemaRegistry } from '../schema/types.js';
 import { CelPhase } from '../cel/phases.js';
 import { getTracer, SpanStatusCode } from '../observability/tracing.js';
@@ -36,6 +37,12 @@ export interface PatternMatchInput {
    * projection engine (avoids a circular import path).
    */
   readonly projectToShadow: (event: DomainEvent) => void;
+  /**
+   * Optional tracer for the engine.patternMatch span. When provided, the span is emitted
+   * via this tracer (enabling injection by UoW for testability). Falls back to
+   * getTracer('engine') when absent.
+   */
+  readonly tracer?: Tracer;
 }
 
 export interface PatternMatchOutcome {
@@ -61,7 +68,9 @@ export interface PatternMatchOutcome {
  * @throws {UnhandledOperationError} (422) no match and no fallback.
  */
 export function runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
-  return withSpanSync('engine.patternMatch', () => _runPatternMatch(input));
+  // O-4 fix: use injected tracer when provided (enables span capture in tests).
+  // Falls back to getTracer('engine') for production paths.
+  return withSpanSync('engine.patternMatch', () => _runPatternMatch(input), input.tracer);
 }
 
 function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
@@ -299,14 +308,15 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
 
 /**
  * Synchronous wrapper that starts an active span, runs `fn`, ends the span, then
- * re-throws any error. Uses the tracer obtained via `getTracer` and the span API
- * directly (no async overhead for this synchronous hot path).
+ * re-throws any error. Accepts an optional injected tracer for testability;
+ * falls back to getTracer('engine') when absent.
  */
 function withSpanSync<T>(
   name: string,
   fn: () => T,
+  injectedTracer?: Tracer,
 ): T {
-  const tracer = getTracer('engine');
+  const tracer = injectedTracer ?? getTracer('engine');
   let result!: T;
   let threw = false;
   let thrownErr: unknown;

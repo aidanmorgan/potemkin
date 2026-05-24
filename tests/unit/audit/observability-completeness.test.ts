@@ -635,9 +635,12 @@ describe('observability/tracing — span completeness (REQ-43)', () => {
       },
     );
 
-    it.failing(
-      '[GAP] engine.patternMatch span exists within UoW execution',
+    it(
+      '[FIX O-4] engine.patternMatch span exists within UoW execution',
       async () => {
+        // engine.patternMatch is emitted by patternMatcher.ts via withSpanSync (getTracer fallback).
+        // The span appears in the UoW exporter since patternMatcher uses the global tracer.
+        // This test uses the first global tracer registration to capture it.
         const otel = buildInMemoryOtel();
         const metrics = createEngineMetrics(otel.meter);
 
@@ -679,16 +682,18 @@ describe('observability/tracing — span completeness (REQ-43)', () => {
 
         const spans = otel.spanExporter.getFinishedSpans();
         const spanNames = spans.map((s) => s.name);
-        // engine.patternMatch is NOT emitted — cascade span is engine.uow.cascade.depth-0
         expect(spanNames).toContain('engine.patternMatch');
 
         await otel.teardown();
       },
     );
 
-    it.failing(
-      '[GAP] engine.project span exists within UoW execution',
+    it(
+      '[FIX O-5] engine.project span exists within UoW execution',
       async () => {
+        // O-5 fix: projection.ts now accepts an optional tracer parameter.
+        // UoW threads the injected tracer through to projectEvent, so the
+        // engine.project span appears in the test exporter.
         const otel = buildInMemoryOtel();
         const metrics = createEngineMetrics(otel.meter);
 
@@ -730,16 +735,18 @@ describe('observability/tracing — span completeness (REQ-43)', () => {
 
         const spans = otel.spanExporter.getFinishedSpans();
         const spanNames = spans.map((s) => s.name);
-        // engine.project is NOT emitted — projections happen inline within cascade span
         expect(spanNames).toContain('engine.project');
 
         await otel.teardown();
       },
     );
 
-    it.failing(
-      '[GAP] engine.query span exists for query intent',
+    it(
+      '[FIX O-6] engine.query span exists for query intent',
       async () => {
+        // O-6 fix: query.ts now accepts an optional tracer parameter.
+        // UoW threads the injected tracer through to runQuery, so the
+        // engine.query span appears in the test exporter.
         const otel = buildInMemoryOtel();
         const metrics = createEngineMetrics(otel.meter);
 
@@ -781,7 +788,6 @@ describe('observability/tracing — span completeness (REQ-43)', () => {
 
         const spans = otel.spanExporter.getFinishedSpans();
         const spanNames = spans.map((s) => s.name);
-        // engine.query is NOT emitted — query runs inline without a dedicated span
         expect(spanNames).toContain('engine.query');
 
         await otel.teardown();

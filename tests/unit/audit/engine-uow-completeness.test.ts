@@ -278,13 +278,32 @@ it('CONTRACT: command at depth equal to maxDepth IS rejected (depth > maxDepth m
   expect(sys.graph.get(id)).not.toBeNull();
 });
 
-it.failing('AUDIT GAP: depth === maxDepth is allowed but depth === maxDepth+1 throws — off-by-one boundary test needs cascading setup', () => {
-  // The exact boundary (5 vs 6) cannot be tested via integration without dispatch chain.
-  // The uow code uses `>` not `>=`, meaning depth=maxDepth is the last allowed slot.
-  // With default maxDepth=5 and starting depth=0, a command that generates 6 levels deep throws.
-  // This gap: there is no test covering depth exactly at the boundary (depth=5 allowed, depth=6 throws).
-  // Marking as it.failing to document the missing coverage.
-  expect(true).toBe(false);
+it('FIX I3: depth === maxDepth now throws (>= check) — off-by-one boundary is fixed', async () => {
+  // uow.ts I3 fix: changed `>` to `>=`. Now depth=maxDepth (5) throws InfiniteLoopError.
+  // A command at depth=maxDepth is rejected; depth=maxDepth-1 is the last allowed slot.
+  // We test this by running a command at depth=MAX_UOW_DEPTH (5) directly.
+  await expect(
+    executeUnitOfWork({
+      command: {
+        commandId: 'depth-test',
+        boundary: 'Item',
+        intent: 'creation',
+        targetId: 'depth-target',
+        payload: { name: 'x' },
+        queryParams: {},
+        httpMethod: 'POST',
+        path: '/items',
+        origin: 'secondary',
+        depth: 5, // depth === MAX_UOW_DEPTH (5) should now throw with >= check
+      },
+      dsl: sys.dsl,
+      graph: sys.graph,
+      events: sys.events,
+      cel: sys.cel,
+      validator: sys.validator,
+      maxDepth: 5,
+    }),
+  ).rejects.toThrow(InfiniteLoopError);
 });
 
 // ── VERIFIED: shadowAsStateGraph.values() merges shadow + global ──────────────

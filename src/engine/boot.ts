@@ -14,7 +14,7 @@ import { compileDsl } from '../dsl/parser.js';
 import { BootError } from '../errors.js';
 import { createCelEvaluator } from '../cel/evaluator.js';
 import { createEventStore } from '../eventstore/store.js';
-import { createStateGraph } from '../stategraph/graph.js';
+import { createStateGraph, deepFreeze } from '../stategraph/graph.js';
 import { createContractValidator } from '../contract/validator.js';
 import { projectEvent } from './projection.js';
 import { epochAnchoredUuidv7 } from '../ids/uuidv7.js';
@@ -213,7 +213,9 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
         const aggregateId =
           typeof record['id'] === 'string' ? record['id'] : epochAnchoredUuidv7(globalIdx);
 
-        const event: DomainEvent = Object.freeze({
+        // Deep-freeze: Object.freeze is shallow; deepFreeze ensures payload is also immutable
+        // so that baseline state cannot be silently corrupted between boot and reset cycles.
+        const event: DomainEvent = deepFreeze({
           eventId: epochAnchoredUuidv7(globalIdx),
           type: 'BaselineEntityCreatedEvent',
           boundary: boundary.boundary,
