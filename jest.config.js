@@ -19,6 +19,7 @@ module.exports = {
   testPathIgnorePatterns: [
     '/node_modules/',
     '/tests/integration/specmatic-cli/',
+    '/tests/e2e/',
   ],
   moduleFileExtensions: ['ts', 'js', 'json'],
   setupFilesAfterEach: ['<rootDir>/tests/setup.ts'],
