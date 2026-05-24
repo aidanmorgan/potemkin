@@ -7,14 +7,16 @@ import io.specmatic.stub.HttpStubResponse
 import okhttp3.OkHttpClient
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * Unit tests for [StatefulRequestHandler].
  *
- * Uses hand-rolled fakes for [RoutesDiscoveryClient] and [CqrsBackendClient] to keep tests
- * fast and dependency-free.
+ * Uses hand-rolled fakes for [RoutesDiscoveryClient], [CqrsBackendClient], and [FixturesClient]
+ * to keep tests fast and dependency-free.
  */
 class StatefulRequestHandlerTest {
 
@@ -46,13 +48,26 @@ class StatefulRequestHandlerTest {
         }
     }
 
+    /**
+     * Fake fixtures client with a configurable excluded-paths set.
+     * Uses a no-op OkHttpClient so construction never hits the network.
+     */
+    private class FakeFixturesClient(
+        private val excluded: Set<Pair<String, String>> = emptySet(),
+    ) : FixturesClient(
+        backendUrl = "http://unused",
+        httpClient = noOpHttpClient(),
+    ) {
+        override fun excludedPaths(): Set<Pair<String, String>> = excluded
+    }
+
     private fun cannedResponse(status: Int = 200): HttpStubResponse =
         HttpStubResponse(response = HttpResponse(status = status, body = StringValue("ok")))
 
-    private fun request(path: String = "/loans/123") =
-        HttpRequest(method = "GET", path = path, body = StringValue(""))
+    private fun request(method: String = "GET", path: String = "/loans/123") =
+        HttpRequest(method = method, path = path, body = StringValue(""))
 
-    // ---- tests --------------------------------------------------------------------------
+    // ---- original tests (unchanged) -----------------------------------------------------
 
     @Test
     fun `path matches and client returns response - handler returns response`() {
@@ -71,7 +86,7 @@ class StatefulRequestHandlerTest {
         val client = FakeClient(cannedResponse())
         val handler = StatefulRequestHandler(FixedDiscoveryClient(false), client)
 
-        val result = handler.handleRequest(request("/products/1"))
+        val result = handler.handleRequest(request(path = "/products/1"))
 
         assertNull(result)
         assertEquals(false, client.called, "Client should NOT be called when path does not match")
@@ -118,6 +133,94 @@ class StatefulRequestHandlerTest {
 
         assertNotNull(result)
         assertEquals(404, result.response.status)
+    }
+
+    // ---- excluded-paths short-circuit tests ---------------------------------------------
+
+    @Test
+    fun `request in excludedPaths returns null without calling discovery or client`() {
+        val client = FakeClient(cannedResponse())
+        var discoveryCalled = false
+        val discovery = object : RoutesDiscoveryClient(
+            backendUrl = "http://unused",
+            httpClient = noOpHttpClient(),
+        ) {
+            override fun isStateful(path: String): Boolean {
+                discoveryCalled = true
+                return true
+            }
+        }
+        val fixtures = FakeFixturesClient(excluded = setOf("GET" to "/loans/123"))
+        val handler = StatefulRequestHandler(discovery, client, fixtures)
+
+        val result = handler.handleRequest(request(method = "GET", path = "/loans/123"))
+
+        assertNull(result, "Handler should return null for excluded paths")
+        assertFalse(client.called, "Client should NOT be called for excluded paths")
+        assertFalse(discoveryCalled, "Discovery should NOT be called for excluded paths")
+    }
+
+    @Test
+    fun `request NOT in excludedPaths is handled normally`() {
+        val client = FakeClient(cannedResponse(200))
+        val fixtures = FakeFixturesClient(excluded = setOf("DELETE" to "/other"))
+        val handler = StatefulRequestHandler(FixedDiscoveryClient(true), client, fixtures)
+
+        val result = handler.handleRequest(request(method = "GET", path = "/loans/123"))
+
+        assertNotNull(result, "Handler should forward non-excluded stateful paths")
+        assertTrue(client.called)
+    }
+
+    @Test
+    fun `excludedPaths check is case-insensitive on method (uppercase normalised)`() {
+        val client = FakeClient(cannedResponse())
+        // The fixture was registered as uppercase "POST"
+        val fixtures = FakeFixturesClient(excluded = setOf("POST" to "/loans"))
+        val handler = StatefulRequestHandler(FixedDiscoveryClient(true), client, fixtures)
+
+        // Request comes in with lowercase method (shouldn't happen in practice, but be safe)
+        val result = handler.handleRequest(request(method = "post", path = "/loans"))
+
+        assertNull(result, "Handler should exclude paths regardless of incoming method casing")
+        assertFalse(client.called)
+    }
+
+    @Test
+    fun `null fixtures client - handler behaves as before (no short-circuit)`() {
+        val client = FakeClient(cannedResponse(200))
+        val handler = StatefulRequestHandler(FixedDiscoveryClient(true), client, fixtures = null)
+
+        val result = handler.handleRequest(request(method = "GET", path = "/loans/123"))
+
+        assertNotNull(result)
+        assertTrue(client.called)
+    }
+
+    @Test
+    fun `excluded path with different method is NOT excluded`() {
+        val client = FakeClient(cannedResponse(200))
+        // Only DELETE /loans is excluded, not GET /loans
+        val fixtures = FakeFixturesClient(excluded = setOf("DELETE" to "/loans"))
+        val handler = StatefulRequestHandler(FixedDiscoveryClient(true), client, fixtures)
+
+        val result = handler.handleRequest(request(method = "GET", path = "/loans"))
+
+        assertNotNull(result, "GET /loans should not be excluded when only DELETE /loans is in excludedPaths")
+        assertTrue(client.called)
+    }
+
+    @Test
+    fun `excluded path with different path is NOT excluded`() {
+        val client = FakeClient(cannedResponse(200))
+        val fixtures = FakeFixturesClient(excluded = setOf("GET" to "/loans"))
+        val handler = StatefulRequestHandler(FixedDiscoveryClient(true), client, fixtures)
+
+        // /customers is not in excluded set
+        val result = handler.handleRequest(request(method = "GET", path = "/customers"))
+
+        assertNotNull(result)
+        assertTrue(client.called)
     }
 }
 

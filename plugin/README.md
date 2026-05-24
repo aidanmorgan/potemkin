@@ -56,6 +56,20 @@ The fat-JAR bundles all transitive dependencies (OkHttp, Jackson, SnakeYAML, SLF
 
 ---
 
+## Fixture push
+
+On startup the plugin calls `GET <backendUrl>/_engine/fixtures` to fetch DSL-derived fixture stubs from the Node engine. Each fixture is a static request/response pair generated from the bounded-context DSL (see `FixturesResponse` / `FixtureStub` in `HttpModels.kt`).
+
+Every successfully fetched fixture is registered with Specmatic via `HttpStub.setExpectation(ScenarioStub)` — the public dynamic-expectation API in `io.specmatic.stub.HttpStub`. If a fixture does not match any loaded contract scenario (Specmatic throws `NoMatchingScenario`), the failure is logged at WARN level and the plugin continues — plugin boot is never interrupted by an unregisterable fixture.
+
+After registration, the set of `(method.uppercase(), exact-path)` tuples for every registered fixture is stored in `FixturesClient.excludedPaths()`. The `StatefulRequestHandler` checks this set on every request: if the incoming `(method, path)` is in the set, the handler returns `null` immediately and lets Specmatic serve its own registered stub directly. This ensures the forwarding path never interferes with fixture-backed responses.
+
+### Fixture refresh
+
+The fixture list is fetched once at startup. The underlying `FixturesClient` honours `ETag` / `Cache-Control` headers from the Node engine (same pattern as the route-discovery client), so a repeat call returns the cached list on `304 Not Modified`.
+
+---
+
 ## Route discovery
 
 On startup the plugin calls `GET <backendUrl>/_engine/routes` and builds an in-memory path matcher from the response. The response shape is:

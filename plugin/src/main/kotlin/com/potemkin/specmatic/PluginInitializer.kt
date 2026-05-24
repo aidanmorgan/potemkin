@@ -29,7 +29,29 @@ class PluginInitializer : StubInitializer {
         )
         val client = CqrsBackendClient(config.backendUrl, config.forwardTimeoutMs)
         val discovery = RoutesDiscoveryClient(config.backendUrl, config.discoveryRefreshOnFailureMs)
-        val handler = StatefulRequestHandler(discovery, client)
+        val fixturesClient = FixturesClient(config.backendUrl, config.discoveryRefreshOnFailureMs)
+        val bridge = SpecmaticStubBridge(httpStub)
+
+        // Pull DSL-derived fixtures from the Node engine and register them as Specmatic stubs.
+        val fixtures = try {
+            fixturesClient.fetchFixtures()
+        } catch (e: Exception) {
+            log.warn("Failed to fetch fixtures from Node engine; continuing without fixture push", e)
+            emptyList()
+        }
+
+        val registered = mutableSetOf<Pair<String, String>>()
+        var registeredCount = 0
+        for (fixture in fixtures) {
+            if (bridge.registerStub(fixture)) {
+                registered.add(fixture.httpRequest.method.uppercase() to fixture.httpRequest.path)
+                registeredCount++
+            }
+        }
+        fixturesClient.recordPushedPaths(registered)
+        log.info("Registered {} DSL-derived fixtures with Specmatic", registeredCount)
+
+        val handler = StatefulRequestHandler(discovery, client, fixturesClient)
         httpStub.registerHandler(handler)
         log.info(
             "Potemkin StatefulRequestHandler registered — routes discovered via {}/_engine/routes",
