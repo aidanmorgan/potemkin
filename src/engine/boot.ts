@@ -10,6 +10,7 @@ import type { Tracer } from '../observability/tracing.js';
 import type { EngineMetrics } from '../observability/metrics.js';
 import type { ObjectGraphSchemaRegistry } from '../schema/types.js';
 import type { DerivedProjectionRegistry } from '../projections/types.js';
+import type { PluginControlClient } from '../lifecycle/types.js';
 
 import { compileDsl } from '../dsl/parser.js';
 import { BootError } from '../errors.js';
@@ -24,6 +25,7 @@ import { getTracer, withSpan, createEngineMetrics } from '../observability/index
 import { deriveSchemasFromOpenApi } from '../schema/fromOpenApi.js';
 import { staticCheckDsl } from '../schema/dslStaticChecker.js';
 import { createDerivedProjectionRegistry, applyEventToDerivedProjections } from '../projections/engine.js';
+import { createPluginControlClient } from '../lifecycle/pluginControlClient.js';
 
 export interface BootInput {
   readonly openapi: OpenApiDoc;
@@ -34,6 +36,15 @@ export interface BootInput {
   readonly tracer?: Tracer;
   /** Optional pre-built metrics instance; boot creates one if absent. */
   readonly metrics?: EngineMetrics;
+  /**
+   * Optional plugin control configuration.  When set, the engine sends a
+   * POST /ready notification to the configured URL after a successful boot,
+   * and attaches the client to BootedSystem for use during shutdown.
+   */
+  readonly pluginControl?: {
+    readonly url: string;
+    readonly timeoutMs?: number;
+  };
 }
 
 export interface BootedSystem {
@@ -63,6 +74,11 @@ export interface BootedSystem {
    * Populated by applyEventToDerivedProjections after each committed event.
    */
   readonly derivedProjections: DerivedProjectionRegistry;
+  /**
+   * Plugin control client, present when `BootInput.pluginControl` was supplied.
+   * Used by the graceful-shutdown wrapper to send a /shutdown notification.
+   */
+  readonly pluginControl?: PluginControlClient;
 }
 
 /** Header names that indicate an optimistic-concurrency precondition. */
@@ -345,7 +361,19 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       }
     }
 
-    return {
+    // ── Step 10: Plugin control client (optional) ─────────────────────────────
+    // Build a PluginControlClient when a URL is configured, attach it to the
+    // BootedSystem so the graceful-shutdown wrapper can call notifyShutdown.
+    let pluginControlClient: PluginControlClient | undefined;
+    if (input.pluginControl?.url) {
+      pluginControlClient = createPluginControlClient({
+        url: input.pluginControl.url,
+        timeoutMs: input.pluginControl.timeoutMs,
+        logger,
+      });
+    }
+
+    const bootedSystem = {
       dsl,
       openapi: input.openapi,
       events,
@@ -359,6 +387,38 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       schemaRegistry,
       requiresPrecondition: preconditionRequired,
       derivedProjections,
+      ...(pluginControlClient !== undefined ? { pluginControl: pluginControlClient } : {}),
     };
+
+    // Fire-and-forget /ready notification — must not block boot completion.
+    if (pluginControlClient) {
+      const sortedPaths = Object.keys(dsl.byContractPath).sort();
+      const { createHash } = await import('node:crypto');
+      const routesChecksum = createHash('sha256').update(sortedPaths.join('\n')).digest('hex');
+      const fixturesChecksum = createHash('sha256').update(String(frozenBaseline.length)).digest('hex');
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const pkgVersion: string = (require('../../package.json') as { version: string }).version;
+
+      const readyPayload = {
+        engine: 'potemkin-stateful',
+        version: pkgVersion,
+        startedAt: new Date().toISOString(),
+        contractPaths: sortedPaths,
+        routesChecksum,
+        fixturesChecksum,
+      };
+
+      // Spawn as a microtask so the BootedSystem is returned first.
+      void Promise.resolve().then(async () => {
+        const result = await pluginControlClient!.notifyReady(readyPayload);
+        if (result.ok) {
+          bootLog.info({ attempts: result.attempts, durationMs: result.durationMs }, 'Boot: plugin /ready notification sent');
+        } else {
+          bootLog.warn({ attempts: result.attempts, error: result.error }, 'Boot: plugin /ready notification failed (non-fatal)');
+        }
+      });
+    }
+
+    return bootedSystem;
   });
 }

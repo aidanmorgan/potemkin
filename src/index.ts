@@ -157,3 +157,14 @@ export {
   applyEventToDerivedProjections,
   getDerivedProjection,
 } from './projections/engine.js';
+
+// ── Lifecycle (graceful shutdown + plugin notifications) ──────────────────────
+export type {
+  PluginControlConfig,
+  PluginControlClient,
+  ReadyNotification,
+  ShutdownNotification,
+  NotifyResult,
+  GracefulShutdownConfig,
+} from './lifecycle/index.js';
+export { createPluginControlClient, installGracefulShutdown } from './lifecycle/index.js';
