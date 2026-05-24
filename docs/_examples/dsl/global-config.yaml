@@ -1,0 +1,46 @@
+idempotency:
+  enabled: true
+  ttl_seconds: 86400
+  hash_includes_body: true
+
+sagas:
+  - name: LoanApproval
+    trigger:
+      boundary: LoanAccount
+      intent: creation
+      condition: "command.payload.principal > 50000"
+    steps:
+      - name: reserveCredit
+        boundary: CreditBureau
+        intent: mutation
+        target_id: "command.payload.customerId"
+        payload:
+          amount: "command.payload.principal"
+        compensation:
+          intent: mutation
+          target_id: "command.payload.customerId"
+          payload:
+            release: "command.payload.principal"
+      - name: notifyRiskTeam
+        boundary: Notification
+        intent: creation
+        payload:
+          subject: "'Large loan approval required'"
+          loanId: "command.targetId"
+          principal: "command.payload.principal"
+
+derived_projections:
+  - name: CustomerSummary
+    key: "event.aggregateId"
+    subscribe:
+      - Customer:CustomerRegistered
+      - LoanAccount:LoanOpened
+    reduce:
+      - on: CustomerRegistered
+        assign:
+          customer_id: "event.aggregateId"
+          name: "event.payload.name"
+          total_loans: "0"
+      - on: LoanOpened
+        assign:
+          total_loans: "coalesce(state.total_loans, 0) + 1"
