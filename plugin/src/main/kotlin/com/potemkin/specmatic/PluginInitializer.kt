@@ -1,5 +1,12 @@
 package com.potemkin.specmatic
 
+import com.potemkin.specmatic.control.ControlServer
+import com.potemkin.specmatic.control.ControlServerConfig
+import com.potemkin.specmatic.reliability.FixtureLifecycleManager
+import com.potemkin.specmatic.reliability.HealthMonitor
+import com.potemkin.specmatic.reliability.HealthProbeConfig
+import com.potemkin.specmatic.reliability.ResilienceConfig
+import com.potemkin.specmatic.reliability.ResilientForwarder
 import io.specmatic.core.SpecmaticConfig
 import io.specmatic.stub.HttpStub
 import io.specmatic.stub.StubInitializer
@@ -13,6 +20,12 @@ import org.slf4j.LoggerFactory
  *
  * [initialize] is called once during [HttpStub] construction, before the HTTP server starts,
  * so [StatefulRequestHandler] is registered before any requests are served.
+ *
+ * Reliability components initialised here:
+ *  - [HealthMonitor] — adaptive coroutine probe of `/_engine/health`
+ *  - [ResilientForwarder] — resilience4j retry + circuit breaker around [CqrsBackendClient]
+ *  - [FixtureLifecycleManager] — subscribes to health transitions; manages fixture push/clear
+ *  - [ControlServer] — Ktor/Netty server receiving `/ready` and `/shutdown` from the Node engine
  */
 class PluginInitializer : StubInitializer {
 
@@ -22,40 +35,47 @@ class PluginInitializer : StubInitializer {
         log.info("Potemkin plugin initialising…")
         val config = PluginConfig.load()
         log.info(
-            "Potemkin plugin config: backendUrl={}, forwardTimeoutMs={}, discoveryRefreshOnFailureMs={}",
+            "Potemkin plugin config: backendUrl={}, forwardTimeoutMs={}, discoveryRefreshOnFailureMs={}, controlPort={}",
             config.backendUrl,
             config.forwardTimeoutMs,
             config.discoveryRefreshOnFailureMs,
+            config.controlPort,
         )
-        val client = CqrsBackendClient(config.backendUrl, config.forwardTimeoutMs)
+
+        val backendClient = CqrsBackendClient(config.backendUrl, config.forwardTimeoutMs)
+        val resilient = ResilientForwarder(backendClient, ResilienceConfig.from(config))
         val discovery = RoutesDiscoveryClient(config.backendUrl, config.discoveryRefreshOnFailureMs)
         val fixturesClient = FixturesClient(config.backendUrl, config.discoveryRefreshOnFailureMs)
         val bridge = SpecmaticStubBridge(httpStub)
 
-        // Pull DSL-derived fixtures from the Node engine and register them as Specmatic stubs.
-        val fixtures = try {
-            fixturesClient.fetchFixtures()
+        val health = HealthMonitor(
+            backendUrl = config.backendUrl,
+            config = HealthProbeConfig.from(config),
+        )
+        val lifecycle = FixtureLifecycleManager(health, fixturesClient, bridge)
+        val control = ControlServer(
+            config = ControlServerConfig(port = config.controlPort),
+            healthMonitor = health,
+            routes = discovery,
+            fixtures = fixturesClient,
+        )
+
+        health.addListener(lifecycle)
+        health.start()
+        lifecycle.start()
+
+        try {
+            control.start()
         } catch (e: Exception) {
-            log.warn("Failed to fetch fixtures from Node engine; continuing without fixture push", e)
-            emptyList()
+            log.warn("ControlServer failed to start on port {}: {} — continuing without control server", config.controlPort, e.message)
         }
 
-        val registered = mutableSetOf<Pair<String, String>>()
-        var registeredCount = 0
-        for (fixture in fixtures) {
-            if (bridge.registerStub(fixture)) {
-                registered.add(fixture.httpRequest.method.uppercase() to fixture.httpRequest.path)
-                registeredCount++
-            }
-        }
-        fixturesClient.recordPushedPaths(registered)
-        log.info("Registered {} DSL-derived fixtures with Specmatic", registeredCount)
-
-        val handler = StatefulRequestHandler(discovery, client, fixturesClient)
+        val handler = StatefulRequestHandler(discovery, backendClient, fixturesClient, resilient)
         httpStub.registerHandler(handler)
         log.info(
-            "Potemkin StatefulRequestHandler registered — routes discovered via {}/_engine/routes",
+            "Potemkin StatefulRequestHandler registered — routes discovered via {}/_engine/routes, control server on port {}",
             config.backendUrl,
+            config.controlPort,
         )
     }
 }

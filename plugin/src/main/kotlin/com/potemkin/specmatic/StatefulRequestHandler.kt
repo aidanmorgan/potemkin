@@ -1,6 +1,9 @@
 package com.potemkin.specmatic
 
+import com.potemkin.specmatic.reliability.ResilientForwarder
 import io.specmatic.core.HttpRequest
+import io.specmatic.core.HttpResponse
+import io.specmatic.core.value.StringValue
 import io.specmatic.stub.HttpStubResponse
 import io.specmatic.stub.RequestHandler
 import org.slf4j.LoggerFactory
@@ -8,20 +11,29 @@ import org.slf4j.LoggerFactory
 /**
  * Specmatic [RequestHandler] that intercepts requests whose paths are owned by the Node CQRS
  * engine (as discovered at runtime via [RoutesDiscoveryClient]) and forwards them to the engine
- * via [CqrsBackendClient].
+ * via [ResilientForwarder] (resilience4j retry + circuit-breaker wrapper around [CqrsBackendClient]).
  *
  * Contract:
  * - Returns `null` for any (method, path) tuple that was registered as a Specmatic stub via
  *   [FixturesClient.excludedPaths] → Specmatic serves the registered stub directly.
  * - Returns `null` for any path that is NOT a discovered stateful route → Specmatic continues.
- * - Returns `null` when the backend client cannot reach the engine → Specmatic falls through.
+ * - Returns a **503** [HttpStubResponse] when the resilient forwarder definitively fails
+ *   (retries exhausted, circuit open) for a path we own — so the client sees a clear error
+ *   rather than Specmatic generating a fake success response.
  * - Returns the engine's response for matched paths that the engine handles successfully.
  * - NEVER throws — all exceptions are caught internally so Specmatic is never disrupted.
+ *
+ * The [client] parameter accepts either a [CqrsBackendClient] (legacy / test path) or a
+ * [ResilientForwarder] (production). Both are subtypes of [ForwardingClient] (structural
+ * duck-typed via the [forward] extension inside this file) — since [CqrsBackendClient]
+ * returns nullable and [ResilientForwarder] is non-nullable, [StatefulRequestHandler]
+ * wraps the call in a common [forward] helper.
  */
 class StatefulRequestHandler(
     private val discovery: RoutesDiscoveryClient,
     private val client: CqrsBackendClient,
     private val fixtures: FixturesClient? = null,
+    private val resilientForwarder: ResilientForwarder? = null,
 ) : RequestHandler {
 
     override val name: String = "potemkin-stateful"
@@ -47,6 +59,21 @@ class StatefulRequestHandler(
                 return null  // Not our path — let Specmatic handle it.
             }
 
+            // Use the resilient forwarder when available (production path).
+            if (resilientForwarder != null) {
+                val response = resilientForwarder.forward(httpRequest)
+                // 503 from ResilientForwarder means the engine is definitively unavailable.
+                // Return it directly so the caller sees the failure.
+                if (response.response.status == 503) {
+                    log.warn(
+                        "Node engine unavailable for owned path '{}' — returning 503",
+                        path,
+                    )
+                }
+                return response
+            }
+
+            // Legacy path: bare CqrsBackendClient (used in existing unit tests).
             val response = client.forward(httpRequest)
             if (response == null) {
                 log.debug(

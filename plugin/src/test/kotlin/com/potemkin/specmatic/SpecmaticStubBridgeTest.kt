@@ -5,6 +5,7 @@ import io.specmatic.core.HttpResponse
 import io.specmatic.core.value.StringValue
 import io.specmatic.mock.ScenarioStub
 import io.specmatic.stub.HttpStub
+import io.specmatic.stub.HttpStubData
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -42,9 +43,10 @@ class SpecmaticStubBridgeTest {
     ) {
         val captured = mutableListOf<ScenarioStub>()
 
-        override fun doSetExpectation(scenarioStub: ScenarioStub) {
+        override fun doSetExpectation(scenarioStub: ScenarioStub): List<HttpStubData>? {
             if (shouldThrow) throw RuntimeException(throwMessage)
             captured.add(scenarioStub)
+            return null
         }
     }
 
@@ -194,7 +196,7 @@ class SpecmaticStubBridgeTest {
     @Test
     fun `registerStub returns false on any exception type`() {
         val bridge = object : SpecmaticStubBridge(null) {
-            override fun doSetExpectation(scenarioStub: ScenarioStub) {
+            override fun doSetExpectation(scenarioStub: ScenarioStub): List<HttpStubData>? {
                 throw IllegalStateException("Unexpected internal Specmatic error")
             }
         }
