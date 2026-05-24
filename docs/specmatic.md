@@ -240,12 +240,12 @@ List all currently registered expectations (dynamic + file-loaded).
 
 Remove a single expectation by its UUID.
 
-**Response codes:**
+This endpoint is **tolerant**: it always returns `200` regardless of whether an expectation
+with that id exists, matching Specmatic JVM `HttpStub` behaviour. This makes test-teardown
+cleanup safe even when an expectation has already been removed or was never registered.
 
-| Status | Meaning |
-|--------|---------|
-| `200` | Removed; body `{ "id": "<uuid>" }` |
-| `404 STUB_NOT_FOUND` | No expectation with that id |
+**Response:** `200 { "removed": boolean }` — `true` if an expectation was actually deleted,
+`false` if no expectation with that id was found. Header `X-Specmatic-Result: success`.
 
 #### `DELETE /_specmatic/expectations`
 
@@ -502,7 +502,83 @@ request body matches**.
 A request body of `{ "riskBand": "LOW", "name": "Alice" }` (different key order) matches.
 A request body of `{ "name": "Bob", "riskBand": "LOW" }` does not match.
 
-Source: `src/specmatic/matcher.ts:165`
+#### Type patterns in body leaves
+
+A string value in the matcher body that matches `^\(.*\)$` (parenthesised) or is `*` is
+treated as a **type pattern** — it matches the request leaf by type or format rather than
+requiring exact string equality. This is opt-in: any string that does not match the pattern
+syntax is still compared literally.
+
+| Pattern | Matches request value of |
+|---------|--------------------------|
+| `(string)` | Any string |
+| `(number)` | Any number (integer or float) |
+| `(integer)` | Integer number only (no fractional part) |
+| `(boolean)` | `true` or `false` |
+| `(null)` | `null` |
+| `(any)` | Any value, any type |
+| `(anyvalue)` | Any value, any type (alias for `(any)`) |
+| `*` | Any value, any type (bare wildcard alias) |
+| `(uuid)` | String matching UUID format (8-4-4-4-12 hex) |
+| `(datetime)` | ISO-8601 datetime string (`YYYY-MM-DDTHH:mm:ssZ`) |
+| `(date-time)` | Alias for `(datetime)` |
+| `(date)` | ISO date string (`YYYY-MM-DD`) |
+
+Type patterns may appear at **any leaf** in the matcher body; they cannot replace a whole
+object or array node. Nested structures are walked recursively: inner leaves may be patterns
+while sibling leaves remain exact.
+
+**Example 1 — mixed literal + type pattern:**
+
+```json
+{
+  "http-request": {
+    "method": "POST",
+    "path": "/payments",
+    "body": {
+      "amount":    "(number)",
+      "currency":  "AUD",
+      "reference": "(string)"
+    }
+  }
+}
+```
+
+Matches any body where `amount` is a number, `currency` is exactly `"AUD"`, and `reference`
+is any string.
+
+**Example 2 — nested object:**
+
+```json
+{
+  "http-request": {
+    "method": "POST",
+    "path": "/transfers",
+    "body": {
+      "from": { "accountId": "(uuid)", "bsb": "(string)" },
+      "amount": "(number)"
+    }
+  }
+}
+```
+
+**Example 3 — (any) absorbs any leaf value:**
+
+```json
+{
+  "http-request": {
+    "method": "POST",
+    "path": "/customers",
+    "body": { "name": "(any)", "riskBand": "(any)" }
+  }
+}
+```
+
+This stub matches any POST /customers body regardless of what values `name` and `riskBand`
+hold — equivalent to omitting the body matcher altogether but restricted to bodies that
+have exactly those two keys.
+
+Source: `src/specmatic/matcher.ts` — `isTypePattern`, `matchTypePattern`, `matchBody`
 
 ### 4.6 Match Precedence
 
@@ -1038,7 +1114,6 @@ All errors on `/_specmatic/*` endpoints return JSON with an `error` field and se
 |-------------|---------------|-------|
 | `400` | `STUB_BODY_INVALID` | Missing or wrong-type fields in the stub registration body |
 | `400` | `STUB_VALIDATION_FAILED` | Stub response body fails OpenAPI contract validation |
-| `404` | `STUB_NOT_FOUND` | `DELETE /_specmatic/expectations/:id` — no expectation with that id |
 
 ### Business-route error codes (CQRS pipeline)
 
@@ -1159,7 +1234,7 @@ await agent.get('/loans/loan-x').expect(404);
 |-------------------|---------|-------|
 | `POST /_specmatic/expectations` | ✅ | Wire-format compatible |
 | `GET /_specmatic/expectations` | ✅ (extension) | Not in JVM `HttpStub`; engine-only |
-| `DELETE /_specmatic/expectations/:id` | ✅ | |
+| `DELETE /_specmatic/expectations/:id` | ✅ | Always 200; `{ "removed": boolean }` — tolerant like JVM HttpStub |
 | `DELETE /_specmatic/expectations` | ✅ | |
 | `POST /_specmatic/expectations/clear` | ✅ | Alias for DELETE |
 | `POST /_specmatic/expectations/sequenced` | ✅ | Engine extension (T2) |
@@ -1182,7 +1257,7 @@ await agent.get('/loans/loan-x').expect(404);
 | Method case-insensitive | ✅ | |
 | LIFO match precedence | ✅ | |
 | `delay-in-milliseconds` per stub | ❌ | Not implemented |
-| Type-pattern matchers `(string)`, `(number)` | ⚠️ | Recognised as wildcards in headers/query only; not in body |
+| Type-pattern matchers `(string)`, `(number)`, etc. | ✅ | Supported in headers, query, and body leaves (see section 4.5) |
 | Named capture variables `(VAR:type)` / `$(VAR)` | ❌ | Not implemented |
 | `bodyRegex` matcher | ❌ | Not implemented |
 | Partial example `"partial": {}` | ❌ | Not implemented |

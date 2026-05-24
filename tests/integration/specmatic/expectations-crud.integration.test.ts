@@ -68,12 +68,12 @@ describe('expectations-crud.integration', () => {
     expect(ids).not.toContain(id);
   });
 
-  it('DELETE /_specmatic/expectations/:id for unknown id → 404 + STUB_NOT_FOUND', async () => {
+  it('DELETE /_specmatic/expectations/:id for unknown id → 200 + removed:false (tolerant)', async () => {
     const res = await agent
       .delete('/_specmatic/expectations/00000000-0000-7000-8000-nonexistent1')
-      .expect(404);
-    expect(res.body.error).toBe('STUB_NOT_FOUND');
-    expect(res.headers['x-specmatic-result']).toBe('failure');
+      .expect(200);
+    expect(res.body.removed).toBe(false);
+    expect(res.headers['x-specmatic-result']).toBe('success');
   });
 
   it('DELETE /_specmatic/expectations → clear all; subsequent GET returns empty list', async () => {
