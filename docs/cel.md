@@ -24,7 +24,7 @@ See `docs/dsl.md` for the full list of DSL fields that accept CEL strings. Key l
 | DSL field | CEL phase |
 |---|---|
 | `behaviors[].match.condition` | Behavior |
-| `behaviors[].match.requires[].expression` | Behavior |
+| `behaviors[].match.requires[].condition` | Behavior |
 | `behaviors[].postcondition` | Behavior |
 | `behaviors[].dispatch_commands[].condition` | Behavior |
 | `event_catalog[].payload_template.*` | EventHydration |
@@ -557,7 +557,17 @@ Source: `src/cel/evaluator.ts` (`evalStringMethod`)
 | `trimEnd` | `str.trimEnd()` | `string` | B, H, R | Strips trailing whitespace only. |
 | `charAt` | `str.charAt(i)` | `string` | B, H, R | Character at index `i`. Throws if out of range. |
 
-**Regex format for `matches`**: the `pattern` argument is passed directly to JavaScript's `RegExp` constructor. Use standard JS regex syntax without delimiters (`[0-9]+`, not `/[0-9]+/`). Use raw strings (`r"..."`) to avoid double-escaping backslashes in YAML:
+**Regex format for `matches`**: the `pattern` argument is passed directly to JavaScript's `RegExp` constructor. Use standard JS regex syntax without delimiters (`[0-9]+`, not `/[0-9]+/`). Use raw strings (`r"..."`) to avoid double-escaping backslashes in YAML.
+
+**ReDoS protection (Option A — worker-thread timeout)**: `matches()` runs the regex in a dedicated `worker_threads` Worker with a hard **50 ms** regex execution timeout (plus a 200 ms OS scheduling headroom for a total wall-clock budget of ~250 ms). If the worker does not return a result within the budget, the worker is terminated and the call throws:
+
+```
+CEL_RUNTIME_ERROR: REGEX_TIMEOUT — regex /<pattern>/ timed out after 50ms. Possible ReDoS-vulnerable pattern.
+```
+
+This prevents adversarial backtracking patterns such as `(a+)+$` from hanging the Node.js event loop. A 50 ms timeout is generous for any valid matching pattern; legitimate patterns on production-realistic inputs complete in microseconds. The timeout is a hard safety valve, not a performance budget.
+
+> ⚠️ **Performance note**: each `matches()` call spawns a worker thread (~5–15 ms startup overhead). For high-frequency use, prefer `startsWith`, `endsWith`, `contains`, or `indexOf` which run inline without overhead.
 
 ```cel
 "LOAN-12345".matches("^LOAN-[0-9]+")        // true
@@ -744,7 +754,7 @@ Every CEL expression is evaluated in one of three phases, determined by where in
 
 | Phase | Description | Typical DSL fields |
 |---|---|---|
-| **Behavior** | Pattern matching and rule selection | `match.condition`, `match.requires[].expression`, `postcondition`, `dispatch_commands[].condition` |
+| **Behavior** | Pattern matching and rule selection | `match.condition`, `match.requires[].condition`, `postcondition`, `dispatch_commands[].condition` |
 | **EventHydration** | Building the domain event payload | `event_catalog[].payload_template.*`, `identity.creation.generate` |
 | **Reducer** | Projecting events onto state | `reducers[].assign.*`, `reducers[].append.*` |
 
@@ -798,6 +808,7 @@ All errors from the CEL evaluator are JavaScript `Error` instances whose message
 | `CEL_TYPE_ERROR` | Type mismatch in builtin arguments |
 | `CEL_UNKNOWN_BUILTIN` | Call to an unrecognised top-level function name |
 | `CEL_PHASE_BANNED` | Non-deterministic function called in Reducer phase |
+| `CEL_RUNTIME_ERROR: REGEX_TIMEOUT` | `matches()` regex did not complete within 50 ms (ReDoS protection) |
 
 ### Error Propagation
 
@@ -946,14 +957,22 @@ reducers:
       lastDisbursedAt: "event.payload.at"   # safe: reading, not generating
 ```
 
-### 12.5 Regex Is JavaScript `RegExp`, Not RE2
+### 12.5 `matches()` Uses a 50 ms Worker-Thread Timeout (ReDoS Protection)
 
-The `matches()` method uses JavaScript's `RegExp` constructor, not Google RE2. This means:
+The `matches()` method runs the regex in a worker thread with a 50 ms timeout.
+JavaScript's `RegExp` uses a backtracking NFA, which is vulnerable to
+ReDoS (Regular Expression Denial of Service) on adversarial patterns such as
+`(a+)+$`. The timeout ensures that a malicious or accidentally catastrophic
+pattern cannot hang the engine.
 
-- Backtracking is possible (no worst-case linear-time guarantee).
-- Supported: lookahead `(?=...)`, non-capturing groups `(?:...)`.
-- Not supported: RE2 features like possessive quantifiers.
+**What this means for you:**
+- Legitimate patterns on real-world inputs complete in microseconds — the 50 ms limit is never reached.
+- Adversarial patterns that do not complete within 50 ms throw `CEL_RUNTIME_ERROR: REGEX_TIMEOUT`.
+- Lookahead `(?=...)`, non-capturing groups `(?:...)`, and other JS-specific features are supported.
+- RE2 possessive quantifiers are not supported (Node.js `RegExp` limitation).
 - Patterns are **not anchored** by default — use `^...$` for full-string matching.
+
+> ⚠️ Worker startup adds ~5–15 ms overhead per `matches()` call. For performance-critical conditions (called on every request), prefer `startsWith`, `endsWith`, `contains`, or `indexOf`.
 
 ### 12.6 `in` Is Not Iteration
 
@@ -1051,6 +1070,7 @@ primary     = string_literal
             | number_literal
             | bool_literal
             | null_literal
+            | 'has' '(' expression '.' ident ')'   -- has() macro: field-presence check
             | ident ( '(' args ')' )?
             | '(' expression ')'
             | '[' ( expression ( ',' expression )* ','? )? ']'
@@ -1084,9 +1104,14 @@ ident          = [a-zA-Z_$] [a-zA-Z0-9_$]*
 **Operator precedence** (highest to lowest): `! -` (unary), `* / %`, `+ -`, `< <= > >=`, `== != in`, `&&`, `||`, `?:`.
 
 **Notes**:
+- `has(obj.field)` is parsed via the `primary → ident '(' args ')'` rule as a
+  top-level CALL node (not a postfix method). The evaluator recognises `fn === 'has'`
+  and implements field-presence semantics: it evaluates `obj` and checks whether
+  the key exists, without evaluating the field value. The argument must be a
+  field-access expression; bare identifiers or string literals are rejected at
+  runtime with `CEL_EVAL`.
 - Comprehension calls are parsed by the postfix rule: `postfix` recognises `all`, `exists`, `exists_one`, `filter`, `map` as special method names and switches to `parseComprehensionArgs` which expects `ident ',' expression` rather than a standard argument list.
 - Trailing commas are permitted in list literals, map literals, and function argument lists.
-- The `has(obj.field)` form is handled as a special case in the `call` evaluator node, not in the grammar.
 
 ---
 

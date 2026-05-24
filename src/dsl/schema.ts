@@ -19,11 +19,36 @@ import type {
   DerivedProjectionReduceEntry,
 } from './types.js';
 import { createCelEvaluator } from '../cel/evaluator.js';
+import { createLogger } from '../observability/logger.js';
 
 // F-04: Module-level CEL evaluator used to pre-check dispatch_commands payload
 // values for syntactic validity at boot/compile time. This surfaces CEL parse
 // errors as BOOT_ERR_DSL_SYNTAX rather than deferring them to runtime.
 const celEvaluator = createCelEvaluator();
+
+const dslLogger = createLogger({ name: 'dsl' });
+
+// ---------------------------------------------------------------------------
+// Canonical DSL field names and their legacy aliases
+//
+// Three fields have historically accepted two names.  The canonical names
+// match the TypeScript types in src/dsl/types.ts.  Legacy names are still
+// accepted for backward compatibility but emit a DEBUG log at parse time.
+//
+// | Concept                 | Canonical    | Legacy       |
+// |-------------------------|--------------|--------------|
+// | Inline script body      | code         | source       |
+// | Requires guard CEL      | condition    | expression   |
+// | Behavior postcondition  | string value | {expression} |
+//
+// Rationale:
+//   - scripts[].code : matches the ScriptDeclaration TypeScript type and is
+//     more idiomatic for inline source (cf. <script> content vs script src).
+//   - requires[].condition : matches the RequiresGuard TypeScript type and
+//     mirrors match.condition (consistent naming within the same block).
+//   - postcondition string : simpler, shorter, and consistent with condition
+//     fields throughout the DSL.  Object form {expression:...} is legacy.
+// ---------------------------------------------------------------------------
 
 // REQ-67: sentinel prefix for inline TypeScript references
 const TS_SENTINEL = 'ts:';
@@ -175,8 +200,12 @@ function validateRequiresGuard(raw: unknown, ctx: string): RequiresGuard {
     );
   }
   const name = requireString(raw, 'name', ctx);
-  // Support both "condition" (task spec) and "expression" (design.md) field names
+  // Canonical field: "condition".  Legacy alias: "expression" (deprecated).
+  // Both are accepted for backward compatibility; prefer "condition".
   const conditionRaw = raw['condition'] ?? raw['expression'];
+  if (raw['condition'] === undefined && raw['expression'] !== undefined) {
+    dslLogger.debug(`DSL: deprecated field 'expression' in ${ctx}, use 'condition' instead`);
+  }
   if (typeof conditionRaw !== 'string' || conditionRaw.trim() === '') {
     throw new BootError(
       'BOOT_ERR_DSL_SYNTAX',
@@ -391,13 +420,17 @@ function validateBehaviorRule(raw: unknown, index: number): BehaviorRule {
   }
 
   // REQ-62: postcondition (optional CEL or ts: expression)
+  // Canonical form: a plain string (e.g. postcondition: "state.balance >= 0").
+  // Legacy form: an object { expression: "..." } — still accepted for backward
+  // compatibility but emits a DEBUG deprecation log.
   const postconditionRaw = raw['postcondition'];
   let postcondition: string | undefined;
   if (postconditionRaw !== undefined && postconditionRaw !== null) {
-    // Support postcondition as either a string or { expression: string }
     if (typeof postconditionRaw === 'string') {
       postcondition = postconditionRaw;
     } else if (isRecord(postconditionRaw)) {
+      // Legacy object form: { expression: "..." }
+      dslLogger.debug(`DSL: deprecated object form for 'postcondition' in ${ctx}, use a plain string instead`);
       const exprRaw = postconditionRaw['expression'];
       if (typeof exprRaw !== 'string' || exprRaw.trim() === '') {
         throw new BootError(
@@ -560,8 +593,12 @@ function validateScriptDeclaration(raw: unknown, index: number, boundaryCtx: str
   }
   const name = requireString(raw, 'name', ctx);
 
-  // Support both "code" (task spec) and "source" (design.md/requirements)
+  // Canonical field: "code".  Legacy alias: "source" (deprecated).
+  // Both are accepted for backward compatibility; prefer "code".
   const codeRaw = raw['code'] ?? raw['source'];
+  if (raw['code'] === undefined && raw['source'] !== undefined) {
+    dslLogger.debug(`DSL: deprecated field 'source' in ${ctx}, use 'code' instead`);
+  }
   if (typeof codeRaw !== 'string' || codeRaw.trim() === '') {
     throw new BootError(
       'BOOT_ERR_DSL_SYNTAX',
