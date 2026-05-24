@@ -729,3 +729,26 @@ describe('CEL feature: deep equality for == operator', () => {
     expect(ev('{"a": 1} != {"a": 2}')).toBe(true);
   });
 });
+
+// ── 24. Null-fallback builtins (coalesce / default) — docs/cel.md:865 ────────
+describe('CEL feature: null-fallback builtins', () => {
+  it('coalesce(null, "fallback") returns "fallback"', () => {
+    expect(ev('coalesce(null, "fallback")')).toBe('fallback');
+  });
+
+  it('coalesce("first", "fallback") returns "first" (first non-null wins)', () => {
+    expect(ev('coalesce("first", "fallback")')).toBe('first');
+  });
+
+  it('coalesce(null, null, "third") returns "third"', () => {
+    expect(ev('coalesce(null, null, "third")')).toBe('third');
+  });
+
+  it('default(null, "x") returns "x"', () => {
+    expect(ev('default(null, "x")')).toBe('x');
+  });
+
+  it('default("value", "x") returns "value" (non-null input passes through)', () => {
+    expect(ev('default("value", "x")')).toBe('value');
+  });
+});

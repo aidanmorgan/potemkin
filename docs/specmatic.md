@@ -387,6 +387,39 @@ engine.
 
 ---
 
+### 3.6 Admin Routes (`/_admin/*`)
+
+The engine exposes out-of-band control endpoints on the `/_admin/` prefix. These are separate
+from the Specmatic `/_specmatic/*` namespace and are not part of the Specmatic protocol.
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/_admin/reset` | `POST` | Reset CQRS state to post-boot baseline; stubs are NOT cleared. Returns 204. |
+| `/_admin/state` | `GET` | Dump full entity state graph as `{ entities: { [id]: object } }`. |
+| `/_admin/state?boundary=X` | `GET` | **Returns 400 NOT_IMPLEMENTED** — boundary filtering is future work. |
+| `/_admin/events` | `GET` | List all events. Supports `?aggregateId=X`, `?limit=N`, `?offset=M`. |
+| `/_admin/health` | `GET` | Liveness probe: `{ status, version, uptime, entityCount, eventCount, checks }`. |
+| `/_admin/derived/:name` | `GET` | Derived projection state map; 404 if projection name unknown. |
+
+#### Admin route authentication (H-8)
+
+If the `ADMIN_TOKEN` environment variable is set, **all admin routes** require a
+`Authorization: Bearer <token>` header. Requests without the header or with a wrong token
+receive `401 UNAUTHORIZED`.
+
+```bash
+# Start the engine with admin token protection
+ADMIN_TOKEN=my-secret npx potemkin
+
+# Call an admin route with the token
+curl -H "Authorization: Bearer my-secret" http://localhost:4000/_admin/health
+```
+
+If `ADMIN_TOKEN` is not set, admin routes are open (default behaviour — suitable for local
+development and CI environments that are not externally reachable).
+
+---
+
 ## 4. Request Matcher Semantics
 
 Source: `src/specmatic/matcher.ts`
@@ -1256,12 +1289,12 @@ await agent.get('/loans/loan-x').expect(404);
 | Body absent = any match | ✅ | |
 | Method case-insensitive | ✅ | |
 | LIFO match precedence | ✅ | |
-| `delay-in-milliseconds` per stub | ❌ | Not implemented |
+| `delay-in-milliseconds` per stub | ❌ | Not implemented — backlog; use OS-level traffic shaping or a proxy for latency simulation |
 | Type-pattern matchers `(string)`, `(number)`, etc. | ✅ | Supported in headers, query, and body leaves (see section 4.5) |
-| Named capture variables `(VAR:type)` / `$(VAR)` | ❌ | Not implemented |
-| `bodyRegex` matcher | ❌ | Not implemented |
-| Partial example `"partial": {}` | ❌ | Not implemented |
-| `$match(pattern: ...)` syntax | ❌ | Not implemented |
+| Named capture variables `(VAR:type)` / `$(VAR)` | ❌ | Not implemented — permanent out-of-scope; the engine uses fixed-value matching only |
+| `bodyRegex` matcher | ❌ | Not implemented — backlog; the engine supports CEL body matchers via the CQRS pipeline instead |
+| Partial example `"partial": {}` | ❌ | Not implemented — backlog; use exact-body stubs or the CQRS `fallback_override` pattern |
+| `$match(pattern: ...)` syntax | ❌ | Not implemented — permanent out-of-scope; use type-pattern matchers `(string)` / `(number)` instead |
 | Strict mode (`--strict`) | ❌ | No equivalent; unmatched requests fall to CQRS |
 | `GET /_specmatic/log` | ❌ | JVM-internal diagnostic; not needed |
 | `GET /_specmatic/contracts` | ❌ | JVM-internal; not needed |

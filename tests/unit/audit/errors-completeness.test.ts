@@ -186,34 +186,26 @@ describe('errors — toJSON symmetry with gateway HTTP response body', () => {
     expect(json['status']).toBeUndefined();
   });
 
-  it.failing(
-    '[GAP] FaultSimulatedError.toJSON() does NOT match the HTTP response body emitted by gateway ' +
-    '(gateway uses err.simulatedBody directly, not err.toJSON())',
+  it(
+    'FaultSimulatedError.toJSON() matches the HTTP response body emitted by gateway (symmetry restored)',
     () => {
       const err = new FaultSimulatedError(503, { error: 'SERVICE_UNAVAILABLE' }, { 'Retry-After': '30' });
 
-      // Gateway for FaultSimulatedError does: res.status(err.status).json(err.simulatedBody)
-      // NOT: res.json(err.toJSON())
-      // So the response body is { error: 'SERVICE_UNAVAILABLE' }
-      // But toJSON() returns { name, code, message, details, status, simulatedBody, simulatedHeaders }
-      // These are asymmetric — this test documents the inconsistency.
+      // Gateway now calls res.status(err.status).json(err.toJSON()) — both return the simulated body.
+      // err.toJSON() returns the simulated body directly, so gateway and toJSON() are in sync.
       const simulatedResponse = err.simulatedBody;
       expect(simulatedResponse).toEqual(err.toJSON());
     },
   );
 
-  it('[CURRENT] gateway emits err.simulatedBody directly for FaultSimulatedError (not err.toJSON())', () => {
+  it('gateway uses err.toJSON() for FaultSimulatedError — same shape as err.simulatedBody', () => {
     const simulatedBody = { error: 'SERVICE_UNAVAILABLE' };
     const err = new FaultSimulatedError(503, simulatedBody);
 
-    // What the gateway actually sends:
-    const gatewayBody = err.simulatedBody;
-    // What toJSON produces (richer object):
+    // toJSON() now returns the simulated body directly — same as what the gateway sends
     const toJsonBody = err.toJSON();
-
-    expect(gatewayBody).toEqual(simulatedBody);
-    expect(toJsonBody).not.toEqual(simulatedBody);
-    expect(toJsonBody).toMatchObject({ code: 'FAULT_SIMULATED', simulatedBody });
+    expect(toJsonBody).toEqual(simulatedBody);
+    expect(err.simulatedBody).toEqual(simulatedBody);
   });
 });
 
@@ -225,7 +217,8 @@ describe('errors — FaultSimulatedError edge cases', () => {
   it('simulatedBody can be null', () => {
     const err = new FaultSimulatedError(503, null);
     expect(err.simulatedBody).toBeNull();
-    expect(err.toJSON().simulatedBody).toBeNull();
+    // toJSON() returns { body: null } when simulatedBody is null (non-object fallback)
+    expect(err.toJSON()['body']).toBeNull();
   });
 
   it('simulatedBody can be a string', () => {
@@ -233,16 +226,17 @@ describe('errors — FaultSimulatedError edge cases', () => {
     expect(err.simulatedBody).toBe('plain text fault');
   });
 
-  it('simulatedHeaders is included in toJSON when provided', () => {
+  it('simulatedHeaders is accessible on the error instance when provided', () => {
     const err = new FaultSimulatedError(503, {}, { 'Retry-After': '60' });
-    const json = err.toJSON();
-    expect(json.simulatedHeaders).toEqual({ 'Retry-After': '60' });
+    // simulatedHeaders is available as a property for the gateway to set response headers
+    expect(err.simulatedHeaders).toEqual({ 'Retry-After': '60' });
+    // toJSON() returns the simulated body — headers are applied separately by the gateway
+    expect(err.toJSON()).toEqual({});
   });
 
-  it('simulatedHeaders is undefined in toJSON when not provided', () => {
+  it('simulatedHeaders is undefined on instance when not provided', () => {
     const err = new FaultSimulatedError(503, {});
-    const json = err.toJSON();
-    expect(json.simulatedHeaders).toBeUndefined();
+    expect(err.simulatedHeaders).toBeUndefined();
   });
 });
 

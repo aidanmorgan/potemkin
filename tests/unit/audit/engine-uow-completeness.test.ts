@@ -246,16 +246,58 @@ it('CONTRACT: faultSignal as empty string is NOT short-circuited (treated as abs
 
 // ── AUDIT GAP: unknown boundary in SECONDARY command ─────────────────────────
 
-it.failing('AUDIT GAP: secondary command referencing unknown boundary name throws InternalExecutionError', async () => {
-  // uow.ts lines 328-333: if boundary === undefined → InternalExecutionError
-  // Gap: this IS handled (throws), but the error message quality is tested here.
-  // This test is it.failing because we expect an InternalExecutionError with a meaningful message
-  // but the real question is: does it wrap as InfiniteLoopError or InternalExecutionError?
-  // Observed: lines 329-333 show InternalExecutionError with boundary name.
-  // The test would PASS (not be "failing") — marking as it.failing to surface the audit question.
-  // NOTE: We cannot easily inject a secondary command with a bad boundary through the public API.
-  // The gap is that there is NO test coverage for this code path.
-  expect(true).toBe(false); // placeholder to force it.failing to actually fail
+it('secondary command referencing unknown boundary name throws InternalExecutionError (uow.ts:329-333)', async () => {
+  // uow.ts lines 341-346: if boundary === undefined → InternalExecutionError
+  // We can exercise this path by calling executeUnitOfWork directly with a command
+  // whose boundary does not exist in the DSL.
+  await expect(
+    executeUnitOfWork({
+      command: {
+        commandId: nextUuidv7(),
+        boundary: 'NonExistentBoundary',
+        intent: 'creation',
+        targetId: nextUuidv7(),
+        payload: { name: 'x' },
+        queryParams: {},
+        httpMethod: 'POST',
+        path: '/items',
+        origin: 'inbound',
+        depth: 0,
+      },
+      dsl: sys.dsl,
+      graph: sys.graph,
+      events: sys.events,
+      cel: sys.cel,
+      validator: sys.validator,
+      schemaRegistry: sys.schemaRegistry,
+      openapi: sys.openapi,
+    }),
+  ).rejects.toThrow(InternalExecutionError);
+
+  // Verify the error message contains the unknown boundary name
+  await expect(
+    executeUnitOfWork({
+      command: {
+        commandId: nextUuidv7(),
+        boundary: 'NonExistentBoundary',
+        intent: 'creation',
+        targetId: nextUuidv7(),
+        payload: { name: 'x' },
+        queryParams: {},
+        httpMethod: 'POST',
+        path: '/items',
+        origin: 'inbound',
+        depth: 0,
+      },
+      dsl: sys.dsl,
+      graph: sys.graph,
+      events: sys.events,
+      cel: sys.cel,
+      validator: sys.validator,
+      schemaRegistry: sys.schemaRegistry,
+      openapi: sys.openapi,
+    }),
+  ).rejects.toThrow('"NonExistentBoundary"');
 });
 
 // ── AUDIT GAP: max depth check is > not >= ───────────────────────────────────

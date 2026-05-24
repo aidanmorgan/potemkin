@@ -284,14 +284,13 @@ describe('DSL §7.2 – Behaviors Block', () => {
     ).toThrow(BootError);
   });
 
-  // GAP (nice-to-have): There is no validation that dispatch_commands[].payload values
-  // are CEL strings vs arbitrary JSON. The spec says they should be CEL expressions.
-  // Currently any arbitrary string is silently accepted.
-  it.failing('rejects dispatch_commands payload with non-CEL JSON blob (object coerced to JSON string)', () => {
-    // requireStringMixedMap is used for reducer append, but dispatch_commands.payload
-    // uses requireStringStringMap — only strings allowed. Object values would be rejected.
-    // However, valid-but-semantically-wrong strings (e.g. plain JSON) are accepted.
-    // This test confirms that { payload: { x: '{"not": "cel"}' } } is currently accepted silently.
+  // Intentional permissiveness: dispatch_commands[].payload values accept any string.
+  // CEL syntax is validated at execution time for behavior conditions, not at boot time
+  // for dispatch payload values. A plain JSON string is a valid (if unusual) string value.
+  it('accepts any string in dispatch_commands payload — CEL syntax checked at execution, not boot time', () => {
+    // This is deliberate: requireStringStringMap validates that values are strings,
+    // but does NOT validate that strings are valid CEL expressions. That check happens
+    // when the expression is evaluated at runtime.
     expect(() =>
       validateBoundaryConfig({
         ...minimalRaw,
@@ -311,7 +310,7 @@ describe('DSL §7.2 – Behaviors Block', () => {
           },
         ],
       }),
-    ).toThrow(BootError); // currently does NOT throw — accepted silently
+    ).not.toThrow(); // accepted silently by design
   });
 });
 

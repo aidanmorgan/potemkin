@@ -179,11 +179,11 @@ describe('errors', () => {
       expect(new FaultSimulatedError(500, {}).simulatedHeaders).toBeUndefined();
     });
 
-    it('toJSON includes status and simulatedBody', () => {
+    it('toJSON returns the simulated body directly (matching gateway HTTP response shape)', () => {
       const err = new FaultSimulatedError(503, { msg: 'fault' });
       const json = err.toJSON();
-      expect(json.status).toBe(503);
-      expect(json.simulatedBody).toEqual({ msg: 'fault' });
+      // toJSON() returns the simulated body — same shape the gateway sends via res.json(err.toJSON())
+      expect(json).toEqual({ msg: 'fault' });
     });
 
     it('is instanceof SimError', () => {

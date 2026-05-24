@@ -158,27 +158,22 @@ it('CONTRACT: fallback_override query with present targetId returns current stat
 
 // ── AUDIT GAP: fallback_override + intent=query + targetId set but entity absent ─
 
-it.failing('AUDIT GAP: fallback_override query with absent entity (non-null targetId) — should throw EntityAbsenceError', () => {
-  // Design expectation: querying a specific absent entity should 404, even with fallback_override.
-  // Observed: patternMatcher.ts lines 249-254 DO throw EntityAbsenceError for this case.
-  // This test CONFIRMS the behaviour — it passes, so it should NOT be it.failing.
-  // Marked failing only to probe: verifying we understand the code correctly.
-  // Actually this IS the correct throw — so this it.failing will fail (i.e., the gap is NOT here).
-  // Re-checking: the code at line 249 throws EntityAbsenceError for absent targetId.
-  // This test is intentionally marked failing to surface the question; correct answer is it() not it.failing().
-  const result = runPatternMatch(makeInput({
-    command: makeCommand({ intent: 'query', targetId: 'missing' }),
-    boundary: makeBoundary({
-      fallbackOverride: true,
-      behaviors: [],
-      eventCatalog: [],
-    }),
-    shadow: makeNoopShadow(), // 'missing' not in shadow → returns null
-    cel: alwaysFalseCel,
-  }));
-  // If we reach here without throwing, the entity was NOT absent-checked — which would be a gap.
-  // Since code DOES throw, this line is never reached and the test fails (as expected for it.failing).
-  expect(result).toBeDefined();
+it('CONTRACT: fallback_override query with absent non-null targetId throws EntityAbsenceError (no gap here)', () => {
+  // patternMatcher.ts: querying a specific absent entity with fallback_override still throws
+  // EntityAbsenceError — the fallback_override only suppresses UnhandledOperationError on
+  // non-query intents, not the 404 entity-not-found check.
+  expect(() =>
+    runPatternMatch(makeInput({
+      command: makeCommand({ intent: 'query', targetId: 'missing' }),
+      boundary: makeBoundary({
+        fallbackOverride: true,
+        behaviors: [],
+        eventCatalog: [],
+      }),
+      shadow: makeNoopShadow(), // 'missing' not in shadow → returns null
+      cel: alwaysFalseCel,
+    })),
+  ).toThrow();
 });
 
 // ── AUDIT GAP: CEL condition throws → treated as no-match (silent skip) ───────

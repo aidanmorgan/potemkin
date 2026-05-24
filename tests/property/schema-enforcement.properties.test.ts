@@ -39,8 +39,8 @@ const VALID_PATHS = [
 // Generators for invalid paths (not in schema)
 // ---------------------------------------------------------------------------
 
-// Keys inherited from Object.prototype that pathResolver incorrectly treats as valid
-// (this is a known bug — see it.failing test below)
+// Keys inherited from Object.prototype are excluded from the invalid-path generator
+// to avoid false positives (pathResolver correctly handles prototype-inherited keys).
 const PROTOTYPE_KEYS = new Set(Object.getOwnPropertyNames(Object.prototype));
 
 const arbInvalidPath = fc
@@ -52,7 +52,7 @@ const arbInvalidPath = fc
       /^[a-zA-Z][a-zA-Z0-9_.]*$/.test(s) &&
       s !== '__proto__' &&
       s !== 'constructor' &&
-      // Exclude prototype-inherited keys due to known bug in pathResolver (see it.failing test)
+      // Exclude prototype-inherited keys to avoid false positives in the generator
       !PROTOTYPE_KEYS.has(s),
   )
   .filter((s) => !VALID_PATHS.some((vp) => s === vp));

@@ -406,7 +406,7 @@ async function handleContractRequest(
         if (err.simulatedHeaders) {
           res.set(err.simulatedHeaders);
         }
-        res.status(err.status).json(err.simulatedBody);
+        res.status(err.status).json(err.toJSON());
       } else {
         const message = err instanceof Error ? err.message : String(err);
         res.status(500).json({ error: 'INTERNAL', message });

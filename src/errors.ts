@@ -264,12 +264,18 @@ export class FaultSimulatedError extends SimError {
     this.simulatedHeaders = headers;
   }
 
+  /**
+   * Returns the simulated body directly — matching the shape the gateway emits.
+   * The gateway calls `res.status(err.status).json(err.simulatedBody)`, so toJSON()
+   * must return the same value (the simulated body only, no envelope wrapper).
+   *
+   * This intentionally diverges from the envelope shape `{ name, code, message, details }`
+   * used by all other SimError subclasses; FaultSimulatedError's semantics are different —
+   * it exists solely to pass through a canned response body on behalf of the caller.
+   */
   override toJSON(): Record<string, unknown> {
-    return {
-      ...super.toJSON(),
-      status: this.status,
-      simulatedBody: this.simulatedBody,
-      simulatedHeaders: this.simulatedHeaders,
-    };
+    return (this.simulatedBody !== null && typeof this.simulatedBody === 'object' && !Array.isArray(this.simulatedBody))
+      ? this.simulatedBody as Record<string, unknown>
+      : { body: this.simulatedBody };
   }
 }

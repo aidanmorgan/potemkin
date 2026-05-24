@@ -142,19 +142,16 @@ describe('http/gateway — completeness probes', () => {
 
   // ── Admin /_admin/state — no boundary filter ─────────────────────────────────
 
-  it.failing(
-    '[GAP] GET /_admin/state?boundary=Customer returns only Customer entities',
+  it(
+    'GET /_admin/state?boundary=X returns 400 NOT_IMPLEMENTED (boundary filter is future work)',
     async () => {
+      // adminRoutes.ts:86-90: ?boundary= filter is not yet implemented — returns 400
       const res = await app.agent
         .get('/_admin/state?boundary=Customer')
-        .expect(200);
-      // There is no boundary filtering — this should fail because the impl ignores
-      // the query param and returns ALL entities.
-      const keys = Object.keys(res.body.entities ?? {});
-      // If filtering worked, we'd see only customer-like IDs — but the response
-      // may still contain non-customer entities from other boundaries.
-      // The test failing signals the gap: filtering is NOT implemented.
-      expect(res.body.filteredByBoundary).toBe('Customer');
+        .expect(400);
+      expect(res.body).toMatchObject({
+        error: 'NOT_IMPLEMENTED',
+      });
     },
   );
 
@@ -246,15 +243,31 @@ describe('http/gateway — completeness probes', () => {
     expect(res.status).toBe(204);
   });
 
-  it.failing(
-    '[GAP] admin routes reject unauthenticated request with 401 when auth is configured',
+  it(
+    'admin routes reject unauthenticated request with 401 when ADMIN_TOKEN is configured',
     async () => {
-      // No auth mechanism exists — this failing test documents the gap
-      const res = await app.agent
-        .post('/_admin/reset')
-        .set('Authorization', '');
-      // With an auth layer, missing credentials should 401; currently does not
-      expect(res.status).toBe(401);
+      // Set the token before the request, clean up after
+      process.env['ADMIN_TOKEN'] = 'test-admin-secret';
+      try {
+        // Missing Authorization header → 401
+        const res = await app.agent.post('/_admin/reset');
+        expect(res.status).toBe(401);
+        expect(res.body).toMatchObject({ error: 'UNAUTHORIZED' });
+
+        // Correct token → 204
+        const ok = await app.agent
+          .post('/_admin/reset')
+          .set('Authorization', 'Bearer test-admin-secret');
+        expect(ok.status).toBe(204);
+
+        // Wrong token → 401
+        const wrong = await app.agent
+          .post('/_admin/reset')
+          .set('Authorization', 'Bearer wrong-token');
+        expect(wrong.status).toBe(401);
+      } finally {
+        delete process.env['ADMIN_TOKEN'];
+      }
     },
   );
 
