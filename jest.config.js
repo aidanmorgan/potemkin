@@ -14,6 +14,12 @@ module.exports = {
     },
   },
   testMatch: ['**/*.test.ts', '**/*.spec.ts'],
+  // Exclude CLI contract tests — they require Java and a live Specmatic jar.
+  // Run them with: npm run test:contract
+  testPathIgnorePatterns: [
+    '/node_modules/',
+    '/tests/integration/specmatic-cli/',
+  ],
   moduleFileExtensions: ['ts', 'js', 'json'],
   setupFilesAfterEach: ['<rootDir>/tests/setup.ts'],
   // Map .js imports to .ts sources so ts-jest can resolve them in CommonJS mode.
