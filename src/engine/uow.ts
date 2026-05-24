@@ -357,6 +357,7 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
                   logger,
                   schemaRegistry,
                   tracer,
+                  scriptRegistry: input.dsl.scriptRegistry,
                   nextSequenceVersion: (aggregateId) =>
                     eventStore.currentSequenceVersion(aggregateId) +
                     (stagedSeqDeltas.get(aggregateId) ?? 0) +
@@ -370,6 +371,7 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
                       logger,
                       schemaRegistry,
                       tracer,
+                      openapi: input.openapi,
                     }),
                 });
               } catch (err) {

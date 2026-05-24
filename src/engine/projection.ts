@@ -1,3 +1,5 @@
+import Ajv from 'ajv';
+import addFormats from 'ajv-formats';
 import type { DomainEvent, JsonObject, JsonValue } from '../types.js';
 import type { BoundaryConfig } from '../dsl/types.js';
 import type { StateGraph } from '../stategraph/graph.js';
@@ -6,12 +8,83 @@ import type { ContractValidator } from '../contract/validator.js';
 import type { Logger } from '../observability/logger.js';
 import type { Tracer } from '../observability/tracing.js';
 import type { ObjectGraphSchemaRegistry } from '../schema/types.js';
+import type { OpenApiDoc } from '../contract/loader.js';
 import { deepClone, deepMerge } from '../stategraph/graph.js';
 import { CelPhase } from '../cel/phases.js';
 import { getTracer } from '../observability/tracing.js';
 import { SpanStatusCode } from '@opentelemetry/api';
 import { InternalExecutionError } from '../errors.js';
 import { guardAssignPath, guardAssignedValue } from '../schema/runtimeGuard.js';
+
+// REQ-65: AJV instance for schema_ref payload validation (module-level, lazily initialized)
+let _ajvForSchemaRef: Ajv | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const _schemaRefValidatorCache = new Map<string, (data: unknown) => boolean>();
+
+function getAjvForSchemaRef(): Ajv {
+  if (!_ajvForSchemaRef) {
+    _ajvForSchemaRef = new Ajv({ allErrors: true, strict: false });
+    addFormats(_ajvForSchemaRef);
+  }
+  return _ajvForSchemaRef;
+}
+
+/**
+ * REQ-65: Validate an event payload against an OpenAPI component schema_ref.
+ * Resolves `#/components/schemas/X` style refs from the OpenAPI doc.
+ */
+function validatePayloadAgainstSchemaRef(
+  payload: JsonObject,
+  schemaRef: string,
+  openapi: OpenApiDoc | undefined,
+  eventType: string,
+): void {
+  if (!openapi) return; // If no openapi doc is available, skip (boot validates ref existence)
+
+  // Parse `#/components/schemas/SomeSchema` ref
+  const match = /^#\/components\/schemas\/(.+)$/.exec(schemaRef);
+  if (!match) return; // Non-standard ref format — skip silently
+
+  const schemaName = match[1];
+  const rawDoc = openapi.raw as Record<string, unknown>;
+  const components = rawDoc['components'] as Record<string, unknown> | undefined;
+  const schemas = components?.['schemas'] as Record<string, unknown> | undefined;
+  const schema = schemas?.[schemaName];
+
+  if (!schema || typeof schema !== 'object') {
+    throw new InternalExecutionError(
+      `schema_ref "${schemaRef}" could not be resolved for event "${eventType}"`,
+      { code: 'EVENT_PAYLOAD_VIOLATES_SCHEMA', eventType, schemaRef, errors: [] },
+    );
+  }
+
+  const cacheKey = schemaRef;
+  let validate = _schemaRefValidatorCache.get(cacheKey);
+  if (!validate) {
+    const compiled = getAjvForSchemaRef().compile(schema as object);
+    // Store as a simple boolean-returning wrapper
+    validate = (data: unknown) => compiled(data) as boolean;
+    _schemaRefValidatorCache.set(cacheKey, validate);
+  }
+
+  const ajvInstance = getAjvForSchemaRef();
+  const compiled = ajvInstance.compile(schema as object);
+  const valid = compiled(payload);
+  if (!valid) {
+    throw new InternalExecutionError(
+      `Event payload for "${eventType}" violates schema_ref "${schemaRef}"`,
+      {
+        code: 'EVENT_PAYLOAD_VIOLATES_SCHEMA',
+        eventType,
+        schemaRef,
+        errors: compiled.errors as JsonValue,
+      },
+    );
+  }
+}
+
+// REQ-67: sentinel prefix — defense-in-depth for reducer phase
+const TS_SENTINEL = 'ts:';
 
 export interface ProjectionInput {
   readonly event: DomainEvent;
@@ -31,6 +104,8 @@ export interface ProjectionInput {
    * getTracer('engine') when absent.
    */
   readonly tracer?: Tracer;
+  /** REQ-65: Optional OpenAPI document for schema_ref payload validation. */
+  readonly openapi?: OpenApiDoc;
 }
 
 /**
@@ -64,7 +139,7 @@ export function projectEvent(input: ProjectionInput): void {
 }
 
 function _projectEvent(input: ProjectionInput): void {
-  const { event, boundary, graph, cel, validator, logger, schemaRegistry } = input;
+  const { event, boundary, graph, cel, validator, logger, schemaRegistry, openapi } = input;
   const log = logger?.child({
     component: 'projection',
     eventId: event.eventId,
@@ -105,6 +180,14 @@ function _projectEvent(input: ProjectionInput): void {
               guardAssignPath(schemaRegistry, boundary.boundary, dotPath);
             }
 
+            // REQ-71 defense-in-depth: reject ts: in reducer phase at runtime
+            if (expr.startsWith(TS_SENTINEL)) {
+              throw new InternalExecutionError(
+                `ts: sentinel "${expr}" in reducer assign path "${dotPath}" — forbidden in Reducer phase (REQ-71)`,
+                { code: 'SCRIPT_IN_REDUCER_PHASE', dotPath, expr },
+              );
+            }
+
             let value: JsonValue;
             try {
               value = cel.evaluate(expr, celCtx, CelPhase.Reducer) as JsonValue;
@@ -141,6 +224,14 @@ function _projectEvent(input: ProjectionInput): void {
               guardAssignPath(schemaRegistry, boundary.boundary, dotPath);
             }
 
+            // REQ-71 defense-in-depth
+            if (expr.startsWith(TS_SENTINEL)) {
+              throw new InternalExecutionError(
+                `ts: sentinel "${expr}" in reducer append path "${dotPath}" — forbidden in Reducer phase (REQ-71)`,
+                { code: 'SCRIPT_IN_REDUCER_PHASE', dotPath, expr },
+              );
+            }
+
             let value: JsonValue;
             try {
               value = cel.evaluate(expr, celCtx, CelPhase.Reducer) as JsonValue;
@@ -165,12 +256,22 @@ function _projectEvent(input: ProjectionInput): void {
       }
     }
 
-    // Step 3: Integrity Validation
+    // Step 3: REQ-65 Event payload schema_ref validation
+    // Only for non-system events that have a catalog entry with schema_ref
+    if (event.type !== 'System.GenericUpdateEvent' && event.type !== 'BaselineEntityCreatedEvent') {
+      const catalogEntry = boundary.eventCatalog.find(e => e.type === event.type);
+      if (catalogEntry?.schemaRef) {
+        validatePayloadAgainstSchemaRef(event.payload, catalogEntry.schemaRef, openapi, event.type);
+        log?.debug({ schemaRef: catalogEntry.schemaRef, eventType: event.type }, 'Event payload validated against schema_ref');
+      }
+    }
+
+    // Step 4: Integrity Validation
     if (validator) {
       validator.validateEntity(event.boundary, buf);
     }
 
-    // Step 4: Atomic Swap
+    // Step 5: Atomic Swap
     graph.set(event.aggregateId, buf);
     log?.info({ aggregateId: event.aggregateId, eventType: event.type }, 'Projection applied successfully');
   } catch (err) {

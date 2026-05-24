@@ -3,6 +3,7 @@ import { BootError } from '../errors.js';
 import { createLogger, getTracer, withSpan } from '../observability/index.js';
 import { validateBoundaryConfig } from './schema.js';
 import type { BoundaryConfig, CompiledDsl } from './types.js';
+import { buildScriptRegistry } from '../scripts/registry.js';
 
 const log = createLogger({ name: 'dsl' });
 
@@ -29,9 +30,11 @@ export function parseDslYaml(text: string): BoundaryConfig {
 
 /**
  * Compile multiple named YAML modules into a unified, indexed CompiledDsl.
+ * REQ-68: Also builds the script registry from all declared scripts.
  * @throws {BootError} with code `BOOT_ERR_DSL_SYNTAX` on any parse or validation failure.
  * @throws {BootError} with code `BOOT_ERR_DSL_DUPLICATE_BOUNDARY` on duplicate boundary names
  *   or contract paths.
+ * @throws {BootError} with code `BOOT_ERR_SCRIPT_SYNTAX` on transpilation failure.
  */
 export async function compileDsl(
   modules: readonly { name: string; yaml: string }[],
@@ -88,10 +91,20 @@ export async function compileDsl(
       'DSL compilation complete',
     );
 
-    return {
+    const partialDsl: Omit<CompiledDsl, 'scriptRegistry'> = {
       boundaries: boundaries as readonly BoundaryConfig[],
       byContractPath,
       byBoundaryName,
     };
+
+    // REQ-68: Build script registry — transpiles all TS scripts at compile time.
+    // Only build if any boundary has scripts.
+    const hasScripts = boundaries.some(b => b.scripts && b.scripts.length > 0);
+    if (hasScripts) {
+      const scriptRegistry = buildScriptRegistry(partialDsl as CompiledDsl, log);
+      return { ...partialDsl, scriptRegistry };
+    }
+
+    return partialDsl as CompiledDsl;
   });
 }

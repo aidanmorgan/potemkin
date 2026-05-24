@@ -68,6 +68,9 @@ export class BootError extends SimError {
       | 'BOOT_ERR_SCHEMA_MISSING'
       | 'BOOT_ERR_SCHEMA_UNSUPPORTED'
       | 'BOOT_ERR_DSL_SCHEMA_VIOLATION'
+      | 'BOOT_ERR_SCRIPT_SYNTAX'
+      | 'BOOT_ERR_SCRIPT_IN_REDUCER'
+      | 'BOOT_ERR_DSL_EMIT_REQUIRED'
       | string,
     message: string,
     details?: JsonValue,
