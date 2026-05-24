@@ -1,0 +1,23 @@
+{
+  "http-request": {
+    "method": "GET",
+    "path": "/customers",
+    "query": {
+      "riskBand": "(anyvalue)",
+      "limit": "*"
+    }
+  },
+  "http-response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": [
+      {
+        "id": "cust-wildcard-1",
+        "name": "Wildcard Result",
+        "riskBand": "LOW"
+      }
+    ]
+  }
+}

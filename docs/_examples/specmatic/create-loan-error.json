@@ -1,0 +1,23 @@
+{
+  "http-request": {
+    "method": "POST",
+    "path": "/loans",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "customerId": "cust-blocked-001",
+      "principal": 10000
+    }
+  },
+  "http-response": {
+    "status": 422,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "error": "CUSTOMER_BLOCKED",
+      "message": "Customer cust-blocked-001 is blocked from new credit"
+    }
+  }
+}
