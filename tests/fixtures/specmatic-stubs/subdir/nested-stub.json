@@ -1,0 +1,14 @@
+{
+  "http-request": {
+    "method": "GET",
+    "path": "/customers/seed-nested"
+  },
+  "http-response": {
+    "status": 200,
+    "body": {
+      "id": "seed-nested",
+      "name": "Nested Stub Customer",
+      "riskBand": "HIGH"
+    }
+  }
+}

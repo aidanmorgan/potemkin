@@ -1,0 +1,21 @@
+{
+  "http-request": {
+    "method": "GET",
+    "path": "/loans",
+    "query": {
+      "status": "ACTIVE"
+    }
+  },
+  "http-response": {
+    "status": 200,
+    "body": [
+      {
+        "id": "loan-seed-001",
+        "customerId": "seed-1",
+        "principal": 50000,
+        "balance": 50000,
+        "status": "ACTIVE"
+      }
+    ]
+  }
+}
