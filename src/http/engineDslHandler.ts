@@ -1,12 +1,7 @@
-/**
- * Pure-logic handlers for `POST /_engine/dsl` (REQ-WIRE-001/003) and
- * `GET /_engine/state/{boundary}/{id}` (REQ-WIRE-005).
- *
- * Designed to be wired into the Express gateway during Stage 3; for now
- * they are independently testable and stateful only through the supplied
- * `DslInstallStore` and `StateAccessor`. The host wires real engine
- * components in; tests inject fakes.
- */
+// Transport-layer handlers for POST /_engine/dsl and
+// GET /_engine/state/{boundary}/{id}. State is held by the caller-supplied
+// DslInstallStore and StateAccessor; the HTTP wrapper translates the
+// returned kind into a status code, headers, and body.
 
 import { computeSpecVersion } from '../dsl/specVersion.js';
 import { validateDslWirePayload } from '../dsl/wireSchema.js';
@@ -16,10 +11,6 @@ import type {
   DslErrorResponse,
 } from '../dsl/wireSchema.js';
 
-// ---------------------------------------------------------------------------
-// POST /_engine/dsl
-// ---------------------------------------------------------------------------
-
 export interface InstalledBundle {
   readonly specVersion: string;
   readonly boundaryCount: number;
@@ -28,16 +19,12 @@ export interface InstalledBundle {
 }
 
 export interface DslInstallStore {
-  /** Return the currently-installed bundle, or null when none. */
   get(): InstalledBundle | null;
-  /** Atomically install a new bundle, replacing any prior one. */
   install(bundle: InstalledBundle): Promise<void>;
 }
 
-/**
- * Result shape for the pure `handleEngineDsl` function. The HTTP wrapper
- * translates `{kind: ...}` into status code + headers + body.
- */
+// kind → status: installed → 200, replay → 304 (with X-Potemkin-Spec-Version
+// header), badRequest → 400, unavailable → 503.
 export type EngineDslResult =
   | { kind: 'installed'; body: DslInstalledResponse }
   | { kind: 'replay'; specVersion: string }
@@ -45,23 +32,12 @@ export type EngineDslResult =
   | { kind: 'unavailable'; reason: string };
 
 export interface InstallProducer {
-  /**
-   * Compile the validated payload into an InstalledBundle (or throw a BootError
-   * that the caller surfaces as 400). Caller-supplied so engine specifics live
-   * outside this transport-layer module.
-   */
+  // Compile the validated payload into an InstalledBundle (or throw a
+  // BootError surfaced as 400). Caller-supplied so engine specifics stay
+  // outside this transport-layer module.
   install(payload: DslWirePayload): Promise<InstalledBundle>;
 }
 
-/**
- * Resolve a POST /_engine/dsl request to an EngineDslResult.
- *
- * Status code mapping (caller):
- *   - installed → 200, body returned
- *   - replay    → 304, header X-Potemkin-Spec-Version: <hash>
- *   - badRequest → 400, body returned
- *   - unavailable → 503
- */
 export async function handleEngineDsl(
   raw: unknown,
   store: DslInstallStore,
@@ -72,7 +48,6 @@ export async function handleEngineDsl(
     return { kind: 'unavailable', reason: 'engine is not accepting new DSL right now' };
   }
 
-  // ── Structural validation (REQ-WIRE-001) ──
   let payload: DslWirePayload;
   try {
     payload = validateDslWirePayload(raw);
@@ -86,14 +61,12 @@ export async function handleEngineDsl(
     };
   }
 
-  // ── Compute hash, check installed for replay (REQ-WIRE-003) ──
   const specVersion = computeSpecVersion(payload.modules);
   const installed = store.get();
   if (installed && installed.specVersion === specVersion) {
     return { kind: 'replay', specVersion };
   }
 
-  // ── Install (REQ-WIRE-003 AC-003.1) ──
   let bundle: InstalledBundle;
   try {
     bundle = await producer.install(payload);
@@ -119,10 +92,6 @@ export async function handleEngineDsl(
   };
 }
 
-// ---------------------------------------------------------------------------
-// GET /_engine/state/{boundary}/{id}
-// ---------------------------------------------------------------------------
-
 import type { JsonValue, JsonObject } from '../types.js';
 import type { JournalEntry } from '../dsl/patches.js';
 
@@ -139,23 +108,15 @@ export interface StateBundle {
 }
 
 export interface StateAccessor {
-  /** Return the projected state + meta for the (boundary, id) aggregate, or null. */
   get(boundary: string, id: string): StateBundle | null;
 }
 
+// kind → status: found → 200 (body merges state with a _meta block),
+// notFound → 404. Side-effect-free.
 export type EngineStateResult =
   | { kind: 'found'; body: JsonObject }
   | { kind: 'notFound' };
 
-/**
- * Resolve a GET /_engine/state/{boundary}/{id} request.
- *
- * Status code mapping (caller):
- *   - found → 200, body = state with `_meta` block (REQ-WIRE-005 AC-005.1)
- *   - notFound → 404 (REQ-WIRE-005 AC-005.2)
- *
- * Side-effect-free (REQ-WIRE-005 AC-005.3) — only reads from the accessor.
- */
 export function handleEngineState(
   boundary: string,
   id: string,

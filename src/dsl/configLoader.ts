@@ -1,14 +1,6 @@
-/**
- * `loadPotemkinConfig` — the sole new-format loader entry point.
- *
- * Implements REQ-LOAD-001..006 from the Specmatic-extension plan. Reads a
- * `potemkin.yaml` file from disk, resolves the `modules:` globs with
- * `tinyglobby`, validates every boundary module, and produces a typed
- * `LoadedConfig` ready to be installed into the engine.
- *
- * Coexists with the legacy `compileDsl` during Stage 1. Stage 2 deletes the
- * legacy export and ports every caller.
- */
+// Reads a potemkin.yaml from disk, resolves modules: globs via tinyglobby,
+// validates every boundary module, and returns a typed LoadedConfig ready
+// to be installed into the engine.
 
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
@@ -58,19 +50,12 @@ export interface LoadedConfig {
 }
 
 export interface LoadOptions {
-  /**
-   * Optional spec-endpoint list (from `httpStub.allEndpoints` via the plugin)
-   * used by REQ-LOAD-006. When omitted, contract-path cross-check is skipped;
-   * pure-engine standalone test callers must either set this OR mark every
-   * boundary `outOfContract: true`.
-   */
+  // Spec endpoints (from httpStub.allEndpoints in the plugin). When omitted,
+  // contract-path cross-check is skipped; standalone test callers must either
+  // pass this or mark every boundary outOfContract:true.
   readonly specEndpoints?: readonly SpecEndpoint[];
 }
 
-/**
- * Load a potemkin.yaml configuration and every module it references. All
- * REQ-LOAD-001..006 paths surface as `BootError` instances with explicit codes.
- */
 export async function loadPotemkinConfig(
   potemkinConfigPath: string,
   opts: LoadOptions = {},
@@ -78,7 +63,6 @@ export async function loadPotemkinConfig(
   const absConfigPath = path.resolve(potemkinConfigPath);
   const configDir = path.dirname(absConfigPath);
 
-  // ── Step 1: read + parse potemkin.yaml ─────────────────────────────────
   let configText: string;
   try {
     configText = await fs.readFile(absConfigPath, 'utf8');
@@ -102,10 +86,8 @@ export async function loadPotemkinConfig(
 
   const config = validatePotemkinConfig(parsedConfig, { source: absConfigPath });
 
-  // ── Step 2: resolve module globs (REQ-LOAD-002) ────────────────────────
   const resolvedFiles = await resolveModuleGlobs(config.modules, configDir);
 
-  // ── Step 3: read + validate every boundary module ──────────────────────
   const modules: LoadedModule[] = [];
   for (const filePath of resolvedFiles) {
     let raw: string;
@@ -128,21 +110,18 @@ export async function loadPotemkinConfig(
         { source: filePath },
       );
     }
-    // Per the plan a module file may contain a top-level `global:` block
-    // (sagas, idempotency, etc.). When that's the only thing in the file,
-    // skip boundary validation. When it carries a boundary, validate it.
+    // A module file may carry a boundary or a top-level `global:` block
+    // (sagas, idempotency, etc.). Only boundary modules are validated here.
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
       const rec = parsed as Record<string, unknown>;
       if (rec['boundary'] !== undefined) {
         const boundary = validateBoundaryModule(parsed, { source: filePath });
         modules.push({ path: filePath, boundary });
       }
-      // Modules with only `global:` blocks are recorded by the loader but the
-      // global block itself is parsed elsewhere; Stage 1 stops here.
     }
   }
 
-  // ── Step 4: cross-check contractPath against specEndpoints (REQ-LOAD-006) ─
+
   if (opts.specEndpoints) {
     runContractPathCrossCheck(modules, opts.specEndpoints, absConfigPath);
   }

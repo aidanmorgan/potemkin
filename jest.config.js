@@ -22,7 +22,11 @@ module.exports = {
     '/tests/e2e/',
   ],
   moduleFileExtensions: ['ts', 'js', 'json'],
-  setupFilesAfterEach: ['<rootDir>/tests/setup.ts'],
+  setupFiles: ['<rootDir>/tests/setup.ts'],
+  // Cap worker count: matches() spawns Node Worker threads for ReDoS protection,
+  // and excessive jest worker parallelism caused intermittent socket-hang-up failures
+  // in supertest-driven integration tests under load.
+  maxWorkers: 4,
   // Map .js imports to .ts sources so ts-jest can resolve them in CommonJS mode.
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',

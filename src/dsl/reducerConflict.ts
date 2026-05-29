@@ -1,17 +1,8 @@
-/**
- * Reducer conflict + cross-reference validator (REQ-TS-005).
- *
- * Given a set of boundary modules and the SDK registry's TS-registered
- * reducers, verifies:
- *   - No (boundary, event) pair has both a YAML `reducers[]` entry AND a
- *     TS-registered reducer. Conflict → BOOT_ERR_REDUCER_CONFLICT.
- *   - Every TS reducer references a boundary that exists in some module.
- *     Unknown boundary → BOOT_ERR_UNKNOWN_BOUNDARY.
- *   - Every TS reducer references an event declared on the target boundary.
- *     Unknown event → BOOT_ERR_UNKNOWN_EVENT.
- *   - A YAML reducer with `implementation: typescript` must have a matching
- *     TS-registered reducer. Missing → BOOT_ERR_REDUCER_MISSING.
- */
+// Cross-checks YAML boundary modules against TS-registered reducers.
+// Errors: BOOT_ERR_REDUCER_CONFLICT (both YAML+TS define the same key),
+// BOOT_ERR_UNKNOWN_BOUNDARY/_EVENT (TS reducer points at nothing real),
+// BOOT_ERR_REDUCER_MISSING (yaml flagged implementation:typescript but no
+// TS handler is registered).
 
 import { BootError } from '../errors.js';
 import type { BoundaryModule } from './configSchema.js';

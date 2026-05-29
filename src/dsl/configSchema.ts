@@ -1,18 +1,8 @@
-/**
- * New-format YAML schema validators for `potemkin.yaml` and boundary modules.
- *
- * Sits alongside the legacy `src/dsl/schema.ts` during Stage 1. Stage 2
- * deletes the legacy module and ports every caller to this one.
- *
- * REQ coverage:
- *   - REQ-LOAD-003: camelCase keys everywhere. snake_case keys (every legacy
- *     form documented in the plan) → BOOT_ERR_REMOVED_SYNTAX.
- *   - REQ-LOAD-004: strict unknown-key rejection on `potemkin.yaml`. The
- *     "did you mean?" suggestion uses Levenshtein distance with max 3.
- *   - REQ-LOAD-005: boundary `specId` is required; missing → BOOT_ERR_MISSING_SPEC_ID.
- *   - REQ-PATCH-003: reducer entries with `assign:` or `append:` keys →
- *     BOOT_ERR_REMOVED_SYNTAX with the canonical replacement message.
- */
+// YAML schema validators for potemkin.yaml and boundary modules. All keys
+// are camelCase; snake_case and the removed `assign:`/`append:` reducer
+// shapes throw BOOT_ERR_REMOVED_SYNTAX with the canonical replacement.
+// Unknown top-level keys in potemkin.yaml are rejected with a Levenshtein
+// "did you mean?" suggestion.
 
 import { BootError } from '../errors.js';
 import type { Patch } from './patches.js';
@@ -163,11 +153,8 @@ export const BOUNDARY_TOP_LEVEL_KEYS = [
   'strict',
 ] as const;
 
-/**
- * Snake_case → camelCase replacement table (REQ-LOAD-003 AC-003.1).
- * Encountering any of these keys at parse time produces
- * `BOOT_ERR_REMOVED_SYNTAX` naming the canonical replacement.
- */
+// snake_case → camelCase replacement table. Any of these keys at parse
+// time produces BOOT_ERR_REMOVED_SYNTAX naming the replacement.
 export const REMOVED_KEY_MAP: Record<string, string> = {
   event_catalog: 'events',
   payload_template: 'template',
@@ -181,7 +168,7 @@ export const REMOVED_KEY_MAP: Record<string, string> = {
   derived_projections: 'derivedProjections',
 };
 
-/** Reducer entries may not use `assign:` or `append:` keys (REQ-PATCH-003). */
+// Reducer entries must use `patches:` only; these legacy keys throw.
 const REMOVED_REDUCER_KEYS = new Set(['assign', 'append', 'assignAll']);
 
 // ---------------------------------------------------------------------------
@@ -297,7 +284,6 @@ export function validateBoundaryModule(raw: unknown, ctx: ValidationContext): Bo
     );
   }
 
-  // Validate each reducer for REQ-PATCH-003 (no assign:/append:/assignAll:).
   const reducers = raw['reducers'];
   if (reducers !== undefined && !Array.isArray(reducers)) {
     throw new BootError(
@@ -321,12 +307,8 @@ export function validateBoundaryModule(raw: unknown, ctx: ValidationContext): Bo
     }
   }
 
-  // We deliberately accept unknown KEYS at the boundary level so experimental
-  // forward-compat features don't immediately break loads — REQ-LOAD-004 AC-004.3
-  // says module YAML accepts unknown fields with an INFO log. We surface
-  // those by returning a typed shape; callers log when they see fields outside
-  // the canonical set.
-
+  // Unknown keys at boundary level are tolerated for forward-compat —
+  // callers log INFO when they see fields outside the canonical set.
   return raw as unknown as BoundaryModule;
 }
 

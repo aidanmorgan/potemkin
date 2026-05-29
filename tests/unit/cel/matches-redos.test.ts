@@ -1,9 +1,10 @@
 /**
  * ReDoS protection tests for CEL matches()
  *
- * These tests verify that the worker-thread timeout (Option A, 50 ms) protects
- * against adversarial backtracking patterns and that benign patterns are
- * unaffected.
+ * The implementation uses a syntactic-shape heuristic: patterns containing a
+ * nested-quantifier shape known to backtrack catastrophically (e.g. `(X+)+`,
+ * `(X*)*`) are rejected at parse time with CEL_TYPE_ERROR: REGEX_REJECTED.
+ * Benign patterns run synchronously via the native RegExp engine.
  */
 
 import { createCelEvaluator } from '../../../src/cel/evaluator';
@@ -54,39 +55,29 @@ describe('matches() — benign patterns (ReDoS protection must not interfere)', 
 });
 
 // ---------------------------------------------------------------------------
-// Gap 1b: Adversarial pattern, short input → benign (timeout not triggered)
+// Nested-quantifier patterns are rejected at parse time, regardless of input.
 // ---------------------------------------------------------------------------
-describe('matches() — adversarial pattern with short input (no timeout)', () => {
-  it('evaluates (a+)+$ against a short string without timeout', () => {
-    // Short input — backtracking space is small, should complete quickly
-    const shortInput = 'a'.repeat(10) + 'X'; // 11 chars, mismatch at end
-    expect(evaluate(`"${shortInput}".matches("(a+)+$")`)).toBe(false);
+describe('matches() — nested-quantifier patterns are rejected', () => {
+  it('rejects (a+)+$ regardless of input length', () => {
+    const shortInput = 'a'.repeat(10) + 'X';
+    expect(() => evaluate(`"${shortInput}".matches("(a+)+$")`)).toThrow(/REGEX_REJECTED/);
   });
 
-  it('evaluates (a+)+ with a matching short string', () => {
-    expect(evaluate('"aaa".matches("(a+)+")')).toBe(true);
+  it('rejects (a+)+ regardless of whether it would match', () => {
+    expect(() => evaluate('"aaa".matches("(a+)+")')).toThrow(/REGEX_REJECTED/);
   });
-});
 
-// ---------------------------------------------------------------------------
-// Gap 1c: Adversarial pattern + long input → REGEX_TIMEOUT within 100 ms
-// ---------------------------------------------------------------------------
-describe('matches() — adversarial pattern with long input (timeout fires)', () => {
-  it('throws REGEX_TIMEOUT for (a+)+$ against a long string within 2s', () => {
-    // Classic ReDoS pattern: (a+)+ — exponential backtracking when no match at end.
-    // The regex worker times out after REGEX_TIMEOUT_MS (50ms) + scheduling headroom
-    // = ~250ms Atomics.wait budget.  Total elapsed must be < 2s.
-    const adversarialInput = 'a'.repeat(30) + 'X'; // mismatch triggers catastrophic backtracking
+  it('rejects (a*)* shape', () => {
+    expect(() => evaluate('"aaa".matches("(a*)*")')).toThrow(/REGEX_REJECTED/);
+  });
+
+  it('rejects pattern fast: throws synchronously without running the regex', () => {
+    const adversarialInput = 'a'.repeat(30) + 'X';
     const start = Date.now();
-    expect(() => evaluate(`"${adversarialInput}".matches("(a+)+$")`)).toThrow(/REGEX_TIMEOUT/);
+    expect(() => evaluate(`"${adversarialInput}".matches("(a+)+$")`)).toThrow(/REGEX_REJECTED/);
     const elapsed = Date.now() - start;
-    // Must fire within 2s (actual Atomics budget is 250ms)
-    expect(elapsed).toBeLessThan(2000);
-  });
-
-  it('throws REGEX_TIMEOUT for (.*a){20,}$ against a non-matching string', () => {
-    const adversarialInput = 'a'.repeat(25) + 'X';
-    expect(() => evaluate(`"${adversarialInput}".matches("(.*a){20,}$")`)).toThrow(/REGEX_TIMEOUT/);
+    // The shape check is O(pattern length), not O(input length).
+    expect(elapsed).toBeLessThan(200);
   });
 });
 

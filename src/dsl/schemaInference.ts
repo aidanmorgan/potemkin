@@ -1,25 +1,7 @@
-/**
- * Schema inference + computed-field machinery.
- *
- * Implements REQ-STATE-001..007 and REQ-PATCH-005 from the Specmatic-extension
- * plan. The boundary state shape is derived automatically from event
- * templates, event patches, and reducer patches; declared `computed:` and
- * `internal:` fields merge into the inferred schema.
- *
- * Key invariants:
- *   - REQ-STATE-001: state is derived from events + reducer patches (no
- *     `state:` block required).
- *   - REQ-STATE-002: declared computed/internal merge in; conflicting names
- *     where computed shadows an event-derived field → hard error.
- *   - REQ-STATE-003: fixed-point iteration with a 4-iteration cap.
- *   - REQ-STATE-004: cycle detection across computed `dependsOn`.
- *   - REQ-STATE-005: free-variable check on `formula:` vs `dependsOn`.
- *   - REQ-STATE-006: topological recompute of computed fields touched by a
- *     patch set's path set.
- *   - REQ-STATE-007: warn for unused computed fields.
- *   - REQ-PATCH-005: reducers may not write to declared computed-field
- *     paths (or any prefix-extension of one).
- */
+// Boundary state schema is derived from event templates + reducer patches.
+// Declared computed/internal fields merge in. The fixed-point loop iterates
+// until types stabilise or the cap (4) trips. Reducer patches cannot write
+// to a declared computed-field path (or any prefix-extension of one).
 
 import { BootError } from '../errors.js';
 import type { Patch } from './patches.js';
@@ -96,7 +78,7 @@ export interface BoundaryInferenceInput {
   readonly events: readonly EventDecl[];
   readonly reducers: readonly ReducerDecl[];
   readonly state?: DeclaredState;
-  /** When `false`, downgrades the INCOMPLETE_DEPS check to a WARN (REQ-STATE-005 AC-005.2). */
+  /** When `false`, downgrades the INCOMPLETE_DEPS check to a WARN. */
   readonly strict?: boolean;
 }
 
@@ -174,7 +156,7 @@ function mergeConfidence(a: Confidence, b: Confidence): Confidence {
 }
 
 // ---------------------------------------------------------------------------
-// CEL type inference (textual; covers patterns documented in §5.0b.ii)
+// CEL type inference (textual — pattern-matching, not full AST evaluation)
 // ---------------------------------------------------------------------------
 
 const RE_STRING = /^\s*(['"])((?:\\.|(?!\1).)*)\1\s*$/;
@@ -188,11 +170,8 @@ const RE_TERNARY = /^([^?]+)\?([^:]+):(.+)$/;
 const RE_EVENT_REF = /^\s*event\.payload(?:\.([A-Za-z_$][\w$]*))+\s*$/;
 const RE_STATE_REF = /^\s*state(?:\.([A-Za-z_$][\w$]*))+\s*$/;
 
-/**
- * Infer a `FieldType` from a CEL expression string. Best-effort textual
- * pattern matching that handles every case the plan documents in §5.0b.ii;
- * anything not matched returns `unknown`.
- */
+// Infers FieldType from a CEL expression. Anything that doesn't match a
+// known pattern returns `unknown` — callers tolerate that.
 export function inferTypeFromCel(
   expr: string,
   eventSchema: Record<string, FieldType> | undefined,
@@ -318,7 +297,7 @@ function splitTopLevel(expr: string, sep: string): string[] | null {
 }
 
 // ---------------------------------------------------------------------------
-// Schema build from events + reducer patches (REQ-STATE-001..002)
+// Schema build from events + reducer patches
 // ---------------------------------------------------------------------------
 
 interface MutableSchema {
@@ -452,7 +431,7 @@ function walkReducerPatches(
 }
 
 // ---------------------------------------------------------------------------
-// Fixed-point iteration + cap (REQ-STATE-003)
+// Fixed-point iteration + cap
 // ---------------------------------------------------------------------------
 
 const MAX_INFERENCE_ITERATIONS = 4;
@@ -517,7 +496,7 @@ function hashSchema(s: MutableSchema): string {
 }
 
 // ---------------------------------------------------------------------------
-// Free-variable extraction (REQ-STATE-005)
+// Free-variable extraction
 // ---------------------------------------------------------------------------
 
 /**
@@ -535,7 +514,7 @@ export function extractStateRefs(formula: string): string[] {
 }
 
 // ---------------------------------------------------------------------------
-// Computed fields: cycle detection + topo sort (REQ-STATE-004, 006)
+// Computed fields: cycle detection + topological sort
 // ---------------------------------------------------------------------------
 
 interface TopoResult {
@@ -585,7 +564,7 @@ function topoSortComputed(fields: readonly DeclaredComputedField[]): TopoResult 
 }
 
 // ---------------------------------------------------------------------------
-// Main entry: build inferred schema for a boundary (REQ-STATE-001..006, REQ-PATCH-005)
+// Main entry: build inferred schema for a boundary
 // ---------------------------------------------------------------------------
 
 export function buildInferredSchema(input: BoundaryInferenceInput): BoundaryInferenceResult {
@@ -609,10 +588,10 @@ export function buildInferredSchema(input: BoundaryInferenceInput): BoundaryInfe
   const declaredComputed = input.state?.computed ?? [];
   const declaredInternal = input.state?.internal ?? [];
 
-  // Shadow check (REQ-STATE-002 AC-002.3): computed name MUST NOT collide
+  // Shadow check: computed name MUST NOT collide
   // with a field inferred from EVENT templates. Reducer-patch contributions
   // are intentionally excluded — a reducer that writes a computed path
-  // surfaces as REQ-PATCH-005 (below) instead.
+  // surfaces as a computed-field-write error (below) instead.
   const eventDerivedNames = new Set<string>();
   for (const ev of input.events) {
     if (ev.template) for (const k of Object.keys(ev.template)) eventDerivedNames.add(k);
@@ -634,7 +613,7 @@ export function buildInferredSchema(input: BoundaryInferenceInput): BoundaryInfe
     }
   }
 
-  // Reducer patches must not write computed-field paths (REQ-PATCH-005).
+  // Reducer patches must not write computed-field paths.
   const computedPaths = new Set<string>(declaredComputed.map((c) => '/' + c.name));
   for (const r of input.reducers) {
     if (!r.patches) continue;
@@ -664,7 +643,7 @@ export function buildInferredSchema(input: BoundaryInferenceInput): BoundaryInfe
     finalSchema.set('/' + cf.name, { type: ft, sources: ['declared:computed'] });
   }
 
-  // Step 3: topo sort + cycle detection (REQ-STATE-004).
+  // Step 3: topo sort + cycle detection.
   const topo = topoSortComputed(declaredComputed);
   if (topo.cycle) {
     throw new BootError(
@@ -674,7 +653,7 @@ export function buildInferredSchema(input: BoundaryInferenceInput): BoundaryInfe
     );
   }
 
-  // Step 4: free-variable check (REQ-STATE-005).
+  // Step 4: free-variable check.
   const warnings: string[] = [];
   for (const cf of declaredComputed) {
     const refs = extractStateRefs(cf.formula);
@@ -711,7 +690,7 @@ function targetsComputed(path: string, computedPaths: ReadonlySet<string>): bool
 }
 
 // ---------------------------------------------------------------------------
-// REQ-STATE-007: lint unused computed fields
+// lint unused computed fields
 // ---------------------------------------------------------------------------
 
 export interface UsageContext {
@@ -739,7 +718,7 @@ export function lintUnusedComputed(
 }
 
 // ---------------------------------------------------------------------------
-// REQ-STATE-006: topological recompute of computed fields touched by patches
+// topological recompute of computed fields touched by patches
 // ---------------------------------------------------------------------------
 
 export interface ComputedRecomputeEvaluator {

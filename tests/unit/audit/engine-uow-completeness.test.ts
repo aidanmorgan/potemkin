@@ -1,8 +1,7 @@
 /**
  * AUDIT: engine/uow.ts — completeness probing tests
  *
- * Verified behaviours → it(...)
- * Identified gaps    → it.failing(...)
+ * All tests use plain it(...) — they assert behaviour that must hold in src.
  */
 
 import { executeUnitOfWork } from '../../../src/engine/uow';
@@ -14,6 +13,7 @@ import { bootSystem, type BootedSystem } from '../../../src/engine/boot';
 import { resetSystem } from '../../../src/engine/reset';
 import { loadOpenApi } from '../../../src/contract/loader';
 import { nextUuidv7 } from '../../../src/ids/uuidv7';
+import { compileDsl } from '../../../src/dsl/parser';
 
 // ── Minimal fixture ────────────────────────────────────────────────────────────
 
@@ -140,10 +140,10 @@ beforeEach(async () => {
   const openapi = await loadOpenApi(SIMPLE_OPENAPI);
   sys = await bootSystem({
     openapi,
-    dslModules: [
+    compiledDsl: await compileDsl([
       { name: 'item', yaml: ITEM_DSL },
       { name: 'itemById', yaml: ITEM_BY_ID_DSL },
-    ],
+    ]),
   });
 });
 

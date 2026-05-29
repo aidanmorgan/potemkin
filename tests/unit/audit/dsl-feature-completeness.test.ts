@@ -1,10 +1,7 @@
 /**
  * Audit: DSL Parser / Schema / Types – feature completeness probing tests.
  *
- * Conventions:
- *   it(...)         – correct behaviour confirmed in current src
- *   it.failing(...) – confirmed gap; test asserts the CORRECT behaviour,
- *                     which currently fails because src has the bug.
+ * All tests use plain it(...) — they assert behaviour that must hold in src.
  */
 
 import { parseDslYaml, compileDsl } from '../../../src/dsl/parser';

@@ -3,6 +3,7 @@ import assert from 'assert';
 import type { SimWorld } from '../support/world.js';
 import { bootSystem, createGateway } from '../../../src/index.js';
 import { loadOpenApi } from '../../../src/contract/loader.js';
+import { compileDsl } from '../../../src/dsl/parser.js';
 import { BootError } from '../../../src/errors.js';
 import { CRM_OPENAPI_YAML } from '../support/world.js';
 
@@ -176,7 +177,7 @@ reducers:
     const openapi = await loadOpenApi(STRICT_OPENAPI_YAML);
     await bootSystem({
       openapi,
-      dslModules: [{ name: 'bad-path-dsl', yaml: badDslYaml }],
+      compiledDsl: await compileDsl([{ name: 'bad-path-dsl', yaml: badDslYaml }]),
     });
     this.ctx['bootError'] = null;
   } catch (err) {
@@ -219,7 +220,7 @@ reducers:
     const openapi = await loadOpenApi(STRICT_OPENAPI_YAML);
     await bootSystem({
       openapi,
-      dslModules: [{ name: 'bad-reducer-dsl', yaml: badReducerDsl }],
+      compiledDsl: await compileDsl([{ name: 'bad-reducer-dsl', yaml: badReducerDsl }]),
     });
     this.ctx['bootError'] = null;
   } catch (err) {

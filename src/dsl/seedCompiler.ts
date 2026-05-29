@@ -1,15 +1,7 @@
-/**
- * Compile a `seeds:` declaration into the final response body the plugin
- * pushes via `httpStub.setExpectation(ScenarioStub)` (REQ-FWD-002).
- *
- * Each seed declares a request matcher + base + patches. The base is either
- * `contract` (the Specmatic-generated body for the matched operation; supplied
- * to this module by the plugin) or `empty` (`{}`). Patches apply on top via
- * patches.ts so the journal entries are tagged `source: seed`.
- *
- * The HTTP wiring of `httpStub.setExpectation` is JVM-side; this module is
- * the engine-side pure compiler.
- */
+// Compile a `seeds:` declaration into the response body the plugin will
+// push via httpStub.setExpectation. Patches apply on top of a base (the
+// Specmatic-generated body when base==='contract', otherwise {}); journal
+// entries are tagged source: seed.
 
 import { applyPatches } from './patches.js';
 import type { Patch } from './patches.js';

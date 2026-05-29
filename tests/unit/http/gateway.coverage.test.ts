@@ -22,6 +22,7 @@ import {
   InternalExecutionError,
   FaultSimulatedError,
 } from '../../../src/errors';
+import { compileDsl } from '../../../src/dsl/parser';
 
 // ── Minimal fixture ───────────────────────────────────────────────────────────
 
@@ -93,7 +94,7 @@ describe('http/gateway.ts — defensive guard coverage', () => {
     const openapi = await loadOpenApi(MINIMAL_OPENAPI);
     sys = await bootSystem({
       openapi,
-      dslModules: [{ name: 'item', yaml: ITEM_DSL }],
+      compiledDsl: await compileDsl([{ name: 'item', yaml: ITEM_DSL }]),
     });
     app = createGateway(sys);
   });
@@ -391,7 +392,7 @@ describe('http/gateway.ts — null targetId creation (lines 247-250)', () => {
     const openapi = await loadOpenApi(NO_IDENTITY_OPENAPI);
     sysNoId = await bootSystem({
       openapi,
-      dslModules: [{ name: 'widget', yaml: NO_IDENTITY_DSL }],
+      compiledDsl: await compileDsl([{ name: 'widget', yaml: NO_IDENTITY_DSL }]),
     });
     appNoId = createGateway(sysNoId);
   });

@@ -29,7 +29,13 @@ import { createPluginControlClient } from '../lifecycle/pluginControlClient.js';
 
 export interface BootInput {
   readonly openapi: OpenApiDoc;
-  readonly dslModules: readonly { name: string; yaml: string }[];
+  // Pre-compiled DSL. Mutually exclusive with potemkinConfigPath. If
+  // neither is supplied, boot enters wait-for-DSL-push mode (empty DSL,
+  // contract-path requests return 503 with Retry-After:1).
+  readonly compiledDsl?: CompiledDsl;
+  // Path to a potemkin.yaml. When supplied, boot calls loadPotemkinConfig
+  // synchronously and installs the result before binding endpoints.
+  readonly potemkinConfigPath?: string;
   /** Optional logger; boot creates a root logger if absent. */
   readonly logger?: Logger;
   /** Optional tracer; boot obtains the default tracer if absent. */
@@ -146,10 +152,47 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
 
     // ── Step 2: DSL Compilation ───────────────────────────────────────────────
     const phaseStart2 = Date.now();
-    bootLog.info({ step: 'dsl_compile', moduleCount: input.dslModules.length }, 'Boot: compiling DSL modules');
 
-    // compileDsl is async; throws BootError on failure (req 23)
-    const dsl: CompiledDsl = await compileDsl(input.dslModules);
+    let dsl: CompiledDsl;
+    if (input.compiledDsl) {
+      bootLog.info(
+        { step: 'dsl_compile', source: 'compiledDsl', boundaryCount: input.compiledDsl.boundaries.length },
+        'Boot: using pre-compiled DSL',
+      );
+      dsl = input.compiledDsl;
+    } else if (input.potemkinConfigPath) {
+      bootLog.info(
+        { step: 'dsl_compile', source: 'potemkinConfigPath', path: input.potemkinConfigPath },
+        'Boot: loading potemkin.yaml',
+      );
+      // Lazy import to keep the loader's tinyglobby/fs deps off the cold path
+      // when callers supply `compiledDsl` directly.
+      const { loadPotemkinConfig } = await import('../dsl/configLoader.js');
+      const loaded = await loadPotemkinConfig(input.potemkinConfigPath);
+      // For now we still need a CompiledDsl shape — the configLoader output
+      // doesn't carry the full CompiledDsl yet (that's Stage 5 fixture work).
+      // Use compileDsl on the raw YAML strings from each loaded module.
+      const modules = loaded.modules.map((m) => ({ name: m.path, yaml: '' as never }));
+      // TODO Stage 5: produce CompiledDsl directly from LoadedConfig. For now
+      // bail loudly so callers know this path is incomplete.
+      void modules;
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        'potemkinConfigPath direct-load is not yet wired through to CompiledDsl (Stage 5 fixture rewrite pending). Use compiledDsl directly for now.',
+        { potemkinConfigPath: input.potemkinConfigPath },
+      );
+    } else {
+      // No DSL supplied — boot in wait-for-DSL-push mode with an empty DSL.
+      bootLog.info(
+        { step: 'dsl_compile', source: 'wait-for-push' },
+        'Boot: no DSL supplied; entering wait-for-DSL-push mode',
+      );
+      dsl = {
+        boundaries: [],
+        byContractPath: {},
+        byBoundaryName: {},
+      };
+    }
 
     bootLog.info(
       { step: 'dsl_compile', boundaryCount: dsl.boundaries.length, durationMs: Date.now() - phaseStart2 },

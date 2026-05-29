@@ -3,6 +3,7 @@ import assert from 'assert';
 import type { SimWorld } from '../support/world.js';
 import { bootSystem } from '../../../src/engine/boot.js';
 import { loadOpenApi } from '../../../src/contract/loader.js';
+import { compileDsl } from '../../../src/dsl/parser.js';
 import { BootError } from '../../../src/errors.js';
 import {
   CRM_OPENAPI_YAML,
@@ -95,7 +96,7 @@ When('I attempt to boot with DSL {string}', async function (this: SimWorld, dslY
     const openapi = await loadOpenApi(CRM_OPENAPI_YAML);
     await bootSystem({
       openapi,
-      dslModules: [{ name: 'bad-dsl', yaml: dslYaml }],
+      compiledDsl: await compileDsl([{ name: 'bad-dsl', yaml: dslYaml }]),
     });
     this.ctx['bootError'] = null;
   } catch (err) {

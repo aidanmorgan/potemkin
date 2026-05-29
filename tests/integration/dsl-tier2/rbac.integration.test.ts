@@ -10,6 +10,7 @@ import supertest from 'supertest';
 import { bootSystem } from '../../../src/engine/boot.js';
 import { createGateway } from '../../../src/http/gateway.js';
 import { loadOpenApi } from '../../../src/contract/loader.js';
+import { compileDsl } from '../../../src/dsl/parser.js';
 import type { BootInput } from '../../../src/engine/boot.js';
 
 // Minimal OpenAPI for this test
@@ -74,7 +75,7 @@ async function buildTestSystem(): Promise<{ app: ReturnType<typeof createGateway
   const openapi = await loadOpenApi(OPENAPI_YAML);
   const input: BootInput = {
     openapi,
-    dslModules: [{ name: 'item', yaml: DSL_YAML }],
+    compiledDsl: await compileDsl([{ name: 'item', yaml: DSL_YAML }]),
   };
   const sys = await bootSystem(input);
   const app = createGateway(sys);

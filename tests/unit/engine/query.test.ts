@@ -103,7 +103,7 @@ describe('engine/query', () => {
       expect(result[0]?.id).toBe('a');
     });
 
-    it('pagination: limit applied', () => {
+    it('pagination: limit applied (envelope form)', () => {
       const graph = createStateGraph();
       graph.set('a', { id: 'a' });
       graph.set('b', { id: 'b' });
@@ -115,8 +115,8 @@ describe('engine/query', () => {
         graph,
         cel,
         openapi: emptyDoc,
-      }) as any[];
-      expect(result).toHaveLength(2);
+      }) as { items: unknown[] };
+      expect(result.items).toHaveLength(2);
     });
 
     it('pagination: offset applied', () => {

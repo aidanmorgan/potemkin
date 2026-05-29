@@ -99,6 +99,8 @@ export interface UowInput {
    * also routed to subscribed derived projections.
    */
   readonly derivedProjections?: DerivedProjectionRegistry;
+  /** Parsed X-Potemkin-* control headers (dry-run, skip-sagas, etc.). */
+  readonly controls?: import('../http/controlHeaders.js').ControlHeaders;
 }
 
 // ---------------------------------------------------------------------------
@@ -361,7 +363,7 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
                   shadow,
                   cel,
                   nextEventId: () => nextUuidv7(),
-                  now: () => new Date().toISOString(),
+                  now: () => new Date(Date.now() + cel.getClockOffset()).toISOString(),
                   logger,
                   schemaRegistry,
                   tracer,
@@ -407,8 +409,11 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
               }
 
               // Enqueue secondary commands for next iterations
-              for (const sec of outcome.secondaryCommands) {
-                pendingCommands.push(sec);
+              // Tier 2: skip-dispatch suppresses secondary commands entirely.
+              if (input.controls?.sideEffects.skipDispatch !== true) {
+                for (const sec of outcome.secondaryCommands) {
+                  pendingCommands.push(sec);
+                }
               }
             },
             { 'uow.depth': cmd.depth, 'uow.boundary': cmd.boundary },
@@ -418,14 +423,30 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
         // -----------------------------------------------------------------------
         // Step 7 — Commit phase (req 20, 22)
         // -----------------------------------------------------------------------
-        eventStore.append(stagedEvents);
-        metrics?.eventsAppendedTotal.add(stagedEvents.length, {
-          boundary: command.boundary,
-        });
-        shadow.commitInto(graph);
+        const dryRun = input.controls?.transparency.dryRun === true;
+        const skipProjections = input.controls?.sideEffects.skipProjections === true;
+        const skipSagas = input.controls?.sideEffects.skipSagas === true;
+
+        // Tier 3: caused-by override — rewrite the (frozen) DomainEvents to carry the
+        // overridden causedBy. Mutates the array in place before append.
+        const causedByOverride = input.controls?.identity.causedBy;
+        if (causedByOverride) {
+          for (let i = 0; i < stagedEvents.length; i++) {
+            const e = stagedEvents[i]!;
+            stagedEvents[i] = Object.freeze({ ...e, causedBy: causedByOverride }) as DomainEvent;
+          }
+        }
+
+        if (!dryRun) {
+          eventStore.append(stagedEvents);
+          metrics?.eventsAppendedTotal.add(stagedEvents.length, {
+            boundary: command.boundary,
+          });
+          shadow.commitInto(graph);
+        }
 
         // REQ-88: Apply derived projections for committed events
-        if (input.derivedProjections && dsl.derivedProjections && dsl.derivedProjections.length > 0) {
+        if (!dryRun && !skipProjections && input.derivedProjections && dsl.derivedProjections && dsl.derivedProjections.length > 0) {
           for (const evt of stagedEvents) {
             applyEventToDerivedProjections(
               evt,
@@ -440,7 +461,7 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
         // REQ-73/79: Post-commit saga dispatch (fire-and-forget; non-blocking in background)
         // We run sagas after commit so that compensation events are truly compensating,
         // not pre-staged alongside the primary event.
-        if (dsl.sagas && dsl.sagas.length > 0 && stagedEvents.length > 0) {
+        if (!dryRun && !skipSagas && dsl.sagas && dsl.sagas.length > 0 && stagedEvents.length > 0) {
           for (const evt of stagedEvents) {
             const triggeredSagas = findTriggeredSagas(dsl.sagas, command, evt, cel);
             for (const saga of triggeredSagas) {
@@ -496,11 +517,17 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
           status = 200;
         } else if (command.intent === 'creation') {
           status = 201;
-          body = command.targetId !== null ? (graph.get(command.targetId) ?? {}) : {};
+          // On dry-run, read from shadow (commit was skipped) so the response reflects
+          // what would have been written.
+          body = command.targetId !== null
+            ? ((dryRun ? (shadow.get(command.targetId) ?? graph.get(command.targetId)) : graph.get(command.targetId)) ?? {})
+            : {};
         } else {
           // mutation
           status = 200;
-          body = command.targetId !== null ? (graph.get(command.targetId) ?? {}) : {};
+          body = command.targetId !== null
+            ? ((dryRun ? (shadow.get(command.targetId) ?? graph.get(command.targetId)) : graph.get(command.targetId)) ?? {})
+            : {};
         }
 
         // Validate the response body against the contract (throws InternalExecutionError on fail)

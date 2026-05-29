@@ -15,6 +15,7 @@
 import { bootSystem, type BootedSystem } from '../../src/engine/boot.js';
 import { executeUnitOfWork } from '../../src/engine/uow.js';
 import { loadOpenApi } from '../../src/contract/loader.js';
+import { compileDsl } from '../../src/dsl/parser.js';
 import { InfiniteLoopError } from '../../src/errors.js';
 import { nextUuidv7 } from '../../src/ids/uuidv7.js';
 
@@ -150,10 +151,10 @@ describe('infinite-loop.integration: mutually recursive secondary commands', () 
     const openapi = await loadOpenApi(PING_PONG_OPENAPI);
     sys = await bootSystem({
       openapi,
-      dslModules: [
+      compiledDsl: await compileDsl([
         { name: 'ping', yaml: PING_DSL },
         { name: 'pong', yaml: PONG_DSL },
-      ],
+      ]),
     });
   });
 

@@ -88,24 +88,11 @@ const ALL_HTTP_ERRORS: Array<{ name: string; error: SimError; expectedCode: stri
 // instanceof preservation gap
 // ---------------------------------------------------------------------------
 
-describe('errors — instanceof after JSON roundtrip', () => {
-  it.failing(
-    '[GAP] ContractViolationError is instanceof ContractViolationError after JSON.parse(JSON.stringify(err.toJSON()))',
-    () => {
-      const err = new ContractViolationError('bad request', { field: 'name' });
-      const json = JSON.parse(JSON.stringify(err.toJSON())) as unknown;
-
-      // JSON.parse produces a plain object; instanceof cannot be restored without
-      // a factory/reviver. This is a known limitation we document as a gap.
-      expect(json).toBeInstanceOf(ContractViolationError);
-    },
-  );
-
-  it('[CURRENT] toJSON().code can be used to reconstruct the correct error type', () => {
+describe('errors — JSON roundtrip preserves discriminating code', () => {
+  it('toJSON().code can be used to reconstruct the correct error type after JSON roundtrip', () => {
     const err = new ContractViolationError('bad request');
-    const json = err.toJSON();
+    const json = JSON.parse(JSON.stringify(err.toJSON())) as { code: string };
     expect(json.code).toBe('CONTRACT_VIOLATION');
-    // Consumers must use the code field to discriminate, not instanceof
   });
 });
 

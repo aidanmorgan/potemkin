@@ -42,6 +42,9 @@ function emptyShadow(): ShadowGraph {
 function makeAlwaysTrueCel(): CelEvaluator {
   return {
     compile: (e: string) => ({ source: e, _ast: {} as any }),
+    evaluateDslValue: jest.fn() as any,
+    getClockOffset: jest.fn(() => 0),
+    setClockOffset: jest.fn(),
     evaluate: jest.fn(() => true),
   };
 }
@@ -49,6 +52,9 @@ function makeAlwaysTrueCel(): CelEvaluator {
 function makeAlwaysFalseCel(): CelEvaluator {
   return {
     compile: (e: string) => ({ source: e, _ast: {} as any }),
+    evaluateDslValue: jest.fn() as any,
+    getClockOffset: jest.fn(() => 0),
+    setClockOffset: jest.fn(),
     evaluate: jest.fn(() => false),
   };
 }
@@ -56,6 +62,9 @@ function makeAlwaysFalseCel(): CelEvaluator {
 function makeThrowingCel(): CelEvaluator {
   return {
     compile: (e: string) => ({ source: e, _ast: {} as any }),
+    evaluateDslValue: jest.fn() as any,
+    getClockOffset: jest.fn(() => 0),
+    setClockOffset: jest.fn(),
     evaluate: jest.fn(() => { throw new Error('CEL evaluation error'); }),
   };
 }
@@ -63,6 +72,9 @@ function makeThrowingCel(): CelEvaluator {
 function makeValueCel(value: unknown): CelEvaluator {
   return {
     compile: (e: string) => ({ source: e, _ast: {} as any }),
+    evaluateDslValue: jest.fn() as any,
+    getClockOffset: jest.fn(() => 0),
+    setClockOffset: jest.fn(),
     evaluate: jest.fn(() => value),
   };
 }
@@ -252,6 +264,9 @@ describe('engine/patternMatcher — permutations', () => {
       let callOrder: string[] = [];
       const cel: CelEvaluator = {
         compile: (e: string) => ({ source: e, _ast: {} as any }),
+    evaluateDslValue: jest.fn() as any,
+    getClockOffset: jest.fn(() => 0),
+    setClockOffset: jest.fn(),
         evaluate: jest.fn((e: any) => {
           const src = typeof e === 'string' ? e : e.source;
           callOrder.push(src);
@@ -276,6 +291,9 @@ describe('engine/patternMatcher — permutations', () => {
       let callCount = 0;
       const cel: CelEvaluator = {
         compile: (e: string) => ({ source: e, _ast: {} as any }),
+    evaluateDslValue: jest.fn() as any,
+    getClockOffset: jest.fn(() => 0),
+    setClockOffset: jest.fn(),
         evaluate: jest.fn(() => { return ++callCount > 1; }),
       };
       const boundary = makeBoundary({
@@ -323,6 +341,9 @@ describe('engine/patternMatcher — permutations', () => {
     it('condition depends on payload — passes payload through CEL context', () => {
       const cel: CelEvaluator = {
         compile: (e: string) => ({ source: e, _ast: {} as any }),
+    evaluateDslValue: jest.fn() as any,
+    getClockOffset: jest.fn(() => 0),
+    setClockOffset: jest.fn(),
         evaluate: jest.fn((expr, ctx: any) => {
           // Only match when payload.amount > 100
           return (ctx?.payload?.amount ?? 0) > 100;
@@ -336,6 +357,9 @@ describe('engine/patternMatcher — permutations', () => {
     it('condition depends on state — state is present in CEL context', () => {
       const cel: CelEvaluator = {
         compile: (e: string) => ({ source: e, _ast: {} as any }),
+    evaluateDslValue: jest.fn() as any,
+    getClockOffset: jest.fn(() => 0),
+    setClockOffset: jest.fn(),
         evaluate: jest.fn((expr, ctx: any) => {
           return ctx?.state?.status === 'active';
         }),
@@ -437,6 +461,9 @@ describe('engine/patternMatcher — permutations', () => {
     it('secondary command targetId resolves from CEL expression', () => {
       const cel: CelEvaluator = {
         compile: (e: string) => ({ source: e, _ast: {} as any }),
+    evaluateDslValue: jest.fn() as any,
+    getClockOffset: jest.fn(() => 0),
+    setClockOffset: jest.fn(),
         evaluate: jest.fn((expr) => {
           const src = typeof expr === 'string' ? expr : (expr as any).source;
           if (src === 'target-id-expr') return 'resolved-target-id';
@@ -463,6 +490,9 @@ describe('engine/patternMatcher — permutations', () => {
     it('secondary command targetId is null when CEL returns non-string', () => {
       const cel: CelEvaluator = {
         compile: (e: string) => ({ source: e, _ast: {} as any }),
+    evaluateDslValue: jest.fn() as any,
+    getClockOffset: jest.fn(() => 0),
+    setClockOffset: jest.fn(),
         evaluate: jest.fn((expr) => {
           const src = typeof expr === 'string' ? expr : (expr as any).source;
           // Condition evaluation must return true to match behavior
@@ -488,6 +518,9 @@ describe('engine/patternMatcher — permutations', () => {
     it('secondary command with payload resolves CEL expressions', () => {
       const cel: CelEvaluator = {
         compile: (e: string) => ({ source: e, _ast: {} as any }),
+    evaluateDslValue: jest.fn() as any,
+    getClockOffset: jest.fn(() => 0),
+    setClockOffset: jest.fn(),
         evaluate: jest.fn((expr) => {
           const src = typeof expr === 'string' ? expr : (expr as any).source;
           if (src === '"resolved-id"') return 'resolved-id';
@@ -621,6 +654,9 @@ describe('engine/patternMatcher — permutations', () => {
     it('uses identity.creation.generate to produce aggregateId', () => {
       const cel: CelEvaluator = {
         compile: (e: string) => ({ source: e, _ast: {} as any }),
+    evaluateDslValue: jest.fn() as any,
+    getClockOffset: jest.fn(() => 0),
+    setClockOffset: jest.fn(),
         evaluate: jest.fn((expr) => {
           const src = typeof expr === 'string' ? expr : (expr as any).source;
           if (src === '$uuidv7()') return 'generated-uuid';
@@ -647,6 +683,9 @@ describe('engine/patternMatcher — permutations', () => {
     it('throws InternalExecutionError when generate expression returns empty string', () => {
       const cel: CelEvaluator = {
         compile: (e: string) => ({ source: e, _ast: {} as any }),
+    evaluateDslValue: jest.fn() as any,
+    getClockOffset: jest.fn(() => 0),
+    setClockOffset: jest.fn(),
         evaluate: jest.fn((expr) => {
           const src = typeof expr === 'string' ? expr : (expr as any).source;
           if (src === 'gen-expr') return '';
@@ -674,6 +713,9 @@ describe('engine/patternMatcher — permutations', () => {
     it('throws InternalExecutionError when generate expression returns non-string', () => {
       const cel: CelEvaluator = {
         compile: (e: string) => ({ source: e, _ast: {} as any }),
+    evaluateDslValue: jest.fn() as any,
+    getClockOffset: jest.fn(() => 0),
+    setClockOffset: jest.fn(),
         evaluate: jest.fn((expr) => {
           const src = typeof expr === 'string' ? expr : (expr as any).source;
           if (src === 'gen-expr') return 42; // non-string
@@ -731,6 +773,9 @@ describe('engine/patternMatcher — permutations', () => {
     it('event payload includes fields from payloadTemplate', () => {
       const cel: CelEvaluator = {
         compile: (e: string) => ({ source: e, _ast: {} as any }),
+    evaluateDslValue: jest.fn() as any,
+    getClockOffset: jest.fn(() => 0),
+    setClockOffset: jest.fn(),
         evaluate: jest.fn((expr) => {
           const src = typeof expr === 'string' ? expr : (expr as any).source;
           if (src === 'command.payload.name') return 'Alice';

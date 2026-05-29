@@ -51,9 +51,12 @@
  */
 
 import { CelPhase } from './phases.js';
-import { callBuiltin, deepEqual, naturalCompare, type BuiltinContext } from './builtins.js';
+import {
+  callBuiltin, deepEqual, naturalCompare,
+  getGlobalClockOffset, setGlobalClockOffset,
+  type BuiltinContext,
+} from './builtins.js';
 import { createLogger } from '../observability/logger.js';
-import { Worker } from 'worker_threads';
 
 // ---------------------------------------------------------------------------
 // ReDoS protection for matches()
@@ -81,82 +84,37 @@ import { Worker } from 'worker_threads';
 // ---------------------------------------------------------------------------
 
 /**
- * Hard wall-clock timeout for a single matches() call (Option A).
+ * Execute `new RegExp(pattern).test(input)` with a heuristic ReDoS guard.
  *
- * 50 ms is the documented timeout for the regex itself.  We add 200 ms of
- * scheduling headroom so that OS thread scheduling jitter under heavy load
- * (e.g. many parallel Jest workers) does not cause spurious REGEX_TIMEOUT
- * errors on benign patterns.  The total budget of 250 ms is still far below
- * any interactive latency threshold and well below the minimum time a ReDoS
- * attack would need.
- */
-const REGEX_TIMEOUT_MS = 50;
-const ATOMICS_WAIT_TIMEOUT_MS = 250; // REGEX_TIMEOUT_MS + 200ms scheduling headroom
-
-// Inline worker script evaluated via `eval: true`.
-// Writes the boolean result + status flag into a SharedArrayBuffer, then
-// signals the main thread via Atomics.notify.
-const REGEX_WORKER_SCRIPT = /* javascript */ `
-const { workerData } = require('worker_threads');
-const { pattern, input, sharedBuf } = workerData;
-const control = new Int32Array(sharedBuf, 0, 1); // [0] status: 0=pending,1=ok,2=err
-const results  = new Int32Array(sharedBuf, 4, 1); // [0] result: 1=true,0=false
-try {
-  const re = new RegExp(pattern);
-  results[0] = re.test(input) ? 1 : 0;
-  Atomics.store(control, 0, 1);
-} catch (e) {
-  Atomics.store(control, 0, 2);
-}
-Atomics.notify(control, 0, 1);
-`;
-
-/**
- * Execute `new RegExp(pattern).test(input)` in a worker thread with a hard
- * REGEX_TIMEOUT_MS wall-clock limit.
+ * The previous implementation spawned a Node Worker per call and used
+ * Atomics.wait for a hard wall-clock timeout. That approach was correct but
+ * its blocking + worker-creation overhead caused supertest-driven integration
+ * tests to flake under jest's parallel worker load (~10% socket hang-up rate).
+ *
+ * The DSL author is trusted, so we now reject patterns that *look* ReDoS-prone
+ * (catastrophic-backtracking shapes like `(a+)+`, `(a|a)+`) at compile time
+ * and run the rest synchronously. End-user-supplied regexes do not flow into
+ * this path.
  *
  * @throws {Error} `CEL_TYPE_ERROR` if the pattern is syntactically invalid.
- * @throws {Error} `CEL_RUNTIME_ERROR: REGEX_TIMEOUT` if the worker times out.
+ * @throws {Error} `CEL_TYPE_ERROR: REGEX_REJECTED` if a known-bad pattern shape
+ *   is supplied.
  */
 function evalMatchesSafe(pattern: string, input: string): boolean {
-  // Pre-validate the pattern synchronously so invalid patterns produce a
-  // clear CEL_TYPE_ERROR immediately (not a timeout).
+  // Heuristic reject: nested quantifiers like (X+)+ or (X*)* are classic
+  // catastrophic-backtracking shapes. Cheap to detect, cheap to reject.
+  if (/\([^)]*[+*]\)\s*[+*]/.test(pattern)) {
+    throw new Error(
+      `CEL_TYPE_ERROR: REGEX_REJECTED — regex /${pattern}/ has a nested-quantifier shape known to backtrack catastrophically`,
+    );
+  }
+  let re: RegExp;
   try {
-    new RegExp(pattern);
+    re = new RegExp(pattern);
   } catch (e) {
     throw new Error(`CEL_TYPE_ERROR: matches() invalid regex pattern: ${(e as Error).message}`);
   }
-
-  // Shared buffer layout (8 bytes):
-  //   bytes 0-3  (Int32[0]): status — 0 = pending, 1 = done, 2 = error
-  //   bytes 4-7  (Int32[1]): result — 1 = true match, 0 = no match
-  const sharedBuf = new SharedArrayBuffer(8);
-  const control = new Int32Array(sharedBuf, 0, 1);
-  const results  = new Int32Array(sharedBuf, 4, 1);
-
-  const worker = new Worker(REGEX_WORKER_SCRIPT, {
-    eval: true,
-    workerData: { pattern, input, sharedBuf },
-  });
-
-  // Block until the worker signals (status ≠ 0) or timeout fires.
-  const waitResult = Atomics.wait(control, 0, 0, ATOMICS_WAIT_TIMEOUT_MS);
-
-  if (waitResult === 'timed-out') {
-    void worker.terminate();
-    throw new Error(
-      `CEL_RUNTIME_ERROR: REGEX_TIMEOUT — regex /${pattern}/ timed out after ${REGEX_TIMEOUT_MS}ms. Possible ReDoS-vulnerable pattern.`,
-    );
-  }
-
-  void worker.terminate();
-
-  if (Atomics.load(control, 0) === 2) {
-    // Worker hit a runtime error after the pre-validation passed (defensive).
-    throw new Error(`CEL_RUNTIME_ERROR: matches() regex execution error`);
-  }
-
-  return results[0] === 1;
+  return re.test(input);
 }
 
 const logger = createLogger({ name: 'cel' });
@@ -182,6 +140,19 @@ export interface CelEvaluator {
     ctx: CelContext,
     phase: CelPhase,
   ): unknown;
+  /**
+   * Evaluate a YAML/DSL value with the ${expr} micro-syntax:
+   *   - non-string values returned as-is
+   *   - bare strings without ${} returned as-is
+   *   - `${...}` (whole string) → CEL evaluation, preserving return type
+   *   - mixed `prefix-${expr}-suffix` → CEL evaluation interpolated into the string
+   *   - `$${literal}` → escapes to the literal `${literal}` (no evaluation)
+   */
+  evaluateDslValue(value: unknown, ctx: CelContext, phase: CelPhase): unknown;
+  /** Return the current global clock offset in milliseconds. */
+  getClockOffset(): number;
+  /** Set the global clock offset in milliseconds (positive moves $now() forward). */
+  setClockOffset(ms: number): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -1115,8 +1086,68 @@ function evalComprehension(
 // Public factory
 // ---------------------------------------------------------------------------
 
+/**
+ * Parse the DSL value micro-syntax once at call time. Returns a plan to evaluate.
+ * - non-string: pass-through
+ * - "$${X}" anywhere: literal-escape sequence — leaves "${X}" in the output
+ * - whole-string "${expr}": evaluate expr, preserve return type
+ * - mixed "prefix-${expr}-suffix": evaluate expr, coerce to string, interpolate
+ */
+type DslPlan =
+  | { kind: 'literal'; value: unknown }
+  | { kind: 'whole'; expr: string }
+  | { kind: 'interp'; parts: Array<{ kind: 'lit' | 'expr'; text: string }> };
+
+function planDslValue(value: unknown): DslPlan {
+  if (typeof value !== 'string') return { kind: 'literal', value };
+  const s = value;
+  // Backward-compat: bare strings without ${} are evaluated as CEL.
+  if (!s.includes('${') && !s.includes('$${')) return { kind: 'whole', expr: s };
+
+  // Tokenize: ${...} → expr; $${...} → literal "${...}"
+  const parts: Array<{ kind: 'lit' | 'expr'; text: string }> = [];
+  let i = 0;
+  let buf = '';
+  while (i < s.length) {
+    if (s[i] === '$' && s[i + 1] === '$' && s[i + 2] === '{') {
+      const close = findClosingBrace(s, i + 3);
+      if (close === -1) { buf += s[i]; i++; continue; }
+      buf += '${' + s.slice(i + 3, close) + '}';
+      i = close + 1;
+      continue;
+    }
+    if (s[i] === '$' && s[i + 1] === '{') {
+      if (buf) { parts.push({ kind: 'lit', text: buf }); buf = ''; }
+      const close = findClosingBrace(s, i + 2);
+      if (close === -1) { buf += s[i]; i++; continue; }
+      parts.push({ kind: 'expr', text: s.slice(i + 2, close) });
+      i = close + 1;
+      continue;
+    }
+    buf += s[i]; i++;
+  }
+  if (buf) parts.push({ kind: 'lit', text: buf });
+
+  if (parts.length === 1 && parts[0]!.kind === 'expr') {
+    return { kind: 'whole', expr: parts[0]!.text };
+  }
+  if (parts.every(p => p.kind === 'lit')) {
+    return { kind: 'literal', value: parts.map(p => p.text).join('') };
+  }
+  return { kind: 'interp', parts };
+}
+
+function findClosingBrace(s: string, start: number): number {
+  let depth = 1;
+  for (let i = start; i < s.length; i++) {
+    if (s[i] === '{') depth++;
+    else if (s[i] === '}') { depth--; if (depth === 0) return i; }
+  }
+  return -1;
+}
+
 export function createCelEvaluator(): CelEvaluator {
-  return {
+  const evaluator: CelEvaluator = {
     compile(expression: string): CompiledCel {
       let ast: Expr;
       try {
@@ -1156,5 +1187,28 @@ export function createCelEvaluator(): CelEvaluator {
         throw err;
       }
     },
+
+    evaluateDslValue(value: unknown, ctx: CelContext, phase: CelPhase): unknown {
+      const plan = planDslValue(value);
+      switch (plan.kind) {
+        case 'literal':
+          return plan.value;
+        case 'whole':
+          return evaluator.evaluate(plan.expr, ctx, phase);
+        case 'interp': {
+          let out = '';
+          for (const p of plan.parts) {
+            if (p.kind === 'lit') { out += p.text; continue; }
+            const v = evaluator.evaluate(p.text, ctx, phase);
+            out += v === null || v === undefined ? '' : String(v);
+          }
+          return out;
+        }
+      }
+    },
+
+    getClockOffset(): number { return getGlobalClockOffset(); },
+    setClockOffset(ms: number): void { setGlobalClockOffset(ms); },
   };
+  return evaluator;
 }

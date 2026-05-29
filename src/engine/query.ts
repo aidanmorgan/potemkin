@@ -73,6 +73,46 @@ export function runQuery(req: QueryRequest): JsonValue {
   return result;
 }
 
+function compareValues(a: unknown, b: unknown): number {
+  // Nulls/undefined sort to the end regardless of order.
+  const aMissing = a === null || a === undefined;
+  const bMissing = b === null || b === undefined;
+  if (aMissing && bMissing) return 0;
+  if (aMissing) return 1;
+  if (bMissing) return -1;
+  if (typeof a === 'number' && typeof b === 'number') return a - b;
+  return String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0;
+}
+
+function operatorMatch(fieldValue: unknown, op: string, expected: string): boolean {
+  // Null/undefined: only `ne` may match.
+  if (fieldValue === null || fieldValue === undefined) {
+    return op === 'ne';
+  }
+  // Numeric ops try numeric compare when expected parses as number.
+  const numExpected = Number(expected);
+  const numField = typeof fieldValue === 'number' ? fieldValue : Number(fieldValue);
+  switch (op) {
+    case 'gt':  return !isNaN(numField) && !isNaN(numExpected) ? numField > numExpected : String(fieldValue) > expected;
+    case 'gte': return !isNaN(numField) && !isNaN(numExpected) ? numField >= numExpected : String(fieldValue) >= expected;
+    case 'lt':  return !isNaN(numField) && !isNaN(numExpected) ? numField < numExpected : String(fieldValue) < expected;
+    case 'lte': return !isNaN(numField) && !isNaN(numExpected) ? numField <= numExpected : String(fieldValue) <= expected;
+    case 'ne':  return String(fieldValue) !== expected && (isNaN(numField) || isNaN(numExpected) || numField !== numExpected);
+    case 'in': {
+      const set = expected.split(',').map(s => s.trim());
+      return set.includes(String(fieldValue));
+    }
+    case 'contains':
+      return typeof fieldValue === 'string' && fieldValue.toLowerCase().includes(expected.toLowerCase());
+    case 'startsWith':
+      return typeof fieldValue === 'string' && fieldValue.toLowerCase().startsWith(expected.toLowerCase());
+    case 'endsWith':
+      return typeof fieldValue === 'string' && fieldValue.toLowerCase().endsWith(expected.toLowerCase());
+    default:
+      return false;
+  }
+}
+
 function _runQuery(req: QueryRequest): JsonValue {
   const { boundary, targetId, queryParams, graph, cel, openapi, logger, events } = req;
   const log = logger?.child({ component: 'query', boundary: boundary.boundary, targetId });
@@ -108,6 +148,14 @@ function _runQuery(req: QueryRequest): JsonValue {
   }
   let entities = graphKeys.map((k) => graph.get(k)!).filter(Boolean) as readonly JsonObject[];
 
+  // Soft-delete: exclude entities with _deleted=true unless ?includeDeleted=true.
+  const includeDeletedParam = queryParams['includeDeleted'];
+  const includeDeleted = includeDeletedParam !== undefined
+    && (Array.isArray(includeDeletedParam) ? includeDeletedParam[0] : includeDeletedParam) === 'true';
+  if (!includeDeleted) {
+    entities = entities.filter(e => e['_deleted'] !== true);
+  }
+
   // Apply queryMapping filters
   const appliedFilters: string[] = [];
   if (boundary.queryMapping) {
@@ -133,6 +181,43 @@ function _runQuery(req: QueryRequest): JsonValue {
     }
   }
 
+  // Apply operator filters (?field:op=value, where op ∈ gt,gte,lt,lte,ne,in,contains,startsWith,endsWith).
+  // The same field can carry multiple operator filters; all must match (AND).
+  const opRegex = /^(.+):(gt|gte|lt|lte|ne|in|contains|startsWith|endsWith)$/;
+  for (const [key, rawVal] of Object.entries(queryParams)) {
+    const m = opRegex.exec(key);
+    if (!m) continue;
+    const field = m[1]!;
+    const op = m[2]!;
+    const val = Array.isArray(rawVal) ? rawVal[0] : rawVal;
+    if (val === undefined) continue;
+    entities = entities.filter(e => operatorMatch(e[field], op, val));
+  }
+
+  // Apply ?q=searchTerm full-text search across string fields.
+  const qParam = queryParams['q'];
+  if (qParam !== undefined) {
+    const q = (Array.isArray(qParam) ? qParam[0] : qParam).toLowerCase();
+    entities = entities.filter(e => {
+      for (const v of Object.values(e)) {
+        if (typeof v === 'string' && v.toLowerCase().includes(q)) return true;
+      }
+      return false;
+    });
+  }
+
+  // Apply ?sort=field&order=asc|desc sorting before pagination.
+  const sortParam = queryParams['sort'];
+  if (sortParam !== undefined) {
+    const field = Array.isArray(sortParam) ? sortParam[0] : sortParam;
+    const orderParam = queryParams['order'];
+    const orderRaw = orderParam !== undefined
+      ? (Array.isArray(orderParam) ? orderParam[0] : orderParam)
+      : 'asc';
+    const dir = orderRaw === 'desc' ? -1 : 1;
+    entities = [...entities].sort((a, b) => dir * compareValues(a[field], b[field]));
+  }
+
   // Apply pagination: limit and offset from query params
   const offsetParam = queryParams['offset'];
   const limitParam = queryParams['limit'];
@@ -146,6 +231,7 @@ function _runQuery(req: QueryRequest): JsonValue {
 
   const safeOffset = isNaN(offset) || offset < 0 ? 0 : offset;
 
+  const totalCount = entities.length;
   let sliced = entities.slice(safeOffset);
   if (limit !== undefined && !isNaN(limit) && limit >= 0) {
     sliced = sliced.slice(0, limit);
@@ -158,6 +244,19 @@ function _runQuery(req: QueryRequest): JsonValue {
     { boundary: boundary.boundary, resultCount: result.length, appliedFilters, offset: safeOffset, limit },
     'Collection query result returned',
   );
+
+  // Pagination envelope is emitted only when `?limit` is explicitly provided
+  // (preserves backwards compatibility for callers that expect a raw array).
+  if (limitParam !== undefined) {
+    const limitN = limit !== undefined && !isNaN(limit) && limit >= 0 ? limit : 0;
+    return {
+      items: result as unknown as JsonValue,
+      totalCount,
+      offset: safeOffset,
+      limit: limitN,
+      hasMore: safeOffset + result.length < totalCount,
+    } as unknown as JsonValue;
+  }
 
   return result;
 }

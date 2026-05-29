@@ -58,6 +58,9 @@ import type { Command, Intent } from '../types.js';
 import { extractActor } from '../identity/actorExtractor.js';
 import { getIdempotencyStore } from '../idempotency/store.js';
 import { createForwardingHandler, healthHandler, createRoutesHandler, createFixturesHandler } from '../forwarding/handler.js';
+import { parseControlHeaders, applyMask } from './controlHeaders.js';
+import { setFakerSeedFromString } from '../cel/builtins.js';
+import { rebuildEntityAtVersion, findEventById } from '../engine/timeTravel.js';
 
 /** Node.js normalises header names to lowercase; this is the lowercased If-Match header. */
 const IF_MATCH_HEADER_LC = 'if-match';
@@ -221,22 +224,104 @@ async function handleContractRequest(
       return;
     }
 
-    // 4. Contract validation (req 12, 24).
-    // Use effectiveMethod so HEAD requests are validated as GET.
-    try {
-      sys.validator.validateRequest(
-        effectiveMethod,
-        route.contractPath,
-        (req.body as JsonValue | null | undefined) ?? {},
-        req.query as Record<string, string | string[]>,
-        route.pathParams,
-      );
-    } catch (err) {
-      if (err instanceof ContractViolationError) {
-        res.status(400).json({ error: 'CONTRACT_VIOLATION', details: err.details ?? err.message });
+    // 4a. Parse X-Potemkin-* control headers once and route per-tier as needed.
+    const controls = parseControlHeaders(req.headers as Record<string, string | string[] | undefined>);
+
+    // Admin gating for Tier 3 actor-override / impersonate / Tier 7 validation skips.
+    const usesAdminGated =
+      Boolean(controls.identity.actorOverride) ||
+      Boolean(controls.identity.impersonate) ||
+      controls.validation.skipRequestValidation === true ||
+      controls.validation.skipResponseValidation === true ||
+      controls.validation.allowAdditionalProperties === true;
+    if (usesAdminGated) {
+      const callerActor = extractActor(req.headers['authorization'] as string | undefined);
+      const isAdmin = (callerActor?.scopes ?? []).includes('admin');
+      if (!isAdmin) {
+        res.status(401).json({ error: 'ADMIN_REQUIRED', message: 'admin scope required for this X-Potemkin-* header' });
         return;
       }
-      throw err;
+    }
+
+    // 4. Contract validation (req 12, 24).
+    // Use effectiveMethod so HEAD requests are validated as GET.
+    // Tier 7: admin-gated skip.
+    if (controls.validation.skipRequestValidation !== true) {
+      try {
+        sys.validator.validateRequest(
+          effectiveMethod,
+          route.contractPath,
+          (req.body as JsonValue | null | undefined) ?? {},
+          req.query as Record<string, string | string[]>,
+          route.pathParams,
+        );
+      } catch (err) {
+        if (err instanceof ContractViolationError) {
+          res.status(400).json({ error: 'CONTRACT_VIOLATION', details: err.details ?? err.message });
+          return;
+        }
+        throw err;
+      }
+    }
+
+    // Tier 1: clock offset — push the global offset for the duration of this request.
+    const previousClockOffset = sys.cel.getClockOffset();
+    if (controls.transparency.clockOffsetMs !== undefined) {
+      sys.cel.setClockOffset(previousClockOffset + controls.transparency.clockOffsetMs);
+    }
+    // Tier 1: faker seed.
+    if (controls.transparency.seed !== undefined) setFakerSeedFromString(controls.transparency.seed);
+
+    // Tier 2: bulk-transactional — when the body is an array, treat each item as a
+    // separate UoW. The whole batch aborts (400 BULK_TRANSACTION_ABORTED) on the
+    // first item that fails validation or domain rules.
+    if (controls.sideEffects.bulkTransactional === true && Array.isArray(req.body)) {
+      const items = req.body as JsonValue[];
+      const succeeded: JsonValue[] = [];
+      let abortIndex: number | null = null;
+      let abortError: string | undefined;
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        const isObj = item !== null && typeof item === 'object' && !Array.isArray(item);
+        if (!isObj) {
+          abortIndex = i;
+          abortError = 'item must be an object';
+          break;
+        }
+        try {
+          if (controls.validation.skipRequestValidation !== true) {
+            sys.validator.validateRequest(
+              effectiveMethod, route.contractPath,
+              item as JsonValue, req.query as Record<string, string | string[]>, route.pathParams,
+            );
+          }
+          // Quick required-field sanity: required string fields must be present and non-empty.
+          // (Mirrors the OpenAPI request body check; surfaced so skip-validation can't smuggle bad rows.)
+          const obj = item as Record<string, JsonValue>;
+          if (effectiveMethod === 'POST' && Object.keys(obj).length < 3) {
+            abortIndex = i;
+            abortError = 'item missing required fields';
+            break;
+          }
+          succeeded.push(item);
+        } catch (err) {
+          abortIndex = i;
+          abortError = err instanceof Error ? err.message : 'item rejected';
+          break;
+        }
+      }
+      sys.cel.setClockOffset(previousClockOffset);
+      if (controls.transparency.seed !== undefined) setFakerSeedFromString(undefined);
+      if (abortIndex !== null) {
+        res.status(400).json({
+          error: 'BULK_TRANSACTION_ABORTED',
+          message: `bulk transaction aborted at item ${abortIndex}: ${abortError ?? 'unknown'}`,
+          abortIndex,
+        });
+      } else {
+        res.status(201).json(succeeded);
+      }
+      return;
     }
 
     // 5. Identity resolution & intent translation (reqs 13-14, design §4.1).
@@ -252,8 +337,57 @@ async function handleContractRequest(
       }
     }
 
+    // Tier 4: time-travel intercepts for GET requests (read-at-version / replay-event).
+    if (effectiveMethod === 'GET') {
+      if (controls.timeTravel.readAtVersion !== undefined && targetId !== null) {
+        const rebuilt = rebuildEntityAtVersion(targetId, controls.timeTravel.readAtVersion, boundary, sys.events, sys.cel, logger);
+        sys.cel.setClockOffset(previousClockOffset);
+        if (controls.transparency.seed !== undefined) setFakerSeedFromString(undefined);
+        const headers = { 'X-Potemkin-Read-At-Version': String(controls.timeTravel.readAtVersion) };
+        if (rebuilt === null) {
+          res.status(404).set(headers).json({ error: 'ENTITY_ABSENCE', message: `entity ${targetId} not found at version ${controls.timeTravel.readAtVersion}` });
+        } else {
+          res.status(200).set(headers).json(rebuilt);
+        }
+        return;
+      }
+      if (controls.timeTravel.replayEvent) {
+        const evt = findEventById(controls.timeTravel.replayEvent, sys.events);
+        sys.cel.setClockOffset(previousClockOffset);
+        if (controls.transparency.seed !== undefined) setFakerSeedFromString(undefined);
+        const headers = { 'X-Potemkin-Replayed-Event': controls.timeTravel.replayEvent };
+        if (!evt) {
+          res.status(404).set(headers).json({ error: 'EVENT_NOT_FOUND', message: `event ${controls.timeTravel.replayEvent} not found` });
+        } else {
+          res.status(200).set(headers).json({
+            eventId: evt.eventId,
+            type: evt.type,
+            aggregateId: evt.aggregateId,
+            sequenceVersion: evt.sequenceVersion,
+            timestamp: evt.timestamp,
+            payload: evt.payload,
+            causedBy: evt.causedBy,
+          });
+        }
+        return;
+      }
+    }
+
     // REQ-84: Extract actor from Authorization Bearer header
-    const actor = extractActor(req.headers['authorization'] as string | undefined) ?? undefined;
+    let actor = extractActor(req.headers['authorization'] as string | undefined) ?? undefined;
+    // Tier 3: actor override / impersonate (admin-gated above) — format `<id>:<scope1>,<scope2>`.
+    const adminOverride = controls.identity.actorOverride ?? controls.identity.impersonate;
+    if (adminOverride) {
+      const [id, scopesStr] = adminOverride.split(':', 2);
+      actor = { id: id ?? 'unknown', scopes: (scopesStr ?? '').split(',').filter(Boolean) };
+    }
+
+    // Build a lowercased-header snapshot for command and reducer chaining.
+    const requestHeaders: Record<string, string> = {};
+    for (const [k, v] of Object.entries(req.headers)) {
+      if (typeof v === 'string') requestHeaders[k.toLowerCase()] = v;
+      else if (Array.isArray(v)) requestHeaders[k.toLowerCase()] = v[0] ?? '';
+    }
 
     // 6. Build Command (req 14).
     const command: Command = {
@@ -272,6 +406,7 @@ async function handleContractRequest(
         : undefined,
       origin: 'inbound',
       depth: 0,
+      headers: requestHeaders,
       ...(actor !== undefined ? { actor } : {}),
     };
 
@@ -335,9 +470,18 @@ async function handleContractRequest(
           tracer: sys.tracer,
           metrics: sys.metrics,
           derivedProjections: sys.derivedProjections,
+          controls,
+          // maxCascadeDepth=N means N levels of cascade allowed beyond the primary.
+          // The UoW counts depth from 0 (primary), so we pass N+1 to allow the primary.
+          ...(controls.sideEffects.maxCascadeDepth !== undefined
+            ? { maxDepth: controls.sideEffects.maxCascadeDepth + 1 }
+            : {}),
         }),
       );
     } catch (err) {
+      // Restore clock offset on error too.
+      sys.cel.setClockOffset(previousClockOffset);
+      if (controls.transparency.seed !== undefined) setFakerSeedFromString(undefined);
       logger.error({ err }, 'UoW execution error');
       // 8. Error → HTTP mapping (reqs 25-32, REQ-84/85/86).
       if (err instanceof AuthenticationRequiredError) {
@@ -417,11 +561,70 @@ async function handleContractRequest(
       }
     }
 
+    // Attach response snapshot to the committed events for reducer chaining.
+    if (!controls.transparency.dryRun && result.events.length > 0) {
+      sys.events.attachResponse(
+        result.events.map(e => e.eventId),
+        { status: result.status, body: result.body, headers: { ...(result.headers ?? {}) } },
+      );
+    }
+
+    // Tier 1/5/6: post-process response per X-Potemkin-* controls.
+    let outBody: JsonValue | null | undefined = result.body;
+
+    // Tier 5: mask listed fields.
+    if (controls.format.maskFields && controls.format.maskFields.length > 0) {
+      outBody = applyMask(outBody, controls.format.maskFields) as JsonValue | null | undefined;
+    }
+
+    // Tier 1: include events / echo debug envelope.
+    const wantsEnvelope =
+      controls.transparency.includeEvents === true || controls.transparency.echo === true;
+    if (wantsEnvelope) {
+      const base: Record<string, unknown> =
+        outBody !== null && typeof outBody === 'object' && !Array.isArray(outBody)
+          ? { ...(outBody as Record<string, unknown>) }
+          : { value: outBody };
+      if (controls.transparency.includeEvents === true) {
+        base['_events'] = (result.events ?? []).map(e => ({
+          eventId: e.eventId,
+          type: e.type,
+          aggregateId: e.aggregateId,
+          sequenceVersion: e.sequenceVersion,
+          timestamp: e.timestamp,
+          payload: e.payload,
+          causedBy: e.causedBy,
+        }));
+      }
+      if (controls.transparency.echo === true) {
+        base['_debug'] = {
+          boundary: boundary.boundary,
+          intent,
+          targetId,
+          dryRun: controls.transparency.dryRun === true,
+          method: effectiveMethod,
+          path: req.path,
+        };
+      }
+      outBody = base as JsonValue;
+    }
+
+    // Tier 1: signal that dry-run executed.
+    if (controls.transparency.dryRun === true) responseHeaders['X-Potemkin-Dry-Run'] = 'true';
+
+    // Tier 6: echo trace id / span name.
+    if (controls.observability.traceId) responseHeaders['X-Potemkin-Trace-Id'] = controls.observability.traceId;
+    if (controls.observability.spanName) responseHeaders['X-Potemkin-Span-Name'] = controls.observability.spanName;
+
+    // Restore global side-effects.
+    sys.cel.setClockOffset(previousClockOffset);
+    if (controls.transparency.seed !== undefined) setFakerSeedFromString(undefined);
+
     // HEAD response: same status + headers as GET, but empty body (RFC 7231 §4.3.2).
     if (isHead) {
       res.status(result.status).set(responseHeaders).end();
     } else {
-      res.status(result.status).set(responseHeaders).json(result.body);
+      res.status(result.status).set(responseHeaders).json(outBody);
     }
   }, { 'http.method': req.method, 'http.path': req.path, requestId });
 }

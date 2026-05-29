@@ -7,6 +7,9 @@ import type { Tracer } from '../observability/tracing.js';
 import type { ObjectGraphSchemaRegistry } from '../schema/types.js';
 import type { ScriptRegistry, ScriptContext } from '../scripts/types.js';
 import { CelPhase } from '../cel/phases.js';
+import { getGlobalClockOffset } from '../cel/builtins.js';
+
+const offsetIsoNow = (): string => new Date(Date.now() + getGlobalClockOffset()).toISOString();
 import { getTracer, SpanStatusCode } from '../observability/tracing.js';
 import {
   EntityAbsenceError,
@@ -166,7 +169,7 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
       payload: command.payload as JsonObject,
       helpers: {
         uuid: () => nextUuidv7(),
-        now: () => new Date().toISOString(),
+        now: offsetIsoNow,
         deepClone: <T>(v: T) => deepClone(v as JsonValue) as unknown as T,
         deepMerge: (a: JsonObject, b: JsonObject) => deepMerge(a, b),
       },
@@ -281,7 +284,7 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
         payload: command.payload as JsonObject,
         helpers: {
           uuid: () => nextUuidv7(),
-          now: () => new Date().toISOString(),
+          now: offsetIsoNow,
           deepClone: <T>(v: T) => deepClone(v as JsonValue) as unknown as T,
           deepMerge: (a: JsonObject, b: JsonObject) => deepMerge(a, b),
         },
@@ -299,6 +302,17 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
 
       const sequenceVersion = nextSequenceVersion(currentAggId);
 
+      const requestSnapshot = {
+        method: command.httpMethod,
+        path: command.path,
+        query: command.queryParams,
+        headers: command.headers ?? {},
+        payload: command.payload,
+        ...(command.actor !== undefined
+          ? { actorId: command.actor.id, actorScopes: command.actor.scopes }
+          : {}),
+      };
+
       const domainEvent: DomainEvent = {
         eventId,
         boundary: command.boundary,
@@ -308,6 +322,7 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
         timestamp: now(),
         sequenceVersion,
         causedBy: command.commandId,
+        request: requestSnapshot,
       };
 
       log?.debug({ eventId, eventType: catalogEntry.type, aggregateId: currentAggId }, 'Domain event constructed');
@@ -341,7 +356,7 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
           payload: command.payload as JsonObject,
           helpers: {
             uuid: () => nextUuidv7(),
-            now: () => new Date().toISOString(),
+            now: offsetIsoNow,
             deepClone: <T>(v: T) => deepClone(v as JsonValue) as unknown as T,
             deepMerge: (a: JsonObject, b: JsonObject) => deepMerge(a, b),
           },
@@ -385,7 +400,7 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
         payload: command.payload as JsonObject,
         helpers: {
           uuid: () => nextUuidv7(),
-          now: () => new Date().toISOString(),
+          now: offsetIsoNow,
           deepClone: <T>(v: T) => deepClone(v as JsonValue) as unknown as T,
           deepMerge: (a: JsonObject, b: JsonObject) => deepMerge(a, b),
         },
@@ -433,7 +448,7 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
         payload: command.payload as JsonObject,
         helpers: {
           uuid: () => nextUuidv7(),
-          now: () => new Date().toISOString(),
+          now: offsetIsoNow,
           deepClone: <T>(v: T) => deepClone(v as JsonValue) as unknown as T,
           deepMerge: (a: JsonObject, b: JsonObject) => deepMerge(a, b),
         },
@@ -537,15 +552,31 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
     const eventId = nextEventId();
     const sequenceVersion = nextSequenceVersion(aggregateId);
 
+    // Soft-delete: on DELETE, attach _deleted + _deletedAt to the merge payload.
+    const isDelete = command.httpMethod === 'DELETE';
+    const eventPayload: JsonObject = isDelete
+      ? { ...command.payload, _deleted: true, _deletedAt: now() }
+      : command.payload;
+
     const genericEvent: DomainEvent = {
       eventId,
       boundary: command.boundary,
       aggregateId,
       type: 'System.GenericUpdateEvent',
-      payload: command.payload,
+      payload: eventPayload,
       timestamp: now(),
       sequenceVersion,
       causedBy: command.commandId,
+      request: {
+        method: command.httpMethod,
+        path: command.path,
+        query: command.queryParams,
+        headers: command.headers ?? {},
+        payload: command.payload,
+        ...(command.actor !== undefined
+          ? { actorId: command.actor.id, actorScopes: command.actor.scopes }
+          : {}),
+      },
     };
 
     projectToShadow(genericEvent);

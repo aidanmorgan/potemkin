@@ -7,6 +7,7 @@
 
 import { bootSystem } from '../../src/engine/boot.js';
 import { loadOpenApi } from '../../src/contract/loader.js';
+import { compileDsl } from '../../src/dsl/parser.js';
 import { BootError } from '../../src/errors.js';
 
 // ---------------------------------------------------------------------------
@@ -107,7 +108,7 @@ describe('schema-static-check.integration: DSL with unknown state path triggers 
     await expect(
       bootSystem({
         openapi,
-        dslModules: [{ name: 'widget', yaml: BAD_DSL_UNKNOWN_STATE_PATH }],
+        compiledDsl: await compileDsl([{ name: 'widget', yaml: BAD_DSL_UNKNOWN_STATE_PATH }]),
       }),
     ).rejects.toBeInstanceOf(BootError);
   });
@@ -118,7 +119,7 @@ describe('schema-static-check.integration: DSL with unknown state path triggers 
     try {
       await bootSystem({
         openapi,
-        dslModules: [{ name: 'widget', yaml: BAD_DSL_UNKNOWN_STATE_PATH }],
+        compiledDsl: await compileDsl([{ name: 'widget', yaml: BAD_DSL_UNKNOWN_STATE_PATH }]),
       });
       fail('Expected BootError');
     } catch (err) {
@@ -133,7 +134,7 @@ describe('schema-static-check.integration: DSL with unknown state path triggers 
     try {
       await bootSystem({
         openapi,
-        dslModules: [{ name: 'widget', yaml: BAD_DSL_UNKNOWN_STATE_PATH }],
+        compiledDsl: await compileDsl([{ name: 'widget', yaml: BAD_DSL_UNKNOWN_STATE_PATH }]),
       });
       fail('Expected BootError');
     } catch (err) {
@@ -152,7 +153,7 @@ describe('schema-static-check.integration: DSL with unknown state path triggers 
     await expect(
       bootSystem({
         openapi,
-        dslModules: [{ name: 'widget', yaml: GOOD_DSL }],
+        compiledDsl: await compileDsl([{ name: 'widget', yaml: GOOD_DSL }]),
       }),
     ).resolves.toBeDefined();
   });

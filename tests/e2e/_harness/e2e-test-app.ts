@@ -51,6 +51,10 @@ export interface E2eAppOptions {
   specmaticPort?: number;
   enginePort?: number;
   pluginControlPort?: number;
+  /** Optional fixture name (e.g. "crm-jwt", "crm-session", "crm-versioned"). */
+  fixtureName?: string;
+  /** Alias for `fixtureName` used by the CRM fixtures. */
+  crmFixtureName?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -92,7 +96,7 @@ export async function startE2eApp(opts: E2eAppOptions = {}): Promise<E2eApp> {
 
   // 2. Ensure binaries exist
   const [specmaticJar, pluginJar] = await Promise.all([
-    ensureSpecmaticJar('2.6.0'),
+    ensureSpecmaticJar('2.46.2'),
     ensurePluginJar(),
   ]);
 

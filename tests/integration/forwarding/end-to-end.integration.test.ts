@@ -335,7 +335,7 @@ describe('/_engine/forward — idempotency-key honoured', () => {
     resetIdempotencyStore();
     const openapi = await loadOpenApi(IDEM_OPENAPI_YAML);
     const dsl = await compileDsl([{ name: 'widget', yaml: IDEM_DSL_YAML }], IDEM_GLOBAL_YAML);
-    const input: BootInput = { openapi, dslModules: [{ name: 'widget', yaml: IDEM_DSL_YAML }] };
+    const input: BootInput = { openapi, compiledDsl: await compileDsl([{ name: 'widget', yaml: IDEM_DSL_YAML }]) };
     const sys = await bootSystem(input);
     // Patch the compiled DSL to include idempotency config (mirrors existing test pattern)
     (sys as unknown as { dsl: typeof dsl }).dsl = dsl;

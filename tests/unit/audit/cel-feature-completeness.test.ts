@@ -1,9 +1,7 @@
 /**
  * AUDIT: CEL feature completeness probing tests.
  *
- * `it.failing` marks a gap in the current src — the test asserts the CORRECT
- * behaviour so it will turn green once the bug is fixed.
- * Plain `it` documents a feature that already works.
+ * All tests use plain it(...) — they assert behaviour that must hold in src.
  */
 
 import { createCelEvaluator } from '../../../src/cel/evaluator';

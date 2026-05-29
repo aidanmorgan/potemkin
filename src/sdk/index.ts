@@ -1,19 +1,7 @@
-/**
- * `@potemkin/sdk` — the local SDK module that TypeScript reducer files
- * import from.
- *
- * Lives in-tree under `src/sdk/` per REQ-TS-001 AC-001.2 (no npm publish).
- * The sandbox require-hook (Stage 6) resolves `@potemkin/sdk` specifier to
- * this file.
- *
- * Exports:
- *   - `Reducer({ boundary, event })`  → class decorator (REQ-TS-003)
- *   - `reducer({ boundary, event }, fn)` → function helper (REQ-TS-003)
- *   - Patch helpers: `add` `remove` `replace` `move` `copy` `append`
- *     `prepend` `increment` `merge` `upsert` (REQ-TS-001 AC-001.1)
- *   - `ReducerContext`, `Patch` types
- *   - `registry` — process-wide RW-locked Map (REQ-TS-002)
- */
+// In-tree SDK that TypeScript reducer files import as `@potemkin/sdk`. The
+// sandbox require-hook resolves that specifier here. Exposes the decorator
+// and helper registration styles, patch helpers, and the RW-locked process
+// registry.
 
 import type { Patch } from '../dsl/patches.js';
 
@@ -50,7 +38,8 @@ export interface RegisteredReducer {
 }
 
 // ---------------------------------------------------------------------------
-// RW-locked registry (REQ-TS-002)
+// RW-locked registry — write lock for registration/swap/reset, read lock
+// for dispatch snapshots.
 // ---------------------------------------------------------------------------
 
 /**
@@ -170,7 +159,7 @@ class Registry {
     this.entries.set(k, entry);
   }
 
-  /** Atomic-swap install — used by Stage 6 watch-mode reload. */
+  /** Atomic-swap install — used by watch-mode reload. */
   async installSwap(replacement: ReadonlyMap<string, RegisteredReducer>): Promise<void> {
     await this.lock.acquireWrite();
     try {

@@ -16,6 +16,7 @@ import { bootSystem, type BootedSystem } from '../../../src/engine/boot';
 import { resetSystem } from '../../../src/engine/reset';
 import { loadOpenApi } from '../../../src/contract/loader';
 import { nextUuidv7 } from '../../../src/ids/uuidv7';
+import { compileDsl } from '../../../src/dsl/parser';
 
 // ── minimal fixture ──────────────────────────────────────────────────────────
 
@@ -138,10 +139,10 @@ beforeEach(async () => {
   const openapi = await loadOpenApi(SIMPLE_OPENAPI);
   sys = await bootSystem({
     openapi,
-    dslModules: [
+    compiledDsl: await compileDsl([
       { name: 'item', yaml: ITEM_DSL },
       { name: 'itemById', yaml: ITEM_BY_ID_DSL },
-    ],
+    ]),
   });
 });
 
@@ -281,10 +282,10 @@ reducers:
 
     const badSys = await bootSystem({
       openapi,
-      dslModules: [
+      compiledDsl: await compileDsl([
         { name: 'item', yaml: dslWithBadDispatch },
         { name: 'itemById', yaml: ITEM_BY_ID_DSL },
-      ],
+      ]),
     }).catch(() => null);
 
     // If boot fails (schema binding might catch it), skip this test variant

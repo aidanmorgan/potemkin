@@ -9,6 +9,7 @@
 import { bootSystem, type BootedSystem } from '../../src/engine/boot.js';
 import { executeUnitOfWork } from '../../src/engine/uow.js';
 import { loadOpenApi } from '../../src/contract/loader.js';
+import { compileDsl } from '../../src/dsl/parser.js';
 import { InternalExecutionError } from '../../src/errors.js';
 import { nextUuidv7 } from '../../src/ids/uuidv7.js';
 
@@ -115,7 +116,7 @@ describe('schema-runtime-type-mismatch.integration: wrong-typed CEL assignment t
     const openapi = await loadOpenApi(ACCOUNT_OPENAPI);
     const sys = await bootSystem({
       openapi,
-      dslModules: [{ name: 'account', yaml: TYPE_MISMATCH_DSL }],
+      compiledDsl: await compileDsl([{ name: 'account', yaml: TYPE_MISMATCH_DSL }]),
     });
 
     await expect(
@@ -146,7 +147,7 @@ describe('schema-runtime-type-mismatch.integration: wrong-typed CEL assignment t
     const openapi = await loadOpenApi(ACCOUNT_OPENAPI);
     const sys = await bootSystem({
       openapi,
-      dslModules: [{ name: 'account', yaml: TYPE_MISMATCH_DSL }],
+      compiledDsl: await compileDsl([{ name: 'account', yaml: TYPE_MISMATCH_DSL }]),
     });
 
     try {
@@ -186,7 +187,7 @@ describe('schema-runtime-type-mismatch.integration: wrong-typed CEL assignment t
     const openapi = await loadOpenApi(ACCOUNT_OPENAPI);
     const sys = await bootSystem({
       openapi,
-      dslModules: [{ name: 'account', yaml: TYPE_MISMATCH_DSL }],
+      compiledDsl: await compileDsl([{ name: 'account', yaml: TYPE_MISMATCH_DSL }]),
     });
 
     const sizeBefore = sys.events.size();
@@ -221,7 +222,7 @@ describe('schema-runtime-type-mismatch.integration: wrong-typed CEL assignment t
     const openapi = await loadOpenApi(ACCOUNT_OPENAPI);
     const sys = await bootSystem({
       openapi,
-      dslModules: [{ name: 'account', yaml: GOOD_ACCOUNT_DSL }],
+      compiledDsl: await compileDsl([{ name: 'account', yaml: GOOD_ACCOUNT_DSL }]),
     });
 
     const result = await executeUnitOfWork({

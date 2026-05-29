@@ -40,24 +40,17 @@ describeWithJava('00 — Bootstrap: Specmatic + plugin SPI load', () => {
     expect([200, 400, 404]).toContain(res.status);
   }, 60_000);
 
-  /**
-   * BUG: Specmatic 2.6.0 does NOT include the StubInitializer SPI interface in its JAR.
-   * The plugin uses `META-INF/services/io.specmatic.stub.StubInitializer` to register via
-   * ServiceLoader, but Specmatic 2.6.0 never calls ServiceLoader for StubInitializer.
-   * Therefore the plugin's Ktor control server never starts.
-   * Fix: upgrade to a Specmatic version that supports StubInitializer SPI, or use a
-   * different registration mechanism (e.g. a specmatic.yaml `plugins` section).
-   */
-  it.failing('plugin control server responds to GET /health [BUG: SPI not loaded in v2.6.0]', async () => {
+  // StubInitializer SPI is loaded by Specmatic ≥ 2.46.2 (the project upgrade target).
+  it('plugin control server responds to GET /health', async () => {
     const res = await fetch(`${app.pluginControlUrl}/health`);
     expect(res.status).toBe(200);
     const body = await res.json() as Record<string, unknown>;
     expect(typeof body['state']).toBe('string');
   }, 60_000);
 
-  it.failing('plugin control server health state is a known HealthState value [BUG: SPI not loaded in v2.6.0]', async () => {
+  it('plugin control server health state is a known HealthState value', async () => {
     const res = await fetch(`${app.pluginControlUrl}/health`);
     const body = await res.json() as { state: string };
-    expect(['Up', 'Degraded', 'Down']).toContain(body.state);
+    expect(['UP', 'DEGRADED', 'DOWN']).toContain(body.state);
   }, 60_000);
 });

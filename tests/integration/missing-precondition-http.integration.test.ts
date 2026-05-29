@@ -24,6 +24,7 @@ import { resetSystem } from '../../src/engine/reset.js';
 import { createGateway } from '../../src/http/gateway.js';
 import { executeUnitOfWork } from '../../src/engine/uow.js';
 import { loadOpenApi } from '../../src/contract/loader.js';
+import { compileDsl } from '../../src/dsl/parser.js';
 import { nextUuidv7 } from '../../src/ids/uuidv7.js';
 import type { BootedSystem } from '../../src/engine/boot.js';
 import type { Command } from '../../src/types.js';
@@ -116,7 +117,7 @@ initialization:
 
 async function buildSystem(): Promise<BootedSystem> {
   const openapi = await loadOpenApi(PRECOND_OPENAPI_YAML);
-  return bootSystem({ openapi, dslModules: [{ name: 'precondWidget', yaml: PRECOND_DSL_YAML }] });
+  return bootSystem({ openapi, compiledDsl: await compileDsl([{ name: 'precondWidget', yaml: PRECOND_DSL_YAML }]) });
 }
 
 // Helper: determine whether If-Match is required for a given operation by inspecting

@@ -1,22 +1,9 @@
-/**
- * Patch vocabulary and atomic patch applier.
- *
- * Implements REQ-PATCH-001 (single patch vocabulary across reducers, response
- * mutations, seeds, and overlays) and REQ-PATCH-002 (build-new-state-then-swap
- * atomicity). RFC 6902 (add/remove/replace/move/copy) plus Potemkin extensions
- * (append/prepend/increment/merge/upsert).
- *
- * Path syntax follows RFC 6901 JSON Pointer:
- *   - `/`             → root
- *   - `/foo/bar`      → object property nesting
- *   - `/items/0`      → indexed array access
- *   - `/items/-`      → "end of array" (only for add/append/append-like)
- *   - `/a~1b/c~0d`    → escape `/` as `~1`, `~0` as `~0`
- */
+// RFC 6902 (add/remove/replace/move/copy) + Potemkin extensions
+// (append/prepend/increment/merge/upsert). Paths are RFC 6901 JSON Pointers;
+// `/items/-` is the array-end sentinel (only valid for add/append).
 
 import type { JsonValue } from '../types.js';
 
-/** Source tag for journal entries — REQ-PATCH-004. */
 export type PatchSource =
   | 'reducer'
   | 'seed'
@@ -448,13 +435,9 @@ function deepMergeInPlace(
   }
 }
 
-/**
- * Build-new-state-then-swap apply. Returns a fresh state object derived from
- * `state + patches`. The input `state` is NEVER mutated. On any patch failure,
- * throws `PatchApplyError` and the candidate state is discarded.
- *
- * REQ-PATCH-002: callers reassign the live StateGraph pointer ONLY on success.
- */
+// Returns a fresh state derived from `state + patches`; never mutates the
+// input. Throws PatchApplyError on the first failed op, discarding the
+// candidate so callers safely retain the original pointer.
 export function applyPatches(
   state: JsonValue,
   patches: readonly Patch[],

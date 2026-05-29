@@ -1,8 +1,7 @@
 /**
  * AUDIT: engine/faultSim.ts + engine/router.ts — completeness probing tests
  *
- * Verified behaviours → it(...)
- * Identified gaps    → it.failing(...)
+ * All tests use plain it(...) — they assert behaviour that must hold in src.
  */
 
 import { extractFaultSignal } from '../../../src/engine/faultSim';

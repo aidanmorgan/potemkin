@@ -135,7 +135,7 @@ describe('engine/query.ts additional coverage', () => {
   // ── limit=0 edge case ────────────────────────────────────────────────────────
 
   describe('limit=0 query param', () => {
-    it('returns empty array when limit=0', () => {
+    it('returns empty items array when limit=0 (envelope form)', () => {
       const graph = createStateGraph();
       graph.set('a', { id: 'a' });
       graph.set('b', { id: 'b' });
@@ -147,9 +147,9 @@ describe('engine/query.ts additional coverage', () => {
         graph,
         cel,
         openapi: { raw: {}, paths: {} },
-      }) as any[];
+      }) as { items: unknown[] };
 
-      expect(result).toHaveLength(0);
+      expect(result.items).toHaveLength(0);
     });
   });
 
@@ -196,7 +196,7 @@ describe('engine/query.ts additional coverage', () => {
       expect(result).toHaveLength(2); // 3 items - offset 1 = 2 items
     });
 
-    it('uses first element when limit is provided as array (line 116)', () => {
+    it('uses first element when limit is provided as array (envelope form)', () => {
       const graph = createStateGraph();
       graph.set('a', { id: 'a' });
       graph.set('b', { id: 'b' });
@@ -210,9 +210,9 @@ describe('engine/query.ts additional coverage', () => {
         graph,
         cel,
         openapi: { raw: {}, paths: {} },
-      }) as any[];
+      }) as { items: unknown[] };
 
-      expect(result).toHaveLength(2);
+      expect(result.items).toHaveLength(2);
     });
   });
 

@@ -1,14 +1,14 @@
 /**
  * AUDIT: engine/boot.ts + engine/reset.ts — completeness probing tests
  *
- * Verified behaviours → it(...)
- * Identified gaps    → it.failing(...)
+ * All tests use plain it(...) — they assert behaviour that must hold in src.
  */
 
 import { bootSystem } from '../../../src/engine/boot';
 import { resetSystem } from '../../../src/engine/reset';
 import { BootError } from '../../../src/errors';
 import { loadOpenApi } from '../../../src/contract/loader';
+import { compileDsl } from '../../../src/dsl/parser';
 
 // ── Minimal OpenAPI fixtures ───────────────────────────────────────────────────
 
@@ -111,7 +111,7 @@ it('CONTRACT: boot throws BootError BOOT_ERR_DSL_REFERENCE when boundary contrac
   await expect(
     bootSystem({
       openapi,
-      dslModules: [{ name: 'thing', yaml: THING_DSL.replace('contract_path: /things', 'contract_path: /nonexistent') }],
+      compiledDsl: await compileDsl([{ name: 'thing', yaml: THING_DSL.replace('contract_path: /things', 'contract_path: /nonexistent') }]),
     }),
   ).rejects.toThrow(BootError);
 });
@@ -121,7 +121,7 @@ it('CONTRACT: BootError from missing contractPath has code BOOT_ERR_DSL_REFERENC
   try {
     await bootSystem({
       openapi,
-      dslModules: [{ name: 'thing', yaml: THING_DSL.replace('contract_path: /things', 'contract_path: /nonexistent') }],
+      compiledDsl: await compileDsl([{ name: 'thing', yaml: THING_DSL.replace('contract_path: /things', 'contract_path: /nonexistent') }]),
     });
     fail('Expected BootError');
   } catch (e) {
@@ -135,7 +135,7 @@ it('CONTRACT: bootSystem populates frozenBaseline from initialization records', 
   const openapi = await loadOpenApi(MINIMAL_OPENAPI);
   const sys = await bootSystem({
     openapi,
-    dslModules: [{ name: 'thing', yaml: THING_WITH_INIT_DSL }],
+    compiledDsl: await compileDsl([{ name: 'thing', yaml: THING_WITH_INIT_DSL }]),
   });
 
   expect(sys.frozenBaseline).toHaveLength(2);
@@ -146,7 +146,7 @@ it('CONTRACT: bootSystem hydrates the StateGraph from baseline events', async ()
   const openapi = await loadOpenApi(MINIMAL_OPENAPI);
   const sys = await bootSystem({
     openapi,
-    dslModules: [{ name: 'thing', yaml: THING_WITH_INIT_DSL }],
+    compiledDsl: await compileDsl([{ name: 'thing', yaml: THING_WITH_INIT_DSL }]),
   });
 
   // Both baseline entities should be in the graph
@@ -160,7 +160,7 @@ it('CONTRACT: individual frozenBaseline events are Object.frozen (immutable)', a
   const openapi = await loadOpenApi(MINIMAL_OPENAPI);
   const sys = await bootSystem({
     openapi,
-    dslModules: [{ name: 'thing', yaml: THING_WITH_INIT_DSL }],
+    compiledDsl: await compileDsl([{ name: 'thing', yaml: THING_WITH_INIT_DSL }]),
   });
 
   // boot.ts line 216: Object.freeze({...}) on each event
@@ -178,7 +178,7 @@ it('FIX I1: frozenBaseline payloads are deeply frozen — mutation attempt throw
   const openapi = await loadOpenApi(MINIMAL_OPENAPI);
   const sys = await bootSystem({
     openapi,
-    dslModules: [{ name: 'thing', yaml: THING_WITH_INIT_DSL }],
+    compiledDsl: await compileDsl([{ name: 'thing', yaml: THING_WITH_INIT_DSL }]),
   });
 
   const payload = sys.frozenBaseline[0].payload as Record<string, unknown>;
@@ -194,7 +194,7 @@ it('CONTRACT: reset restores baseline events in the same insertion order as boot
   const openapi = await loadOpenApi(MINIMAL_OPENAPI);
   const sys = await bootSystem({
     openapi,
-    dslModules: [{ name: 'thing', yaml: THING_WITH_INIT_DSL }],
+    compiledDsl: await compileDsl([{ name: 'thing', yaml: THING_WITH_INIT_DSL }]),
   });
 
   // Add some post-boot events
@@ -224,7 +224,7 @@ it('CONTRACT: reset purges all post-boot state from graph and event store', asyn
   const openapi = await loadOpenApi(MINIMAL_OPENAPI);
   const sys = await bootSystem({
     openapi,
-    dslModules: [{ name: 'thing', yaml: THING_WITH_INIT_DSL }],
+    compiledDsl: await compileDsl([{ name: 'thing', yaml: THING_WITH_INIT_DSL }]),
   });
 
   // Manually add extra data
@@ -251,7 +251,7 @@ it('CONTRACT: frozenBaseline array is frozen (cannot push/pop)', async () => {
   const openapi = await loadOpenApi(MINIMAL_OPENAPI);
   const sys = await bootSystem({
     openapi,
-    dslModules: [{ name: 'thing', yaml: THING_WITH_INIT_DSL }],
+    compiledDsl: await compileDsl([{ name: 'thing', yaml: THING_WITH_INIT_DSL }]),
   });
 
   // boot.ts line 232: Object.freeze([...baseline])
@@ -264,7 +264,7 @@ it('FIX I1: frozenBaseline event payloads ARE deeply frozen — Object.freeze is
     const openapi = await loadOpenApi(MINIMAL_OPENAPI);
     const sys = await bootSystem({
       openapi,
-      dslModules: [{ name: 'thing', yaml: THING_WITH_INIT_DSL }],
+      compiledDsl: await compileDsl([{ name: 'thing', yaml: THING_WITH_INIT_DSL }]),
     });
 
     // Payload should be frozen to prevent silent corruption

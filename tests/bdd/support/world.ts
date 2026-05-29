@@ -8,6 +8,7 @@ import type { JsonValue, JsonObject } from '../../../src/types.js';
 import type { Express } from 'express';
 import { loadOpenApi } from '../../../src/contract/loader.js';
 import type { OpenApiDoc } from '../../../src/contract/loader.js';
+import { compileDsl } from '../../../src/dsl/parser.js';
 
 setDefaultTimeout(15_000);
 
@@ -399,10 +400,10 @@ export class SimWorld extends World {
 
     const sys = await bootSystem({
       openapi,
-      dslModules: [
+      compiledDsl: await compileDsl([
         { name: 'lead', yaml: LEAD_DSL_YAML },
         { name: 'opportunity', yaml: OPPORTUNITY_DSL_YAML },
-      ],
+      ]),
     });
 
     const app = createGateway(sys);
@@ -422,7 +423,7 @@ export class SimWorld extends World {
 
   async bootWithCustomDsl(openapiYaml: string, dslModules: { name: string; yaml: string }[]): Promise<void> {
     const openapi = await loadOpenApi(openapiYaml);
-    const sys = await bootSystem({ openapi, dslModules });
+    const sys = await bootSystem({ openapi, compiledDsl: await compileDsl(dslModules) });
     this.sys = sys;
     this.app = createGateway(sys);
   }

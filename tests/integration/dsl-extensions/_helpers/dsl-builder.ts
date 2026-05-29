@@ -12,6 +12,7 @@ import { bootSystem } from '../../../../src/engine/boot.js';
 import { executeUnitOfWork } from '../../../../src/engine/uow.js';
 import { resetSystem } from '../../../../src/engine/reset.js';
 import { loadOpenApi } from '../../../../src/contract/loader.js';
+import { compileDsl } from '../../../../src/dsl/parser.js';
 import { nextUuidv7 } from '../../../../src/ids/uuidv7.js';
 import { BootError } from '../../../../src/errors.js';
 import type { JsonObject } from '../../../../src/types.js';
@@ -134,7 +135,7 @@ ${schemasYaml}${extraSchemasYaml}
 
   let sys: Awaited<ReturnType<typeof bootSystem>>;
   try {
-    sys = await bootSystem({ openapi, dslModules });
+    sys = await bootSystem({ openapi, compiledDsl: await compileDsl(dslModules) });
   } catch (err) {
     if (err instanceof BootError) {
       return { result: { status: 500, body: { error: err.message }, events: [] }, events: [], state: null, bootError: err };
@@ -227,7 +228,7 @@ ${schemasYaml}
   ];
 
   try {
-    const sys = await bootSystem({ openapi, dslModules });
+    const sys = await bootSystem({ openapi, compiledDsl: await compileDsl(dslModules) });
     resetSystem(sys);
     throw new Error('Expected a BootError but boot succeeded');
   } catch (err) {

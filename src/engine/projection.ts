@@ -266,6 +266,15 @@ function _projectEvent(input: ProjectionInput): void {
       }
     }
 
+    // Audit fields: only inject when the boundary opts in (boundary.auditFields=true).
+    // This keeps strict OpenAPI contracts that don't declare updatedAt/updatedBy from
+    // failing response validation by default.
+    if (event.type !== 'BaselineEntityCreatedEvent' && boundary.auditFields === true) {
+      buf['updatedAt'] = event.timestamp;
+      const actorId = event.request?.actorId;
+      buf['updatedBy'] = actorId ?? null;
+    }
+
     // Step 4: Integrity Validation
     if (validator) {
       validator.validateEntity(event.boundary, buf);

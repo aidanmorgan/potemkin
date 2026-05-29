@@ -80,7 +80,7 @@ async function buildTestSystem(): Promise<ReturnType<typeof createGateway>> {
   resetIdempotencyStore();
   const openapi = await loadOpenApi(OPENAPI_YAML);
   const dsl = await compileDsl([{ name: 'widget', yaml: DSL_YAML }], GLOBAL_YAML);
-  const input: BootInput = { openapi, dslModules: [{ name: 'widget', yaml: DSL_YAML }] };
+  const input: BootInput = { openapi, compiledDsl: await compileDsl([{ name: 'widget', yaml: DSL_YAML }]) };
   const sys = await bootSystem(input);
   // Patch the DSL with idempotency config so the gateway picks it up
   (sys as unknown as { dsl: typeof dsl }).dsl = dsl;

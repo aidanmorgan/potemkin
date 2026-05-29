@@ -6,10 +6,8 @@
  * an Opportunity, and compensates by reverting the lead's status on failure.
  *
  * We test the happy path (saga creates Opportunity) and the structural
- * integrity of the pipeline.  Full compensation requires injecting a failure
- * in the Opportunity creation step, which is not directly injectable in the
- * current engine without fault-sim — so we verify the saga runs to completion
- * on the happy path and document the compensation path as `it.todo`.
+ * integrity of the pipeline. The compensation path (failure injection
+ * mid-saga) is exercised by 25-fault-resilience.
  */
 
 import { execSync } from 'node:child_process';
@@ -131,7 +129,4 @@ describeWithJava('12 — Saga: LeadConversionSaga creates Opportunity on convert
     expect(opp).toBeDefined();
     expect(opp!['leadId']).toBe(leadId);
   }, 60_000);
-
-  // Compensation path requires fault injection — documented as failing/todo.
-  it.todo('saga compensates and reverts Lead status when Opportunity creation fails');
 });

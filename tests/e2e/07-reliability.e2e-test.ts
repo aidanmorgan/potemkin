@@ -68,19 +68,15 @@ describeWithJava('07 — Reliability: plugin health monitoring', () => {
     expect(body.status).toBe('UP');
   }, 60_000);
 
-  /**
-   * BUG: Specmatic 2.6.0 does not include the StubInitializer SPI.
-   * The plugin's Ktor control server is never started because the plugin never loads.
-   * These tests are marked it.failing to document the bug.
-   */
-  it.failing('plugin control health reports Up when engine is running [BUG: SPI not in v2.6.0]', async () => {
+  // StubInitializer SPI is loaded by Specmatic ≥ 2.46.2.
+  it('plugin control health reports Up when engine is running', async () => {
     const res = await fetch(`${app.pluginControlUrl}/health`);
     expect(res.status).toBe(200);
     const body = await res.json() as { state: string };
-    expect(['Up', 'Degraded']).toContain(body.state);
+    expect(['UP', 'DEGRADED']).toContain(body.state);
   }, 60_000);
 
-  it.failing('sending POST /shutdown to plugin control transitions health to Down [BUG: SPI not in v2.6.0]', async () => {
+  it('sending POST /shutdown to plugin control transitions health to Down', async () => {
     const shutdownRes = await fetch(`${app.pluginControlUrl}/shutdown`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -92,17 +88,17 @@ describeWithJava('07 — Reliability: plugin health monitoring', () => {
       }),
     });
     expect([200, 204]).toContain(shutdownRes.status);
-    const downNow = await waitForHealthState(app.pluginControlUrl, 'Down', 5_000);
+    const downNow = await waitForHealthState(app.pluginControlUrl, 'DOWN', 5_000);
     expect(downNow).toBe(true);
   }, 60_000);
 
-  it.failing('sending POST /ready to plugin control transitions health back to Up [BUG: SPI not in v2.6.0]', async () => {
+  it('sending POST /ready to plugin control transitions health back to Up', async () => {
     await fetch(`${app.pluginControlUrl}/shutdown`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ engine: 'potemkin-stateful', version: '0.1.0', reason: 'SIGTERM', stoppedAt: new Date().toISOString() }),
     });
-    await waitForHealthState(app.pluginControlUrl, 'Down', 3_000);
+    await waitForHealthState(app.pluginControlUrl, 'DOWN', 3_000);
     const readyRes = await fetch(`${app.pluginControlUrl}/ready`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -116,7 +112,7 @@ describeWithJava('07 — Reliability: plugin health monitoring', () => {
       }),
     });
     expect([200, 204]).toContain(readyRes.status);
-    const upNow = await waitForHealthState(app.pluginControlUrl, 'Up', 5_000);
+    const upNow = await waitForHealthState(app.pluginControlUrl, 'UP', 5_000);
     expect(upNow).toBe(true);
   }, 60_000);
 });

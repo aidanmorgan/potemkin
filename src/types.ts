@@ -27,6 +27,28 @@ export interface Command {
   readonly depth: number;              // 0 for inbound, +1 per secondary cascade
   /** REQ-84: optional actor identity from Authorization Bearer token */
   readonly actor?: Actor;
+  /** Request headers (lowercased keys) — available for header matching and snapshots. */
+  readonly headers?: Record<string, string>;
+}
+
+/** Snapshot of the inbound request that produced an event, captured for reducer chaining. */
+export interface EventRequestSnapshot {
+  readonly method: string;
+  readonly path: string;
+  readonly query?: Record<string, string | string[]>;
+  readonly headers: Record<string, string>;
+  readonly payload: JsonObject;
+  /** Actor id at the time of the request (when authenticated). */
+  readonly actorId?: string;
+  /** Actor scopes at the time of the request. */
+  readonly actorScopes?: readonly string[];
+}
+
+/** Snapshot of the response emitted alongside the event. */
+export interface EventResponseSnapshot {
+  readonly status: number;
+  readonly body?: JsonValue;
+  readonly headers?: Record<string, string>;
 }
 
 export interface DomainEvent {
@@ -38,6 +60,10 @@ export interface DomainEvent {
   readonly timestamp: string;          // ISO-8601 UTC
   readonly sequenceVersion: number;    // monotonic per aggregate, starts at 1
   readonly causedBy: string | null;    // originating commandId; null for baseline
+  /** Request snapshot — captured at event emission time for reducer chaining. */
+  readonly request?: EventRequestSnapshot;
+  /** Response snapshot — attached post-commit by the UoW. */
+  readonly response?: EventResponseSnapshot;
 }
 
 export interface ExecutionResult {

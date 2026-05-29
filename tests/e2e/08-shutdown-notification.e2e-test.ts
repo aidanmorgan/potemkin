@@ -62,20 +62,15 @@ describeWithJava('08 — Shutdown notification: /ready and /shutdown lifecycle',
     await app.shutdown().catch(() => { /* may already be shut down */ });
   }, 30_000);
 
-  /**
-   * BUG: Specmatic 2.6.0 does not include StubInitializer SPI.
-   * The plugin control server (Ktor) never starts because the plugin never loads.
-   * The engine sends POST /ready but nothing is listening at the plugin control port.
-   * Fix: upgrade to a Specmatic version that calls ServiceLoader<StubInitializer>.
-   */
-  it.failing('plugin health state is Up after engine boot (engine sent /ready) [BUG: SPI not in v2.6.0]', async () => {
+  // StubInitializer SPI is loaded by Specmatic ≥ 2.46.2.
+  it('plugin health state is Up after engine boot (engine sent /ready)', async () => {
     const state = await getPluginHealthState(app.pluginControlUrl);
-    expect(['Up', 'Degraded']).toContain(state);
+    expect(['UP', 'DEGRADED']).toContain(state);
   }, 60_000);
 
-  it.failing('stopping engine causes plugin to receive /shutdown and transition to Down [BUG: SPI not in v2.6.0]', async () => {
+  it('stopping engine causes plugin to receive /shutdown and transition to Down', async () => {
     await app.engine.stop();
-    const isDown = await waitForState(app.pluginControlUrl, 'Down', 5_000);
+    const isDown = await waitForState(app.pluginControlUrl, 'DOWN', 5_000);
     expect(isDown).toBe(true);
   }, 60_000);
 });

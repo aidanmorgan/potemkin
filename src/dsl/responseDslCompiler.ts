@@ -1,27 +1,9 @@
-/**
- * Compile user-facing response-mutation DSL into the canonical Patch[]
- * vocabulary, so the response interceptor doesn't carry parallel mutation
- * logic (REQ-RESP-004).
- *
- * Three families of mutation are handled:
- *   - HATEOAS (REQ-RESP-001): per-boundary `hateoas:` list → `_links` patches
- *     against the response body. Per-boundary override replaces the OpenAPI
- *     `links:` default (caller-supplied or omitted).
- *   - Deprecation/Sunset (REQ-RESP-002): boundary `deprecation:` block →
- *     header patches against `/headers/Deprecation` and `/headers/Sunset`.
- *   - Masking (REQ-RESP-003): `mask: [field, ...]` → `{op: remove, path}`
- *     patches against the body.
- *
- * Every emitted patch is tagged with a `source:` field via patches.ts so the
- * journal carries the same uniform shape across reducers / seeds / response
- * mutations.
- */
+// Compile response-mutation DSL (hateoas, deprecation, mask) into Patch[]
+// batches so the response interceptor only knows how to apply patches.
+// Three batches are returned so each can be applied with its own journal
+// source tag.
 
 import type { Patch } from './patches.js';
-
-// ---------------------------------------------------------------------------
-// Input types
-// ---------------------------------------------------------------------------
 
 export interface HateoasEntry {
   readonly rel: string;
@@ -29,9 +11,9 @@ export interface HateoasEntry {
 }
 
 export interface DeprecationConfig {
-  /** Optional — when present the Sunset header is emitted in addition. */
+  // When sunset is present a Sunset header is emitted alongside Deprecation.
   readonly sunset?: string;
-  /** Optional Link replacement; emits Link: <replacement>; rel="successor-version". */
+  // Replacement path; emits Link: <replacement>; rel="successor-version".
   readonly replacement?: string;
 }
 
@@ -41,27 +23,10 @@ export interface ResponseDslInput {
   readonly mask?: readonly string[];
 }
 
-// ---------------------------------------------------------------------------
-// Compile-then-apply (REQ-RESP-004)
-// ---------------------------------------------------------------------------
-
-/**
- * Compile every declared response mutation in `input` into a single ordered
- * Patch[]. Order: HATEOAS → deprecation headers → masking. Caller passes the
- * result to applyPatches() with the appropriate source tag.
- *
- * To preserve the per-source journal grouping that REQ-PATCH-004 mandates,
- * the engine wires three calls (one per source) rather than a single
- * bulk apply.
- */
 export function compileResponseHateoas(entries: readonly HateoasEntry[]): Patch[] {
   if (entries.length === 0) return [];
+  // Merge into /_links preserves any existing rels on the body.
   const out: Patch[] = [];
-  // Build `_links` as a single merge so the response body's existing
-  // _links (if any) survive. Strategy:
-  //   - First patch: add {} at /_links if missing (best-effort by replacing
-  //     with merge into a literal {})
-  //   - Then one add per rel
   const links: Record<string, { href: string }> = {};
   for (const e of entries) links[e.rel] = { href: e.href };
   out.push({
@@ -97,11 +62,6 @@ export function compileResponseMask(fields: readonly string[]): Patch[] {
   return fields.map((f): Patch => ({ op: 'remove', path: f.startsWith('/') ? f : `/${f}` }));
 }
 
-/**
- * Compile every category present in `input` into a single { hateoas, deprecation,
- * mask } bundle so the caller can apply each batch with its own `source:` tag
- * (REQ-PATCH-004) without re-implementing the mutation logic.
- */
 export interface CompiledResponseDsl {
   readonly hateoas: readonly Patch[];
   readonly deprecation: readonly Patch[];

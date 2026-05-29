@@ -1,8 +1,7 @@
 /**
  * AUDIT: engine/query.ts — completeness probing tests
  *
- * Verified behaviours → it(...)
- * Identified gaps    → it.failing(...)
+ * All tests use plain it(...) — they assert behaviour that must hold in src.
  */
 
 import { runQuery } from '../../../src/engine/query';
@@ -41,7 +40,7 @@ function makeOpenApiWithDerived(boundary: string, derivedProps: Record<string, s
 
 // ── VERIFIED: pagination applies limit and offset correctly ───────────────────
 
-it('CONTRACT: limit query param slices the result set', () => {
+it('CONTRACT: limit query param slices the result set (envelope form)', () => {
   const graph = createStateGraph();
   for (let i = 0; i < 5; i++) {
     graph.set(`e${i}`, { id: `e${i}`, value: i });
@@ -54,9 +53,9 @@ it('CONTRACT: limit query param slices the result set', () => {
     graph,
     cel,
     openapi: { raw: {}, paths: {} },
-  }) as any[];
+  }) as { items: unknown[] };
 
-  expect(result).toHaveLength(2);
+  expect(result.items).toHaveLength(2);
 });
 
 it('CONTRACT: offset query param skips leading entries', () => {
@@ -77,7 +76,7 @@ it('CONTRACT: offset query param skips leading entries', () => {
   expect(result).toHaveLength(2);
 });
 
-it('CONTRACT: limit=0 returns empty array', () => {
+it('CONTRACT: limit=0 returns empty items array (envelope form)', () => {
   const graph = createStateGraph();
   graph.set('e1', { id: 'e1', value: 1 });
   graph.set('e2', { id: 'e2', value: 2 });
@@ -89,12 +88,12 @@ it('CONTRACT: limit=0 returns empty array', () => {
     graph,
     cel,
     openapi: { raw: {}, paths: {} },
-  }) as any[];
+  }) as { items: unknown[] };
 
-  expect(result).toHaveLength(0);
+  expect(result.items).toHaveLength(0);
 });
 
-it('CONTRACT: invalid limit (non-numeric string) is ignored — returns all', () => {
+it('CONTRACT: invalid limit (non-numeric string) returns all in envelope', () => {
   const graph = createStateGraph();
   graph.set('e1', { id: 'e1' });
   graph.set('e2', { id: 'e2' });
@@ -106,10 +105,10 @@ it('CONTRACT: invalid limit (non-numeric string) is ignored — returns all', ()
     graph,
     cel,
     openapi: { raw: {}, paths: {} },
-  }) as any[];
+  }) as { items: unknown[] };
 
   // NaN limit should be ignored → return all
-  expect(result).toHaveLength(2);
+  expect(result.items).toHaveLength(2);
 });
 
 it('CONTRACT: negative offset is clamped to 0', () => {

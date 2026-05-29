@@ -14,6 +14,7 @@ import { bootSystem, type BootedSystem } from '../../src/engine/boot.js';
 import { executeUnitOfWork } from '../../src/engine/uow.js';
 import { resetSystem } from '../../src/engine/reset.js';
 import { loadOpenApi } from '../../src/contract/loader.js';
+import { compileDsl } from '../../src/dsl/parser.js';
 import { ConcurrencyConflictError } from '../../src/errors.js';
 import { nextUuidv7 } from '../../src/ids/uuidv7.js';
 import type { Command } from '../../src/types.js';
@@ -137,10 +138,10 @@ describe('concurrency-conflict.integration', () => {
     const openapi = await loadOpenApi(SIMPLE_OPENAPI);
     sys = await bootSystem({
       openapi,
-      dslModules: [
+      compiledDsl: await compileDsl([
         { name: 'item', yaml: SIMPLE_ITEM_DSL },
         { name: 'itemById', yaml: SIMPLE_ITEM_BY_ID_DSL },
-      ],
+      ]),
     });
   });
 

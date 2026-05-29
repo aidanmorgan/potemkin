@@ -1,12 +1,5 @@
-/**
- * Wire types + payload validation for the plugin↔engine HTTP surface.
- *
- * REQ-WIRE-001: POST /_engine/dsl request body conforms to
- *   { modules: [{path, yaml}], typescript: object|null, specEndpoints: [{specId, path, method}] }.
- *
- * Centralised here so both the HTTP handler (Stage 3 wiring) and the standalone
- * loader callers can validate the same payload shape consistently.
- */
+// Wire types + validation for the POST /_engine/dsl request body.
+// Shared by the HTTP handler and standalone loader callers.
 
 import { BootError } from '../errors.js';
 
@@ -40,11 +33,8 @@ export interface DslErrorResponse {
   readonly moduleLocations?: readonly { path: string; line?: number }[];
 }
 
-/**
- * Validate the shape of a `POST /_engine/dsl` request body.
- * On any structural failure, throws BootError with code BOOT_ERR_MALFORMED_BUNDLE
- * (REQ-WIRE-001 AC-001.1).
- */
+// Validate POST /_engine/dsl request body. Throws BootError with code
+// BOOT_ERR_MALFORMED_BUNDLE on any structural failure.
 export function validateDslWirePayload(raw: unknown): DslWirePayload {
   if (!isObject(raw)) {
     throw mkError('payload must be a JSON object');
@@ -67,7 +57,7 @@ export function validateDslWirePayload(raw: unknown): DslWirePayload {
     validatedModules.push({ path: m['path'] as string, yaml: m['yaml'] as string });
   }
 
-  // `typescript: null` is equivalent to absent (AC-001.3).
+  // null and absent both skip the TS discovery pipeline.
   const typescriptRaw = (raw as Record<string, unknown>)['typescript'];
   let typescript: object | null = null;
   if (typescriptRaw !== undefined && typescriptRaw !== null) {

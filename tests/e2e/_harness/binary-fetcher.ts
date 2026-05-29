@@ -76,7 +76,7 @@ async function downloadFile(downloadUrl: string, dest: string): Promise<void> {
   });
 }
 
-export async function ensureSpecmaticJar(version = '2.6.0'): Promise<string> {
+export async function ensureSpecmaticJar(version = '2.46.2'): Promise<string> {
   if (!javaAvailable()) {
     throw new Error('Java is not available on PATH — cannot run Specmatic');
   }

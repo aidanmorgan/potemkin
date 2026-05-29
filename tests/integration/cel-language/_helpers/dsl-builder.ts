@@ -27,6 +27,7 @@ import { bootSystem } from '../../../../src/engine/boot.js';
 import { executeUnitOfWork } from '../../../../src/engine/uow.js';
 import { resetSystem } from '../../../../src/engine/reset.js';
 import { loadOpenApi } from '../../../../src/contract/loader.js';
+import { compileDsl } from '../../../../src/dsl/parser.js';
 import { nextUuidv7 } from '../../../../src/ids/uuidv7.js';
 
 /** Minimal interface for engine errors that carry an HTTP status code. */
@@ -258,7 +259,7 @@ ${extraLines}
     { name: 'widgetById', yaml: widgetByIdDsl },
   ];
 
-  const sys = await bootSystem({ openapi, dslModules });
+  const sys = await bootSystem({ openapi, compiledDsl: await compileDsl(dslModules) });
 
   try {
     const cmd = {
@@ -353,7 +354,7 @@ ${opts.reducerDsl}
     { name: 'widgetById', yaml: widgetByIdDsl },
   ];
 
-  const sys = await bootSystem({ openapi, dslModules });
+  const sys = await bootSystem({ openapi, compiledDsl: await compileDsl(dslModules) });
 
   try {
     const cmd = {

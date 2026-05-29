@@ -5,7 +5,7 @@
  * store use is unmetered by design. The `eventsAppendedTotal` metric is incremented
  * in `uow.ts` after a successful commit, not here.
  */
-import type { DomainEvent } from '../types.js';
+import type { DomainEvent, EventResponseSnapshot } from '../types.js';
 import { InternalExecutionError } from '../errors.js';
 import { createLogger } from '../observability/index.js';
 
@@ -30,6 +30,9 @@ export interface EventStore {
 
   /** Return the total number of events in the store. */
   size(): number;
+
+  /** Attach a response snapshot retroactively to the named events. */
+  attachResponse(eventIds: readonly string[], response: EventResponseSnapshot): void;
 }
 
 const logger = createLogger({ name: 'eventstore' });
@@ -137,6 +140,26 @@ export function createEventStore(): EventStore {
 
     size(): number {
       return events.length;
+    },
+
+    attachResponse(eventIds: readonly string[], response: EventResponseSnapshot): void {
+      if (eventIds.length === 0) return;
+      const idSet = new Set(eventIds);
+      const frozen = Object.freeze({ ...response }) as EventResponseSnapshot;
+
+      const rewriteList = (list: DomainEvent[]): void => {
+        for (let i = 0; i < list.length; i++) {
+          const event = list[i]!;
+          if (!idSet.has(event.eventId)) continue;
+          list[i] = Object.freeze({ ...event, response: frozen }) as DomainEvent;
+        }
+      };
+
+      rewriteList(events);
+      for (const [aggId, list] of byAggMap) {
+        rewriteList(list);
+        byAggMap.set(aggId, list);
+      }
     },
   };
 }

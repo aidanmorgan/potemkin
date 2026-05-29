@@ -1014,6 +1014,51 @@ export interface GlobalConfig {
   readonly sagas?: readonly SagaConfig[];
   readonly idempotency?: IdempotencyConfig;
   readonly derivedProjections?: readonly DerivedProjectionConfig[];
+  readonly auth?: import('./types.js').AuthConfig;
+}
+
+function validateAuthConfig(raw: unknown): import('./types.js').AuthConfig {
+  if (!isRecord(raw)) {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', 'auth must be a mapping', { received: typeof raw });
+  }
+  const mode = raw['mode'];
+  if (mode !== undefined && mode !== 'simple' && mode !== 'jwt' && mode !== 'session') {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', 'auth.mode must be simple|jwt|session', { mode: typeof mode === 'string' ? mode : null });
+  }
+  const jwtRaw = raw['jwt'];
+  let jwt: import('./types.js').JwtAuthConfig | undefined;
+  if (jwtRaw !== undefined && jwtRaw !== null) {
+    if (!isRecord(jwtRaw)) throw new BootError('BOOT_ERR_DSL_SYNTAX', 'auth.jwt must be a mapping');
+    const secret = jwtRaw['secret'];
+    if (typeof secret !== 'string' || secret.length === 0) {
+      throw new BootError('BOOT_ERR_DSL_SYNTAX', 'auth.jwt.secret is required');
+    }
+    jwt = {
+      secret,
+      ...(typeof jwtRaw['algorithm'] === 'string' ? { algorithm: jwtRaw['algorithm'] as 'HS256' } : {}),
+      ...(typeof jwtRaw['issuer'] === 'string' ? { issuer: jwtRaw['issuer'] } : {}),
+      ...(typeof jwtRaw['audience'] === 'string' ? { audience: jwtRaw['audience'] } : {}),
+      ...(typeof jwtRaw['subject_claim'] === 'string' ? { subjectClaim: jwtRaw['subject_claim'] } : {}),
+      ...(typeof jwtRaw['scopes_claim'] === 'string' ? { scopesClaim: jwtRaw['scopes_claim'] } : {}),
+    };
+  }
+  const sessionRaw = raw['session'];
+  let session: import('./types.js').SessionAuthConfig | undefined;
+  if (sessionRaw !== undefined && sessionRaw !== null) {
+    if (!isRecord(sessionRaw)) throw new BootError('BOOT_ERR_DSL_SYNTAX', 'auth.session must be a mapping');
+    session = {
+      ...(typeof sessionRaw['cookie_name'] === 'string' ? { cookieName: sessionRaw['cookie_name'] } : {}),
+      ...(typeof sessionRaw['ttl_seconds'] === 'number' ? { ttlSeconds: sessionRaw['ttl_seconds'] } : {}),
+      ...(typeof sessionRaw['csrf'] === 'boolean' ? { csrf: sessionRaw['csrf'] } : {}),
+      ...(typeof sessionRaw['login_path'] === 'string' ? { loginPath: sessionRaw['login_path'] } : {}),
+      ...(typeof sessionRaw['logout_path'] === 'string' ? { logoutPath: sessionRaw['logout_path'] } : {}),
+    };
+  }
+  return {
+    ...(typeof mode === 'string' ? { mode: mode as 'simple' | 'jwt' | 'session' } : {}),
+    ...(jwt !== undefined ? { jwt } : {}),
+    ...(session !== undefined ? { session } : {}),
+  };
 }
 
 /**
@@ -1046,9 +1091,15 @@ export function validateGlobalConfig(raw: unknown): GlobalConfig {
     derivedProjections = (raw['derived_projections'] as unknown[]).map((p, i) => validateDerivedProjectionConfig(p, i));
   }
 
+  let auth: import('./types.js').AuthConfig | undefined;
+  if (raw['auth'] !== undefined && raw['auth'] !== null) {
+    auth = validateAuthConfig(raw['auth']);
+  }
+
   return {
     ...(sagas !== undefined ? { sagas } : {}),
     ...(idempotency !== undefined ? { idempotency } : {}),
     ...(derivedProjections !== undefined ? { derivedProjections } : {}),
+    ...(auth !== undefined ? { auth } : {}),
   };
 }

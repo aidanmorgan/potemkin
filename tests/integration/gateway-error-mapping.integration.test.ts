@@ -14,6 +14,7 @@ import type { Express } from 'express';
 import { bootSystem } from '../../src/engine/boot.js';
 import { createGateway } from '../../src/http/gateway.js';
 import { loadOpenApi } from '../../src/contract/loader.js';
+import { compileDsl } from '../../src/dsl/parser.js';
 import { loadCrmFixture } from '../fixtures/index.js';
 import { createTestApp, type TestApp } from '../acceptance/_helpers/test-app.js';
 import { nextUuidv7 } from '../../src/ids/uuidv7.js';
@@ -320,10 +321,10 @@ describe('gateway — error mapping integration', () => {
     const openapi = await loadOpenApi(CIRCULAR_OPENAPI);
     const sys = await bootSystem({
       openapi,
-      dslModules: [
+      compiledDsl: await compileDsl([
         { name: 'ping', yaml: PING_DSL },
         { name: 'pong', yaml: PONG_DSL },
-      ],
+      ]),
     });
     const expressApp = createGateway(sys);
 
@@ -344,10 +345,10 @@ describe('gateway — error mapping integration', () => {
     const openapi = await loadOpenApi(CONFLICT_OPENAPI);
     const sys = await bootSystem({
       openapi,
-      dslModules: [
+      compiledDsl: await compileDsl([
         { name: 'widget', yaml: WIDGET_DSL },
         { name: 'item', yaml: ITEM_DSL },
-      ],
+      ]),
     });
     const expressApp = createGateway(sys);
 
@@ -380,10 +381,10 @@ describe('gateway — error mapping integration', () => {
     const openapi = await loadOpenApi(CONFLICT_OPENAPI);
     const sys = await bootSystem({
       openapi,
-      dslModules: [
+      compiledDsl: await compileDsl([
         { name: 'widget', yaml: WIDGET_DSL },
         { name: 'item', yaml: ITEM_DSL },
-      ],
+      ]),
     });
     const expressApp = createGateway(sys);
 
@@ -527,7 +528,7 @@ reducers:
     const openapi = await loadOpenApi(badCelOpenapi);
     const sys = await bootSystem({
       openapi,
-      dslModules: [{ name: 'bad', yaml: badCelDsl }],
+      compiledDsl: await compileDsl([{ name: 'bad', yaml: badCelDsl }]),
     });
     const expressApp = createGateway(sys);
 
@@ -691,7 +692,7 @@ reducers: []
     const openapi = await loadOpenApi(ifMatchOpenapi);
     const sys = await bootSystem({
       openapi,
-      dslModules: [{ name: 'precond', yaml: precondDsl }],
+      compiledDsl: await compileDsl([{ name: 'precond', yaml: precondDsl }]),
     });
 
     // Manually seed an entity

@@ -19,6 +19,7 @@ import { bootSystem, type BootedSystem } from '../../../src/engine/boot';
 import { resetSystem } from '../../../src/engine/reset';
 import { loadOpenApi } from '../../../src/contract/loader';
 import { nextUuidv7 } from '../../../src/ids/uuidv7';
+import { compileDsl } from '../../../src/dsl/parser';
 
 // ── minimal inline fixture ──────────────────────────────────────────────────────
 
@@ -171,10 +172,10 @@ beforeEach(async () => {
   const openapi = await loadOpenApi(SIMPLE_OPENAPI);
   sys = await bootSystem({
     openapi,
-    dslModules: [
+    compiledDsl: await compileDsl([
       { name: 'widget', yaml: WIDGET_DSL },
       { name: 'widgetById', yaml: WIDGET_BY_ID_DSL },
-    ],
+    ]),
   });
 });
 

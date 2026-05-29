@@ -28,7 +28,7 @@ repositories {
 
 dependencies {
     // Specmatic provides its own classes at runtime via the classpath; compileOnly keeps them out of our fat-jar.
-    compileOnly("io.specmatic:specmatic-core:2.6.0")
+    compileOnly("io.specmatic:specmatic-core:2.46.2")
 
     // HTTP client to call the Node engine's /_engine/forward endpoint.
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
@@ -64,7 +64,7 @@ dependencies {
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.0")
 
     // Specmatic types needed in tests.
-    testImplementation("io.specmatic:specmatic-core:2.6.0")
+    testImplementation("io.specmatic:specmatic-core:2.46.2")
 
     // Ktor test client for ControlServerTest.
     testImplementation("io.ktor:ktor-server-test-host-jvm:2.3.13")

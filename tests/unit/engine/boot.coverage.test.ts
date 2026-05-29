@@ -19,6 +19,7 @@ import { loadOpenApi } from '../../../src/contract/loader';
 import { createLogger } from '../../../src/observability/logger';
 import { getTracer } from '../../../src/observability/tracing';
 import { createEngineMetrics } from '../../../src/observability/metrics';
+import { compileDsl } from '../../../src/dsl/parser';
 
 // ── Minimal valid OpenAPI for a single boundary ───────────────────────────────
 
@@ -103,7 +104,7 @@ reducers: []
       await expect(
         bootSystem({
           openapi,
-          dslModules: [{ name: 'thing', yaml: badDsl }],
+          compiledDsl: await compileDsl([{ name: 'thing', yaml: badDsl }]),
         }),
       ).rejects.toBeInstanceOf(BootError);
     });
@@ -121,7 +122,7 @@ reducers: []
       try {
         await bootSystem({
           openapi,
-          dslModules: [{ name: 'thing', yaml: badDsl }],
+          compiledDsl: await compileDsl([{ name: 'thing', yaml: badDsl }]),
         });
         fail('expected BootError');
       } catch (err) {
@@ -143,7 +144,7 @@ reducers: []
       try {
         await bootSystem({
           openapi,
-          dslModules: [{ name: 'missing', yaml: badDsl }],
+          compiledDsl: await compileDsl([{ name: 'missing', yaml: badDsl }]),
         });
         fail('expected BootError');
       } catch (err) {
@@ -213,7 +214,7 @@ components:
       const openapi = await loadOpenApi(OPENAPI_WITH_IF_MATCH_REQUIRED);
       const sys = await bootSystem({
         openapi,
-        dslModules: [{ name: 'thing', yaml: THING_DSL.replace('/things', '/things') }],
+        compiledDsl: await compileDsl([{ name: 'thing', yaml: THING_DSL.replace('/things', '/things') }]),
       });
 
       expect(sys.requiresPrecondition('Thing', 'PATCH')).toBe(true);
@@ -223,7 +224,7 @@ components:
       const openapi = await loadOpenApi(OPENAPI_WITH_IF_MATCH_REQUIRED);
       const sys = await bootSystem({
         openapi,
-        dslModules: [{ name: 'thing', yaml: THING_DSL }],
+        compiledDsl: await compileDsl([{ name: 'thing', yaml: THING_DSL }]),
       });
 
       // POST has no If-Match parameter
@@ -236,7 +237,7 @@ components:
       const openapi = await loadOpenApi(MINIMAL_OPENAPI);
       const sys = await bootSystem({
         openapi,
-        dslModules: [{ name: 'thing', yaml: THING_DSL }],
+        compiledDsl: await compileDsl([{ name: 'thing', yaml: THING_DSL }]),
       });
 
       // POST /things has no parameters defined → should return false
@@ -290,7 +291,7 @@ components:
       const openapi = await loadOpenApi(openapiYaml);
       const sys = await bootSystem({
         openapi,
-        dslModules: [{ name: 'thing', yaml: THING_DSL }],
+        compiledDsl: await compileDsl([{ name: 'thing', yaml: THING_DSL }]),
       });
 
       // required: false → buildPreconditionMap should NOT add this to the required set
@@ -323,7 +324,7 @@ reducers: []
       await expect(
         bootSystem({
           openapi,
-          dslModules: [{ name: 'thing', yaml: dslWithDupInit }],
+          compiledDsl: await compileDsl([{ name: 'thing', yaml: dslWithDupInit }]),
         }),
       ).rejects.toBeInstanceOf(BootError);
     });
@@ -346,7 +347,7 @@ reducers: []
       try {
         await bootSystem({
           openapi,
-          dslModules: [{ name: 'thing', yaml: dslWithDupInit }],
+          compiledDsl: await compileDsl([{ name: 'thing', yaml: dslWithDupInit }]),
         });
         fail('expected BootError');
       } catch (err) {
@@ -416,7 +417,7 @@ reducers: []
       const sys = await bootSystem({
         openapi,
         // Pass logger, tracer, metrics explicitly to cover ?? left-branches (lines 117-119)
-        dslModules: [{ name: 'thing', yaml: dslWithInit }],
+        compiledDsl: await compileDsl([{ name: 'thing', yaml: dslWithInit }]),
       });
 
       // Baseline entity should be hydrated
@@ -434,7 +435,7 @@ reducers: []
       // Pass logger explicitly → input.logger ?? rootLogger() uses input.logger (left branch)
       const sys = await bootSystem({
         openapi,
-        dslModules: [{ name: 'thing', yaml: THING_DSL }],
+        compiledDsl: await compileDsl([{ name: 'thing', yaml: THING_DSL }]),
         logger: customLogger,
       });
 
@@ -449,7 +450,7 @@ reducers: []
       // Pass tracer explicitly → input.tracer ?? getTracer('boot') uses input.tracer (left branch)
       const sys = await bootSystem({
         openapi,
-        dslModules: [{ name: 'thing', yaml: THING_DSL }],
+        compiledDsl: await compileDsl([{ name: 'thing', yaml: THING_DSL }]),
         tracer: customTracer,
       });
 
@@ -463,7 +464,7 @@ reducers: []
       // Pass metrics explicitly → input.metrics ?? createEngineMetrics() uses input.metrics (left branch)
       const sys = await bootSystem({
         openapi,
-        dslModules: [{ name: 'thing', yaml: THING_DSL }],
+        compiledDsl: await compileDsl([{ name: 'thing', yaml: THING_DSL }]),
         metrics: customMetrics,
       });
 

@@ -8,7 +8,72 @@ export interface BuiltinContext {
 }
 
 /** Functions banned in the Reducer phase (non-deterministic side-effects). */
-const REDUCER_BANNED = new Set(['$uuidv7', '$now', 'now', 'timestamp']);
+const REDUCER_BANNED = new Set(['$uuidv7', '$now', 'now', 'timestamp', '$fake', '$fakeSeed', '$fakeFromFormat']);
+
+// ── Seeded PRNG (Mulberry32) shared by all $fake* builtins ────────────────────
+let fakeRngSeed = 0;
+let fakeRngState = 0;
+let fakeRngSeeded = false;
+function nextRandom(): number {
+  if (!fakeRngSeeded) return Math.random();
+  fakeRngState = (fakeRngState + 0x6D2B79F5) | 0;
+  let t = fakeRngState;
+  t = Math.imul(t ^ (t >>> 15), t | 1);
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+function setFakeSeed(seed: number): void {
+  fakeRngSeed = seed >>> 0;
+  fakeRngState = fakeRngSeed;
+  fakeRngSeeded = true;
+}
+function pick<T>(arr: readonly T[]): T {
+  return arr[Math.floor(nextRandom() * arr.length)]!;
+}
+function randomDigits(n: number): string {
+  let s = '';
+  for (let i = 0; i < n; i++) s += Math.floor(nextRandom() * 10).toString();
+  return s;
+}
+function randomAlphanumeric(n: number): string {
+  const alphabet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let s = '';
+  for (let i = 0; i < n; i++) s += alphabet[Math.floor(nextRandom() * alphabet.length)]!;
+  return s;
+}
+
+const FAKE_DATA: Record<string, Record<string, () => string>> = {
+  person: {
+    firstName: () => pick(['Alex', 'Jordan', 'Sam', 'Taylor', 'Casey', 'Morgan', 'Riley', 'Quinn', 'Avery', 'Drew']),
+    lastName: () => pick(['Smith', 'Jones', 'Brown', 'Taylor', 'Wilson', 'Davies', 'Evans', 'Robinson', 'Walker', 'Wright']),
+    fullName: () => `${FAKE_DATA['person']!['firstName']!()} ${FAKE_DATA['person']!['lastName']!()}`,
+  },
+  internet: {
+    email: () => `${randomAlphanumeric(8).toLowerCase()}@${pick(['example.com', 'test.org', 'fake.net'])}`,
+    url: () => `https://${randomAlphanumeric(6).toLowerCase()}.example.com/${randomAlphanumeric(4).toLowerCase()}`,
+    domainName: () => `${randomAlphanumeric(6).toLowerCase()}.example.com`,
+  },
+  phone: {
+    number: () => `+61 ${randomDigits(1)} ${randomDigits(4)} ${randomDigits(4)}`,
+  },
+  company: {
+    name: () => `${pick(['Apex', 'BlueSky', 'Cornerstone', 'Delta', 'Echo', 'Foxtrot'])} ${pick(['Solutions', 'Systems', 'Holdings', 'Group', 'Industries'])}`,
+  },
+  address: {
+    city: () => pick(['Sydney', 'Melbourne', 'Brisbane', 'Perth', 'Adelaide', 'Hobart']),
+    streetAddress: () => `${Math.floor(nextRandom() * 999) + 1} ${pick(['George', 'King', 'Queen', 'High', 'Main'])} St`,
+  },
+};
+
+function fakeUuid(): string {
+  // Random UUIDv4 — deterministic when seeded.
+  const hex = (n: number): string => {
+    let s = '';
+    for (let i = 0; i < n; i++) s += Math.floor(nextRandom() * 16).toString(16);
+    return s;
+  };
+  return `${hex(8)}-${hex(4)}-4${hex(3)}-${pick(['8', '9', 'a', 'b'])}${hex(3)}-${hex(12)}`;
+}
 
 // ---------------------------------------------------------------------------
 // Deep equality helper
@@ -79,6 +144,28 @@ function parseDuration(s: string): number {
 // Builtin implementations
 // ---------------------------------------------------------------------------
 
+// Global mutable clock offset (ms) — additive to real time. Per-request offsets
+// (e.g. X-Potemkin-Clock-Offset) push/pop this value around their execution.
+let globalClockOffsetMs = 0;
+export function getGlobalClockOffset(): number { return globalClockOffsetMs; }
+export function setGlobalClockOffset(ms: number): void {
+  globalClockOffsetMs = Number.isFinite(ms) ? ms : 0;
+}
+
+// Optional faker seed — when set, $fake* builtins (if any) use a deterministic RNG.
+let fakerSeed: number | undefined = undefined;
+export function setFakerSeedFromString(s: string | undefined): void {
+  if (s === undefined) { fakerSeed = undefined; return; }
+  // Simple FNV-like hash to a 32-bit int seed.
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  fakerSeed = h >>> 0;
+}
+export function getFakerSeed(): number | undefined { return fakerSeed; }
+
 /**
  * Registry of built-in CEL functions available to expression evaluators.
  * Keys: `$uuidv7`, `$now`, `$concat`, plus extended set.
@@ -87,7 +174,7 @@ export const BUILTINS: Record<string, (...args: unknown[]) => unknown> = {
   // ── Original builtins ──────────────────────────────────────────────────
   $uuidv7: (..._args: unknown[]): unknown => nextUuidv7(),
 
-  $now: (..._args: unknown[]): unknown => new Date().toISOString(),
+  $now: (..._args: unknown[]): unknown => new Date(Date.now() + globalClockOffsetMs).toISOString(),
 
   $concat: (...args: unknown[]): unknown =>
     args.map(a => (a === null || a === undefined ? '' : String(a))).join(''),
@@ -294,6 +381,52 @@ export const BUILTINS: Record<string, (...args: unknown[]) => unknown> = {
   },
 
   now: (..._args: unknown[]): unknown => new Date().toISOString(),
+
+  // ── Faker ────────────────────────────────────────────────────────────────
+  $fake: (...args: unknown[]): unknown => {
+    const [spec] = args;
+    if (typeof spec !== 'string') {
+      throw new Error(`CEL_TYPE_ERROR: $fake() requires a string argument like 'person.firstName'`);
+    }
+    const dot = spec.indexOf('.');
+    if (dot === -1) {
+      throw new Error(`CEL_TYPE_ERROR: $fake() argument must be 'module.method'`);
+    }
+    const module = spec.slice(0, dot);
+    const method = spec.slice(dot + 1);
+    const mod = FAKE_DATA[module];
+    if (!mod) throw new Error(`CEL_RUNTIME_ERROR: $fake() unknown faker category '${module}'`);
+    const fn = mod[method];
+    if (!fn) throw new Error(`CEL_RUNTIME_ERROR: $fake() unknown faker category '${module}.${method}'`);
+    return fn();
+  },
+
+  $fakeSeed: (...args: unknown[]): unknown => {
+    const [n] = args;
+    if (typeof n !== 'number' || !Number.isFinite(n)) {
+      throw new Error(`CEL_TYPE_ERROR: $fakeSeed() requires a number`);
+    }
+    setFakeSeed(n);
+    return n;
+  },
+
+  $fakeFromFormat: (...args: unknown[]): unknown => {
+    const [fmt] = args;
+    if (typeof fmt !== 'string') {
+      throw new Error(`CEL_TYPE_ERROR: $fakeFromFormat() requires a string argument`);
+    }
+    switch (fmt) {
+      case 'email':     return FAKE_DATA['internet']!['email']!();
+      case 'uuid':      return fakeUuid();
+      case 'date':      return new Date().toISOString().slice(0, 10);
+      case 'date-time': return new Date().toISOString();
+      case 'uri':
+      case 'url':       return FAKE_DATA['internet']!['url']!();
+      case 'hostname':  return FAKE_DATA['internet']!['domainName']!();
+      case 'ipv4':      return `${Math.floor(nextRandom() * 256)}.${Math.floor(nextRandom() * 256)}.${Math.floor(nextRandom() * 256)}.${Math.floor(nextRandom() * 256)}`;
+      default:          return randomAlphanumeric(10);
+    }
+  },
 };
 
 // Export deepEqual for use in evaluator

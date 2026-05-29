@@ -10,7 +10,6 @@ import type { BootedSystem } from '../../../src/engine/boot';
 import { bootSystem } from '../../../src/engine/boot';
 import { resetSystem } from '../../../src/engine/reset';
 import { createGateway } from '../../../src/http/gateway';
-import { compileDsl } from '../../../src/dsl/parser';
 import { loadCrmFixtureWithGlobal } from '../../fixtures/index';
 import { resetIdempotencyStore } from '../../../src/idempotency/store';
 import { expandByContractPath } from '../../integration/_helpers/crm-boot';
@@ -88,7 +87,8 @@ async function _boot(pluginControlUrl?: string): Promise<BootedSystem> {
   resetIdempotencyStore();
   const fixture = await loadCrmFixtureWithGlobal();
   const sys = await bootSystem({
-    ...fixture,
+    openapi: fixture.openapi,
+    compiledDsl: fixture.compiledDsl,
     ...(pluginControlUrl
       ? {
           pluginControl: {
@@ -98,22 +98,9 @@ async function _boot(pluginControlUrl?: string): Promise<BootedSystem> {
         }
       : {}),
   });
-  // Patch the compiled DSL to include Tier-2 config (sagas, idempotency, projections)
-  // from the global.yaml.  bootSystem only calls compileDsl(dslModules) without
-  // globalYaml, so we recompile and replace the dsl on the booted system.
-  const dslWithGlobal = await compileDsl(fixture.dslModules, fixture.globalYaml);
-  // Merge the expanded byContractPath from the boot dsl into the global dsl.
-  // expandByContractPath mutates sys.dsl.byContractPath, so we first expand the
-  // original (boot) dsl, then copy those entries into the global dsl.
-  const originalDsl = sys.dsl;
-  expandByContractPath(sys); // expands originalDsl.byContractPath
-  // Copy all expanded paths into dslWithGlobal.byContractPath
-  const expandedPaths = originalDsl.byContractPath as Record<string, unknown>;
-  const globalPaths = dslWithGlobal.byContractPath as Record<string, unknown>;
-  for (const [k, v] of Object.entries(expandedPaths)) {
-    globalPaths[k] = v;
-  }
-  (sys as unknown as { dsl: typeof dslWithGlobal }).dsl = dslWithGlobal;
+  // Expand byContractPath so the gateway registers routes for all OpenAPI
+  // sub-paths (e.g. /leads/{id}/contact), not just the boundary base paths.
+  expandByContractPath(sys);
   return sys;
 }
 
