@@ -102,17 +102,26 @@ internal fun Application.configure(
             call.respond(HttpStatusCode.NoContent)
         }
 
-        get("/health") {
-            val current = healthMonitor.currentState()
-            val since = healthMonitor.upSince()
-            call.respond(
-                HealthStatusResponse(
-                    state = current.toString(),
-                    since = since?.toString() ?: Instant.now().toString(),
-                ),
-            )
-        }
+        // Plugin-process health endpoint — independent of the Node engine.
+        // Returns the current health state so operators / CI can scrape it.
+        // Exposed at both /health (legacy) and /_potemkin/health (canonical).
+        get("/health") { respondHealth(call, healthMonitor) }
+        get("/_potemkin/health") { respondHealth(call, healthMonitor) }
     }
+}
+
+private suspend fun respondHealth(
+    call: io.ktor.server.application.ApplicationCall,
+    healthMonitor: com.potemkin.specmatic.reliability.HealthMonitor,
+) {
+    val current = healthMonitor.currentState()
+    val since = healthMonitor.upSince()
+    call.respond(
+        HealthStatusResponse(
+            state = current.toString(),
+            since = since?.toString() ?: Instant.now().toString(),
+        ),
+    )
 }
 
 // ---- Request / response models -----------------------------------------------------------
