@@ -1,0 +1,6 @@
+Lead:
+  status: NEW
+Campaign:
+  status: DRAFT
+Agent:
+  currentStatus: AVAILABLE

@@ -1,0 +1,13 @@
+version: 3
+systemUnderTest:
+  service:
+    definitions:
+      - source: { fileSystem: { directory: ./openapi } }
+        specs:
+          - id: crm-v1
+            path: nuisance-bureau.yaml
+            urlPathPrefix: /
+components:
+  dictionaries:
+    crm-defaults:
+      path: ./dictionary.yaml

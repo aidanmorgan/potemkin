@@ -1,0 +1,12 @@
+Lead:
+  status: NEW
+  source: COLD_LIST
+Campaign:
+  status: DRAFT
+Agent:
+  currentStatus: AVAILABLE
+Call:
+  status: SCHEDULED
+Opportunity:
+  status: OPEN
+  stage: QUALIFIED
