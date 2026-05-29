@@ -42,10 +42,17 @@ class StatefulRequestHandler(
 
     override fun handleRequest(httpRequest: HttpRequest): HttpStubResponse? {
         return try {
-            // If this (method, path) was registered as a Specmatic fixture stub, let Specmatic
-            // serve it directly. The plugin must not intercept it.
             val method = (httpRequest.method ?: "").uppercase()
             val path = httpRequest.path ?: ""
+
+            // Specmatic internal control surfaces — let Specmatic handle them
+            // natively. No logging, no state mutation.
+            if (path.startsWith("/_specmatic/") || path.startsWith("/swagger/")) {
+                return null
+            }
+
+            // If this (method, path) was registered as a Specmatic fixture stub, let Specmatic
+            // serve it directly. The plugin must not intercept it.
             if (fixtures != null && fixtures.excludedPaths().contains(method to path)) {
                 log.debug(
                     "Skipping fixture-excluded path '{} {}' — Specmatic stub will serve it",

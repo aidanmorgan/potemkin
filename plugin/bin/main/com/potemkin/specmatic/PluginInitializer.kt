@@ -33,6 +33,17 @@ class PluginInitializer : StubInitializer {
 
     override fun initialize(specmaticConfig: SpecmaticConfig, httpStub: HttpStub) {
         log.info("Potemkin plugin initialising…")
+
+        // Refuse to boot if another plugin already registered a request
+        // handler — Potemkin assumes sole RequestHandler ownership.
+        val existingHandlers = runCatching { httpStub.requestHandlers }.getOrNull()
+        if (existingHandlers != null && existingHandlers.isNotEmpty()) {
+            val classes = existingHandlers.joinToString(", ") { it::class.java.name }
+            throw IllegalStateException(
+                "BOOT_ERR_HANDLER_CONFLICT: another plugin already registered: $classes",
+            )
+        }
+
         val config = PluginConfig.load()
         log.info(
             "Potemkin plugin config: backendUrl={}, forwardTimeoutMs={}, discoveryRefreshOnFailureMs={}, controlPort={}",
