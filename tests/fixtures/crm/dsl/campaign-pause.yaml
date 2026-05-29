@@ -21,7 +21,9 @@ behaviors:
 
 reducers:
   - on: CampaignPaused
-    assign:
-      status: "'PAUSED'"
+    patches:
+      - op: replace
+        path: /status
+        value: "'PAUSED'"
 
 initialization: []

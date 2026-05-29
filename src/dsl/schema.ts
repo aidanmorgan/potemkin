@@ -513,11 +513,45 @@ function validateReducerRule(raw: unknown, index: number): ReducerRule {
     }
   }
 
+  // New-format `patches:` list (additive — co-exists with legacy assign:/append:)
+  const patches = optionalPatchList(raw, ctx);
+
   return {
     on,
     ...(assign !== undefined ? { assign } : {}),
     ...(append !== undefined ? { append } : {}),
+    ...(patches !== undefined ? { patches } : {}),
   };
+}
+
+function optionalPatchList(raw: Record<string, unknown>, ctx: string): readonly import('./types.js').ReducerPatchOp[] | undefined {
+  const val = raw['patches'];
+  if (val === undefined) return undefined;
+  if (!Array.isArray(val)) {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.patches: must be an array`, { context: ctx });
+  }
+  const known = new Set(['add', 'remove', 'replace', 'append', 'prepend', 'increment', 'merge', 'upsert']);
+  return val.map((p, i): import('./types.js').ReducerPatchOp => {
+    if (!isRecord(p)) {
+      throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.patches[${i}]: must be an object`, { context: ctx });
+    }
+    const op = p['op'];
+    if (typeof op !== 'string' || !known.has(op)) {
+      throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.patches[${i}].op: invalid op "${op as unknown}"`, { context: ctx });
+    }
+    const path = p['path'];
+    if (typeof path !== 'string') {
+      throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.patches[${i}].path: must be a string`, { context: ctx });
+    }
+    return {
+      op: op as import('./types.js').ReducerPatchOp['op'],
+      path,
+      ...(p['value'] !== undefined ? { value: p['value'] as import('./types.js').ReducerPatchOp['value'] } : {}),
+      ...(p['by'] !== undefined ? { by: p['by'] as number } : {}),
+      ...(p['key'] !== undefined ? { key: p['key'] as string } : {}),
+      ...(p['deep'] !== undefined ? { deep: p['deep'] as boolean } : {}),
+    };
+  });
 }
 
 function validateEventCatalogEntry(raw: unknown, index: number): EventCatalogEntry {
@@ -972,10 +1006,12 @@ function validateDerivedProjectionReduceEntry(raw: unknown, idx: number): Derive
   const on = requireString(raw, 'on', ctx);
   const assign = requireStringStringMap(raw, 'assign', ctx);
   const append = requireStringStringMap(raw, 'append', ctx);
+  const patches = optionalPatchList(raw, ctx);
   return {
     on,
     ...(assign !== undefined ? { assign } : {}),
     ...(append !== undefined ? { append } : {}),
+    ...(patches !== undefined ? { patches } : {}),
   };
 }
 

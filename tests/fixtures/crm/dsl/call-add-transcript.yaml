@@ -34,11 +34,13 @@ behaviors:
 
 reducers:
   - on: TranscriptEntryAppended
-    append:
-      transcript:
-        speaker: "${event.payload.speaker}"
-        text: "${event.payload.text}"
-        timestamp: "${event.payload.timestamp}"
-        sequenceNum: "${event.payload.sequenceNum}"
+    patches:
+      - op: append
+        path: /transcript
+        value:
+          speaker: "${event.payload.speaker}"
+          text: "${event.payload.text}"
+          timestamp: "${event.payload.timestamp}"
+          sequenceNum: "${event.payload.sequenceNum}"
 
 initialization: []

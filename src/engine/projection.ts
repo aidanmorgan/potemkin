@@ -253,6 +253,13 @@ function _projectEvent(input: ProjectionInput): void {
             log?.debug({ dotPath, value }, 'Appended value via reducer');
           }
         }
+
+        // Process new-format patches: list
+        if (reducer.patches) {
+          for (const patch of reducer.patches) {
+            applyReducerPatch(buf, patch, cel, celCtx, log);
+          }
+        }
       }
     }
 
@@ -411,5 +418,92 @@ function replaceInPlace(target: JsonObject, source: JsonObject): void {
   }
   for (const [key, val] of Object.entries(source)) {
     target[key] = deepClone(val as JsonValue);
+  }
+}
+
+// Apply a single new-format reducer patch to the state buffer in-place.
+// The patch.value (when present) is evaluated as CEL with the same context
+// the legacy assign:/append: handlers use, so existing event.payload /
+// state references work uniformly.
+function applyReducerPatch(
+  buf: JsonObject,
+  patch: import('../dsl/types.js').ReducerPatchOp,
+  cel: CelEvaluator,
+  celCtx: Record<string, unknown>,
+  log?: Logger,
+): void {
+  const dotPath = patch.path.startsWith('/') ? patch.path.slice(1).replace(/\//g, '.') : patch.path;
+
+  const evaluate = (raw: unknown): JsonValue => {
+    if (typeof raw !== 'string') return raw as JsonValue;
+    try {
+      return cel.evaluate(raw, celCtx, CelPhase.Reducer) as JsonValue;
+    } catch {
+      return raw as JsonValue;
+    }
+  };
+
+  switch (patch.op) {
+    case 'add':
+    case 'replace': {
+      const value = evaluate(patch.value);
+      setByDotPath(buf, dotPath, value);
+      log?.debug({ dotPath, op: patch.op, value }, 'Patched value');
+      return;
+    }
+    case 'remove': {
+      // setByDotPath has no delete; emulate by walking
+      const segs = dotPath.split('.');
+      let cur: JsonObject = buf;
+      for (let i = 0; i < segs.length - 1; i++) {
+        const seg = segs[i];
+        if (typeof cur[seg] !== 'object' || cur[seg] === null) return;
+        cur = cur[seg] as JsonObject;
+      }
+      delete cur[segs[segs.length - 1]];
+      return;
+    }
+    case 'append': {
+      const value = evaluate(patch.value);
+      const existing = getByDotPath(buf, dotPath);
+      const arr: JsonValue[] = Array.isArray(existing) ? [...existing] : [];
+      arr.push(value);
+      setByDotPath(buf, dotPath, arr);
+      return;
+    }
+    case 'prepend': {
+      const value = evaluate(patch.value);
+      const existing = getByDotPath(buf, dotPath);
+      const arr: JsonValue[] = Array.isArray(existing) ? [...existing] : [];
+      arr.unshift(value);
+      setByDotPath(buf, dotPath, arr);
+      return;
+    }
+    case 'increment': {
+      const existing = getByDotPath(buf, dotPath);
+      const current = typeof existing === 'number' ? existing : 0;
+      setByDotPath(buf, dotPath, current + (patch.by ?? 0));
+      return;
+    }
+    case 'merge': {
+      const value = evaluate(patch.value) as JsonObject;
+      const existing = getByDotPath(buf, dotPath);
+      const base: JsonObject = existing && typeof existing === 'object' && !Array.isArray(existing)
+        ? { ...(existing as JsonObject) }
+        : {};
+      setByDotPath(buf, dotPath, { ...base, ...value });
+      return;
+    }
+    case 'upsert': {
+      const value = evaluate(patch.value) as JsonObject;
+      const existing = getByDotPath(buf, dotPath);
+      const arr: JsonObject[] = Array.isArray(existing) ? [...(existing as JsonObject[])] : [];
+      const keyField = patch.key ?? 'id';
+      const idx = arr.findIndex((item) => item && typeof item === 'object' && item[keyField] === value[keyField]);
+      if (idx >= 0) arr[idx] = value;
+      else arr.push(value);
+      setByDotPath(buf, dotPath, arr as unknown as JsonValue);
+      return;
+    }
   }
 }

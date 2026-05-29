@@ -63,6 +63,17 @@ export interface ReducerRule {
   readonly append?: Record<string, string>;           // array path → CEL expression
   /** Assign every value from a CEL expression returning a map (shallow merge). */
   readonly assignAll?: string;
+  /** New-format patch list: { op, path, value }[]. Values are CEL expressions. */
+  readonly patches?: readonly ReducerPatchOp[];
+}
+
+export interface ReducerPatchOp {
+  readonly op: 'add' | 'remove' | 'replace' | 'append' | 'prepend' | 'increment' | 'merge' | 'upsert';
+  readonly path: string;
+  readonly value?: string | number | boolean | null | Record<string, unknown> | ReadonlyArray<unknown>;
+  readonly by?: number;
+  readonly key?: string;
+  readonly deep?: boolean;
 }
 
 /** Identity key extraction policy: where to find the entity key on an incoming request. */
@@ -172,6 +183,7 @@ export interface DerivedProjectionReduceEntry {
   readonly on: string;                            // event type (e.g. "Lead:LeadCreated" or just "LeadCreated")
   readonly assign?: Record<string, string>;        // dot-path → CEL
   readonly append?: Record<string, string>;        // array path → CEL
+  readonly patches?: readonly ReducerPatchOp[];    // new-format patches list
 }
 
 /** REQ-88: Derived projection declaration */

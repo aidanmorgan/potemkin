@@ -36,11 +36,13 @@ behaviors:
 
 reducers:
   - on: NoteAppended
-    append:
-      notes:
-        id: "${event.payload.noteId}"
-        text: "${event.payload.text}"
-        author: "${event.payload.author}"
-        createdAt: "${event.payload.createdAt}"
+    patches:
+      - op: append
+        path: /notes
+        value:
+          id: "${event.payload.noteId}"
+          text: "${event.payload.text}"
+          author: "${event.payload.author}"
+          createdAt: "${event.payload.createdAt}"
 
 initialization: []

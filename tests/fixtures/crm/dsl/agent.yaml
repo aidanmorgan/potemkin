@@ -70,29 +70,55 @@ behaviors:
 
 reducers:
   - on: AgentCreated
-    assign:
-      id: "event.payload.id"
-      name: "event.payload.name"
-      email: "event.payload.email"
-      dailyCallQuota: "event.payload.dailyCallQuota"
-      dailyCallCount: "0"
-      currentStatus: "'AVAILABLE'"
-      assignedCampaignIds: "[]"
-      totalConversions: "0"
-      skills: "event.payload.skills != null ? event.payload.skills : []"
+    patches:
+      - op: replace
+        path: /id
+        value: "event.payload.id"
+      - op: replace
+        path: /name
+        value: "event.payload.name"
+      - op: replace
+        path: /email
+        value: "event.payload.email"
+      - op: replace
+        path: /dailyCallQuota
+        value: "event.payload.dailyCallQuota"
+      - op: replace
+        path: /dailyCallCount
+        value: "0"
+      - op: replace
+        path: /currentStatus
+        value: "'AVAILABLE'"
+      - op: replace
+        path: /assignedCampaignIds
+        value: "[]"
+      - op: replace
+        path: /totalConversions
+        value: "0"
+      - op: replace
+        path: /skills
+        value: "event.payload.skills != null ? event.payload.skills : []"
 
   - on: AgentStatusChanged
-    assign:
-      currentStatus: "event.payload.newStatus"
-      lastActiveAt: "event.payload.changedAt"
+    patches:
+      - op: replace
+        path: /currentStatus
+        value: "event.payload.newStatus"
+      - op: replace
+        path: /lastActiveAt
+        value: "event.payload.changedAt"
 
   - on: AgentCallCountIncremented
-    assign:
-      dailyCallCount: "state.dailyCallCount + 1"
+    patches:
+      - op: replace
+        path: /dailyCallCount
+        value: "state.dailyCallCount + 1"
 
   - on: AgentConversionIncremented
-    assign:
-      totalConversions: "state.totalConversions + 1"
+    patches:
+      - op: replace
+        path: /totalConversions
+        value: "state.totalConversions + 1"
 
 initialization:
   - id: "00000000-0000-7000-8000-000000000003"

@@ -61,15 +61,33 @@ behaviors:
 
 reducers:
   - on: CallLogged
-    assign:
-      id: "event.payload.id"
-      leadId: "event.payload.leadId"
-      agentId: "event.payload.agentId"
-      campaignId: "event.payload.campaignId"
-      startedAt: "event.payload.startedAt"
-      endedAt: "event.payload.endedAt"
-      durationSeconds: "event.payload.durationSeconds"
-      outcome: "event.payload.outcome"
-      notes: "event.payload.notes"
+    patches:
+      - op: replace
+        path: /id
+        value: "event.payload.id"
+      - op: replace
+        path: /leadId
+        value: "event.payload.leadId"
+      - op: replace
+        path: /agentId
+        value: "event.payload.agentId"
+      - op: replace
+        path: /campaignId
+        value: "event.payload.campaignId"
+      - op: replace
+        path: /startedAt
+        value: "event.payload.startedAt"
+      - op: replace
+        path: /endedAt
+        value: "event.payload.endedAt"
+      - op: replace
+        path: /durationSeconds
+        value: "event.payload.durationSeconds"
+      - op: replace
+        path: /outcome
+        value: "event.payload.outcome"
+      - op: replace
+        path: /notes
+        value: "event.payload.notes"
 
 initialization: []

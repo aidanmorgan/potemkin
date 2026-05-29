@@ -20,7 +20,9 @@ behaviors:
 
 reducers:
   - on: LeadConverted
-    assign:
-      status: "'CONVERTED'"
+    patches:
+      - op: replace
+        path: /status
+        value: "'CONVERTED'"
 
 initialization: []

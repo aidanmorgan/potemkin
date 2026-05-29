@@ -16,7 +16,9 @@ behaviors:
 
 reducers:
   - on: CampaignCompleted
-    assign:
-      status: "'COMPLETED'"
+    patches:
+      - op: replace
+        path: /status
+        value: "'COMPLETED'"
 
 initialization: []

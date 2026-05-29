@@ -53,14 +53,14 @@ behaviors:
 
 reducers:
   - on: OpportunityWon
-    assign:
-      stage: "'WON'"
-      closedAt: "event.payload.closedAt"
+    patches:
+      - { op: replace, path: /stage, value: "'WON'" }
+      - { op: replace, path: /closedAt, value: "event.payload.closedAt" }
 
   - on: OpportunityLost
-    assign:
-      stage: "'LOST'"
-      closedAt: "event.payload.closedAt"
-      closureReason: "event.payload.closureReason"
+    patches:
+      - { op: replace, path: /stage, value: "'LOST'" }
+      - { op: replace, path: /closedAt, value: "event.payload.closedAt" }
+      - { op: replace, path: /closureReason, value: "event.payload.closureReason" }
 
 initialization: []

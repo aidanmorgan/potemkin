@@ -105,30 +105,30 @@ behaviors:
 
 reducers:
   - on: OpportunityCreated
-    assign:
-      id: "event.payload.id"
-      leadId: "event.payload.leadId"
-      agentId: "coalesce(event.payload.agentId, null)"
-      campaignId: "coalesce(event.payload.campaignId, null)"
-      stage: "'PROPOSED'"
-      value: "event.payload.value"
-      probability: "has(event.payload.probability) ? event.payload.probability : 50"
-      expectedCloseDate: "coalesce(event.payload.expectedCloseDate, null)"
+    patches:
+      - { op: replace, path: /id, value: "event.payload.id" }
+      - { op: replace, path: /leadId, value: "event.payload.leadId" }
+      - { op: replace, path: /agentId, value: "coalesce(event.payload.agentId, null)" }
+      - { op: replace, path: /campaignId, value: "coalesce(event.payload.campaignId, null)" }
+      - { op: replace, path: /stage, value: "'PROPOSED'" }
+      - { op: replace, path: /value, value: "event.payload.value" }
+      - { op: replace, path: /probability, value: "has(event.payload.probability) ? event.payload.probability : 50" }
+      - { op: replace, path: /expectedCloseDate, value: "coalesce(event.payload.expectedCloseDate, null)" }
 
   - on: OpportunityAdvanced
-    assign:
-      stage: "'NEGOTIATING'"
-      probability: "event.payload.probability != null ? event.payload.probability : state.probability"
+    patches:
+      - { op: replace, path: /stage, value: "'NEGOTIATING'" }
+      - { op: replace, path: /probability, value: "event.payload.probability != null ? event.payload.probability : state.probability" }
 
   - on: OpportunityWon
-    assign:
-      stage: "'WON'"
-      closedAt: "event.payload.closedAt"
+    patches:
+      - { op: replace, path: /stage, value: "'WON'" }
+      - { op: replace, path: /closedAt, value: "event.payload.closedAt" }
 
   - on: OpportunityLost
-    assign:
-      stage: "'LOST'"
-      closedAt: "event.payload.closedAt"
-      closureReason: "event.payload.closureReason"
+    patches:
+      - { op: replace, path: /stage, value: "'LOST'" }
+      - { op: replace, path: /closedAt, value: "event.payload.closedAt" }
+      - { op: replace, path: /closureReason, value: "event.payload.closureReason" }
 
 initialization: []

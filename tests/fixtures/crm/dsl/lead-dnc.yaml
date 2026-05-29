@@ -20,7 +20,9 @@ behaviors:
 
 reducers:
   - on: LeadMarkedDNC
-    assign:
-      status: "'DNC'"
+    patches:
+      - op: replace
+        path: /status
+        value: "'DNC'"
 
 initialization: []

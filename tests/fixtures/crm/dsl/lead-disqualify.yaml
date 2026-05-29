@@ -16,7 +16,9 @@ behaviors:
 
 reducers:
   - on: LeadDisqualified
-    assign:
-      status: "'DISQUALIFIED'"
+    patches:
+      - op: replace
+        path: /status
+        value: "'DISQUALIFIED'"
 
 initialization: []

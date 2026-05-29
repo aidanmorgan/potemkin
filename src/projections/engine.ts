@@ -177,6 +177,91 @@ function applyReduceEntry(
       }
     }
   }
+
+  if (entry.patches) {
+    for (const patch of entry.patches) {
+      applyDerivedProjectionPatch(buf, patch, cel, celCtx, logger, projName);
+    }
+  }
+}
+
+function applyDerivedProjectionPatch(
+  buf: JsonObject,
+  patch: import('../dsl/types.js').ReducerPatchOp,
+  cel: CelEvaluator,
+  celCtx: Record<string, unknown>,
+  logger: Logger | undefined,
+  projName: string,
+): void {
+  const dotPath = patch.path.startsWith('/') ? patch.path.slice(1).replace(/\//g, '.') : patch.path;
+  const evaluate = (raw: unknown): JsonValue => {
+    if (typeof raw !== 'string') return raw as JsonValue;
+    try {
+      return cel.evaluate(raw, celCtx, CelPhase.Reducer) as JsonValue;
+    } catch (err) {
+      logger?.warn({ projName, dotPath, expr: raw, err }, 'Derived projection patch CEL failed');
+      return null;
+    }
+  };
+  switch (patch.op) {
+    case 'add':
+    case 'replace':
+      setByDotPath(buf, dotPath, evaluate(patch.value));
+      return;
+    case 'remove': {
+      const segs = dotPath.split('.');
+      let cur: JsonObject = buf;
+      for (let i = 0; i < segs.length - 1; i++) {
+        const seg = segs[i];
+        if (typeof cur[seg] !== 'object' || cur[seg] === null) return;
+        cur = cur[seg] as JsonObject;
+      }
+      delete cur[segs[segs.length - 1]];
+      return;
+    }
+    case 'append': {
+      const v = evaluate(patch.value);
+      const existing = getByDotPath(buf, dotPath);
+      const arr: JsonValue[] = Array.isArray(existing) ? [...existing] : [];
+      arr.push(v);
+      setByDotPath(buf, dotPath, arr);
+      return;
+    }
+    case 'prepend': {
+      const v = evaluate(patch.value);
+      const existing = getByDotPath(buf, dotPath);
+      const arr: JsonValue[] = Array.isArray(existing) ? [...existing] : [];
+      arr.unshift(v);
+      setByDotPath(buf, dotPath, arr);
+      return;
+    }
+    case 'increment': {
+      const existing = getByDotPath(buf, dotPath);
+      const current = typeof existing === 'number' ? existing : 0;
+      setByDotPath(buf, dotPath, current + (patch.by ?? 0));
+      return;
+    }
+    case 'merge': {
+      const v = evaluate(patch.value) as JsonObject;
+      const existing = getByDotPath(buf, dotPath);
+      const base: JsonObject = existing && typeof existing === 'object' && !Array.isArray(existing)
+        ? { ...(existing as JsonObject) }
+        : {};
+      setByDotPath(buf, dotPath, { ...base, ...v });
+      return;
+    }
+    case 'upsert': {
+      const v = evaluate(patch.value) as JsonObject;
+      const existing = getByDotPath(buf, dotPath);
+      const arr: JsonObject[] = Array.isArray(existing) ? [...(existing as JsonObject[])] : [];
+      const keyField = patch.key ?? 'id';
+      const idx = arr.findIndex((item) => item && typeof item === 'object' && item[keyField] === v[keyField]);
+      if (idx >= 0) arr[idx] = v;
+      else arr.push(v);
+      setByDotPath(buf, dotPath, arr as unknown as JsonValue);
+      return;
+    }
+  }
 }
 
 /**

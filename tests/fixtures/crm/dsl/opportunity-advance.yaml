@@ -27,8 +27,8 @@ behaviors:
 
 reducers:
   - on: OpportunityAdvanced
-    assign:
-      stage: "'NEGOTIATING'"
-      probability: "event.payload.probability"
+    patches:
+      - { op: replace, path: /stage, value: "'NEGOTIATING'" }
+      - { op: replace, path: /probability, value: "event.payload.probability" }
 
 initialization: []

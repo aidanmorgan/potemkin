@@ -22,7 +22,9 @@ behaviors:
 
 reducers:
   - on: CampaignActivated
-    assign:
-      status: "'ACTIVE'"
+    patches:
+      - op: replace
+        path: /status
+        value: "'ACTIVE'"
 
 initialization: []

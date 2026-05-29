@@ -31,8 +31,12 @@ behaviors:
 
 reducers:
   - on: LeadContacted
-    assign:
-      status: "'CONTACTED'"
-      lastContactedAt: "event.payload.lastContactedAt"
+    patches:
+      - op: replace
+        path: /status
+        value: "'CONTACTED'"
+      - op: replace
+        path: /lastContactedAt
+        value: "event.payload.lastContactedAt"
 
 initialization: []

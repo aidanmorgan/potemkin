@@ -151,43 +151,79 @@ behaviors:
 
 reducers:
   - on: LeadCreated
-    assign:
-      id: "event.payload.id"
-      companyName: "event.payload.companyName"
-      contactName: "event.payload.contactName"
-      phone: "event.payload.phone"
-      email: "event.payload.email"
-      source: "event.payload.source"
-      status: "'NEW'"
-      score: "event.payload.score"
-      createdAt: "event.payload.createdAt"
-      callIds: "[]"
-      notes: "[]"
+    patches:
+      - op: replace
+        path: /id
+        value: "event.payload.id"
+      - op: replace
+        path: /companyName
+        value: "event.payload.companyName"
+      - op: replace
+        path: /contactName
+        value: "event.payload.contactName"
+      - op: replace
+        path: /phone
+        value: "event.payload.phone"
+      - op: replace
+        path: /email
+        value: "event.payload.email"
+      - op: replace
+        path: /source
+        value: "event.payload.source"
+      - op: replace
+        path: /status
+        value: "'NEW'"
+      - op: replace
+        path: /score
+        value: "event.payload.score"
+      - op: replace
+        path: /createdAt
+        value: "event.payload.createdAt"
+      - op: replace
+        path: /callIds
+        value: "[]"
+      - op: replace
+        path: /notes
+        value: "[]"
 
   - on: LeadContacted
-    assign:
-      status: "'CONTACTED'"
-      lastContactedAt: "event.payload.lastContactedAt"
+    patches:
+      - op: replace
+        path: /status
+        value: "'CONTACTED'"
+      - op: replace
+        path: /lastContactedAt
+        value: "event.payload.lastContactedAt"
 
   - on: LeadQualified
-    assign:
-      status: "'QUALIFIED'"
+    patches:
+      - op: replace
+        path: /status
+        value: "'QUALIFIED'"
 
   - on: LeadDisqualified
-    assign:
-      status: "'DISQUALIFIED'"
+    patches:
+      - op: replace
+        path: /status
+        value: "'DISQUALIFIED'"
 
   - on: LeadConverted
-    assign:
-      status: "'CONVERTED'"
+    patches:
+      - op: replace
+        path: /status
+        value: "'CONVERTED'"
 
   - on: LeadMarkedDNC
-    assign:
-      status: "'DNC'"
+    patches:
+      - op: replace
+        path: /status
+        value: "'DNC'"
 
   - on: CallIdAppended
-    append:
-      callIds: "event.payload.callId"
+    patches:
+      - op: append
+        path: /callIds
+        value: "event.payload.callId"
 
 initialization:
   - id: "00000000-0000-7000-8000-000000000010"

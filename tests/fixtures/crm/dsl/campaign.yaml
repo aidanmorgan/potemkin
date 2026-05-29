@@ -87,35 +87,67 @@ behaviors:
 
 reducers:
   - on: CampaignCreated
-    assign:
-      id: "event.payload.id"
-      name: "event.payload.name"
-      status: "'DRAFT'"
-      targetSource: "event.payload.targetSource"
-      script: "event.payload.script"
-      startedAt: "event.payload.startedAt"
-      endedAt: "event.payload.endedAt"
-      targetCalls: "event.payload.targetCalls"
-      targetConversions: "event.payload.targetConversions"
-      actualCalls: "0"
-      actualConversions: "0"
-      assignedAgentIds: "[]"
+    patches:
+      - op: replace
+        path: /id
+        value: "event.payload.id"
+      - op: replace
+        path: /name
+        value: "event.payload.name"
+      - op: replace
+        path: /status
+        value: "'DRAFT'"
+      - op: replace
+        path: /targetSource
+        value: "event.payload.targetSource"
+      - op: replace
+        path: /script
+        value: "event.payload.script"
+      - op: replace
+        path: /startedAt
+        value: "event.payload.startedAt"
+      - op: replace
+        path: /endedAt
+        value: "event.payload.endedAt"
+      - op: replace
+        path: /targetCalls
+        value: "event.payload.targetCalls"
+      - op: replace
+        path: /targetConversions
+        value: "event.payload.targetConversions"
+      - op: replace
+        path: /actualCalls
+        value: "0"
+      - op: replace
+        path: /actualConversions
+        value: "0"
+      - op: replace
+        path: /assignedAgentIds
+        value: "[]"
 
   - on: CampaignActivated
-    assign:
-      status: "'ACTIVE'"
+    patches:
+      - op: replace
+        path: /status
+        value: "'ACTIVE'"
 
   - on: CampaignPaused
-    assign:
-      status: "'PAUSED'"
+    patches:
+      - op: replace
+        path: /status
+        value: "'PAUSED'"
 
   - on: CampaignCompleted
-    assign:
-      status: "'COMPLETED'"
+    patches:
+      - op: replace
+        path: /status
+        value: "'COMPLETED'"
 
   - on: CampaignLeadSourceUpdated
-    assign:
-      actualCalls: "state.actualCalls != null ? state.actualCalls + 1 : 1"
+    patches:
+      - op: replace
+        path: /actualCalls
+        value: "state.actualCalls != null ? state.actualCalls + 1 : 1"
 
 initialization:
   - id: "00000000-0000-7000-8000-000000000001"

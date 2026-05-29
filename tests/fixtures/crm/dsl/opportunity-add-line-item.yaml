@@ -35,13 +35,15 @@ behaviors:
 
 reducers:
   - on: LineItemAdded
-    append:
-      lineItems:
-        id: "${event.payload.lineItemId}"
-        description: "${event.payload.description}"
-        quantity: "${event.payload.quantity}"
-        unitPrice: "${event.payload.unitPrice}"
-        total: "${event.payload.total}"
-        addedAt: "${event.payload.addedAt}"
+    patches:
+      - op: append
+        path: /lineItems
+        value:
+          id: "${event.payload.lineItemId}"
+          description: "${event.payload.description}"
+          quantity: "${event.payload.quantity}"
+          unitPrice: "${event.payload.unitPrice}"
+          total: "${event.payload.total}"
+          addedAt: "${event.payload.addedAt}"
 
 initialization: []
