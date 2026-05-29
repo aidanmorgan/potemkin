@@ -83,6 +83,8 @@ class PluginInitializer : StubInitializer {
 
         val handler = StatefulRequestHandler(discovery, backendClient, fixturesClient, resilient)
         httpStub.registerHandler(handler)
+        httpStub.registerRequestInterceptor(PotemkinRequestInterceptor())
+        httpStub.registerResponseInterceptor(PotemkinResponseInterceptor())
         log.info(
             "Potemkin StatefulRequestHandler registered — routes discovered via {}/_engine/routes, control server on port {}",
             config.backendUrl,
