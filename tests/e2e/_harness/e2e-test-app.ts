@@ -100,18 +100,21 @@ export async function startE2eApp(opts: E2eAppOptions = {}): Promise<E2eApp> {
     ensurePluginJar(),
   ]);
 
-  // 3. Write a temporary potemkin-plugin.yaml with our dynamic ports
-  const pluginConfig = [
-    `backendUrl: "http://127.0.0.1:${enginePort}"`,
-    `controlPort: ${pluginControlPort}`,
-    `forwardTimeoutMs: 5000`,
-    `discoveryRefreshOnFailureMs: 1000`,
-    `healthProbeInitialMs: 250`,
-    `healthProbeStableMs: 30000`,
+  // 3. Write a temporary potemkin.yaml carrying the dynamic ports under
+  // the plugin: block; the plugin reads engine.url, controlPort etc.
+  const potemkinConfig = [
+    `version: 1`,
+    `specmatic: ./specmatic.yaml`,
+    `modules: ["dsl/**/*.yaml"]`,
+    `plugin:`,
+    `  engine:`,
+    `    url: "http://127.0.0.1:${enginePort}"`,
+    `    timeoutMs: 5000`,
+    `  controlPort: ${pluginControlPort}`,
   ].join('\n');
 
-  const tmpConfigPath = path.join(os.tmpdir(), `potemkin-plugin-${Date.now()}.yaml`);
-  fs.writeFileSync(tmpConfigPath, pluginConfig, 'utf8');
+  const tmpConfigPath = path.join(os.tmpdir(), `potemkin-${Date.now()}.yaml`);
+  fs.writeFileSync(tmpConfigPath, potemkinConfig, 'utf8');
 
   // 4. Start Specmatic (which loads plugin via SPI on startup)
   const specmatic = await startSpecmatic({
@@ -120,7 +123,7 @@ export async function startE2eApp(opts: E2eAppOptions = {}): Promise<E2eApp> {
     specmaticJar,
     stubPort: specmaticPort,
     extraEnv: {
-      POTEMKIN_PLUGIN_CONFIG: tmpConfigPath,
+      POTEMKIN_CONFIG_PATH: tmpConfigPath,
     },
   });
 

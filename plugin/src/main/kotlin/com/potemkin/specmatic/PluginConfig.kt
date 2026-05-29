@@ -8,13 +8,12 @@ import java.io.File
  * Configuration for the Potemkin Specmatic plugin.
  *
  * Resolved in priority order:
- *  1. POTEMKIN_PLUGIN_CONFIG env var (path to a YAML or JSON file)
- *  2. ./potemkin-plugin.yaml in the current working directory
- *  3. ./potemkin-plugin.json in the current working directory
- *  4. Built-in defaults
+ *  1. POTEMKIN_CONFIG_PATH env var (path to potemkin.yaml or legacy YAML/JSON)
+ *  2. ./potemkin.yaml in the current working directory (reads the `plugin:` block)
+ *  3. Built-in defaults
  *
- * Routes to intercept are no longer configured statically via `pathPatterns`. Instead the plugin
- * discovers them at runtime by calling GET /_engine/routes on the Node engine.
+ * Routes to intercept are not configured statically — the plugin discovers
+ * them at runtime via GET /_engine/routes on the Node engine.
  *
  * @param backendUrl Base URL of the Node CQRS engine, e.g. "http://localhost:3000".
  * @param forwardTimeoutMs Timeout for calls to the Node engine in milliseconds.
@@ -46,37 +45,56 @@ data class PluginConfig(
         private val log = LoggerFactory.getLogger(PluginConfig::class.java)
 
         fun load(): PluginConfig {
-            val envPath = System.getenv("POTEMKIN_PLUGIN_CONFIG")
+            // Resolution order:
+            //   1. POTEMKIN_CONFIG_PATH env var (path to potemkin.yaml)
+            //   2. ./potemkin.yaml in cwd (reads the `plugin:` block; engine
+            //      consumes modules/typescript/seeds via /_engine/dsl)
+            //   3. built-in defaults
+            val envPath = System.getenv("POTEMKIN_CONFIG_PATH")
             if (!envPath.isNullOrBlank()) {
                 val file = File(envPath)
                 if (file.exists()) {
-                    log.info("Loading Potemkin plugin config from env path: {}", file.absolutePath)
-                    return parseYaml(file.readText())
+                    log.info("Loading plugin config from env path: {}", file.absolutePath)
+                    return parsePotemkinYaml(file.readText())
                 } else {
                     log.warn(
-                        "POTEMKIN_PLUGIN_CONFIG points to non-existent file '{}'; falling through to defaults",
+                        "POTEMKIN_CONFIG_PATH points to non-existent file '{}'; using defaults",
                         envPath,
                     )
                 }
             }
 
-            val yamlFile = File("potemkin-plugin.yaml")
-            if (yamlFile.exists()) {
-                log.info("Loading Potemkin plugin config from {}", yamlFile.absolutePath)
-                return parseYaml(yamlFile.readText())
-            }
-
-            val jsonFile = File("potemkin-plugin.json")
-            if (jsonFile.exists()) {
-                log.info("Loading Potemkin plugin config from {}", jsonFile.absolutePath)
-                return parseYaml(jsonFile.readText())  // SnakeYAML is a superset of JSON
+            val potemkinYaml = File("potemkin.yaml")
+            if (potemkinYaml.exists()) {
+                log.info("Loading plugin block from {}", potemkinYaml.absolutePath)
+                return parsePotemkinYaml(potemkinYaml.readText())
             }
 
             log.info(
-                "No Potemkin plugin config file found; using defaults. " +
-                    "Create potemkin-plugin.yaml in the working directory to configure the backend URL.",
+                "No potemkin.yaml found; using defaults. " +
+                    "Create potemkin.yaml in the working directory to configure the backend URL.",
             )
             return PluginConfig()
+        }
+
+        @Suppress("UNCHECKED_CAST")
+        internal fun parsePotemkinYaml(text: String): PluginConfig {
+            val raw = Yaml().load<Map<String, Any>>(text) ?: emptyMap<String, Any>()
+            val plugin = raw["plugin"] as? Map<String, Any> ?: emptyMap()
+            val engine = plugin["engine"] as? Map<String, Any> ?: emptyMap()
+            val backendUrl = engine["url"] as? String ?: "http://localhost:3000"
+            val forwardTimeoutMs = (engine["timeoutMs"] as? Number)?.toLong() ?: 5_000L
+            val controlPort = (plugin["controlPort"] as? Number)?.toInt() ?: 9090
+            val cb = plugin["circuitBreaker"] as? Map<String, Any> ?: emptyMap()
+            val cbFailureRate = (cb["failureRate"] as? Number)?.toInt() ?: 50
+            val cbWaitMs = (cb["waitMs"] as? Number)?.toLong() ?: 10_000L
+            return PluginConfig(
+                backendUrl = backendUrl,
+                forwardTimeoutMs = forwardTimeoutMs,
+                controlPort = controlPort,
+                circuitBreakerFailureRate = cbFailureRate,
+                circuitBreakerWaitMs = cbWaitMs,
+            )
         }
 
         @Suppress("UNCHECKED_CAST")
