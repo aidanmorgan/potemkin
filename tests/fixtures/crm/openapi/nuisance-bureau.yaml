@@ -45,13 +45,31 @@ paths:
             minimum: 0
       responses:
         "200":
-          description: List of leads
+          description: List of leads (raw array, or envelope when ?limit is supplied)
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Lead"
+                oneOf:
+                  - type: array
+                    items:
+                      $ref: "#/components/schemas/Lead"
+                  - type: object
+                    required: [items, totalCount, offset, limit, hasMore]
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Lead"
+                      totalCount:
+                        type: integer
+                      offset:
+                        type: integer
+                      limit:
+                        type: integer
+                      hasMore:
+                        type: boolean
+                      nextCursor:
+                        type: string
     post:
       operationId: createLead
       summary: Create a new lead

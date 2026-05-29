@@ -52,7 +52,7 @@ describe('query-pagination.acceptance', () => {
     await createLeads(3);
 
     const res = await app.agent.get('/leads?limit=2').expect(200);
-    expect(res.body.length).toBe(2);
+    expect(res.body.items.length).toBe(2);
   });
 
   it('GET /leads?offset=1 returns all but the first lead', async () => {
@@ -70,17 +70,17 @@ describe('query-pagination.acceptance', () => {
     const allRes = await app.agent.get('/leads').expect(200);
     const pagedRes = await app.agent.get('/leads?limit=2&offset=1').expect(200);
 
-    expect(pagedRes.body.length).toBe(2);
+    expect(pagedRes.body.items.length).toBe(2);
     // The slice should match allRes.body[1] and allRes.body[2]
-    expect(pagedRes.body[0]).toEqual(allRes.body[1]);
-    expect(pagedRes.body[1]).toEqual(allRes.body[2]);
+    expect(pagedRes.body.items[0]).toEqual(allRes.body[1]);
+    expect(pagedRes.body.items[1]).toEqual(allRes.body[2]);
   });
 
   it('GET /leads?limit=1 returns exactly 1 lead', async () => {
     await createLeads(3);
 
     const res = await app.agent.get('/leads?limit=1').expect(200);
-    expect(res.body.length).toBe(1);
+    expect(res.body.items.length).toBe(1);
   });
 
   it('GET /leads?offset beyond total returns empty array', async () => {
@@ -95,8 +95,8 @@ describe('query-pagination.acceptance', () => {
 
     // Baseline has 2 NEW leads (Apex and Echo) + 4 new = 6 total NEW
     const filteredRes = await app.agent.get('/leads?status=NEW&limit=2&offset=1').expect(200);
-    expect(filteredRes.body.length).toBe(2);
-    for (const lead of filteredRes.body) {
+    expect(filteredRes.body.items.length).toBe(2);
+    for (const lead of filteredRes.body.items) {
       expect(lead.status).toBe('NEW');
     }
   });
