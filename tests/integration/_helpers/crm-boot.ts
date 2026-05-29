@@ -14,7 +14,7 @@
 
 import type { BootedSystem } from '../../../src/engine/boot.js';
 import { bootSystem } from '../../../src/engine/boot.js';
-import { loadCrmFixture } from '../../fixtures/index.js';
+import { loadFixture } from '../../fixtures/index.js';
 import type { BoundaryConfig } from '../../../src/dsl/types.js';
 
 /**
@@ -59,7 +59,7 @@ export function expandByContractPath(sys: BootedSystem): void {
  * Boot the CRM fixture and expand byContractPath for all 21 OpenAPI paths.
  */
 export async function bootCrmSystem(): Promise<BootedSystem> {
-  const fixture = await loadCrmFixture();
+  const fixture = await loadFixture();
   const sys = await bootSystem(fixture);
   expandByContractPath(sys);
   return sys;

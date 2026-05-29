@@ -10,7 +10,7 @@
 import { bootSystem, type BootedSystem } from '../../src/engine/boot.js';
 import { executeUnitOfWork } from '../../src/engine/uow.js';
 import { resetSystem } from '../../src/engine/reset.js';
-import { loadCrmFixture } from '../fixtures/index.js';
+import { loadFixture } from '../fixtures/index.js';
 import { nextUuidv7 } from '../../src/ids/uuidv7.js';
 import type { Command } from '../../src/types.js';
 
@@ -18,7 +18,7 @@ describe('pattern-match-and-project.integration', () => {
   let sys: BootedSystem;
 
   beforeEach(async () => {
-    const fixture = await loadCrmFixture();
+    const fixture = await loadFixture();
     sys = await bootSystem(fixture);
   });
 

@@ -15,7 +15,7 @@ import { bootSystem } from '../../src/engine/boot.js';
 import { createGateway } from '../../src/http/gateway.js';
 import { loadOpenApi } from '../../src/contract/loader.js';
 import { compileDsl } from '../../src/dsl/parser.js';
-import { loadCrmFixture } from '../fixtures/index.js';
+import { loadFixture } from '../fixtures/index.js';
 import { createTestApp, type TestApp } from '../acceptance/_helpers/test-app.js';
 import { nextUuidv7 } from '../../src/ids/uuidv7.js';
 import { resetSystem } from '../../src/engine/reset.js';
@@ -558,7 +558,7 @@ reducers:
   // ── Lines 101-103: Express error handler (unhandled error forwarded via next(err)) ──
 
   it('Express error handler catches json parse errors and returns 5xx', async () => {
-    const fixture = await loadCrmFixture();
+    const fixture = await loadFixture();
     const sys = await bootSystem(fixture);
     const expressApp = createGateway(sys);
 

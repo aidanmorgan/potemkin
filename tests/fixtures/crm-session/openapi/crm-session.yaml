@@ -1,0 +1,247 @@
+openapi: "3.0.3"
+info:
+  title: The Nuisance Bureau CRM API (session-auth variant)
+  version: "1.0.0"
+  description: |
+    Minimal CRM contract exercising session/cookie auth.
+    Adds /sessions login + /sessions/current logout endpoints alongside a small
+    Leads surface so the engine can demonstrate cookie-based authentication and
+    CSRF enforcement end-to-end.
+
+paths:
+  # ── Sessions ───────────────────────────────────────────────────────────────
+  /sessions:
+    post:
+      operationId: createSession
+      summary: Log in — create a new session and return the CSRF token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [actorId]
+              properties:
+                actorId:
+                  type: string
+                  minLength: 1
+                scopes:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "200":
+          description: Session created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [csrfToken]
+                properties:
+                  sessionId:
+                    type: string
+                  csrfToken:
+                    type: string
+                  actor:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      scopes:
+                        type: array
+                        items:
+                          type: string
+                  expiresAt:
+                    type: string
+                    format: date-time
+
+  /sessions/current:
+    delete:
+      operationId: destroyCurrentSession
+      summary: Log out — destroy the session bound to the current cookie
+      responses:
+        "204":
+          description: Session destroyed (or no session present)
+
+  # ── Leads ──────────────────────────────────────────────────────────────────
+  /leads:
+    get:
+      operationId: listLeads
+      summary: List leads
+      responses:
+        "200":
+          description: List of leads
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Lead"
+    post:
+      operationId: createLead
+      summary: Create a new lead
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [companyName, contactName, phone, email, source]
+              properties:
+                companyName:
+                  type: string
+                  minLength: 1
+                contactName:
+                  type: string
+                  minLength: 1
+                phone:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                source:
+                  type: string
+                  enum: [WEBSITE, COLD_LIST, REFERRAL, PARTNER]
+      responses:
+        "201":
+          description: Lead created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /leads/{id}:
+    get:
+      operationId: getLead
+      summary: Get a lead by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Lead found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+        "404":
+          description: Lead not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /leads/{id}/dnc:
+    post:
+      operationId: markLeadDNC
+      summary: Mark a lead Do-Not-Call (requires manager scope)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              properties:
+                reason:
+                  type: string
+      responses:
+        "200":
+          description: Lead marked DNC
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Insufficient scope
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+components:
+  schemas:
+    Lead:
+      type: object
+      additionalProperties: false
+      required: [id, companyName, contactName, phone, email, source, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        companyName:
+          type: string
+        contactName:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+        source:
+          type: string
+          enum: [WEBSITE, COLD_LIST, REFERRAL, PARTNER]
+        status:
+          type: string
+          enum: [NEW, CONTACTED, QUALIFIED, DISQUALIFIED, CONVERTED, DNC]
+        score:
+          type: integer
+          minimum: 0
+          maximum: 100
+        createdAt:
+          type: string
+          format: date-time
+        callIds:
+          type: array
+          items:
+            type: string
+          default: []
+        notes:
+          type: array
+          items:
+            type: object
+          default: []
+        # Audit fields surfaced by the engine after mutations.
+        updatedAt:
+          type: string
+          format: date-time
+        updatedBy:
+          type: string
+          nullable: true
+    # Sub-path boundary schemas — mirror the Lead schema so the engine's
+    # schema registry can resolve every boundary declared in the DSL.
+    LeadById:
+      $ref: "#/components/schemas/Lead"
+    LeadDNC:
+      $ref: "#/components/schemas/Lead"
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string

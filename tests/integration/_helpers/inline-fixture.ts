@@ -3,7 +3,7 @@
  * `tests/fixtures/index.ts` for integration and acceptance tests.
  *
  * Migrated from the banking inline fixture to the CRM domain (Nuisance Bureau).
- * Delegates to `loadCrmFixture` from the canonical fixtures index.
+ * Delegates to `loadFixture` from the canonical fixtures index.
  *
  * Seeded CRM IDs (from tests/fixtures/crm/dsl/):
  *  Lead:     00000000-0000-7000-8000-000000000010  (Apex Solutions Ltd, NEW)
@@ -21,7 +21,7 @@
  */
 
 import type { BootInput } from '../../../src/engine/boot.js';
-import { loadCrmFixture } from '../../fixtures/index.js';
+import { loadFixture } from '../../fixtures/index.js';
 
 export interface CrmFixture extends BootInput {
   readonly leadIds: {
@@ -38,7 +38,7 @@ export interface CrmFixture extends BootInput {
 }
 
 export async function loadInlineCrmFixture(): Promise<CrmFixture> {
-  const base = await loadCrmFixture();
+  const base = await loadFixture();
   return {
     ...base,
     leadIds: {

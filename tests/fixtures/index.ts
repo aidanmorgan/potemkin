@@ -4,7 +4,7 @@ import type { BootInput } from '../../src';
 import { loadOpenApi } from '../../src';
 import { compileDsl } from '../../src/dsl/parser';
 
-export async function loadCrmFixture(fixtureName: string = 'crm'): Promise<BootInput> {
+export async function loadFixture(fixtureName: string = 'crm'): Promise<BootInput> {
   const dir = path.join(__dirname, fixtureName);
   const openapi = await loadOpenApi(path.join(dir, 'openapi/nuisance-bureau.yaml'));
   const read = (p: string) => fs.readFileSync(path.join(dir, p), 'utf8');
@@ -41,10 +41,10 @@ export async function loadCrmFixture(fixtureName: string = 'crm'): Promise<BootI
   return { openapi, compiledDsl };
 }
 
-// loadCrmFixtureWithGlobal returns the BootInput plus the raw global YAML
-// and a scripts dir. Tests that need Tier-2 features (sagas, idempotency,
-// derived projections) compile the full bundle via compileDsl(modules, globalYaml).
-export async function loadCrmFixtureWithGlobal(
+// Returns the BootInput plus the raw global YAML, scripts dir, and the raw
+// dslModules list. Tests that need Tier-2 features (sagas, idempotency,
+// derived projections) compile the bundle via compileDsl(modules, globalYaml).
+export async function loadFixtureWithGlobal(
   fixtureName: string = 'crm',
 ): Promise<BootInput & {
   readonly globalYaml: string;

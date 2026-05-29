@@ -10,7 +10,7 @@ import type { BootedSystem } from '../../../src/engine/boot';
 import { bootSystem } from '../../../src/engine/boot';
 import { resetSystem } from '../../../src/engine/reset';
 import { createGateway } from '../../../src/http/gateway';
-import { loadCrmFixtureWithGlobal } from '../../fixtures/index';
+import { loadFixtureWithGlobal } from '../../fixtures/index';
 import { resetIdempotencyStore } from '../../../src/idempotency/store';
 import { expandByContractPath } from '../../integration/_helpers/crm-boot';
 import { getFreePort } from './port-allocator';
@@ -85,7 +85,7 @@ export async function startEngine(opts: EngineDriverOpts = {}): Promise<EngineHa
 async function _boot(pluginControlUrl?: string): Promise<BootedSystem> {
   // Reset idempotency store so each engine boot starts with a clean slate.
   resetIdempotencyStore();
-  const fixture = await loadCrmFixtureWithGlobal();
+  const fixture = await loadFixtureWithGlobal();
   const sys = await bootSystem({
     openapi: fixture.openapi,
     compiledDsl: fixture.compiledDsl,

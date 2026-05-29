@@ -9,7 +9,7 @@
 import { bootSystem, type BootedSystem } from '../../src/engine/boot.js';
 import { executeUnitOfWork } from '../../src/engine/uow.js';
 import { resetSystem } from '../../src/engine/reset.js';
-import { loadCrmFixture } from '../fixtures/index.js';
+import { loadFixture } from '../fixtures/index.js';
 import { createEngineMetrics } from '../../src/observability/metrics.js';
 import { createInMemoryOtel, collectMetricDataPoints } from './_helpers/otel.js';
 import { nextUuidv7 } from '../../src/ids/uuidv7.js';
@@ -18,7 +18,7 @@ describe('fault-simulation.integration: faultSignal on Command bypasses executio
   let sys: BootedSystem;
 
   beforeEach(async () => {
-    const fixture = await loadCrmFixture();
+    const fixture = await loadFixture();
     sys = await bootSystem(fixture);
   });
 

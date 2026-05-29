@@ -1,0 +1,44 @@
+boundary: CallAddTranscript
+path: /calls/{id}/transcript
+fallback: false
+
+# Demonstrates request/response shape mismatch with nested graph:
+#   Request:  { speaker: string, text: string }  (flat, 2 fields)
+#   Graph:    transcript[]: { speaker, text, timestamp, sequenceNum }  (enriched with 2 computed fields)
+#
+# The DSL adds a timestamp and auto-incrementing sequence number to each entry.
+# The graph accumulates transcript entries over multiple sequential requests.
+
+events:
+  - type: TranscriptEntryAppended
+    payload:
+      speaker: "${command.payload.speaker}"
+      text: "${command.payload.text}"
+      timestamp: "${$now()}"
+      sequenceNum: "${ts:computeSequenceNum}"
+
+behaviors:
+  - name: addTranscriptEntry
+    method: POST
+    condition: "true"
+    requires:
+      - name: has-speaker
+        condition: "command.payload.speaker != null && command.payload.speaker != ''"
+        error_code: SPEAKER_REQUIRED
+        error_message: "Transcript entry must have a speaker"
+      - name: has-text
+        condition: "command.payload.text != null && command.payload.text != ''"
+        error_code: TRANSCRIPT_TEXT_REQUIRED
+        error_message: "Transcript entry must have text"
+    emit: TranscriptEntryAppended
+
+reducers:
+  - on: TranscriptEntryAppended
+    append:
+      transcript:
+        speaker: "${event.payload.speaker}"
+        text: "${event.payload.text}"
+        timestamp: "${event.payload.timestamp}"
+        sequenceNum: "${event.payload.sequenceNum}"
+
+initialization: []

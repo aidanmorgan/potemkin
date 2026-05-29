@@ -1,0 +1,24 @@
+boundary: LeadDNC
+path: /leads/{id}/dnc
+fallback: false
+
+events:
+  - type: LeadMarkedDNC
+    payload:
+      dncAt: "${$now()}"
+      reason: "${command.payload?.reason != null ? command.payload.reason : 'No reason given'}"
+
+behaviors:
+  - name: markLeadDNC
+    method: POST
+    condition: "true"
+    required_scopes:
+      - manager
+    emit: LeadMarkedDNC
+
+reducers:
+  - on: LeadMarkedDNC
+    assign:
+      status: DNC
+
+initialization: []

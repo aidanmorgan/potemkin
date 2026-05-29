@@ -1,0 +1,43 @@
+boundary: Lead
+path: /leads
+fallback: true
+identity:
+  generate: $uuidv7()
+
+events:
+  - type: LeadCreated
+    payload:
+      id: "${command.targetId}"
+      companyName: "${command.payload.companyName}"
+      contactName: "${command.payload.contactName}"
+      phone: "${command.payload.phone}"
+      email: "${command.payload.email}"
+      source: "${command.payload.source}"
+      status: NEW
+      score: 50
+      createdAt: "${$now()}"
+      callIds: []
+      notes: []
+
+behaviors:
+  - name: createLead
+    method: POST
+    condition: "true"
+    emit: LeadCreated
+
+reducers:
+  - on: LeadCreated
+    assign_all: true
+
+initialization:
+  - id: "00000000-0000-7000-8000-000000000010"
+    companyName: "Apex Solutions Ltd"
+    contactName: "Jordan Walsh"
+    phone: "+61 2 9000 0001"
+    email: "jordan@apexsolutions.com"
+    source: "WEBSITE"
+    status: "NEW"
+    score: 50
+    createdAt: "1970-01-01T00:00:00.000Z"
+    callIds: []
+    notes: []

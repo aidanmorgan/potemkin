@@ -9,7 +9,7 @@
 import { bootSystem, type BootedSystem } from '../../src/engine/boot.js';
 import { executeUnitOfWork } from '../../src/engine/uow.js';
 import { resetSystem } from '../../src/engine/reset.js';
-import { loadCrmFixture } from '../fixtures/index.js';
+import { loadFixture } from '../fixtures/index.js';
 import { nextUuidv7 } from '../../src/ids/uuidv7.js';
 
 describe('reset.integration: ephemeral reset reverts to post-boot baseline', () => {
@@ -20,7 +20,7 @@ describe('reset.integration: ephemeral reset reverts to post-boot baseline', () 
   let baselineGraphEntries: Array<{ id: string; snapshot: string }>;
 
   beforeEach(async () => {
-    const fixture = await loadCrmFixture();
+    const fixture = await loadFixture();
     sys = await bootSystem(fixture);
 
     // Capture baseline

@@ -11,7 +11,7 @@
 import { bootSystem, type BootedSystem } from '../../src/engine/boot.js';
 import { executeUnitOfWork } from '../../src/engine/uow.js';
 import { resetSystem } from '../../src/engine/reset.js';
-import { loadCrmFixture } from '../fixtures/index.js';
+import { loadFixture } from '../fixtures/index.js';
 import { nextUuidv7 } from '../../src/ids/uuidv7.js';
 import type { Command } from '../../src/types.js';
 
@@ -26,7 +26,7 @@ describe('secondary-commands.integration: Call creation cascades to Lead callIds
   const AGENT_ID = '00000000-0000-7000-8000-000000000003';
 
   beforeEach(async () => {
-    const fixture = await loadCrmFixture();
+    const fixture = await loadFixture();
     sys = await bootSystem(fixture);
   });
 

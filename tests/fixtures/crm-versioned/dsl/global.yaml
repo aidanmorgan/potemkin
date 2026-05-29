@@ -1,0 +1,196 @@
+# The Nuisance Bureau CRM — Global configuration
+# Idempotency, sagas with compensation, derived projections, HATEOAS,
+# security headers, API versioning, and webhook signing.
+idempotency:
+  enabled: true
+  ttl_seconds: 86400
+  hash_includes_body: true
+
+# HATEOAS — auto-generate _links on query responses
+hateoas:
+  enabled: true
+  self_links: true
+
+# API versioning — strip versioned URL prefixes before route matching.
+# Prefix-less paths route to the default version (v2).
+versioning:
+  enabled: true
+  versions:
+    - version: "v1"
+      prefix: "/v1"
+    - version: "v2"
+      prefix: "/v2"
+      default: true
+
+# HTTP security headers — applied to every response
+security_headers:
+  enabled: true
+  hsts: true
+  nosniff: true
+  frame_deny: true
+  referrer_policy: "strict-origin-when-cross-origin"
+  custom_headers:
+    X-Custom-Sim-Header: "potemkin-sim"
+
+# Sagas with compensation
+sagas:
+  # Lead Conversion Saga: creates an Opportunity when a lead is converted
+  # Steps: create opportunity → if fails, revert lead status
+  - name: LeadConversionSaga
+    trigger:
+      boundary: LeadConvert
+      intent: mutation
+      condition: "event.type == 'LeadConverted'"
+    steps:
+      - name: createOpportunity
+        boundary: Opportunity
+        intent: creation
+        target_id: "${$uuidv7()}"
+        payload:
+          leadId: "${event.aggregateId}"
+          agentId: "${event.payload.agentId}"
+          campaignId: "${event.payload.campaignId}"
+          value: "${command.payload.value}"
+          probability: "${command.payload.probability}"
+          expectedCloseDate: "${command.payload.expectedCloseDate}"
+        compensation:
+          intent: mutation
+          payload:
+            revertStatus: true
+
+# Webhook declarations — outbound HTTP POST on event emission
+webhooks:
+  - name: lead-converted-webhook
+    trigger:
+      boundary: LeadConvert
+      intent: mutation
+      condition: "event.type == 'LeadConverted'"
+    url: "'http://127.0.0.1:19876/webhook'"
+    secret: "webhook-test-secret-do-not-use-in-prod"
+    payload:
+      leadId: "${event.aggregateId}"
+      event: "${event.type}"
+    retry:
+      maxAttempts: 1
+      delayMs: 100
+
+# Fault injection rules — DSL-driven chaos engineering
+# These use the same match syntax as behaviors but produce HTTP error responses
+# instead of state mutations. Evaluated BEFORE behaviors (first match wins).
+fault_rules:
+  # Simulate external DNC registry timeout for high-value leads
+  - name: dnc-registry-slow
+    match:
+      boundary: LeadDNC
+      intent: mutation
+      condition: "command.payload.reason == 'REGISTRY_CHECK'"
+    response:
+      status: 504
+      body: { error: "DNC_REGISTRY_TIMEOUT", message: "External DNC registry check timed out" }
+      delay_ms: 100
+
+  # Simulate intermittent call logging failures (10% of the time)
+  - name: call-logging-intermittent
+    match:
+      boundary: Call
+      intent: creation
+      condition: "command.payload.outcome == 'NOT_INTERESTED'"
+      probability: 0.1
+    response:
+      status: 503
+      body: { error: "CALL_LOGGING_UNAVAILABLE", message: "Call recording service temporarily unavailable" }
+
+  # Header-matched via convenience `potemkin.rate_limit` — expands to X-Potemkin-Rate-Limit.
+  # Any value on the header triggers the rule (presence-only via "*").
+  - name: rate-limit-via-header
+    match:
+      condition: "true"
+      potemkin:
+        rate_limit: "*"
+    response:
+      status: 429
+      body: { error: "RATE_LIMITED", message: "Simulated rate limit (header-triggered)", retryAfter: 30 }
+      headers:
+        Retry-After: "30"
+        X-RateLimit-Limit: "100"
+        X-RateLimit-Remaining: "0"
+
+  # Header-matched via convenience `potemkin.force_response` with specific value.
+  # Expands to X-Potemkin-Force-Response: maintenance.
+  - name: maintenance-mode-via-header
+    match:
+      condition: "true"
+      potemkin:
+        force_response: "maintenance"
+    response:
+      status: 503
+      body: { error: "SERVICE_UNAVAILABLE", message: "Service in maintenance mode" }
+      headers:
+        Retry-After: "60"
+
+  # Header-matched scoped to a boundary via convenience `potemkin.feature_flag`.
+  # Expands to X-Potemkin-Feature-Flag: v2-experimental.
+  - name: lead-feature-flag-error
+    match:
+      boundary: Lead
+      intent: query
+      condition: "true"
+      potemkin:
+        feature_flag: "v2-experimental"
+    response:
+      status: 418
+      body: { error: "TEAPOT", message: "Feature v2-experimental not available for this user" }
+
+  # Header-matched via raw `headers:` form — useful for ad-hoc / non-aliased headers.
+  # Matches X-Potemkin-Scenario: slow_db on any Call creation request.
+  - name: call-slow-db-scenario
+    match:
+      boundary: Call
+      intent: creation
+      condition: "true"
+      headers:
+        x-potemkin-scenario: "slow_db"
+    response:
+      status: 504
+      body: { error: "GATEWAY_TIMEOUT", message: "Simulated slow database scenario" }
+      headers:
+        Retry-After: "5"
+
+# Derived projections aggregating across boundaries
+derived_projections:
+  # CampaignDashboard: aggregates lead count and conversion rate per campaign
+  - name: CampaignDashboard
+    key: "event.payload.campaignId != null ? event.payload.campaignId : event.payload.assignedCampaignId"
+    subscribe:
+      - "Lead:LeadCreated"
+      - "Lead:LeadConverted"
+      - "Call:CallLogged"
+      - "Opportunity:OpportunityWon"
+    reduce:
+      - on: "Lead:LeadCreated"
+        assign:
+          totalLeads: "${state.totalLeads != null ? state.totalLeads + 1 : 1}"
+          totalConversions: "${state.totalConversions != null ? state.totalConversions : 0}"
+      - on: "Lead:LeadConverted"
+        assign:
+          totalConversions: "${state.totalConversions != null ? state.totalConversions + 1 : 1}"
+      - on: "Call:CallLogged"
+        assign:
+          totalCalls: "${state.totalCalls != null ? state.totalCalls + 1 : 1}"
+      - on: "Opportunity:OpportunityWon"
+        assign:
+          wonCount: "${state.wonCount != null ? state.wonCount + 1 : 1}"
+
+  # AgentPerformance: tracks per-agent call and conversion metrics
+  - name: AgentPerformance
+    key: "event.payload.agentId != null ? event.payload.agentId : event.aggregateId"
+    subscribe:
+      - "Call:CallLogged"
+      - "Agent:AgentConversionIncremented"
+    reduce:
+      - on: "Call:CallLogged"
+        assign:
+          callCount: "${state.callCount != null ? state.callCount + 1 : 1}"
+      - on: "Agent:AgentConversionIncremented"
+        assign:
+          conversionCount: "${state.conversionCount != null ? state.conversionCount + 1 : 1}"

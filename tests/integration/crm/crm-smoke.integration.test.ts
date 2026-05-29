@@ -15,7 +15,7 @@ import request from 'supertest';
 import { bootSystem } from '../../../src/engine/boot.js';
 import { resetSystem } from '../../../src/engine/reset.js';
 import { createGateway } from '../../../src/http/gateway.js';
-import { loadCrmFixture } from '../../fixtures/index.js';
+import { loadFixture } from '../../fixtures/index.js';
 import type { BootedSystem } from '../../../src/engine/boot.js';
 
 // Pre-seeded IDs from initialization data
@@ -31,7 +31,7 @@ describe('CRM Smoke — integration', () => {
   let agent: ReturnType<typeof request>;
 
   beforeAll(async () => {
-    const fixture = await loadCrmFixture();
+    const fixture = await loadFixture();
     sys = await bootSystem(fixture);
     const app = createGateway(sys);
     agent = request(app);

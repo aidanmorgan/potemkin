@@ -1,0 +1,7 @@
+boundary: LeadById
+path: /leads/{id}
+fallback: true
+events: []
+behaviors: []
+reducers: []
+initialization: []

@@ -1,0 +1,16 @@
+# Minimal CRM (session-auth variant) — Global configuration
+#
+# Demonstrates the session/cookie auth mode end-to-end:
+#  - Clients POST to /sessions with { actorId, scopes } to obtain a cookie.
+#  - DELETE /sessions/current logs out.
+#  - All other endpoints accept the cookie; state-changing methods require
+#    the configured CSRF header.
+
+auth:
+  mode: session
+  session:
+    cookie_name: "potemkin_sid"
+    ttl_seconds: 3600
+    login_path: "/sessions"
+    logout_path: "/sessions/current"
+    csrf_header: "x-csrf-token"

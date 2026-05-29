@@ -12,7 +12,7 @@ import type { BootedSystem } from '../../../src/engine/boot.js';
 import { bootSystem } from '../../../src/engine/boot.js';
 import { resetSystem } from '../../../src/engine/reset.js';
 import { createGateway } from '../../../src/http/gateway.js';
-import { loadCrmFixture } from '../../fixtures/index.js';
+import { loadFixture } from '../../fixtures/index.js';
 import type { BoundaryConfig } from '../../../src/dsl/types.js';
 import request from 'supertest';
 
@@ -78,7 +78,7 @@ function expandByContractPath(sys: BootedSystem): void {
  * Call `app.reset()` between tests to revert to the post-boot baseline.
  */
 export async function createTestApp(): Promise<TestApp> {
-  const fixture = await loadCrmFixture();
+  const fixture = await loadFixture();
   const sys = await bootSystem(fixture);
 
   // Expand byContractPath so the gateway registers Express routes for all

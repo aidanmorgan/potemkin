@@ -1,0 +1,47 @@
+boundary: OpportunityAddLineItem
+path: /opportunities/{id}/line-items
+fallback: false
+
+# Demonstrates complex nested object graph:
+#   Request:  { description, quantity, unitPrice }  (no total, no id)
+#   Graph:    lineItems[]: { id, description, quantity, unitPrice, total }  (computed total, generated id)
+#   The total is computed server-side: quantity * unitPrice
+#   This demonstrates the DSL enriching flat requests into complex nested graph nodes.
+
+events:
+  - type: LineItemAdded
+    payload:
+      lineItemId: "${ts:generateLineItemId}"
+      description: "${command.payload.description}"
+      quantity: "${command.payload.quantity}"
+      unitPrice: "${command.payload.unitPrice}"
+      total: "${ts:computeLineTotal}"
+      addedAt: "${$now()}"
+
+behaviors:
+  - name: addLineItem
+    method: POST
+    condition: "true"
+    requires:
+      - name: not-closed
+        condition: "state.stage != 'WON' && state.stage != 'LOST'"
+        error_code: OPPORTUNITY_CLOSED
+        error_message: "Cannot add line items to a closed opportunity"
+      - name: valid-quantity
+        condition: "command.payload.quantity != null && command.payload.quantity > 0"
+        error_code: INVALID_QUANTITY
+        error_message: "Line item quantity must be greater than zero"
+    emit: LineItemAdded
+
+reducers:
+  - on: LineItemAdded
+    append:
+      lineItems:
+        id: "${event.payload.lineItemId}"
+        description: "${event.payload.description}"
+        quantity: "${event.payload.quantity}"
+        unitPrice: "${event.payload.unitPrice}"
+        total: "${event.payload.total}"
+        addedAt: "${event.payload.addedAt}"
+
+initialization: []

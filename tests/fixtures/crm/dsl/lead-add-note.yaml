@@ -1,0 +1,46 @@
+boundary: LeadAddNote
+path: /leads/{id}/notes
+fallback: false
+
+# Deprecation: this boundary is scheduled for retirement.
+# Drives the Deprecation / Sunset / Link response headers.
+deprecated:
+  date: "2025-01-01"
+  sunset: "2025-06-01"
+  link: "/v2/leads/{id}/notes"
+
+# Latency: simulate a slow downstream so client retry/timeout logic can
+# exercise the boundary without needing chaos injection.
+latency:
+  fixed_ms: 50
+
+
+events:
+  - type: NoteAppended
+    payload:
+      noteId: "${ts:generateNoteId}"
+      text: "${command.payload.text}"
+      author: "${command.payload.author}"
+      createdAt: "${$now()}"
+
+behaviors:
+  - name: addNote
+    method: POST
+    condition: "true"
+    requires:
+      - name: has-text
+        condition: "command.payload.text != null && command.payload.text != ''"
+        error_code: NOTE_TEXT_REQUIRED
+        error_message: "Note text is required"
+    emit: NoteAppended
+
+reducers:
+  - on: NoteAppended
+    append:
+      notes:
+        id: "${event.payload.noteId}"
+        text: "${event.payload.text}"
+        author: "${event.payload.author}"
+        createdAt: "${event.payload.createdAt}"
+
+initialization: []
