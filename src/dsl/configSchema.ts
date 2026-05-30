@@ -72,7 +72,7 @@ export interface PotemkinConfig {
 // ---------------------------------------------------------------------------
 
 export interface BoundaryBehavior {
-  readonly intent: string;
+  readonly operationId: string;
   readonly match?: Record<string, unknown>;
   readonly emit?: readonly { name: string; template?: Record<string, string> }[];
   readonly dispatch?: readonly {

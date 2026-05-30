@@ -355,6 +355,13 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
             async (_childSpan) => {
               const shadowAsGraphAdapter = shadowAsStateGraph(shadow, graph);
 
+              if (input.openapi === undefined) {
+                throw new InternalExecutionError(
+                  'openapi document required in UowInput for operationId-based pattern matching',
+                  { commandId: cmd.commandId },
+                );
+              }
+
               let outcome: PatternMatchResult;
               try {
                 outcome = runPatternMatch({
@@ -368,6 +375,7 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
                   schemaRegistry,
                   tracer,
                   scriptRegistry: input.dsl.scriptRegistry,
+                  openapi: input.openapi,
                   nextSequenceVersion: (aggregateId) => {
                     const delta = stagedSeqDeltas.get(aggregateId) ?? 0;
                     const next = eventStore.currentSequenceVersion(aggregateId) + delta + 1;

@@ -21,6 +21,12 @@ export interface Command {
   readonly queryParams: Record<string, string | string[]>;
   readonly httpMethod: string;
   readonly path: string;
+  /**
+   * Pre-resolved OpenAPI operationId for this command. Secondary (cascade) commands
+   * carry an explicit operationId (their path is synthetic); inbound commands may leave
+   * it undefined and let the pattern matcher resolve it from (path, method).
+   */
+  readonly operationId?: string;
   readonly sequenceVersion?: number;   // optimistic-concurrency from request
   readonly faultSignal?: string;       // §31 fault simulation
   readonly origin: Origin;

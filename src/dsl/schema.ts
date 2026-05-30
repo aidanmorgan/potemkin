@@ -261,6 +261,7 @@ function validateSecondaryCommandSpec(raw: unknown, ctx: string): SecondaryComma
       { field: 'intent', value: intentRaw, context: ctx },
     );
   }
+  const operationId = requireString(raw, 'operationId', ctx);
   const targetId = requireString(raw, 'target_id', ctx);
   const payload = requireStringStringMap(raw, 'payload', ctx);
 
@@ -292,6 +293,7 @@ function validateSecondaryCommandSpec(raw: unknown, ctx: string): SecondaryComma
   return {
     boundary,
     intent: intentRaw,
+    operationId,
     targetId,
     ...(payload !== undefined ? { payload } : {}),
     ...(condition !== undefined ? { condition } : {}),
@@ -312,14 +314,22 @@ function validateBehaviorRule(raw: unknown, index: number): BehaviorRule {
       { field: 'match', context: ctx },
     );
   }
-  const intentRaw = requireString(matchRaw, 'intent', `${ctx}.match`);
-  if (intentRaw !== 'creation' && intentRaw !== 'mutation' && intentRaw !== 'query') {
+  // `intent` is removed from behavior match — it is replaced by operationId.
+  if (matchRaw['intent'] !== undefined) {
     throw new BootError(
-      'BOOT_ERR_DSL_SYNTAX',
-      `${ctx}.match.intent must be one of creation|mutation|query (got "${intentRaw}")`,
-      { field: 'match.intent', value: intentRaw, context: ctx },
+      'BOOT_ERR_REMOVED_SYNTAX',
+      `${ctx}.match.intent is no longer supported — use match.operationId (the OpenAPI operationId this behavior handles)`,
+      { field: 'match.intent', context: ctx },
     );
   }
+  if (matchRaw['operationId'] === undefined) {
+    throw new BootError(
+      'BOOT_ERR_MISSING_OPERATION_ID',
+      `${ctx}.match.operationId is required — declare the OpenAPI operationId this behavior handles`,
+      { field: 'match.operationId', context: ctx },
+    );
+  }
+  const operationId = requireString(matchRaw, 'operationId', `${ctx}.match`);
   const condition = requireString(matchRaw, 'condition', `${ctx}.match`);
   validateCelOrScript(condition, `${ctx}.match.condition`, 'behavior');
 
@@ -468,7 +478,7 @@ function validateBehaviorRule(raw: unknown, index: number): BehaviorRule {
   return {
     name,
     match: {
-      intent: intentRaw,
+      operationId,
       condition,
       ...(requires !== undefined ? { requires } : {}),
       ...(requiredScopes !== undefined ? { requiredScopes } : {}),
