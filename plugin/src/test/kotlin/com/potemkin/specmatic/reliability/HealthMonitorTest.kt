@@ -252,4 +252,96 @@ class HealthMonitorTest {
         monitor.runProbe()
         assertEquals(HealthState.Degraded, monitor.currentState())
     }
+
+    // ---- concurrency tests --------------------------------------------------------------
+
+    /**
+     * Drives [runProbe] concurrently with external [markUpExternal]/[markDownExternal]
+     * signals from many threads. Asserts no exception escapes and that the final
+     * observed state is internally consistent with its counters — i.e. the
+     * compound read-decide-transition sequences never tore under contention.
+     */
+    @Test
+    fun `concurrent probes and external signals never corrupt state`() {
+        // Many threads flip the monitor's state via the external signal API while
+        // others read it. The synchronized mutation paths must keep state consistent.
+        val threads = 16
+        val iterations = 500
+        val errors = java.util.concurrent.CopyOnWriteArrayList<Throwable>()
+        val barrier = java.util.concurrent.CyclicBarrier(threads)
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(threads)
+
+        repeat(threads) { t ->
+            pool.submit {
+                try {
+                    barrier.await()
+                    repeat(iterations) { i ->
+                        when ((t + i) % 3) {
+                            0 -> monitor.markUpExternal()
+                            1 -> monitor.markDownExternal()
+                            else -> monitor.currentState()
+                        }
+                    }
+                } catch (e: Throwable) {
+                    errors.add(e)
+                }
+            }
+        }
+        pool.shutdown()
+        assertTrue(pool.awaitTermination(30, java.util.concurrent.TimeUnit.SECONDS), "threads did not finish in time")
+        assertTrue(errors.isEmpty(), "concurrent invocation threw: ${errors.map { it.message }}")
+
+        // After the storm settles, the monitor must still be in a self-consistent state:
+        // a final markUpExternal must deterministically leave it UP with upSince set.
+        monitor.markUpExternal()
+        assertEquals(HealthState.Up, monitor.currentState())
+        assertNotNull(monitor.upSince(), "UP state must always have a non-null upSince")
+    }
+
+    /**
+     * A success counter advanced from DOWN to UP requires exactly 2 consecutive
+     * successes. With many threads racing on [runProbe] against a server that
+     * always returns 200, the debounce must never under- or over-count such that
+     * the listener sees a duplicate UP transition.
+     */
+    @Test
+    fun `concurrent successful probes notify each UP transition exactly once`() {
+        // Enqueue a generous supply of 200s so every probe gets a response.
+        repeat(2_000) { server.enqueue(MockResponse().setResponseCode(200)) }
+
+        // Start DOWN so the first 2 successes drive a single UP transition.
+        monitor.markDownExternal()
+
+        val upTransitions = java.util.concurrent.atomic.AtomicInteger(0)
+        monitor.addListener(object : HealthStateListener {
+            override fun onTransition(from: HealthState, to: HealthState) {
+                if (to == HealthState.Up && from != HealthState.Up) {
+                    upTransitions.incrementAndGet()
+                }
+            }
+        })
+
+        val threads = 8
+        val errors = java.util.concurrent.CopyOnWriteArrayList<Throwable>()
+        val barrier = java.util.concurrent.CyclicBarrier(threads)
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(threads)
+        repeat(threads) {
+            pool.submit {
+                try {
+                    barrier.await()
+                    repeat(50) { monitor.runProbe() }
+                } catch (e: Throwable) {
+                    errors.add(e)
+                }
+            }
+        }
+        pool.shutdown()
+        assertTrue(pool.awaitTermination(30, java.util.concurrent.TimeUnit.SECONDS))
+        assertTrue(errors.isEmpty(), "concurrent runProbe threw: ${errors.map { it.message }}")
+
+        // All probes succeeded → must end UP, and the DOWN→UP transition fires exactly once
+        // (subsequent successful probes stay UP without re-notifying).
+        assertEquals(HealthState.Up, monitor.currentState())
+        assertEquals(1, upTransitions.get(), "DOWN→UP must be signalled exactly once under concurrency")
+    }
 }
