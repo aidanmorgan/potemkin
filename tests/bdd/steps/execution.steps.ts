@@ -140,7 +140,7 @@ fallback_override: true
 behaviors:
   - name: update-target
     match:
-      intent: mutation
+      operationId: updateTarget
       condition: "true"
     emit: TargetUpdated
 event_catalog:
@@ -167,12 +167,13 @@ identity:
 behaviors:
   - name: create-source-with-dispatch
     match:
-      intent: creation
+      operationId: createSource
       condition: "true"
     emit: SourceCreated
     dispatch_commands:
       - boundary: Target
         intent: mutation
+        operationId: updateTarget
         target_id: "'target-seed-001'"
         payload:
           value: "'updated-by-source'"

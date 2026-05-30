@@ -94,12 +94,13 @@ identity:
 behaviors:
   - name: create-cb-opportunity
     match:
-      intent: creation
+      operationId: createCbOpportunity
       condition: "true"
     emit: CbOpportunityCreated
     dispatch_commands:
       - boundary: CbLead
         intent: mutation
+        operationId: updateCbLead
         target_id: "command.payload.leadId"
         payload:
           opportunityId: "command.targetId"
@@ -122,7 +123,7 @@ fallback_override: false
 behaviors:
   - name: attach-opportunity
     match:
-      intent: mutation
+      operationId: updateCbLead
       condition: "true"
     emit: CbOpportunityAttached
 event_catalog:
@@ -352,12 +353,13 @@ identity:
 behaviors:
   - name: create-widget
     match:
-      intent: creation
+      operationId: createWidget
       condition: "true"
     emit: WidgetCreated
     dispatch_commands:
       - boundary: Sink
         intent: mutation
+        operationId: updateSink
         target_id: "'sink-001'"
         payload:
           widgetId: "command.targetId"
@@ -378,7 +380,7 @@ fallback_override: false
 behaviors:
   - name: handle-widget
     match:
-      intent: mutation
+      operationId: updateSink
       condition: "undefinedVariable.doesNotExist == true"
     emit: SinkUpdated
 event_catalog:

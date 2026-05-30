@@ -101,7 +101,7 @@ fallback_override: false
 behaviors:
   - name: update-widget
     match:
-      intent: mutation
+      operationId: updateWidget
       condition: "true"
     emit: WidgetUpdated
 event_catalog:
@@ -161,7 +161,7 @@ fallback_override: false
 behaviors:
   - name: bad-behavior
     match:
-      intent: mutation
+      operationId: updateThing
       condition: "state.nonExistentField == 'foo'"
     emit: ThingUpdated
 event_catalog:
@@ -204,7 +204,7 @@ fallback_override: false
 behaviors:
   - name: update-thing
     match:
-      intent: mutation
+      operationId: updateThing
       condition: "true"
     emit: ThingUpdated
 event_catalog:

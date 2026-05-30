@@ -195,17 +195,17 @@ identity:
 behaviors:
   - name: get-lead
     match:
-      intent: query
+      operationId: getLead
       condition: "true"
     emit: LeadQueried
   - name: create-lead
     match:
-      intent: creation
+      operationId: createLead
       condition: "true"
     emit: LeadCreated
   - name: update-lead
     match:
-      intent: mutation
+      operationId: updateLead
       condition: "true"
     emit: LeadUpdated
 event_catalog:
@@ -268,22 +268,22 @@ query_mapping:
 behaviors:
   - name: create-opportunity
     match:
-      intent: creation
+      operationId: createOpportunity
       condition: "true"
     emit: OpportunityCreated
   - name: negotiate-opportunity
     match:
-      intent: mutation
+      operationId: updateOpportunity
       condition: "payload.stage == 'negotiating'"
     emit: OpportunityNegotiating
   - name: close-opportunity
     match:
-      intent: mutation
+      operationId: updateOpportunity
       condition: "payload.stage == 'won'"
     emit: OpportunityWon
   - name: update-opportunity
     match:
-      intent: mutation
+      operationId: updateOpportunity
       condition: "'value' in payload"
     emit: OpportunityUpdated
 event_catalog:
@@ -339,7 +339,7 @@ query_mapping:
 behaviors:
   - name: list-opportunities
     match:
-      intent: query
+      operationId: listOpportunities
       condition: "true"
     emit: OpportunityListQueried
 event_catalog:
