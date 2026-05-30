@@ -2,6 +2,7 @@ package com.potemkin.specmatic
 
 import org.slf4j.LoggerFactory
 import org.yaml.snakeyaml.Yaml
+import org.yaml.snakeyaml.error.MarkedYAMLException
 import java.io.File
 
 /**
@@ -40,6 +41,10 @@ data class PluginConfig(
     val forwarderBackoffMs: Long = 50L,
     val circuitBreakerFailureRate: Int = 50,
     val circuitBreakerWaitMs: Long = 10_000L,
+    // Forward-blocks parsed from potemkin.yaml (seeds / workflow / overlay / governance).
+    val forwardBlocks: ForwardBlocks = ForwardBlocks.EMPTY,
+    // Authentication policy (the `auth:` block).
+    val auth: AuthConfig = AuthConfig(),
 ) {
     companion object {
         private val log = LoggerFactory.getLogger(PluginConfig::class.java)
@@ -77,62 +82,59 @@ data class PluginConfig(
             return PluginConfig()
         }
 
+        /**
+         * Parse a potemkin.yaml document into a [PluginConfig], including the
+         * `plugin:` block, the `auth:` block, and the four forward-blocks
+         * (`seeds` / `workflow` / `overlay` / `governance`).
+         *
+         * Throws [PluginBootException] with code `BOOT_ERR_INVALID_YAML` and a
+         * `file:line` locator when the document is not valid YAML or a block is
+         * structurally malformed (AC-E3.3).
+         */
         @Suppress("UNCHECKED_CAST")
-        internal fun parsePotemkinYaml(text: String): PluginConfig {
-            val raw = Yaml().load<Map<String, Any>>(text) ?: emptyMap<String, Any>()
-            val plugin = raw["plugin"] as? Map<String, Any> ?: emptyMap()
-            val engine = plugin["engine"] as? Map<String, Any> ?: emptyMap()
+        internal fun parsePotemkinYaml(text: String, source: String = "potemkin.yaml"): PluginConfig {
+            val raw: Map<String, Any?> = try {
+                Yaml().load<Map<String, Any?>>(text) ?: emptyMap()
+            } catch (e: MarkedYAMLException) {
+                val mark = e.problemMark
+                val locator = if (mark != null) "$source:${mark.line + 1}" else source
+                throw PluginBootException(
+                    "BOOT_ERR_INVALID_YAML: malformed YAML at $locator: ${e.problem}",
+                    cause = e,
+                )
+            } catch (e: Exception) {
+                throw PluginBootException("BOOT_ERR_INVALID_YAML: malformed YAML in $source: ${e.message}", cause = e)
+            }
+
+            val plugin = raw["plugin"] as? Map<String, Any?> ?: emptyMap()
+            val engine = plugin["engine"] as? Map<String, Any?> ?: emptyMap()
             val backendUrl = engine["url"] as? String ?: "http://localhost:3000"
             val forwardTimeoutMs = (engine["timeoutMs"] as? Number)?.toLong() ?: 5_000L
             val controlPort = (plugin["controlPort"] as? Number)?.toInt() ?: 9090
-            val cb = plugin["circuitBreaker"] as? Map<String, Any> ?: emptyMap()
+            val cb = plugin["circuitBreaker"] as? Map<String, Any?> ?: emptyMap()
             val cbFailureRate = (cb["failureRate"] as? Number)?.toInt() ?: 50
             val cbWaitMs = (cb["waitMs"] as? Number)?.toLong() ?: 10_000L
+
+            val forwardBlocks = try {
+                ForwardBlocks.parse(raw)
+            } catch (e: IllegalArgumentException) {
+                throw PluginBootException("BOOT_ERR_INVALID_YAML: in $source: ${e.message}", cause = e)
+            }
+
+            val auth = try {
+                AuthConfig.parse(plugin["auth"] ?: raw["auth"])
+            } catch (e: IllegalArgumentException) {
+                throw PluginBootException("BOOT_ERR_INVALID_YAML: in $source: ${e.message}", cause = e)
+            }
+
             return PluginConfig(
                 backendUrl = backendUrl,
                 forwardTimeoutMs = forwardTimeoutMs,
                 controlPort = controlPort,
                 circuitBreakerFailureRate = cbFailureRate,
                 circuitBreakerWaitMs = cbWaitMs,
-            )
-        }
-
-        @Suppress("UNCHECKED_CAST")
-        internal fun parseYaml(text: String): PluginConfig {
-            val raw = Yaml().load<Map<String, Any>>(text) ?: emptyMap<String, Any>()
-
-            val backendUrl = raw["backendUrl"] as? String ?: "http://localhost:3000"
-            val forwardTimeoutMs = (raw["forwardTimeoutMs"] as? Number)?.toLong() ?: 5_000L
-            val discoveryRefreshOnFailureMs =
-                (raw["discoveryRefreshOnFailureMs"] as? Number)?.toLong() ?: 5_000L
-
-            if (raw.containsKey("pathPatterns")) {
-                log.warn(
-                    "potemkin-plugin config: 'pathPatterns' is no longer used — routes are " +
-                        "discovered at runtime via GET /_engine/routes. Remove 'pathPatterns' from " +
-                        "your config file to suppress this warning.",
-                )
-            }
-
-            val controlPort = (raw["controlPort"] as? Number)?.toInt() ?: 9090
-            val healthProbeInitialMs = (raw["healthProbeInitialMs"] as? Number)?.toLong() ?: 250L
-            val healthProbeStableMs = (raw["healthProbeStableMs"] as? Number)?.toLong() ?: 30_000L
-            val forwarderMaxRetries = (raw["forwarderMaxRetries"] as? Number)?.toInt() ?: 3
-            val forwarderBackoffMs = (raw["forwarderBackoffMs"] as? Number)?.toLong() ?: 50L
-            val circuitBreakerFailureRate = (raw["circuitBreakerFailureRate"] as? Number)?.toInt() ?: 50
-            val circuitBreakerWaitMs = (raw["circuitBreakerWaitMs"] as? Number)?.toLong() ?: 10_000L
-
-            return PluginConfig(
-                backendUrl = backendUrl,
-                forwardTimeoutMs = forwardTimeoutMs,
-                discoveryRefreshOnFailureMs = discoveryRefreshOnFailureMs,
-                controlPort = controlPort,
-                healthProbeInitialMs = healthProbeInitialMs,
-                healthProbeStableMs = healthProbeStableMs,
-                forwarderMaxRetries = forwarderMaxRetries,
-                forwarderBackoffMs = forwarderBackoffMs,
-                circuitBreakerFailureRate = circuitBreakerFailureRate,
-                circuitBreakerWaitMs = circuitBreakerWaitMs,
+                forwardBlocks = forwardBlocks,
+                auth = auth,
             )
         }
     }
