@@ -222,6 +222,84 @@ class FixtureLifecycleManagerTest {
         assertEquals(fixtureV2.httpRequest.path, bridge.registered.last().httpRequest.path)
     }
 
+    // ---- concurrency tests --------------------------------------------------------------
+
+    /**
+     * Hammers [pushFixtures], [clearFixtures], and [hotReloadIfChanged] from many
+     * threads simultaneously. The manager's only shared mutable state is the
+     * [java.util.concurrent.atomic.AtomicReference] ETag and the bridge's
+     * CopyOnWriteArrayList registry; this asserts no
+     * ConcurrentModificationException or other failure escapes under contention.
+     */
+    @Test
+    fun `concurrent push, clear, and hot-reload never corrupt the registry`() {
+        fixturesClient.setFixtures(listOf(makeFixture("GET", "/a"), makeFixture("POST", "/b")))
+        val manager = FixtureLifecycleManager(monitor, fixturesClient, bridge)
+
+        val threads = 12
+        val iterations = 200
+        val errors = java.util.concurrent.CopyOnWriteArrayList<Throwable>()
+        val barrier = java.util.concurrent.CyclicBarrier(threads)
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(threads)
+
+        repeat(threads) { t ->
+            pool.submit {
+                try {
+                    barrier.await()
+                    repeat(iterations) { i ->
+                        when ((t + i) % 3) {
+                            0 -> manager.pushFixtures()
+                            1 -> manager.clearFixtures()
+                            else -> manager.hotReloadIfChanged()
+                        }
+                    }
+                } catch (e: Throwable) {
+                    errors.add(e)
+                }
+            }
+        }
+        pool.shutdown()
+        assertTrue(pool.awaitTermination(30, java.util.concurrent.TimeUnit.SECONDS), "threads did not finish")
+        assertTrue(errors.isEmpty(), "concurrent lifecycle ops threw: ${errors.map { "${it::class.simpleName}: ${it.message}" }}")
+    }
+
+    /**
+     * Registers and clears stubs on [SpecmaticStubBridge] from many threads using
+     * a bridge backed by a real [java.util.concurrent.CopyOnWriteArrayList] registry,
+     * asserting no ConcurrentModificationException — the registry is the bridge's
+     * only shared mutable state.
+     */
+    @Test
+    fun `concurrent register and clear on the stub bridge are race-free`() {
+        val realRegistryBridge = object : SpecmaticStubBridge(null) {
+            override fun doSetExpectation(scenarioStub: ScenarioStub): List<HttpStubData>? = null
+            override fun doClearExpectations() { /* registry-only test */ }
+        }
+        val fixture = makeFixture("GET", "/concurrent")
+
+        val threads = 16
+        val iterations = 300
+        val errors = java.util.concurrent.CopyOnWriteArrayList<Throwable>()
+        val barrier = java.util.concurrent.CyclicBarrier(threads)
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(threads)
+        repeat(threads) { t ->
+            pool.submit {
+                try {
+                    barrier.await()
+                    repeat(iterations) { i ->
+                        if ((t + i) % 2 == 0) realRegistryBridge.registerStub(fixture)
+                        else realRegistryBridge.clearExpectations()
+                    }
+                } catch (e: Throwable) {
+                    errors.add(e)
+                }
+            }
+        }
+        pool.shutdown()
+        assertTrue(pool.awaitTermination(30, java.util.concurrent.TimeUnit.SECONDS))
+        assertTrue(errors.isEmpty(), "concurrent bridge ops threw: ${errors.map { "${it::class.simpleName}: ${it.message}" }}")
+    }
+
     @Test
     fun `hotReloadIfChanged skips reload when fixtures are identical`() {
         val fixture = makeFixture("GET", "/stable")

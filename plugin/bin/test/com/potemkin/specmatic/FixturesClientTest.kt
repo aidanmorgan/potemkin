@@ -224,6 +224,61 @@ class FixturesClientTest {
         assertTrue(excluded.contains("POST" to "/new-path"))
     }
 
+    // ---- concurrency tests --------------------------------------------------------------
+
+    /**
+     * Drives concurrent [FixturesClient.fetchFixtures], [recordPushedPaths], and
+     * [excludedPaths] from many threads. The cache and pushed-paths set are guarded
+     * by a ReentrantReadWriteLock; this asserts no exception escapes and reads always
+     * return one of the consistent written values (never a torn/partial set).
+     */
+    @Test
+    fun `concurrent fetch, record, and read are race-free`() {
+        // A dispatcher that answers every request identically — supports unbounded concurrency.
+        server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+            override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): MockResponse {
+                val body = """{"engine":"potemkin","version":"1.0","generatedAt":"2024-01-01T00:00:00Z","checksum":"abc","fixtures":[{"httpRequest":{"method":"GET","path":"/loans"},"httpResponse":{"status":200,"headers":{},"body":{"ok":true}},"source":{"boundary":"b","aggregateId":"a","contractPath":"/c.yaml"}}]}"""
+                return MockResponse().setResponseCode(200).setBody(body)
+            }
+        }
+        val client = clientWithNoNetworkInit()
+        val setA = setOf("GET" to "/a")
+        val setB = setOf("POST" to "/b", "GET" to "/c")
+
+        val threads = 16
+        val iterations = 200
+        val errors = java.util.concurrent.CopyOnWriteArrayList<Throwable>()
+        val barrier = java.util.concurrent.CyclicBarrier(threads)
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(threads)
+        repeat(threads) { t ->
+            pool.submit {
+                try {
+                    barrier.await()
+                    repeat(iterations) { i ->
+                        when ((t + i) % 4) {
+                            0 -> client.fetchFixtures()
+                            1 -> client.recordPushedPaths(setA)
+                            2 -> client.recordPushedPaths(setB)
+                            else -> {
+                                val read = client.excludedPaths()
+                                // A read must always be exactly one of the written sets (or the initial empty).
+                                assertTrue(
+                                    read.isEmpty() || read == setA || read == setB,
+                                    "torn read of pushed paths: $read",
+                                )
+                            }
+                        }
+                    }
+                } catch (e: Throwable) {
+                    errors.add(e)
+                }
+            }
+        }
+        pool.shutdown()
+        assertTrue(pool.awaitTermination(30, TimeUnit.SECONDS), "threads did not finish")
+        assertTrue(errors.isEmpty(), "concurrent fixtures ops threw: ${errors.map { "${it::class.simpleName}: ${it.message}" }}")
+    }
+
     @Test
     fun `excludedPaths contains every pushed fixture after full fetch-and-record cycle`() {
         server.enqueue(fixturesResponse("GET" to "/loans/{id}", "DELETE" to "/loans/{id}"))

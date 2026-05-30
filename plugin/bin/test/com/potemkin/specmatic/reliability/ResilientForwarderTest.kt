@@ -8,6 +8,7 @@ import io.specmatic.stub.HttpStubResponse
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 /**
  * Unit tests for [ResilientForwarder].
@@ -160,6 +161,55 @@ class ResilientForwarderTest {
 
         assertEquals(503, result.response.status)
         assertEquals(1, delegate.callCount, "maxRetries=1 means only 1 attempt — no retries")
+    }
+
+    // ---- concurrency tests --------------------------------------------------------------
+
+    /**
+     * A delegate that always succeeds, counting every call atomically. Many threads
+     * forward concurrently; the resilience4j Retry/CircuitBreaker state is shared but
+     * thread-safe, so the delegate must be invoked exactly once per successful forward
+     * (no retries on success) — proving no lost updates or spurious retries under load.
+     */
+    private class CountingClient(private val response: HttpStubResponse) : CqrsBackendClient("http://unused") {
+        val callCount = java.util.concurrent.atomic.AtomicInteger(0)
+        override fun forward(httpRequest: HttpRequest): HttpStubResponse? {
+            callCount.incrementAndGet()
+            return response
+        }
+    }
+
+    @Test
+    fun `concurrent successful forwards each call the delegate exactly once`() {
+        val delegate = CountingClient(successResponse(200))
+        val forwarder = ResilientForwarder(delegate, ResilienceConfig(forwarderMaxRetries = 3, forwarderBackoffMs = 1L))
+
+        val threads = 16
+        val perThread = 100
+        val errors = java.util.concurrent.CopyOnWriteArrayList<Throwable>()
+        val barrier = java.util.concurrent.CyclicBarrier(threads)
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(threads)
+        val ok = java.util.concurrent.atomic.AtomicInteger(0)
+        repeat(threads) {
+            pool.submit {
+                try {
+                    barrier.await()
+                    repeat(perThread) {
+                        val result = forwarder.forward(request())
+                        if (result.response.status == 200) ok.incrementAndGet()
+                    }
+                } catch (e: Throwable) {
+                    errors.add(e)
+                }
+            }
+        }
+        pool.shutdown()
+        assertTrue(pool.awaitTermination(30, java.util.concurrent.TimeUnit.SECONDS), "threads did not finish")
+        assertTrue(errors.isEmpty(), "concurrent forward threw: ${errors.map { it.message }}")
+
+        val expected = threads * perThread
+        assertEquals(expected, ok.get(), "every concurrent forward should succeed")
+        assertEquals(expected, delegate.callCount.get(), "success path must invoke delegate exactly once per forward (no retries)")
     }
 
     @Test
