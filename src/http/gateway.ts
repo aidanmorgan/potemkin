@@ -487,6 +487,7 @@ async function handleContractRequest(
           cel: sys.cel,
           validator: sys.validator,
           schemaRegistry: sys.schemaRegistry,
+          aggregateLocks: sys.aggregateLocks,
           openapi: sys.openapi,
           requiresPrecondition: sys.requiresPrecondition,
           logger,

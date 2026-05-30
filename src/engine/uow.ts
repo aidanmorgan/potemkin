@@ -72,6 +72,13 @@ export interface UowInput {
   readonly events: EventStore;
   readonly cel: CelEvaluator;
   readonly validator: ContractValidator;
+  /**
+   * Per-BootedSystem aggregate lock map used to serialize concurrent UoW
+   * executions that target the same aggregate. Supplied by the gateway /
+   * forwarding handler (sys.aggregateLocks). When omitted (sequential direct
+   * callers), a fresh map is used so the lock is a no-op.
+   */
+  readonly aggregateLocks?: Map<string, Promise<void>>;
   /** Maximum secondary-command cascade depth before InfiniteLoopError. Default: MAX_UOW_DEPTH (5). */
   readonly maxDepth?: number;
   /** Optional logger for structured UoW execution traces. */
@@ -114,32 +121,36 @@ const MAX_UOW_DEPTH = 5;
 const IF_MATCH_HEADER = 'If-Match';
 
 // ---------------------------------------------------------------------------
-// Module-level concurrency locks
+// Per-aggregate concurrency locks
 // ---------------------------------------------------------------------------
-
-/**
- * Per-aggregateId mutex chain. Each entry is the tail of a promise chain; new UoWs
- * targeting the same key append themselves to the chain via .then() so they run
- * serially.
- */
-const _locks = new Map<string, Promise<void>>();
 
 /** Sentinel key used for commands whose targetId is null. */
 const GLOBAL_LOCK_KEY = '__global__';
 
 /**
- * Acquire a serialized execution slot for `key`.
- * Returns a release function that MUST be called in a finally block.
+ * Per-aggregateId mutex chain. Each entry is the tail of a promise chain; new
+ * UoWs targeting the same key append themselves via .then() so they run serially.
+ *
+ * The `locks` map is per-BootedSystem (UowInput.aggregateLocks), NOT a module
+ * global — a shared global would serialize concurrent DIFFERENT systems against
+ * each other on a shared aggregateId (or the GLOBAL_LOCK_KEY for null-target
+ * commands), causing cross-system contention under Specmatic's parallel dispatch.
+ *
+ * Acquire a serialized execution slot for `key`. The returned release function
+ * MUST be called in a finally block.
  */
-function acquireLock(key: string): { release: () => void; acquired: Promise<void> } {
+function acquireLock(
+  locks: Map<string, Promise<void>>,
+  key: string,
+): { release: () => void; acquired: Promise<void> } {
   let release!: () => void;
   const slot = new Promise<void>((resolve) => {
     release = resolve;
   });
 
-  const previous = _locks.get(key) ?? Promise.resolve();
+  const previous = locks.get(key) ?? Promise.resolve();
   const acquired = previous.then(() => undefined);
-  _locks.set(key, previous.then(() => slot));
+  locks.set(key, previous.then(() => slot));
 
   return { release, acquired };
 }
@@ -275,7 +286,11 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
       // Step 3 — Concurrency lock
       // -----------------------------------------------------------------------
       const lockKey = command.targetId ?? GLOBAL_LOCK_KEY;
-      const { release, acquired } = acquireLock(lockKey);
+      // Direct (sequential) callers may omit aggregateLocks; the gateway and
+      // forwarding handler pass the per-system map so concurrent same-aggregate
+      // requests serialize within that one system only.
+      const locks = input.aggregateLocks ?? new Map<string, Promise<void>>();
+      const { release, acquired } = acquireLock(locks, lockKey);
       await acquired;
 
       let outcome: 'success' | 'abort' | 'error' = 'error';

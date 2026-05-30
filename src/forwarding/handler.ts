@@ -296,6 +296,7 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
           cel: sys.cel,
           validator: sys.validator,
           schemaRegistry: sys.schemaRegistry,
+          aggregateLocks: sys.aggregateLocks,
           openapi: sys.openapi,
           requiresPrecondition: sys.requiresPrecondition,
           logger,

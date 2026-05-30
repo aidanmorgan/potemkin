@@ -84,6 +84,8 @@ export interface BootedSystem {
   readonly derivedProjections: DerivedProjectionRegistry;
   /** Per-system idempotency store (instance, not a shared singleton). */
   readonly idempotencyStore: IdempotencyStore;
+  /** Per-system aggregate lock map (serializes concurrent same-aggregate UoWs). */
+  readonly aggregateLocks: Map<string, Promise<void>>;
   /**
    * Plugin control client, present when `BootInput.pluginControl` was supplied.
    * Used by the graceful-shutdown wrapper to send a /shutdown notification.
@@ -437,6 +439,7 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       requiresPrecondition: preconditionRequired,
       derivedProjections,
       idempotencyStore: createIdempotencyStore(),
+      aggregateLocks: new Map<string, Promise<void>>(),
       ...(pluginControlClient !== undefined ? { pluginControl: pluginControlClient } : {}),
     };
 

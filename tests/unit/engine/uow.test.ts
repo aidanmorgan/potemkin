@@ -481,8 +481,12 @@ describe('engine/uow — additional branch coverage', () => {
   it('two concurrent UoWs targeting same aggregate run serially and both succeed', async () => {
     const widgetId = await createWidget('before');
 
+    // Concurrent same-aggregate UoWs serialize only when they SHARE a lock map
+    // (the per-BootedSystem aggregateLocks; the gateway passes sys.aggregateLocks).
+    const aggregateLocks = new Map<string, Promise<void>>();
+
     // Fire two concurrent mutations without specifying sequenceVersion.
-    // Both should succeed (the lock ensures serial execution; fallback_override handles no-match).
+    // Both should succeed (the shared lock ensures serial execution; fallback_override handles no-match).
     const [r1, r2] = await Promise.all([
       executeUnitOfWork({
         command: {
@@ -504,6 +508,7 @@ describe('engine/uow — additional branch coverage', () => {
         cel: sys.cel,
         validator: sys.validator,
         schemaRegistry: sys.schemaRegistry,
+        aggregateLocks,
       }),
       executeUnitOfWork({
         command: {
@@ -525,6 +530,7 @@ describe('engine/uow — additional branch coverage', () => {
         cel: sys.cel,
         validator: sys.validator,
         schemaRegistry: sys.schemaRegistry,
+        aggregateLocks,
       }),
     ]);
 
