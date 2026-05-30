@@ -108,6 +108,19 @@ export interface UowInput {
   readonly derivedProjections?: DerivedProjectionRegistry;
   /** Parsed X-Potemkin-* control headers (dry-run, skip-sagas, etc.). */
   readonly controls?: import('../http/controlHeaders.js').ControlHeaders;
+  /**
+   * C3: TypeScript-reducer registry. When supplied, projection consults it
+   * FIRST for each (boundary, event) and runs the TS reducer in place of the
+   * YAML reducer on a hit. Threaded from sys.tsReducerRegistry by the gateway,
+   * forwarding handler, and saga orchestrator.
+   */
+  readonly tsReducerRegistry?: import('./tsReducerRegistry.js').TsReducerRegistry;
+  /**
+   * C5: per-boundary inferred schemas (keyed by boundary). When supplied, the
+   * computed fields + topological order for the projecting boundary are passed
+   * to projectEvent so computed fields recompute after reducer patches apply.
+   */
+  readonly inferredSchemas?: Readonly<Record<string, import('../dsl/schemaInference.js').BoundaryInferenceResult>>;
 }
 
 // ---------------------------------------------------------------------------
@@ -410,6 +423,13 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
                       schemaRegistry,
                       tracer,
                       openapi: input.openapi,
+                      ...(input.tsReducerRegistry ? { tsReducerRegistry: input.tsReducerRegistry } : {}),
+                      ...(() => {
+                        const inf = input.inferredSchemas?.[boundary.boundary];
+                        return inf && inf.computedOrder.length > 0
+                          ? { computed: input.dsl.byBoundaryName[boundary.boundary]?.state?.computed ?? [], computedOrder: inf.computedOrder }
+                          : {};
+                      })(),
                     }),
                 });
               } catch (err) {
@@ -502,6 +522,8 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
                 logger,
                 schemaRegistry,
                 openapi: input.openapi,
+                ...(input.tsReducerRegistry ? { tsReducerRegistry: input.tsReducerRegistry } : {}),
+                ...(input.inferredSchemas ? { inferredSchemas: input.inferredSchemas } : {}),
               }).catch((err: unknown) => {
                 logger.error({ err, sagaName: saga.name }, 'Saga execution failed unexpectedly');
               });

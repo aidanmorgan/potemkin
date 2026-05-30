@@ -44,6 +44,7 @@ const EXPECTED_CRM_PATHS = [
   '/opportunities/{id}',
   '/opportunities/{id}/advance',
   '/opportunities/{id}/close',
+  '/opportunities/{id}/line-items',
 ];
 
 describe('GET /_engine/routes — integration', () => {

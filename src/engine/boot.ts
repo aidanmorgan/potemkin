@@ -28,6 +28,15 @@ import { deriveSchemasFromOpenApi } from '../schema/fromOpenApi.js';
 import { staticCheckDsl } from '../schema/dslStaticChecker.js';
 import { createDerivedProjectionRegistry, applyEventToDerivedProjections } from '../projections/engine.js';
 import { createPluginControlClient } from '../lifecycle/pluginControlClient.js';
+import { scanTypescriptReducers, type TypescriptConfig } from '../dsl/typescriptScanner.js';
+import { validateReducerConflictsFromDsl } from '../dsl/reducerConflict.js';
+import { createTsReducerRegistry, type TsReducerRegistry } from './tsReducerRegistry.js';
+import {
+  buildInferredSchema,
+  boundaryConfigToInferenceInput,
+  lintUnusedComputed,
+  type BoundaryInferenceResult,
+} from '../dsl/schemaInference.js';
 
 export interface BootInput {
   readonly openapi: OpenApiDoc;
@@ -53,6 +62,14 @@ export interface BootInput {
     readonly url: string;
     readonly timeoutMs?: number;
   };
+  /**
+   * Optional TypeScript-reducer scan config for the in-memory boot path
+   * (when `compiledDsl` is supplied directly rather than a potemkin.yaml).
+   * The on-disk path reads this from potemkin.yaml's typescript: block.
+   */
+  readonly typescript?: import('../dsl/typescriptScanner.js').TypescriptConfig;
+  /** Working directory for resolving `typescript.scan[]` globs on the in-memory path. */
+  readonly typescriptCwd?: string;
 }
 
 export interface BootedSystem {
@@ -91,6 +108,25 @@ export interface BootedSystem {
    * Used by the graceful-shutdown wrapper to send a /shutdown notification.
    */
   readonly pluginControl?: PluginControlClient;
+  /**
+   * TypeScript-reducer registry. Projection consults this FIRST for a
+   * (boundary, event) before falling back to YAML patches (C3). Empty when no
+   * typescript: block was configured. Atomic-swapped by the watcher (C6).
+   */
+  readonly tsReducerRegistry: TsReducerRegistry;
+  /**
+   * C4: per-boundary inferred state schema (keyed by boundary name). Carries
+   * the computed-field topological order + paths used by recomputeComputedFields
+   * (C5) and the computedFields surfaced on GET /_engine/state.
+   */
+  readonly inferredSchemas: Readonly<Record<string, BoundaryInferenceResult>>;
+  /**
+   * C6: active TypeScript watcher when typescript.watch was enabled (and
+   * NODE_ENV !== 'production'). Its onSwap atomic-replaces tsReducerRegistry on
+   * a hot reload; the StateGraph survives. Callers (and tests) must stop() it
+   * during teardown. Absent when watch is off.
+   */
+  readonly tsWatcher?: { stop(): Promise<void> };
 }
 
 /** Header names that indicate an optimistic-concurrency precondition. */
@@ -133,6 +169,40 @@ function buildPreconditionMap(
 }
 
 /**
+ * Names that count as "reading" a computed field for the unused-computed lint:
+ * every property declared on the boundary's OpenAPI entity schema (so a
+ * computed field surfaced in the documented response is considered used) plus
+ * any state.X referenced by another computed formula.
+ */
+function collectStateSurfaceNames(
+  boundary: BoundaryConfig,
+  openapi: OpenApiDoc,
+): string[] {
+  const names = new Set<string>();
+
+  // OpenAPI entity schema property names (resolved $ref to a sibling schema).
+  const rawDoc = openapi.raw as Record<string, unknown>;
+  const components = rawDoc['components'] as Record<string, unknown> | undefined;
+  const schemas = components?.['schemas'] as Record<string, unknown> | undefined;
+  let schema = schemas?.[boundary.boundary] as Record<string, unknown> | undefined;
+  // Follow one level of local $ref (sub-path boundaries mirror their parent).
+  const ref = schema?.['$ref'];
+  if (typeof ref === 'string') {
+    const m = /^#\/components\/schemas\/(.+)$/.exec(ref);
+    if (m && schemas) schema = schemas[m[1]] as Record<string, unknown> | undefined;
+  }
+  const props = schema?.['properties'] as Record<string, unknown> | undefined;
+  if (props) for (const k of Object.keys(props)) names.add(k);
+
+  // Names referenced by sibling computed formulas.
+  for (const cf of boundary.state?.computed ?? []) {
+    for (const dep of cf.dependsOn) names.add(dep);
+  }
+
+  return [...names];
+}
+
+/**
  * Execute the full boot sequence:
  *  1. Compile DSL modules.
  *  2. Bind DSL to OpenAPI contract paths (validates contract coverage).
@@ -160,6 +230,10 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
     const phaseStart2 = Date.now();
 
     let dsl: CompiledDsl;
+    // Captured from the on-disk loader path for the TypeScript-reducer scan
+    // (Step 2b) and the optional watcher (Step 11).
+    let loadedConfig: import('../dsl/configLoader.js').LoadedConfig | undefined;
+    let configDir: string | undefined;
     if (input.compiledDsl) {
       bootLog.info(
         { step: 'dsl_compile', source: 'compiledDsl', boundaryCount: input.compiledDsl.boundaries.length },
@@ -174,19 +248,13 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       // Lazy import to keep the loader's tinyglobby/fs deps off the cold path
       // when callers supply `compiledDsl` directly.
       const { loadPotemkinConfig } = await import('../dsl/configLoader.js');
-      const loaded = await loadPotemkinConfig(input.potemkinConfigPath);
-      // For now we still need a CompiledDsl shape — the configLoader output
-      // doesn't carry the full CompiledDsl yet (that's Stage 5 fixture work).
-      // Use compileDsl on the raw YAML strings from each loaded module.
-      const modules = loaded.modules.map((m) => ({ name: m.path, yaml: '' as never }));
-      // TODO Stage 5: produce CompiledDsl directly from LoadedConfig. For now
-      // bail loudly so callers know this path is incomplete.
-      void modules;
-      throw new BootError(
-        'BOOT_ERR_DSL_SYNTAX',
-        'potemkinConfigPath direct-load is not yet wired through to CompiledDsl (Stage 5 fixture rewrite pending). Use compiledDsl directly for now.',
-        { potemkinConfigPath: input.potemkinConfigPath },
-      );
+      loadedConfig = await loadPotemkinConfig(input.potemkinConfigPath);
+      const pathMod = await import('node:path');
+      configDir = pathMod.dirname(pathMod.resolve(input.potemkinConfigPath));
+      // The loader compiles the resolved DSL modules through the SAME
+      // snake_case compiler the inline path uses, so this CompiledDsl is
+      // identical to one produced by compileDsl over the same modules.
+      dsl = loadedConfig.compiledDsl;
     } else {
       // No DSL supplied — boot in wait-for-DSL-push mode with an empty DSL.
       bootLog.info(
@@ -203,6 +271,73 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
     bootLog.info(
       { step: 'dsl_compile', boundaryCount: dsl.boundaries.length, durationMs: Date.now() - phaseStart2 },
       'Boot: DSL compilation complete',
+    );
+
+    // ── Step 2b: TypeScript reducer scan + conflict check (C2) ───────────────
+    // When potemkin.yaml declares a typescript: block, scan + transpile every
+    // reducer file into the SDK registry, then cross-check the registered
+    // reducers against the compiled YAML BEFORE binding any routes. A YAML
+    // reducer and a TS reducer that target the same (boundary, event) are a
+    // BOOT_ERR_REDUCER_CONFLICT (with both source locations).
+    const tsReducerRegistry: TsReducerRegistry = createTsReducerRegistry();
+    const tsConfig: TypescriptConfig | undefined = loadedConfig?.typescript
+      ? (loadedConfig.typescript as unknown as TypescriptConfig)
+      : input.typescript;
+    const tsScanCwd = configDir ?? input.typescriptCwd;
+    // C6: watch mode is a development-only feature. Fail fast at boot if it is
+    // requested in production rather than silently ignoring it.
+    if (tsConfig?.watch === true && process.env['NODE_ENV'] === 'production') {
+      throw new BootError(
+        'BOOT_ERR_WATCH_IN_PRODUCTION',
+        'typescript.watch: true is disabled when NODE_ENV=production',
+        { nodeEnv: 'production' },
+      );
+    }
+    if (tsConfig && tsScanCwd) {
+      const phaseStart2b = Date.now();
+      bootLog.info({ step: 'ts_scan' }, 'Boot: scanning TypeScript reducers');
+      const scan = await scanTypescriptReducers(tsConfig, { cwd: tsScanCwd });
+      validateReducerConflictsFromDsl({
+        dsl,
+        boundarySourcePaths: loadedConfig?.boundarySourcePaths ?? {},
+        tsReducers: scan.registered,
+      });
+      tsReducerRegistry.swap(scan.registered);
+      bootLog.info(
+        { step: 'ts_scan', files: scan.files.length, reducers: scan.registered.length, durationMs: Date.now() - phaseStart2b },
+        'Boot: TypeScript reducers scanned and registered',
+      );
+    }
+
+    // ── Step 2c: Per-boundary schema inference + computed-field lint (C4/C5) ──
+    // For every boundary, run the fixed-point inference over event templates +
+    // reducer patches and merge declared computed/internal fields. Divergence
+    // past the 4-iteration cap surfaces BOOT_ERR_SCHEMA_INFERENCE_DIVERGENT.
+    // Unused computed declarations are linted to a WARN (file:line where known).
+    const phaseStart2c = Date.now();
+    const inferredSchemas: Record<string, BoundaryInferenceResult> = {};
+    for (const boundary of dsl.boundaries) {
+      const result = buildInferredSchema(boundaryConfigToInferenceInput(boundary));
+      inferredSchemas[boundary.boundary] = result;
+      for (const w of result.warnings) {
+        bootLog.warn({ step: 'schema_inference', boundary: boundary.boundary }, `Boot: ${w}`);
+      }
+      // C5: WARN on computed fields that are declared but never read on the
+      // documented state surface. The state surface is every property name the
+      // boundary's reducers/events touch plus the computed names themselves.
+      const declaredComputed = boundary.state?.computed ?? [];
+      if (declaredComputed.length > 0) {
+        const surfaceNames = collectStateSurfaceNames(boundary, input.openapi);
+        const unused = lintUnusedComputed(declaredComputed, { stateSurfaceNames: surfaceNames });
+        for (const u of unused) {
+          const src = loadedConfig?.boundarySourcePaths?.[boundary.boundary] ?? `<boundary:${boundary.boundary}>`;
+          bootLog.warn({ step: 'computed_lint', boundary: boundary.boundary, source: src }, `Boot: ${u} (${src})`);
+        }
+      }
+    }
+    bootLog.info(
+      { step: 'schema_inference', boundaries: Object.keys(inferredSchemas).length, durationMs: Date.now() - phaseStart2c },
+      'Boot: per-boundary schema inference complete',
     );
 
     // ── Step 3: Contract Binding ──────────────────────────────────────────────
@@ -424,6 +559,30 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       });
     }
 
+    // ── Step 11: TypeScript watcher (C6) ──────────────────────────────────────
+    // When typescript.watch is enabled (and NODE_ENV !== 'production'; the
+    // production case already failed fast above), start a watcher whose onSwap
+    // atomic-replaces the SDK reducer registry on the BootedSystem. The
+    // StateGraph is untouched, so projected state survives a hot reload.
+    let tsWatcher: { stop(): Promise<void> } | undefined;
+    if (tsConfig?.watch === true && tsScanCwd) {
+      const { startTypescriptWatcher } = await import('../dsl/typescriptWatcher.js');
+      tsWatcher = await startTypescriptWatcher({
+        config: tsConfig,
+        cwd: tsScanCwd,
+        onSwap: (result) => {
+          tsReducerRegistry.swap(result.registered);
+          bootLog.info(
+            { step: 'ts_watch_swap', reducers: result.registered.length },
+            'Boot: TypeScript reducer registry hot-swapped',
+          );
+        },
+        onError: (err) => {
+          bootLog.warn({ step: 'ts_watch', err }, 'Boot: TypeScript watcher rescan failed');
+        },
+      });
+    }
+
     const bootedSystem = {
       dsl,
       openapi: input.openapi,
@@ -440,6 +599,9 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       derivedProjections,
       idempotencyStore: createIdempotencyStore(),
       aggregateLocks: new Map<string, Promise<void>>(),
+      tsReducerRegistry,
+      inferredSchemas,
+      ...(tsWatcher !== undefined ? { tsWatcher } : {}),
       ...(pluginControlClient !== undefined ? { pluginControl: pluginControlClient } : {}),
     };
 

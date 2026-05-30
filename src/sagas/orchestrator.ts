@@ -60,6 +60,10 @@ export interface SagaRunInput {
   readonly logger?: Logger;
   readonly schemaRegistry?: ObjectGraphSchemaRegistry;
   readonly openapi?: OpenApiDoc;
+  /** C3: TS-reducer registry threaded into saga-step units of work. */
+  readonly tsReducerRegistry?: import('../engine/tsReducerRegistry.js').TsReducerRegistry;
+  /** C5: per-boundary inferred schemas threaded into saga-step units of work. */
+  readonly inferredSchemas?: Readonly<Record<string, import('../dsl/schemaInference.js').BoundaryInferenceResult>>;
 }
 
 function makeSagaEvent(
@@ -149,6 +153,8 @@ export async function runSaga(input: SagaRunInput): Promise<void> {
     logger,
     schemaRegistry,
     openapi,
+    tsReducerRegistry,
+    inferredSchemas,
   } = input;
 
   const sagaInstanceId = nextUuidv7();
@@ -189,6 +195,8 @@ export async function runSaga(input: SagaRunInput): Promise<void> {
         logger,
         schemaRegistry,
         openapi,
+        ...(tsReducerRegistry ? { tsReducerRegistry } : {}),
+        ...(inferredSchemas ? { inferredSchemas } : {}),
       });
 
       completedSteps.push(i);
@@ -244,6 +252,8 @@ export async function runSaga(input: SagaRunInput): Promise<void> {
             logger,
             schemaRegistry,
             openapi,
+            ...(tsReducerRegistry ? { tsReducerRegistry } : {}),
+            ...(inferredSchemas ? { inferredSchemas } : {}),
           });
 
           makeSagaEvent(sagaInstanceId, 'SagaCompensated', {

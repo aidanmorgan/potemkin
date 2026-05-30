@@ -51,17 +51,21 @@ function makeInstallProducer(sys: BootedSystem): InstallProducer {
 
 function makeStateAccessor(sys: BootedSystem): StateAccessor {
   return {
-    get(_boundary, id): StateBundle | null {
+    get(boundary, id): StateBundle | null {
       const entity = sys.graph.get(id);
       if (entity === null || entity === undefined) return null;
       const events = sys.events.byAggregate(id);
       const last = events[events.length - 1];
+      // C4: surface the boundary's declared computed-field names in topological
+      // (computed) order so clients can see which keys are formula-derived.
+      const inferred = sys.inferredSchemas[boundary];
+      const computedFields = inferred ? [...inferred.computedOrder] : [];
       return {
         state: entity,
         meta: {
           version: events.length,
           lastEvent: last ? last.type : null,
-          computedFields: [],
+          computedFields,
           patchJournal: [],
         },
       };

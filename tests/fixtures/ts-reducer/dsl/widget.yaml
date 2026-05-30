@@ -1,0 +1,25 @@
+boundary: Widget
+contract_path: /widgets
+fallback_override: false
+
+identity:
+  creation:
+    generate: $uuidv7()
+
+event_catalog:
+  - type: WidgetCreated
+    payload_template:
+      id: "command.targetId"
+      name: "command.payload.name"
+
+behaviors:
+  - name: createWidget
+    match:
+      operationId: createWidget
+      condition: "true"
+    emit: WidgetCreated
+
+# No reducer for WidgetCreated: the TypeScript reducer registered for
+# (Widget, WidgetCreated) owns state mutation for this event.
+
+initialization: []

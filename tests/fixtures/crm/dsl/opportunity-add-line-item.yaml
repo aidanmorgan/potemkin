@@ -1,49 +1,64 @@
 boundary: OpportunityAddLineItem
-path: /opportunities/{id}/line-items
-fallback: false
+contract_path: /opportunities/{id}/line-items
+fallback_override: false
 
-# Demonstrates complex nested object graph:
-#   Request:  { description, quantity, unitPrice }  (no total, no id)
-#   Graph:    lineItems[]: { id, description, quantity, unitPrice, total }  (computed total, generated id)
-#   The total is computed server-side: quantity * unitPrice
-#   This demonstrates the DSL enriching flat requests into complex nested graph nodes.
+# Inline TypeScript helpers (REQ-66/67): generate a line-item id and compute
+# the per-line total (quantity * unitPrice) server-side.
+scripts:
+  - name: generateLineItemId
+    code: |
+      export default function(ctx) {
+        return ctx.helpers.uuid();
+      }
+  - name: computeLineTotal
+    code: |
+      export default function(ctx) {
+        const qty = ctx.command.payload.quantity ?? 0;
+        const price = ctx.command.payload.unitPrice ?? 0;
+        return qty * price;
+      }
 
-events:
+# C4/C5: computed fields on the Opportunity aggregate. totalValue sums each
+# line's lineTotal; itemCount counts the line items. Both recompute after the
+# LineItemAdded reducer appends to /lineItems.
+state:
+  computed:
+    - name: totalValue
+      formula: "sum(state.lineItems.map(i, i.lineTotal))"
+      depends_on: [lineItems]
+    - name: itemCount
+      formula: "length(state.lineItems)"
+      depends_on: [lineItems]
+
+event_catalog:
   - type: LineItemAdded
-    payload:
-      lineItemId: "${ts:generateLineItemId}"
-      description: "${command.payload.description}"
-      quantity: "${command.payload.quantity}"
-      unitPrice: "${command.payload.unitPrice}"
-      total: "${ts:computeLineTotal}"
-      addedAt: "${$now()}"
+    payload_template:
+      id: "ts:generateLineItemId"
+      description: "command.payload.description"
+      quantity: "command.payload.quantity"
+      unitPrice: "command.payload.unitPrice"
+      lineTotal: "ts:computeLineTotal"
+      addedAt: "$now()"
 
 behaviors:
   - name: addLineItem
-    method: POST
-    condition: "true"
-    requires:
-      - name: not-closed
-        condition: "state.stage != 'WON' && state.stage != 'LOST'"
-        error_code: OPPORTUNITY_CLOSED
-        error_message: "Cannot add line items to a closed opportunity"
-      - name: valid-quantity
-        condition: "command.payload.quantity != null && command.payload.quantity > 0"
-        error_code: INVALID_QUANTITY
-        error_message: "Line item quantity must be greater than zero"
+    match:
+      operationId: addLineItem
+      condition: "true"
+      requires:
+        - name: valid-quantity
+          condition: "command.payload.quantity != null && command.payload.quantity > 0"
+          error_code: INVALID_QUANTITY
+          error_message: "Line item quantity must be greater than zero"
     emit: LineItemAdded
 
 reducers:
   - on: LineItemAdded
     patches:
+      # Append the whole event payload — a fully-formed line-item object
+      # ({ id, description, quantity, unitPrice, lineTotal, addedAt }).
       - op: append
         path: /lineItems
-        value:
-          id: "${event.payload.lineItemId}"
-          description: "${event.payload.description}"
-          quantity: "${event.payload.quantity}"
-          unitPrice: "${event.payload.unitPrice}"
-          total: "${event.payload.total}"
-          addedAt: "${event.payload.addedAt}"
+        value: "${event.payload}"
 
 initialization: []

@@ -304,6 +304,8 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
           tracer: sys.tracer,
           metrics: sys.metrics,
           derivedProjections: sys.derivedProjections,
+          tsReducerRegistry: sys.tsReducerRegistry,
+          inferredSchemas: sys.inferredSchemas,
         }),
       );
     } catch (err) {

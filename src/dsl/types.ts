@@ -145,6 +145,14 @@ export interface BoundaryConfig {
   readonly latency?: LatencyConfig;
   /** When true, projection auto-sets updatedAt/updatedBy on every non-baseline event. */
   readonly auditFields?: boolean;
+  /**
+   * Declared state schema: computed (formula-derived, recomputed after patches)
+   * and internal (typed) fields. Feeds buildInferredSchema at boot and
+   * recomputeComputedFields at projection time.
+   */
+  readonly state?: import('./schemaInference.js').DeclaredState;
+  /** When false, downgrades the computed-field INCOMPLETE_DEPS check to a WARN. */
+  readonly strictSchema?: boolean;
 }
 
 // ── Tier-2 DSL additions ──────────────────────────────────────────────────────

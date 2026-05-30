@@ -36,6 +36,7 @@ export async function loadFixture(fixtureName: string = 'crm'): Promise<BootInpu
     // Sub-path boundaries for opportunity actions
     { name: 'opportunityAdvance', yaml: read('dsl/opportunity-advance.yaml') },
     { name: 'opportunityClose', yaml: read('dsl/opportunity-close.yaml') },
+    { name: 'opportunityAddLineItem', yaml: read('dsl/opportunity-add-line-item.yaml') },
   ];
   const compiledDsl = await compileDsl(dslModules);
   return { openapi, compiledDsl };
@@ -76,6 +77,7 @@ export async function loadFixtureWithGlobal(
     { name: 'agentStatus', yaml: read('dsl/agent-status.yaml') },
     { name: 'opportunityAdvance', yaml: read('dsl/opportunity-advance.yaml') },
     { name: 'opportunityClose', yaml: read('dsl/opportunity-close.yaml') },
+    { name: 'opportunityAddLineItem', yaml: read('dsl/opportunity-add-line-item.yaml') },
   ];
   const globalPath = path.join(dir, 'dsl/global.yaml');
   const globalYaml = fs.existsSync(globalPath) ? fs.readFileSync(globalPath, 'utf8') : '';
