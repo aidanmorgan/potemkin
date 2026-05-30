@@ -1,6 +1,11 @@
 // Reads a potemkin.yaml from disk, resolves modules: globs via tinyglobby,
-// validates every boundary module, and returns a typed LoadedConfig ready
-// to be installed into the engine.
+// then compiles the resolved DSL modules through the SINGLE canonical
+// snake_case compiler (compileDsl → validateBoundaryConfig / validateGlobalConfig)
+// to produce a fully-populated CompiledDsl. The potemkin.yaml TOP-LEVEL
+// (version/specmatic/modules/typescript/plugin/seeds/workflow/overlay/governance)
+// is validated by configSchema.validatePotemkinConfig; the boundary/global DSL
+// bodies are validated by the snake_case schema validators so the on-disk boot
+// path and the inline compileDsl path converge on one dialect.
 
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
@@ -9,10 +14,10 @@ import * as yaml from 'js-yaml';
 import { glob } from 'tinyglobby';
 
 import { BootError } from '../errors.js';
+import { compileDsl } from './parser.js';
+import type { CompiledDsl } from './types.js';
 import {
   validatePotemkinConfig,
-  validateBoundaryModule,
-  type BoundaryModule,
   type PotemkinConfig,
   type PotemkinConfigPlugin,
   type PotemkinConfigSeed,
@@ -34,16 +39,15 @@ export interface ForwardBlocks {
   readonly governance?: PotemkinConfigGovernance;
 }
 
-export interface LoadedModule {
-  /** Absolute path to the boundary YAML file. */
-  readonly path: string;
-  readonly boundary: BoundaryModule;
-}
-
 export interface LoadedConfig {
   readonly potemkinConfigPath: string;
   readonly specmaticConfigPath: string;
-  readonly modules: readonly LoadedModule[];
+  /** Fully-populated CompiledDsl, identical to the inline compileDsl path. */
+  readonly compiledDsl: CompiledDsl;
+  /** Absolute paths of the boundary module files that fed the compiler. */
+  readonly boundaryModulePaths: readonly string[];
+  /** Absolute paths of global module files (sagas/idempotency/etc, no `boundary:`). */
+  readonly globalModulePaths: readonly string[];
   readonly pluginConfig: PotemkinConfigPlugin | undefined;
   readonly forwardBlocks: ForwardBlocks;
   readonly typescript: PotemkinConfig['typescript'];
@@ -54,6 +58,12 @@ export interface LoadOptions {
   // contract-path cross-check is skipped; standalone test callers must either
   // pass this or mark every boundary outOfContract:true.
   readonly specEndpoints?: readonly SpecEndpoint[];
+}
+
+interface ResolvedModule {
+  readonly path: string;
+  readonly text: string;
+  readonly parsed: unknown;
 }
 
 export async function loadPotemkinConfig(
@@ -88,11 +98,16 @@ export async function loadPotemkinConfig(
 
   const resolvedFiles = await resolveModuleGlobs(config.modules, configDir);
 
-  const modules: LoadedModule[] = [];
+  // Parse every module file, partitioning into boundary modules (carry a
+  // `boundary:` key) and global modules (sagas/idempotency/derived_projections/
+  // auth — top-level Tier-2 fields, no `boundary:`). Anything that isn't a
+  // mapping is skipped silently (e.g. a stray list file).
+  const boundaryModules: ResolvedModule[] = [];
+  const globalModules: ResolvedModule[] = [];
   for (const filePath of resolvedFiles) {
-    let raw: string;
+    let text: string;
     try {
-      raw = await fs.readFile(filePath, 'utf8');
+      text = await fs.readFile(filePath, 'utf8');
     } catch (e) {
       throw new BootError(
         'BOOT_ERR_INVALID_YAML',
@@ -102,7 +117,7 @@ export async function loadPotemkinConfig(
     }
     let parsed: unknown;
     try {
-      parsed = yaml.load(raw);
+      parsed = yaml.load(text);
     } catch (e) {
       throw new BootError(
         'BOOT_ERR_INVALID_YAML',
@@ -110,26 +125,38 @@ export async function loadPotemkinConfig(
         { source: filePath },
       );
     }
-    // A module file may carry a boundary or a top-level `global:` block
-    // (sagas, idempotency, etc.). Only boundary modules are validated here.
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
       const rec = parsed as Record<string, unknown>;
       if (rec['boundary'] !== undefined) {
-        const boundary = validateBoundaryModule(parsed, { source: filePath });
-        modules.push({ path: filePath, boundary });
+        boundaryModules.push({ path: filePath, text, parsed });
+      } else {
+        globalModules.push({ path: filePath, text, parsed });
       }
     }
   }
 
-
+  // Optional contract-path cross-check (REQ-LOAD-006). Runs against the raw
+  // snake_case boundary fields before the compiler validates the bodies, so
+  // bad specId/contractPath references fail with their dedicated codes.
   if (opts.specEndpoints) {
-    runContractPathCrossCheck(modules, opts.specEndpoints, absConfigPath);
+    runContractPathCrossCheck(boundaryModules, opts.specEndpoints, absConfigPath);
   }
+
+  // Merge every global module into a single YAML document so compileDsl's
+  // single globalYaml parameter sees all top-level Tier-2 blocks.
+  const globalYaml = mergeGlobalModules(globalModules);
+
+  // Compile through the one snake_case compiler — this is the SAME call the
+  // inline loadFixture path makes, so the produced CompiledDsl is identical.
+  const compileModules = boundaryModules.map((m) => ({ name: m.path, yaml: m.text }));
+  const compiledDsl = await compileDsl(compileModules, globalYaml);
 
   return {
     potemkinConfigPath: absConfigPath,
     specmaticConfigPath: path.resolve(configDir, config.specmatic),
-    modules,
+    compiledDsl,
+    boundaryModulePaths: boundaryModules.map((m) => m.path),
+    globalModulePaths: globalModules.map((m) => m.path),
     pluginConfig: config.plugin,
     forwardBlocks: {
       ...(config.seeds ? { seeds: config.seeds } : {}),
@@ -166,49 +193,91 @@ async function resolveModuleGlobs(
   return [...new Set(matches.map((m) => path.resolve(cwd, m)))].sort();
 }
 
+/**
+ * Merge the parsed bodies of every global module into one object, then dump
+ * back to a YAML string. compileDsl re-parses this single string via
+ * validateGlobalConfig. Returns undefined when there are no global modules.
+ * Duplicate top-level keys across files collide loudly.
+ */
+function mergeGlobalModules(modules: readonly ResolvedModule[]): string | undefined {
+  if (modules.length === 0) return undefined;
+  if (modules.length === 1) return modules[0].text;
+
+  const merged: Record<string, unknown> = {};
+  for (const m of modules) {
+    const rec = m.parsed as Record<string, unknown>;
+    for (const [k, v] of Object.entries(rec)) {
+      if (k in merged) {
+        throw new BootError(
+          'BOOT_ERR_DSL_DUPLICATE_BOUNDARY',
+          `Duplicate global config key "${k}" found in ${m.path}`,
+          { key: k, source: m.path },
+        );
+      }
+      merged[k] = v;
+    }
+  }
+  return yaml.dump(merged);
+}
+
 function runContractPathCrossCheck(
-  modules: readonly LoadedModule[],
+  modules: readonly ResolvedModule[],
   specEndpoints: readonly SpecEndpoint[],
   source: string,
 ): void {
   // Build the deduped (specId, path, method) set.
-  const byKey = new Set<string>();
   const bySpecPath = new Map<string, Set<string>>(); // specId|path → set(method)
   const availableSpecIds = new Set<string>();
   for (const e of specEndpoints) {
     availableSpecIds.add(e.specId);
-    byKey.add(`${e.specId}|${e.path}|${e.method.toUpperCase()}`);
     const k = `${e.specId}|${e.path}`;
     if (!bySpecPath.has(k)) bySpecPath.set(k, new Set());
     bySpecPath.get(k)!.add(e.method.toUpperCase());
   }
 
   for (const m of modules) {
-    const b = m.boundary;
-    if (b.outOfContract === true) continue;
-    if (!availableSpecIds.has(b.specId)) {
+    const rec = m.parsed as Record<string, unknown>;
+    const boundaryName = String(rec['boundary']);
+    if (rec['outOfContract'] === true || rec['out_of_contract'] === true) continue;
+
+    const specId = typeof rec['specId'] === 'string'
+      ? (rec['specId'] as string)
+      : (rec['spec_id'] as string | undefined);
+    const contractPath = typeof rec['contractPath'] === 'string'
+      ? (rec['contractPath'] as string)
+      : (rec['contract_path'] as string | undefined);
+
+    if (typeof specId !== 'string') {
       throw new BootError(
-        'BOOT_ERR_UNKNOWN_SPEC_ID',
-        `${m.path}: boundary "${b.boundary}" references unknown specId "${b.specId}". Available: ${[...availableSpecIds].join(', ')}`,
-        { source, boundary: b.boundary, specId: b.specId, available: [...availableSpecIds] },
+        'BOOT_ERR_MISSING_SPEC_ID',
+        `${m.path}: boundary "${boundaryName}" is missing required "specId"`,
+        { source: m.path, boundary: boundaryName },
       );
     }
-    const cpKey = `${b.specId}|${b.contractPath}`;
+    if (!availableSpecIds.has(specId)) {
+      throw new BootError(
+        'BOOT_ERR_UNKNOWN_SPEC_ID',
+        `${m.path}: boundary "${boundaryName}" references unknown specId "${specId}". Available: ${[...availableSpecIds].join(', ')}`,
+        { source, boundary: boundaryName, specId, available: [...availableSpecIds] },
+      );
+    }
+    const cpKey = `${specId}|${contractPath}`;
     if (!bySpecPath.has(cpKey)) {
       throw new BootError(
         'BOOT_ERR_UNKNOWN_CONTRACT_PATH',
-        `${m.path}: boundary "${b.boundary}" contractPath "${b.contractPath}" not present in spec "${b.specId}"`,
-        { source, boundary: b.boundary, specId: b.specId, contractPath: b.contractPath },
+        `${m.path}: boundary "${boundaryName}" contractPath "${String(contractPath)}" not present in spec "${specId}"`,
+        { source, boundary: boundaryName, specId, contractPath: String(contractPath) },
       );
     }
-    if (b.methods && b.methods.length > 0) {
+    const methodsRaw = rec['methods'];
+    if (Array.isArray(methodsRaw) && methodsRaw.length > 0) {
       const available = bySpecPath.get(cpKey)!;
-      for (const m_ of b.methods) {
-        if (!available.has(m_.toUpperCase())) {
+      for (const m_ of methodsRaw) {
+        if (typeof m_ === 'string' && !available.has(m_.toUpperCase())) {
           throw new BootError(
             'BOOT_ERR_UNKNOWN_CONTRACT_PATH',
-            `${m.path}: boundary "${b.boundary}" declares method "${m_}" not present at ${b.specId} ${b.contractPath}`,
-            { source, boundary: b.boundary, specId: b.specId, path: b.contractPath, method: m_ },
+            `${m.path}: boundary "${boundaryName}" declares method "${m_}" not present at ${specId} ${String(contractPath)}`,
+            { source, boundary: boundaryName, specId, path: String(contractPath), method: m_ },
           );
         }
       }

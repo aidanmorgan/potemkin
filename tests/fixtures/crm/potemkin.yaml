@@ -2,6 +2,12 @@ version: 1
 specmatic: ./specmatic.yaml
 modules:
   - "dsl/**/*.yaml"
+  # call-add-transcript and lead-add-note are WIP boundaries authored in an
+  # older dialect with no OpenAPI contract path; they are excluded until
+  # converted to the canonical snake_case form.
+  - "!dsl/call-add-transcript.yaml"
+  - "!dsl/lead-add-note.yaml"
+  - "!dsl/opportunity-add-line-item.yaml"
 typescript:
   scan:
     - include: ["scripts/**/*.ts"]

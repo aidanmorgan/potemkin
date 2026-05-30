@@ -175,18 +175,10 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       // when callers supply `compiledDsl` directly.
       const { loadPotemkinConfig } = await import('../dsl/configLoader.js');
       const loaded = await loadPotemkinConfig(input.potemkinConfigPath);
-      // For now we still need a CompiledDsl shape — the configLoader output
-      // doesn't carry the full CompiledDsl yet (that's Stage 5 fixture work).
-      // Use compileDsl on the raw YAML strings from each loaded module.
-      const modules = loaded.modules.map((m) => ({ name: m.path, yaml: '' as never }));
-      // TODO Stage 5: produce CompiledDsl directly from LoadedConfig. For now
-      // bail loudly so callers know this path is incomplete.
-      void modules;
-      throw new BootError(
-        'BOOT_ERR_DSL_SYNTAX',
-        'potemkinConfigPath direct-load is not yet wired through to CompiledDsl (Stage 5 fixture rewrite pending). Use compiledDsl directly for now.',
-        { potemkinConfigPath: input.potemkinConfigPath },
-      );
+      // The loader compiles the resolved DSL modules through the SAME
+      // snake_case compiler the inline path uses, so this CompiledDsl is
+      // identical to one produced by compileDsl over the same modules.
+      dsl = loaded.compiledDsl;
     } else {
       // No DSL supplied — boot in wait-for-DSL-push mode with an empty DSL.
       bootLog.info(
