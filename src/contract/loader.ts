@@ -30,6 +30,14 @@ export interface OpenApiPathItem {
 export interface OpenApiDoc {
   readonly raw: unknown;
   readonly paths: Record<string, OpenApiPathItem>;
+  /**
+   * Reverse index from "<METHOD> <path-template>" → operationId, built once at load.
+   * Carried on the doc instance (no module-level cache) so lookups are O(1) and the
+   * index lifecycle matches the doc lifecycle. Always populated by loadOpenApi; optional
+   * only so hand-built doc literals in tests can omit it (lookupOperationId then derives
+   * the answer directly from paths).
+   */
+  readonly operationIdIndex?: ReadonlyMap<string, string>;
 }
 
 const logger = createLogger({ name: 'contract.loader' });
@@ -150,6 +158,37 @@ function normalisePaths(rawDoc: OpenAPI.Document): Record<string, OpenApiPathIte
   return paths;
 }
 
+/** Build the "<METHOD> <path>" → operationId reverse index from normalised paths. */
+function buildOperationIdIndex(paths: Record<string, OpenApiPathItem>): Map<string, string> {
+  const index = new Map<string, string>();
+  for (const [pathTemplate, pathItem] of Object.entries(paths)) {
+    for (const [method, op] of Object.entries(pathItem)) {
+      if (op?.operationId === undefined) continue;
+      index.set(`${method.toUpperCase()} ${pathTemplate}`, op.operationId);
+    }
+  }
+  return index;
+}
+
+/**
+ * Resolve the OpenAPI operationId for a templated path + HTTP method.
+ *
+ * Uses the reverse index built at load and carried on the doc. The method is matched
+ * case-insensitively (e.g. 'post' resolves the same as 'POST'). Returns undefined when
+ * no operation matches the (path, method) pair, or when the matched operation declared
+ * no operationId.
+ */
+export function lookupOperationId(
+  doc: OpenApiDoc,
+  path: string,
+  method: string,
+): string | undefined {
+  const key = `${method.toUpperCase()} ${path}`;
+  if (doc.operationIdIndex) return doc.operationIdIndex.get(key);
+  // Fallback for hand-built doc literals without a prebuilt index: derive from paths.
+  return doc.paths[path]?.[method.toLowerCase()]?.operationId;
+}
+
 /**
  * Load and normalise an OpenAPI document from a file path string, a pre-parsed object,
  * or a Buffer containing UTF-8 JSON/YAML.
@@ -200,6 +239,7 @@ export async function loadOpenApi(source: string | object): Promise<OpenApiDoc> 
     return {
       raw: dereferenced,
       paths,
+      operationIdIndex: buildOperationIdIndex(paths),
     };
   });
 }
