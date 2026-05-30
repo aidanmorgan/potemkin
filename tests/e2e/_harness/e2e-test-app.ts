@@ -113,8 +113,9 @@ function warmupPathForFixture(fixtureName: string | undefined): string {
   switch (fixtureName) {
     case 'ts-reducer':
     case 'ts-reducer-decorator':
-      // Widgets has no list GET; GET an arbitrary id (engine returns 404, but
-      // the response is forwarded — that's what proves discovery is warm).
+      // Widgets has no list GET; GET an arbitrary id. The WidgetById boundary
+      // defines no GET-query behaviour so the engine forwards a 422, but any
+      // forwarded engine status proves discovery + forwarding are warm.
       return '/widgets/warmup-id';
     case 'governance':
       return '/documents';
@@ -140,9 +141,14 @@ async function warmStubForwarding(stubUrl: string, fixtureName: string | undefin
         method: 'GET',
         headers: { Accept: 'application/json' },
       });
-      // A forwarded response is a real engine status (2xx/404). A status of 0
-      // or an un-forwarded Specmatic response means forwarding is not healthy.
-      if (res.status === 200 || res.status === 404) {
+      // A forwarded response is any well-formed engine HTTP status (200/404/422/
+      // …). When forwarding is NOT yet healthy, the plugin returns null for the
+      // owned path and Specmatic emits an invalid "status 0" response, which
+      // surfaces here as an HTTPParserError in the catch block below — never as a
+      // numeric status. So any numeric status from a successful fetch proves the
+      // engine response was forwarded through the stub.
+      res.body?.cancel?.().catch(() => { /* ignore */ });
+      if (res.status >= 100 && res.status < 600) {
         return true;
       }
     } catch {

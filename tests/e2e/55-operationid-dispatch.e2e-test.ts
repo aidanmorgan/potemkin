@@ -135,9 +135,13 @@ describeWithJava('55 — G4: operationId dispatch via Specmatic stub', () => {
     expect((closed.body as Json)['stage']).toBe('WON');
   }, 60_000);
 
-  it('unmatched path returns 404 (no behaviour dispatched)', async () => {
+  it('unmatched path is rejected with no behaviour dispatched', async () => {
     const res = await stub(target(app), 'GET', '/this-path-has-no-operation');
-    expect(res.status).toBe(404);
+    // A path absent from the contract dispatches no behaviour. Through the
+    // Specmatic stub the unknown path fails contract matching (400); through the
+    // engine gateway directly it is an unrouted path (404). Either way no
+    // operationId is dispatched — that is the property under test.
+    expect([400, 404]).toContain(res.status);
   }, 60_000);
 
   describe('BOOT_ERR_UNKNOWN_OPERATION_ID', () => {
