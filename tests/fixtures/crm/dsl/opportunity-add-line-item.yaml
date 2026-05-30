@@ -33,7 +33,7 @@ state:
 event_catalog:
   - type: LineItemAdded
     payload_template:
-      lineItemId: "ts:generateLineItemId"
+      id: "ts:generateLineItemId"
       description: "command.payload.description"
       quantity: "command.payload.quantity"
       unitPrice: "command.payload.unitPrice"
@@ -55,14 +55,10 @@ behaviors:
 reducers:
   - on: LineItemAdded
     patches:
+      # Append the whole event payload — a fully-formed line-item object
+      # ({ id, description, quantity, unitPrice, lineTotal, addedAt }).
       - op: append
         path: /lineItems
-        value:
-          id: "${event.payload.lineItemId}"
-          description: "${event.payload.description}"
-          quantity: "${event.payload.quantity}"
-          unitPrice: "${event.payload.unitPrice}"
-          lineTotal: "${event.payload.lineTotal}"
-          addedAt: "${event.payload.addedAt}"
+        value: "${event.payload}"
 
 initialization: []

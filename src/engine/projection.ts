@@ -14,6 +14,9 @@ import { applyPatches, type JournalEntry, type Patch } from '../dsl/patches.js';
 import { applyReducerPatchList } from './reducerPatches.js';
 import type { TsReducerRegistry } from './tsReducerRegistry.js';
 import type { ReducerContext } from '../sdk/index.js';
+import { recomputeComputedFields } from '../dsl/schemaInference.js';
+import type { CelContext } from '../cel/evaluator.js';
+import { CelPhase } from '../cel/phases.js';
 import { guardAssignedValue } from '../schema/runtimeGuard.js';
 import { getTracer } from '../observability/tracing.js';
 import { SpanStatusCode } from '@opentelemetry/api';
@@ -118,6 +121,15 @@ export interface ProjectionInput {
    * only on a registry miss.
    */
   readonly tsReducerRegistry?: TsReducerRegistry;
+  /**
+   * C5: declared computed fields + their topological recompute order for this
+   * boundary. When supplied, after the reducer patches apply the computed
+   * fields whose dependsOn intersects the touched paths are recomputed in
+   * order against post-patch state. A formula error aborts projection (500),
+   * discarding the candidate — preserving atomicity.
+   */
+  readonly computed?: readonly import('../dsl/schemaInference.js').DeclaredComputedField[];
+  readonly computedOrder?: readonly string[];
 }
 
 /** Outcome of projecting a single event. */
@@ -246,6 +258,23 @@ function _projectEvent(input: ProjectionInput): ProjectionResult {
           const mode = entry.op === 'append' || entry.op === 'prepend' ? 'append' : 'assign';
           guardAssignedValue(schemaRegistry, boundary.boundary, dotPath, entry.value, mode);
         }
+      }
+
+      // C5: recompute declared computed fields against POST-patch state, in
+      // topological order, but only those whose dependsOn intersects the paths
+      // the reducer just touched. The recompute mutates `buf` in place; a
+      // formula error propagates out of projectEvent (the candidate buffer is
+      // never swapped into the graph), so the event is rejected with 500 and
+      // state stays atomic.
+      if (input.computed && input.computed.length > 0 && input.computedOrder) {
+        const touchedPaths = new Set<string>(reducerJournal.map((j) => j.path));
+        recomputeComputedFields(
+          buf as Record<string, unknown>,
+          input.computed,
+          input.computedOrder,
+          touchedPaths,
+          { evaluate: (formula, ctx) => cel.evaluate(formula, ctx as unknown as CelContext, CelPhase.Reducer) },
+        );
       }
     }
 
