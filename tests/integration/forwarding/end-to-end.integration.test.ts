@@ -304,7 +304,7 @@ identity:
 behaviors:
   - name: createWidget
     match:
-      intent: creation
+      operationId: createWidget
       condition: 'true'
     emit: WidgetCreated
 event_catalog:

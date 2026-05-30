@@ -57,7 +57,7 @@ identity:
 behaviors:
   - name: createSecureItem
     match:
-      intent: creation
+      operationId: createItem
       condition: 'true'
       required_scopes: [admin]
     emit: ItemCreated

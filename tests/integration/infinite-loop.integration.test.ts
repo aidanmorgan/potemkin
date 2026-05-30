@@ -101,12 +101,13 @@ event_catalog:
 behaviors:
   - name: create-ping
     match:
-      intent: creation
+      operationId: createPing
       condition: "true"
     emit: PingCreated
     dispatch_commands:
       - boundary: PongBoundary
         intent: creation
+        operationId: createPong
         target_id: "$uuidv7()"
         payload: {}
 reducers:
@@ -130,12 +131,13 @@ event_catalog:
 behaviors:
   - name: create-pong
     match:
-      intent: creation
+      operationId: createPong
       condition: "true"
     emit: PongCreated
     dispatch_commands:
       - boundary: PingBoundary
         intent: creation
+        operationId: createPing
         target_id: "$uuidv7()"
         payload: {}
 reducers:
@@ -176,6 +178,7 @@ describe('infinite-loop.integration: mutually recursive secondary commands', () 
       executeUnitOfWork({
         command: cmd,
         dsl: sys.dsl,
+        openapi: sys.openapi,
         graph: sys.graph,
         events: sys.events,
         cel: sys.cel,
@@ -204,6 +207,7 @@ describe('infinite-loop.integration: mutually recursive secondary commands', () 
       await executeUnitOfWork({
         command: cmd,
         dsl: sys.dsl,
+        openapi: sys.openapi,
         graph: sys.graph,
         events: sys.events,
         cel: sys.cel,
@@ -238,6 +242,7 @@ describe('infinite-loop.integration: mutually recursive secondary commands', () 
       executeUnitOfWork({
         command: cmd,
         dsl: sys.dsl,
+        openapi: sys.openapi,
         graph: sys.graph,
         events: sys.events,
         cel: sys.cel,
@@ -270,6 +275,7 @@ describe('infinite-loop.integration: mutually recursive secondary commands', () 
       executeUnitOfWork({
         command: cmd,
         dsl: sys.dsl,
+        openapi: sys.openapi,
         graph: sys.graph,
         events: sys.events,
         cel: sys.cel,

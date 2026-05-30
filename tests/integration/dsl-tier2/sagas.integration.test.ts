@@ -26,11 +26,13 @@ sagas:
       - name: reserveCredit
         boundary: Lead
         intent: mutation
+        operationId: updateLoan
         target_id: '"dummy-id"'
         payload:
           amount: "command.payload.principal"
         compensation:
           intent: mutation
+          operationId: updateLoan
           payload:
             release: "command.payload.principal"
 `;
@@ -176,6 +178,7 @@ event_catalog: []
       events,
       cel,
       validator,
+      openapi,
     });
 
     const allEvents = events.all();

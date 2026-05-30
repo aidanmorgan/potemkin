@@ -97,7 +97,7 @@ fallback_override: false
 behaviors:
   - name: update-widget
     match:
-      intent: mutation
+      operationId: updatePrecondWidget
       condition: "true"
     emit: PrecondWidgetUpdated
 event_catalog:
@@ -180,6 +180,7 @@ describe('REQ-29 — missing-precondition (UoW layer)', () => {
       executeUnitOfWork({
         command: cmd,
         dsl: sys.dsl,
+        openapi: sys.openapi,
         graph: sys.graph,
         events: sys.events,
         cel: sys.cel,
@@ -199,6 +200,7 @@ describe('REQ-29 — missing-precondition (UoW layer)', () => {
     const result = await executeUnitOfWork({
       command: cmd,
       dsl: sys.dsl,
+      openapi: sys.openapi,
       graph: sys.graph,
       events: sys.events,
       cel: sys.cel,
@@ -216,6 +218,7 @@ describe('REQ-29 — missing-precondition (UoW layer)', () => {
     await executeUnitOfWork({
       command: makeCommand({ commandId: nextUuidv7(), sequenceVersion: currentSeq }),
       dsl: sys.dsl,
+      openapi: sys.openapi,
       graph: sys.graph,
       events: sys.events,
       cel: sys.cel,
@@ -228,6 +231,7 @@ describe('REQ-29 — missing-precondition (UoW layer)', () => {
       executeUnitOfWork({
         command: makeCommand({ sequenceVersion: currentSeq }),
         dsl: sys.dsl,
+        openapi: sys.openapi,
         graph: sys.graph,
         events: sys.events,
         cel: sys.cel,
