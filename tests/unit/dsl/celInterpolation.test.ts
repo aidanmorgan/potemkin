@@ -42,5 +42,21 @@ describe('celInterpolation — bare CEL reference detection (A4)', () => {
     it('does not flag a quoted literal containing a $ sign', () => {
       expect(hasBareCelReference("'$5.00 fee'")).toBe(false);
     });
+
+    it('does not flag a bare $ followed by a digit (not a builtin token)', () => {
+      expect(hasBareCelReference('$5 discount')).toBe(false);
+    });
+  });
+
+  describe('text containing characters CEL cannot lex', () => {
+    it('still finds a real reference before an unlexable stray character', () => {
+      // The trailing '@' is not lexable as CEL; the scan must still surface the
+      // state.x reference that precedes it.
+      expect(firstBareCelReference('state.x @')).toBe('state.');
+    });
+
+    it('returns null when only unlexable text is present', () => {
+      expect(firstBareCelReference('@@@')).toBeNull();
+    });
   });
 });
