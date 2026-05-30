@@ -106,6 +106,29 @@ class PluginInitializer : StubInitializer {
      *    representation (precedence honoured by [SpecmaticConfigMerger]).
      *  - E5: produce the overlay-merged spec from `overlay.patches`.
      *  - E4: compile `seeds` and register them via `httpStub.setExpectation`.
+     *
+     * ## E5/E6 Specmatic 2.46.2 API limitation (verified against specmatic-2.46.2.jar)
+     *
+     * E4 (seeds) is the ONLY supported runtime mutation: `HttpStub.setExpectation(ScenarioStub)`
+     * is a public method that pushes a dynamic expectation into the running stub.
+     *
+     * E5 (overlay) and E6 (workflow/governance) CANNOT be pushed into the running stub:
+     *  - `io.specmatic.core.SpecmaticConfig` is an INTERFACE exposing only a read-only
+     *    `getWorkflowDetails()` getter and 12 immutable `withX` copy-builders
+     *    (withTestBaseURL/withTestModes/withStubModes/withTestFilter/withStubFilter/
+     *    withTestTimeout/withGlobalMockDelay/withMatchBranch/…). There is NO
+     *    `withWorkflow*`/`withWorkflowDetails`/`withOverlay*` builder and no setter, so a
+     *    merged workflow cannot be installed.
+     *  - Overlay is read from a file at construction: `SpecmaticConfig.getStubOverlayFilePath`
+     *    / `HttpStub.stubOverlayContent(File)` (private). By the time [initialize] runs (during
+     *    HttpStub construction, after the spec + overlay file are already loaded) the overlaid
+     *    spec is fixed; there is no API to replace the served spec.
+     *
+     * The merge ([SpecmaticConfigMerger]) and overlay translation ([OverlayApplier]) therefore
+     * run for real and are unit-tested for correctness, but the result can only be logged — the
+     * jar exposes no SUPPORTED mechanism to install it, and reflection hacks are out of scope by
+     * project rule. Inspected classes: io.specmatic.core.SpecmaticConfig,
+     * io.specmatic.core.WorkflowConfiguration, io.specmatic.stub.HttpStub.
      */
     private fun applyForwardBlocks(
         config: PluginConfig,
