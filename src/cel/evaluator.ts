@@ -53,7 +53,6 @@
 import { CelPhase } from './phases.js';
 import {
   callBuiltin, deepEqual, naturalCompare,
-  getGlobalClockOffset, setGlobalClockOffset,
   type BuiltinContext,
 } from './builtins.js';
 import { createLogger } from '../observability/logger.js';
@@ -1147,6 +1146,9 @@ function findClosingBrace(s: string, start: number): number {
 }
 
 export function createCelEvaluator(): CelEvaluator {
+  // Per-instance clock offset (ms). Instance state — NOT a module global — so
+  // concurrent booted systems and parallel requests do not share/clobber it.
+  let clockOffsetMs = 0;
   const evaluator: CelEvaluator = {
     compile(expression: string): CompiledCel {
       let ast: Expr;
@@ -1171,7 +1173,10 @@ export function createCelEvaluator(): CelEvaluator {
       const compiled: CompiledCel =
         typeof expression === 'string' ? this.compile(expression) : expression;
 
-      const builtinCtx: BuiltinContext = { phase };
+      const builtinCtx: BuiltinContext = {
+        phase,
+        now: () => new Date(Date.now() + clockOffsetMs).toISOString(),
+      };
 
       try {
         return evalExpr(compiled._ast, ctx, builtinCtx, []);
@@ -1207,8 +1212,8 @@ export function createCelEvaluator(): CelEvaluator {
       }
     },
 
-    getClockOffset(): number { return getGlobalClockOffset(); },
-    setClockOffset(ms: number): void { setGlobalClockOffset(ms); },
+    getClockOffset(): number { return clockOffsetMs; },
+    setClockOffset(ms: number): void { clockOffsetMs = Number.isFinite(ms) ? ms : 0; },
   };
   return evaluator;
 }

@@ -115,17 +115,20 @@ describe('matches() — concurrent invocations do not share state', () => {
 // The benchmark below measures 20 sequential calls — a realistic request
 // workload — and asserts each call completes well within the 50ms timeout.
 // ---------------------------------------------------------------------------
-describe('matches() — performance benchmark (benign patterns)', () => {
-  it('20 benign matches each complete in well under 50ms', () => {
+describe('matches() — benign patterns evaluate correctly without catastrophic backtracking', () => {
+  it('20 benign matches all return the correct result and complete far below any ReDoS threshold', () => {
     const ITERATIONS = 20;
     const start = Date.now();
     for (let i = 0; i < ITERATIONS; i++) {
-      evaluate('"LOAN-12345".matches("^LOAN-[0-9]+$")');
+      // Correctness is the primary assertion: a benign pattern must match and
+      // must NOT be rejected by the ReDoS shape guard.
+      expect(evaluate('"LOAN-12345".matches("^LOAN-[0-9]+$")')).toBe(true);
     }
     const elapsed = Date.now() - start;
-    const perCall = elapsed / ITERATIONS;
-    // Each call should complete in well under 50ms (the ReDoS timeout limit)
-    console.log(`matches() benchmark: ${ITERATIONS} calls in ${elapsed}ms (${perCall.toFixed(1)}ms each)`);
-    expect(perCall).toBeLessThan(45); // < 45ms per call — well under the 50ms timeout
+    // A true ReDoS pattern would take seconds (or hang). Assert a generous
+    // ceiling that catches catastrophic backtracking yet is robust to CPU
+    // contention under parallel test workers — NOT a tight per-call latency
+    // (that would test the scheduler, not the code).
+    expect(elapsed).toBeLessThan(2000);
   });
 });

@@ -7,9 +7,7 @@ import type { Tracer } from '../observability/tracing.js';
 import type { ObjectGraphSchemaRegistry } from '../schema/types.js';
 import type { ScriptRegistry, ScriptContext } from '../scripts/types.js';
 import { CelPhase } from '../cel/phases.js';
-import { getGlobalClockOffset } from '../cel/builtins.js';
 
-const offsetIsoNow = (): string => new Date(Date.now() + getGlobalClockOffset()).toISOString();
 import { getTracer, SpanStatusCode } from '../observability/tracing.js';
 import {
   EntityAbsenceError,
@@ -196,7 +194,7 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
       payload: command.payload as JsonObject,
       helpers: {
         uuid: () => nextUuidv7(),
-        now: offsetIsoNow,
+        now: input.now,
         deepClone: <T>(v: T) => deepClone(v as JsonValue) as unknown as T,
         deepMerge: (a: JsonObject, b: JsonObject) => deepMerge(a, b),
       },
@@ -311,7 +309,7 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
         payload: command.payload as JsonObject,
         helpers: {
           uuid: () => nextUuidv7(),
-          now: offsetIsoNow,
+          now: input.now,
           deepClone: <T>(v: T) => deepClone(v as JsonValue) as unknown as T,
           deepMerge: (a: JsonObject, b: JsonObject) => deepMerge(a, b),
         },
@@ -383,7 +381,7 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
           payload: command.payload as JsonObject,
           helpers: {
             uuid: () => nextUuidv7(),
-            now: offsetIsoNow,
+            now: input.now,
             deepClone: <T>(v: T) => deepClone(v as JsonValue) as unknown as T,
             deepMerge: (a: JsonObject, b: JsonObject) => deepMerge(a, b),
           },
@@ -427,7 +425,7 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
         payload: command.payload as JsonObject,
         helpers: {
           uuid: () => nextUuidv7(),
-          now: offsetIsoNow,
+          now: input.now,
           deepClone: <T>(v: T) => deepClone(v as JsonValue) as unknown as T,
           deepMerge: (a: JsonObject, b: JsonObject) => deepMerge(a, b),
         },
@@ -475,7 +473,7 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
         payload: command.payload as JsonObject,
         helpers: {
           uuid: () => nextUuidv7(),
-          now: offsetIsoNow,
+          now: input.now,
           deepClone: <T>(v: T) => deepClone(v as JsonValue) as unknown as T,
           deepMerge: (a: JsonObject, b: JsonObject) => deepMerge(a, b),
         },

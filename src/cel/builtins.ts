@@ -144,13 +144,9 @@ function parseDuration(s: string): number {
 // Builtin implementations
 // ---------------------------------------------------------------------------
 
-// Global mutable clock offset (ms) — additive to real time. Per-request offsets
-// (e.g. X-Potemkin-Clock-Offset) push/pop this value around their execution.
-let globalClockOffsetMs = 0;
-export function getGlobalClockOffset(): number { return globalClockOffsetMs; }
-export function setGlobalClockOffset(ms: number): void {
-  globalClockOffsetMs = Number.isFinite(ms) ? ms : 0;
-}
+// The clock offset is per-CelEvaluator-instance state (see createCelEvaluator),
+// NOT a module global, so concurrent systems/requests stay isolated. The $now
+// builtin receives the offset-aware clock via BuiltinContext.now.
 
 // Optional faker seed — when set, $fake* builtins (if any) use a deterministic RNG.
 let fakerSeed: number | undefined = undefined;
@@ -174,7 +170,9 @@ export const BUILTINS: Record<string, (...args: unknown[]) => unknown> = {
   // ── Original builtins ──────────────────────────────────────────────────
   $uuidv7: (..._args: unknown[]): unknown => nextUuidv7(),
 
-  $now: (..._args: unknown[]): unknown => new Date(Date.now() + globalClockOffsetMs).toISOString(),
+  // Offset-aware time is supplied via BuiltinContext.now (callBuiltin routes $now
+  // through it); this bare fallback is real time when no context clock is given.
+  $now: (..._args: unknown[]): unknown => new Date().toISOString(),
 
   $concat: (...args: unknown[]): unknown =>
     args.map(a => (a === null || a === undefined ? '' : String(a))).join(''),
