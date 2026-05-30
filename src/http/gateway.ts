@@ -257,7 +257,7 @@ async function handleContractRequest(
         callerActor = resolveActor(req.headers['authorization'] as string | undefined, sys.dsl.auth);
       } catch (e) {
         if (e instanceof JwtValidationError) {
-          res.status(401).set('WWW-Authenticate', 'Bearer').json({ error: 'UNAUTHENTICATED', code: e.code, message: e.message });
+          res.status(401).set('WWW-Authenticate', 'Bearer').json({ error: 'UNAUTHENTICATED', message: e.message, details: { code: e.code } });
           return;
         }
         throw e;
@@ -414,7 +414,7 @@ async function handleContractRequest(
         actor = resolveActor(req.headers['authorization'] as string | undefined, sys.dsl.auth) ?? undefined;
       } catch (e) {
         if (e instanceof JwtValidationError) {
-          res.status(401).set('WWW-Authenticate', 'Bearer').json({ error: 'UNAUTHENTICATED', code: e.code, message: e.message });
+          res.status(401).set('WWW-Authenticate', 'Bearer').json({ error: 'UNAUTHENTICATED', message: e.message, details: { code: e.code } });
           return;
         }
         throw e;

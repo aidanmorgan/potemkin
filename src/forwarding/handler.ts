@@ -211,7 +211,15 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       actor = resolveActor(fwd.headers['authorization'], sys.dsl.auth) ?? undefined;
     } catch (e) {
       if (e instanceof JwtValidationError) {
-        res.status(401).set('WWW-Authenticate', 'Bearer').json({ error: 'UNAUTHENTICATED', code: e.code, message: e.message });
+        // Return the ForwardedResponse envelope (HTTP 200 carrying the real
+        // status) like every other branch here — a bare 401 would leave the
+        // envelope's `status` field undefined for the plugin/caller to read.
+        const fwdResponse: ForwardedResponse = {
+          status: 401,
+          headers: { 'WWW-Authenticate': 'Bearer' },
+          body: { error: 'UNAUTHENTICATED', message: e.message, details: { code: e.code } },
+        };
+        res.status(200).json(fwdResponse);
         return;
       }
       throw e;
