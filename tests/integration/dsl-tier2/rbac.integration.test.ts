@@ -6,12 +6,16 @@
  *  - Return 401 when no actor present
  *  - Return 403 when actor lacks required scopes
  */
-import supertest from 'supertest';
 import { bootSystem } from '../../../src/engine/boot.js';
 import { createGateway } from '../../../src/http/gateway.js';
 import { loadOpenApi } from '../../../src/contract/loader.js';
 import { compileDsl } from '../../../src/dsl/parser.js';
 import type { BootInput } from '../../../src/engine/boot.js';
+import {
+  withPersistentServer,
+  type PersistentAgent,
+} from '../../_support/persistentAgent.js';
+import { registerFileTeardown } from '../../_support/testTeardown.js';
 
 // Minimal OpenAPI for this test
 const OPENAPI_YAML = `
@@ -83,9 +87,17 @@ async function buildTestSystem(): Promise<{ app: ReturnType<typeof createGateway
 }
 
 describe('DSL Tier-2: RBAC scopes', () => {
-  it('allows request with required scope (admin)', async () => {
+  let agent: PersistentAgent;
+
+  beforeAll(async () => {
     const { app } = await buildTestSystem();
-    const res = await supertest(app)
+    const persistent = await withPersistentServer(app);
+    agent = persistent.agent;
+    registerFileTeardown(persistent.close);
+  });
+
+  it('allows request with required scope (admin)', async () => {
+    const res = await agent
       .post('/items')
       .set('Authorization', 'Bearer alice:admin,trader')
       .send({ name: 'SecureItem' });
@@ -93,8 +105,7 @@ describe('DSL Tier-2: RBAC scopes', () => {
   });
 
   it('returns 401 when no Authorization header and scope required', async () => {
-    const { app } = await buildTestSystem();
-    const res = await supertest(app)
+    const res = await agent
       .post('/items')
       .send({ name: 'SecureItem' });
     expect(res.status).toBe(401);
@@ -102,8 +113,7 @@ describe('DSL Tier-2: RBAC scopes', () => {
   });
 
   it('returns 403 when actor lacks required scope', async () => {
-    const { app } = await buildTestSystem();
-    const res = await supertest(app)
+    const res = await agent
       .post('/items')
       .set('Authorization', 'Bearer bob:viewer')
       .send({ name: 'SecureItem' });

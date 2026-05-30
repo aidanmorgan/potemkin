@@ -4,7 +4,6 @@
  * engine's mutated body, and deprecation headers are conveyed in `headers`.
  */
 
-import request from 'supertest';
 import { bootSystem } from '../../src/engine/boot.js';
 import { createGateway } from '../../src/http/gateway.js';
 import { loadOpenApi } from '../../src/contract/loader.js';
@@ -12,6 +11,11 @@ import { compileDsl } from '../../src/dsl/parser.js';
 import { applyPatches, type Patch } from '../../src/dsl/patches.js';
 import type { ForwardedRequest } from '../../src/forwarding/types.js';
 import { nextUuidv7 } from '../../src/ids/uuidv7.js';
+import {
+  withPersistentServer,
+  type PersistentAgent,
+} from '../_support/persistentAgent.js';
+import { registerFileTeardown } from '../_support/testTeardown.js';
 
 const OPENAPI = `
 openapi: "3.0.3"
@@ -50,14 +54,22 @@ async function boot() {
 }
 
 describe('D4: /_engine/forward _patches envelope', () => {
-  it('every successful forward carries a _patches array, and applying it reproduces the mutated body', async () => {
+  let agent: PersistentAgent;
+
+  beforeAll(async () => {
     const app = await boot();
+    const persistent = await withPersistentServer(app);
+    agent = persistent.agent;
+    registerFileTeardown(persistent.close);
+  });
+
+  it('every successful forward carries a _patches array, and applying it reproduces the mutated body', async () => {
     const id = nextUuidv7();
     const fwdCreate: ForwardedRequest = { method: 'POST', path: `/widgets/${id}`, headers: {}, query: {}, body: { id, status: 'NEW', secret: 'shhh' } };
-    await request(app).post('/_engine/forward').send(fwdCreate).expect(200);
+    await agent.post('/_engine/forward').send(fwdCreate).expect(200);
 
     const fwdGet: ForwardedRequest = { method: 'GET', path: `/widgets/${id}`, headers: {}, query: {}, body: null };
-    const res = await request(app).post('/_engine/forward').send(fwdGet).expect(200);
+    const res = await agent.post('/_engine/forward').send(fwdGet).expect(200);
 
     expect(res.body.status).toBe(200);
     // _patches present, carrying hateoas + mask
@@ -79,8 +91,7 @@ describe('D4: /_engine/forward _patches envelope', () => {
 
   it('a forward with no response mutations omits _patches (or returns empty)', async () => {
     // GET a non-existent entity → 404; no mutations, no _patches.
-    const app = await boot();
-    const res = await request(app)
+    const res = await agent
       .post('/_engine/forward')
       .send({ method: 'GET', path: `/widgets/${nextUuidv7()}`, headers: {}, query: {}, body: null })
       .expect(200);

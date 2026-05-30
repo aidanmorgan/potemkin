@@ -3,22 +3,20 @@
  * access (the recently-added event-sourcing extensions).
  */
 
-import request from 'supertest';
 import type { BootedSystem } from '../../src/engine/boot.js';
-import { createGateway } from '../../src/http/gateway.js';
 import { resetSystem } from '../../src/engine/reset.js';
-import { bootCrmSystem } from './_helpers/crm-boot.js';
+import { bootCrmAgent, type CrmAgent } from './_helpers/crm-boot.js';
 
 const APEX_LEAD_ID = '00000000-0000-7000-8000-000000000010';
 
 describe('Event request/response capture', () => {
   let sys: BootedSystem;
-  let agent: ReturnType<typeof request>;
+  let agent: CrmAgent['agent'];
 
   beforeAll(async () => {
-    sys = await bootCrmSystem();
-    const app = createGateway(sys);
-    agent = request(app);
+    const booted = await bootCrmAgent();
+    sys = booted.sys;
+    agent = booted.agent;
   });
 
   beforeEach(() => {
@@ -95,9 +93,12 @@ describe('Event request/response capture', () => {
 
 describe('Reducer history access', () => {
   let sys: BootedSystem;
+  let a: CrmAgent['agent'];
 
   beforeAll(async () => {
-    sys = await bootCrmSystem();
+    const booted = await bootCrmAgent();
+    sys = booted.sys;
+    a = booted.agent;
   });
 
   beforeEach(() => {
@@ -108,9 +109,6 @@ describe('Reducer history access', () => {
     // We can't easily assert from a reducer; instead verify the store has
     // multiple events for the same aggregate after a multi-step lifecycle,
     // which the projection's history feature can iterate over.
-    const app = createGateway(sys);
-    const a = request(app);
-
     const create = await a.post('/leads').send({
       companyName: 'History Corp', contactName: 'H',
       phone: '+61 0', email: 'h@t.com', source: 'WEBSITE',

@@ -14,8 +14,14 @@
 
 import type { BootedSystem } from '../../../src/engine/boot.js';
 import { bootSystem } from '../../../src/engine/boot.js';
+import { createGateway } from '../../../src/http/gateway.js';
 import { loadFixture } from '../../fixtures/index.js';
 import type { BoundaryConfig } from '../../../src/dsl/types.js';
+import {
+  withPersistentServer,
+  type PersistentAgent,
+} from '../../_support/persistentAgent.js';
+import { registerFileTeardown } from '../../_support/testTeardown.js';
 
 /**
  * Expand byContractPath to include all OpenAPI paths, mapping each sub-path
@@ -63,4 +69,24 @@ export async function bootCrmSystem(): Promise<BootedSystem> {
   const sys = await bootSystem(fixture);
   expandByContractPath(sys);
   return sys;
+}
+
+export interface CrmAgent {
+  readonly sys: BootedSystem;
+  readonly agent: PersistentAgent;
+}
+
+/**
+ * Boot the CRM fixture, wrap it in a gateway, and drive it through ONE
+ * persistent keep-alive server for the whole test file (closed in afterAll via
+ * the file-scoped teardown registry). Use this instead of `bootCrmSystem` +
+ * `request(createGateway(sys))` to avoid supertest's per-call ephemeral
+ * `app.listen(0)`, which exhausts sockets under parallel jest workers.
+ */
+export async function bootCrmAgent(): Promise<CrmAgent> {
+  const sys = await bootCrmSystem();
+  const app = createGateway(sys);
+  const { agent, close } = await withPersistentServer(app);
+  registerFileTeardown(close);
+  return { sys, agent };
 }

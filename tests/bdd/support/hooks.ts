@@ -1,5 +1,6 @@
-import { Before, After } from '@cucumber/cucumber';
+import { Before, After, AfterAll } from '@cucumber/cucumber';
 import type { SimWorld } from './world.js';
+import { closeSharedServer } from './world.js';
 
 /**
  * Before each scenario: ensure system is booted and reset state to baseline.
@@ -23,9 +24,18 @@ Before({ tags: '@noBoot' }, function (this: SimWorld) {
 });
 
 /**
- * After each scenario: clear transient response state.
+ * After each scenario: clear transient response state and close any
+ * per-scenario persistent server created by bootWithCustomDsl.
  */
-After(function (this: SimWorld) {
+After(async function (this: SimWorld) {
   this.lastResponse = undefined;
   this.lastError = undefined;
+  await this.closeOwnServer();
+});
+
+/**
+ * After the whole suite: close the shared persistent server.
+ */
+AfterAll(async function () {
+  await closeSharedServer();
 });

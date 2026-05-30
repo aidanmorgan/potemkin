@@ -15,11 +15,8 @@
  *  7. engine field is 'potemkin-stateful'.
  */
 
-import request from 'supertest';
-import { createGateway } from '../../../src/http/gateway.js';
-import type { BootedSystem } from '../../../src/engine/boot.js';
 import type { RoutesDiscoveryResponse } from '../../../src/forwarding/types.js';
-import { bootCrmSystem } from '../_helpers/crm-boot.js';
+import { bootCrmAgent, type CrmAgent } from '../_helpers/crm-boot.js';
 
 // Expected CRM contract paths (sorted alphabetically).
 const EXPECTED_CRM_PATHS = [
@@ -48,13 +45,11 @@ const EXPECTED_CRM_PATHS = [
 ];
 
 describe('GET /_engine/routes — integration', () => {
-  let sys: BootedSystem;
-  let agent: ReturnType<typeof request>;
+  let agent: CrmAgent['agent'];
 
   beforeAll(async () => {
-    sys = await bootCrmSystem();
-    const app = createGateway(sys);
-    agent = request(app);
+    const booted = await bootCrmAgent();
+    agent = booted.agent;
   });
 
   afterAll(() => {

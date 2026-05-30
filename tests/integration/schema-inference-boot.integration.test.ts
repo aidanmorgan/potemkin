@@ -10,7 +10,6 @@
  */
 
 import * as path from 'node:path';
-import request from 'supertest';
 
 import { bootSystem, type BootedSystem } from '../../src/engine/boot.js';
 import { createGateway } from '../../src/http/gateway.js';
@@ -18,15 +17,25 @@ import { resetSystem } from '../../src/engine/reset.js';
 import { loadFixtureWithGlobal } from '../fixtures/index.js';
 import { buildInferredSchema } from '../../src/dsl/schemaInference.js';
 import { BootError } from '../../src/errors.js';
+import {
+  withPersistentServer,
+  type PersistentAgent,
+} from '../_support/persistentAgent.js';
+import { registerFileTeardown } from '../_support/testTeardown.js';
 
 const CRM_CONFIG = path.join(__dirname, '..', 'fixtures', 'crm', 'potemkin.yaml');
 
 describe('C4: boot attaches per-boundary inferred schemas', () => {
   let sys: BootedSystem;
+  let agent: PersistentAgent;
 
   beforeAll(async () => {
     const inline = await loadFixtureWithGlobal();
     sys = await bootSystem({ openapi: inline.openapi, potemkinConfigPath: CRM_CONFIG });
+    const app = createGateway(sys);
+    const persistent = await withPersistentServer(app);
+    agent = persistent.agent;
+    registerFileTeardown(persistent.close);
   });
 
   afterAll(() => {
@@ -48,9 +57,6 @@ describe('C4: boot attaches per-boundary inferred schemas', () => {
   });
 
   it('surfaces computed field names on GET /_engine/state/:boundary/:id', async () => {
-    const app = createGateway(sys);
-    const agent = request(app);
-
     // Create an opportunity so the aggregate exists.
     const created = await agent
       .post('/opportunities')

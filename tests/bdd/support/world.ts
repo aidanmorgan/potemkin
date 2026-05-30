@@ -1,7 +1,5 @@
 import { setWorldConstructor, World, setDefaultTimeout } from '@cucumber/cucumber';
 import type { IWorldOptions } from '@cucumber/cucumber';
-import supertest from 'supertest';
-import type { Test } from 'supertest';
 import { bootSystem, resetSystem, createGateway } from '../../../src/index.js';
 import type { BootedSystem, BootInput } from '../../../src/engine/boot.js';
 import type { JsonValue, JsonObject } from '../../../src/types.js';
@@ -9,6 +7,11 @@ import type { Express } from 'express';
 import { loadOpenApi } from '../../../src/contract/loader.js';
 import type { OpenApiDoc } from '../../../src/contract/loader.js';
 import { compileDsl } from '../../../src/dsl/parser.js';
+import {
+  withPersistentServer,
+  type PersistentAgent,
+  type PersistentServer,
+} from '../../_support/persistentAgent.js';
 
 setDefaultTimeout(15_000);
 
@@ -373,11 +376,25 @@ export interface LastResponse {
 
 let _sharedSystem: BootedSystem | undefined;
 let _sharedApp: Express | undefined;
+let _sharedServer: PersistentServer | undefined;
 let _sharedOpenapi: OpenApiDoc | undefined;
+
+/** Close the shared persistent server. Call from an AfterAll hook. */
+export async function closeSharedServer(): Promise<void> {
+  if (_sharedServer) {
+    await _sharedServer.close();
+    _sharedServer = undefined;
+    _sharedSystem = undefined;
+    _sharedApp = undefined;
+  }
+}
 
 export class SimWorld extends World {
   sys?: BootedSystem;
   app?: Express;
+  agent?: PersistentAgent;
+  // A per-scenario server created by bootWithCustomDsl; closed in the After hook.
+  ownServer?: PersistentServer;
   lastResponse?: LastResponse;
   lastError?: unknown;
   ctx: Record<string, unknown> = {};
@@ -387,11 +404,12 @@ export class SimWorld extends World {
   }
 
   async ensureBooted(): Promise<void> {
-    if (this.sys && this.app) return;
+    if (this.sys && this.agent) return;
 
-    if (_sharedSystem && _sharedApp) {
+    if (_sharedSystem && _sharedApp && _sharedServer) {
       this.sys = _sharedSystem;
       this.app = _sharedApp;
+      this.agent = _sharedServer.agent;
       return;
     }
 
@@ -407,12 +425,15 @@ export class SimWorld extends World {
     });
 
     const app = createGateway(sys);
+    const server = await withPersistentServer(app);
 
     _sharedSystem = sys;
     _sharedApp = app;
+    _sharedServer = server;
 
     this.sys = sys;
     this.app = app;
+    this.agent = server.agent;
   }
 
   async resetState(): Promise<void> {
@@ -421,11 +442,23 @@ export class SimWorld extends World {
     }
   }
 
+  /** Close a per-scenario server created by bootWithCustomDsl. Call in After. */
+  async closeOwnServer(): Promise<void> {
+    if (this.ownServer) {
+      await this.ownServer.close();
+      this.ownServer = undefined;
+    }
+  }
+
   async bootWithCustomDsl(openapiYaml: string, dslModules: { name: string; yaml: string }[]): Promise<void> {
+    await this.closeOwnServer();
     const openapi = await loadOpenApi(openapiYaml);
     const sys = await bootSystem({ openapi, compiledDsl: await compileDsl(dslModules) });
     this.sys = sys;
     this.app = createGateway(sys);
+    const server = await withPersistentServer(this.app);
+    this.ownServer = server;
+    this.agent = server.agent;
   }
 
   async sendHttp(
@@ -434,9 +467,9 @@ export class SimWorld extends World {
     body?: JsonValue,
     headers?: Record<string, string>,
   ): Promise<void> {
-    if (!this.app) throw new Error('System not booted');
+    if (!this.agent) throw new Error('System not booted');
 
-    const agent = supertest(this.app);
+    const agent = this.agent;
     const m = method.toLowerCase() as 'get' | 'post' | 'put' | 'patch' | 'delete';
 
     let req = agent[m](path).set('Content-Type', 'application/json');

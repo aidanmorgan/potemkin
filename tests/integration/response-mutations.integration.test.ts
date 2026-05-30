@@ -3,12 +3,16 @@
  * mask: fields, and emits Deprecation/Sunset headers on successful responses.
  */
 
-import request from 'supertest';
 import { bootSystem } from '../../src/engine/boot.js';
 import { createGateway } from '../../src/http/gateway.js';
 import { loadOpenApi } from '../../src/contract/loader.js';
 import { compileDsl } from '../../src/dsl/parser.js';
 import { nextUuidv7 } from '../../src/ids/uuidv7.js';
+import {
+  withPersistentServer,
+  type PersistentAgent,
+} from '../_support/persistentAgent.js';
+import { registerFileTeardown } from '../_support/testTeardown.js';
 
 const OPENAPI = `
 openapi: "3.0.3"
@@ -81,45 +85,50 @@ async function boot() {
   return createGateway(sys);
 }
 
-async function createWidget(app: ReturnType<typeof createGateway>, id: string) {
-  return request(app).post(`/widgets/${id}`).send({ id, status: 'NEW', secret: 'shhh' });
+async function createWidget(agent: PersistentAgent, id: string) {
+  return agent.post(`/widgets/${id}`).send({ id, status: 'NEW', secret: 'shhh' });
 }
 
 describe('D1/D2/D3 response mutations via the gateway', () => {
-  it('D1: injects boundary HATEOAS _links into the response body', async () => {
+  let agent: PersistentAgent;
+
+  beforeAll(async () => {
     const app = await boot();
+    const persistent = await withPersistentServer(app);
+    agent = persistent.agent;
+    registerFileTeardown(persistent.close);
+  });
+
+  it('D1: injects boundary HATEOAS _links into the response body', async () => {
     const id = nextUuidv7();
-    await createWidget(app, id);
-    const res = await request(app).get(`/widgets/${id}`).expect(200);
+    await createWidget(agent, id);
+    const res = await agent.get(`/widgets/${id}`).expect(200);
     expect(res.body._links?.self?.href).toBe('/widgets/{id}');
   });
 
   it('D3: removes the masked field from the response body', async () => {
-    const app = await boot();
     const id = nextUuidv7();
-    await createWidget(app, id);
-    const res = await request(app).get(`/widgets/${id}`).expect(200);
+    await createWidget(agent, id);
+    const res = await agent.get(`/widgets/${id}`).expect(200);
     expect(res.body.secret).toBeUndefined();
     expect(res.body.status).toBe('NEW');
   });
 
   it('D2: emits Deprecation + Sunset + successor Link headers', async () => {
-    const app = await boot();
     const id = nextUuidv7();
-    await createWidget(app, id);
-    const res = await request(app).get(`/widgets/${id}`).expect(200);
+    await createWidget(agent, id);
+    const res = await agent.get(`/widgets/${id}`).expect(200);
     expect(res.headers['deprecation']).toBe('true');
     expect(res.headers['sunset']).toBe('2026-12-31');
     expect(res.headers['link']).toContain('rel="successor-version"');
   });
 
   it('D3.3: the X-Potemkin-Mask control header REPLACES fields with [MASKED] (distinct from DSL mask removal)', async () => {
-    const app = await boot();
     const id = nextUuidv7();
-    await createWidget(app, id);
+    await createWidget(agent, id);
     // status is not in the DSL mask; the control header replaces it with [MASKED]
     // at runtime, while the DSL mask removes `secret` entirely.
-    const res = await request(app)
+    const res = await agent
       .get(`/widgets/${id}`)
       .set('X-Potemkin-Mask', 'status')
       .expect(200);

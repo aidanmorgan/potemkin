@@ -11,11 +11,8 @@
  *  - POST /leads/:id/dnc (without auth) → 401
  */
 
-import request from 'supertest';
-import { bootSystem } from '../../../src/engine/boot.js';
 import { resetSystem } from '../../../src/engine/reset.js';
-import { createGateway } from '../../../src/http/gateway.js';
-import { loadFixture } from '../../fixtures/index.js';
+import { bootCrmAgent, type CrmAgent } from '../_helpers/crm-boot.js';
 import type { BootedSystem } from '../../../src/engine/boot.js';
 
 // Pre-seeded IDs from initialization data
@@ -28,13 +25,12 @@ const SEEDED_AGENT = '00000000-0000-7000-8000-000000000003';             // Alic
 
 describe('CRM Smoke — integration', () => {
   let sys: BootedSystem;
-  let agent: ReturnType<typeof request>;
+  let agent: CrmAgent['agent'];
 
   beforeAll(async () => {
-    const fixture = await loadFixture();
-    sys = await bootSystem(fixture);
-    const app = createGateway(sys);
-    agent = request(app);
+    const booted = await bootCrmAgent();
+    sys = booted.sys;
+    agent = booted.agent;
   });
 
   afterAll(() => {

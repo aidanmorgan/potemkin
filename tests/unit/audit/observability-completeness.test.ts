@@ -37,6 +37,8 @@ import { createStateGraph } from '../../../src/stategraph/graph.js';
 import { createLogger } from '../../../src/observability/logger.js';
 import { createTestApp, type TestApp } from '../../acceptance/_helpers/test-app.js';
 import { collectMetricDataPoints } from '../../integration/_helpers/otel.js';
+import { withPersistentServer } from '../../_support/persistentAgent.js';
+import { registerFileTeardown } from '../../_support/testTeardown.js';
 
 // ---------------------------------------------------------------------------
 // OTel test infrastructure helpers
@@ -492,8 +494,9 @@ describe('observability/tracing — span completeness (REQ-43)', () => {
       const sys = await bootSystem({ ...fixture, tracer: otel.tracer });
 
       const app = createGateway(sys);
-      const request = (await import('supertest')).default;
-      const agent = request(app);
+      const persistent = await withPersistentServer(app);
+      const agent = persistent.agent;
+      registerFileTeardown(persistent.close);
 
       await agent.get('/leads').expect(200);
 
@@ -520,8 +523,9 @@ describe('observability/tracing — span completeness (REQ-43)', () => {
       const sys = await bootSystem({ ...fixture, tracer: otel.tracer });
 
       const app = createGateway(sys);
-      const request = (await import('supertest')).default;
-      const agent = request(app);
+      const persistent = await withPersistentServer(app);
+      const agent = persistent.agent;
+      registerFileTeardown(persistent.close);
 
       await agent.get('/_admin/health').expect(200);
       await otel.tracerProvider.forceFlush();
@@ -545,8 +549,9 @@ describe('observability/tracing — span completeness (REQ-43)', () => {
       const sys = await bootSystem({ ...fixture, tracer: otel.tracer });
 
       const app = createGateway(sys);
-      const request = (await import('supertest')).default;
-      const agent = request(app);
+      const persistent = await withPersistentServer(app);
+      const agent = persistent.agent;
+      registerFileTeardown(persistent.close);
 
       await agent.get('/_admin/state').expect(200);
       await otel.tracerProvider.forceFlush();
@@ -570,8 +575,9 @@ describe('observability/tracing — span completeness (REQ-43)', () => {
       const sys = await bootSystem({ ...fixture, tracer: otel.tracer });
 
       const app = createGateway(sys);
-      const request = (await import('supertest')).default;
-      const agent = request(app);
+      const persistent = await withPersistentServer(app);
+      const agent = persistent.agent;
+      registerFileTeardown(persistent.close);
 
       await agent.get('/_admin/events').expect(200);
       await otel.tracerProvider.forceFlush();
@@ -595,8 +601,9 @@ describe('observability/tracing — span completeness (REQ-43)', () => {
       const sys = await bootSystem({ ...fixture, tracer: otel.tracer });
 
       const app = createGateway(sys);
-      const request = (await import('supertest')).default;
-      const agent = request(app);
+      const persistent = await withPersistentServer(app);
+      const agent = persistent.agent;
+      registerFileTeardown(persistent.close);
 
       await agent.post('/_admin/reset').expect(204);
       await otel.tracerProvider.forceFlush();

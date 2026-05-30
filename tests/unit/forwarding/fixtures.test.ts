@@ -11,15 +11,18 @@
  *  - Handler: Cache-Control + ETag headers on 200 response.
  */
 
-import request from 'supertest';
 import express from 'express';
-import type { Express } from 'express';
 import { createHash } from 'node:crypto';
 import { deriveFixtures } from '../../../src/forwarding/fixtures.js';
 import { createFixturesHandler } from '../../../src/forwarding/handler.js';
 import type { BootedSystem } from '../../../src/engine/boot.js';
 import type { FixturesResponse } from '../../../src/forwarding/types.js';
 import type { DomainEvent } from '../../../src/types.js';
+import {
+  withPersistentServer,
+  type PersistentAgent,
+} from '../../_support/persistentAgent.js';
+import { registerFileTeardown } from '../../_support/testTeardown.js';
 
 // ---------------------------------------------------------------------------
 // Helpers — minimal stub builders
@@ -357,19 +360,21 @@ describe('deriveFixtures — checksum stability', () => {
 // Test suite — createFixturesHandler HTTP behaviour
 // ---------------------------------------------------------------------------
 
-function makeHandlerApp(sys: BootedSystem): Express {
+async function makeHandlerAgent(sys: BootedSystem): Promise<PersistentAgent> {
   const app = express();
   app.get('/_engine/fixtures', createFixturesHandler(sys));
-  return app;
+  const persistent = await withPersistentServer(app);
+  registerFileTeardown(persistent.close);
+  return persistent.agent;
 }
 
 describe('createFixturesHandler — GET /_engine/fixtures', () => {
   const CUSTOMER_ID = '00000000-0000-7000-8000-000000000001';
 
   let sys: BootedSystem;
-  let app: Express;
+  let agent: PersistentAgent;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     delete process.env['ENGINE_ROUTES_TTL_SECONDS'];
     sys = makeStubSystem({
       boundaryName: 'Customer',
@@ -378,7 +383,7 @@ describe('createFixturesHandler — GET /_engine/fixtures', () => {
       entities: { [CUSTOMER_ID]: { id: CUSTOMER_ID, name: 'Acme Coffee', riskBand: 'LOW' } },
       baselineIds: [CUSTOMER_ID],
     });
-    app = makeHandlerApp(sys);
+    agent = await makeHandlerAgent(sys);
   });
 
   afterEach(() => {
@@ -388,38 +393,38 @@ describe('createFixturesHandler — GET /_engine/fixtures', () => {
   // ── Basic response shape ───────────────────────────────────────────────────
 
   it('returns HTTP 200', async () => {
-    await request(app).get('/_engine/fixtures').expect(200);
+    await agent.get('/_engine/fixtures').expect(200);
   });
 
   it('returns engine field equal to "potemkin-stateful"', async () => {
-    const res = await request(app).get('/_engine/fixtures').expect(200);
+    const res = await agent.get('/_engine/fixtures').expect(200);
     expect((res.body as FixturesResponse).engine).toBe('potemkin-stateful');
   });
 
   it('returns a non-empty version string', async () => {
-    const res = await request(app).get('/_engine/fixtures').expect(200);
+    const res = await agent.get('/_engine/fixtures').expect(200);
     expect(typeof (res.body as FixturesResponse).version).toBe('string');
     expect((res.body as FixturesResponse).version.length).toBeGreaterThan(0);
   });
 
   it('returns a generatedAt ISO-8601 timestamp', async () => {
-    const res = await request(app).get('/_engine/fixtures').expect(200);
+    const res = await agent.get('/_engine/fixtures').expect(200);
     const { generatedAt } = res.body as FixturesResponse;
     expect(new Date(generatedAt).toISOString()).toBe(generatedAt);
   });
 
   it('returns a checksum that is a 64-char hex string', async () => {
-    const res = await request(app).get('/_engine/fixtures').expect(200);
+    const res = await agent.get('/_engine/fixtures').expect(200);
     expect((res.body as FixturesResponse).checksum).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it('returns an array of fixtures', async () => {
-    const res = await request(app).get('/_engine/fixtures').expect(200);
+    const res = await agent.get('/_engine/fixtures').expect(200);
     expect(Array.isArray((res.body as FixturesResponse).fixtures)).toBe(true);
   });
 
   it('includes a fixture with the correct path for the seeded entity', async () => {
-    const res = await request(app).get('/_engine/fixtures').expect(200);
+    const res = await agent.get('/_engine/fixtures').expect(200);
     const { fixtures } = res.body as FixturesResponse;
     expect(fixtures).toHaveLength(1);
     expect(fixtures[0]!.httpRequest.path).toBe(`/customers/${CUSTOMER_ID}`);
@@ -428,12 +433,12 @@ describe('createFixturesHandler — GET /_engine/fixtures', () => {
   // ── Cache headers ──────────────────────────────────────────────────────────
 
   it('includes Cache-Control: max-age=30, public header by default', async () => {
-    const res = await request(app).get('/_engine/fixtures').expect(200);
+    const res = await agent.get('/_engine/fixtures').expect(200);
     expect(res.headers['cache-control']).toBe('max-age=30, public');
   });
 
   it('includes ETag header equal to the checksum', async () => {
-    const res = await request(app).get('/_engine/fixtures').expect(200);
+    const res = await agent.get('/_engine/fixtures').expect(200);
     const { checksum } = res.body as FixturesResponse;
     expect(res.headers['etag']).toBe(checksum);
   });
@@ -441,10 +446,10 @@ describe('createFixturesHandler — GET /_engine/fixtures', () => {
   // ── Conditional requests (If-None-Match) ──────────────────────────────────
 
   it('responds 304 when If-None-Match matches the current checksum', async () => {
-    const first = await request(app).get('/_engine/fixtures').expect(200);
+    const first = await agent.get('/_engine/fixtures').expect(200);
     const checksum = (first.body as FixturesResponse).checksum;
 
-    const res = await request(app)
+    const res = await agent
       .get('/_engine/fixtures')
       .set('If-None-Match', checksum)
       .expect(304);
@@ -455,7 +460,7 @@ describe('createFixturesHandler — GET /_engine/fixtures', () => {
   it('responds 200 with full body when If-None-Match does not match', async () => {
     const staleChecksum = 'a'.repeat(64);
 
-    const res = await request(app)
+    const res = await agent
       .get('/_engine/fixtures')
       .set('If-None-Match', staleChecksum)
       .expect(200);
@@ -467,9 +472,9 @@ describe('createFixturesHandler — GET /_engine/fixtures', () => {
 
   it('honours ENGINE_ROUTES_TTL_SECONDS env var for Cache-Control TTL', async () => {
     process.env['ENGINE_ROUTES_TTL_SECONDS'] = '120';
-    const appWithOverride = makeHandlerApp(sys);
+    const agentWithOverride = await makeHandlerAgent(sys);
 
-    const res = await request(appWithOverride).get('/_engine/fixtures').expect(200);
+    const res = await agentWithOverride.get('/_engine/fixtures').expect(200);
     expect(res.headers['cache-control']).toBe('max-age=120, public');
   });
 });

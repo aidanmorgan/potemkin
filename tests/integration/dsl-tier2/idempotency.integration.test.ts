@@ -5,12 +5,16 @@
  * - Second request with same Idempotency-Key returns cached response + X-Idempotency-Replay: true
  * - Same key with different body returns 409 IDEMPOTENCY_KEY_CONFLICT
  */
-import supertest from 'supertest';
 import { bootSystem } from '../../../src/engine/boot.js';
 import { createGateway } from '../../../src/http/gateway.js';
 import { loadOpenApi } from '../../../src/contract/loader.js';
 import type { BootInput } from '../../../src/engine/boot.js';
 import { compileDsl } from '../../../src/dsl/parser.js';
+import {
+  withPersistentServer,
+  type PersistentAgent,
+} from '../../_support/persistentAgent.js';
+import { registerFileTeardown } from '../../_support/testTeardown.js';
 
 const OPENAPI_YAML = `
 openapi: '3.0.3'
@@ -86,17 +90,25 @@ async function buildTestSystem(): Promise<ReturnType<typeof createGateway>> {
 }
 
 describe('DSL Tier-2: Idempotency', () => {
-  it('returns X-Idempotency-Replay: true on replay', async () => {
+  let agent: PersistentAgent;
+
+  beforeAll(async () => {
     const app = await buildTestSystem();
+    const persistent = await withPersistentServer(app);
+    agent = persistent.agent;
+    registerFileTeardown(persistent.close);
+  });
+
+  it('returns X-Idempotency-Replay: true on replay', async () => {
     const KEY = `test-key-${Date.now()}`;
 
-    const first = await supertest(app)
+    const first = await agent
       .post('/widgets')
       .set('Idempotency-Key', KEY)
       .send({ label: 'Widget Alpha' });
     expect(first.status).toBe(201);
 
-    const second = await supertest(app)
+    const second = await agent
       .post('/widgets')
       .set('Idempotency-Key', KEY)
       .send({ label: 'Widget Alpha' });
@@ -105,15 +117,14 @@ describe('DSL Tier-2: Idempotency', () => {
   });
 
   it('returns 409 IDEMPOTENCY_KEY_CONFLICT on same key, different body', async () => {
-    const app = await buildTestSystem();
     const KEY = `conflict-key-${Date.now()}`;
 
-    await supertest(app)
+    await agent
       .post('/widgets')
       .set('Idempotency-Key', KEY)
       .send({ label: 'Widget Alpha' });
 
-    const conflict = await supertest(app)
+    const conflict = await agent
       .post('/widgets')
       .set('Idempotency-Key', KEY)
       .send({ label: 'Widget Beta - DIFFERENT' });

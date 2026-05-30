@@ -23,23 +23,18 @@
  * 10. engine field is 'potemkin-stateful'.
  */
 
-import request from 'supertest';
-import { createGateway } from '../../../src/http/gateway.js';
-import type { BootedSystem } from '../../../src/engine/boot.js';
 import type { FixturesResponse } from '../../../src/forwarding/types.js';
-import { bootCrmSystem } from '../_helpers/crm-boot.js';
+import { bootCrmAgent, type CrmAgent } from '../_helpers/crm-boot.js';
 
 const APEX_LEAD_ID = '00000000-0000-7000-8000-000000000010';
 const BLUESKY_LEAD_ID = '00000000-0000-7000-8000-000000000011';
 
 describe('GET /_engine/fixtures — integration', () => {
-  let sys: BootedSystem;
-  let agent: ReturnType<typeof request>;
+  let agent: CrmAgent['agent'];
 
   beforeAll(async () => {
-    sys = await bootCrmSystem();
-    const app = createGateway(sys);
-    agent = request(app);
+    const booted = await bootCrmAgent();
+    agent = booted.agent;
   });
 
   afterAll(() => {

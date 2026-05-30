@@ -12,7 +12,6 @@
 import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import request from 'supertest';
 
 import { bootSystem, type BootedSystem } from '../../src/engine/boot.js';
 import { createGateway } from '../../src/http/gateway.js';
@@ -20,6 +19,7 @@ import { loadOpenApi } from '../../src/contract/loader.js';
 import { BootError } from '../../src/errors.js';
 import { registry as sdkRegistry } from '../../src/sdk/index.js';
 import { registerTeardown } from '../_support/testTeardown.js';
+import { withPersistentServer } from '../_support/persistentAgent.js';
 
 const OPENAPI = {
   openapi: '3.0.3',
@@ -160,7 +160,9 @@ describe('C6: watch:true hot-reloads the reducer registry; StateGraph survives',
     expect(sys.tsWatcher).toBeDefined();
     registerTeardown(() => sys.tsWatcher?.stop());
 
-    const agent = request(createGateway(sys));
+    const persistent = await withPersistentServer(createGateway(sys));
+    const agent = persistent.agent;
+    registerTeardown(persistent.close);
 
     // Create a gizmo — the GizmoCreated TS reducer (present at boot) fires.
     const created = await agent.post('/gizmos').send({ name: 'Original' }).expect(201);

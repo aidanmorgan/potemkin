@@ -5,12 +5,7 @@
  * - Derived projection state is updated after domain events
  * - GET /_admin/derived/:name returns the current state
  */
-import supertest from 'supertest';
-import { bootSystem } from '../../../src/engine/boot.js';
-import { createGateway } from '../../../src/http/gateway.js';
-import { loadOpenApi } from '../../../src/contract/loader.js';
 import { compileDsl } from '../../../src/dsl/parser.js';
-import type { BootInput } from '../../../src/engine/boot.js';
 import {
   createDerivedProjectionRegistry,
   applyEventToDerivedProjections,

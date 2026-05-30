@@ -28,7 +28,11 @@ import { compileDsl } from '../../src/dsl/parser.js';
 import { nextUuidv7 } from '../../src/ids/uuidv7.js';
 import type { BootedSystem } from '../../src/engine/boot.js';
 import type { Command } from '../../src/types.js';
-import request from 'supertest';
+import {
+  withPersistentServer,
+  type PersistentAgent,
+} from '../_support/persistentAgent.js';
+import { registerFileTeardown } from '../_support/testTeardown.js';
 
 // ---------------------------------------------------------------------------
 // Minimal OpenAPI fixture: PATCH /precond-widgets/{id} with If-Match required
@@ -251,20 +255,26 @@ describe('REQ-29 — missing-precondition (UoW layer)', () => {
 
 describe('REQ-29 — missing-precondition (HTTP gateway layer)', () => {
   let sys: BootedSystem;
+  let agent: PersistentAgent;
   const SEED_ID = 'pw-seed-001';
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     sys = await buildSystem();
+    const app = createGateway(sys);
+    const persistent = await withPersistentServer(app);
+    agent = persistent.agent;
+    registerFileTeardown(persistent.close);
   });
 
-  afterEach(() => {
+  beforeEach(() => {
+    resetSystem(sys);
+  });
+
+  afterAll(() => {
     resetSystem(sys);
   });
 
   it('PATCH without If-Match returns 428 MISSING_PRECONDITION when requiresPrecondition is wired', async () => {
-    const app = createGateway(sys);
-    const agent = request(app);
-
     const res = await agent
       .patch(`/precond-widgets/${SEED_ID}`)
       .send({ value: 'no-precondition' });
@@ -274,9 +284,6 @@ describe('REQ-29 — missing-precondition (HTTP gateway layer)', () => {
   });
 
   it('PATCH with matching If-Match (sequenceVersion) succeeds', async () => {
-    const app = createGateway(sys);
-    const agent = request(app);
-
     const currentSeq = sys.events.currentSequenceVersion(SEED_ID);
 
     const res = await agent
@@ -289,9 +296,6 @@ describe('REQ-29 — missing-precondition (HTTP gateway layer)', () => {
   });
 
   it('PATCH with stale If-Match returns 412 CONCURRENCY_CONFLICT', async () => {
-    const app = createGateway(sys);
-    const agent = request(app);
-
     const staleSeq = sys.events.currentSequenceVersion(SEED_ID);
 
     // Advance the sequence first

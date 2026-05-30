@@ -9,8 +9,6 @@
  *    generic Error fallback (500 INTERNAL)
  */
 
-import request from 'supertest';
-import type { Express } from 'express';
 import { bootSystem } from '../../src/engine/boot.js';
 import { createGateway } from '../../src/http/gateway.js';
 import { loadOpenApi } from '../../src/contract/loader.js';
@@ -19,6 +17,11 @@ import { loadFixture } from '../fixtures/index.js';
 import { createTestApp, type TestApp } from '../acceptance/_helpers/test-app.js';
 import { nextUuidv7 } from '../../src/ids/uuidv7.js';
 import { resetSystem } from '../../src/engine/reset.js';
+import {
+  withPersistentServer,
+  type PersistentAgent,
+} from '../_support/persistentAgent.js';
+import { registerFileTeardown } from '../_support/testTeardown.js';
 
 // ── Minimal OpenAPI for the conflict/loop test fixture ────────────────────────
 
@@ -362,6 +365,17 @@ describe('gateway — error mapping integration', () => {
     app.reset();
   });
 
+  // Wrap an inline-built gateway app in ONE persistent keep-alive server for the
+  // duration of this test file (closed in afterAll via the file teardown
+  // registry), instead of supertest's per-call ephemeral app.listen(0).
+  async function persistentAgentFor(
+    expressApp: ReturnType<typeof createGateway>,
+  ): Promise<PersistentAgent> {
+    const persistent = await withPersistentServer(expressApp);
+    registerFileTeardown(persistent.close);
+    return persistent.agent;
+  }
+
   // ── Lines 222-223: InfiniteLoopError → 508 ───────────────────────────────────
 
   it('InfiniteLoopError from circular dispatch maps to 508', async () => {
@@ -374,10 +388,11 @@ describe('gateway — error mapping integration', () => {
       ]),
     });
     const expressApp = createGateway(sys);
+    const inlineAgent = await persistentAgentFor(expressApp);
 
     // POST /pings → creates PingBoundary → dispatches mutation to PongBoundary
     // PongBoundary mutation dispatches mutation back to PingBoundary → infinite loop
-    const res = await request(expressApp)
+    const res = await inlineAgent
       .post('/pings')
       .send({})
       .expect(508);
@@ -398,11 +413,12 @@ describe('gateway — error mapping integration', () => {
       ]),
     });
     const expressApp = createGateway(sys);
+    const inlineAgent = await persistentAgentFor(expressApp);
 
     const widgetId = nextUuidv7();
 
     // First creation → 201 (POST with identity.creation set + path {id} → creation intent)
-    const firstRes = await request(expressApp)
+    const firstRes = await inlineAgent
       .post(`/widgets/${widgetId}`)
       .send({ id: widgetId, label: 'First' });
 
@@ -413,7 +429,7 @@ describe('gateway — error mapping integration', () => {
     }
 
     // Second creation with same ID → 409 EntityConflictError
-    const res = await request(expressApp)
+    const res = await inlineAgent
       .post(`/widgets/${widgetId}`)
       .send({ id: widgetId, label: 'Duplicate' })
       .expect(409);
@@ -434,11 +450,12 @@ describe('gateway — error mapping integration', () => {
       ]),
     });
     const expressApp = createGateway(sys);
+    const inlineAgent = await persistentAgentFor(expressApp);
 
     // PATCH /items/seeded-item — Item boundary has no behaviors and fallback_override: false
     // The entity 'seeded-item' exists (from initialization), so mutation intent.
     // No matching behavior → UnhandledOperationError → 422
-    const res = await request(expressApp)
+    const res = await inlineAgent
       .patch('/items/seeded-item')
       .send({ value: 42 })
       .expect(422);
@@ -579,8 +596,9 @@ reducers:
       compiledDsl: await compileDsl([{ name: 'bad', yaml: badCelDsl }]),
     });
     const expressApp = createGateway(sys);
+    const inlineAgent = await persistentAgentFor(expressApp);
 
-    const res = await request(expressApp)
+    const res = await inlineAgent
       .post('/badcels')
       .send({ label: 'test' });
 
@@ -608,9 +626,10 @@ reducers:
     const fixture = await loadFixture();
     const sys = await bootSystem(fixture);
     const expressApp = createGateway(sys);
+    const inlineAgent = await persistentAgentFor(expressApp);
 
     // Malformed JSON body → express.json throws SyntaxError → forwarded to Express error middleware
-    const res = await request(expressApp)
+    const res = await inlineAgent
       .post('/leads')
       .set('Content-Type', 'application/json')
       .send('{ malformed json here }');
@@ -746,9 +765,10 @@ reducers: []
     sys.graph.set('test-id', { id: 'test-id', value: 'initial' });
 
     const expressApp = createGateway(sys);
+    const inlineAgent = await persistentAgentFor(expressApp);
 
     // PATCH without If-Match → 428 (requiresPrecondition is true for this op)
-    const res = await request(expressApp)
+    const res = await inlineAgent
       .patch('/precond/test-id')
       .send({})
       .expect(428);
