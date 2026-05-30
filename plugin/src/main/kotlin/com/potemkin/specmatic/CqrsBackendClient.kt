@@ -86,6 +86,21 @@ open class CqrsBackendClient(
                     return null
                 }
 
+                // A ForwardedResponse envelope always carries a real HTTP status. A status of
+                // 0 means the engine returned a non-envelope body (e.g. a bare {error,message}
+                // rejection) that Jackson coerced into the default Int. Emitting that verbatim
+                // would surface an invalid "status 0" to Specmatic, so fall through to null and
+                // let the resilient forwarder report a definitive failure instead.
+                if (forwardedResp.status == 0) {
+                    log.warn(
+                        "Node engine returned non-envelope body for path '{}' (HTTP {}): {}; falling through",
+                        httpRequest.path,
+                        statusCode,
+                        responseBodyString.take(200),
+                    )
+                    return null
+                }
+
                 buildHttpStubResponse(forwardedResp)
             }
         } catch (e: IOException) {
@@ -124,22 +139,60 @@ open class CqrsBackendClient(
             path = req.path ?: "/",
             headers = req.headers,
             body = bodyValue,
-            queryParams = req.queryParams.asMap(),
+            query = req.queryParams.asMap(),
         )
     }
 
     private fun buildHttpStubResponse(resp: ForwardedResponse): HttpStubResponse {
-        val bodyString = when (val b = resp.body) {
-            null -> ""
-            is String -> b
-            else -> mapper.writeValueAsString(b)
-        }
+        val bodyString = serialiseBodyWithPatches(resp)
         val httpResponse = HttpResponse(
             status = resp.status,
             headers = resp.headers,
             body = io.specmatic.core.value.StringValue(bodyString),
         )
         return HttpStubResponse(response = httpResponse)
+    }
+
+    /**
+     * Serialise the forwarded body, applying the engine's out-of-band `_patches` envelope
+     * (HATEOAS/mask/etc.) so the served body carries the mutated shape.
+     *
+     * Specmatic 2.46.2 runs [io.specmatic.stub.ResponseInterceptor]s ONLY on responses it
+     * generates from its own stub matching — NOT on responses returned by a registered
+     * [io.specmatic.stub.RequestHandler] (verified by decompiling
+     * io.specmatic.stub.HttpStub$environment$1$1$1: after `RequestHandler.handleRequest`
+     * returns non-null, the response is written via `respondToKtorHttpResponse` and the
+     * `applyResponseInterceptors` branch is never entered). Since the forwarded response is
+     * produced by [StatefulRequestHandler], the plugin must apply the patches here, using the
+     * same [PatchApplier] the interceptor uses — keeping the served body and the
+     * [PotemkinResponseInterceptor] replay path (for Specmatic-served bodies) op-for-op equal.
+     *
+     * Patches only apply to an object body. A non-object body (string/array/null) is emitted
+     * as-is. A malformed/failing patch set leaves the base body unchanged (the engine already
+     * validated the base; never disrupt the response).
+     */
+    private fun serialiseBodyWithPatches(resp: ForwardedResponse): String {
+        val body = resp.body
+        val patchesRaw = resp.patches
+        if (!patchesRaw.isNullOrEmpty() && body is Map<*, *>) {
+            val patched = try {
+                val patches = Patch.fromList(patchesRaw)
+                @Suppress("UNCHECKED_CAST")
+                // Response-mutation patches are produced by the engine for autoVivify
+                // application (src/http/responseMutations.ts): a `merge /_links` on a body
+                // without `_links` must create it. Apply with the same semantics for parity.
+                PatchApplier.apply(body as Map<String, Any?>, patches, autoVivify = true)
+            } catch (e: Exception) {
+                log.warn("Failed to apply response _patches; emitting base body: {}", e.message)
+                body
+            }
+            return mapper.writeValueAsString(patched)
+        }
+        return when (body) {
+            null -> ""
+            is String -> body
+            else -> mapper.writeValueAsString(body)
+        }
     }
 
     companion object {

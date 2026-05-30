@@ -234,6 +234,88 @@ class RoutesDiscoveryClientTest {
         assertTrue(client.routes().contains("/customers/{id}"))
     }
 
+    // ---- cold-cache blocking fetch ------------------------------------------------------
+
+    @Test
+    fun `cold cache - first isStateful blocks and synchronously populates routes`() {
+        // Reproduces the e2e race: the engine is NOT up when the client is constructed
+        // (construction fetch returns 500 → cold cache), but IS up by the first owned-path
+        // request. The blocking cold fetch must resolve synchronously on that first call —
+        // no background-refresh grace period.
+        server.enqueue(MockResponse().setResponseCode(500))                  // construction → fails
+        server.enqueue(routesResponse("/leads", "/leads/{id}"))              // first isStateful → succeeds
+
+        val client = RoutesDiscoveryClient(
+            backendUrl = baseUrl(),
+            refreshOnFailureMs = 50,
+            defaultTtlSeconds = 3600,
+            httpClient = OkHttpClient.Builder()
+                .connectTimeout(2, TimeUnit.SECONDS)
+                .readTimeout(2, TimeUnit.SECONDS)
+                .build(),
+        )
+
+        // Construction failed → cache empty.
+        assertTrue(client.routes().isEmpty())
+
+        // First owned-path request resolves synchronously via the blocking cold fetch.
+        assertTrue(client.isStateful("/leads"))
+        assertTrue(client.isStateful("/leads/42"))
+        assertEquals(2, server.requestCount, "construction fetch + one blocking cold fetch")
+    }
+
+    @Test
+    fun `cold cache - unreachable engine returns false without throwing`() {
+        // Cold cache + unreachable engine: the bounded blocking fetch fails, isStateful
+        // returns false, and the client never throws (Specmatic-never-disrupted contract).
+        val client = RoutesDiscoveryClient(
+            backendUrl = "http://127.0.0.1:1",
+            refreshOnFailureMs = 50,
+            defaultTtlSeconds = 3600,
+            httpClient = OkHttpClient.Builder()
+                .connectTimeout(300, TimeUnit.MILLISECONDS)
+                .readTimeout(300, TimeUnit.MILLISECONDS)
+                .build(),
+        )
+        assertFalse(client.isStateful("/leads"))
+        assertTrue(client.routes().isEmpty())
+    }
+
+    @Test
+    fun `cold cache - concurrent first requests fan into a single blocking fetch`() {
+        server.enqueue(MockResponse().setResponseCode(500))                  // construction → fails
+        server.enqueue(routesResponse("/leads", "/leads/{id}"))              // one shared cold fetch
+
+        val client = RoutesDiscoveryClient(
+            backendUrl = baseUrl(),
+            refreshOnFailureMs = 50,
+            defaultTtlSeconds = 3600,
+            httpClient = OkHttpClient.Builder()
+                .connectTimeout(2, TimeUnit.SECONDS)
+                .readTimeout(2, TimeUnit.SECONDS)
+                .build(),
+        )
+
+        val threadCount = 16
+        val start = CountDownLatch(1)
+        val done = CountDownLatch(threadCount)
+        val executor = Executors.newFixedThreadPool(threadCount)
+        repeat(threadCount) {
+            executor.submit {
+                start.await()
+                client.isStateful("/leads")
+                done.countDown()
+            }
+        }
+        start.countDown()
+        assertTrue(done.await(10, TimeUnit.SECONDS), "all cold-fetch threads complete")
+        executor.shutdown()
+
+        // construction (500) + exactly one cold fetch shared across the racing threads.
+        assertEquals(2, server.requestCount, "concurrent cold requests must fan into one fetch")
+        assertTrue(client.isStateful("/leads"))
+    }
+
     // ---- thread safety ------------------------------------------------------------------
 
     @Test

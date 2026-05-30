@@ -10,7 +10,10 @@ data class ForwardedRequest(
     val path: String,
     val headers: Map<String, String> = emptyMap(),
     val body: Any? = null,
-    val queryParams: Map<String, String> = emptyMap(),
+    // The Node engine's POST /_engine/forward contract names this field `query`
+    // (src/forwarding/types.ts ForwardedRequest). Serialise to that name so the
+    // engine accepts the request instead of rejecting it as malformed.
+    @JsonProperty("query") val query: Map<String, String> = emptyMap(),
 )
 
 /**
@@ -20,6 +23,10 @@ data class ForwardedResponse(
     val status: Int,
     val headers: Map<String, String> = emptyMap(),
     val body: Any? = null,
+    // Response-mutation patches (HATEOAS/mask/etc.) the engine reports out-of-band
+    // (src/forwarding/types.ts ForwardedResponse._patches). The plugin re-embeds
+    // them into the served body so PotemkinResponseInterceptor can re-apply them.
+    @JsonProperty("_patches") val patches: List<Any?>? = null,
 )
 
 // ---- Fixture models (GET /_engine/fixtures) -----------------------------------------------

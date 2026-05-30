@@ -40,6 +40,20 @@ open class RoutesDiscoveryClient(
     private val mapper = jacksonObjectMapper()
     private val lock = ReentrantReadWriteLock()
     private val backgroundRefreshPending = AtomicBoolean(false)
+    /**
+     * Serialises the bounded blocking cold-cache fetch in [isStateful] so that, while the
+     * engine is still coming up, concurrent requests don't each spend the OkHttp timeout
+     * hammering the same endpoint. Held only around the blocking network call, never while
+     * reading the warm cache under [lock].
+     */
+    private val coldFetchLock = Any()
+    /**
+     * True once a fetch has successfully populated the cache with at least one path. Until
+     * then the cache is "cold" and [isStateful] performs a bounded BLOCKING fetch so the
+     * first owned-path request after the engine is up forwards correctly. Once warm, reads
+     * stay non-blocking with background refresh.
+     */
+    private val everPopulated = AtomicBoolean(false)
     private val executor = Executors.newSingleThreadExecutor { r ->
         Thread(r, "potemkin-discovery-refresh").apply { isDaemon = true }
     }
@@ -58,6 +72,7 @@ open class RoutesDiscoveryClient(
         val fetched = doFetch(currentEtag = null)
         if (fetched != null) {
             lock.write { cache = fetched }
+            if (fetched.paths.isNotEmpty()) everPopulated.set(true)
             log.info(
                 "RoutesDiscoveryClient: initial fetch succeeded — {} route(s) discovered",
                 fetched.paths.size,
@@ -77,10 +92,20 @@ open class RoutesDiscoveryClient(
 
     /**
      * Returns true if [path] is a stateful route owned by the Node engine.
-     * When the cache has expired, schedules a background refresh (non-blocking).
+     *
+     * Cold cache (never successfully populated): performs a bounded BLOCKING fetch — capped
+     * by the OkHttp connect/read timeout — before answering. This guarantees the first
+     * owned-path request after the engine becomes reachable forwards correctly, instead of
+     * falling through to Specmatic while an async refresh races to warm the cache.
+     *
+     * Warm cache: the read is non-blocking; a stale cache schedules a background refresh.
      */
     open fun isStateful(path: String): Boolean {
-        triggerRefreshIfStale()
+        if (!everPopulated.get()) {
+            blockingColdFetchIfStale()
+        } else {
+            triggerRefreshIfStale()
+        }
         return lock.read { cache.matcher.matches(path) }
     }
 
@@ -95,10 +120,49 @@ open class RoutesDiscoveryClient(
         val etag = lock.read { cache.etag }
         val fetched = doFetch(currentEtag = etag) ?: return false
         lock.write { cache = fetched }
+        if (fetched.paths.isNotEmpty()) everPopulated.set(true)
         return true
     }
 
     // ---- private helpers -----------------------------------------------------------------
+
+    /**
+     * Cold-cache path: synchronously fetch routes (bounded by the OkHttp timeout) if the cache
+     * is stale and has never been populated. Serialised via [coldFetchLock] so concurrent
+     * first-requests fan into one network call; latecomers re-check [everPopulated] after
+     * acquiring the lock and skip the fetch once a peer has warmed the cache.
+     *
+     * Never throws — [doFetch] swallows all errors and returns null, preserving the
+     * "never disrupt Specmatic" contract. On failure the cache stays empty and the next
+     * request retries.
+     */
+    private fun blockingColdFetchIfStale() {
+        val stale = lock.read { Instant.now().isAfter(cache.expiresAt) }
+        if (!stale) return
+        synchronized(coldFetchLock) {
+            // A peer may have warmed the cache while we waited for the lock.
+            if (everPopulated.get()) return
+            if (lock.read { !Instant.now().isAfter(cache.expiresAt) }) return
+            val etag = lock.read { cache.etag }
+            val fetched = doFetch(currentEtag = etag)
+            if (fetched != null) {
+                lock.write { cache = fetched }
+                if (fetched.paths.isNotEmpty()) {
+                    everPopulated.set(true)
+                    log.info(
+                        "RoutesDiscoveryClient: cold-cache blocking fetch succeeded — {} route(s) discovered",
+                        fetched.paths.size,
+                    )
+                }
+            } else {
+                // Back off briefly so a flood of cold requests doesn't each pay the timeout
+                // while the engine is still unreachable. The next request after the back-off
+                // re-attempts the blocking fetch.
+                val backOffExpiry = Instant.now().plusMillis(refreshOnFailureMs)
+                lock.write { cache = cache.copy(expiresAt = backOffExpiry) }
+            }
+        }
+    }
 
     private fun triggerRefreshIfStale() {
         val stale = lock.read { Instant.now().isAfter(cache.expiresAt) }
@@ -111,6 +175,7 @@ open class RoutesDiscoveryClient(
                     val fetched = doFetch(currentEtag = etag)
                     if (fetched != null) {
                         lock.write { cache = fetched }
+                        if (fetched.paths.isNotEmpty()) everPopulated.set(true)
                         log.debug(
                             "RoutesDiscoveryClient: background refresh succeeded — {} route(s)",
                             fetched.paths.size,
