@@ -19,20 +19,29 @@ package com.potemkin.specmatic
  *  - `upsert` matches an array element by `key` field equality, replacing or appending.
  *  - Atomic: patches apply to a deep clone; the first failure throws
  *    [PatchApplyException] and the original input is left untouched.
+ *  - `autoVivify` (opt-in, mirrors the TS `{ autoVivify: true }` reducer/response-mutation
+ *    mode): missing intermediate containers are created and ops targeting a missing slot
+ *    upsert instead of rejecting (`replace` creates, `remove` of a missing key is a no-op,
+ *    `merge`/`append`/`prepend`/`upsert`/`increment` vivify a fresh target).
  */
 object PatchApplier {
 
     /**
      * Returns a fresh value derived from `state + patches`; never mutates [state].
      * Throws [PatchApplyException] on the first failed op, discarding the candidate.
+     *
+     * When [autoVivify] is set (the response-mutation / reducer source, which mirrors the TS
+     * `applyPatches(..., { autoVivify: true })`), missing intermediate containers are created
+     * and ops that target a missing slot upsert rather than reject — e.g. `merge /_links` on a
+     * body without `_links` creates a fresh object. Default (false) is strict RFC-6902-style.
      */
-    fun apply(state: Any?, patches: List<Patch>): Any? {
+    fun apply(state: Any?, patches: List<Patch>, autoVivify: Boolean = false): Any? {
         val candidate = cloneJson(state)
         // The root is mutable only when it is a container; ops are forbidden on
         // the root pointer '/' (see navigate), so a top-level holder is enough.
         val holder = Holder(candidate)
         for ((i, p) in patches.withIndex()) {
-            applyOne(holder, p, i)
+            applyOne(holder, p, i, autoVivify)
         }
         return holder.value
     }
@@ -76,8 +85,14 @@ object PatchApplier {
 
     private class NavResult(val parent: Any, val key: Any, val exists: Boolean)
 
+    /** A next-segment that parses as a non-negative integer implies an array container. */
+    private fun segmentIsArrayIndex(seg: String): Boolean {
+        val idx = seg.toIntOrNull()
+        return seg == "-" || (idx != null && idx >= 0)
+    }
+
     @Suppress("UNCHECKED_CAST")
-    private fun navigate(root: Holder, segments: List<String>, op: String, index: Int): NavResult {
+    private fun navigate(root: Holder, segments: List<String>, op: String, index: Int, autoVivify: Boolean): NavResult {
         if (segments.isEmpty()) {
             throw PatchApplyException("Operation '$op' cannot target the root '/'", index, "/", op)
         }
@@ -85,22 +100,35 @@ object PatchApplier {
         for (i in 0 until segments.size - 1) {
             val seg = segments[i]
             when (cur) {
-                is List<*> -> {
+                is MutableList<*> -> {
+                    val list = cur as MutableList<Any?>
                     val idx = seg.toIntOrNull()
-                    if (idx == null || idx < 0 || idx >= cur.size) {
-                        throw PatchApplyException(
-                            "Array index out of range at segment '$seg'", index, joinPointer(segments), op,
-                        )
+                    if (idx == null || idx < 0 || idx >= list.size) {
+                        if (autoVivify && idx != null && idx >= 0) {
+                            val created: Any? = if (segmentIsArrayIndex(segments[i + 1])) mutableListOf<Any?>() else LinkedHashMap<String, Any?>()
+                            // Mirror the TS `cur[idx] = …` write, which sets at the index (extending the list as needed).
+                            while (list.size <= idx) list.add(null)
+                            list[idx] = created
+                        } else {
+                            throw PatchApplyException(
+                                "Array index out of range at segment '$seg'", index, joinPointer(segments), op,
+                            )
+                        }
                     }
-                    cur = cur[idx]
+                    cur = list[idx!!]
                 }
-                is Map<*, *> -> {
-                    if (!cur.containsKey(seg)) {
-                        throw PatchApplyException(
-                            "Path traverses missing object key '$seg'", index, joinPointer(segments), op,
-                        )
+                is MutableMap<*, *> -> {
+                    val map = cur as MutableMap<String, Any?>
+                    if (!map.containsKey(seg)) {
+                        if (autoVivify) {
+                            map[seg] = if (segmentIsArrayIndex(segments[i + 1])) mutableListOf<Any?>() else LinkedHashMap<String, Any?>()
+                        } else {
+                            throw PatchApplyException(
+                                "Path traverses missing object key '$seg'", index, joinPointer(segments), op,
+                            )
+                        }
                     }
-                    cur = (cur as Map<String, Any?>)[seg]
+                    cur = map[seg]
                 }
                 else -> throw PatchApplyException(
                     "Path traverses non-object/array at segment '$seg' (depth $i)", index, joinPointer(segments), op,
@@ -137,7 +165,13 @@ object PatchApplier {
     @Suppress("UNCHECKED_CAST")
     private fun setAt(nav: NavResult, value: Any?) {
         when (val parent = nav.parent) {
-            is MutableList<*> -> (parent as MutableList<Any?>)[nav.key as Int] = value
+            is MutableList<*> -> {
+                val list = parent as MutableList<Any?>
+                val idx = nav.key as Int
+                // Mirror the TS `parent[idx] = value`, which extends the array when idx === length.
+                while (list.size <= idx) list.add(null)
+                list[idx] = value
+            }
             is MutableMap<*, *> -> (parent as MutableMap<String, Any?>)[nav.key as String] = value
             else -> throw IllegalStateException("container is not mutable")
         }
@@ -164,15 +198,16 @@ object PatchApplier {
     // ---- op dispatch --------------------------------------------------------
 
     @Suppress("UNCHECKED_CAST")
-    private fun applyOne(root: Holder, patch: Patch, index: Int) {
+    private fun applyOne(root: Holder, patch: Patch, index: Int, autoVivify: Boolean) {
         when (patch) {
             is Patch.Add -> {
                 val segments = parsePointer(patch.path)
                 if (segments.isEmpty()) {
                     throw PatchApplyException("'add' on root '/' is not supported", index, "/", patch.op)
                 }
-                val nav = navigate(root, segments, patch.op, index)
-                if (nav.parent is List<*>) insertAt(nav, cloneJson(patch.value))
+                val nav = navigate(root, segments, patch.op, index, autoVivify)
+                // strict `add` on an existing array slot inserts; otherwise set/extend.
+                if (nav.parent is List<*> && nav.exists) insertAt(nav, cloneJson(patch.value))
                 else setAt(nav, cloneJson(patch.value))
             }
             is Patch.Replace -> {
@@ -180,8 +215,9 @@ object PatchApplier {
                 if (segments.isEmpty()) {
                     throw PatchApplyException("'replace' on root '/' is not supported", index, "/", patch.op)
                 }
-                val nav = navigate(root, segments, patch.op, index)
-                if (!nav.exists) {
+                val nav = navigate(root, segments, patch.op, index, autoVivify)
+                // autoVivify `replace` upserts — a missing target is created, not rejected.
+                if (!nav.exists && !autoVivify) {
                     throw PatchApplyException(
                         "'replace' target does not exist: ${patch.path}", index, patch.path, patch.op,
                     )
@@ -189,45 +225,51 @@ object PatchApplier {
                 setAt(nav, cloneJson(patch.value))
             }
             is Patch.Remove -> {
-                val nav = navigate(root, parsePointer(patch.path), patch.op, index)
+                val nav = navigate(root, parsePointer(patch.path), patch.op, index, autoVivify)
                 if (!nav.exists) {
+                    // Removing a non-existent target is a no-op under autoVivify, hard error otherwise.
+                    if (autoVivify) return
                     throw PatchApplyException(
                         "'remove' target does not exist: ${patch.path}", index, patch.path, patch.op,
                     )
                 }
                 deleteAt(nav)
             }
-            is Patch.Move -> applyMoveCopy(root, patch.from, patch.path, "move", index)
-            is Patch.Copy -> applyMoveCopy(root, patch.from, patch.path, "copy", index)
-            is Patch.Append -> applyAppendPrepend(root, patch.path, patch.value, prepend = false, index)
-            is Patch.Prepend -> applyAppendPrepend(root, patch.path, patch.value, prepend = true, index)
+            is Patch.Move -> applyMoveCopy(root, patch.from, patch.path, "move", index, autoVivify)
+            is Patch.Copy -> applyMoveCopy(root, patch.from, patch.path, "copy", index, autoVivify)
+            is Patch.Append -> applyAppendPrepend(root, patch.path, patch.value, prepend = false, index, autoVivify)
+            is Patch.Prepend -> applyAppendPrepend(root, patch.path, patch.value, prepend = true, index, autoVivify)
             is Patch.Increment -> {
-                val nav = navigate(root, parsePointer(patch.path), patch.op, index)
-                if (!nav.exists) {
-                    throw PatchApplyException(
-                        "'increment' target does not exist: ${patch.path}", index, patch.path, patch.op,
-                    )
-                }
-                val current = readAt(nav)
+                val nav = navigate(root, parsePointer(patch.path), patch.op, index, autoVivify)
+                val current = if (nav.exists) readAt(nav) else null
                 if (current !is Number || current is Boolean) {
-                    throw PatchApplyException(
-                        "'increment' target is not numeric: ${patch.path}", index, patch.path, patch.op,
-                    )
+                    if (!autoVivify) {
+                        throw PatchApplyException(
+                            if (nav.exists) "'increment' target is not numeric: ${patch.path}"
+                            else "'increment' target does not exist: ${patch.path}",
+                            index, patch.path, patch.op,
+                        )
+                    }
+                    // autoVivify: a missing or non-numeric target starts at 0.
+                    setAt(nav, patch.by)
+                    return
                 }
                 setAt(nav, addNumbers(current, patch.by))
             }
             is Patch.Merge -> {
-                val nav = navigate(root, parsePointer(patch.path), patch.op, index)
-                if (!nav.exists) {
-                    throw PatchApplyException(
-                        "'merge' target does not exist: ${patch.path}", index, patch.path, patch.op,
-                    )
-                }
-                val target = readAt(nav)
+                val nav = navigate(root, parsePointer(patch.path), patch.op, index, autoVivify)
+                var target = if (nav.exists) readAt(nav) else null
                 if (target !is MutableMap<*, *>) {
-                    throw PatchApplyException(
-                        "'merge' target is not an object: ${patch.path}", index, patch.path, patch.op,
-                    )
+                    if (!autoVivify) {
+                        throw PatchApplyException(
+                            if (nav.exists) "'merge' target is not an object: ${patch.path}"
+                            else "'merge' target does not exist: ${patch.path}",
+                            index, patch.path, patch.op,
+                        )
+                    }
+                    // autoVivify: a missing or non-object target becomes a fresh object.
+                    target = LinkedHashMap<String, Any?>()
+                    setAt(nav, target)
                 }
                 val obj = target as MutableMap<String, Any?>
                 val update = cloneJson(patch.value) as Map<String, Any?>
@@ -235,17 +277,19 @@ object PatchApplier {
                 else for ((k, v) in update) obj[k] = v
             }
             is Patch.Upsert -> {
-                val nav = navigate(root, parsePointer(patch.path), patch.op, index)
-                if (!nav.exists) {
-                    throw PatchApplyException(
-                        "'upsert' target does not exist: ${patch.path}", index, patch.path, patch.op,
-                    )
-                }
-                val target = readAt(nav)
+                val nav = navigate(root, parsePointer(patch.path), patch.op, index, autoVivify)
+                var target = if (nav.exists) readAt(nav) else null
                 if (target !is MutableList<*>) {
-                    throw PatchApplyException(
-                        "'upsert' target is not an array: ${patch.path}", index, patch.path, patch.op,
-                    )
+                    if (!autoVivify) {
+                        throw PatchApplyException(
+                            if (nav.exists) "'upsert' target is not an array: ${patch.path}"
+                            else "'upsert' target does not exist: ${patch.path}",
+                            index, patch.path, patch.op,
+                        )
+                    }
+                    // autoVivify: a missing or non-array target becomes a fresh array.
+                    target = mutableListOf<Any?>()
+                    setAt(nav, target)
                 }
                 val arr = target as MutableList<Any?>
                 val incoming = cloneJson(patch.value) as Map<String, Any?>
@@ -264,10 +308,10 @@ object PatchApplier {
     }
 
     @Suppress("UNCHECKED_CAST")
-    private fun applyMoveCopy(root: Holder, from: String, path: String, op: String, index: Int) {
+    private fun applyMoveCopy(root: Holder, from: String, path: String, op: String, index: Int, autoVivify: Boolean) {
         val fromSegs = parsePointer(from)
         val toSegs = parsePointer(path)
-        val fromNav = navigate(root, fromSegs, op, index)
+        val fromNav = navigate(root, fromSegs, op, index, autoVivify)
         if (!fromNav.exists) {
             throw PatchApplyException("'$op' source does not exist: $from", index, from, op)
         }
@@ -275,20 +319,25 @@ object PatchApplier {
         val cloned = cloneJson(value)
         if (op == "move") deleteAt(fromNav)
         // Re-navigate the destination AFTER any move-delete, mirroring the TS order.
-        val toNav = navigate(root, toSegs, op, index)
-        if (toNav.parent is List<*>) insertAt(toNav, cloned) else setAt(toNav, cloned)
+        val toNav = navigate(root, toSegs, op, index, autoVivify)
+        if (toNav.parent is List<*> && toNav.exists) insertAt(toNav, cloned) else setAt(toNav, cloned)
     }
 
     @Suppress("UNCHECKED_CAST")
-    private fun applyAppendPrepend(root: Holder, path: String, value: Any?, prepend: Boolean, index: Int) {
+    private fun applyAppendPrepend(root: Holder, path: String, value: Any?, prepend: Boolean, index: Int, autoVivify: Boolean) {
         val op = if (prepend) "prepend" else "append"
-        val nav = navigate(root, parsePointer(path), op, index)
-        if (!nav.exists) {
-            throw PatchApplyException("'$op' target does not exist: $path", index, path, op)
-        }
-        val target = readAt(nav)
+        val nav = navigate(root, parsePointer(path), op, index, autoVivify)
+        var target = if (nav.exists) readAt(nav) else null
         if (target !is MutableList<*>) {
-            throw PatchApplyException("'$op' target is not an array: $path", index, path, op)
+            if (!autoVivify) {
+                throw PatchApplyException(
+                    if (nav.exists) "'$op' target is not an array: $path" else "'$op' target does not exist: $path",
+                    index, path, op,
+                )
+            }
+            // autoVivify: a missing or non-array target becomes a fresh array.
+            target = mutableListOf<Any?>()
+            setAt(nav, target)
         }
         val arr = target as MutableList<Any?>
         val cloned = cloneJson(value)

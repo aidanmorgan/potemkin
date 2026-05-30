@@ -243,4 +243,72 @@ class PatchApplierTest {
     fun `Patch from rejects unknown op`() {
         assertThrows<IllegalArgumentException> { Patch.from(mapOf("op" to "frobnicate", "path" to "/x")) }
     }
+
+    // ---- autoVivify (response-mutation / reducer mode) ----------------------
+
+    @Test
+    fun `autoVivify merge creates a missing object target (HATEOAS _links)`() {
+        // Mirrors the governance response mutation: merge /_links onto a body
+        // that has no _links yet. Strict mode would reject; autoVivify creates it.
+        val body = obj("id" to "d1", "title" to "Doc")
+        val patches = listOf(
+            Patch.Merge("/_links", mapOf("self" to mapOf("href" to "/documents")), deep = false),
+        )
+        @Suppress("UNCHECKED_CAST")
+        val result = PatchApplier.apply(body, patches, autoVivify = true) as Map<String, Any?>
+        @Suppress("UNCHECKED_CAST")
+        val links = result["_links"] as Map<String, Any?>
+        @Suppress("UNCHECKED_CAST")
+        assertEquals("/documents", (links["self"] as Map<String, Any?>)["href"])
+    }
+
+    @Test
+    fun `autoVivify merge on a missing target throws in strict mode`() {
+        val body = obj("id" to "d1")
+        val patches = listOf(Patch.Merge("/_links", mapOf("self" to "x"), deep = false))
+        assertThrows<PatchApplyException> { PatchApplier.apply(body, patches) }
+    }
+
+    @Test
+    fun `autoVivify remove of a missing key is a no-op`() {
+        val body = obj("id" to "d1")
+        @Suppress("UNCHECKED_CAST")
+        val result = PatchApplier.apply(body, listOf(Patch.Remove("/internalNotes")), autoVivify = true) as Map<String, Any?>
+        assertEquals(mapOf("id" to "d1"), result)
+    }
+
+    @Test
+    fun `autoVivify replace upserts a missing key`() {
+        val body = obj("id" to "d1")
+        @Suppress("UNCHECKED_CAST")
+        val result = PatchApplier.apply(body, listOf(Patch.Replace("/status", "ACTIVE")), autoVivify = true) as Map<String, Any?>
+        assertEquals("ACTIVE", result["status"])
+    }
+
+    @Test
+    fun `autoVivify creates missing intermediate object containers`() {
+        val body = obj("id" to "d1")
+        @Suppress("UNCHECKED_CAST")
+        val result = PatchApplier.apply(body, listOf(Patch.Replace("/a/b/c", 42L)), autoVivify = true) as Map<String, Any?>
+        @Suppress("UNCHECKED_CAST")
+        val a = result["a"] as Map<String, Any?>
+        @Suppress("UNCHECKED_CAST")
+        val b = a["b"] as Map<String, Any?>
+        assertEquals(42L, b["c"])
+    }
+
+    @Test
+    fun `governance response-mutation sequence merge links then mask internalNotes`() {
+        // The exact patch list the engine emits for the Document boundary.
+        val body = obj("id" to "d1", "title" to "Doc", "internalNotes" to "secret", "status" to "DRAFT")
+        val patches = listOf(
+            Patch.Merge("/_links", mapOf("self" to mapOf("href" to "/documents")), deep = false),
+            Patch.Remove("/internalNotes"),
+        )
+        @Suppress("UNCHECKED_CAST")
+        val result = PatchApplier.apply(body, patches, autoVivify = true) as Map<String, Any?>
+        assertTrue(result.containsKey("_links"))
+        assertTrue(!result.containsKey("internalNotes"))
+        assertEquals("Doc", result["title"])
+    }
 }
