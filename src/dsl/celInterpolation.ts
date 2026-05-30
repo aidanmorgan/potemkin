@@ -7,52 +7,63 @@
 // meant to interpolate it. The boot validator rejects such values with
 // BOOT_ERR_CEL_NEEDS_INTERP so the canonical `${...}` form is enforced.
 //
-// String literals are excluded so a CEL string such as `'event happened'`
-// (a literal that merely contains the substring `event.`) is not flagged.
+// This is driven by the same lexers as the parser: the template lexer splits
+// `${...}` interpolations from literal text, and the CEL lexer recognises
+// quoted-string literals so a string such as `'event happened'` is not flagged.
+// No regex parses structure; the only regex is the lexeme-level identifier
+// classifier inside the CEL lexer.
 
-/** CEL context-object references and `$builtin` tokens that must be interpolated. */
-const BARE_REFERENCE = /(?:\b(?:state|event|command)\.)|(?:\$[A-Za-z_]\w*)/;
+import { lexTemplate } from '../cel/grammar/templateLexer.js';
+import { lex, type Token } from '../cel/grammar/lexer.js';
+
+/** Context-object names whose `name.` reference must be interpolated. */
+const CONTEXT_OBJECTS = new Set(['state', 'event', 'command']);
 
 /**
- * Replace every `${...}` interpolation span and every quoted string literal in
- * `value` with spaces of equal length, so only the un-interpolated, non-literal
- * text remains for reference scanning. Length is preserved so any reported
- * index still lines up with the original string.
+ * Scan one literal-text chunk (outside any `${...}`) for the first bare CEL
+ * reference, skipping quoted-string literals (which the CEL lexer recognises as
+ * STRING tokens). Returns the reference text (`state.`, `event.`, `command.`,
+ * or a `$builtin` token) or null.
+ *
+ * If the chunk is not lexable as CEL (arbitrary literal text can contain
+ * characters CEL rejects), the unlexable tail cannot contain a *valid* CEL
+ * reference, so we simply report whatever the lexer found before stopping.
  */
-function blankInterpolationsAndLiterals(value: string): string {
-  let out = '';
-  let i = 0;
-  while (i < value.length) {
-    const ch = value[i];
-    // `${ ... }` interpolation span — blank through the closing brace.
-    if (ch === '$' && value[i + 1] === '{') {
-      const end = value.indexOf('}', i + 2);
-      const stop = end === -1 ? value.length : end + 1;
-      out += ' '.repeat(stop - i);
-      i = stop;
-      continue;
-    }
-    // Quoted string literal (single or double) — blank through the close quote,
-    // honouring backslash escapes.
-    if (ch === "'" || ch === '"') {
-      let j = i + 1;
-      while (j < value.length) {
-        if (value[j] === '\\') {
-          j += 2;
-          continue;
-        }
-        if (value[j] === ch) break;
-        j++;
-      }
-      const stop = Math.min(j + 1, value.length);
-      out += ' '.repeat(stop - i);
-      i = stop;
-      continue;
-    }
-    out += ch;
-    i++;
+function firstBareRefInText(text: string): string | null {
+  let tokens: Token[];
+  try {
+    tokens = lex(text);
+  } catch {
+    // Re-lex the longest CEL-lexable prefix so a trailing stray character
+    // (e.g. a '%' in free text) does not mask a real reference before it.
+    tokens = lexLongestPrefix(text);
   }
-  return out;
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i]!;
+    if (t.type === 'IDENT') {
+      const name = String(t.value);
+      // `$builtin`: a `$` followed by a letter or underscore (e.g. `$now`).
+      // A `$` followed by anything else (e.g. `$5`) is not a builtin token.
+      if (/^\$[A-Za-z_]/.test(name)) return name;
+      // `state.` / `event.` / `command.` — a context object followed by `.`.
+      if (CONTEXT_OBJECTS.has(name) && tokens[i + 1]?.type === '.') {
+        return `${name}.`;
+      }
+    }
+  }
+  return null;
+}
+
+/** Lex the longest prefix of `text` that the CEL lexer accepts. */
+function lexLongestPrefix(text: string): Token[] {
+  for (let end = text.length - 1; end >= 0; end--) {
+    try {
+      return lex(text.slice(0, end));
+    } catch {
+      // keep shrinking
+    }
+  }
+  return [];
 }
 
 /**
@@ -62,9 +73,14 @@ function blankInterpolationsAndLiterals(value: string): string {
  * references are all wrapped in `${...}` (or absent).
  */
 export function firstBareCelReference(value: string): string | null {
-  const scanned = blankInterpolationsAndLiterals(value);
-  const m = BARE_REFERENCE.exec(scanned);
-  return m ? m[0] : null;
+  for (const tok of lexTemplate(value)) {
+    // Only literal text outside ${...} is scanned. EXPR parts are interpolated
+    // (the desired form) and ESCAPED ($${...}) parts are literal output, not CEL.
+    if (tok.type !== 'TEXT') continue;
+    const ref = firstBareRefInText(tok.text);
+    if (ref !== null) return ref;
+  }
+  return null;
 }
 
 /** True when `value` carries a CEL reference that is not wrapped in `${...}`. */
