@@ -55,7 +55,7 @@ import {
   IdempotencyConflictError,
 } from '../errors.js';
 import type { Command, Intent } from '../types.js';
-import { extractActor } from '../identity/actorExtractor.js';
+import { resolveActor, JwtValidationError } from '../identity/actorResolver.js';
 import { getIdempotencyStore } from '../idempotency/store.js';
 import { createForwardingHandler, healthHandler, createRoutesHandler, createFixturesHandler } from '../forwarding/handler.js';
 import { parseControlHeaders, applyMask } from './controlHeaders.js';
@@ -241,7 +241,16 @@ async function handleContractRequest(
       controls.validation.skipResponseValidation === true ||
       controls.validation.allowAdditionalProperties === true;
     if (usesAdminGated) {
-      const callerActor = extractActor(req.headers['authorization'] as string | undefined);
+      let callerActor;
+      try {
+        callerActor = resolveActor(req.headers['authorization'] as string | undefined, sys.dsl.auth);
+      } catch (e) {
+        if (e instanceof JwtValidationError) {
+          res.status(401).set('WWW-Authenticate', 'Bearer').json({ error: 'UNAUTHENTICATED', code: e.code, message: e.message });
+          return;
+        }
+        throw e;
+      }
       const isAdmin = (callerActor?.scopes ?? []).includes('admin');
       if (!isAdmin) {
         res.status(401).json({ error: 'ADMIN_REQUIRED', message: 'admin scope required for this X-Potemkin-* header' });
@@ -379,8 +388,17 @@ async function handleContractRequest(
       }
     }
 
-    // REQ-84: Extract actor from Authorization Bearer header
-    let actor = extractActor(req.headers['authorization'] as string | undefined) ?? undefined;
+    // REQ-84 / F1: Resolve actor per auth mode (jwt → validateJwt; else legacy bearer shortcut).
+    let actor;
+    try {
+      actor = resolveActor(req.headers['authorization'] as string | undefined, sys.dsl.auth) ?? undefined;
+    } catch (e) {
+      if (e instanceof JwtValidationError) {
+        res.status(401).set('WWW-Authenticate', 'Bearer').json({ error: 'UNAUTHENTICATED', code: e.code, message: e.message });
+        return;
+      }
+      throw e;
+    }
     // Tier 3: actor override / impersonate (admin-gated above) — format `<id>:<scope1>,<scope2>`.
     const adminOverride = controls.identity.actorOverride ?? controls.identity.impersonate;
     if (adminOverride) {

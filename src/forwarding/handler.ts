@@ -22,7 +22,7 @@ import { translateIntent } from '../engine/router.js';
 import { executeUnitOfWork } from '../engine/uow.js';
 import { extractFaultSignal } from '../engine/faultSim.js';
 import { nextUuidv7 } from '../ids/uuidv7.js';
-import { extractActor } from '../identity/actorExtractor.js';
+import { resolveActor, JwtValidationError } from '../identity/actorResolver.js';
 import { getIdempotencyStore } from '../idempotency/store.js';
 import {
   EntityAbsenceError,
@@ -204,8 +204,18 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       }
     }
 
-    // 6. Extract actor from forwarded Authorization header.
-    const actor = extractActor(fwd.headers['authorization']) ?? undefined;
+    // 6. Resolve actor from the forwarded Authorization header per auth mode
+    //    (F1: jwt → validateJwt; else the legacy bearer shortcut).
+    let actor;
+    try {
+      actor = resolveActor(fwd.headers['authorization'], sys.dsl.auth) ?? undefined;
+    } catch (e) {
+      if (e instanceof JwtValidationError) {
+        res.status(401).set('WWW-Authenticate', 'Bearer').json({ error: 'UNAUTHENTICATED', code: e.code, message: e.message });
+        return;
+      }
+      throw e;
+    }
 
     // 7. Extract sequenceVersion from forwarded If-Match header.
     const ifMatchValue = fwd.headers['if-match'];
