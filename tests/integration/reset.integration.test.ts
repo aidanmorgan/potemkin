@@ -53,6 +53,7 @@ describe('reset.integration: ephemeral reset reverts to post-boot baseline', () 
         depth: 0,
       },
       dsl: sys.dsl,
+      openapi: sys.openapi,
       graph: sys.graph,
       events: sys.events,
       cel: sys.cel,

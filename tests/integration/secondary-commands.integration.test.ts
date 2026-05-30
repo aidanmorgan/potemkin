@@ -62,6 +62,7 @@ describe('secondary-commands.integration: Call creation cascades to Lead callIds
     const result = await executeUnitOfWork({
       command: cmd,
       dsl: sys.dsl,
+      openapi: sys.openapi,
       graph: sys.graph,
       events: sys.events,
       cel: sys.cel,
@@ -83,6 +84,7 @@ describe('secondary-commands.integration: Call creation cascades to Lead callIds
     const result = await executeUnitOfWork({
       command: cmd,
       dsl: sys.dsl,
+      openapi: sys.openapi,
       graph: sys.graph,
       events: sys.events,
       cel: sys.cel,
@@ -103,6 +105,7 @@ describe('secondary-commands.integration: Call creation cascades to Lead callIds
     const result = await executeUnitOfWork({
       command: cmd,
       dsl: sys.dsl,
+      openapi: sys.openapi,
       graph: sys.graph,
       events: sys.events,
       cel: sys.cel,
@@ -123,6 +126,7 @@ describe('secondary-commands.integration: Call creation cascades to Lead callIds
     await executeUnitOfWork({
       command: cmd,
       dsl: sys.dsl,
+      openapi: sys.openapi,
       graph: sys.graph,
       events: sys.events,
       cel: sys.cel,
@@ -145,6 +149,7 @@ describe('secondary-commands.integration: Call creation cascades to Lead callIds
     await executeUnitOfWork({
       command: cmd,
       dsl: sys.dsl,
+      openapi: sys.openapi,
       graph: sys.graph,
       events: sys.events,
       cel: sys.cel,
@@ -168,6 +173,7 @@ describe('secondary-commands.integration: Call creation cascades to Lead callIds
     await executeUnitOfWork({
       command: cmd,
       dsl: sys.dsl,
+      openapi: sys.openapi,
       graph: sys.graph,
       events: sys.events,
       cel: sys.cel,

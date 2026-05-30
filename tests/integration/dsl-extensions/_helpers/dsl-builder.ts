@@ -20,6 +20,35 @@ import type { ExecutionResult, DomainEvent } from '../../../../src/types.js';
 
 export type { JsonObject };
 
+/**
+ * Rewrite legacy `match.intent` behaviors to the operationId form used by the engine.
+ *
+ * The synthetic OpenAPI produced by this helper assigns each boundary a single POST
+ * operation with operationId `run<BoundaryName>`. So every behavior in a module maps
+ * to its own boundary's operationId, and each dispatch_commands entry maps to the
+ * operationId of the boundary it targets.
+ */
+function rewriteIntentToOperationId(moduleYaml: string): string {
+  const ownBoundary = /^boundary:\s*(\S+)/m.exec(moduleYaml)?.[1];
+  if (!ownBoundary) return moduleYaml;
+
+  // 1) Behavior match blocks: `match:\n  intent: <x>` → `match:\n  operationId: run<Own>`
+  let out = moduleYaml.replace(
+    /(match:\n([ \t]+))intent:[ \t]*\w+/g,
+    `$1operationId: run${ownBoundary}`,
+  );
+
+  // 2) dispatch_commands entries: add operationId after `boundary: X\n ... intent: Y`.
+  //    The operationId targets run<DispatchBoundary>.
+  out = out.replace(
+    /(-[ \t]*boundary:[ \t]*(\S+)\n([ \t]+)intent:[ \t]*\w+)/g,
+    (_m, head: string, dispBoundary: string, indent: string) =>
+      `${head}\n${indent}operationId: run${dispBoundary}`,
+  );
+
+  return out;
+}
+
 /** Minimal interface for engine errors that carry an HTTP status code. */
 interface SimError extends Error {
   readonly status?: number;
@@ -129,8 +158,8 @@ ${schemasYaml}${extraSchemasYaml}
   const openapi = await loadOpenApi(OPENAPI_YAML);
 
   const dslModules = [
-    { name: 'main', yaml: patchedBoundaryYaml },
-    ...extraDslModules,
+    { name: 'main', yaml: rewriteIntentToOperationId(patchedBoundaryYaml) },
+    ...extraDslModules.map((m) => ({ name: m.name, yaml: rewriteIntentToOperationId(m.yaml) })),
   ];
 
   let sys: Awaited<ReturnType<typeof bootSystem>>;
@@ -223,8 +252,8 @@ ${schemasYaml}
 
   const openapi = await loadOpenApi(OPENAPI_YAML);
   const dslModules = [
-    { name: 'main', yaml: boundaryYaml },
-    ...extraDslModules,
+    { name: 'main', yaml: rewriteIntentToOperationId(boundaryYaml) },
+    ...extraDslModules.map((m) => ({ name: m.name, yaml: rewriteIntentToOperationId(m.yaml) })),
   ];
 
   try {

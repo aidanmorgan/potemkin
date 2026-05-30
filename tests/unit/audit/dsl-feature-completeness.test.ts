@@ -185,7 +185,7 @@ describe('DSL §7.2 – Behaviors Block', () => {
     expect(() =>
       validateBoundaryConfig({
         ...minimalRaw,
-        behaviors: [{ name: 'op', match: { intent: 'creation', condition: 'true' }, emit: 'UNKNOWN_EVENT' }],
+        behaviors: [{ name: 'op', match: { operationId: 'createLoan', condition: 'true' }, emit: 'UNKNOWN_EVENT' }],
       }),
     ).toThrow(BootError);
   });
@@ -194,7 +194,7 @@ describe('DSL §7.2 – Behaviors Block', () => {
     try {
       validateBoundaryConfig({
         ...minimalRaw,
-        behaviors: [{ name: 'op', match: { intent: 'creation', condition: 'true' }, emit: 'NoSuchEvent' }],
+        behaviors: [{ name: 'op', match: { operationId: 'createLoan', condition: 'true' }, emit: 'NoSuchEvent' }],
       });
       fail('expected to throw');
     } catch (e) {
@@ -207,7 +207,7 @@ describe('DSL §7.2 – Behaviors Block', () => {
     expect(() =>
       validateBoundaryConfig({
         ...minimalRaw,
-        behaviors: [{ name: 'op', match: { intent: 'creation', condition: 'true' } }],
+        behaviors: [{ name: 'op', match: { operationId: 'createLoan', condition: 'true' } }],
       }),
     ).toThrow(BootError);
   });
@@ -218,7 +218,7 @@ describe('DSL §7.2 – Behaviors Block', () => {
     expect(() =>
       validateBoundaryConfig({
         ...minimalRaw,
-        behaviors: [{ name: 'op', match: { intent: 'creation', condition: 'true' }, emit: '' }],
+        behaviors: [{ name: 'op', match: { operationId: 'createLoan', condition: 'true' }, emit: '' }],
       }),
     ).toThrow(BootError);
   });
@@ -229,10 +229,10 @@ describe('DSL §7.2 – Behaviors Block', () => {
       behaviors: [
         {
           name: 'create',
-          match: { intent: 'creation', condition: 'true' },
+          match: { operationId: 'createLoan', condition: 'true' },
           emit: 'LoanCreated',
           dispatch_commands: [
-            { boundary: 'OtherBoundary', intent: 'mutation', target_id: 'command.id', payload: { field: '"value"' } },
+            { boundary: 'OtherBoundary', intent: 'mutation', operationId: 'op', target_id: 'command.id', payload: { field: '"value"' } },
           ],
         },
       ],
@@ -247,10 +247,10 @@ describe('DSL §7.2 – Behaviors Block', () => {
         behaviors: [
           {
             name: 'create',
-            match: { intent: 'creation', condition: 'true' },
+            match: { operationId: 'createLoan', condition: 'true' },
             emit: 'LoanCreated',
             dispatch_commands: [
-              { boundary: 'Other', intent: 'invalid', target_id: 'command.id' },
+              { boundary: 'Other', intent: 'invalid', operationId: 'op', target_id: 'command.id' },
             ],
           },
         ],
@@ -265,7 +265,7 @@ describe('DSL §7.2 – Behaviors Block', () => {
         behaviors: [
           {
             name: 'create',
-            match: { intent: 'creation', condition: 'true' },
+            match: { operationId: 'createLoan', condition: 'true' },
             emit: 'LoanCreated',
             dispatch_commands: [
               { boundary: 'Other', intent: 'mutation' },
@@ -287,10 +287,10 @@ describe('DSL §7.2 – Behaviors Block', () => {
         behaviors: [
           {
             name: 'create',
-            match: { intent: 'creation', condition: 'true' },
+            match: { operationId: 'createLoan', condition: 'true' },
             emit: 'LoanCreated',
             dispatch_commands: [
-              { boundary: 'Other', intent: 'mutation', target_id: 'command.id', payload: { x: '{ broken cel +++' } },
+              { boundary: 'Other', intent: 'mutation', operationId: 'op', target_id: 'command.id', payload: { x: '{ broken cel +++' } },
             ],
           },
         ],
@@ -311,12 +311,13 @@ describe('DSL §7.2 – Behaviors Block', () => {
         behaviors: [
           {
             name: 'create',
-            match: { intent: 'creation', condition: 'true' },
+            match: { operationId: 'createLoan', condition: 'true' },
             emit: 'LoanCreated',
             dispatch_commands: [
               {
                 boundary: 'Other',
                 intent: 'mutation',
+                operationId: 'op',
                 target_id: 'command.id',
                 payload: { x: '{"plain": "json not cel"}' },
               },
@@ -389,7 +390,7 @@ describe('DSL event_catalog cross-reference', () => {
         ...minimalRaw,
         event_catalog: [],
         behaviors: [
-          { name: 'op', match: { intent: 'creation', condition: 'true' }, emit: 'LoanCreated' },
+          { name: 'op', match: { operationId: 'createLoan', condition: 'true' }, emit: 'LoanCreated' },
         ],
         reducers: [],
       }),
@@ -401,7 +402,7 @@ describe('DSL event_catalog cross-reference', () => {
       validateBoundaryConfig({
         ...minimalRaw,
         event_catalog: [],
-        behaviors: [{ name: 'op', match: { intent: 'creation', condition: 'true' }, emit: 'SomeEvent' }],
+        behaviors: [{ name: 'op', match: { operationId: 'createLoan', condition: 'true' }, emit: 'SomeEvent' }],
         reducers: [],
       });
       fail('expected throw');
@@ -437,7 +438,7 @@ event_catalog:
     payload_template: {}
 behaviors:
   - name: create
-    match: {intent: creation, condition: "true"}
+    match: {operationId: createLoan, condition: "true"}
     emit: LoanCreated
 reducers:
   - on: LoanCreated
@@ -521,10 +522,10 @@ describe('DSL snake_case → camelCase normalisation', () => {
       behaviors: [
         {
           name: 'create',
-          match: { intent: 'creation', condition: 'true' },
+          match: { operationId: 'createLoan', condition: 'true' },
           emit: 'LoanCreated',
           dispatch_commands: [
-            { boundary: 'Other', intent: 'mutation', target_id: 'command.id' },
+            { boundary: 'Other', intent: 'mutation', operationId: 'op', target_id: 'command.id' },
           ],
         },
       ],

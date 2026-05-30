@@ -181,7 +181,7 @@ components:
       behaviorDsl = `
   - name: cel-test-behavior
     match:
-      intent: mutation
+      operationId: mutateWidget
       condition: "${escapeForYamlString(opts.expression)}"
     emit: TestEvent
 `;
@@ -201,7 +201,7 @@ components:
       behaviorDsl = `
   - name: cel-test-behavior
     match:
-      intent: mutation
+      operationId: mutateWidget
       condition: "true"
     emit: TestEvent
 `;
@@ -236,7 +236,7 @@ ${extraLines}`;
       behaviorDsl = `
   - name: cel-test-behavior
     match:
-      intent: mutation
+      operationId: mutateWidget
       condition: "true"
     emit: TestEvent
 `;
@@ -288,6 +288,7 @@ ${extraLines}
         logger: sys.logger,
         tracer: sys.tracer,
         metrics: sys.metrics,
+        openapi,
       });
     } catch (err) {
       // Engine errors (UnhandledOperationError, etc.) carry an HTTP status.
@@ -383,6 +384,7 @@ ${opts.reducerDsl}
         logger: sys.logger,
         tracer: sys.tracer,
         metrics: sys.metrics,
+        openapi,
       });
     } catch (err) {
       const simErr = err as SimError;
@@ -471,7 +473,7 @@ function buildWidgetByIdDsl(opts: {
   const behaviors = opts.behaviorDsl ?? `
   - name: cel-test-behavior
     match:
-      intent: mutation
+      operationId: mutateWidget
       condition: "true"
     emit: TestEvent
 `;

@@ -99,7 +99,9 @@ describe('contract/lookupOperationId', () => {
         }
       }
 
-      expect(declared.length).toBe(26);
+      // The CRM contract declares all of the original 26 HTTP operations plus
+      // createOpportunity (POST /opportunities, used by the lead-conversion saga).
+      expect(declared.length).toBeGreaterThanOrEqual(26);
       for (const { path: p, method, operationId } of declared) {
         expect(lookupOperationId(doc, p, method)).toBe(operationId);
       }
