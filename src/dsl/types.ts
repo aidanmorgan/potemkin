@@ -67,12 +67,14 @@ export interface ReducerRule {
 }
 
 export interface ReducerPatchOp {
-  readonly op: 'add' | 'remove' | 'replace' | 'append' | 'prepend' | 'increment' | 'merge' | 'upsert';
+  readonly op: 'add' | 'remove' | 'replace' | 'append' | 'prepend' | 'increment' | 'merge' | 'upsert' | 'move' | 'copy';
   readonly path: string;
   readonly value?: string | number | boolean | null | Record<string, unknown> | ReadonlyArray<unknown>;
   readonly by?: number;
   readonly key?: string;
   readonly deep?: boolean;
+  /** Source JSON Pointer for move/copy ops. */
+  readonly from?: string;
 }
 
 /** Identity key extraction policy: where to find the entity key on an incoming request. */

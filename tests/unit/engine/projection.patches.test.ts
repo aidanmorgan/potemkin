@@ -144,6 +144,63 @@ describe('projection runtime — patches: ops', () => {
     expect(state['items']).toEqual([{ id: 'a' }, { id: 'b' }]);
   });
 
+  it('move patch relocates a field from source to target', () => {
+    const state = projectLeadCreated([
+      {
+        on: 'LeadCreated',
+        patches: [
+          { op: 'replace', path: '/draftLabel', value: "${'Acme Corp'}" },
+          { op: 'move', from: '/draftLabel', path: '/finalLabel' },
+        ],
+      },
+    ]);
+    expect(state['finalLabel']).toBe('Acme Corp');
+    expect(state['draftLabel']).toBeUndefined();
+  });
+
+  it('copy patch duplicates a field, leaving the source intact', () => {
+    const state = projectLeadCreated([
+      {
+        on: 'LeadCreated',
+        patches: [
+          { op: 'replace', path: '/origin', value: "${'web'}" },
+          { op: 'copy', from: '/origin', path: '/channel' },
+        ],
+      },
+    ]);
+    expect(state['origin']).toBe('web');
+    expect(state['channel']).toBe('web');
+  });
+
+  it('move patch relocates a nested object subtree', () => {
+    const state = projectLeadCreated([
+      {
+        on: 'LeadCreated',
+        patches: [
+          { op: 'replace', path: '/tmp', value: { contact: { email: 'a@b.com' } } },
+          { op: 'move', from: '/tmp/contact', path: '/contact' },
+        ],
+      },
+    ]);
+    expect(state['contact']).toEqual({ email: 'a@b.com' });
+    expect((state['tmp'] as Record<string, unknown>)['contact']).toBeUndefined();
+  });
+
+  it('copy patch deep-clones so mutating the copy leaves the source unchanged', () => {
+    const state = projectLeadCreated([
+      {
+        on: 'LeadCreated',
+        patches: [
+          { op: 'replace', path: '/source', value: { nested: { n: 1 } } },
+          { op: 'copy', from: '/source', path: '/dest' },
+          { op: 'replace', path: '/dest/nested/n', value: 99 },
+        ],
+      },
+    ]);
+    expect((state['source'] as { nested: { n: number } }).nested.n).toBe(1);
+    expect((state['dest'] as { nested: { n: number } }).nested.n).toBe(99);
+  });
+
   it('nested JSON-pointer path translates to dot path', () => {
     const state = projectLeadCreated([
       {

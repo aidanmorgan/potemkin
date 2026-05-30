@@ -33,6 +33,9 @@ export function resolveReducerPatch(
   switch (patch.op) {
     case 'remove':
       return { op: 'remove', path: patch.path };
+    case 'move':
+    case 'copy':
+      return { op: patch.op, from: patch.from ?? patch.path, path: patch.path };
     case 'increment':
       return { op: 'increment', path: patch.path, by: patch.by ?? 0 };
     case 'merge':

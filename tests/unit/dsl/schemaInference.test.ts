@@ -165,6 +165,63 @@ function expectBootCode(fn: () => unknown, code: string): void {
   expect(caught?.code).toBe(code);
 }
 
+describe('Schema-inference fixed-point cap (REQ-STATE-003, AC-G1.1)', () => {
+  // The inference loop is a monotone fixed-point computation: every write LUBs
+  // its contribution into the accumulated schema, so each field type only ever
+  // moves up the (shallow, finite-height) lattice toward `unknown`. A `state.X`
+  // self-reference resolves against the PREVIOUS iteration's schema, which is
+  // empty on the first pass, so any field whose type derives from another state
+  // field collapses to `unknown` immediately. This guarantees convergence well
+  // within the 4-iteration cap (MAX_INFERENCE_ITERATIONS).
+  //
+  // The cap therefore protects against runaway iteration without ever
+  // exceeding itself for valid inputs. These tests exercise the cyclic /
+  // forward-referential shapes the cap exists to bound and assert that the
+  // build terminates with a stable schema rather than looping.
+
+  it('mutually-cyclic event-payload template references terminate at a stable schema', () => {
+    // a's template type references b; b's references a. Cyclic by construction.
+    const result = buildInferredSchema({
+      boundary: 'Cyclic',
+      events: [
+        { name: 'E', template: { a: 'event.payload.b', b: 'event.payload.a' } },
+      ],
+      reducers: [
+        {
+          on: 'E',
+          patches: [
+            { op: 'replace', path: '/a', value: 'state.b' },
+            { op: 'replace', path: '/b', value: 'state.a' },
+          ],
+        },
+      ],
+    });
+    // Cyclic state self-references cannot be resolved → both settle at unknown.
+    expect(result.schema.get('/a')?.type.kind).toBe('unknown');
+    expect(result.schema.get('/b')?.type.kind).toBe('unknown');
+  });
+
+  it('a long forward-referential reducer chain terminates within the cap', () => {
+    // /f0 ← event payload; /f1 ← state.f0; /f2 ← state.f1; ... a chain far
+    // longer than the iteration cap. It must still terminate (no throw, no
+    // hang) and produce a stable schema entry for every field.
+    const patches: { op: 'replace'; path: string; value: string }[] = [
+      { op: 'replace', path: '/f0', value: 'event.payload.seed' },
+    ];
+    for (let n = 1; n <= 12; n++) {
+      patches.push({ op: 'replace', path: `/f${n}`, value: `state.f${n - 1}` });
+    }
+    const result = buildInferredSchema({
+      boundary: 'Chain',
+      events: [{ name: 'E', template: { seed: '7' } }],
+      reducers: [{ on: 'E', patches }],
+    });
+    for (let n = 0; n <= 12; n++) {
+      expect(result.schema.has(`/f${n}`)).toBe(true);
+    }
+  });
+});
+
 describe('Computed field cycles (REQ-STATE-004)', () => {
   it('self-cycles are rejected', () => {
     expectBootCode(
@@ -181,6 +238,32 @@ describe('Computed field cycles (REQ-STATE-004)', () => {
         }),
       'BOOT_ERR_COMPUTED_FIELD_CYCLE',
     );
+  });
+
+  it('A → B → C → A cycle is detected and reported in cycle-order (AC-G1.2)', () => {
+    let caught: BootError | null = null;
+    try {
+      buildInferredSchema({
+        boundary: 'X',
+        events: [],
+        reducers: [],
+        state: {
+          computed: [
+            { name: 'a', formula: 'state.b', dependsOn: ['b'] },
+            { name: 'b', formula: 'state.c', dependsOn: ['c'] },
+            { name: 'c', formula: 'state.a', dependsOn: ['a'] },
+          ],
+        },
+      });
+    } catch (e) {
+      if (e instanceof BootError) caught = e;
+    }
+    expect(caught?.code).toBe('BOOT_ERR_COMPUTED_FIELD_CYCLE');
+    // Cycle path is reported in dependency order, closing back on the start.
+    const cycle = (caught?.details as { cycle?: string[] } | undefined)?.cycle;
+    expect(cycle).toEqual(['a', 'b', 'c', 'a']);
+    // The human-readable message renders the same ordered path.
+    expect(caught?.message).toContain('a → b → c → a');
   });
 
   it('A → B → A cycle is reported in cycle-order', () => {

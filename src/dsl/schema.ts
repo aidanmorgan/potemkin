@@ -517,7 +517,7 @@ function optionalPatchList(raw: Record<string, unknown>, ctx: string): readonly 
   if (!Array.isArray(val)) {
     throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.patches: must be an array`, { context: ctx });
   }
-  const known = new Set(['add', 'remove', 'replace', 'append', 'prepend', 'increment', 'merge', 'upsert']);
+  const known = new Set(['add', 'remove', 'replace', 'append', 'prepend', 'increment', 'merge', 'upsert', 'move', 'copy']);
   return val.map((p, i): import('./types.js').ReducerPatchOp => {
     if (!isRecord(p)) {
       throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.patches[${i}]: must be an object`, { context: ctx });
@@ -559,6 +559,7 @@ function optionalPatchList(raw: Record<string, unknown>, ctx: string): readonly 
       ...(p['by'] !== undefined ? { by: p['by'] as number } : {}),
       ...(p['key'] !== undefined ? { key: p['key'] as string } : {}),
       ...(p['deep'] !== undefined ? { deep: p['deep'] as boolean } : {}),
+      ...(p['from'] !== undefined ? { from: p['from'] as string } : {}),
     };
   });
 }
