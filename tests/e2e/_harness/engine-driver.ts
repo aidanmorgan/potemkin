@@ -106,8 +106,11 @@ async function _boot(pluginControlUrl?: string): Promise<BootedSystem> {
 
 async function _serve(sys: BootedSystem, port: number): Promise<http.Server> {
   const app = createGateway(sys);
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { resolveBindHost } = require('../../../src/http/bindHost.js');
+  const host: string = resolveBindHost('dsl');
   return new Promise<http.Server>((resolve, reject) => {
-    const srv = app.listen(port, '127.0.0.1', () => resolve(srv));
+    const srv = app.listen(port, host, () => resolve(srv));
     srv.on('error', reject);
   });
 }

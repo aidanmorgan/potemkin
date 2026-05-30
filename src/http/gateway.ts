@@ -136,6 +136,12 @@ export function createGateway(sys: BootedSystem): Express {
   app.get('/_engine/routes', createRoutesHandler(sys));
   app.get('/_engine/fixtures', createFixturesHandler(sys));
 
+  // POST /_engine/dsl (install/replay) + GET /_engine/state/:boundary/:id
+  // for the new plugin↔engine wire contract.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { mountEngineDslRoutes } = require('./engineDslRoutes.js');
+  mountEngineDslRoutes(app, sys);
+
   // Register one catch-all route handler per OpenAPI contract path.
   for (const contractPath of Object.keys(sys.dsl.byContractPath)) {
     const expressPath = expressifyPath(contractPath);
