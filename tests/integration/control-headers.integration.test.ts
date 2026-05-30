@@ -6,23 +6,33 @@
  * through the Specmatic stack.
  */
 
-import request from 'supertest';
 import type { BootedSystem } from '../../src/engine/boot.js';
 import { createGateway } from '../../src/http/gateway.js';
 import { resetSystem } from '../../src/engine/reset.js';
 import { bootCrmSystem } from './_helpers/crm-boot.js';
+import {
+  withPersistentServer,
+  type PersistentAgent,
+  type PersistentServer,
+} from '../_support/persistentAgent.js';
 
 const APEX_LEAD_ID = '00000000-0000-7000-8000-000000000010';
 const BLUESKY_LEAD_ID = '00000000-0000-7000-8000-000000000011';
 
 describe('X-Potemkin-* control headers — full integration', () => {
   let sys: BootedSystem;
-  let agent: ReturnType<typeof request>;
+  let agent: PersistentAgent;
+  let persistent: PersistentServer;
 
   beforeAll(async () => {
     sys = await bootCrmSystem();
     const app = createGateway(sys);
-    agent = request(app);
+    persistent = await withPersistentServer(app);
+    agent = persistent.agent;
+  });
+
+  afterAll(async () => {
+    await persistent.close();
   });
 
   beforeEach(() => {

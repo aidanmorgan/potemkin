@@ -4,13 +4,17 @@
  * with 401. Under auth.mode='simple' the legacy shortcut still works.
  */
 
-import request from 'supertest';
 import { bootSystem } from '../../src/engine/boot.js';
 import { createGateway } from '../../src/http/gateway.js';
 import { loadOpenApi } from '../../src/contract/loader.js';
 import { compileDsl } from '../../src/dsl/parser.js';
 import { signJwtHs256 } from '../../src/identity/jwtValidator.js';
 import { nextUuidv7 } from '../../src/ids/uuidv7.js';
+import {
+  withPersistentServer,
+  type PersistentAgent,
+} from '../_support/persistentAgent.js';
+import { registerFileTeardown } from '../_support/testTeardown.js';
 
 const SECRET = 'integration-secret';
 
@@ -67,11 +71,16 @@ reducers:
       - { op: replace, path: /status, value: "\${'NEW'}" }
 `;
 
-async function bootWith(globalYaml: string) {
+async function bootWith(globalYaml: string): Promise<PersistentAgent> {
   const openapi = await loadOpenApi(OPENAPI);
   const compiledDsl = await compileDsl([{ name: 'widget', yaml: WIDGET_DSL }], globalYaml);
   const sys = await bootSystem({ openapi, compiledDsl });
-  return createGateway(sys);
+  const app = createGateway(sys);
+  // One persistent server + pooled agent per booted app; closed in afterAll via
+  // the file-scoped teardown registry.
+  const { agent, close } = await withPersistentServer(app);
+  registerFileTeardown(close);
+  return agent;
 }
 
 const JWT_GLOBAL = `
@@ -90,10 +99,10 @@ describe('F1: JWT validation routing in the engine gateway', () => {
   const body = (id: string) => ({ id, status: 'NEW' });
 
   it('auth.mode=jwt + valid JWT → request proceeds (201)', async () => {
-    const app = await bootWith(JWT_GLOBAL);
+    const agent = await bootWith(JWT_GLOBAL);
     const id = nextUuidv7();
     const token = signJwtHs256({ sub: 'alice', scopes: ['admin'] }, SECRET);
-    const res = await request(app)
+    const res = await agent
       .post(`/widgets/${id}`)
       .set('Authorization', `Bearer ${token}`)
       .send(body(id));
@@ -102,9 +111,9 @@ describe('F1: JWT validation routing in the engine gateway', () => {
   });
 
   it('auth.mode=jwt + legacy "Bearer id:scopes" shortcut → 401 with WWW-Authenticate', async () => {
-    const app = await bootWith(JWT_GLOBAL);
+    const agent = await bootWith(JWT_GLOBAL);
     const id = nextUuidv7();
-    const res = await request(app)
+    const res = await agent
       .post(`/widgets/${id}`)
       .set('Authorization', 'Bearer mgr1:manager')
       .send(body(id));
@@ -113,10 +122,10 @@ describe('F1: JWT validation routing in the engine gateway', () => {
   });
 
   it('auth.mode=jwt + invalid signature → 401', async () => {
-    const app = await bootWith(JWT_GLOBAL);
+    const agent = await bootWith(JWT_GLOBAL);
     const id = nextUuidv7();
     const forged = signJwtHs256({ sub: 'mallory', scopes: ['admin'] }, 'wrong-secret');
-    const res = await request(app)
+    const res = await agent
       .post(`/widgets/${id}`)
       .set('Authorization', `Bearer ${forged}`)
       .send(body(id));
@@ -124,9 +133,9 @@ describe('F1: JWT validation routing in the engine gateway', () => {
   });
 
   it('auth.mode=simple + legacy "Bearer id:scopes" shortcut → still works (201)', async () => {
-    const app = await bootWith(SIMPLE_GLOBAL);
+    const agent = await bootWith(SIMPLE_GLOBAL);
     const id = nextUuidv7();
-    const res = await request(app)
+    const res = await agent
       .post(`/widgets/${id}`)
       .set('Authorization', 'Bearer mgr1:manager')
       .send(body(id));

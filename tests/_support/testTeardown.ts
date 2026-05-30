@@ -22,3 +22,26 @@ export async function runTeardowns(): Promise<void> {
     }
   }
 }
+
+// File-scoped teardown registry. Unlike `pending` (drained every afterEach),
+// this queue is drained once in afterAll, so resources that must live for the
+// whole test file — e.g. a persistent app.listen server shared across all tests
+// in a suite (see persistentAgent.ts) — are not torn down between tests.
+const pendingFileScoped: TeardownFn[] = [];
+
+/** Register a cleanup callback to run (once) in afterAll for the current file. */
+export function registerFileTeardown(fn: TeardownFn): void {
+  pendingFileScoped.push(fn);
+}
+
+/** Run and clear every file-scoped teardown callback. Errors are swallowed. */
+export async function runFileTeardowns(): Promise<void> {
+  while (pendingFileScoped.length > 0) {
+    const fn = pendingFileScoped.pop()!;
+    try {
+      await fn();
+    } catch {
+      /* best-effort cleanup */
+    }
+  }
+}

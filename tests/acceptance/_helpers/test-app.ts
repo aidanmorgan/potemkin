@@ -14,10 +14,14 @@ import { resetSystem } from '../../../src/engine/reset.js';
 import { createGateway } from '../../../src/http/gateway.js';
 import { loadFixture } from '../../fixtures/index.js';
 import type { BoundaryConfig } from '../../../src/dsl/types.js';
-import request from 'supertest';
+import {
+  withPersistentServer,
+  type PersistentAgent,
+} from '../../_support/persistentAgent.js';
+import { registerFileTeardown } from '../../_support/testTeardown.js';
 
 export interface TestApp {
-  readonly agent: ReturnType<typeof request>;
+  readonly agent: PersistentAgent;
   readonly sys: BootedSystem;
   reset(): void;
 }
@@ -87,8 +91,14 @@ export async function createTestApp(): Promise<TestApp> {
 
   const app = createGateway(sys);
 
+  // Boot ONE persistent server for this suite, driven by a pooled keep-alive
+  // agent, instead of supertest's per-call ephemeral app.listen(0). The server
+  // is closed in afterAll via the file-scoped teardown registry.
+  const { agent, close } = await withPersistentServer(app);
+  registerFileTeardown(close);
+
   return {
-    agent: request(app),
+    agent,
     sys,
     reset() {
       resetSystem(sys);
