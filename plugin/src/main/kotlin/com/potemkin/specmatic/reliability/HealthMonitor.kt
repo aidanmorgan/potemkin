@@ -33,9 +33,18 @@ import java.util.concurrent.atomic.AtomicReference
  * The probe loop runs on [Dispatchers.IO] inside a [SupervisorJob] so that a single
  * probe failure never crashes the loop.
  *
- * Thread-safety: all mutable state (state, counters, upSince) is held in
- * [AtomicReference]/[AtomicInteger] or volatile fields. Listener callbacks are
- * invoked synchronously from the probe coroutine.
+ * Thread-safety: liveness state, counters, and upSince are held in
+ * [AtomicReference]/[AtomicInteger] so reads ([currentState], [upSince],
+ * [probeIntervalMs]) are lock-free. The COMPOUND state-mutation paths
+ * ([runProbe], [markUpExternal], [markDownExternal]) are serialised under a
+ * single [stateLock] monitor: the probe coroutine and the [ControlServer]'s
+ * `/ready` and `/shutdown` handlers run on independent threads and would
+ * otherwise interleave their read-decide-transition sequences, producing torn
+ * state (e.g. UP with a failure count of 3) or duplicate/contradictory listener
+ * notifications. Listener callbacks fire synchronously while the lock is held,
+ * which keeps the (from → to) pairs delivered to listeners consistent and
+ * ordered. Listeners must therefore not call back into the monitor's mutating
+ * methods (none do).
  */
 open class HealthMonitor(
     private val backendUrl: String,
@@ -49,6 +58,9 @@ open class HealthMonitor(
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var probeJob: Job? = null
+
+    /** Serialises compound read-decide-transition sequences across the probe coroutine and control handlers. */
+    private val stateLock = Any()
 
     private val state = AtomicReference<HealthState>(HealthState.Up)
     private val consecutiveFailures = AtomicInteger(0)
@@ -90,9 +102,11 @@ open class HealthMonitor(
      */
     open fun markDownExternal() {
         log.info("HealthMonitor: external DOWN signal received")
-        consecutiveFailures.set(3)
-        consecutiveSuccesses.set(0)
-        transition(HealthState.Down)
+        synchronized(stateLock) {
+            consecutiveFailures.set(3)
+            consecutiveSuccesses.set(0)
+            transition(HealthState.Down)
+        }
     }
 
     /**
@@ -101,42 +115,49 @@ open class HealthMonitor(
      */
     open fun markUpExternal() {
         log.info("HealthMonitor: external UP signal received")
-        consecutiveFailures.set(0)
-        consecutiveSuccesses.set(2)
-        transition(HealthState.Up)
+        synchronized(stateLock) {
+            consecutiveFailures.set(0)
+            consecutiveSuccesses.set(2)
+            transition(HealthState.Up)
+        }
     }
 
     // ---- internal probe logic ------------------------------------------------------------
 
     internal fun runProbe() {
+        // The probe HTTP call is slow I/O and must not hold the state lock; only
+        // the read-decide-transition sequence that follows needs to be atomic.
         val success = doProbe()
-        if (success) {
-            consecutiveFailures.set(0)
-            val succ = consecutiveSuccesses.incrementAndGet()
-            when (state.get()) {
-                HealthState.Down -> {
-                    if (succ >= 2) {
-                        transition(HealthState.Up)
+        synchronized(stateLock) {
+            if (success) {
+                consecutiveFailures.set(0)
+                val succ = consecutiveSuccesses.incrementAndGet()
+                when (state.get()) {
+                    HealthState.Down -> {
+                        if (succ >= 2) {
+                            transition(HealthState.Up)
+                        }
                     }
+                    HealthState.Degraded -> transition(HealthState.Up)
+                    HealthState.Up -> { /* stay */ }
                 }
-                HealthState.Degraded -> transition(HealthState.Up)
-                HealthState.Up -> { /* stay */ }
-            }
-        } else {
-            consecutiveSuccesses.set(0)
-            val failures = consecutiveFailures.incrementAndGet()
-            when (state.get()) {
-                HealthState.Up -> transition(HealthState.Degraded)
-                HealthState.Degraded -> {
-                    if (failures >= 3) {
-                        transition(HealthState.Down)
+            } else {
+                consecutiveSuccesses.set(0)
+                val failures = consecutiveFailures.incrementAndGet()
+                when (state.get()) {
+                    HealthState.Up -> transition(HealthState.Degraded)
+                    HealthState.Degraded -> {
+                        if (failures >= 3) {
+                            transition(HealthState.Down)
+                        }
                     }
+                    HealthState.Down -> { /* stay */ }
                 }
-                HealthState.Down -> { /* stay */ }
             }
         }
     }
 
+    /** Must be called while holding [stateLock] so the transition + listener fan-out is atomic. */
     private fun transition(newState: HealthState) {
         val old = state.getAndSet(newState)
         if (old == newState) return
