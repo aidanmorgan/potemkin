@@ -40,7 +40,7 @@ behaviors:
 reducers:
   - on: WidgetRepaid
     patches:
-      - { op: replace, path: /balance, value: "state.balance - event.payload.amount" }
+      - { op: replace, path: /balance, value: "\${state.balance - event.payload.amount}" }
 `,
     });
     expect(result.status).toBe(200);
@@ -81,7 +81,7 @@ behaviors:
 reducers:
   - on: WidgetRepaid
     patches:
-      - { op: replace, path: /balance, value: "state.balance - event.payload.amount" }
+      - { op: replace, path: /balance, value: "\${state.balance - event.payload.amount}" }
 `,
     });
     // Should fail with 500 POSTCONDITION_VIOLATED
@@ -126,7 +126,7 @@ behaviors:
 reducers:
   - on: WidgetRepaid
     patches:
-      - { op: replace, path: /balance, value: "state.balance - event.payload.amount" }
+      - { op: replace, path: /balance, value: "\${state.balance - event.payload.amount}" }
 `,
     });
 
@@ -170,7 +170,7 @@ behaviors:
 reducers:
   - on: WidgetRepaid
     patches:
-      - { op: replace, path: /balance, value: "state.balance - event.payload.amount" }
+      - { op: replace, path: /balance, value: "\${state.balance - event.payload.amount}" }
 `,
     });
     expect(result.status).toBe(200);
@@ -203,7 +203,7 @@ behaviors:
 reducers:
   - on: WidgetRepaid
     patches:
-      - { op: replace, path: /balance, value: "state.balance - event.payload.amount" }
+      - { op: replace, path: /balance, value: "\${state.balance - event.payload.amount}" }
 `,
     });
     expect(result.status).toBe(500);
@@ -253,7 +253,7 @@ behaviors:
 reducers:
   - on: TagAdded
     patches:
-      - { op: append, path: /tags, value: "event.payload.tag" }
+      - { op: append, path: /tags, value: "\${event.payload.tag}" }
 `,
     });
     expect(result.status).toBe(200);
@@ -286,7 +286,7 @@ behaviors:
 reducers:
   - on: ScoresCleared
     patches:
-      - { op: replace, path: /scores, value: "[]" }
+      - { op: replace, path: /scores, value: "\${[]}" }
 `,
     });
     // After clearing, scores.size() == 0, so postcondition fails

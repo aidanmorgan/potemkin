@@ -99,6 +99,12 @@ export interface ScriptDeclaration {
   readonly code: string;   // TypeScript source (field is "code" in YAML; design uses "source" but task says "code")
 }
 
+/** A HATEOAS link entry: a relation name and its (templated) href. */
+export interface HateoasLinkEntry {
+  readonly rel: string;
+  readonly href: string;
+}
+
 /** Per-boundary deprecation envelope: emit Deprecation + Sunset headers. */
 export interface DeprecationConfig {
   /** ISO-8601 deprecation date (becomes `Deprecation:` header). */
@@ -129,6 +135,10 @@ export interface BoundaryConfig {
   readonly scripts?: readonly ScriptDeclaration[];
   /** Per-boundary deprecation envelope. */
   readonly deprecated?: DeprecationConfig;
+  /** Per-boundary HATEOAS link entries injected into the response `_links` (D1). */
+  readonly hateoas?: readonly HateoasLinkEntry[];
+  /** Per-boundary response field mask: these fields are removed from responses (D3). */
+  readonly mask?: readonly string[];
   /** Per-boundary uniform-random response latency. */
   readonly latency?: LatencyConfig;
   /** When true, projection auto-sets updatedAt/updatedBy on every non-baseline event. */

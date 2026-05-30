@@ -155,76 +155,76 @@ reducers:
     patches:
       - op: replace
         path: /id
-        value: "event.payload.id"
+        value: "${event.payload.id}"
       - op: replace
         path: /companyName
-        value: "event.payload.companyName"
+        value: "${event.payload.companyName}"
       - op: replace
         path: /contactName
-        value: "event.payload.contactName"
+        value: "${event.payload.contactName}"
       - op: replace
         path: /phone
-        value: "event.payload.phone"
+        value: "${event.payload.phone}"
       - op: replace
         path: /email
-        value: "event.payload.email"
+        value: "${event.payload.email}"
       - op: replace
         path: /source
-        value: "event.payload.source"
+        value: "${event.payload.source}"
       - op: replace
         path: /status
-        value: "'NEW'"
+        value: "${'NEW'}"
       - op: replace
         path: /score
-        value: "event.payload.score"
+        value: "${event.payload.score}"
       - op: replace
         path: /createdAt
-        value: "event.payload.createdAt"
+        value: "${event.payload.createdAt}"
       - op: replace
         path: /callIds
-        value: "[]"
+        value: "${[]}"
       - op: replace
         path: /notes
-        value: "[]"
+        value: "${[]}"
 
   - on: LeadContacted
     patches:
       - op: replace
         path: /status
-        value: "'CONTACTED'"
+        value: "${'CONTACTED'}"
       - op: replace
         path: /lastContactedAt
-        value: "event.payload.lastContactedAt"
+        value: "${event.payload.lastContactedAt}"
 
   - on: LeadQualified
     patches:
       - op: replace
         path: /status
-        value: "'QUALIFIED'"
+        value: "${'QUALIFIED'}"
 
   - on: LeadDisqualified
     patches:
       - op: replace
         path: /status
-        value: "'DISQUALIFIED'"
+        value: "${'DISQUALIFIED'}"
 
   - on: LeadConverted
     patches:
       - op: replace
         path: /status
-        value: "'CONVERTED'"
+        value: "${'CONVERTED'}"
 
   - on: LeadMarkedDNC
     patches:
       - op: replace
         path: /status
-        value: "'DNC'"
+        value: "${'DNC'}"
 
   - on: CallIdAppended
     patches:
       - op: append
         path: /callIds
-        value: "event.payload.callId"
+        value: "${event.payload.callId}"
 
 initialization:
   - id: "00000000-0000-7000-8000-000000000010"

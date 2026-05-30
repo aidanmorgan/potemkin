@@ -54,7 +54,7 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "'UPDATED'" }
+      - { op: replace, path: /status, value: "\${'UPDATED'}" }
 `,
     });
     expect(result.status).toBe(200);
@@ -96,7 +96,7 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "'UPDATED'" }
+      - { op: replace, path: /status, value: "\${'UPDATED'}" }
 `,
     });
     expect(result.status).toBe(422);
@@ -151,7 +151,7 @@ behaviors:
 reducers:
   - on: TxAdded
     patches:
-      - { op: append, path: /transactions, value: "{'amount': event.payload.amount}" }
+      - { op: append, path: /transactions, value: "\${{'amount': event.payload.amount}}" }
 `,
     });
     expect(result.status).toBe(200);
@@ -185,7 +185,7 @@ behaviors:
 reducers:
   - on: TxAdded
     patches:
-      - { op: append, path: /transactions, value: "{'amount': event.payload.amount}" }
+      - { op: append, path: /transactions, value: "\${{'amount': event.payload.amount}}" }
 `,
     });
     // amount is -10, postcondition fails
@@ -237,7 +237,7 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "'UPDATED'" }
+      - { op: replace, path: /status, value: "\${'UPDATED'}" }
 `,
       extraDslModules: [
         {
@@ -259,7 +259,7 @@ behaviors:
 reducers:
   - on: ReviewCreated
     patches:
-      - { op: replace, path: /reviewed, value: "true" }
+      - { op: replace, path: /reviewed, value: "\${true}" }
 `,
         },
       ],
@@ -309,7 +309,7 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "'UPDATED'" }
+      - { op: replace, path: /status, value: "\${'UPDATED'}" }
 `,
       extraDslModules: [
         {
@@ -331,7 +331,7 @@ behaviors:
 reducers:
   - on: ReviewCreated
     patches:
-      - { op: replace, path: /reviewed, value: "true" }
+      - { op: replace, path: /reviewed, value: "\${true}" }
 `,
         },
       ],
@@ -387,10 +387,10 @@ behaviors:
 reducers:
   - on: LoanRepaid
     patches:
-      - { op: replace, path: /balance, value: "state.balance - event.payload.amount" }
+      - { op: replace, path: /balance, value: "\${state.balance - event.payload.amount}" }
   - on: LoanSettled
     patches:
-      - { op: replace, path: /status, value: "'SETTLED'" }
+      - { op: replace, path: /status, value: "\${'SETTLED'}" }
 `,
     });
     expect(result.status).toBe(200);
@@ -464,10 +464,10 @@ behaviors:
 reducers:
   - on: LoanRepaid
     patches:
-      - { op: replace, path: /balance, value: "state.balance - event.payload.amount" }
+      - { op: replace, path: /balance, value: "\${state.balance - event.payload.amount}" }
   - on: NotificationQueued
     patches:
-      - { op: replace, path: /notified, value: "true" }
+      - { op: replace, path: /notified, value: "\${true}" }
 `,
       extraDslModules: [
         {
@@ -489,7 +489,7 @@ behaviors:
 reducers:
   - on: AuditCreated
     patches:
-      - { op: replace, path: /logged, value: "true" }
+      - { op: replace, path: /logged, value: "\${true}" }
 `,
         },
       ],
@@ -548,8 +548,8 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /label, value: "event.payload.label" }
-      - { op: replace, path: /balance, value: "state.balance - event.payload.remaining" }
+      - { op: replace, path: /label, value: "\${event.payload.label}" }
+      - { op: replace, path: /balance, value: "\${state.balance - event.payload.remaining}" }
 `,
     });
     expect(result.status).toBe(200);

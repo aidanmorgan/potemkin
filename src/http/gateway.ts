@@ -58,6 +58,8 @@ import type { Command, Intent } from '../types.js';
 import { resolveActor, JwtValidationError } from '../identity/actorResolver.js';
 import { createForwardingHandler, healthHandler, createRoutesHandler, createFixturesHandler } from '../forwarding/handler.js';
 import { parseControlHeaders, applyMask } from './controlHeaders.js';
+import { applyResponseMutations, buildOperationLookup } from './responseMutations.js';
+import type { OpenApiOperation } from '../contract/loader.js';
 import { setFakerSeedFromString } from '../cel/builtins.js';
 import { rebuildEntityAtVersion, findEventById } from '../engine/timeTravel.js';
 
@@ -596,7 +598,28 @@ async function handleContractRequest(
     // Tier 1/5/6: post-process response per X-Potemkin-* controls.
     let outBody: JsonValue | null | undefined = result.body;
 
-    // Tier 5: mask listed fields.
+    // D1/D2/D3: response mutations — HATEOAS _links injection, field masking
+    // (DSL boundary.mask + the X-Potemkin-Mask-Fields control header), and
+    // Deprecation/Sunset/Link headers — applied to successful contract responses.
+    if (result.status >= 200 && result.status < 300 && outBody !== null && outBody !== undefined) {
+      const opMethod = effectiveMethod.toLowerCase();
+      const pathItem = sys.openapi.paths[route.contractPath] as
+        | Record<string, OpenApiOperation | undefined>
+        | undefined;
+      const mutation = applyResponseMutations({
+        body: outBody,
+        boundary,
+        operation: pathItem ? pathItem[opMethod] : undefined,
+        statusCode: result.status,
+        operationLookup: buildOperationLookup(sys.openapi),
+      });
+      outBody = mutation.body;
+      Object.assign(responseHeaders, mutation.headers);
+    }
+
+    // Tier 5: the X-Potemkin-Mask control header REPLACES named fields with the
+    // "[MASKED]" sentinel (distinct from the DSL boundary `mask:` block above,
+    // which REMOVES fields). Preserved as established runtime behaviour (D3.3).
     if (controls.format.maskFields && controls.format.maskFields.length > 0) {
       outBody = applyMask(outBody, controls.format.maskFields) as JsonValue | null | undefined;
     }

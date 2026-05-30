@@ -24,7 +24,7 @@ it('CONTRACT: validator.validateEntity is called after successful reducer execut
   graph.set('agg-1', { status: 'pending' });
 
   const boundary = makeBoundary({
-    reducers: [{ on: 'StatusChanged', patches: [{ op: 'replace', path: '/status', value: '"active"' }] }],
+    reducers: [{ on: 'StatusChanged', patches: [{ op: 'replace', path: '/status', value: '${"active"}' }] }],
   });
 
   projectEvent({
@@ -130,7 +130,7 @@ it('CONTRACT: reducer replace patch applies the resolved CEL value to state', ()
   const graph = createStateGraph();
   graph.set('agg-1', { field: 'old' });
   const boundary = makeBoundary({
-    reducers: [{ on: 'Ev', patches: [{ op: 'replace', path: '/field', value: '"resolved"' }] }],
+    reducers: [{ on: 'Ev', patches: [{ op: 'replace', path: '/field', value: '${"resolved"}' }] }],
   });
   projectEvent({ event: makeDomainEvent({ type: 'Ev', payload: {} }), boundary, graph, cel });
   expect(graph.get('agg-1')?.field).toBe('resolved');

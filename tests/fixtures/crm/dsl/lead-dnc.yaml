@@ -23,6 +23,6 @@ reducers:
     patches:
       - op: replace
         path: /status
-        value: "'DNC'"
+        value: "${'DNC'}"
 
 initialization: []

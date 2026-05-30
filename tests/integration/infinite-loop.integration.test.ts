@@ -113,7 +113,7 @@ behaviors:
 reducers:
   - on: PingCreated
     patches:
-      - { op: replace, path: /id, value: "event.payload.id" }
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
 `;
 
 // PongBoundary dispatches a secondary command back to PingBoundary
@@ -143,7 +143,7 @@ behaviors:
 reducers:
   - on: PongCreated
     patches:
-      - { op: replace, path: /id, value: "event.payload.id" }
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
 `;
 
 describe('infinite-loop.integration: mutually recursive secondary commands', () => {

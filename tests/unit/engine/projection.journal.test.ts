@@ -38,8 +38,8 @@ describe('projection — reducer patch journal (AC-A1.4)', () => {
       {
         on: 'LeadCreated',
         patches: [
-          { op: 'replace', path: '/status', value: "'NEW'" },
-          { op: 'append', path: '/tags', value: "'hot'" },
+          { op: 'replace', path: '/status', value: "${'NEW'}" },
+          { op: 'append', path: '/tags', value: "${'hot'}" },
         ],
       },
     ]);
@@ -51,7 +51,7 @@ describe('projection — reducer patch journal (AC-A1.4)', () => {
       {
         on: 'LeadCreated',
         patches: [
-          { op: 'replace', path: '/status', value: "'NEW'" },
+          { op: 'replace', path: '/status', value: "${'NEW'}" },
           { op: 'increment', path: '/score', by: 3 },
         ],
       },
@@ -64,8 +64,8 @@ describe('projection — reducer patch journal (AC-A1.4)', () => {
       {
         on: 'LeadCreated',
         patches: [
-          { op: 'replace', path: '/status', value: "'NEW'" },
-          { op: 'replace', path: '/label', value: 'event.payload.label' },
+          { op: 'replace', path: '/status', value: "${'NEW'}" },
+          { op: 'replace', path: '/label', value: '${event.payload.label}' },
         ],
       },
     ]);

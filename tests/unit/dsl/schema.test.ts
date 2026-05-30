@@ -11,7 +11,7 @@ const minimalValid = {
       emit: 'Created',
     },
   ],
-  reducers: [{ on: 'Created', patches: [{ op: 'replace', path: '/status', value: '"active"' }] }],
+  reducers: [{ on: 'Created', patches: [{ op: 'replace', path: '/status', value: '${"active"}' }] }],
   event_catalog: [{ type: 'Created', payload_template: {} }],
 };
 
@@ -143,16 +143,16 @@ describe('dsl/schema', () => {
         reducers: [{
           on: 'Ev',
           patches: [
-            { op: 'replace', path: '/field', value: '"val"' },
-            { op: 'append', path: '/list', value: '"item"' },
+            { op: 'replace', path: '/field', value: '${"val"}' },
+            { op: 'append', path: '/list', value: '${"item"}' },
           ],
         }],
         event_catalog: [{ type: 'Ev', payload_template: {} }],
       };
       const config = validateBoundaryConfig(raw);
       expect(config.reducers[0]?.patches).toEqual([
-        { op: 'replace', path: '/field', value: '"val"' },
-        { op: 'append', path: '/list', value: '"item"' },
+        { op: 'replace', path: '/field', value: '${"val"}' },
+        { op: 'append', path: '/list', value: '${"item"}' },
       ]);
     });
 

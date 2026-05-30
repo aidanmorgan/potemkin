@@ -29,7 +29,7 @@ const fullBase = {
   behaviors: [
     { name: 'create', match: { operationId: 'createThing', condition: 'true' }, emit: 'Ev' },
   ],
-  reducers: [{ on: 'Ev', patches: [{ op: 'replace', path: '/status', value: '"active"' }] }],
+  reducers: [{ on: 'Ev', patches: [{ op: 'replace', path: '/status', value: '${"active"}' }] }],
   event_catalog: [{ type: 'Ev', payload_template: {} }],
 };
 
@@ -109,12 +109,12 @@ describe('dsl/schema — additional branch coverage', () => {
         ...minimalBase,
         behaviors: [],
         reducers: [
-          { on: 'Ev', patches: [{ op: 'append', path: '/list', value: 'event.payload.item' }] },
+          { on: 'Ev', patches: [{ op: 'append', path: '/list', value: '${event.payload.item}' }] },
         ],
         event_catalog: [{ type: 'Ev', payload_template: {} }],
       };
       const config = validateBoundaryConfig(raw);
-      expect(config.reducers[0]?.patches?.[0]).toEqual({ op: 'append', path: '/list', value: 'event.payload.item' });
+      expect(config.reducers[0]?.patches?.[0]).toEqual({ op: 'append', path: '/list', value: '${event.payload.item}' });
     });
   });
 
@@ -290,7 +290,7 @@ describe('dsl/schema — additional branch coverage', () => {
         boundary: 'B',
         contract_path: '/b',
         behaviors: [],
-        reducers: [{ on: 'UnknownEvent', patches: [{ op: 'replace', path: '/x', value: '"y"' }] }],
+        reducers: [{ on: 'UnknownEvent', patches: [{ op: 'replace', path: '/x', value: '${"y"}' }] }],
         event_catalog: [{ type: 'KnownEvent', payload_template: {} }],
       };
       try {

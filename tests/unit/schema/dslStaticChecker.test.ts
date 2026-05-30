@@ -93,7 +93,7 @@ describe('schema/dslStaticChecker', () => {
     const dsl = makeCompiledDsl([
       {
         ...minimalBoundary,
-        reducers: [{ on: 'Ev', patches: [{ op: 'replace', path: '/unknownField', value: '"val"' }] }],
+        reducers: [{ on: 'Ev', patches: [{ op: 'replace', path: '/unknownField', value: '${"val"}' }] }],
         eventCatalog: [{ type: 'Ev', payloadTemplate: {} }],
       },
     ]);
@@ -106,7 +106,7 @@ describe('schema/dslStaticChecker', () => {
     const dsl = makeCompiledDsl([
       {
         ...minimalBoundary,
-        reducers: [{ on: 'Ev', patches: [{ op: 'replace', path: '/status', value: 'state.badPath' }] }],
+        reducers: [{ on: 'Ev', patches: [{ op: 'replace', path: '/status', value: '${state.badPath}' }] }],
         eventCatalog: [{ type: 'Ev', payloadTemplate: {} }],
       },
     ]);
@@ -119,7 +119,7 @@ describe('schema/dslStaticChecker', () => {
     const dsl = makeCompiledDsl([
       {
         ...minimalBoundary,
-        reducers: [{ on: 'Ev', patches: [{ op: 'append', path: '/badArr', value: '"val"' }] }],
+        reducers: [{ on: 'Ev', patches: [{ op: 'append', path: '/badArr', value: '${"val"}' }] }],
         eventCatalog: [{ type: 'Ev', payloadTemplate: {} }],
       },
     ]);

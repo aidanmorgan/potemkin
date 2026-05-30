@@ -45,10 +45,10 @@ behaviors:
 reducers:
   - on: LoanRepaid
     patches:
-      - { op: replace, path: /balance, value: "state.balance - event.payload.amount" }
+      - { op: replace, path: /balance, value: "\${state.balance - event.payload.amount}" }
   - on: LoanSettled
     patches:
-      - { op: replace, path: /status, value: "'SETTLED'" }
+      - { op: replace, path: /status, value: "\${'SETTLED'}" }
 `,
     });
     expect(result.status).toBe(200);
@@ -89,10 +89,10 @@ behaviors:
 reducers:
   - on: LoanRepaid
     patches:
-      - { op: replace, path: /balance, value: "state.balance - event.payload.amount" }
+      - { op: replace, path: /balance, value: "\${state.balance - event.payload.amount}" }
   - on: LoanSettled
     patches:
-      - { op: replace, path: /status, value: "'SETTLED'" }
+      - { op: replace, path: /status, value: "\${'SETTLED'}" }
 `,
     });
     expect(result.status).toBe(200);
@@ -138,10 +138,10 @@ behaviors:
 reducers:
   - on: LoanSettled
     patches:
-      - { op: replace, path: /status, value: "'SETTLED'" }
+      - { op: replace, path: /status, value: "\${'SETTLED'}" }
   - on: NotificationQueued
     patches:
-      - { op: replace, path: /notified, value: "true" }
+      - { op: replace, path: /notified, value: "\${true}" }
 `,
     });
     expect(result.status).toBe(200);
@@ -183,7 +183,7 @@ behaviors:
 reducers:
   - on: LoanSettled
     patches:
-      - { op: replace, path: /status, value: "'SETTLED'" }
+      - { op: replace, path: /status, value: "\${'SETTLED'}" }
 `,
     });
     // amount (50) < balance (200): condition false, no events emitted
@@ -240,13 +240,13 @@ behaviors:
 reducers:
   - on: LoanProcessed
     patches:
-      - { op: replace, path: /processed, value: "true" }
+      - { op: replace, path: /processed, value: "\${true}" }
   - on: LoanSettled
     patches:
-      - { op: replace, path: /status, value: "'SETTLED'" }
+      - { op: replace, path: /status, value: "\${'SETTLED'}" }
   - on: NotificationQueued
     patches:
-      - { op: replace, path: /notified, value: "true" }
+      - { op: replace, path: /notified, value: "\${true}" }
 `,
     });
     expect(result.status).toBe(200);
@@ -293,10 +293,10 @@ behaviors:
 reducers:
   - on: LoanSettled
     patches:
-      - { op: replace, path: /status, value: "'SETTLED'" }
+      - { op: replace, path: /status, value: "\${'SETTLED'}" }
   - on: AccountClosed
     patches:
-      - { op: replace, path: /closed, value: "true" }
+      - { op: replace, path: /closed, value: "\${true}" }
 `,
     });
     expect(result.status).toBe(200);

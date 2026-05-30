@@ -63,8 +63,8 @@ behaviors:
 reducers:
   - on: WidgetCreated
     patches:
-      - { op: replace, path: /id, value: "\${command.targetId}" }
-      - { op: replace, path: /status, value: "'NEW'" }
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
+      - { op: replace, path: /status, value: "\${'NEW'}" }
 `;
 
 async function bootWith(globalYaml: string) {

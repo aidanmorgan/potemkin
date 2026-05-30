@@ -47,17 +47,17 @@ derived_projections:
     reduce:
       - on: "Lead:LeadCreated"
         patches:
-          - { op: replace, path: /totalLeads, value: "state.totalLeads != null ? state.totalLeads + 1 : 1" }
-          - { op: replace, path: /totalConversions, value: "state.totalConversions != null ? state.totalConversions : 0" }
+          - { op: replace, path: /totalLeads, value: "${state.totalLeads != null ? state.totalLeads + 1 : 1}" }
+          - { op: replace, path: /totalConversions, value: "${state.totalConversions != null ? state.totalConversions : 0}" }
       - on: "Lead:LeadConverted"
         patches:
-          - { op: replace, path: /totalConversions, value: "state.totalConversions != null ? state.totalConversions + 1 : 1" }
+          - { op: replace, path: /totalConversions, value: "${state.totalConversions != null ? state.totalConversions + 1 : 1}" }
       - on: "Call:CallLogged"
         patches:
-          - { op: replace, path: /totalCalls, value: "state.totalCalls != null ? state.totalCalls + 1 : 1" }
+          - { op: replace, path: /totalCalls, value: "${state.totalCalls != null ? state.totalCalls + 1 : 1}" }
       - on: "Opportunity:OpportunityWon"
         patches:
-          - { op: replace, path: /wonCount, value: "state.wonCount != null ? state.wonCount + 1 : 1" }
+          - { op: replace, path: /wonCount, value: "${state.wonCount != null ? state.wonCount + 1 : 1}" }
 
   # AgentPerformance: tracks per-agent call and conversion metrics
   - name: AgentPerformance
@@ -68,7 +68,7 @@ derived_projections:
     reduce:
       - on: "Call:CallLogged"
         patches:
-          - { op: replace, path: /callCount, value: "state.callCount != null ? state.callCount + 1 : 1" }
+          - { op: replace, path: /callCount, value: "${state.callCount != null ? state.callCount + 1 : 1}" }
       - on: "Agent:AgentConversionIncremented"
         patches:
-          - { op: replace, path: /conversionCount, value: "state.conversionCount != null ? state.conversionCount + 1 : 1" }
+          - { op: replace, path: /conversionCount, value: "${state.conversionCount != null ? state.conversionCount + 1 : 1}" }

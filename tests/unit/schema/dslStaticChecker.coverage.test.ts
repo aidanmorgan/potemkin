@@ -60,7 +60,7 @@ describe('schema/dslStaticChecker — reducer patch CEL value path check', () =>
         ...minimalBoundary,
         reducers: [{
           on: 'TagAdded',
-          patches: [{ op: 'append', path: '/tags', value: 'state.nonExistentField' }],
+          patches: [{ op: 'append', path: '/tags', value: '${state.nonExistentField}' }],
         }],
         eventCatalog: [{ type: 'TagAdded', payloadTemplate: {} }],
       },
@@ -83,7 +83,7 @@ describe('schema/dslStaticChecker — reducer patch CEL value path check', () =>
         ...minimalBoundary,
         reducers: [{
           on: 'TagAdded',
-          patches: [{ op: 'append', path: '/tags', value: 'state.missingProp' }],
+          patches: [{ op: 'append', path: '/tags', value: '${state.missingProp}' }],
         }],
         eventCatalog: [{ type: 'TagAdded', payloadTemplate: {} }],
       },
@@ -104,7 +104,7 @@ describe('schema/dslStaticChecker — reducer patch CEL value path check', () =>
         ...minimalBoundary,
         reducers: [{
           on: 'TagAdded',
-          patches: [{ op: 'append', path: '/tags', value: 'state.status' }],
+          patches: [{ op: 'append', path: '/tags', value: '${state.status}' }],
         }],
         eventCatalog: [{ type: 'TagAdded', payloadTemplate: {} }],
       },
@@ -126,7 +126,7 @@ describe('schema/dslStaticChecker — reducer patch CEL value path check', () =>
         ...minimalBoundary,
         reducers: [{
           on: 'TagAdded',
-          patches: [{ op: 'append', path: '/tags', value: 'event.payload.tag' }],
+          patches: [{ op: 'append', path: '/tags', value: '${event.payload.tag}' }],
         }],
         eventCatalog: [{ type: 'TagAdded', payloadTemplate: {} }],
       },
@@ -147,7 +147,7 @@ describe('schema/dslStaticChecker — reducer patch CEL value path check', () =>
         ...minimalBoundary,
         reducers: [{
           on: 'TagAdded',
-          patches: [{ op: 'append', path: '/tags', value: 'state.badOne + state.badTwo' }],
+          patches: [{ op: 'append', path: '/tags', value: '${state.badOne + state.badTwo}' }],
         }],
         eventCatalog: [{ type: 'TagAdded', payloadTemplate: {} }],
       },

@@ -339,7 +339,7 @@ describe('dsl/schema — permutations', () => {
           contract_path: '/b',
           event_catalog: [{ type: 'Created', payload_template: {} }],
           behaviors: [],
-          reducers: [{ patches: [{ op: 'replace', path: '/field', value: '"value"' }] }],
+          reducers: [{ patches: [{ op: 'replace', path: '/field', value: '${"value"}' }] }],
         }),
       ).toThrow(BootError);
     });
@@ -362,9 +362,9 @@ describe('dsl/schema — permutations', () => {
         contract_path: '/b',
         event_catalog: [{ type: 'Created', payload_template: {} }],
         behaviors: [],
-        reducers: [{ on: 'Created', patches: [{ op: 'replace', path: '/status', value: 'event.payload.status' }] }],
+        reducers: [{ on: 'Created', patches: [{ op: 'replace', path: '/status', value: '${event.payload.status}' }] }],
       });
-      expect(result.reducers[0]?.patches?.[0]).toEqual({ op: 'replace', path: '/status', value: 'event.payload.status' });
+      expect(result.reducers[0]?.patches?.[0]).toEqual({ op: 'replace', path: '/status', value: '${event.payload.status}' });
     });
 
     it('rejects reducer with removed assign key (BOOT_ERR_REMOVED_SYNTAX)', () => {
@@ -414,9 +414,9 @@ describe('dsl/schema — permutations', () => {
         contract_path: '/b',
         event_catalog: [{ type: 'Created', payload_template: {} }],
         behaviors: [],
-        reducers: [{ on: 'Created', patches: [{ op: 'append', path: '/items', value: 'event.payload.item' }] }],
+        reducers: [{ on: 'Created', patches: [{ op: 'append', path: '/items', value: '${event.payload.item}' }] }],
       });
-      expect(result.reducers[0]?.patches?.[0]).toEqual({ op: 'append', path: '/items', value: 'event.payload.item' });
+      expect(result.reducers[0]?.patches?.[0]).toEqual({ op: 'append', path: '/items', value: '${event.payload.item}' });
     });
 
     it('rejects reducer with removed append key (BOOT_ERR_REMOVED_SYNTAX)', () => {
@@ -455,7 +455,7 @@ describe('dsl/schema — permutations', () => {
           contract_path: '/b',
           event_catalog: [{ type: 'Created', payload_template: {} }],
           behaviors: [],
-          reducers: [{ on: 'Created', patches: [{ op: 'replace', value: '"x"' }] }],
+          reducers: [{ on: 'Created', patches: [{ op: 'replace', value: '${"x"}' }] }],
         }),
       ).toThrow(BootError);
     });
@@ -640,8 +640,8 @@ describe('dsl/schema — permutations', () => {
           {
             on: 'Customer.Registered',
             patches: [
-              { op: 'replace', path: '/status', value: '"active"' },
-              { op: 'replace', path: '/name', value: 'event.payload.name' },
+              { op: 'replace', path: '/status', value: '${"active"}' },
+              { op: 'replace', path: '/name', value: '${event.payload.name}' },
             ],
           },
         ],

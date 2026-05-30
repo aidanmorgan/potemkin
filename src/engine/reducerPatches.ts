@@ -23,14 +23,12 @@ export function resolveReducerPatch(
   cel: CelEvaluator,
   celCtx: Record<string, unknown>,
 ): Patch {
-  const evaluate = (raw: unknown): JsonValue => {
-    if (typeof raw !== 'string') return raw as JsonValue;
-    try {
-      return cel.evaluate(raw, celCtx, CelPhase.Reducer) as JsonValue;
-    } catch {
-      return raw as JsonValue;
-    }
-  };
+  // Reducer patch values use the ${expr} template form (A4): CEL references must
+  // be wrapped in ${...}; bare text is a literal. evaluateDslValue evaluates a
+  // whole-string ${expr} with type preserved, interpolates mixed text, and
+  // returns bare strings as-is. Non-string values pass through unchanged.
+  const evaluate = (raw: unknown): JsonValue =>
+    cel.evaluateDslValue(raw, celCtx, CelPhase.Reducer) as JsonValue;
 
   switch (patch.op) {
     case 'remove':

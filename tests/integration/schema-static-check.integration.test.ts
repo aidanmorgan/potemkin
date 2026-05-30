@@ -71,8 +71,8 @@ behaviors:
 reducers:
   - on: WidgetCreated
     patches:
-      - { op: replace, path: /id, value: "event.payload.id" }
-      - { op: replace, path: /name, value: "event.payload.name" }
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
+      - { op: replace, path: /name, value: "\${event.payload.name}" }
 `;
 
 // A well-formed DSL for the same boundary (sanity check)
@@ -97,8 +97,8 @@ behaviors:
 reducers:
   - on: WidgetCreated
     patches:
-      - { op: replace, path: /id, value: "event.payload.id" }
-      - { op: replace, path: /name, value: "event.payload.name" }
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
+      - { op: replace, path: /name, value: "\${event.payload.name}" }
 `;
 
 describe('schema-static-check.integration: DSL with unknown state path triggers boot error', () => {

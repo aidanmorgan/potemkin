@@ -25,6 +25,6 @@ reducers:
     patches:
       - op: replace
         path: /status
-        value: "'ACTIVE'"
+        value: "${'ACTIVE'}"
 
 initialization: []

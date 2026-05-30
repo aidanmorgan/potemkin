@@ -69,7 +69,7 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "'UPDATED'" }
+      - { op: replace, path: /status, value: "\${'UPDATED'}" }
 `;
 }
 
@@ -108,7 +108,7 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "'UPDATED'" }
+      - { op: replace, path: /status, value: "\${'UPDATED'}" }
 `,
     });
     expect(result.status).toBe(200);
@@ -145,7 +145,7 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "'UPDATED'" }
+      - { op: replace, path: /status, value: "\${'UPDATED'}" }
 `,
     });
     // Script returns false → behavior doesn't match → 422
@@ -189,7 +189,7 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /computed, value: "event.payload.computed" }
+      - { op: replace, path: /computed, value: "\${event.payload.computed}" }
 `,
     });
     expect(result.status).toBe(200);
@@ -234,7 +234,7 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /generatedId, value: "event.payload.generatedId" }
+      - { op: replace, path: /generatedId, value: "\${event.payload.generatedId}" }
 `,
     });
     expect(result.status).toBe(200);
@@ -274,7 +274,7 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /lastTs, value: "event.payload.ts" }
+      - { op: replace, path: /lastTs, value: "\${event.payload.ts}" }
 `,
     });
     expect(result.status).toBe(200);
@@ -322,7 +322,7 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "'UPDATED'" }
+      - { op: replace, path: /status, value: "\${'UPDATED'}" }
 `,
     });
     expect(result.status).toBe(500);
@@ -371,7 +371,7 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "'UPDATED'" }
+      - { op: replace, path: /status, value: "\${'UPDATED'}" }
 `,
     });
     expect(result.status).toBe(500);
@@ -422,7 +422,7 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "'UPDATED'" }
+      - { op: replace, path: /status, value: "\${'UPDATED'}" }
 `,
     });
     // Script returns false (require fails) → condition is false → 422 no-match
@@ -463,7 +463,7 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "'UPDATED'" }
+      - { op: replace, path: /status, value: "\${'UPDATED'}" }
 `,
     });
     // process is undefined in sandbox → condition returns false → 422
@@ -504,7 +504,7 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "'UPDATED'" }
+      - { op: replace, path: /status, value: "\${'UPDATED'}" }
 `,
     });
     expect(bootError).toBeInstanceOf(BootError);
@@ -538,7 +538,7 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "'UPDATED'" }
+      - { op: replace, path: /status, value: "\${'UPDATED'}" }
 `,
     });
     expect(bootError).toBeInstanceOf(BootError);
@@ -622,7 +622,7 @@ behaviors:
 reducers:
   - on: WidgetRepaid
     patches:
-      - { op: replace, path: /balance, value: "state.balance - event.payload.amount" }
+      - { op: replace, path: /balance, value: "\${state.balance - event.payload.amount}" }
 `,
     });
     // balance goes to -150, postcondition script returns false → abort
@@ -662,7 +662,7 @@ behaviors:
 reducers:
   - on: WidgetRepaid
     patches:
-      - { op: replace, path: /balance, value: "state.balance - event.payload.amount" }
+      - { op: replace, path: /balance, value: "\${state.balance - event.payload.amount}" }
 `,
     });
     expect(result.status).toBe(200);
@@ -706,7 +706,7 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /capturedBalance, value: "event.payload.capturedBalance" }
+      - { op: replace, path: /capturedBalance, value: "\${event.payload.capturedBalance}" }
 `;
 
     const [r1, r2] = await Promise.all([
@@ -774,7 +774,7 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /band, value: "event.payload.band" }
+      - { op: replace, path: /band, value: "\${event.payload.band}" }
 `,
     });
     expect(result.status).toBe(200);

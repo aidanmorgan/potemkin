@@ -1,5 +1,6 @@
 import { BootError } from '../errors.js';
 import { assertNoRemovedReducerKeys } from './removedSyntax.js';
+import { firstBareCelReference } from './celInterpolation.js';
 import type { JsonObject } from '../types.js';
 import type {
   BehaviorRule,
@@ -538,6 +539,19 @@ function optionalPatchList(raw: Record<string, unknown>, ctx: string): readonly 
         { field: `${ctx}.patches[${i}].value`, value: patchValue },
       );
     }
+    // A4: a CEL context reference (state./event./command./$builtin) must be
+    // wrapped in ${...}. A bare reference is almost certainly an un-interpolated
+    // mistake — reject it with the canonical replacement.
+    if (typeof patchValue === 'string') {
+      const bare = firstBareCelReference(patchValue);
+      if (bare !== null) {
+        throw new BootError(
+          'BOOT_ERR_CEL_NEEDS_INTERP',
+          `${ctx}.patches[${i}].value: CEL reference "${bare}" must be interpolated as \${...} — write "\${${patchValue}}" (or wrap the referencing sub-expression). Value: "${patchValue}"`,
+          { field: `${ctx}.patches[${i}].value`, value: patchValue, reference: bare },
+        );
+      }
+    }
     return {
       op: op as import('./types.js').ReducerPatchOp['op'],
       path,
@@ -882,6 +896,15 @@ export function validateBoundaryConfig(raw: unknown): BoundaryConfig {
     scripts = scriptsRaw.map((item, i) => validateScriptDeclaration(item, i, boundary));
   }
 
+  // D2: optional per-boundary deprecation envelope.
+  const deprecated = validateDeprecationConfig(raw['deprecated'], 'root');
+
+  // D1: optional per-boundary HATEOAS link entries.
+  const hateoas = validateHateoasEntries(raw['hateoas'], 'root');
+
+  // D3: optional per-boundary response field mask.
+  const mask = validateMaskFields(raw['mask'], 'root');
+
   // Cross-reference validation
   crossValidate({ behaviors, reducers, eventCatalog, boundary, scripts });
 
@@ -896,7 +919,56 @@ export function validateBoundaryConfig(raw: unknown): BoundaryConfig {
     eventCatalog,
     ...(initialization !== undefined ? { initialization } : {}),
     ...(scripts !== undefined ? { scripts } : {}),
+    ...(deprecated !== undefined ? { deprecated } : {}),
+    ...(hateoas !== undefined ? { hateoas } : {}),
+    ...(mask !== undefined ? { mask } : {}),
   };
+}
+
+/** D2: parse an optional `deprecated:` envelope { date?, sunset?, replacement? }. */
+function validateDeprecationConfig(raw: unknown, ctx: string): import('./types.js').DeprecationConfig | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (!isRecord(raw)) {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.deprecated must be a mapping`, { field: 'deprecated' });
+  }
+  const date = optionalString(raw, 'date', `${ctx}.deprecated`);
+  const sunset = optionalString(raw, 'sunset', `${ctx}.deprecated`);
+  const replacement = optionalString(raw, 'replacement', `${ctx}.deprecated`);
+  return {
+    date: date ?? new Date(0).toISOString(),
+    ...(sunset !== undefined ? { sunset } : {}),
+    ...(replacement !== undefined ? { replacement } : {}),
+  };
+}
+
+/** D1: parse an optional `hateoas:` list of { rel, href } entries. */
+function validateHateoasEntries(raw: unknown, ctx: string): readonly import('./types.js').HateoasLinkEntry[] | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (!Array.isArray(raw)) {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.hateoas must be an array`, { field: 'hateoas' });
+  }
+  return raw.map((item, i) => {
+    if (!isRecord(item)) {
+      throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.hateoas[${i}] must be a mapping`, { context: ctx });
+    }
+    const rel = requireString(item, 'rel', `${ctx}.hateoas[${i}]`);
+    const href = requireString(item, 'href', `${ctx}.hateoas[${i}]`);
+    return { rel, href };
+  });
+}
+
+/** D3: parse an optional `mask:` list of field names (RFC 6901 pointers or bare names). */
+function validateMaskFields(raw: unknown, ctx: string): readonly string[] | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (!Array.isArray(raw)) {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.mask must be an array of field names`, { field: 'mask' });
+  }
+  return raw.map((item, i) => {
+    if (typeof item !== 'string' || item.trim() === '') {
+      throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.mask[${i}] must be a non-empty string`, { context: ctx });
+    }
+    return item;
+  });
 }
 
 // ---------------------------------------------------------------------------

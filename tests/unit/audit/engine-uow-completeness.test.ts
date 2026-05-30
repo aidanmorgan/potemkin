@@ -121,8 +121,8 @@ behaviors:
 reducers:
   - on: ItemCreated
     patches:
-      - { op: replace, path: /id, value: "event.payload.id" }
-      - { op: replace, path: /name, value: "event.payload.name" }
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
+      - { op: replace, path: /name, value: "\${event.payload.name}" }
 `;
 
 const ITEM_BY_ID_DSL = `

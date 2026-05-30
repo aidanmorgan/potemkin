@@ -23,6 +23,7 @@ import { executeUnitOfWork } from '../engine/uow.js';
 import { extractFaultSignal } from '../engine/faultSim.js';
 import { nextUuidv7 } from '../ids/uuidv7.js';
 import { resolveActor, JwtValidationError } from '../identity/actorResolver.js';
+import { applyResponseMutations, buildOperationLookup } from '../http/responseMutations.js';
 import {
   EntityAbsenceError,
   EntityConflictError,
@@ -359,10 +360,34 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       }
     }
 
+    // D4: compute response-mutation patches (HATEOAS/mask) + deprecation headers.
+    // The base body is returned unchanged and the body patches are reported in
+    // `_patches` for the plugin's response interceptor to re-apply (E1); the
+    // deprecation/sunset/link headers are merged into the response headers.
+    let patches: readonly import('../dsl/patches.js').JournalEntry[] | undefined;
+    if (result.status >= 200 && result.status < 300 && result.body !== null && result.body !== undefined) {
+      const pathItem = sys.openapi.paths[route.contractPath] as
+        | Record<string, import('../contract/loader.js').OpenApiOperation | undefined>
+        | undefined;
+      const mutation = applyResponseMutations({
+        body: result.body,
+        boundary,
+        operation: pathItem ? pathItem[method.toLowerCase()] : undefined,
+        statusCode: result.status,
+        operationLookup: buildOperationLookup(sys.openapi),
+      });
+      // ForwardedResponse header keys are lowercase by convention.
+      for (const [k, v] of Object.entries(mutation.headers)) responseHeaders[k.toLowerCase()] = v;
+      // Body-affecting patches only (hateoas/mask); deprecation went to headers.
+      const bodyPatches = mutation.journal.filter((e) => e.source === 'hateoas' || e.source === 'mask');
+      if (bodyPatches.length > 0) patches = bodyPatches;
+    }
+
     const fwdResponse: ForwardedResponse = {
       status: result.status,
       headers: responseHeaders,
       body: result.body,
+      ...(patches !== undefined ? { _patches: patches } : {}),
     };
 
     res.status(200).json(fwdResponse);

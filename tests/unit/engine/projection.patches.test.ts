@@ -41,14 +41,14 @@ describe('projection runtime — patches: ops', () => {
 
   it('replace patch sets a top-level field', () => {
     const state = projectLeadCreated([
-      { on: 'LeadCreated', patches: [{ op: 'replace', path: '/status', value: "'NEW'" }] },
+      { on: 'LeadCreated', patches: [{ op: 'replace', path: '/status', value: "${'NEW'}" }] },
     ]);
     expect(state['status']).toBe('NEW');
   });
 
   it('add patch sets a new field', () => {
     const state = projectLeadCreated([
-      { on: 'LeadCreated', patches: [{ op: 'add', path: '/foo', value: "'bar'" }] },
+      { on: 'LeadCreated', patches: [{ op: 'add', path: '/foo', value: "${'bar'}" }] },
     ]);
     expect(state['foo']).toBe('bar');
   });
@@ -58,7 +58,7 @@ describe('projection runtime — patches: ops', () => {
       {
         on: 'LeadCreated',
         patches: [
-          { op: 'replace', path: '/temp', value: "'x'" },
+          { op: 'replace', path: '/temp', value: "${'x'}" },
           { op: 'remove', path: '/temp' },
         ],
       },
@@ -71,8 +71,8 @@ describe('projection runtime — patches: ops', () => {
       {
         on: 'LeadCreated',
         patches: [
-          { op: 'append', path: '/tags', value: "'red'" },
-          { op: 'append', path: '/tags', value: "'green'" },
+          { op: 'append', path: '/tags', value: "${'red'}" },
+          { op: 'append', path: '/tags', value: "${'green'}" },
         ],
       },
     ]);
@@ -84,8 +84,8 @@ describe('projection runtime — patches: ops', () => {
       {
         on: 'LeadCreated',
         patches: [
-          { op: 'append', path: '/tags', value: "'b'" },
-          { op: 'prepend', path: '/tags', value: "'a'" },
+          { op: 'append', path: '/tags', value: "${'b'}" },
+          { op: 'prepend', path: '/tags', value: "${'a'}" },
         ],
       },
     ]);
@@ -150,7 +150,7 @@ describe('projection runtime — patches: ops', () => {
         on: 'LeadCreated',
         patches: [
           { op: 'replace', path: '/audit', value: {} },
-          { op: 'replace', path: '/audit/lastChangedBy', value: "'system'" },
+          { op: 'replace', path: '/audit/lastChangedBy', value: "${'system'}" },
         ],
       },
     ]);

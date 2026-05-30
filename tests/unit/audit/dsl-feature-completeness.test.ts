@@ -18,7 +18,7 @@ const minimalRaw = {
   behaviors: [
     { name: 'create', match: { operationId: 'createLoan', condition: 'true' }, emit: 'LoanCreated' },
   ],
-  reducers: [{ on: 'LoanCreated', patches: [{ op: 'replace', path: '/status', value: '"active"' }] }],
+  reducers: [{ on: 'LoanCreated', patches: [{ op: 'replace', path: '/status', value: '${"active"}' }] }],
   event_catalog: [{ type: 'LoanCreated', payload_template: {} }],
 };
 
@@ -340,16 +340,16 @@ describe('DSL §7.3 – Reducers Block', () => {
     const cfg = validateBoundaryConfig(minimalRaw);
     expect(cfg.reducers[0].on).toBe('LoanCreated');
     expect(cfg.reducers[0].patches).toEqual([
-      { op: 'replace', path: '/status', value: '"active"' },
+      { op: 'replace', path: '/status', value: '${"active"}' },
     ]);
   });
 
   it('accepts a reducer with an append patch', () => {
     const cfg = validateBoundaryConfig({
       ...minimalRaw,
-      reducers: [{ on: 'LoanCreated', patches: [{ op: 'append', path: '/items', value: 'event.payload.item' }] }],
+      reducers: [{ on: 'LoanCreated', patches: [{ op: 'append', path: '/items', value: '${event.payload.item}' }] }],
     });
-    expect(cfg.reducers[0].patches?.[0]).toEqual({ op: 'append', path: '/items', value: 'event.payload.item' });
+    expect(cfg.reducers[0].patches?.[0]).toEqual({ op: 'append', path: '/items', value: '${event.payload.item}' });
   });
 
   it('rejects a reducer that carries the removed assign key with BOOT_ERR_REMOVED_SYNTAX', () => {
@@ -384,7 +384,7 @@ describe('DSL §7.3 – Reducers Block', () => {
     expect(() =>
       validateBoundaryConfig({
         ...minimalRaw,
-        reducers: [{ on: 'UnknownEvent', patches: [{ op: 'replace', path: '/status', value: '"x"' }] }],
+        reducers: [{ on: 'UnknownEvent', patches: [{ op: 'replace', path: '/status', value: '${"x"}' }] }],
       }),
     ).toThrow(BootError);
   });
@@ -393,7 +393,7 @@ describe('DSL §7.3 – Reducers Block', () => {
     try {
       validateBoundaryConfig({
         ...minimalRaw,
-        reducers: [{ on: 'NoSuchEvent', patches: [{ op: 'replace', path: '/x', value: '1' }] }],
+        reducers: [{ on: 'NoSuchEvent', patches: [{ op: 'replace', path: '/x', value: '${1}' }] }],
       });
       fail('should throw');
     } catch (e) {

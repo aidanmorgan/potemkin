@@ -130,8 +130,8 @@ behaviors:
 reducers:
   - on: WidgetCreated
     patches:
-      - { op: replace, path: /id, value: "event.payload.id" }
-      - { op: replace, path: /label, value: "event.payload.label" }
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
+      - { op: replace, path: /label, value: "\${event.payload.label}" }
 `;
 
 // Item: PATCH /items/{id} — no fallback, no behaviors → UnhandledOperationError
@@ -301,10 +301,10 @@ behaviors:
 reducers:
   - on: PingCreated
     patches:
-      - { op: replace, path: /id, value: "event.payload.id" }
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
   - on: PingMutated
     patches:
-      - { op: replace, path: /id, value: "event.payload.id" }
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
 `;
 
 const PONG_DSL = `
@@ -343,10 +343,10 @@ behaviors:
 reducers:
   - on: PongCreated
     patches:
-      - { op: replace, path: /id, value: "event.payload.id" }
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
   - on: PongMutated
     patches:
-      - { op: replace, path: /id, value: "event.payload.id" }
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
 `;
 
 // ── Test suite ────────────────────────────────────────────────────────────────
@@ -500,11 +500,12 @@ describe('gateway — error mapping integration', () => {
     expect(res.body.error).toBeDefined();
   });
 
-  // ── Invalid reducer patch CEL falls back to the literal string ───────────────
+  // ── Invalid reducer patch CEL surfaces as a 500 (fail-fast, no silent fallback) ──
 
-  it('invalid reducer patch CEL falls back to the literal string and creation succeeds', async () => {
-    // A reducer patch value that is not valid CEL no longer throws at runtime; the
-    // applier falls back to storing the literal string. Creation therefore succeeds.
+  it('a reducer patch CEL referencing an undefined identifier surfaces as a 500', async () => {
+    // Reducer patch values are CEL templates. An expression referencing an
+    // undefined identifier is a runtime error — the engine fails fast with a 500
+    // (InternalExecutionError) rather than silently storing the literal text.
     const badCelOpenapi = `
 openapi: "3.0.3"
 info:
@@ -568,7 +569,7 @@ behaviors:
 reducers:
   - on: BadCelCreated
     patches:
-      - { op: replace, path: /id, value: "event.payload.id" }
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
       - { op: replace, path: /label, value: "undefined_variable_that_throws_xyzzy_99" }
 `;
 
@@ -583,10 +584,9 @@ reducers:
       .post('/badcels')
       .send({ label: 'test' });
 
-    // Invalid reducer CEL falls back to the literal string → creation succeeds (201)
-    // and the literal expression text is stored as the label.
-    expect(res.status).toBe(201);
-    expect(res.body.label).toBe('undefined_variable_that_throws_xyzzy_99');
+    // The undefined-identifier CEL reference fails fast: 500 InternalExecutionError,
+    // no silent literal fallback.
+    expect(res.status).toBe(500);
     resetSystem(sys);
   });
 

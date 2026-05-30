@@ -90,64 +90,64 @@ reducers:
     patches:
       - op: replace
         path: /id
-        value: "event.payload.id"
+        value: "${event.payload.id}"
       - op: replace
         path: /name
-        value: "event.payload.name"
+        value: "${event.payload.name}"
       - op: replace
         path: /status
-        value: "'DRAFT'"
+        value: "${'DRAFT'}"
       - op: replace
         path: /targetSource
-        value: "event.payload.targetSource"
+        value: "${event.payload.targetSource}"
       - op: replace
         path: /script
-        value: "event.payload.script"
+        value: "${event.payload.script}"
       - op: replace
         path: /startedAt
-        value: "event.payload.startedAt"
+        value: "${event.payload.startedAt}"
       - op: replace
         path: /endedAt
-        value: "event.payload.endedAt"
+        value: "${event.payload.endedAt}"
       - op: replace
         path: /targetCalls
-        value: "event.payload.targetCalls"
+        value: "${event.payload.targetCalls}"
       - op: replace
         path: /targetConversions
-        value: "event.payload.targetConversions"
+        value: "${event.payload.targetConversions}"
       - op: replace
         path: /actualCalls
-        value: "0"
+        value: "${0}"
       - op: replace
         path: /actualConversions
-        value: "0"
+        value: "${0}"
       - op: replace
         path: /assignedAgentIds
-        value: "[]"
+        value: "${[]}"
 
   - on: CampaignActivated
     patches:
       - op: replace
         path: /status
-        value: "'ACTIVE'"
+        value: "${'ACTIVE'}"
 
   - on: CampaignPaused
     patches:
       - op: replace
         path: /status
-        value: "'PAUSED'"
+        value: "${'PAUSED'}"
 
   - on: CampaignCompleted
     patches:
       - op: replace
         path: /status
-        value: "'COMPLETED'"
+        value: "${'COMPLETED'}"
 
   - on: CampaignLeadSourceUpdated
     patches:
       - op: replace
         path: /actualCalls
-        value: "state.actualCalls != null ? state.actualCalls + 1 : 1"
+        value: "${state.actualCalls != null ? state.actualCalls + 1 : 1}"
 
 initialization:
   - id: "00000000-0000-7000-8000-000000000001"

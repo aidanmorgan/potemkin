@@ -80,8 +80,8 @@ behaviors:
 reducers:
   - on: ThingCreated
     patches:
-      - { op: replace, path: /id, value: "event.payload.id" }
-      - { op: replace, path: /name, value: "event.payload.name" }
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
+      - { op: replace, path: /name, value: "\${event.payload.name}" }
 `;
 
 describe('engine/boot.ts additional coverage', () => {

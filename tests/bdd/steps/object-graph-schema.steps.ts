@@ -112,8 +112,8 @@ event_catalog:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /id, value: "event.payload.id" }
-      - { op: replace, path: /count, value: "event.payload.count" }
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
+      - { op: replace, path: /count, value: "\${event.payload.count}" }
 initialization:
   - id: "widget-001"
     count: 42
@@ -171,7 +171,7 @@ event_catalog:
 reducers:
   - on: ThingUpdated
     patches:
-      - { op: replace, path: /id, value: "event.payload.id" }
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
 `;
   try {
     const openapi = await loadOpenApi(STRICT_OPENAPI_YAML);
@@ -214,7 +214,7 @@ event_catalog:
 reducers:
   - on: ThingUpdated
     patches:
-      - { op: replace, path: /nonExistentField, value: "event.payload.id" }
+      - { op: replace, path: /nonExistentField, value: "\${event.payload.id}" }
 `;
   try {
     const openapi = await loadOpenApi(STRICT_OPENAPI_YAML);

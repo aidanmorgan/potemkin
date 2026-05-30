@@ -313,8 +313,8 @@ event_catalog:
 reducers:
   - on: WidgetCreated
     patches:
-      - { op: replace, path: /id, value: event.payload.id }
-      - { op: replace, path: /label, value: event.payload.label }
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
+      - { op: replace, path: /label, value: "\${event.payload.label}" }
 `;
 
 const IDEM_GLOBAL_YAML = `

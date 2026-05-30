@@ -35,8 +35,15 @@ export interface ForwardedResponse {
   readonly status: number;
   /** Response headers to set. Keys are lowercase. */
   readonly headers: Record<string, string>;
-  /** Response body. */
+  /** Response body (the BASE body; response-mutation patches are reported in `_patches`). */
   readonly body: JsonValue;
+  /**
+   * D4: response-mutation patches (HATEOAS / mask, tagged by source) that the
+   * plugin re-applies to the body to produce the client-visible response.
+   * Applying these to `body` reproduces the engine's mutated body. Empty when
+   * no mutations applied. Deprecation/Sunset/Link are conveyed via `headers`.
+   */
+  readonly _patches?: readonly import('../dsl/patches.js').JournalEntry[];
 }
 
 /**

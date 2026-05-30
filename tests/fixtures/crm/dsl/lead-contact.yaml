@@ -34,9 +34,9 @@ reducers:
     patches:
       - op: replace
         path: /status
-        value: "'CONTACTED'"
+        value: "${'CONTACTED'}"
       - op: replace
         path: /lastContactedAt
-        value: "event.payload.lastContactedAt"
+        value: "${event.payload.lastContactedAt}"
 
 initialization: []

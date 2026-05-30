@@ -23,7 +23,7 @@ behaviors:
 reducers:
   - on: AgentStatusChanged
     patches:
-      - { op: replace, path: /currentStatus, value: "event.payload.newStatus" }
-      - { op: replace, path: /lastActiveAt, value: "event.payload.changedAt" }
+      - { op: replace, path: /currentStatus, value: "${event.payload.newStatus}" }
+      - { op: replace, path: /lastActiveAt, value: "${event.payload.changedAt}" }
 
 initialization: []

@@ -44,10 +44,10 @@ ${opts.requires}
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "'UPDATED'" }
+      - { op: replace, path: /status, value: "\${'UPDATED'}" }
   - on: OtherEvent
     patches:
-      - { op: replace, path: /status, value: "'OTHER'" }
+      - { op: replace, path: /status, value: "\${'OTHER'}" }
 `,
   };
 }
@@ -86,7 +86,7 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "'UPDATED'" }
+      - { op: replace, path: /status, value: "\${'UPDATED'}" }
 `,
     });
     expect(result.status).toBe(200);
@@ -130,7 +130,7 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "'UPDATED'" }
+      - { op: replace, path: /status, value: "\${'UPDATED'}" }
 `,
     });
     expect(result.status).toBe(422);
@@ -179,7 +179,7 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "'UPDATED'" }
+      - { op: replace, path: /status, value: "\${'UPDATED'}" }
 `,
     });
     // First guard (is-active) should fail; second (has-balance) never evaluated
@@ -225,7 +225,7 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "'UPDATED'" }
+      - { op: replace, path: /status, value: "\${'UPDATED'}" }
 `,
     });
     expect(result.status).toBe(422);
@@ -270,7 +270,7 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "'UPDATED'" }
+      - { op: replace, path: /status, value: "\${'UPDATED'}" }
 `,
     });
     // requires fails → 422 (not no-match which would be 422 via fallback_override: false)
@@ -310,7 +310,7 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "'UPDATED'" }
+      - { op: replace, path: /status, value: "\${'UPDATED'}" }
 `,
     });
     // requires passes, condition is false → no match → 422 (no behavior matched)
@@ -352,7 +352,7 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "'UPDATED'" }
+      - { op: replace, path: /status, value: "\${'UPDATED'}" }
 `,
     });
     expect(result.status).toBe(200);
@@ -388,7 +388,7 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "'UPDATED'" }
+      - { op: replace, path: /status, value: "\${'UPDATED'}" }
 `,
     });
     expect(result.status).toBe(422);
@@ -424,7 +424,7 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "'UPDATED'" }
+      - { op: replace, path: /status, value: "\${'UPDATED'}" }
 `,
     });
     expect(result.status).toBe(200);
@@ -466,7 +466,7 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "'UPDATED'" }
+      - { op: replace, path: /status, value: "\${'UPDATED'}" }
 `,
     });
     expect(result.status).toBe(200);
@@ -502,7 +502,7 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "'UPDATED'" }
+      - { op: replace, path: /status, value: "\${'UPDATED'}" }
 `,
     });
     expect(result.status).toBe(422);

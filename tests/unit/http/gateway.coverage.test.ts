@@ -82,8 +82,8 @@ behaviors:
 reducers:
   - on: ItemCreated
     patches:
-      - { op: replace, path: /id, value: "event.payload.id" }
-      - { op: replace, path: /label, value: "event.payload.label" }
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
+      - { op: replace, path: /label, value: "\${event.payload.label}" }
 `;
 
 describe('http/gateway.ts — defensive guard coverage', () => {

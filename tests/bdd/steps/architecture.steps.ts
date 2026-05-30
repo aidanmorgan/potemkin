@@ -112,8 +112,8 @@ event_catalog:
 reducers:
   - on: CbOpportunityCreated
     patches:
-      - { op: replace, path: /id, value: "event.payload.id" }
-      - { op: replace, path: /leadId, value: "event.payload.leadId" }
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
+      - { op: replace, path: /leadId, value: "\${event.payload.leadId}" }
 `;
 
 const CROSS_BOUNDARY_LEAD_DSL_YAML = `
@@ -133,7 +133,7 @@ event_catalog:
 reducers:
   - on: CbOpportunityAttached
     patches:
-      - { op: append, path: /opportunityIds, value: "event.payload.opportunityId" }
+      - { op: append, path: /opportunityIds, value: "\${event.payload.opportunityId}" }
 initialization:
   - id: "cb-lead-001"
     opportunityIds: []
@@ -370,7 +370,7 @@ event_catalog:
 reducers:
   - on: WidgetCreated
     patches:
-      - { op: replace, path: /id, value: "event.payload.id" }
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
 `;
 
 const ROLLBACK_SINK_DSL_YAML = `
@@ -390,7 +390,7 @@ event_catalog:
 reducers:
   - on: SinkUpdated
     patches:
-      - { op: replace, path: /id, value: "event.payload.id" }
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
 initialization:
   - id: "sink-001"
     initialized: true

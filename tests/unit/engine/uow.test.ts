@@ -151,8 +151,8 @@ behaviors:
 reducers:
   - on: WidgetCreated
     patches:
-      - { op: replace, path: /id, value: "event.payload.id" }
-      - { op: replace, path: /label, value: "event.payload.label" }
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
+      - { op: replace, path: /label, value: "\${event.payload.label}" }
 `;
 
 const WIDGET_BY_ID_DSL = `

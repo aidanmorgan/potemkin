@@ -73,52 +73,52 @@ reducers:
     patches:
       - op: replace
         path: /id
-        value: "event.payload.id"
+        value: "${event.payload.id}"
       - op: replace
         path: /name
-        value: "event.payload.name"
+        value: "${event.payload.name}"
       - op: replace
         path: /email
-        value: "event.payload.email"
+        value: "${event.payload.email}"
       - op: replace
         path: /dailyCallQuota
-        value: "event.payload.dailyCallQuota"
+        value: "${event.payload.dailyCallQuota}"
       - op: replace
         path: /dailyCallCount
-        value: "0"
+        value: "${0}"
       - op: replace
         path: /currentStatus
-        value: "'AVAILABLE'"
+        value: "${'AVAILABLE'}"
       - op: replace
         path: /assignedCampaignIds
-        value: "[]"
+        value: "${[]}"
       - op: replace
         path: /totalConversions
-        value: "0"
+        value: "${0}"
       - op: replace
         path: /skills
-        value: "event.payload.skills != null ? event.payload.skills : []"
+        value: "${event.payload.skills != null ? event.payload.skills : []}"
 
   - on: AgentStatusChanged
     patches:
       - op: replace
         path: /currentStatus
-        value: "event.payload.newStatus"
+        value: "${event.payload.newStatus}"
       - op: replace
         path: /lastActiveAt
-        value: "event.payload.changedAt"
+        value: "${event.payload.changedAt}"
 
   - on: AgentCallCountIncremented
     patches:
       - op: replace
         path: /dailyCallCount
-        value: "state.dailyCallCount + 1"
+        value: "${state.dailyCallCount + 1}"
 
   - on: AgentConversionIncremented
     patches:
       - op: replace
         path: /totalConversions
-        value: "state.totalConversions + 1"
+        value: "${state.totalConversions + 1}"
 
 initialization:
   - id: "00000000-0000-7000-8000-000000000003"

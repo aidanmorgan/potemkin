@@ -212,8 +212,8 @@ describe('audit fields — updatedAt / updatedBy', () => {
       reducers: [{
         on: 'Created',
         patches: [
-          { op: 'replace', path: '/id', value: 'event.payload.id' },
-          { op: 'replace', path: '/name', value: 'event.payload.name' },
+          { op: 'replace', path: '/id', value: '${event.payload.id}' },
+          { op: 'replace', path: '/name', value: '${event.payload.name}' },
         ],
       }],
       eventCatalog: [{

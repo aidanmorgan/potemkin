@@ -23,6 +23,6 @@ reducers:
     patches:
       - op: replace
         path: /status
-        value: "'CONVERTED'"
+        value: "${'CONVERTED'}"
 
 initialization: []

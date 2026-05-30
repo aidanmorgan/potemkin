@@ -82,8 +82,8 @@ behaviors:
 reducers:
   - on: AccountCreated
     patches:
-      - { op: replace, path: /id, value: "event.payload.id" }
-      - { op: replace, path: /balance, value: "'NOT_A_NUMBER'" }
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
+      - { op: replace, path: /balance, value: "\${'NOT_A_NUMBER'}" }
 `;
 
 // A good DSL for sanity check
@@ -108,8 +108,8 @@ behaviors:
 reducers:
   - on: AccountCreated
     patches:
-      - { op: replace, path: /id, value: "event.payload.id" }
-      - { op: replace, path: /balance, value: "event.payload.balance" }
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
+      - { op: replace, path: /balance, value: "\${event.payload.balance}" }
 `;
 
 describe('schema-runtime-type-mismatch.integration: wrong-typed CEL assignment throws InternalExecutionError', () => {

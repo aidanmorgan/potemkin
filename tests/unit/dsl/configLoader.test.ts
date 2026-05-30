@@ -59,7 +59,7 @@ events:
 reducers:
   - on: LeadCreated
     patches:
-      - { op: replace, path: /status, value: "'NEW'" }
+      - { op: replace, path: /status, value: "\${'NEW'}" }
 `,
     });
     const loaded = await loadPotemkinConfig(path.join(root, 'potemkin.yaml'));

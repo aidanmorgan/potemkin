@@ -31,7 +31,7 @@ behaviors:
 reducers:
   - on: SecondaryCreated
     patches:
-      - { op: replace, path: /status, value: "'NOTIFIED'" }
+      - { op: replace, path: /status, value: "\${'NOTIFIED'}" }
 `;
 
 const auditWidgetYaml = `
@@ -51,7 +51,7 @@ behaviors:
 reducers:
   - on: AuditCreated
     patches:
-      - { op: replace, path: /logged, value: "true" }
+      - { op: replace, path: /logged, value: "\${true}" }
 `;
 
 const bureauWidgetYaml = `
@@ -71,7 +71,7 @@ behaviors:
 reducers:
   - on: BureauNotified
     patches:
-      - { op: replace, path: /notified, value: "true" }
+      - { op: replace, path: /notified, value: "\${true}" }
 `;
 
 // ---------------------------------------------------------------------------
@@ -111,7 +111,7 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "'UPDATED'" }
+      - { op: replace, path: /status, value: "\${'UPDATED'}" }
 `,
       extraDslModules: [
         { name: 'secondary', yaml: secondaryWidgetYaml },
@@ -163,7 +163,7 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "'UPDATED'" }
+      - { op: replace, path: /status, value: "\${'UPDATED'}" }
 `,
       extraDslModules: [
         { name: 'secondary', yaml: secondaryWidgetYaml },
@@ -220,7 +220,7 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "'UPDATED'" }
+      - { op: replace, path: /status, value: "\${'UPDATED'}" }
 `,
       extraDslModules: [
         { name: 'audit', yaml: auditWidgetYaml },
@@ -276,7 +276,7 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "'UPDATED'" }
+      - { op: replace, path: /status, value: "\${'UPDATED'}" }
 `,
       extraDslModules: [
         { name: 'secondary', yaml: secondaryWidgetYaml },
@@ -322,7 +322,7 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "'UPDATED'" }
+      - { op: replace, path: /status, value: "\${'UPDATED'}" }
 `,
       extraDslModules: [
         { name: 'secondary', yaml: secondaryWidgetYaml },
@@ -372,7 +372,7 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "'UPDATED'" }
+      - { op: replace, path: /status, value: "\${'UPDATED'}" }
 `,
       extraDslModules: [
         { name: 'secondary', yaml: secondaryWidgetYaml },

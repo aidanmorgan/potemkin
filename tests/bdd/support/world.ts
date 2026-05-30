@@ -229,20 +229,20 @@ event_catalog:
 reducers:
   - on: LeadQueried
     patches:
-      - { op: replace, path: /noop, value: "event.payload.noop" }
+      - { op: replace, path: /noop, value: "\${event.payload.noop}" }
   - on: LeadCreated
     patches:
-      - { op: replace, path: /id, value: "event.payload.id" }
-      - { op: replace, path: /companyName, value: "event.payload.companyName" }
-      - { op: replace, path: /contactName, value: "event.payload.contactName" }
-      - { op: replace, path: /email, value: "event.payload.email" }
-      - { op: replace, path: /status, value: "event.payload.status" }
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
+      - { op: replace, path: /companyName, value: "\${event.payload.companyName}" }
+      - { op: replace, path: /contactName, value: "\${event.payload.contactName}" }
+      - { op: replace, path: /email, value: "\${event.payload.email}" }
+      - { op: replace, path: /status, value: "\${event.payload.status}" }
   - on: LeadUpdated
     patches:
-      - { op: replace, path: /companyName, value: "event.payload.companyName" }
-      - { op: replace, path: /contactName, value: "event.payload.contactName" }
-      - { op: replace, path: /email, value: "event.payload.email" }
-      - { op: replace, path: /status, value: "event.payload.status" }
+      - { op: replace, path: /companyName, value: "\${event.payload.companyName}" }
+      - { op: replace, path: /contactName, value: "\${event.payload.contactName}" }
+      - { op: replace, path: /email, value: "\${event.payload.email}" }
+      - { op: replace, path: /status, value: "\${event.payload.status}" }
 initialization:
   - id: "lead-seed-001"
     companyName: "Apex Solutions"
@@ -309,20 +309,20 @@ event_catalog:
 reducers:
   - on: OpportunityCreated
     patches:
-      - { op: replace, path: /id, value: "event.payload.id" }
-      - { op: replace, path: /leadId, value: "event.payload.leadId" }
-      - { op: replace, path: /value, value: "event.payload.value" }
-      - { op: replace, path: /stage, value: "event.payload.stage" }
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
+      - { op: replace, path: /leadId, value: "\${event.payload.leadId}" }
+      - { op: replace, path: /value, value: "\${event.payload.value}" }
+      - { op: replace, path: /stage, value: "\${event.payload.stage}" }
   - on: OpportunityNegotiating
     patches:
-      - { op: replace, path: /stage, value: "event.payload.stage" }
+      - { op: replace, path: /stage, value: "\${event.payload.stage}" }
   - on: OpportunityWon
     patches:
-      - { op: replace, path: /stage, value: "event.payload.stage" }
+      - { op: replace, path: /stage, value: "\${event.payload.stage}" }
   - on: OpportunityUpdated
     patches:
-      - { op: replace, path: /value, value: "event.payload.value" }
-      - { op: replace, path: /stage, value: "event.payload.stage" }
+      - { op: replace, path: /value, value: "\${event.payload.value}" }
+      - { op: replace, path: /stage, value: "\${event.payload.stage}" }
 initialization:
   - id: "opportunity-seed-001"
     leadId: "lead-seed-001"
@@ -349,7 +349,7 @@ event_catalog:
 reducers:
   - on: OpportunityListQueried
     patches:
-      - { op: replace, path: /result, value: "event.payload.result" }
+      - { op: replace, path: /result, value: "\${event.payload.result}" }
 initialization:
   - id: "opportunity-seed-001"
     leadId: "lead-seed-001"

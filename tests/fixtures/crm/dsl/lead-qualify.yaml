@@ -29,6 +29,6 @@ reducers:
     patches:
       - op: replace
         path: /status
-        value: "'QUALIFIED'"
+        value: "${'QUALIFIED'}"
 
 initialization: []

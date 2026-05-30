@@ -151,7 +151,7 @@ event_catalog:
 reducers:
   - on: TargetUpdated
     patches:
-      - { op: replace, path: /value, value: "event.payload.value" }
+      - { op: replace, path: /value, value: "\${event.payload.value}" }
 initialization:
   - id: "target-seed-001"
     value: "original"
@@ -186,9 +186,9 @@ event_catalog:
 reducers:
   - on: SourceCreated
     patches:
-      - { op: replace, path: /id, value: "event.payload.id" }
-      - { op: replace, path: /name, value: "event.payload.name" }
-      - { op: replace, path: /targetId, value: "event.payload.targetId" }
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
+      - { op: replace, path: /name, value: "\${event.payload.name}" }
+      - { op: replace, path: /targetId, value: "\${event.payload.targetId}" }
 `;
 
 Given('a system with cross-boundary DSL configured', async function (this: SimWorld) {

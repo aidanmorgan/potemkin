@@ -23,6 +23,9 @@ module.exports = {
   ],
   moduleFileExtensions: ['ts', 'js', 'json'],
   setupFiles: ['<rootDir>/tests/setup.ts'],
+  // Per-test process.env isolation (snapshot/restore) so env mutations don't
+  // leak across files sharing a worker process (potemkin-1ef).
+  setupFilesAfterEnv: ['<rootDir>/tests/setupAfterEnv.ts'],
   // Cap worker count: matches() spawns Node Worker threads for ReDoS protection,
   // and excessive jest worker parallelism caused intermittent socket-hang-up failures
   // in supertest-driven integration tests under load.

@@ -60,7 +60,7 @@ describe('REQ-61: match.requires[] DSL parsing', () => {
           emit: 'LoanDisbursed',
         },
       ],
-      reducers: [{ on: 'LoanDisbursed', patches: [{ op: 'replace', path: '/status', value: '"disbursed"' }] }],
+      reducers: [{ on: 'LoanDisbursed', patches: [{ op: 'replace', path: '/status', value: '${"disbursed"}' }] }],
       event_catalog: [{ type: 'LoanDisbursed', payload_template: {} }],
     });
     const req = config.behaviors[0].match.requires![0];
@@ -90,7 +90,7 @@ describe('REQ-61: match.requires[] DSL parsing', () => {
           emit: 'LoanDisbursed',
         },
       ],
-      reducers: [{ on: 'LoanDisbursed', patches: [{ op: 'replace', path: '/status', value: '"disbursed"' }] }],
+      reducers: [{ on: 'LoanDisbursed', patches: [{ op: 'replace', path: '/status', value: '${"disbursed"}' }] }],
       event_catalog: [{ type: 'LoanDisbursed', payload_template: {} }],
     });
     const req = config.behaviors[0].match.requires![0];

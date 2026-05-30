@@ -27,7 +27,7 @@ describe('projection.ts additional coverage', () => {
       const graph = createStateGraph();
       graph.set('agg-1', { items: ['a'] });
       const boundary = makeBoundary({
-        reducers: [{ on: 'ItemAdded', patches: [{ op: 'append', path: '/items', value: '"b"' }] }],
+        reducers: [{ on: 'ItemAdded', patches: [{ op: 'append', path: '/items', value: '${"b"}' }] }],
       });
       const event = makeDomainEvent({ type: 'ItemAdded', payload: {} });
       projectEvent({ event, boundary, graph, cel });
@@ -48,7 +48,7 @@ describe('projection.ts additional coverage', () => {
       };
 
       const boundary = makeBoundary({
-        reducers: [{ on: 'StatusChanged', patches: [{ op: 'replace', path: '/status', value: '"active"' }] }],
+        reducers: [{ on: 'StatusChanged', patches: [{ op: 'replace', path: '/status', value: '${"active"}' }] }],
       });
       const event = makeDomainEvent({ type: 'StatusChanged', payload: {} });
 
@@ -74,7 +74,7 @@ describe('projection.ts additional coverage', () => {
       };
 
       const boundary = makeBoundary({
-        reducers: [{ on: 'StatusChanged', patches: [{ op: 'replace', path: '/status', value: '"active"' }] }],
+        reducers: [{ on: 'StatusChanged', patches: [{ op: 'replace', path: '/status', value: '${"active"}' }] }],
       });
       const event = makeDomainEvent({ type: 'StatusChanged', payload: {} });
 
@@ -214,7 +214,7 @@ describe('projection.ts additional coverage', () => {
       };
 
       const boundary = makeBoundary({
-        reducers: [{ on: 'StatusChanged', patches: [{ op: 'replace', path: '/status', value: '"active"' }] }],
+        reducers: [{ on: 'StatusChanged', patches: [{ op: 'replace', path: '/status', value: '${"active"}' }] }],
       });
       const event = makeDomainEvent({ type: 'StatusChanged', payload: {} });
 

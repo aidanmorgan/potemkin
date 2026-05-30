@@ -66,30 +66,30 @@ reducers:
     patches:
       - op: replace
         path: /id
-        value: "event.payload.id"
+        value: "${event.payload.id}"
       - op: replace
         path: /leadId
-        value: "event.payload.leadId"
+        value: "${event.payload.leadId}"
       - op: replace
         path: /agentId
-        value: "event.payload.agentId"
+        value: "${event.payload.agentId}"
       - op: replace
         path: /campaignId
-        value: "event.payload.campaignId"
+        value: "${event.payload.campaignId}"
       - op: replace
         path: /startedAt
-        value: "event.payload.startedAt"
+        value: "${event.payload.startedAt}"
       - op: replace
         path: /endedAt
-        value: "event.payload.endedAt"
+        value: "${event.payload.endedAt}"
       - op: replace
         path: /durationSeconds
-        value: "event.payload.durationSeconds"
+        value: "${event.payload.durationSeconds}"
       - op: replace
         path: /outcome
-        value: "event.payload.outcome"
+        value: "${event.payload.outcome}"
       - op: replace
         path: /notes
-        value: "event.payload.notes"
+        value: "${event.payload.notes}"
 
 initialization: []

@@ -120,8 +120,8 @@ behaviors:
 reducers:
   - on: ItemCreated
     patches:
-      - { op: replace, path: /id, value: "event.payload.id" }
-      - { op: replace, path: /label, value: "event.payload.label" }
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
+      - { op: replace, path: /label, value: "\${event.payload.label}" }
 `;
 
 const ITEM_BY_ID_DSL = `
@@ -279,8 +279,8 @@ behaviors:
 reducers:
   - on: ItemCreated
     patches:
-      - { op: replace, path: /id, value: "event.payload.id" }
-      - { op: replace, path: /label, value: "event.payload.label" }
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
+      - { op: replace, path: /label, value: "\${event.payload.label}" }
 `;
 
     const badSys = await bootSystem({

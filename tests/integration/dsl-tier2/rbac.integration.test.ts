@@ -68,7 +68,7 @@ event_catalog:
 reducers:
   - on: ItemCreated
     patches:
-      - { op: replace, path: /name, value: event.payload.name }
+      - { op: replace, path: /name, value: "\${event.payload.name}" }
 `;
 
 async function buildTestSystem(): Promise<{ app: ReturnType<typeof createGateway>; sys: Awaited<ReturnType<typeof bootSystem>> }> {

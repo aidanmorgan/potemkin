@@ -108,8 +108,8 @@ event_catalog:
 reducers:
   - on: PrecondWidgetUpdated
     patches:
-      - { op: replace, path: /id, value: "event.payload.id" }
-      - { op: replace, path: /value, value: "event.payload.value" }
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
+      - { op: replace, path: /value, value: "\${event.payload.value}" }
 initialization:
   - id: "pw-seed-001"
     value: "original"
