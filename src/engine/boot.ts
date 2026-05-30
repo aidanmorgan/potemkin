@@ -120,6 +120,13 @@ export interface BootedSystem {
    * (C5) and the computedFields surfaced on GET /_engine/state.
    */
   readonly inferredSchemas: Readonly<Record<string, BoundaryInferenceResult>>;
+  /**
+   * C6: active TypeScript watcher when typescript.watch was enabled (and
+   * NODE_ENV !== 'production'). Its onSwap atomic-replaces tsReducerRegistry on
+   * a hot reload; the StateGraph survives. Callers (and tests) must stop() it
+   * during teardown. Absent when watch is off.
+   */
+  readonly tsWatcher?: { stop(): Promise<void> };
 }
 
 /** Header names that indicate an optimistic-concurrency precondition. */
@@ -277,6 +284,15 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       ? (loadedConfig.typescript as unknown as TypescriptConfig)
       : input.typescript;
     const tsScanCwd = configDir ?? input.typescriptCwd;
+    // C6: watch mode is a development-only feature. Fail fast at boot if it is
+    // requested in production rather than silently ignoring it.
+    if (tsConfig?.watch === true && process.env['NODE_ENV'] === 'production') {
+      throw new BootError(
+        'BOOT_ERR_WATCH_IN_PRODUCTION',
+        'typescript.watch: true is disabled when NODE_ENV=production',
+        { nodeEnv: 'production' },
+      );
+    }
     if (tsConfig && tsScanCwd) {
       const phaseStart2b = Date.now();
       bootLog.info({ step: 'ts_scan' }, 'Boot: scanning TypeScript reducers');
@@ -543,6 +559,30 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       });
     }
 
+    // ── Step 11: TypeScript watcher (C6) ──────────────────────────────────────
+    // When typescript.watch is enabled (and NODE_ENV !== 'production'; the
+    // production case already failed fast above), start a watcher whose onSwap
+    // atomic-replaces the SDK reducer registry on the BootedSystem. The
+    // StateGraph is untouched, so projected state survives a hot reload.
+    let tsWatcher: { stop(): Promise<void> } | undefined;
+    if (tsConfig?.watch === true && tsScanCwd) {
+      const { startTypescriptWatcher } = await import('../dsl/typescriptWatcher.js');
+      tsWatcher = await startTypescriptWatcher({
+        config: tsConfig,
+        cwd: tsScanCwd,
+        onSwap: (result) => {
+          tsReducerRegistry.swap(result.registered);
+          bootLog.info(
+            { step: 'ts_watch_swap', reducers: result.registered.length },
+            'Boot: TypeScript reducer registry hot-swapped',
+          );
+        },
+        onError: (err) => {
+          bootLog.warn({ step: 'ts_watch', err }, 'Boot: TypeScript watcher rescan failed');
+        },
+      });
+    }
+
     const bootedSystem = {
       dsl,
       openapi: input.openapi,
@@ -561,6 +601,7 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       aggregateLocks: new Map<string, Promise<void>>(),
       tsReducerRegistry,
       inferredSchemas,
+      ...(tsWatcher !== undefined ? { tsWatcher } : {}),
       ...(pluginControlClient !== undefined ? { pluginControl: pluginControlClient } : {}),
     };
 
