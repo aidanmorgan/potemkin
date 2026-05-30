@@ -5,6 +5,7 @@
 // "did you mean?" suggestion.
 
 import { BootError } from '../errors.js';
+import { assertNoRemovedReducerKeys } from './removedSyntax.js';
 import type { Patch } from './patches.js';
 import type {
   DeclaredComputedField,
@@ -168,9 +169,6 @@ export const REMOVED_KEY_MAP: Record<string, string> = {
   derived_projections: 'derivedProjections',
 };
 
-// Reducer entries must use `patches:` only; these legacy keys throw.
-const REMOVED_REDUCER_KEYS = new Set(['assign', 'append', 'assignAll']);
-
 // ---------------------------------------------------------------------------
 // Validation entrypoints
 // ---------------------------------------------------------------------------
@@ -295,15 +293,8 @@ export function validateBoundaryModule(raw: unknown, ctx: ValidationContext): Bo
   if (Array.isArray(reducers)) {
     for (const r of reducers) {
       if (!isObject(r)) continue;
-      for (const k of Object.keys(r)) {
-        if (REMOVED_REDUCER_KEYS.has(k)) {
-          throw new BootError(
-            'BOOT_ERR_REMOVED_SYNTAX',
-            `${ctx.source}: reducer field "${k}" was removed — use "patches:" with the RFC 6902 + Potemkin extensions vocabulary`,
-            { source: ctx.source, removed: k, replacement: 'patches' },
-          );
-        }
-      }
+      // Single removed-key policy shared with the in-memory validator.
+      assertNoRemovedReducerKeys(r, ctx.source);
     }
   }
 

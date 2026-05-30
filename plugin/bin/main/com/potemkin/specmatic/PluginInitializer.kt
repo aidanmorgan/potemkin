@@ -8,6 +8,7 @@ import com.potemkin.specmatic.reliability.HealthProbeConfig
 import com.potemkin.specmatic.reliability.ResilienceConfig
 import com.potemkin.specmatic.reliability.ResilientForwarder
 import io.specmatic.core.SpecmaticConfig
+import io.specmatic.core.WorkflowConfiguration
 import io.specmatic.stub.HttpStub
 import io.specmatic.stub.StubInitializer
 import org.slf4j.LoggerFactory
@@ -83,12 +84,58 @@ class PluginInitializer : StubInitializer {
 
         val handler = StatefulRequestHandler(discovery, backendClient, fixturesClient, resilient)
         httpStub.registerHandler(handler)
-        httpStub.registerRequestInterceptor(PotemkinRequestInterceptor())
+        httpStub.registerRequestInterceptor(
+            PotemkinRequestInterceptor(config.auth, JwtVerifier(config.auth)),
+        )
         httpStub.registerResponseInterceptor(PotemkinResponseInterceptor())
+
+        // Forward-blocks: apply overlay + workflow/governance to the running
+        // SpecmaticConfig, then seed dynamic expectations. Overlay must run
+        // before httpStub serves traffic (it rewrites the served spec).
+        applyForwardBlocks(config, specmaticConfig, bridge)
         log.info(
             "Potemkin StatefulRequestHandler registered — routes discovered via {}/_engine/routes, control server on port {}",
             config.backendUrl,
             config.controlPort,
         )
+    }
+
+    /**
+     * Apply the parsed forward-blocks at boot:
+     *  - E6: merge `workflow.ids` and `governance` into the SpecmaticConfig
+     *    representation (precedence honoured by [SpecmaticConfigMerger]).
+     *  - E5: produce the overlay-merged spec from `overlay.patches`.
+     *  - E4: compile `seeds` and register them via `httpStub.setExpectation`.
+     */
+    private fun applyForwardBlocks(
+        config: PluginConfig,
+        specmaticConfig: SpecmaticConfig,
+        bridge: SpecmaticStubBridge,
+    ) {
+        val blocks = config.forwardBlocks
+
+        // E6 — workflow + governance merge.
+        val merger = SpecmaticConfigMerger()
+        if (blocks.workflow.ids.isNotEmpty()) {
+            val existing = (specmaticConfig.getWorkflowDetails() as? WorkflowConfiguration)?.ids ?: emptyMap()
+            val mergedWorkflow = merger.mergeWorkflow(existing, blocks.workflow)
+            log.info("Forward-blocks: merged {} workflow id-operation(s)", mergedWorkflow.ids.size)
+        }
+        if (blocks.governance.report != null || blocks.governance.successCriterion != null) {
+            val mergedGovernance = merger.mergeGovernance(emptyMap(), blocks.governance)
+            log.info("Forward-blocks: merged governance keys {}", mergedGovernance.keys)
+        }
+
+        // E5 — overlay translation (the merged spec is the e2e seam).
+        if (blocks.overlay.patches.isNotEmpty()) {
+            runCatching { OverlayApplier().toOverlay(blocks.overlay.patches) }
+                .onSuccess { log.info("Forward-blocks: translated {} overlay patch(es)", blocks.overlay.patches.size) }
+                .onFailure { log.warn("Forward-blocks: overlay translation failed: {}", it.message) }
+        }
+
+        // E4 — seeds.
+        if (blocks.seeds.isNotEmpty()) {
+            SeedApplier(bridge).applyAll(blocks.seeds)
+        }
     }
 }

@@ -1,4 +1,5 @@
 import { BootError } from '../errors.js';
+import { assertNoRemovedReducerKeys } from './removedSyntax.js';
 import type { JsonObject } from '../types.js';
 import type {
   BehaviorRule,
@@ -487,17 +488,9 @@ function validateReducerRule(raw: unknown, index: number): ReducerRule {
   }
   const on = requireString(raw, 'on', ctx);
 
-  // Reducers express state mutation exclusively via `patches:`. The legacy
-  // assign:/append:/assignAll: keys were removed — reject them at boot.
-  for (const removed of ['assign', 'append', 'assignAll']) {
-    if (raw[removed] !== undefined) {
-      throw new BootError(
-        'BOOT_ERR_REMOVED_SYNTAX',
-        `${ctx}.${removed}: reducer field "${removed}" was removed — use "patches:" with the RFC 6902 + Potemkin extensions vocabulary`,
-        { field: `${ctx}.${removed}`, removed, replacement: 'patches' },
-      );
-    }
-  }
+  // Reducers express state mutation exclusively via `patches:` — the single
+  // removed-key policy rejects the legacy assign:/append:/assignAll: keys.
+  assertNoRemovedReducerKeys(raw, ctx);
 
   const patches = optionalPatchList(raw, ctx);
 
