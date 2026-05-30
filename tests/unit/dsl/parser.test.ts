@@ -51,7 +51,7 @@ contract_path: /b
 behaviors:
   - name: create
     match:
-      intent: creation
+      operationId: createThing
       condition: "true"
     emit: Created
 reducers:

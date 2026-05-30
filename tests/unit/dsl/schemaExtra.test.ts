@@ -27,7 +27,7 @@ const fullBase = {
   boundary: 'B',
   contract_path: '/b',
   behaviors: [
-    { name: 'create', match: { intent: 'creation', condition: 'true' }, emit: 'Ev' },
+    { name: 'create', match: { operationId: 'createThing', condition: 'true' }, emit: 'Ev' },
   ],
   reducers: [{ on: 'Ev', assign: { status: '"active"' } }],
   event_catalog: [{ type: 'Ev', payload_template: {} }],
@@ -134,7 +134,7 @@ describe('dsl/schema — additional branch coverage', () => {
         behaviors: [
           {
             name: 'b',
-            match: { intent: 'creation', condition: 'true' },
+            match: { operationId: 'createThing', condition: 'true' },
             emit: 'Ev',
             dispatch_commands: 'not-array',
           },
@@ -150,7 +150,7 @@ describe('dsl/schema — additional branch coverage', () => {
         behaviors: [
           {
             name: 'b',
-            match: { intent: 'creation', condition: 'true' },
+            match: { operationId: 'createThing', condition: 'true' },
             emit: 'Ev',
             dispatch_commands: ['string-not-object'],
           },
@@ -166,7 +166,7 @@ describe('dsl/schema — additional branch coverage', () => {
         behaviors: [
           {
             name: 'b',
-            match: { intent: 'creation', condition: 'true' },
+            match: { operationId: 'createThing', condition: 'true' },
             emit: 'Ev',
             dispatch_commands: [
               { boundary: 'Other', intent: 'bogus', target_id: 'id-1' },
@@ -184,10 +184,10 @@ describe('dsl/schema — additional branch coverage', () => {
         behaviors: [
           {
             name: 'b',
-            match: { intent: 'creation', condition: 'true' },
+            match: { operationId: 'createThing', condition: 'true' },
             emit: 'Ev',
             dispatch_commands: [
-              { boundary: 'Other', intent: 'mutation', target_id: '"some-id"' },
+              { boundary: 'Other', intent: 'mutation', operationId: 'op', target_id: '"some-id"' },
             ],
           },
         ],
@@ -310,10 +310,10 @@ describe('dsl/schema — additional branch coverage', () => {
         behaviors: [
           {
             name: 'b',
-            match: { intent: 'creation', condition: 'true' },
+            match: { operationId: 'createThing', condition: 'true' },
             emit: 'Ev',
             dispatch_commands: [
-              { boundary: 'X', intent: 'mutation', target_id: '"x"' },
+              { boundary: 'X', intent: 'mutation', operationId: 'op', target_id: '"x"' },
             ],
           },
         ],

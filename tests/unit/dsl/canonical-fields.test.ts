@@ -36,7 +36,7 @@ describe('DSL canonical field: scripts[].code vs scripts[].source', () => {
   it('canonical form "code" parses correctly', () => {
     const config = validateBoundaryConfig({
       ...makeBase(),
-      behaviors: [{ name: 'b', match: { intent: 'mutation', condition: 'true' }, emit: 'Evt' }],
+      behaviors: [{ name: 'b', match: { operationId: 'updateThing', condition: 'true' }, emit: 'Evt' }],
       scripts: [{ name: 'myScript', code: scriptBody }],
     });
     const script = config.scripts![0];
@@ -47,7 +47,7 @@ describe('DSL canonical field: scripts[].code vs scripts[].source', () => {
   it('legacy form "source" parses to the same result as "code"', () => {
     const config = validateBoundaryConfig({
       ...makeBase(),
-      behaviors: [{ name: 'b', match: { intent: 'mutation', condition: 'true' }, emit: 'Evt' }],
+      behaviors: [{ name: 'b', match: { operationId: 'updateThing', condition: 'true' }, emit: 'Evt' }],
       scripts: [{ name: 'myScript', source: scriptBody }],
     });
     const script = config.scripts![0];
@@ -59,12 +59,12 @@ describe('DSL canonical field: scripts[].code vs scripts[].source', () => {
   it('"code" and "source" both produce identical ScriptDeclaration objects', () => {
     const codeConfig = validateBoundaryConfig({
       ...makeBase(),
-      behaviors: [{ name: 'b', match: { intent: 'mutation', condition: 'true' }, emit: 'Evt' }],
+      behaviors: [{ name: 'b', match: { operationId: 'updateThing', condition: 'true' }, emit: 'Evt' }],
       scripts: [{ name: 'myScript', code: scriptBody }],
     });
     const sourceConfig = validateBoundaryConfig({
       ...makeBase(),
-      behaviors: [{ name: 'b', match: { intent: 'mutation', condition: 'true' }, emit: 'Evt' }],
+      behaviors: [{ name: 'b', match: { operationId: 'updateThing', condition: 'true' }, emit: 'Evt' }],
       scripts: [{ name: 'myScript', source: scriptBody }],
     });
     expect(codeConfig.scripts![0]).toEqual(sourceConfig.scripts![0]);
@@ -73,7 +73,7 @@ describe('DSL canonical field: scripts[].code vs scripts[].source', () => {
   it('throws BootError when neither "code" nor "source" is provided', () => {
     expect(() => validateBoundaryConfig({
       ...makeBase(),
-      behaviors: [{ name: 'b', match: { intent: 'mutation', condition: 'true' }, emit: 'Evt' }],
+      behaviors: [{ name: 'b', match: { operationId: 'updateThing', condition: 'true' }, emit: 'Evt' }],
       scripts: [{ name: 'myScript' }],
     })).toThrow(BootError);
   });
@@ -93,7 +93,7 @@ describe('DSL canonical field: requires[].condition vs requires[].expression', (
         {
           name: 'b',
           match: {
-            intent: 'mutation',
+            operationId: 'updateThing',
             condition: 'true',
             requires: [requiresEntry],
           },
@@ -165,7 +165,7 @@ describe('DSL canonical field: postcondition string vs {expression} object', () 
       behaviors: [
         {
           name: 'b',
-          match: { intent: 'mutation', condition: 'true' },
+          match: { operationId: 'updateThing', condition: 'true' },
           emit: 'Evt',
           postcondition: postconditionValue,
         },

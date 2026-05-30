@@ -15,7 +15,7 @@ function minimalValid(overrides: Record<string, unknown> = {}): Record<string, u
     behaviors: [
       {
         name: 'create',
-        match: { intent: 'creation', condition: 'true' },
+        match: { operationId: 'createThing', condition: 'true' },
         emit: 'Created',
       },
     ],
@@ -159,7 +159,7 @@ describe('dsl/schema — permutations', () => {
     it('throws when behavior name is missing', () => {
       expect(() =>
         validateBoundaryConfig(minimalValid({
-          behaviors: [{ match: { intent: 'creation', condition: 'true' }, emit: 'Created' }],
+          behaviors: [{ match: { operationId: 'createThing', condition: 'true' }, emit: 'Created' }],
         })),
       ).toThrow(BootError);
     });
@@ -172,8 +172,8 @@ describe('dsl/schema — permutations', () => {
       ).toThrow(BootError);
     });
 
-    it.each(['invalid', 'create', 'update', 'delete'])(
-      'throws when behavior intent is "%s"',
+    it.each(['creation', 'mutation', 'query', 'invalid'])(
+      'throws BOOT_ERR_REMOVED_SYNTAX when behavior declares removed match.intent "%s"',
       (intent) => {
         expect(() =>
           validateBoundaryConfig(minimalValid({
@@ -183,14 +183,14 @@ describe('dsl/schema — permutations', () => {
       },
     );
 
-    it.each(['creation', 'mutation', 'query'])(
-      'accepts valid intent "%s"',
-      (intent) => {
+    it.each(['createB', 'updateB', 'getB'])(
+      'accepts any operationId "%s"',
+      (operationId) => {
         const cfg = {
           boundary: 'B',
           contract_path: '/b',
           event_catalog: [{ type: 'Ev', payload_template: {} }],
-          behaviors: [{ name: 'b', match: { intent, condition: 'true' }, emit: 'Ev' }],
+          behaviors: [{ name: 'b', match: { operationId, condition: 'true' }, emit: 'Ev' }],
           reducers: [],
         };
         expect(() => validateBoundaryConfig(cfg)).not.toThrow();
@@ -200,7 +200,7 @@ describe('dsl/schema — permutations', () => {
     it('throws when emit is missing', () => {
       expect(() =>
         validateBoundaryConfig(minimalValid({
-          behaviors: [{ name: 'b', match: { intent: 'creation', condition: 'true' } }],
+          behaviors: [{ name: 'b', match: { operationId: 'createThing', condition: 'true' } }],
         })),
       ).toThrow(BootError);
     });
@@ -213,11 +213,12 @@ describe('dsl/schema — permutations', () => {
         event_catalog: [{ type: 'Created', payload_template: {} }],
         behaviors: [{
           name: 'create',
-          match: { intent: 'creation', condition: 'true' },
+          match: { operationId: 'createThing', condition: 'true' },
           emit: 'Created',
           dispatch_commands: [{
             boundary: 'Other',
             intent: 'mutation',
+            operationId: 'op',
             target_id: 'command.targetId',
           }],
         }],
@@ -231,7 +232,7 @@ describe('dsl/schema — permutations', () => {
         validateBoundaryConfig(minimalValid({
           behaviors: [{
             name: 'b',
-            match: { intent: 'creation', condition: 'true' },
+            match: { operationId: 'createThing', condition: 'true' },
             emit: 'Created',
             dispatch_commands: 'bad',
           }],
@@ -244,7 +245,7 @@ describe('dsl/schema — permutations', () => {
         validateBoundaryConfig(minimalValid({
           behaviors: [{
             name: 'b',
-            match: { intent: 'creation', condition: 'true' },
+            match: { operationId: 'createThing', condition: 'true' },
             emit: 'Created',
             dispatch_commands: ['not-an-object'],
           }],
@@ -257,7 +258,7 @@ describe('dsl/schema — permutations', () => {
         validateBoundaryConfig(minimalValid({
           behaviors: [{
             name: 'b',
-            match: { intent: 'creation', condition: 'true' },
+            match: { operationId: 'createThing', condition: 'true' },
             emit: 'Created',
             dispatch_commands: [{ intent: 'mutation', target_id: 'x' }],
           }],
@@ -270,7 +271,7 @@ describe('dsl/schema — permutations', () => {
         validateBoundaryConfig(minimalValid({
           behaviors: [{
             name: 'b',
-            match: { intent: 'creation', condition: 'true' },
+            match: { operationId: 'createThing', condition: 'true' },
             emit: 'Created',
             dispatch_commands: [{ boundary: 'B', intent: 'invalid', target_id: 'x' }],
           }],
@@ -283,7 +284,7 @@ describe('dsl/schema — permutations', () => {
         validateBoundaryConfig(minimalValid({
           behaviors: [{
             name: 'b',
-            match: { intent: 'creation', condition: 'true' },
+            match: { operationId: 'createThing', condition: 'true' },
             emit: 'Created',
             dispatch_commands: [{ boundary: 'B', intent: 'mutation' }],
           }],
@@ -296,11 +297,12 @@ describe('dsl/schema — permutations', () => {
         validateBoundaryConfig(minimalValid({
           behaviors: [{
             name: 'b',
-            match: { intent: 'creation', condition: 'true' },
+            match: { operationId: 'createThing', condition: 'true' },
             emit: 'Created',
             dispatch_commands: [{
               boundary: 'B',
               intent: 'mutation',
+              operationId: 'op',
               target_id: 'x',
               payload: { field: 123 },
             }],
@@ -512,7 +514,7 @@ describe('dsl/schema — permutations', () => {
           boundary: 'B',
           contract_path: '/b',
           event_catalog: [{ type: 'Created', payload_template: {} }],
-          behaviors: [{ name: 'b', match: { intent: 'creation', condition: 'true' }, emit: 'NonExistent' }],
+          behaviors: [{ name: 'b', match: { operationId: 'createThing', condition: 'true' }, emit: 'NonExistent' }],
           reducers: [],
         });
         fail('should have thrown');
@@ -600,11 +602,12 @@ describe('dsl/schema — permutations', () => {
         behaviors: [
           {
             name: 'register',
-            match: { intent: 'creation', condition: 'true' },
+            match: { operationId: 'createThing', condition: 'true' },
             emit: 'Customer.Registered',
             dispatch_commands: [{
               boundary: 'AuditLog',
               intent: 'creation',
+              operationId: 'op',
               target_id: '$uuidv7()',
               payload: { entityId: 'command.targetId' },
             }],

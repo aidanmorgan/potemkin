@@ -7,7 +7,7 @@ const minimalValid = {
   behaviors: [
     {
       name: 'create',
-      match: { intent: 'creation', condition: 'true' },
+      match: { operationId: 'createThing', condition: 'true' },
       emit: 'Created',
     },
   ],
@@ -79,7 +79,7 @@ describe('dsl/schema', () => {
     it('throws BootError when behavior.name is missing', () => {
       const raw = {
         ...minimalValid,
-        behaviors: [{ match: { intent: 'creation', condition: 'true' }, emit: 'Created' }],
+        behaviors: [{ match: { operationId: 'createThing', condition: 'true' }, emit: 'Created' }],
       };
       expect(() => validateBoundaryConfig(raw)).toThrow(BootError);
     });
@@ -106,7 +106,7 @@ describe('dsl/schema', () => {
         behaviors: [
           {
             name: 'b',
-            match: { intent: 'creation', condition: 'true' },
+            match: { operationId: 'createThing', condition: 'true' },
             emit: 'UnknownEvent',
           },
         ],

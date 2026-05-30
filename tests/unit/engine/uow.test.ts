@@ -145,7 +145,7 @@ event_catalog:
 behaviors:
   - name: create-widget
     match:
-      intent: creation
+      operationId: createWidget
       condition: "true"
     emit: WidgetCreated
 reducers:
@@ -199,6 +199,7 @@ async function createWidget(label = 'test'): Promise<string> {
       depth: 0,
     },
     dsl: sys.dsl,
+    openapi: sys.openapi,
     graph: sys.graph,
     events: sys.events,
     cel: sys.cel,
@@ -230,6 +231,7 @@ describe('engine/uow — additional branch coverage', () => {
         depth: 0,
       },
       dsl: sys.dsl,
+      openapi: sys.openapi,
       graph: sys.graph,
       events: sys.events,
       cel: sys.cel,
@@ -266,6 +268,7 @@ describe('engine/uow — additional branch coverage', () => {
           depth: 0,
         },
         dsl: sys.dsl,
+        openapi: sys.openapi,
         graph: sys.graph,
         events: sys.events,
         cel: sys.cel,
@@ -301,6 +304,7 @@ describe('engine/uow — additional branch coverage', () => {
           // no sequenceVersion
         },
         dsl: sys.dsl,
+        openapi: sys.openapi,
         graph: sys.graph,
         events: sys.events,
         cel: sys.cel,
@@ -329,6 +333,7 @@ describe('engine/uow — additional branch coverage', () => {
           depth: 0,
         },
         dsl: sys.dsl,
+        openapi: sys.openapi,
         graph: sys.graph,
         events: sys.events,
         cel: sys.cel,
@@ -362,6 +367,7 @@ describe('engine/uow — additional branch coverage', () => {
         faultSignal,
       },
       dsl: sys.dsl,
+      openapi: sys.openapi,
       graph: sys.graph,
       events: sys.events,
       cel: sys.cel,
@@ -398,6 +404,7 @@ describe('engine/uow — additional branch coverage', () => {
         faultSignal,
       },
       dsl: sys.dsl,
+      openapi: sys.openapi,
       graph: sys.graph,
       events: sys.events,
       cel: sys.cel,
@@ -426,6 +433,7 @@ describe('engine/uow — additional branch coverage', () => {
           faultSignal: 'not-valid-json{{{',
         },
         dsl: sys.dsl,
+        openapi: sys.openapi,
         graph: sys.graph,
         events: sys.events,
         cel: sys.cel,
@@ -455,12 +463,12 @@ describe('engine/uow — additional branch coverage', () => {
         depth: 0,
       },
       dsl: sys.dsl,
+      openapi: sys.openapi,
       graph: sys.graph,
       events: sys.events,
       cel: sys.cel,
       validator: sys.validator,
       schemaRegistry: sys.schemaRegistry,
-      openapi: sys.openapi,
       requiresPrecondition: requiresMock,
     });
 
@@ -490,6 +498,7 @@ describe('engine/uow — additional branch coverage', () => {
           depth: 0,
         },
         dsl: sys.dsl,
+        openapi: sys.openapi,
         graph: sys.graph,
         events: sys.events,
         cel: sys.cel,
@@ -510,6 +519,7 @@ describe('engine/uow — additional branch coverage', () => {
           depth: 0,
         },
         dsl: sys.dsl,
+        openapi: sys.openapi,
         graph: sys.graph,
         events: sys.events,
         cel: sys.cel,
