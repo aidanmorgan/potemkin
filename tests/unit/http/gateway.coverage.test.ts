@@ -11,8 +11,6 @@
  * specific error types, then verify the gateway maps them correctly.
  */
 
-import request from 'supertest';
-import type { Express } from 'express';
 import { createGateway } from '../../../src/http/gateway';
 import { bootSystem, type BootedSystem } from '../../../src/engine/boot';
 import { loadOpenApi } from '../../../src/contract/loader';
@@ -23,6 +21,11 @@ import {
   FaultSimulatedError,
 } from '../../../src/errors';
 import { compileDsl } from '../../../src/dsl/parser';
+import {
+  withPersistentServer,
+  type PersistentAgent,
+  type PersistentServer,
+} from '../../_support/persistentAgent';
 
 // ── Minimal fixture ───────────────────────────────────────────────────────────
 
@@ -88,7 +91,8 @@ reducers:
 
 describe('http/gateway.ts — defensive guard coverage', () => {
   let sys: BootedSystem;
-  let app: Express;
+  let agent: PersistentAgent;
+  let persistent: PersistentServer;
 
   beforeAll(async () => {
     const openapi = await loadOpenApi(MINIMAL_OPENAPI);
@@ -96,7 +100,12 @@ describe('http/gateway.ts — defensive guard coverage', () => {
       openapi,
       compiledDsl: await compileDsl([{ name: 'item', yaml: ITEM_DSL }]),
     });
-    app = createGateway(sys);
+    persistent = await withPersistentServer(createGateway(sys));
+    agent = persistent.agent;
+  });
+
+  afterAll(async () => {
+    await persistent.close();
   });
 
   afterEach(() => {
@@ -116,7 +125,7 @@ describe('http/gateway.ts — defensive guard coverage', () => {
         throw new InternalExecutionError('Mocked non-contract-violation error from validateRequest');
       });
 
-      const res = await request(app)
+      const res = await agent
         .post('/items')
         .send({ label: 'test' });
 
@@ -138,7 +147,7 @@ describe('http/gateway.ts — defensive guard coverage', () => {
           new FaultSimulatedError(503, { error: 'SERVICE_DOWN' }),
         );
 
-      const res = await request(app)
+      const res = await agent
         .post('/items')
         .send({ label: 'test' });
 
@@ -157,7 +166,7 @@ describe('http/gateway.ts — defensive guard coverage', () => {
       jest.spyOn(require('../../../src/engine/uow'), 'executeUnitOfWork')
         .mockRejectedValueOnce(fault);
 
-      const res = await request(app)
+      const res = await agent
         .post('/items')
         .send({ label: 'test' });
 
@@ -175,7 +184,7 @@ describe('http/gateway.ts — defensive guard coverage', () => {
       jest.spyOn(require('../../../src/engine/uow'), 'executeUnitOfWork')
         .mockRejectedValueOnce(new Error('Unexpected plain JavaScript error from UoW'));
 
-      const res = await request(app)
+      const res = await agent
         .post('/items')
         .send({ label: 'test' });
 
@@ -189,7 +198,7 @@ describe('http/gateway.ts — defensive guard coverage', () => {
       jest.spyOn(require('../../../src/engine/uow'), 'executeUnitOfWork')
         .mockRejectedValueOnce('non-error-string-from-uow');
 
-      const res = await request(app)
+      const res = await agent
         .post('/items')
         .send({ label: 'test' });
 
@@ -210,7 +219,7 @@ describe('http/gateway.ts — defensive guard coverage', () => {
           }),
         );
 
-      const res = await request(app)
+      const res = await agent
         .post('/items')
         .send({ label: 'test' });
 
@@ -231,7 +240,7 @@ describe('http/gateway.ts — defensive guard coverage', () => {
         });
       });
 
-      const res = await request(app)
+      const res = await agent
         .post('/items')
         .send({ notLabel: 'missing required field' });
 
@@ -246,7 +255,7 @@ describe('http/gateway.ts — defensive guard coverage', () => {
         // No second arg → details is undefined → err.details ?? err.message = err.message
       });
 
-      const res = await request(app)
+      const res = await agent
         .post('/items')
         .send({ label: 'test' });
 
@@ -262,7 +271,7 @@ describe('http/gateway.ts — defensive guard coverage', () => {
     it('POST with JSON null body (req.body=null ?? {}) is handled correctly (lines 149,179)', async () => {
       // Sending JSON `null` forces req.body = null (express.json strict:false allows it)
       // The ?? {} branch at line 149 fires: null ?? {} = {} (for validateRequest call)
-      const res = await request(app)
+      const res = await agent
         .post('/items')
         .set('Content-Type', 'application/json')
         .send('null');
@@ -286,7 +295,7 @@ describe('http/gateway.ts — defensive guard coverage', () => {
           headers: {},
         });
 
-      const res = await request(app)
+      const res = await agent
         .post('/items')
         .set('Content-Type', 'application/json')
         .send('null');
@@ -328,7 +337,7 @@ describe('http/gateway.ts — defensive guard coverage', () => {
           headers: {},
         });
 
-      const res = await request(app)
+      const res = await agent
         .post('/items')
         .send({ label: 'trigger-cascade' });
 
@@ -386,7 +395,8 @@ reducers: []
 
 describe('http/gateway.ts — null targetId creation (lines 247-250)', () => {
   let sysNoId: BootedSystem;
-  let appNoId: Express;
+  let agentNoId: PersistentAgent;
+  let persistentNoId: PersistentServer;
 
   beforeAll(async () => {
     const openapi = await loadOpenApi(NO_IDENTITY_OPENAPI);
@@ -394,11 +404,13 @@ describe('http/gateway.ts — null targetId creation (lines 247-250)', () => {
       openapi,
       compiledDsl: await compileDsl([{ name: 'widget', yaml: NO_IDENTITY_DSL }]),
     });
-    appNoId = createGateway(sysNoId);
+    persistentNoId = await withPersistentServer(createGateway(sysNoId));
+    agentNoId = persistentNoId.agent;
   });
 
-  afterAll(() => {
+  afterAll(async () => {
     if (sysNoId) resetSystem(sysNoId);
+    await persistentNoId.close();
   });
 
   afterEach(() => {
@@ -428,7 +440,7 @@ describe('http/gateway.ts — null targetId creation (lines 247-250)', () => {
         headers: {},
       });
 
-    const res = await request(appNoId)
+    const res = await agentNoId
       .post('/widgets')
       .send({ name: 'widget-one' });
 

@@ -16,7 +16,6 @@
  *  8. Fault simulation via forwarded x-specmatic-fault header.
  */
 
-import request from 'supertest';
 import { bootSystem } from '../../../src/engine/boot.js';
 import { createGateway } from '../../../src/http/gateway.js';
 import { resetSystem } from '../../../src/engine/reset.js';
@@ -26,6 +25,11 @@ import type { BootedSystem, BootInput } from '../../../src/engine/boot.js';
 import type { ForwardedRequest } from '../../../src/forwarding/types.js';
 import { nextUuidv7 } from '../../../src/ids/uuidv7.js';
 import { bootCrmSystem } from '../_helpers/crm-boot.js';
+import {
+  withPersistentServer,
+  type PersistentAgent,
+  type PersistentServer,
+} from '../../_support/persistentAgent.js';
 
 // Seeded lead: Apex Solutions (NEW status, no calls)
 const APEX_LEAD_ID = '00000000-0000-7000-8000-000000000010';
@@ -35,12 +39,18 @@ const AGENT_ID = '00000000-0000-7000-8000-000000000003';
 
 describe('/_engine/forward — end-to-end integration', () => {
   let sys: BootedSystem;
-  let agent: ReturnType<typeof request>;
+  let agent: PersistentAgent;
+  let persistent: PersistentServer;
 
   beforeAll(async () => {
     sys = await bootCrmSystem();
     const app = createGateway(sys);
-    agent = request(app);
+    persistent = await withPersistentServer(app);
+    agent = persistent.agent;
+  });
+
+  afterAll(async () => {
+    await persistent.close();
   });
 
   afterEach(() => {
@@ -336,8 +346,19 @@ describe('/_engine/forward — idempotency-key honoured', () => {
     return createGateway(sys);
   }
 
+  let persistent: PersistentServer | undefined;
+
+  afterEach(async () => {
+    if (persistent) {
+      await persistent.close();
+      persistent = undefined;
+    }
+  });
+
   it('second forwarded request with same idempotency-key returns x-idempotency-replay: true', async () => {
     const app = await buildIdempotencyApp();
+    persistent = await withPersistentServer(app);
+    const agent = persistent.agent;
     const KEY = `fwd-idem-${Date.now()}`;
 
     const fwd: ForwardedRequest = {
@@ -348,11 +369,11 @@ describe('/_engine/forward — idempotency-key honoured', () => {
       body: { label: 'Alpha Widget' },
     };
 
-    const first = await request(app).post('/_engine/forward').send(fwd).expect(200);
+    const first = await agent.post('/_engine/forward').send(fwd).expect(200);
     expect(first.body.status).toBe(201);
     const firstId = first.body.body.id as string;
 
-    const second = await request(app).post('/_engine/forward').send(fwd).expect(200);
+    const second = await agent.post('/_engine/forward').send(fwd).expect(200);
     expect(second.body.status).toBe(201);
     expect(second.body.body.id).toBe(firstId);
     expect(second.body.headers['x-idempotency-replay']).toBe('true');

@@ -8,7 +8,7 @@
 // pristine, isolated environment regardless of what others do.
 
 import { registry as sdkRegistry } from '../src/sdk/index.js';
-import { runTeardowns } from './_support/testTeardown.js';
+import { runTeardowns, runFileTeardowns } from './_support/testTeardown.js';
 
 let envSnapshot: Record<string, string | undefined>;
 
@@ -22,6 +22,13 @@ afterEach(async () => {
   // (via scanTypescriptReducers) never leaks into another test's projection.
   await runTeardowns();
   await sdkRegistry.reset();
+});
+
+afterAll(async () => {
+  // Close file-scoped resources (e.g. persistent app.listen servers shared by a
+  // suite via persistentAgent.ts / createTestApp) once all tests in the file
+  // have run, so a listening socket never outlives its test file.
+  await runFileTeardowns();
 });
 
 afterEach(() => {
