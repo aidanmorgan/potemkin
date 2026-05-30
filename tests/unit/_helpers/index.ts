@@ -3,6 +3,29 @@
  */
 import type { Command, DomainEvent } from '../../../src/types';
 import type { BoundaryConfig } from '../../../src/dsl/types';
+import type { OpenApiDoc } from '../../../src/contract/loader';
+
+/**
+ * Minimal OpenApiDoc for pattern-matcher unit tests. Maps the default test routes
+ * to operationIds so lookupOperationId resolves them. Extend `paths` via the argument
+ * for bespoke routes.
+ */
+export const makeOpenApi = (paths: OpenApiDoc['paths'] = {}): OpenApiDoc => ({
+  raw: {},
+  paths: {
+    '/test': {
+      get: { operationId: 'listTest' },
+      post: { operationId: 'createTest' },
+    },
+    '/test/{id}': {
+      get: { operationId: 'getTest' },
+      patch: { operationId: 'updateTest' },
+      put: { operationId: 'updateTest' },
+      delete: { operationId: 'deleteTest' },
+    },
+    ...paths,
+  },
+});
 
 export const makeBoundary = (overrides: Partial<BoundaryConfig> = {}): BoundaryConfig => ({
   boundary: 'TestBoundary',

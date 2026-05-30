@@ -34,7 +34,7 @@ behaviors:
   # Create agent — REQ-61: match.requires to validate quota > 0
   - name: createAgent
     match:
-      intent: creation
+      operationId: createAgent
       condition: "true"
       requires:
         - name: valid-quota
@@ -46,7 +46,7 @@ behaviors:
   # Update status — REQ-64: emit_when with 2 branches based on new status
   - name: updateAgentStatus
     match:
-      intent: mutation
+      operationId: updateAgentStatus
       condition: "$concat('/agents/', command.targetId, '/status') == command.path"
     emit_when:
       - when: "command.payload.currentStatus == 'AVAILABLE' || command.payload.currentStatus == 'BREAK' || command.payload.currentStatus == 'OFFLINE'"
@@ -57,14 +57,14 @@ behaviors:
   # Increment call count (secondary command from call logging)
   - name: incrementCallCount
     match:
-      intent: mutation
+      operationId: updateAgentStatus
       condition: "has(command.payload.callId) && command.payload.callId != null && command.payload.incrementCall == true"
     emit: AgentCallCountIncremented
 
   # Increment conversions (secondary command from opportunity win)
   - name: incrementConversions
     match:
-      intent: mutation
+      operationId: updateAgentStatus
       condition: "command.payload.incrementConversions == true"
     emit: AgentConversionIncremented
 

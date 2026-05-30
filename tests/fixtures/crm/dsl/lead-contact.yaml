@@ -12,7 +12,7 @@ behaviors:
   # REQ-64: emit_when with 2+ alternatives
   - name: contactLead
     match:
-      intent: mutation
+      operationId: contactLead
       condition: "true"
       requires:
         - name: not-dnc

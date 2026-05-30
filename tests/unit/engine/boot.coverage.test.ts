@@ -74,7 +74,7 @@ event_catalog:
 behaviors:
   - name: create-thing
     match:
-      intent: creation
+      operationId: createThing
       condition: "true"
     emit: ThingCreated
 reducers:

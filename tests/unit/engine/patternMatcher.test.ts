@@ -6,9 +6,7 @@ import {
   UnhandledOperationError,
   InternalExecutionError,
 } from '../../../src/errors';
-import { makeBoundary, makeCommand } from '../_helpers';
-import type { Command } from '../../../src/types';
-import type { BoundaryConfig } from '../../../src/dsl/types';
+import { makeBoundary, makeCommand, makeOpenApi } from '../_helpers';
 import type { ShadowGraph } from '../../../src/stategraph/shadow';
 
 // ── helpers ────────────────────────────────────────────────────────────────────
@@ -43,14 +41,36 @@ const fakeCelThrows = {
   evaluate: () => { throw new Error('CEL error'); },
 };
 
+// The default command is a creation: POST /test → operationId 'createTest'.
+function makeCreateCommand(overrides: Partial<Parameters<typeof makeCommand>[0]> = {}) {
+  return makeCommand({
+    intent: 'creation',
+    targetId: null,
+    httpMethod: 'POST',
+    path: '/test',
+    ...overrides,
+  });
+}
+
+// A mutation command: PATCH /test/{id} → operationId 'updateTest'.
+function makeUpdateCommand(overrides: Partial<Parameters<typeof makeCommand>[0]> = {}) {
+  return makeCommand({
+    intent: 'mutation',
+    targetId: 'agg-1',
+    httpMethod: 'PATCH',
+    path: '/test/agg-1',
+    ...overrides,
+  });
+}
+
 function makeInput(overrides: Partial<PatternMatchInput> = {}): PatternMatchInput {
   return {
-    command: makeCommand({ intent: 'creation', targetId: null }),
+    command: makeCreateCommand(),
     boundary: makeBoundary({
       behaviors: [
         {
           name: 'b1',
-          match: { intent: 'creation', condition: 'true' },
+          match: { operationId: 'createTest', condition: 'true' },
           emit: 'Created',
         },
       ],
@@ -62,16 +82,27 @@ function makeInput(overrides: Partial<PatternMatchInput> = {}): PatternMatchInpu
     nextSequenceVersion: () => 1,
     projectToShadow: jest.fn(),
     now: () => '2024-01-01T00:00:00.000Z',
+    openapi: makeOpenApi(),
     ...overrides,
   };
 }
 
 describe('engine/patternMatcher', () => {
+  describe('operationId resolution', () => {
+    it('throws EntityAbsenceError (404) when no operationId resolves for the route', () => {
+      expect(() =>
+        runPatternMatch(makeInput({
+          command: makeCommand({ intent: 'query', targetId: null, httpMethod: 'GET', path: '/unknown' }),
+        })),
+      ).toThrow(EntityAbsenceError);
+    });
+  });
+
   describe('EntityAbsenceError', () => {
     it('throws EntityAbsenceError on mutation when state is null', () => {
       expect(() =>
         runPatternMatch(makeInput({
-          command: makeCommand({ intent: 'mutation', targetId: 'a1' }),
+          command: makeUpdateCommand({ targetId: 'a1', path: '/test/a1' }),
           shadow: makeNoopShadow(null),
         })),
       ).toThrow(EntityAbsenceError);
@@ -80,7 +111,7 @@ describe('engine/patternMatcher', () => {
     it('EntityAbsenceError includes targetId in details', () => {
       try {
         runPatternMatch(makeInput({
-          command: makeCommand({ intent: 'mutation', targetId: 'miss-me' }),
+          command: makeUpdateCommand({ targetId: 'miss-me', path: '/test/miss-me' }),
           shadow: makeNoopShadow(null),
         }));
       } catch (e) {
@@ -94,7 +125,7 @@ describe('engine/patternMatcher', () => {
     it('throws EntityConflictError on creation when state already exists', () => {
       expect(() =>
         runPatternMatch(makeInput({
-          command: makeCommand({ intent: 'creation', targetId: 'existing' }),
+          command: makeCreateCommand({ targetId: 'existing' }),
           shadow: makeNoopShadow({ id: 'existing' }),
         })),
       ).toThrow(EntityConflictError);
@@ -102,25 +133,24 @@ describe('engine/patternMatcher', () => {
   });
 
   describe('UnhandledOperationError', () => {
-    it('throws UnhandledOperationError when no behavior matches', () => {
+    it('throws UnhandledOperationError when behavior condition is false', () => {
       expect(() =>
         runPatternMatch(makeInput({
-          command: makeCommand({ intent: 'creation', targetId: null }),
           cel: fakeCelFalse as any,
         })),
       ).toThrow(UnhandledOperationError);
     });
 
-    it('throws UnhandledOperationError when intent does not match any behavior', () => {
+    it('throws UnhandledOperationError when operationId does not match any behavior', () => {
       const boundary = makeBoundary({
         behaviors: [
-          { name: 'b1', match: { intent: 'mutation', condition: 'true' }, emit: 'Updated' },
+          { name: 'b1', match: { operationId: 'updateTest', condition: 'true' }, emit: 'Updated' },
         ],
         eventCatalog: [{ type: 'Updated', payloadTemplate: {} }],
       });
       expect(() =>
         runPatternMatch(makeInput({
-          command: makeCommand({ intent: 'creation', targetId: null }),
+          command: makeCreateCommand(),
           boundary,
         })),
       ).toThrow(UnhandledOperationError);
@@ -129,7 +159,6 @@ describe('engine/patternMatcher', () => {
     it('treats CEL evaluation error as no-match', () => {
       expect(() =>
         runPatternMatch(makeInput({
-          command: makeCommand({ intent: 'creation', targetId: null }),
           cel: fakeCelThrows as any,
         })),
       ).toThrow(UnhandledOperationError);
@@ -140,7 +169,7 @@ describe('engine/patternMatcher', () => {
     it('returns GenericUpdateEvent when fallbackOverride is true and no behavior matches', () => {
       const boundary = makeBoundary({ fallbackOverride: true, behaviors: [] });
       const result = runPatternMatch(makeInput({
-        command: makeCommand({ intent: 'mutation', targetId: 'a1' }),
+        command: makeUpdateCommand({ targetId: 'a1', path: '/test/a1' }),
         boundary,
         shadow: makeNoopShadow({ existing: true }),
       }));
@@ -150,7 +179,7 @@ describe('engine/patternMatcher', () => {
     it('fallback uses targetId as aggregateId when targetId present', () => {
       const boundary = makeBoundary({ fallbackOverride: true, behaviors: [] });
       const result = runPatternMatch(makeInput({
-        command: makeCommand({ intent: 'mutation', targetId: 'target-x' }),
+        command: makeUpdateCommand({ targetId: 'target-x', path: '/test/target-x' }),
         boundary,
         shadow: makeNoopShadow({ x: 1 }),
       }));
@@ -160,7 +189,7 @@ describe('engine/patternMatcher', () => {
     it('query with fallback_override returns empty events and null state for collection-level query', () => {
       const boundary = makeBoundary({ fallbackOverride: true, behaviors: [] });
       const result = runPatternMatch(makeInput({
-        command: makeCommand({ intent: 'query', targetId: null }),
+        command: makeCommand({ intent: 'query', targetId: null, httpMethod: 'GET', path: '/test' }),
         boundary,
         shadow: makeNoopShadow(null),
       }));
@@ -207,18 +236,17 @@ describe('engine/patternMatcher', () => {
       expect(result.secondaryCommands).toHaveLength(0);
     });
 
-    it('uses commandId as aggregateId for creation with no targetId', () => {
+    it('uses an aggregateId for creation with no targetId', () => {
       const result = runPatternMatch(makeInput({
-        command: makeCommand({ intent: 'creation', targetId: null, commandId: 'cmd-xyz' }),
+        command: makeCreateCommand({ commandId: 'cmd-xyz' }),
       }));
-      // When no targetId and no identity config, nextEventId() is called for aggregateId
       expect(result.events[0]?.aggregateId).toBeDefined();
     });
 
     it('throws InternalExecutionError when emit type not in eventCatalog', () => {
       const boundary = makeBoundary({
         behaviors: [
-          { name: 'b1', match: { intent: 'creation', condition: 'true' }, emit: 'Missing' },
+          { name: 'b1', match: { operationId: 'createTest', condition: 'true' }, emit: 'Missing' },
         ],
         eventCatalog: [],
       });
@@ -234,23 +262,68 @@ describe('engine/patternMatcher', () => {
 
     it('event causedBy is set to commandId', () => {
       const result = runPatternMatch(makeInput({
-        command: makeCommand({ intent: 'creation', targetId: null, commandId: 'the-cmd' }),
+        command: makeCreateCommand({ commandId: 'the-cmd' }),
       }));
       expect(result.events[0]?.causedBy).toBe('the-cmd');
     });
   });
 
+  describe('operationId dispatch', () => {
+    it('dispatches to the behavior whose operationId equals the resolved id', () => {
+      // Two behaviors keyed to different operationIds in one boundary (qualify vs disqualify
+      // analogue). The PATCH /test/{id} → updateTest behavior must win over the createTest one.
+      const boundary = makeBoundary({
+        behaviors: [
+          { name: 'create', match: { operationId: 'createTest', condition: 'true' }, emit: 'CreatedEv' },
+          { name: 'update', match: { operationId: 'updateTest', condition: 'true' }, emit: 'UpdatedEv' },
+        ],
+        eventCatalog: [
+          { type: 'CreatedEv', payloadTemplate: {} },
+          { type: 'UpdatedEv', payloadTemplate: {} },
+        ],
+      });
+      const result = runPatternMatch(makeInput({
+        command: makeUpdateCommand({ targetId: 'a1', path: '/test/a1' }),
+        boundary,
+        shadow: makeNoopShadow({ id: 'a1' }),
+      }));
+      expect(result.events[0]?.type).toBe('UpdatedEv');
+    });
+
+    it('honours a command-carried operationId for secondary commands', () => {
+      const boundary = makeBoundary({
+        behaviors: [
+          { name: 'cascadeTarget', match: { operationId: 'updateTest', condition: 'true' }, emit: 'CascadeEv' },
+        ],
+        eventCatalog: [{ type: 'CascadeEv', payloadTemplate: {} }],
+      });
+      const result = runPatternMatch(makeInput({
+        command: makeCommand({
+          intent: 'mutation',
+          targetId: 'a1',
+          httpMethod: 'PUT',
+          path: '',
+          operationId: 'updateTest',
+          origin: 'secondary',
+          depth: 1,
+        }),
+        boundary,
+        shadow: makeNoopShadow({ id: 'a1' }),
+      }));
+      expect(result.events[0]?.type).toBe('CascadeEv');
+    });
+  });
+
   describe('first-match semantics', () => {
     it('uses first matching behavior, skips rest', () => {
-      let callCount = 0;
       const cel = {
         compile: (e: string) => ({ source: e, _ast: {} as any }),
-        evaluate: () => { callCount++; return true; },
+        evaluate: () => true,
       };
       const boundary = makeBoundary({
         behaviors: [
-          { name: 'b1', match: { intent: 'creation', condition: 'true' }, emit: 'Ev1' },
-          { name: 'b2', match: { intent: 'creation', condition: 'true' }, emit: 'Ev2' },
+          { name: 'b1', match: { operationId: 'createTest', condition: 'true' }, emit: 'Ev1' },
+          { name: 'b2', match: { operationId: 'createTest', condition: 'true' }, emit: 'Ev2' },
         ],
         eventCatalog: [
           { type: 'Ev1', payloadTemplate: {} },

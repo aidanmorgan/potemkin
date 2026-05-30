@@ -24,7 +24,8 @@ export interface EmitWhenEntry {
 export interface BehaviorRule {
   readonly name: string;
   readonly match: {
-    readonly intent: Intent;
+    /** Canonical matcher: the OpenAPI operationId this behavior handles. */
+    readonly operationId: string;
     readonly condition: string;
     /** REQ-61 */
     readonly requires?: readonly RequiresGuard[];
@@ -51,6 +52,8 @@ export interface BehaviorRule {
 export interface SecondaryCommandSpec {
   readonly boundary: string;
   readonly intent: Intent;
+  /** OpenAPI operationId of the target boundary's behavior this cascade invokes. */
+  readonly operationId: string;
   readonly targetId: string;                          // CEL expression resolving to a string
   readonly payload?: Record<string, string>;          // CEL expressions
   /** REQ-63: optional gate — false means skip this secondary command */
@@ -137,6 +140,8 @@ export interface BoundaryConfig {
 /** REQ-73: Compensation handler for a saga step — runs in reverse order on failure */
 export interface SagaCompensation {
   readonly intent: Intent;
+  /** OpenAPI operationId of the target boundary behavior this compensation invokes. */
+  readonly operationId: string;
   /** CEL expression resolving to target aggregate ID */
   readonly targetId?: string;
   readonly payload?: Record<string, string>;  // CEL expressions
@@ -147,6 +152,8 @@ export interface SagaStep {
   readonly name: string;
   readonly boundary: string;
   readonly intent: Intent;
+  /** OpenAPI operationId of the target boundary behavior this step invokes. */
+  readonly operationId: string;
   /** CEL expression resolving to target aggregate ID */
   readonly targetId?: string;
   readonly payload?: Record<string, string>;  // CEL expressions

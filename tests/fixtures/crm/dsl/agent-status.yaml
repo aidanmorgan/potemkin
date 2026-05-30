@@ -12,7 +12,7 @@ behaviors:
   # REQ-64: emit_when with 2 branches based on new status
   - name: updateAgentStatus
     match:
-      intent: mutation
+      operationId: updateAgentStatus
       condition: "true"
     emit_when:
       - when: "command.payload.currentStatus == 'AVAILABLE' || command.payload.currentStatus == 'BREAK' || command.payload.currentStatus == 'OFFLINE'"

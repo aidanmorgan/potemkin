@@ -31,7 +31,7 @@ describe('REQ-65: event_catalog schema_ref DSL parsing', () => {
       boundary: 'Loan',
       contract_path: '/loans',
       behaviors: [
-        { name: 'open', match: { intent: 'creation', condition: 'true' }, emit: 'LoanOpened' },
+        { name: 'open', match: { operationId: 'openLoan', condition: 'true' }, emit: 'LoanOpened' },
       ],
       reducers: [],
       event_catalog: [
@@ -49,7 +49,7 @@ describe('REQ-65: event_catalog schema_ref DSL parsing', () => {
     const config = validateBoundaryConfig({
       boundary: 'Loan',
       contract_path: '/loans',
-      behaviors: [{ name: 'open', match: { intent: 'creation', condition: 'true' }, emit: 'LoanOpened' }],
+      behaviors: [{ name: 'open', match: { operationId: 'openLoan', condition: 'true' }, emit: 'LoanOpened' }],
       reducers: [],
       event_catalog: [{ type: 'LoanOpened', payload_template: {} }],
     });

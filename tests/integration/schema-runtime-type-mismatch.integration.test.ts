@@ -76,7 +76,7 @@ event_catalog:
 behaviors:
   - name: create-account
     match:
-      intent: creation
+      operationId: createAccount
       condition: "true"
     emit: AccountCreated
 reducers:
@@ -102,7 +102,7 @@ event_catalog:
 behaviors:
   - name: create-account
     match:
-      intent: creation
+      operationId: createAccount
       condition: "true"
     emit: AccountCreated
 reducers:
@@ -135,6 +135,7 @@ describe('schema-runtime-type-mismatch.integration: wrong-typed CEL assignment t
           depth: 0,
         },
         dsl: sys.dsl,
+        openapi: sys.openapi,
         graph: sys.graph,
         events: sys.events,
         cel: sys.cel,
@@ -166,6 +167,7 @@ describe('schema-runtime-type-mismatch.integration: wrong-typed CEL assignment t
           depth: 0,
         },
         dsl: sys.dsl,
+        openapi: sys.openapi,
         graph: sys.graph,
         events: sys.events,
         cel: sys.cel,
@@ -208,6 +210,7 @@ describe('schema-runtime-type-mismatch.integration: wrong-typed CEL assignment t
           depth: 0,
         },
         dsl: sys.dsl,
+        openapi: sys.openapi,
         graph: sys.graph,
         events: sys.events,
         cel: sys.cel,
@@ -240,6 +243,7 @@ describe('schema-runtime-type-mismatch.integration: wrong-typed CEL assignment t
         depth: 0,
       },
       dsl: sys.dsl,
+      openapi: sys.openapi,
       graph: sys.graph,
       events: sys.events,
       cel: sys.cel,

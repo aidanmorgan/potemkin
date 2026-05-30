@@ -112,7 +112,7 @@ event_catalog:
 behaviors:
   - name: create-item
     match:
-      intent: creation
+      operationId: createItem
       condition: "true"
     emit: ItemCreated
 reducers:
@@ -165,6 +165,7 @@ describe('concurrency-conflict.integration', () => {
         depth: 0,
       },
       dsl: sys.dsl,
+      openapi: sys.openapi,
       graph: sys.graph,
       events: sys.events,
       cel: sys.cel,
@@ -197,6 +198,7 @@ describe('concurrency-conflict.integration', () => {
     const result = await executeUnitOfWork({
       command: makeUpdateCommand(itemId, currentSeq),
       dsl: sys.dsl,
+      openapi: sys.openapi,
       graph: sys.graph,
       events: sys.events,
       cel: sys.cel,
@@ -215,6 +217,7 @@ describe('concurrency-conflict.integration', () => {
     await executeUnitOfWork({
       command: makeUpdateCommand(itemId, currentSeq),
       dsl: sys.dsl,
+      openapi: sys.openapi,
       graph: sys.graph,
       events: sys.events,
       cel: sys.cel,
@@ -227,6 +230,7 @@ describe('concurrency-conflict.integration', () => {
       executeUnitOfWork({
         command: makeUpdateCommand(itemId, currentSeq),
         dsl: sys.dsl,
+        openapi: sys.openapi,
         graph: sys.graph,
         events: sys.events,
         cel: sys.cel,
@@ -244,6 +248,7 @@ describe('concurrency-conflict.integration', () => {
     await executeUnitOfWork({
       command: makeUpdateCommand(itemId, staleSeq),
       dsl: sys.dsl,
+      openapi: sys.openapi,
       graph: sys.graph,
       events: sys.events,
       cel: sys.cel,
@@ -255,6 +260,7 @@ describe('concurrency-conflict.integration', () => {
       await executeUnitOfWork({
         command: makeUpdateCommand(itemId, staleSeq),
         dsl: sys.dsl,
+        openapi: sys.openapi,
         graph: sys.graph,
         events: sys.events,
         cel: sys.cel,
@@ -276,6 +282,7 @@ describe('concurrency-conflict.integration', () => {
     await executeUnitOfWork({
       command: makeUpdateCommand(itemId, staleSeq),
       dsl: sys.dsl,
+      openapi: sys.openapi,
       graph: sys.graph,
       events: sys.events,
       cel: sys.cel,
@@ -290,6 +297,7 @@ describe('concurrency-conflict.integration', () => {
       executeUnitOfWork({
         command: makeUpdateCommand(itemId, staleSeq),
         dsl: sys.dsl,
+        openapi: sys.openapi,
         graph: sys.graph,
         events: sys.events,
         cel: sys.cel,

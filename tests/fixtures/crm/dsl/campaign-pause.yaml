@@ -11,7 +11,7 @@ behaviors:
   # REQ-64: emit_when with multiple branches
   - name: pauseCampaign
     match:
-      intent: mutation
+      operationId: pauseCampaign
       condition: "state.status == 'ACTIVE'"
     emit_when:
       - when: "state.actualCalls != null && state.actualCalls > 0"

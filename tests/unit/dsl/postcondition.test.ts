@@ -5,7 +5,7 @@ import { validateBoundaryConfig } from '../../../src/dsl/schema';
 import { runPatternMatch } from '../../../src/engine/patternMatcher';
 import type { PatternMatchInput } from '../../../src/engine/patternMatcher';
 import { BootError, InternalExecutionError } from '../../../src/errors';
-import { makeBoundary, makeCommand } from '../_helpers';
+import { makeBoundary, makeCommand, makeOpenApi } from '../_helpers';
 import type { ShadowGraph } from '../../../src/stategraph/shadow';
 import { createCelEvaluator } from '../../../src/cel/evaluator';
 
@@ -35,6 +35,7 @@ function makeInput(overrides: Partial<PatternMatchInput> = {}): PatternMatchInpu
       // Simulate projection: update shadow balance
     }),
     now: () => '2024-01-01T00:00:00.000Z',
+    openapi: makeOpenApi(),
     ...overrides,
   };
 }
@@ -49,7 +50,7 @@ describe('REQ-62: postcondition DSL parsing', () => {
       behaviors: [
         {
           name: 'repay',
-          match: { intent: 'mutation', condition: 'true' },
+          match: { operationId: 'updateTest', condition: 'true' },
           emit: 'LoanRepaid',
           postcondition: 'state.balance >= 0',
         },
@@ -67,7 +68,7 @@ describe('REQ-62: postcondition DSL parsing', () => {
       behaviors: [
         {
           name: 'repay',
-          match: { intent: 'mutation', condition: 'true' },
+          match: { operationId: 'updateTest', condition: 'true' },
           emit: 'LoanRepaid',
           postcondition: { expression: 'state.balance >= 0', message: 'Balance cannot go negative' },
         },
@@ -85,7 +86,7 @@ describe('REQ-62: postcondition DSL parsing', () => {
       behaviors: [
         {
           name: 'repay',
-          match: { intent: 'mutation', condition: 'true' },
+          match: { operationId: 'updateTest', condition: 'true' },
           emit: 'LoanRepaid',
           postcondition: 123,
         },
@@ -112,7 +113,7 @@ describe('REQ-62: postcondition runtime behavior', () => {
         behaviors: [
           {
             name: 'repay',
-            match: { intent: 'mutation', condition: 'true' },
+            match: { operationId: 'updateTest', condition: 'true' },
             emit: 'LoanRepaid',
             postcondition: 'state.balance >= 0',
           },
@@ -139,7 +140,7 @@ describe('REQ-62: postcondition runtime behavior', () => {
         behaviors: [
           {
             name: 'repay',
-            match: { intent: 'mutation', condition: 'true' },
+            match: { operationId: 'updateTest', condition: 'true' },
             emit: 'LoanRepaid',
             postcondition: 'state.balance >= 0',
           },

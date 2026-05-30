@@ -13,7 +13,7 @@ behaviors:
   # REQ-62: postcondition
   - name: convertLead
     match:
-      intent: mutation
+      operationId: convertLead
       condition: "state.status == 'QUALIFIED'"
     emit: LeadConverted
     postcondition: "state.status == 'CONVERTED'"

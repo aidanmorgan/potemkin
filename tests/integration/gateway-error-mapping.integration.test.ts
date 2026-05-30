@@ -124,7 +124,7 @@ event_catalog:
 behaviors:
   - name: create-widget
     match:
-      intent: creation
+      operationId: createWidget
       condition: "true"
     emit: WidgetCreated
 reducers:
@@ -199,6 +199,50 @@ paths:
             application/json:
               schema:
                 type: object
+  /pings/{id}:
+    patch:
+      operationId: updatePing
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PingBoundary"
+        "508":
+          description: Loop detected
+          content:
+            application/json:
+              schema:
+                type: object
+  /pongs/{id}:
+    patch:
+      operationId: updatePong
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PongBoundary"
+        "508":
+          description: Loop detected
+          content:
+            application/json:
+              schema:
+                type: object
 components:
   schemas:
     PingBoundary:
@@ -234,22 +278,24 @@ event_catalog:
 behaviors:
   - name: create-ping
     match:
-      intent: creation
+      operationId: createPing
       condition: "true"
     emit: PingCreated
     dispatch_commands:
       - boundary: PongBoundary
         intent: mutation
+        operationId: updatePong
         target_id: "'pong-loop-anchor'"
         payload: {}
   - name: mutate-ping
     match:
-      intent: mutation
+      operationId: updatePing
       condition: "true"
     emit: PingMutated
     dispatch_commands:
       - boundary: PongBoundary
         intent: mutation
+        operationId: updatePong
         target_id: "'pong-loop-anchor'"
         payload: {}
 reducers:
@@ -280,17 +326,18 @@ event_catalog:
 behaviors:
   - name: create-pong
     match:
-      intent: creation
+      operationId: createPong
       condition: "true"
     emit: PongCreated
   - name: mutate-pong
     match:
-      intent: mutation
+      operationId: updatePong
       condition: "true"
     emit: PongMutated
     dispatch_commands:
       - boundary: PingBoundary
         intent: mutation
+        operationId: updatePing
         target_id: "'ping-loop-anchor'"
         payload: {}
 reducers:
@@ -515,7 +562,7 @@ event_catalog:
 behaviors:
   - name: create-bad
     match:
-      intent: creation
+      operationId: createBadCel
       condition: "true"
     emit: BadCelCreated
 reducers:

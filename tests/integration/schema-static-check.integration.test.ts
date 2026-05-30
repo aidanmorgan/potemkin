@@ -65,7 +65,7 @@ event_catalog:
 behaviors:
   - name: create-widget
     match:
-      intent: creation
+      operationId: createWidget
       condition: "state.DOES_NOT_EXIST == 'foobar'"
     emit: WidgetCreated
 reducers:
@@ -91,7 +91,7 @@ event_catalog:
 behaviors:
   - name: create-widget
     match:
-      intent: creation
+      operationId: createWidget
       condition: "true"
     emit: WidgetCreated
 reducers:

@@ -115,7 +115,7 @@ event_catalog:
 behaviors:
   - name: create-item
     match:
-      intent: creation
+      operationId: createItem
       condition: "true"
     emit: ItemCreated
 reducers:

@@ -18,6 +18,9 @@ import {
   InternalExecutionError,
 } from '../errors.js';
 import { checkScopes } from '../identity/scopeChecker.js';
+import { lookupOperationId } from '../contract/loader.js';
+import type { OpenApiDoc } from '../contract/loader.js';
+import { matchRoute } from '../contract/router.js';
 import { invokeScript } from '../scripts/sandbox.js';
 import { nextUuidv7 } from '../ids/uuidv7.js';
 import { deepClone, deepMerge } from '../stategraph/graph.js';
@@ -41,6 +44,11 @@ export interface PatternMatchInput {
    * The UoW supplies this, accounting for already-staged events in this UoW.
    */
   readonly nextSequenceVersion: (aggregateId: string) => number;
+  /**
+   * OpenAPI document used to resolve the request's operationId from (path, method).
+   * Behaviors are dispatched by matching match.operationId against this resolved id.
+   */
+  readonly openapi: OpenApiDoc;
   /**
    * [ADDITIVE] Callback to project a domain event into the shadow graph immediately after
    * staging, ensuring causal consistency for subsequent rule evaluations within the same UoW.
@@ -127,8 +135,26 @@ function evaluateExpr(
 }
 
 function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
-  const { command, boundary, shadow, cel, nextEventId, now, logger, nextSequenceVersion, projectToShadow, scriptRegistry } = input;
+  const { command, boundary, shadow, cel, nextEventId, now, logger, nextSequenceVersion, projectToShadow, scriptRegistry, openapi } = input;
   const log = logger?.child({ component: 'patternMatcher', commandId: command.commandId, boundary: command.boundary });
+
+  // Resolve the request's operationId. Secondary (cascade) commands carry an explicit
+  // operationId (their path is synthetic). Inbound commands resolve it from (path,
+  // method): the command path is a concrete URL, so resolve the templated contract path
+  // first, then look up its operationId. No resolvable operationId means the route is
+  // not in the OpenAPI contract → 404 (the gateway normally screens this earlier).
+  let operationId: string | undefined = command.operationId;
+  if (operationId === undefined) {
+    const route = matchRoute(openapi, command.httpMethod, command.path);
+    operationId = route ? lookupOperationId(openapi, route.contractPath, command.httpMethod) : undefined;
+  }
+  if (operationId === undefined) {
+    log?.debug({ path: command.path, method: command.httpMethod }, 'No operationId resolved for request — route not in OpenAPI contract');
+    throw new EntityAbsenceError(
+      `No OpenAPI operation matches ${command.httpMethod} ${command.path}`,
+      { method: command.httpMethod, path: command.path, boundary: boundary.boundary },
+    );
+  }
 
   // Step 1: Context Assembly
   const existingState = command.targetId != null ? shadow.get(command.targetId) : null;
@@ -150,10 +176,11 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
     }
   }
 
-  // Step 2: Evaluation Loop — first-match resolution
+  // Step 2: Evaluation Loop — first-match resolution.
+  // operationId selects the candidate behavior; match.condition (below) narrows further.
   for (const behavior of boundary.behaviors) {
-    if (behavior.match.intent !== command.intent) {
-      log?.debug({ behaviorName: behavior.name, behaviorIntent: behavior.match.intent, commandIntent: command.intent }, 'Skipping behavior — intent mismatch');
+    if (behavior.match.operationId !== operationId) {
+      log?.debug({ behaviorName: behavior.name, behaviorOperationId: behavior.match.operationId, operationId }, 'Skipping behavior — operationId mismatch');
       continue;
     }
 
@@ -495,6 +522,7 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
           commandId: nextEventId(),
           boundary: spec.boundary,
           intent: spec.intent,
+          operationId: spec.operationId,
           targetId: resolvedTargetId,
           payload: secondaryPayload,
           queryParams: {},

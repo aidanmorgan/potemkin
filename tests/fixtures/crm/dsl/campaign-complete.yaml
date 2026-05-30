@@ -10,7 +10,7 @@ event_catalog:
 behaviors:
   - name: completeCampaign
     match:
-      intent: mutation
+      operationId: completeCampaign
       condition: "state.status == 'ACTIVE' || state.status == 'PAUSED'"
     emit: CampaignCompleted
 

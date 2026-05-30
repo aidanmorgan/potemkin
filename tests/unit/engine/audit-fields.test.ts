@@ -13,8 +13,13 @@ import { createStateGraph } from '../../../src/stategraph/graph';
 import { createEventStore } from '../../../src/eventstore/store';
 import { createCelEvaluator } from '../../../src/cel/evaluator';
 import { createContractValidator } from '../../../src/contract/validator';
-import { makeBoundary, makeCommand } from '../_helpers';
+import { makeBoundary, makeCommand, makeOpenApi } from '../_helpers';
 import type { ContractValidator } from '../../../src/contract/validator';
+
+// OpenAPI used for operationId resolution in these UoW tests. The boundary is bound
+// to /test; commands hit POST /test (createTest), PATCH /test/{id} (updateTest), and
+// GET /test/{id} (getTest).
+const auditOpenapi = makeOpenApi();
 
 const cel = createCelEvaluator();
 
@@ -73,6 +78,7 @@ describe('audit fields — updatedAt / updatedBy', () => {
       events,
       cel,
       validator: noopValidator,
+      openapi: auditOpenapi,
     });
 
     const afterTime = new Date().toISOString();
@@ -131,6 +137,7 @@ describe('audit fields — updatedAt / updatedBy', () => {
       events,
       cel,
       validator: noopValidator,
+      openapi: auditOpenapi,
     });
 
     const entity = graph.get('agg-1');
@@ -182,6 +189,7 @@ describe('audit fields — updatedAt / updatedBy', () => {
       events,
       cel,
       validator: noopValidator,
+      openapi: auditOpenapi,
     });
 
     const entity = graph.get('agg-1');
@@ -198,7 +206,7 @@ describe('audit fields — updatedAt / updatedBy', () => {
       fallbackOverride: true,
       behaviors: [{
         name: 'create',
-        match: { method: 'POST', intent: 'creation', condition: 'true' },
+        match: { method: 'POST', operationId: 'createTest', condition: 'true' },
         emit: 'Created',
       }],
       reducers: [{
@@ -223,6 +231,7 @@ describe('audit fields — updatedAt / updatedBy', () => {
     const command = makeCommand({
       intent: 'creation',
       httpMethod: 'POST',
+      path: '/test',
       targetId: 'agg-new',
       payload: { name: 'Test Entity' },
     });
@@ -234,6 +243,7 @@ describe('audit fields — updatedAt / updatedBy', () => {
       events,
       cel,
       validator: noopValidator,
+      openapi: auditOpenapi,
     });
 
     const entity = graph.get('agg-new');
@@ -292,7 +302,7 @@ describe('audit fields — updatedAt / updatedBy', () => {
       events,
       cel,
       validator: noopValidator,
-      openapi: minimalOpenapi as any,
+      openapi: auditOpenapi,
     });
 
     const entity = graph.get('agg-1');

@@ -13,6 +13,7 @@ import type { DerivedProjectionRegistry } from '../projections/types.js';
 import type { PluginControlClient } from '../lifecycle/types.js';
 
 import { compileDsl } from '../dsl/parser.js';
+import { validateBehaviorOperationIds } from '../dsl/behaviorValidation.js';
 import { BootError } from '../errors.js';
 import { createCelEvaluator } from '../cel/evaluator.js';
 import { createEventStore } from '../eventstore/store.js';
@@ -240,6 +241,8 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
         }
       }
     }
+
+    validateBehaviorOperationIds(dsl, input.openapi);
 
     bootLog.info(
       { step: 'contract_bind', durationMs: Date.now() - phaseStart3 },

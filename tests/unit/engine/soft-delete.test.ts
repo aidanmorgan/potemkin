@@ -14,7 +14,7 @@ import { runQuery } from '../../../src/engine/query';
 import { createStateGraph } from '../../../src/stategraph/graph';
 import { createShadowGraph } from '../../../src/stategraph/shadow';
 import { createCelEvaluator } from '../../../src/cel/evaluator';
-import { makeBoundary, makeCommand, makeDomainEvent } from '../_helpers';
+import { makeBoundary, makeCommand, makeDomainEvent, makeOpenApi } from '../_helpers';
 import type { OpenApiDoc } from '../../../src/contract/loader';
 
 const cel = createCelEvaluator();
@@ -60,6 +60,7 @@ describe('soft delete', () => {
           const current = shadow.get(evt.aggregateId) ?? {};
           shadow.stage(evt.aggregateId, { ...current, ...evt.payload });
         },
+        openapi: makeOpenApi(),
       });
 
       expect(result.events).toHaveLength(1);
@@ -106,6 +107,7 @@ describe('soft delete', () => {
           const current = shadow.get(evt.aggregateId) ?? {};
           shadow.stage(evt.aggregateId, { ...current, ...evt.payload });
         },
+        openapi: makeOpenApi(),
       });
 
       expect(result.events).toHaveLength(1);

@@ -11,8 +11,24 @@ import {
   InternalExecutionError,
   UnhandledOperationError,
 } from '../../../src/errors';
-import { makeBoundary, makeCommand } from '../_helpers';
+import { makeBoundary, makeCommand as makeCommandBase, makeOpenApi } from '../_helpers';
 import type { ShadowGraph } from '../../../src/stategraph/shadow';
+import type { Command } from '../../../src/types';
+
+// operationId for the behavior handling each intent under the default test OpenAPI.
+const OP_FOR = { creation: 'createTest', mutation: 'updateTest', query: 'getTest' } as const;
+
+// Local makeCommand deriving a contract-consistent (method, path) from intent.
+function makeCommand(overrides: Partial<Command> = {}): Command {
+  const intent = overrides.intent ?? 'mutation';
+  const targetId = overrides.targetId !== undefined
+    ? overrides.targetId
+    : (intent === 'creation' ? null : 'agg-1');
+  const idForPath = typeof targetId === 'string' ? targetId : 'agg-1';
+  const method = intent === 'creation' ? 'POST' : intent === 'query' ? 'GET' : 'PATCH';
+  const path = intent === 'creation' ? '/test' : `/test/${idForPath}`;
+  return makeCommandBase({ httpMethod: method, path, ...overrides, targetId });
+}
 
 // ── minimal helpers ────────────────────────────────────────────────────────────
 
@@ -39,7 +55,7 @@ function makeInput(overrides: Partial<PatternMatchInput> = {}): PatternMatchInpu
     command: makeCommand({ intent: 'creation', targetId: null }),
     boundary: makeBoundary({
       behaviors: [
-        { name: 'b1', match: { intent: 'creation', condition: 'true' }, emit: 'Created' },
+        { name: 'b1', match: { operationId: 'createTest', condition: 'true' }, emit: 'Created' },
       ],
       eventCatalog: [{ type: 'Created', payloadTemplate: {} }],
     }),
@@ -49,6 +65,7 @@ function makeInput(overrides: Partial<PatternMatchInput> = {}): PatternMatchInpu
     nextSequenceVersion: () => 1,
     projectToShadow: jest.fn(),
     now: () => '2024-01-01T00:00:00.000Z',
+    openapi: makeOpenApi(),
     ...overrides,
   };
 }
@@ -71,8 +88,8 @@ it('CONTRACT: returns on first matching behavior and does not continue evaluatin
     command: makeCommand({ intent: 'creation', targetId: null }),
     boundary: makeBoundary({
       behaviors: [
-        { name: 'first', match: { intent: 'creation', condition: 'FIRST' }, emit: 'Created' },
-        { name: 'second', match: { intent: 'creation', condition: 'SECOND' }, emit: 'Created' },
+        { name: 'first', match: { operationId: 'createTest', condition: 'FIRST' }, emit: 'Created' },
+        { name: 'second', match: { operationId: 'createTest', condition: 'SECOND' }, emit: 'Created' },
       ],
       eventCatalog: [{ type: 'Created', payloadTemplate: {} }],
     }),
@@ -93,7 +110,7 @@ it('CONTRACT: throws InternalExecutionError when emit references unknown event c
     runPatternMatch(makeInput({
       boundary: makeBoundary({
         behaviors: [
-          { name: 'b1', match: { intent: 'creation', condition: 'true' }, emit: 'NonExistentType' },
+          { name: 'b1', match: { operationId: 'createTest', condition: 'true' }, emit: 'NonExistentType' },
         ],
         eventCatalog: [{ type: 'OtherType', payloadTemplate: {} }],
       }),
@@ -107,7 +124,7 @@ it('CONTRACT: InternalExecutionError message names the bad emit reference', () =
     runPatternMatch(makeInput({
       boundary: makeBoundary({
         behaviors: [
-          { name: 'b1', match: { intent: 'creation', condition: 'true' }, emit: 'GhostEvent' },
+          { name: 'b1', match: { operationId: 'createTest', condition: 'true' }, emit: 'GhostEvent' },
         ],
         eventCatalog: [],
       }),
@@ -194,8 +211,8 @@ it('CONTRACT: CEL condition evaluation error is silently treated as no-match (co
     command: makeCommand({ intent: 'creation', targetId: null }),
     boundary: makeBoundary({
       behaviors: [
-        { name: 'throws', match: { intent: 'creation', condition: 'c1' }, emit: 'Created' },
-        { name: 'succeeds', match: { intent: 'creation', condition: 'c2' }, emit: 'Created' },
+        { name: 'throws', match: { operationId: 'createTest', condition: 'c1' }, emit: 'Created' },
+        { name: 'succeeds', match: { operationId: 'createTest', condition: 'c2' }, emit: 'Created' },
       ],
       eventCatalog: [{ type: 'Created', payloadTemplate: {} }],
     }),

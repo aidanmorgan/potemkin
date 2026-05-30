@@ -114,7 +114,7 @@ event_catalog:
 behaviors:
   - name: create-item
     match:
-      intent: creation
+      operationId: createItem
       condition: "true"
     emit: ItemCreated
 reducers:
@@ -166,6 +166,7 @@ async function createItem(label = 'test-label'): Promise<string> {
       depth: 0,
     },
     dsl: sys.dsl,
+    openapi: sys.openapi,
     graph: sys.graph,
     events: sys.events,
     cel: sys.cel,
@@ -233,6 +234,7 @@ describe('engine/uow — additional coverage', () => {
         faultSignal,
       },
       dsl: sys.dsl,
+      openapi: sys.openapi,
       graph: sys.graph,
       events: sys.events,
       cel: sys.cel,
@@ -265,12 +267,13 @@ event_catalog:
 behaviors:
   - name: create-item
     match:
-      intent: creation
+      operationId: createItem
       condition: "true"
     emit: ItemCreated
     dispatch_commands:
       - boundary: NonExistentBoundary
         intent: mutation
+        operationId: getItem
         target_id: "command.targetId"
         payload: {}
 reducers:

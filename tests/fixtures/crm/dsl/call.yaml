@@ -30,7 +30,7 @@ behaviors:
   # Multi-emit: updates Lead.callIds + Agent.dailyCallCount
   - name: logCall
     match:
-      intent: creation
+      operationId: logCall
       condition: "true"
       requires:
         - name: valid-outcome
@@ -46,6 +46,7 @@ behaviors:
       # Append callId to the Lead's callIds array
       - boundary: Lead
         intent: mutation
+        operationId: patchLead
         target_id: "command.payload.leadId"
         payload:
           callId: "command.targetId"
@@ -53,6 +54,7 @@ behaviors:
       # Increment agent's daily call count
       - boundary: Agent
         intent: mutation
+        operationId: updateAgentStatus
         target_id: "command.payload.agentId"
         payload:
           callId: "command.targetId"
