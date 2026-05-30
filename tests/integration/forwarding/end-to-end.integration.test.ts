@@ -20,7 +20,6 @@ import request from 'supertest';
 import { bootSystem } from '../../../src/engine/boot.js';
 import { createGateway } from '../../../src/http/gateway.js';
 import { resetSystem } from '../../../src/engine/reset.js';
-import { resetIdempotencyStore } from '../../../src/idempotency/store.js';
 import { loadOpenApi } from '../../../src/contract/loader.js';
 import { compileDsl } from '../../../src/dsl/parser.js';
 import type { BootedSystem, BootInput } from '../../../src/engine/boot.js';
@@ -46,7 +45,6 @@ describe('/_engine/forward — end-to-end integration', () => {
 
   afterEach(() => {
     resetSystem(sys);
-    resetIdempotencyStore();
   });
 
   // ── 1. Create lead via forwarding ─────────────────────────────────────────────
@@ -327,12 +325,8 @@ idempotency:
 `;
 
 describe('/_engine/forward — idempotency-key honoured', () => {
-  afterEach(() => {
-    resetIdempotencyStore();
-  });
-
   async function buildIdempotencyApp(): Promise<ReturnType<typeof createGateway>> {
-    resetIdempotencyStore();
+    // Each bootSystem() owns a fresh idempotency store — no shared state to reset.
     const openapi = await loadOpenApi(IDEM_OPENAPI_YAML);
     const dsl = await compileDsl([{ name: 'widget', yaml: IDEM_DSL_YAML }], IDEM_GLOBAL_YAML);
     const input: BootInput = { openapi, compiledDsl: await compileDsl([{ name: 'widget', yaml: IDEM_DSL_YAML }]) };

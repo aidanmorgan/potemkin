@@ -9,7 +9,6 @@ import supertest from 'supertest';
 import { bootSystem } from '../../../src/engine/boot.js';
 import { createGateway } from '../../../src/http/gateway.js';
 import { loadOpenApi } from '../../../src/contract/loader.js';
-import { resetIdempotencyStore } from '../../../src/idempotency/store.js';
 import type { BootInput } from '../../../src/engine/boot.js';
 import { compileDsl } from '../../../src/dsl/parser.js';
 
@@ -77,7 +76,6 @@ idempotency:
 `;
 
 async function buildTestSystem(): Promise<ReturnType<typeof createGateway>> {
-  resetIdempotencyStore();
   const openapi = await loadOpenApi(OPENAPI_YAML);
   const dsl = await compileDsl([{ name: 'widget', yaml: DSL_YAML }], GLOBAL_YAML);
   const input: BootInput = { openapi, compiledDsl: await compileDsl([{ name: 'widget', yaml: DSL_YAML }]) };
@@ -88,10 +86,6 @@ async function buildTestSystem(): Promise<ReturnType<typeof createGateway>> {
 }
 
 describe('DSL Tier-2: Idempotency', () => {
-  afterEach(() => {
-    resetIdempotencyStore();
-  });
-
   it('returns X-Idempotency-Replay: true on replay', async () => {
     const app = await buildTestSystem();
     const KEY = `test-key-${Date.now()}`;

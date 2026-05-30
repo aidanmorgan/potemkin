@@ -4,7 +4,6 @@ import { projectEvent } from './projection.js';
 import { childLogger } from '../observability/logger.js';
 import { withSpan } from '../observability/tracing.js';
 import { applyEventToDerivedProjections } from '../projections/engine.js';
-import { resetIdempotencyStore } from '../idempotency/store.js';
 
 /**
  * Perform an ephemeral reset of the running system.
@@ -87,7 +86,7 @@ export function resetSystem(sys: BootedSystem): void {
       }
 
       // ── Step 6: Reset idempotency store ────────────────────────────────────
-      resetIdempotencyStore();
+      sys.idempotencyStore.clear();
 
       const durationMs = Date.now() - start;
       const entityCount = sys.graph.size();

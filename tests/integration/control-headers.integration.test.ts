@@ -10,7 +10,6 @@ import request from 'supertest';
 import type { BootedSystem } from '../../src/engine/boot.js';
 import { createGateway } from '../../src/http/gateway.js';
 import { resetSystem } from '../../src/engine/reset.js';
-import { resetIdempotencyStore } from '../../src/idempotency/store.js';
 import { bootCrmSystem } from './_helpers/crm-boot.js';
 
 const APEX_LEAD_ID = '00000000-0000-7000-8000-000000000010';
@@ -28,7 +27,6 @@ describe('X-Potemkin-* control headers — full integration', () => {
 
   beforeEach(() => {
     resetSystem(sys);
-    resetIdempotencyStore();
   });
 
   // ── Tier 1 — Transparency & determinism ─────────────────────────────────

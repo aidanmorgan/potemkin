@@ -43,6 +43,9 @@ export interface IdempotencyStore {
    * Record a response for a request that was just executed.
    */
   record(params: RecordParams): void;
+
+  /** Drop all recorded entries (used by engine reset). */
+  clear(): void;
 }
 
 export interface CheckParams {
@@ -136,20 +139,9 @@ export function createIdempotencyStore(): IdempotencyStore {
         expiresAt: Date.now() + ttlMs,
       });
     },
+
+    clear() {
+      _store.clear();
+    },
   };
-}
-
-/** Module-level singleton store (shared across gateway requests). */
-let _globalStore: IdempotencyStore | null = null;
-
-export function getIdempotencyStore(): IdempotencyStore {
-  if (!_globalStore) {
-    _globalStore = createIdempotencyStore();
-  }
-  return _globalStore;
-}
-
-/** Reset the global store (used in tests / system reset). */
-export function resetIdempotencyStore(): void {
-  _globalStore = null;
 }

@@ -56,7 +56,6 @@ import {
 } from '../errors.js';
 import type { Command, Intent } from '../types.js';
 import { resolveActor, JwtValidationError } from '../identity/actorResolver.js';
-import { getIdempotencyStore } from '../idempotency/store.js';
 import { createForwardingHandler, healthHandler, createRoutesHandler, createFixturesHandler } from '../forwarding/handler.js';
 import { parseControlHeaders, applyMask } from './controlHeaders.js';
 import { setFakerSeedFromString } from '../cel/builtins.js';
@@ -440,7 +439,7 @@ async function handleContractRequest(
     const idempotencyEnabled = idempotencyCfg?.enabled ?? false;
 
     if (idempotencyEnabled && idempotencyKey && intent !== 'query') {
-      const store = getIdempotencyStore();
+      const store = sys.idempotencyStore;
       const requestBody: JsonValue = (req.body as JsonValue | null | undefined) ?? {};
       const hashIncludesBody = idempotencyCfg?.hashIncludesBody ?? true;
 
@@ -561,7 +560,7 @@ async function handleContractRequest(
 
     // 6c. REQ-81/83: Record idempotency entry after successful execution
     if (idempotencyEnabled && idempotencyKey && intent !== 'query') {
-      const store = getIdempotencyStore();
+      const store = sys.idempotencyStore;
       const requestBody: JsonValue = (req.body as JsonValue | null | undefined) ?? {};
       const hashIncludesBody = idempotencyCfg?.hashIncludesBody ?? true;
       const ttlMs = (idempotencyCfg?.ttlSeconds ?? 86400) * 1000;

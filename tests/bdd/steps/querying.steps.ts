@@ -89,29 +89,37 @@ When('I query the Opportunity boundary with offset {int} and limit {int}', funct
   this.ctx['queryResult'] = result;
 });
 
+// A collection query returns a bare array when unpaginated, or a pagination
+// envelope { items, totalCount, offset, limit, hasMore } when `?limit` is set.
+// Both carry the collection; this normalizes to the underlying item array.
+function queryItems(result: unknown): unknown[] {
+  if (Array.isArray(result)) return result;
+  if (result && typeof result === 'object' && Array.isArray((result as { items?: unknown }).items)) {
+    return (result as { items: unknown[] }).items;
+  }
+  assert.fail(`Expected an array or pagination envelope, got: ${JSON.stringify(result)}`);
+}
+
 Then('the query result should be an array', function (this: SimWorld) {
-  const result = this.ctx['queryResult'];
-  assert.ok(Array.isArray(result), `Expected array result, got: ${JSON.stringify(result)}`);
+  // Passes for a bare array or a pagination envelope (whose items is an array).
+  queryItems(this.ctx['queryResult']);
 });
 
 Then('the query result should contain at least {int} items', function (this: SimWorld, min: number) {
-  const result = this.ctx['queryResult'] as unknown[];
-  assert.ok(Array.isArray(result), 'Query result should be an array');
-  assert.ok(result.length >= min, `Expected at least ${min} items, got ${result.length}`);
+  const items = queryItems(this.ctx['queryResult']);
+  assert.ok(items.length >= min, `Expected at least ${min} items, got ${items.length}`);
 });
 
 Then('all query result items should have stage {string}', function (this: SimWorld, stage: string) {
-  const result = this.ctx['queryResult'] as Array<Record<string, unknown>>;
-  assert.ok(Array.isArray(result), 'Query result should be an array');
-  for (const item of result) {
+  const items = queryItems(this.ctx['queryResult']) as Array<Record<string, unknown>>;
+  for (const item of items) {
     assert.strictEqual(item['stage'], stage, `Item ${String(item['id'])} should have stage '${stage}'`);
   }
 });
 
 Then('the query result should contain at most {int} items', function (this: SimWorld, max: number) {
-  const result = this.ctx['queryResult'] as unknown[];
-  assert.ok(Array.isArray(result), 'Query result should be an array');
-  assert.ok(result.length <= max, `Expected at most ${max} items, got ${result.length}`);
+  const items = queryItems(this.ctx['queryResult']);
+  assert.ok(items.length <= max, `Expected at most ${max} items, got ${items.length}`);
 });
 
 // REQ-35b via HTTP — use admin state endpoint for collection verification

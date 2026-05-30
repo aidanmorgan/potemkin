@@ -146,7 +146,7 @@ export { checkScopes } from './identity/scopeChecker.js';
 
 // ── Idempotency (REQ-81) ──────────────────────────────────────────────────────
 export type { IdempotencyStore, IdempotencyEntry, CachedResponse } from './idempotency/store.js';
-export { createIdempotencyStore, getIdempotencyStore, resetIdempotencyStore } from './idempotency/store.js';
+export { createIdempotencyStore } from './idempotency/store.js';
 
 // ── Sagas (REQ-73) ────────────────────────────────────────────────────────────
 export { runSaga, findTriggeredSagas } from './sagas/orchestrator.js';

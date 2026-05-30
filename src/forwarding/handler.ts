@@ -23,7 +23,6 @@ import { executeUnitOfWork } from '../engine/uow.js';
 import { extractFaultSignal } from '../engine/faultSim.js';
 import { nextUuidv7 } from '../ids/uuidv7.js';
 import { resolveActor, JwtValidationError } from '../identity/actorResolver.js';
-import { getIdempotencyStore } from '../idempotency/store.js';
 import {
   EntityAbsenceError,
   EntityConflictError,
@@ -250,7 +249,7 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
     const idempotencyEnabled = idempotencyCfg?.enabled ?? false;
 
     if (idempotencyEnabled && idempotencyKey && intent !== 'query') {
-      const store = getIdempotencyStore();
+      const store = sys.idempotencyStore;
       const requestBody: JsonValue = fwd.body ?? {};
       const hashIncludesBody = idempotencyCfg?.hashIncludesBody ?? true;
 
@@ -336,7 +335,7 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
 
     // 13. Record idempotency entry after successful execution (mirrors gateway.ts).
     if (idempotencyEnabled && idempotencyKey && intent !== 'query') {
-      const store = getIdempotencyStore();
+      const store = sys.idempotencyStore;
       const requestBody: JsonValue = fwd.body ?? {};
       const hashIncludesBody = idempotencyCfg?.hashIncludesBody ?? true;
       const ttlMs = (idempotencyCfg?.ttlSeconds ?? 86400) * 1000;

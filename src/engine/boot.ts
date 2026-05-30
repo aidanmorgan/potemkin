@@ -19,6 +19,7 @@ import { createCelEvaluator } from '../cel/evaluator.js';
 import { createEventStore } from '../eventstore/store.js';
 import { createStateGraph, deepFreeze } from '../stategraph/graph.js';
 import { createContractValidator } from '../contract/validator.js';
+import { createIdempotencyStore, type IdempotencyStore } from '../idempotency/store.js';
 import { projectEvent } from './projection.js';
 import { epochAnchoredUuidv7 } from '../ids/uuidv7.js';
 import { rootLogger, childLogger } from '../observability/logger.js';
@@ -81,6 +82,8 @@ export interface BootedSystem {
    * Populated by applyEventToDerivedProjections after each committed event.
    */
   readonly derivedProjections: DerivedProjectionRegistry;
+  /** Per-system idempotency store (instance, not a shared singleton). */
+  readonly idempotencyStore: IdempotencyStore;
   /**
    * Plugin control client, present when `BootInput.pluginControl` was supplied.
    * Used by the graceful-shutdown wrapper to send a /shutdown notification.
@@ -433,6 +436,7 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       schemaRegistry,
       requiresPrecondition: preconditionRequired,
       derivedProjections,
+      idempotencyStore: createIdempotencyStore(),
       ...(pluginControlClient !== undefined ? { pluginControl: pluginControlClient } : {}),
     };
 

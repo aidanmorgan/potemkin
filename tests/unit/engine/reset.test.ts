@@ -1,6 +1,7 @@
 import { resetSystem } from '../../../src/engine/reset';
 import { createEventStore } from '../../../src/eventstore/store';
 import { createStateGraph } from '../../../src/stategraph/graph';
+import { createIdempotencyStore } from '../../../src/idempotency/store';
 import { createCelEvaluator } from '../../../src/cel/evaluator';
 import { createLogger } from '../../../src/observability/logger';
 import type { BootedSystem } from '../../../src/engine/boot';
@@ -36,6 +37,7 @@ function makeBootedSystem(
     logger,
     tracer,
     schemaRegistry: undefined as any,
+    idempotencyStore: createIdempotencyStore(),
   } as unknown as BootedSystem;
 }
 
