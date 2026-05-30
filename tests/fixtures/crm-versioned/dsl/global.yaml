@@ -88,7 +88,9 @@ fault_rules:
       condition: "command.payload.reason == 'REGISTRY_CHECK'"
     response:
       status: 504
-      body: { error: "DNC_REGISTRY_TIMEOUT", message: "External DNC registry check timed out" }
+      body:
+        error: DNC_REGISTRY_TIMEOUT
+        message: External DNC registry check timed out
       delay_ms: 100
 
   # Simulate intermittent call logging failures (10% of the time)
@@ -100,7 +102,9 @@ fault_rules:
       probability: 0.1
     response:
       status: 503
-      body: { error: "CALL_LOGGING_UNAVAILABLE", message: "Call recording service temporarily unavailable" }
+      body:
+        error: CALL_LOGGING_UNAVAILABLE
+        message: Call recording service temporarily unavailable
 
   # Header-matched via convenience `potemkin.rate_limit` — expands to X-Potemkin-Rate-Limit.
   # Any value on the header triggers the rule (presence-only via "*").
@@ -111,7 +115,10 @@ fault_rules:
         rate_limit: "*"
     response:
       status: 429
-      body: { error: "RATE_LIMITED", message: "Simulated rate limit (header-triggered)", retryAfter: 30 }
+      body:
+        error: RATE_LIMITED
+        message: Simulated rate limit (header-triggered)
+        retryAfter: 30
       headers:
         Retry-After: "30"
         X-RateLimit-Limit: "100"
@@ -126,7 +133,9 @@ fault_rules:
         force_response: "maintenance"
     response:
       status: 503
-      body: { error: "SERVICE_UNAVAILABLE", message: "Service in maintenance mode" }
+      body:
+        error: SERVICE_UNAVAILABLE
+        message: Service in maintenance mode
       headers:
         Retry-After: "60"
 
@@ -141,7 +150,9 @@ fault_rules:
         feature_flag: "v2-experimental"
     response:
       status: 418
-      body: { error: "TEAPOT", message: "Feature v2-experimental not available for this user" }
+      body:
+        error: TEAPOT
+        message: Feature v2-experimental not available for this user
 
   # Header-matched via raw `headers:` form — useful for ad-hoc / non-aliased headers.
   # Matches X-Potemkin-Scenario: slow_db on any Call creation request.
@@ -154,7 +165,9 @@ fault_rules:
         x-potemkin-scenario: "slow_db"
     response:
       status: 504
-      body: { error: "GATEWAY_TIMEOUT", message: "Simulated slow database scenario" }
+      body:
+        error: GATEWAY_TIMEOUT
+        message: Simulated slow database scenario
       headers:
         Retry-After: "5"
 
@@ -171,17 +184,27 @@ derived_projections:
     reduce:
       - on: "Lead:LeadCreated"
         patches:
-          - { op: replace, path: /totalLeads, value: "${state.totalLeads != null ? state.totalLeads + 1 : 1}" }
-          - { op: replace, path: /totalConversions, value: "${state.totalConversions != null ? state.totalConversions : 0}" }
+          - op: replace
+            path: /totalLeads
+            value: "${state.totalLeads != null ? state.totalLeads + 1 : 1}"
+          - op: replace
+            path: /totalConversions
+            value: "${state.totalConversions != null ? state.totalConversions : 0}"
       - on: "Lead:LeadConverted"
         patches:
-          - { op: replace, path: /totalConversions, value: "${state.totalConversions != null ? state.totalConversions + 1 : 1}" }
+          - op: replace
+            path: /totalConversions
+            value: "${state.totalConversions != null ? state.totalConversions + 1 : 1}"
       - on: "Call:CallLogged"
         patches:
-          - { op: replace, path: /totalCalls, value: "${state.totalCalls != null ? state.totalCalls + 1 : 1}" }
+          - op: replace
+            path: /totalCalls
+            value: "${state.totalCalls != null ? state.totalCalls + 1 : 1}"
       - on: "Opportunity:OpportunityWon"
         patches:
-          - { op: replace, path: /wonCount, value: "${state.wonCount != null ? state.wonCount + 1 : 1}" }
+          - op: replace
+            path: /wonCount
+            value: "${state.wonCount != null ? state.wonCount + 1 : 1}"
 
   # AgentPerformance: tracks per-agent call and conversion metrics
   - name: AgentPerformance
@@ -192,7 +215,11 @@ derived_projections:
     reduce:
       - on: "Call:CallLogged"
         patches:
-          - { op: replace, path: /callCount, value: "${state.callCount != null ? state.callCount + 1 : 1}" }
+          - op: replace
+            path: /callCount
+            value: "${state.callCount != null ? state.callCount + 1 : 1}"
       - on: "Agent:AgentConversionIncremented"
         patches:
-          - { op: replace, path: /conversionCount, value: "${state.conversionCount != null ? state.conversionCount + 1 : 1}" }
+          - op: replace
+            path: /conversionCount
+            value: "${state.conversionCount != null ? state.conversionCount + 1 : 1}"

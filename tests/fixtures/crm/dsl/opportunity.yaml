@@ -107,29 +107,59 @@ behaviors:
 reducers:
   - on: OpportunityCreated
     patches:
-      - { op: replace, path: /id, value: "${event.payload.id}" }
-      - { op: replace, path: /leadId, value: "${event.payload.leadId}" }
-      - { op: replace, path: /agentId, value: "${coalesce(event.payload.agentId, null)}" }
-      - { op: replace, path: /campaignId, value: "${coalesce(event.payload.campaignId, null)}" }
-      - { op: replace, path: /stage, value: "${'PROPOSED'}" }
-      - { op: replace, path: /value, value: "${event.payload.value}" }
-      - { op: replace, path: /probability, value: "${has(event.payload.probability) ? event.payload.probability : 50}" }
-      - { op: replace, path: /expectedCloseDate, value: "${coalesce(event.payload.expectedCloseDate, null)}" }
+      - op: replace
+        path: /id
+        value: "${event.payload.id}"
+      - op: replace
+        path: /leadId
+        value: "${event.payload.leadId}"
+      - op: replace
+        path: /agentId
+        value: "${coalesce(event.payload.agentId, null)}"
+      - op: replace
+        path: /campaignId
+        value: "${coalesce(event.payload.campaignId, null)}"
+      - op: replace
+        path: /stage
+        value: "${'PROPOSED'}"
+      - op: replace
+        path: /value
+        value: "${event.payload.value}"
+      - op: replace
+        path: /probability
+        value: "${has(event.payload.probability) ? event.payload.probability : 50}"
+      - op: replace
+        path: /expectedCloseDate
+        value: "${coalesce(event.payload.expectedCloseDate, null)}"
 
   - on: OpportunityAdvanced
     patches:
-      - { op: replace, path: /stage, value: "${'NEGOTIATING'}" }
-      - { op: replace, path: /probability, value: "${event.payload.probability != null ? event.payload.probability : state.probability}" }
+      - op: replace
+        path: /stage
+        value: "${'NEGOTIATING'}"
+      - op: replace
+        path: /probability
+        value: "${event.payload.probability != null ? event.payload.probability : state.probability}"
 
   - on: OpportunityWon
     patches:
-      - { op: replace, path: /stage, value: "${'WON'}" }
-      - { op: replace, path: /closedAt, value: "${event.payload.closedAt}" }
+      - op: replace
+        path: /stage
+        value: "${'WON'}"
+      - op: replace
+        path: /closedAt
+        value: "${event.payload.closedAt}"
 
   - on: OpportunityLost
     patches:
-      - { op: replace, path: /stage, value: "${'LOST'}" }
-      - { op: replace, path: /closedAt, value: "${event.payload.closedAt}" }
-      - { op: replace, path: /closureReason, value: "${event.payload.closureReason}" }
+      - op: replace
+        path: /stage
+        value: "${'LOST'}"
+      - op: replace
+        path: /closedAt
+        value: "${event.payload.closedAt}"
+      - op: replace
+        path: /closureReason
+        value: "${event.payload.closureReason}"
 
 initialization: []
