@@ -13,3 +13,6 @@ build/
 .dolt/
 *.db
 .beads-credential-key
+
+# Claude Code agent worktrees (isolated, not part of the repo)
+.claude/worktrees/

@@ -10,6 +10,7 @@ import type { Tracer } from '../observability/tracing.js';
 import type { ObjectGraphSchemaRegistry } from '../schema/types.js';
 import type { OpenApiDoc } from '../contract/loader.js';
 import { deepClone, deepMerge } from '../stategraph/graph.js';
+import { applyPatches, type Patch, type JournalEntry } from '../dsl/patches.js';
 import { CelPhase } from '../cel/phases.js';
 import { getTracer } from '../observability/tracing.js';
 import { SpanStatusCode } from '@opentelemetry/api';
@@ -108,6 +109,16 @@ export interface ProjectionInput {
   readonly openapi?: OpenApiDoc;
 }
 
+/** Outcome of projecting a single event. */
+export interface ProjectionResult {
+  /**
+   * Patch journal produced by the matching reducer(s). Every entry carries
+   * `source: 'reducer'` because reducer patches are applied via the single
+   * canonical applier in src/dsl/patches.ts.
+   */
+  readonly journal: readonly JournalEntry[];
+}
+
 /**
  * Project a single domain event onto the state graph via the matching reducer rule.
  *
@@ -121,13 +132,14 @@ export interface ProjectionInput {
  *
  * @throws {InternalExecutionError} (500) if CEL evaluation or validation fails.
  */
-export function projectEvent(input: ProjectionInput): void {
+export function projectEvent(input: ProjectionInput): ProjectionResult {
   // O-5 fix: use injected tracer when provided (enables span capture in tests).
   // Falls back to getTracer('engine') for production/boot/reset paths.
   const tracer = input.tracer ?? getTracer('engine');
+  let result: ProjectionResult = { journal: [] };
   tracer.startActiveSpan('engine.project', (span) => {
     try {
-      _projectEvent(input);
+      result = _projectEvent(input);
     } catch (err) {
       if (err instanceof Error) span.recordException(err);
       span.setStatus({ code: SpanStatusCode.ERROR, message: err instanceof Error ? err.message : String(err) });
@@ -136,9 +148,10 @@ export function projectEvent(input: ProjectionInput): void {
     }
     span.end();
   });
+  return result;
 }
 
-function _projectEvent(input: ProjectionInput): void {
+function _projectEvent(input: ProjectionInput): ProjectionResult {
   const { event, boundary, graph, cel, validator, logger, schemaRegistry, openapi } = input;
   const log = logger?.child({
     component: 'projection',
@@ -151,6 +164,9 @@ function _projectEvent(input: ProjectionInput): void {
   // Step 1: Memory Isolation — deep-clone current state or start fresh
   const current = graph.get(event.aggregateId);
   const buf: JsonObject = deepClone(current ?? {});
+
+  // Journal of reducer patches applied to this event (source='reducer').
+  const reducerJournal: JournalEntry[] = [];
 
   try {
     // Step 2: Reducer Evaluation
@@ -254,10 +270,19 @@ function _projectEvent(input: ProjectionInput): void {
           }
         }
 
-        // Process new-format patches: list
+        // Process patches: list via the single canonical applier
+        // (src/dsl/patches.ts). Each patch's value is evaluated as CEL against
+        // the state as mutated by prior patches in the list, so later patches
+        // can reference earlier ones (e.g. `state.totalConversions + 1`).
         if (reducer.patches) {
           for (const patch of reducer.patches) {
-            applyReducerPatch(buf, patch, cel, celCtx, log);
+            const resolved = resolveReducerPatch(patch, cel, celCtx);
+            const { newState, journal } = applyPatches(buf, [resolved], 'reducer', {
+              autoVivify: true,
+            });
+            replaceInPlace(buf, newState as JsonObject);
+            reducerJournal.push(...journal);
+            log?.debug({ path: patch.path, op: patch.op }, 'Patched value');
           }
         }
       }
@@ -294,6 +319,8 @@ function _projectEvent(input: ProjectionInput): void {
     log?.error({ err, aggregateId: event.aggregateId, eventType: event.type }, 'Projection failed — aborting');
     throw err;
   }
+
+  return { journal: reducerJournal };
 }
 
 // ---------------------------------------------------------------------------
@@ -421,19 +448,18 @@ function replaceInPlace(target: JsonObject, source: JsonObject): void {
   }
 }
 
-// Apply a single new-format reducer patch to the state buffer in-place.
-// The patch.value (when present) is evaluated as CEL with the same context
-// the legacy assign:/append: handlers use, so existing event.payload /
-// state references work uniformly.
-function applyReducerPatch(
-  buf: JsonObject,
+// Convert a DSL reducer patch into a canonical src/dsl/patches.ts `Patch`,
+// evaluating its `value` as CEL against the supplied context. String values
+// are evaluated in the Reducer phase (so `event.payload.x` / `state.y` /
+// `${...}` references resolve); a value that is not valid CEL falls back to its
+// literal string. Non-string values (numbers, booleans, objects, arrays) pass
+// through unchanged. The boundary validator (A4) rejects ill-formed CEL at
+// boot, so the fallback only ever sees genuine string literals at runtime.
+function resolveReducerPatch(
   patch: import('../dsl/types.js').ReducerPatchOp,
   cel: CelEvaluator,
   celCtx: Record<string, unknown>,
-  log?: Logger,
-): void {
-  const dotPath = patch.path.startsWith('/') ? patch.path.slice(1).replace(/\//g, '.') : patch.path;
-
+): Patch {
   const evaluate = (raw: unknown): JsonValue => {
     if (typeof raw !== 'string') return raw as JsonValue;
     try {
@@ -444,66 +470,28 @@ function applyReducerPatch(
   };
 
   switch (patch.op) {
+    case 'remove':
+      return { op: 'remove', path: patch.path };
+    case 'increment':
+      return { op: 'increment', path: patch.path, by: patch.by ?? 0 };
+    case 'merge':
+      return {
+        op: 'merge',
+        path: patch.path,
+        value: evaluate(patch.value) as Record<string, JsonValue>,
+        ...(patch.deep !== undefined ? { deep: patch.deep } : {}),
+      };
+    case 'upsert':
+      return {
+        op: 'upsert',
+        path: patch.path,
+        key: patch.key ?? 'id',
+        value: evaluate(patch.value) as Record<string, JsonValue>,
+      };
     case 'add':
-    case 'replace': {
-      const value = evaluate(patch.value);
-      setByDotPath(buf, dotPath, value);
-      log?.debug({ dotPath, op: patch.op, value }, 'Patched value');
-      return;
-    }
-    case 'remove': {
-      // setByDotPath has no delete; emulate by walking
-      const segs = dotPath.split('.');
-      let cur: JsonObject = buf;
-      for (let i = 0; i < segs.length - 1; i++) {
-        const seg = segs[i];
-        if (typeof cur[seg] !== 'object' || cur[seg] === null) return;
-        cur = cur[seg] as JsonObject;
-      }
-      delete cur[segs[segs.length - 1]];
-      return;
-    }
-    case 'append': {
-      const value = evaluate(patch.value);
-      const existing = getByDotPath(buf, dotPath);
-      const arr: JsonValue[] = Array.isArray(existing) ? [...existing] : [];
-      arr.push(value);
-      setByDotPath(buf, dotPath, arr);
-      return;
-    }
-    case 'prepend': {
-      const value = evaluate(patch.value);
-      const existing = getByDotPath(buf, dotPath);
-      const arr: JsonValue[] = Array.isArray(existing) ? [...existing] : [];
-      arr.unshift(value);
-      setByDotPath(buf, dotPath, arr);
-      return;
-    }
-    case 'increment': {
-      const existing = getByDotPath(buf, dotPath);
-      const current = typeof existing === 'number' ? existing : 0;
-      setByDotPath(buf, dotPath, current + (patch.by ?? 0));
-      return;
-    }
-    case 'merge': {
-      const value = evaluate(patch.value) as JsonObject;
-      const existing = getByDotPath(buf, dotPath);
-      const base: JsonObject = existing && typeof existing === 'object' && !Array.isArray(existing)
-        ? { ...(existing as JsonObject) }
-        : {};
-      setByDotPath(buf, dotPath, { ...base, ...value });
-      return;
-    }
-    case 'upsert': {
-      const value = evaluate(patch.value) as JsonObject;
-      const existing = getByDotPath(buf, dotPath);
-      const arr: JsonObject[] = Array.isArray(existing) ? [...(existing as JsonObject[])] : [];
-      const keyField = patch.key ?? 'id';
-      const idx = arr.findIndex((item) => item && typeof item === 'object' && item[keyField] === value[keyField]);
-      if (idx >= 0) arr[idx] = value;
-      else arr.push(value);
-      setByDotPath(buf, dotPath, arr as unknown as JsonValue);
-      return;
-    }
+    case 'replace':
+    case 'append':
+    case 'prepend':
+      return { op: patch.op, path: patch.path, value: evaluate(patch.value) };
   }
 }

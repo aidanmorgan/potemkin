@@ -103,16 +103,29 @@ interface NavResult {
   readonly exists: boolean;
 }
 
+/** True iff a path segment addresses an array position (integer index or the `-` end sentinel). */
+function segmentIsArrayIndex(seg: string | undefined): boolean {
+  if (seg === undefined) return false;
+  if (seg === '-') return true;
+  const idx = Number.parseInt(seg, 10);
+  return Number.isInteger(idx) && String(idx) === seg && idx >= 0;
+}
+
 /**
  * Walk `state` to the parent of the leaf identified by `segments`. Returns
  * the parent container and the final key. Intermediate missing objects are
- * NOT auto-created — that is op-specific (handled by callers).
+ * NOT auto-created in strict mode — that is op-specific (handled by callers).
+ *
+ * When `autoVivify` is set (reducer source, which builds entity state from an
+ * empty buffer), missing intermediate containers ARE created: a numeric next
+ * segment yields an array, anything else an object.
  */
 function navigate(
   state: JsonValue,
   segments: readonly string[],
   op: Patch['op'],
   patchIndex: number,
+  autoVivify: boolean,
 ): NavResult {
   if (segments.length === 0) {
     throw new PatchApplyError(
@@ -136,22 +149,30 @@ function navigate(
     if (Array.isArray(cur)) {
       const idx = Number.parseInt(seg, 10);
       if (!Number.isInteger(idx) || idx < 0 || idx >= cur.length) {
-        throw new PatchApplyError(
-          `Array index out of range at segment '${seg}'`,
-          patchIndex,
-          joinPointer(segments),
-          op,
-        );
+        if (autoVivify && Number.isInteger(idx) && idx >= 0) {
+          cur[idx] = segmentIsArrayIndex(segments[i + 1]) ? [] : {};
+        } else {
+          throw new PatchApplyError(
+            `Array index out of range at segment '${seg}'`,
+            patchIndex,
+            joinPointer(segments),
+            op,
+          );
+        }
       }
       cur = cur[idx];
     } else {
       if (!Object.prototype.hasOwnProperty.call(cur, seg)) {
-        throw new PatchApplyError(
-          `Path traverses missing object key '${seg}'`,
-          patchIndex,
-          joinPointer(segments),
-          op,
-        );
+        if (autoVivify) {
+          (cur as Record<string, JsonValue>)[seg] = segmentIsArrayIndex(segments[i + 1]) ? [] : {};
+        } else {
+          throw new PatchApplyError(
+            `Path traverses missing object key '${seg}'`,
+            patchIndex,
+            joinPointer(segments),
+            op,
+          );
+        }
       }
       cur = (cur as Record<string, JsonValue>)[seg];
     }
@@ -185,10 +206,27 @@ function navigate(
   return { parent: cur as Record<string, JsonValue>, key: leaf, exists };
 }
 
+/** Read the value currently stored at `parent[key]`. */
+function readAt(parent: Record<string, JsonValue> | JsonValue[], key: string | number): JsonValue | undefined {
+  return Array.isArray(parent)
+    ? (parent as JsonValue[])[key as number]
+    : (parent as Record<string, JsonValue>)[key as string];
+}
+
+/** Write `value` at `parent[key]`. For arrays, index === length appends. */
+function writeAt(parent: Record<string, JsonValue> | JsonValue[], key: string | number, value: JsonValue): void {
+  if (Array.isArray(parent)) {
+    (parent as JsonValue[])[key as number] = value;
+  } else {
+    (parent as Record<string, JsonValue>)[key as string] = value;
+  }
+}
+
 function applyOne(
   state: JsonValue,
   patch: Patch,
   patchIndex: number,
+  autoVivify: boolean,
 ): void {
   switch (patch.op) {
     case 'add':
@@ -206,8 +244,10 @@ function applyOne(
           patch.op,
         );
       }
-      const { parent, key, exists } = navigate(state, segments, patch.op, patchIndex);
-      if (patch.op === 'replace' && !exists) {
+      const { parent, key, exists } = navigate(state, segments, patch.op, patchIndex, autoVivify);
+      // In autoVivify mode (reducer source) `replace` upserts — a missing
+      // target is created rather than rejected.
+      if (patch.op === 'replace' && !exists && !autoVivify) {
         throw new PatchApplyError(
           `'replace' target does not exist: ${patch.path}`,
           patchIndex,
@@ -216,7 +256,9 @@ function applyOne(
         );
       }
       if (Array.isArray(parent)) {
-        if (patch.op === 'add') {
+        // strict `add` inserts; `replace` (and autoVivify `replace` on a
+        // missing slot, i.e. index === length) overwrites/extends.
+        if (patch.op === 'add' && exists) {
           (parent as JsonValue[]).splice(key as number, 0, cloneJson(patch.value));
         } else {
           (parent as JsonValue[])[key as number] = cloneJson(patch.value);
@@ -228,8 +270,11 @@ function applyOne(
     }
     case 'remove': {
       const segments = parsePointer(patch.path);
-      const { parent, key, exists } = navigate(state, segments, patch.op, patchIndex);
+      const { parent, key, exists } = navigate(state, segments, patch.op, patchIndex, autoVivify);
       if (!exists) {
+        // Removing a non-existent target is a no-op under autoVivify (reducer),
+        // a hard error under strict RFC 6902.
+        if (autoVivify) return;
         throw new PatchApplyError(
           `'remove' target does not exist: ${patch.path}`,
           patchIndex,
@@ -248,7 +293,7 @@ function applyOne(
     case 'copy': {
       const fromSegs = parsePointer(patch.from);
       const toSegs = parsePointer(patch.path);
-      const fromNav = navigate(state, fromSegs, patch.op, patchIndex);
+      const fromNav = navigate(state, fromSegs, patch.op, patchIndex, autoVivify);
       if (!fromNav.exists) {
         throw new PatchApplyError(
           `'${patch.op}' source does not exist: ${patch.from}`,
@@ -257,10 +302,8 @@ function applyOne(
           patch.op,
         );
       }
-      const value = Array.isArray(fromNav.parent)
-        ? (fromNav.parent as JsonValue[])[fromNav.key as number]
-        : (fromNav.parent as Record<string, JsonValue>)[fromNav.key as string];
-      const clonedValue = cloneJson(value);
+      const value = readAt(fromNav.parent, fromNav.key);
+      const clonedValue = cloneJson(value as JsonValue);
       if (patch.op === 'move') {
         if (Array.isArray(fromNav.parent)) {
           (fromNav.parent as JsonValue[]).splice(fromNav.key as number, 1);
@@ -268,7 +311,7 @@ function applyOne(
           delete (fromNav.parent as Record<string, JsonValue>)[fromNav.key as string];
         }
       }
-      const toNav = navigate(state, toSegs, patch.op, patchIndex);
+      const toNav = navigate(state, toSegs, patch.op, patchIndex, autoVivify);
       if (Array.isArray(toNav.parent)) {
         (toNav.parent as JsonValue[]).splice(toNav.key as number, 0, clonedValue);
       } else {
@@ -279,82 +322,68 @@ function applyOne(
     case 'append':
     case 'prepend': {
       const segments = parsePointer(patch.path);
-      const { parent, key, exists } = navigate(state, segments, patch.op, patchIndex);
-      if (!exists) {
-        throw new PatchApplyError(
-          `'${patch.op}' target does not exist: ${patch.path}`,
-          patchIndex,
-          patch.path,
-          patch.op,
-        );
-      }
-      const target = Array.isArray(parent)
-        ? (parent as JsonValue[])[key as number]
-        : (parent as Record<string, JsonValue>)[key as string];
+      const { parent, key, exists } = navigate(state, segments, patch.op, patchIndex, autoVivify);
+      let target = exists ? readAt(parent, key) : undefined;
       if (!Array.isArray(target)) {
-        throw new PatchApplyError(
-          `'${patch.op}' target is not an array: ${patch.path}`,
-          patchIndex,
-          patch.path,
-          patch.op,
-        );
+        if (!autoVivify) {
+          throw new PatchApplyError(
+            exists
+              ? `'${patch.op}' target is not an array: ${patch.path}`
+              : `'${patch.op}' target does not exist: ${patch.path}`,
+            patchIndex,
+            patch.path,
+            patch.op,
+          );
+        }
+        // autoVivify (reducer): a missing or non-array target becomes a fresh array.
+        target = [];
+        writeAt(parent, key, target);
       }
       const cloned = cloneJson(patch.value);
-      if (patch.op === 'append') target.push(cloned);
-      else target.unshift(cloned);
+      if (patch.op === 'append') (target as JsonValue[]).push(cloned);
+      else (target as JsonValue[]).unshift(cloned);
       return;
     }
     case 'increment': {
       const segments = parsePointer(patch.path);
-      const { parent, key, exists } = navigate(state, segments, patch.op, patchIndex);
-      if (!exists) {
-        throw new PatchApplyError(
-          `'increment' target does not exist: ${patch.path}`,
-          patchIndex,
-          patch.path,
-          patch.op,
-        );
-      }
-      const current = Array.isArray(parent)
-        ? (parent as JsonValue[])[key as number]
-        : (parent as Record<string, JsonValue>)[key as string];
+      const { parent, key, exists } = navigate(state, segments, patch.op, patchIndex, autoVivify);
+      const current = exists ? readAt(parent, key) : undefined;
       if (typeof current !== 'number') {
-        throw new PatchApplyError(
-          `'increment' target is not numeric: ${patch.path}`,
-          patchIndex,
-          patch.path,
-          patch.op,
-        );
+        if (!autoVivify) {
+          throw new PatchApplyError(
+            exists
+              ? `'increment' target is not numeric: ${patch.path}`
+              : `'increment' target does not exist: ${patch.path}`,
+            patchIndex,
+            patch.path,
+            patch.op,
+          );
+        }
+        // autoVivify (reducer): a missing or non-numeric target starts at 0.
+        writeAt(parent, key, patch.by);
+        return;
       }
-      const updated = current + patch.by;
-      if (Array.isArray(parent)) {
-        (parent as JsonValue[])[key as number] = updated;
-      } else {
-        (parent as Record<string, JsonValue>)[key as string] = updated;
-      }
+      writeAt(parent, key, current + patch.by);
       return;
     }
     case 'merge': {
       const segments = parsePointer(patch.path);
-      const { parent, key, exists } = navigate(state, segments, patch.op, patchIndex);
-      if (!exists) {
-        throw new PatchApplyError(
-          `'merge' target does not exist: ${patch.path}`,
-          patchIndex,
-          patch.path,
-          patch.op,
-        );
-      }
-      const target = Array.isArray(parent)
-        ? (parent as JsonValue[])[key as number]
-        : (parent as Record<string, JsonValue>)[key as string];
+      const { parent, key, exists } = navigate(state, segments, patch.op, patchIndex, autoVivify);
+      let target = exists ? readAt(parent, key) : undefined;
       if (target === null || typeof target !== 'object' || Array.isArray(target)) {
-        throw new PatchApplyError(
-          `'merge' target is not an object: ${patch.path}`,
-          patchIndex,
-          patch.path,
-          patch.op,
-        );
+        if (!autoVivify) {
+          throw new PatchApplyError(
+            exists
+              ? `'merge' target is not an object: ${patch.path}`
+              : `'merge' target does not exist: ${patch.path}`,
+            patchIndex,
+            patch.path,
+            patch.op,
+          );
+        }
+        // autoVivify (reducer): a missing or non-object target becomes a fresh object.
+        target = {};
+        writeAt(parent, key, target);
       }
       const obj = target as Record<string, JsonValue>;
       const update = cloneJson(patch.value);
@@ -367,25 +396,22 @@ function applyOne(
     }
     case 'upsert': {
       const segments = parsePointer(patch.path);
-      const { parent, key, exists } = navigate(state, segments, patch.op, patchIndex);
-      if (!exists) {
-        throw new PatchApplyError(
-          `'upsert' target does not exist: ${patch.path}`,
-          patchIndex,
-          patch.path,
-          patch.op,
-        );
-      }
-      const target = Array.isArray(parent)
-        ? (parent as JsonValue[])[key as number]
-        : (parent as Record<string, JsonValue>)[key as string];
+      const { parent, key, exists } = navigate(state, segments, patch.op, patchIndex, autoVivify);
+      let target = exists ? readAt(parent, key) : undefined;
       if (!Array.isArray(target)) {
-        throw new PatchApplyError(
-          `'upsert' target is not an array: ${patch.path}`,
-          patchIndex,
-          patch.path,
-          patch.op,
-        );
+        if (!autoVivify) {
+          throw new PatchApplyError(
+            exists
+              ? `'upsert' target is not an array: ${patch.path}`
+              : `'upsert' target does not exist: ${patch.path}`,
+            patchIndex,
+            patch.path,
+            patch.op,
+          );
+        }
+        // autoVivify (reducer): a missing or non-array target becomes a fresh array.
+        target = [];
+        writeAt(parent, key, target);
       }
       const arr = target as JsonValue[];
       const keyField = patch.key;
@@ -435,6 +461,18 @@ function deepMergeInPlace(
   }
 }
 
+export interface ApplyPatchesOptions {
+  /**
+   * Auto-vivify missing containers and coerce wrong-typed targets instead of
+   * throwing. Used by the reducer source, whose patches build entity state
+   * from an empty buffer: `replace` upserts, `append`/`prepend` create a fresh
+   * array, `increment` starts at 0, `merge` creates a fresh object, `upsert`
+   * creates a fresh array, `remove` on a missing target is a no-op. Strict RFC
+   * 6902 semantics (the default) reject all of these.
+   */
+  readonly autoVivify?: boolean;
+}
+
 // Returns a fresh state derived from `state + patches`; never mutates the
 // input. Throws PatchApplyError on the first failed op, discarding the
 // candidate so callers safely retain the original pointer.
@@ -442,13 +480,15 @@ export function applyPatches(
   state: JsonValue,
   patches: readonly Patch[],
   source: PatchSource = 'reducer',
+  opts: ApplyPatchesOptions = {},
 ): ApplyResult {
+  const autoVivify = opts.autoVivify ?? false;
   const candidate = cloneJson(state);
   const journal: JournalEntry[] = [];
   const touched = new Set<string>();
   for (let i = 0; i < patches.length; i++) {
     const p = patches[i];
-    applyOne(candidate, p, i);
+    applyOne(candidate, p, i, autoVivify);
     journal.push(buildJournalEntry(p, source));
     touched.add(p.path);
     if (p.op === 'move' || p.op === 'copy') {
