@@ -17,17 +17,32 @@ import { getTracer } from '../observability/tracing.js';
 import { SpanStatusCode } from '@opentelemetry/api';
 import { InternalExecutionError } from '../errors.js';
 
-// REQ-65: AJV instance for schema_ref payload validation (module-level, lazily initialized)
-let _ajvForSchemaRef: Ajv | null = null;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const _schemaRefValidatorCache = new Map<string, (data: unknown) => boolean>();
+// schema_ref payload validation owns no module-level mutable state (no shared
+// Ajv singleton, no ref-string-keyed cache). A ref string like
+// `#/components/schemas/X` is only unique within one OpenAPI document, so caching
+// by ref string would collide across concurrently booted systems. Any cache we
+// keep is therefore keyed by the resolved schema *object identity* via a WeakMap,
+// which is safe across systems and lets schemas be garbage-collected with their
+// OpenAPI doc. The WeakMap also carries the Ajv instance that compiled the
+// validator, since an Ajv-compiled validator is bound to its owning instance.
+const _schemaValidatorByObject = new WeakMap<object, (data: unknown) => boolean>();
 
-function getAjvForSchemaRef(): Ajv {
-  if (!_ajvForSchemaRef) {
-    _ajvForSchemaRef = new Ajv({ allErrors: true, strict: false });
-    addFormats(_ajvForSchemaRef);
-  }
-  return _ajvForSchemaRef;
+function compileSchemaValidator(schema: object): (data: unknown) => boolean {
+  const cached = _schemaValidatorByObject.get(schema);
+  if (cached) return cached;
+  // Build a per-schema Ajv: avoids a long-lived shared singleton and keeps each
+  // compiled validator bound to the instance that produced it.
+  const ajv = new Ajv({ allErrors: true, strict: false });
+  addFormats(ajv);
+  const compiled = ajv.compile(schema);
+  const validate = (data: unknown): boolean => {
+    const ok = compiled(data) as boolean;
+    // Surface the last-run errors on the wrapper so callers can read them.
+    (validate as { errors?: unknown }).errors = compiled.errors;
+    return ok;
+  };
+  _schemaValidatorByObject.set(schema, validate);
+  return validate;
 }
 
 /**
@@ -59,18 +74,8 @@ function validatePayloadAgainstSchemaRef(
     );
   }
 
-  const cacheKey = schemaRef;
-  let validate = _schemaRefValidatorCache.get(cacheKey);
-  if (!validate) {
-    const compiled = getAjvForSchemaRef().compile(schema as object);
-    // Store as a simple boolean-returning wrapper
-    validate = (data: unknown) => compiled(data) as boolean;
-    _schemaRefValidatorCache.set(cacheKey, validate);
-  }
-
-  const ajvInstance = getAjvForSchemaRef();
-  const compiled = ajvInstance.compile(schema as object);
-  const valid = compiled(payload);
+  const validate = compileSchemaValidator(schema as object);
+  const valid = validate(payload);
   if (!valid) {
     throw new InternalExecutionError(
       `Event payload for "${eventType}" violates schema_ref "${schemaRef}"`,
@@ -78,7 +83,7 @@ function validatePayloadAgainstSchemaRef(
         code: 'EVENT_PAYLOAD_VIOLATES_SCHEMA',
         eventType,
         schemaRef,
-        errors: compiled.errors as JsonValue,
+        errors: (validate as { errors?: unknown }).errors as JsonValue,
       },
     );
   }
