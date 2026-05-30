@@ -105,54 +105,36 @@ export async function staticCheckDsl(
 
       // ── Reducers ───────────────────────────────────────────────────────────
       for (const reducer of bc.reducers) {
-        // assign keys are dot-paths in the entity
-        for (const dotPath of Object.keys(reducer.assign ?? {})) {
-          if (!pathExists(registry, boundary, dotPath)) {
+        for (const patch of reducer.patches ?? []) {
+          // The patch path (RFC 6901 pointer) targets a dot-path in the entity.
+          // Skip array-position segments (numeric indices and the `-` end
+          // sentinel) — they address elements, not schema-declared properties.
+          const dotPath = patch.path
+            .replace(/^\//, '')
+            .split('/')
+            .filter((seg) => seg !== '-' && !/^\d+$/.test(seg))
+            .join('.');
+          if (dotPath !== '' && !pathExists(registry, boundary, dotPath)) {
             errors.push({
               code: 'DSL_PATH_UNKNOWN',
               boundary,
-              location: `reducer:${reducer.on}:assign:${dotPath}`,
-              detail: `Unknown assign path '${dotPath}'`,
+              location: `reducer:${reducer.on}:patches:${patch.path}`,
+              detail: `Unknown patch path '${patch.path}'`,
             });
-            log.warn({ boundary, dotPath, event: reducer.on }, 'DSL_PATH_UNKNOWN in reducer assign');
+            log.warn({ boundary, path: patch.path, event: reducer.on }, 'DSL_PATH_UNKNOWN in reducer patch');
           }
-        }
-        // assign CEL value expressions may also contain state.X.Y reads
-        for (const [dotPath, cel] of Object.entries(reducer.assign ?? {})) {
-          for (const p of extractStatePaths(cel)) {
-            if (!pathExists(registry, boundary, p)) {
-              errors.push({
-                code: 'DSL_PATH_UNKNOWN',
-                boundary,
-                location: `reducer:${reducer.on}:assign:${dotPath}:cel`,
-                detail: `Unknown state path 'state.${p}' in assign CEL`,
-              });
-              log.warn({ boundary, path: p, event: reducer.on }, 'DSL_PATH_UNKNOWN in reducer assign CEL');
-            }
-          }
-        }
-        // append keys are array dot-paths
-        for (const dotPath of Object.keys(reducer.append ?? {})) {
-          if (!pathExists(registry, boundary, dotPath)) {
-            errors.push({
-              code: 'DSL_PATH_UNKNOWN',
-              boundary,
-              location: `reducer:${reducer.on}:append:${dotPath}`,
-              detail: `Unknown append path '${dotPath}'`,
-            });
-            log.warn({ boundary, dotPath, event: reducer.on }, 'DSL_PATH_UNKNOWN in reducer append');
-          }
-        }
-        for (const [dotPath, cel] of Object.entries(reducer.append ?? {})) {
-          for (const p of extractStatePaths(cel)) {
-            if (!pathExists(registry, boundary, p)) {
-              errors.push({
-                code: 'DSL_PATH_UNKNOWN',
-                boundary,
-                location: `reducer:${reducer.on}:append:${dotPath}:cel`,
-                detail: `Unknown state path 'state.${p}' in append CEL`,
-              });
-              log.warn({ boundary, path: p, event: reducer.on }, 'DSL_PATH_UNKNOWN in reducer append CEL');
+          // A patch's CEL value expression may contain state.X.Y reads.
+          if (typeof patch.value === 'string') {
+            for (const p of extractStatePaths(patch.value)) {
+              if (!pathExists(registry, boundary, p)) {
+                errors.push({
+                  code: 'DSL_PATH_UNKNOWN',
+                  boundary,
+                  location: `reducer:${reducer.on}:patches:${patch.path}:cel`,
+                  detail: `Unknown state path 'state.${p}' in patch CEL`,
+                });
+                log.warn({ boundary, path: p, event: reducer.on }, 'DSL_PATH_UNKNOWN in reducer patch CEL');
+              }
             }
           }
         }

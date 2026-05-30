@@ -314,9 +314,9 @@ event_catalog:
       label: command.payload.label
 reducers:
   - on: WidgetCreated
-    assign:
-      id: event.payload.id
-      label: event.payload.label
+    patches:
+      - { op: replace, path: /id, value: event.payload.id }
+      - { op: replace, path: /label, value: event.payload.label }
 `;
 
 const IDEM_GLOBAL_YAML = `

@@ -117,9 +117,9 @@ behaviors:
     emit: ItemCreated
 reducers:
   - on: ItemCreated
-    assign:
-      id: "event.payload.id"
-      value: "event.payload.value"
+    patches:
+      - { op: replace, path: /id, value: "event.payload.id" }
+      - { op: replace, path: /value, value: "event.payload.value" }
 `;
 
 const SIMPLE_ITEM_BY_ID_DSL = `

@@ -22,7 +22,7 @@ function makeBase() {
     boundary: 'Test',
     contract_path: '/test',
     event_catalog: [{ type: 'Evt', payload_template: {} }],
-    reducers: [{ on: 'Evt', assign: { x: '"y"' } }],
+    reducers: [{ on: 'Evt', patches: [{ op: 'replace', path: '/x', value: '"y"' }] }],
   };
 }
 

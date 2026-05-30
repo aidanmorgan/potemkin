@@ -1,26 +1,11 @@
 /**
- * Coverage backfill for schema/dslStaticChecker.ts
+ * Coverage backfill for schema/dslStaticChecker.ts — the reducer patch CEL
+ * value expression state-path check.
  *
- * Uncovered lines 118-125:
- * The block at lines 116-128 is the reducer.append CEL value expression state path check:
- *
- *   for (const [dotPath, cel] of Object.entries(reducer.append ?? {})) {
- *     for (const p of extractStatePaths(cel)) {
- *       if (!pathExists(registry, boundary, p)) {
- *         errors.push({           ← line 118
- *           code: 'DSL_PATH_UNKNOWN',
- *           boundary,
- *           location: `reducer:${reducer.on}:append:${dotPath}:cel`,
- *           detail: `Unknown state path 'state.${p}' in append CEL`,
- *         });
- *         log.warn(...)           ← line 125
- *       }
- *     }
- *   }
- *
- * This is distinct from lines 105-110 (unknown APPEND KEY path) — it fires
- * when the append dotPath KEY is valid but the CEL VALUE references an unknown
- * state path like `state.badField`.
+ * For each reducer patch, the static checker validates that:
+ *   - the patch path targets a known schema path, and
+ *   - any `state.X.Y` reads inside the patch's CEL value reference known paths,
+ *     emitting DSL_PATH_UNKNOWN at location `reducer:<EVENT>:patches:<POINTER>:cel`.
  */
 
 import { staticCheckDsl } from '../../../src/schema/dslStaticChecker';
@@ -65,22 +50,17 @@ const minimalBoundary = {
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-describe('schema/dslStaticChecker — additional coverage (lines 118-125)', () => {
+describe('schema/dslStaticChecker — reducer patch CEL value path check', () => {
 
-  it('returns DSL_PATH_UNKNOWN when reducer.append CEL value references unknown state path', async () => {
-    // The dotPath 'tags' IS valid (in the schema), but the CEL expression
-    // accesses state.nonExistentField which is NOT in the schema.
-    // This hits lines 118-125 (append CEL state path check).
+  it('returns DSL_PATH_UNKNOWN when a patch CEL value references an unknown state path', async () => {
+    // The path '/tags' IS valid (in the schema), but the CEL value accesses
+    // state.nonExistentField which is NOT in the schema → CEL path check fires.
     const dsl = makeCompiledDsl([
       {
         ...minimalBoundary,
         reducers: [{
           on: 'TagAdded',
-          append: {
-            // 'tags' is a valid path, so it passes the dotPath check (lines 105-110)
-            // But the CEL expression references state.nonExistentField → hits lines 118-125
-            tags: 'state.nonExistentField',
-          },
+          patches: [{ op: 'append', path: '/tags', value: 'state.nonExistentField' }],
         }],
         eventCatalog: [{ type: 'TagAdded', payloadTemplate: {} }],
       },
@@ -89,23 +69,21 @@ describe('schema/dslStaticChecker — additional coverage (lines 118-125)', () =
     const registry = makeRegistry('MyBoundary', entitySchema);
     const errors = await staticCheckDsl(dsl, registry);
 
-    const appendCelErrors = errors.filter(
+    const celErrors = errors.filter(
       e => e.code === 'DSL_PATH_UNKNOWN' && e.location.includes(':cel'),
     );
-    expect(appendCelErrors).toHaveLength(1);
-    expect(appendCelErrors[0]?.location).toMatch(/append.*:cel/);
-    expect(appendCelErrors[0]?.detail).toContain('nonExistentField');
+    expect(celErrors).toHaveLength(1);
+    expect(celErrors[0]?.location).toMatch(/patches.*:cel/);
+    expect(celErrors[0]?.detail).toContain('nonExistentField');
   });
 
-  it('append CEL error has correct location format (reducer:EVENT:append:DOTPATH:cel)', async () => {
+  it('patch CEL error has correct location format (reducer:EVENT:patches:POINTER:cel)', async () => {
     const dsl = makeCompiledDsl([
       {
         ...minimalBoundary,
         reducers: [{
           on: 'TagAdded',
-          append: {
-            tags: 'state.missingProp',
-          },
+          patches: [{ op: 'append', path: '/tags', value: 'state.missingProp' }],
         }],
         eventCatalog: [{ type: 'TagAdded', payloadTemplate: {} }],
       },
@@ -114,22 +92,19 @@ describe('schema/dslStaticChecker — additional coverage (lines 118-125)', () =
     const registry = makeRegistry('MyBoundary', entitySchema);
     const errors = await staticCheckDsl(dsl, registry);
 
-    const appendCelError = errors.find(e => e.location.includes('append') && e.location.includes(':cel'));
-    expect(appendCelError).toBeDefined();
-    expect(appendCelError?.location).toBe('reducer:TagAdded:append:tags:cel');
-    expect(appendCelError?.boundary).toBe('MyBoundary');
+    const celError = errors.find(e => e.location.includes('patches') && e.location.includes(':cel'));
+    expect(celError).toBeDefined();
+    expect(celError?.location).toBe('reducer:TagAdded:patches:/tags:cel');
+    expect(celError?.boundary).toBe('MyBoundary');
   });
 
-  it('no append CEL errors when CEL expression only references valid state paths', async () => {
+  it('no patch CEL errors when the CEL value only references valid state paths', async () => {
     const dsl = makeCompiledDsl([
       {
         ...minimalBoundary,
         reducers: [{
           on: 'TagAdded',
-          append: {
-            // Both the dotPath 'tags' and the CEL expression 'state.status' are valid
-            tags: 'state.status',
-          },
+          patches: [{ op: 'append', path: '/tags', value: 'state.status' }],
         }],
         eventCatalog: [{ type: 'TagAdded', payloadTemplate: {} }],
       },
@@ -138,22 +113,20 @@ describe('schema/dslStaticChecker — additional coverage (lines 118-125)', () =
     const registry = makeRegistry('MyBoundary', entitySchema);
     const errors = await staticCheckDsl(dsl, registry);
 
-    const appendCelErrors = errors.filter(
-      e => e.code === 'DSL_PATH_UNKNOWN' && e.location.includes('append') && e.location.includes(':cel'),
+    const celErrors = errors.filter(
+      e => e.code === 'DSL_PATH_UNKNOWN' && e.location.includes('patches') && e.location.includes(':cel'),
     );
-    expect(appendCelErrors).toHaveLength(0);
+    expect(celErrors).toHaveLength(0);
   });
 
-  it('append CEL with no state.X access produces no CEL path errors', async () => {
-    // CEL expression accesses event.payload, not state.X — extractStatePaths returns []
+  it('patch CEL with no state.X access produces no CEL path errors', async () => {
+    // CEL value accesses event.payload, not state.X — extractStatePaths returns []
     const dsl = makeCompiledDsl([
       {
         ...minimalBoundary,
         reducers: [{
           on: 'TagAdded',
-          append: {
-            tags: 'event.payload.tag',
-          },
+          patches: [{ op: 'append', path: '/tags', value: 'event.payload.tag' }],
         }],
         eventCatalog: [{ type: 'TagAdded', payloadTemplate: {} }],
       },
@@ -162,21 +135,19 @@ describe('schema/dslStaticChecker — additional coverage (lines 118-125)', () =
     const registry = makeRegistry('MyBoundary', entitySchema);
     const errors = await staticCheckDsl(dsl, registry);
 
-    const appendCelErrors = errors.filter(
-      e => e.location.includes('append') && e.location.includes(':cel'),
+    const celErrors = errors.filter(
+      e => e.location.includes('patches') && e.location.includes(':cel'),
     );
-    expect(appendCelErrors).toHaveLength(0);
+    expect(celErrors).toHaveLength(0);
   });
 
-  it('multiple unknown state paths in one append CEL produce multiple errors', async () => {
+  it('multiple unknown state paths in one patch CEL produce multiple errors', async () => {
     const dsl = makeCompiledDsl([
       {
         ...minimalBoundary,
         reducers: [{
           on: 'TagAdded',
-          append: {
-            tags: 'state.badOne + state.badTwo',
-          },
+          patches: [{ op: 'append', path: '/tags', value: 'state.badOne + state.badTwo' }],
         }],
         eventCatalog: [{ type: 'TagAdded', payloadTemplate: {} }],
       },
@@ -185,10 +156,10 @@ describe('schema/dslStaticChecker — additional coverage (lines 118-125)', () =
     const registry = makeRegistry('MyBoundary', entitySchema);
     const errors = await staticCheckDsl(dsl, registry);
 
-    const appendCelErrors = errors.filter(
-      e => e.code === 'DSL_PATH_UNKNOWN' && e.location.includes('append') && e.location.includes(':cel'),
+    const celErrors = errors.filter(
+      e => e.code === 'DSL_PATH_UNKNOWN' && e.location.includes('patches') && e.location.includes(':cel'),
     );
     // Both state.badOne and state.badTwo are unknown
-    expect(appendCelErrors.length).toBeGreaterThanOrEqual(2);
+    expect(celErrors.length).toBeGreaterThanOrEqual(2);
   });
 });

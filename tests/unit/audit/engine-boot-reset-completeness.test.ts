@@ -68,9 +68,9 @@ behaviors:
     emit: ThingCreated
 reducers:
   - on: ThingCreated
-    assign:
-      id: "event.payload.id"
-      label: "event.payload.label"
+    patches:
+      - { op: replace, path: /id, value: "event.payload.id" }
+      - { op: replace, path: /label, value: "event.payload.label" }
 `;
 
 const THING_WITH_INIT_DSL = `
@@ -93,9 +93,9 @@ behaviors:
     emit: ThingCreated
 reducers:
   - on: ThingCreated
-    assign:
-      id: "event.payload.id"
-      label: "event.payload.label"
+    patches:
+      - { op: replace, path: /id, value: "event.payload.id" }
+      - { op: replace, path: /label, value: "event.payload.label" }
 initialization:
   - id: "thing-alpha"
     label: "Alpha"

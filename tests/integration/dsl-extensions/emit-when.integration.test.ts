@@ -44,11 +44,11 @@ behaviors:
         emit: LoanSettled
 reducers:
   - on: LoanRepaid
-    assign:
-      balance: "state.balance - event.payload.amount"
+    patches:
+      - { op: replace, path: /balance, value: "state.balance - event.payload.amount" }
   - on: LoanSettled
-    assign:
-      status: "'SETTLED'"
+    patches:
+      - { op: replace, path: /status, value: "'SETTLED'" }
 `,
     });
     expect(result.status).toBe(200);
@@ -88,11 +88,11 @@ behaviors:
         emit: LoanSettled
 reducers:
   - on: LoanRepaid
-    assign:
-      balance: "state.balance - event.payload.amount"
+    patches:
+      - { op: replace, path: /balance, value: "state.balance - event.payload.amount" }
   - on: LoanSettled
-    assign:
-      status: "'SETTLED'"
+    patches:
+      - { op: replace, path: /status, value: "'SETTLED'" }
 `,
     });
     expect(result.status).toBe(200);
@@ -137,11 +137,11 @@ behaviors:
         emit: NotificationQueued
 reducers:
   - on: LoanSettled
-    assign:
-      status: "'SETTLED'"
+    patches:
+      - { op: replace, path: /status, value: "'SETTLED'" }
   - on: NotificationQueued
-    assign:
-      notified: "true"
+    patches:
+      - { op: replace, path: /notified, value: "true" }
 `,
     });
     expect(result.status).toBe(200);
@@ -182,8 +182,8 @@ behaviors:
         emit: LoanSettled
 reducers:
   - on: LoanSettled
-    assign:
-      status: "'SETTLED'"
+    patches:
+      - { op: replace, path: /status, value: "'SETTLED'" }
 `,
     });
     // amount (50) < balance (200): condition false, no events emitted
@@ -239,14 +239,14 @@ behaviors:
         emit: LoanSettled
 reducers:
   - on: LoanProcessed
-    assign:
-      processed: "true"
+    patches:
+      - { op: replace, path: /processed, value: "true" }
   - on: LoanSettled
-    assign:
-      status: "'SETTLED'"
+    patches:
+      - { op: replace, path: /status, value: "'SETTLED'" }
   - on: NotificationQueued
-    assign:
-      notified: "true"
+    patches:
+      - { op: replace, path: /notified, value: "true" }
 `,
     });
     expect(result.status).toBe(200);
@@ -292,11 +292,11 @@ behaviors:
         emit: AccountClosed
 reducers:
   - on: LoanSettled
-    assign:
-      status: "'SETTLED'"
+    patches:
+      - { op: replace, path: /status, value: "'SETTLED'" }
   - on: AccountClosed
-    assign:
-      closed: "true"
+    patches:
+      - { op: replace, path: /closed, value: "true" }
 `,
     });
     expect(result.status).toBe(200);

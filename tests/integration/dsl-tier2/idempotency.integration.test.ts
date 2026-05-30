@@ -65,8 +65,8 @@ event_catalog:
       label: command.payload.label
 reducers:
   - on: WidgetCreated
-    assign:
-      label: event.payload.label
+    patches:
+      - { op: replace, path: /label, value: event.payload.label }
 `;
 
 const GLOBAL_YAML = `

@@ -10,12 +10,12 @@ import type { Tracer } from '../observability/tracing.js';
 import type { ObjectGraphSchemaRegistry } from '../schema/types.js';
 import type { OpenApiDoc } from '../contract/loader.js';
 import { deepClone, deepMerge } from '../stategraph/graph.js';
-import { applyPatches, type Patch, type JournalEntry } from '../dsl/patches.js';
-import { CelPhase } from '../cel/phases.js';
+import { type JournalEntry } from '../dsl/patches.js';
+import { applyReducerPatchList } from './reducerPatches.js';
+import { guardAssignedValue } from '../schema/runtimeGuard.js';
 import { getTracer } from '../observability/tracing.js';
 import { SpanStatusCode } from '@opentelemetry/api';
 import { InternalExecutionError } from '../errors.js';
-import { guardAssignPath, guardAssignedValue } from '../schema/runtimeGuard.js';
 
 // REQ-65: AJV instance for schema_ref payload validation (module-level, lazily initialized)
 let _ajvForSchemaRef: Ajv | null = null;
@@ -83,9 +83,6 @@ function validatePayloadAgainstSchemaRef(
     );
   }
 }
-
-// REQ-67: sentinel prefix — defense-in-depth for reducer phase
-const TS_SENTINEL = 'ts:';
 
 export interface ProjectionInput {
   readonly event: DomainEvent;
@@ -189,101 +186,37 @@ function _projectEvent(input: ProjectionInput): ProjectionResult {
           payload: event.payload,
         };
 
-        // Process assign expressions
-        if (reducer.assign) {
-          for (const [dotPath, expr] of Object.entries(reducer.assign)) {
-            if (schemaRegistry) {
-              guardAssignPath(schemaRegistry, boundary.boundary, dotPath);
-            }
-
-            // REQ-71 defense-in-depth: reject ts: in reducer phase at runtime
-            if (expr.startsWith(TS_SENTINEL)) {
-              throw new InternalExecutionError(
-                `ts: sentinel "${expr}" in reducer assign path "${dotPath}" — forbidden in Reducer phase (REQ-71)`,
-                { code: 'SCRIPT_IN_REDUCER_PHASE', dotPath, expr },
-              );
-            }
-
-            let value: JsonValue;
-            try {
-              value = cel.evaluate(expr, celCtx, CelPhase.Reducer) as JsonValue;
-            } catch (err) {
-              throw new InternalExecutionError(
-                `CEL evaluation failed for assign path '${dotPath}': ${err instanceof Error ? err.message : String(err)}`,
-                { dotPath, expr, eventType: event.type },
-              );
-            }
-
-            // N3 fix: explicitly reject undefined to preserve JsonObject type contract.
-            // CEL returning undefined (e.g. accessing a missing field) must not silently
-            // store undefined on the entity, which would violate the JsonValue contract.
-            if (value === undefined) {
-              throw new InternalExecutionError(
-                `CEL expression returned undefined for assign path '${dotPath}' — this violates the JsonObject contract`,
-                { code: 'SCHEMA_TYPE_MISMATCH', reason: 'CEL expression returned undefined', dotPath, expr, eventType: event.type },
-              );
-            }
-
-            if (schemaRegistry) {
-              guardAssignedValue(schemaRegistry, boundary.boundary, dotPath, value);
-            }
-
-            setByDotPath(buf, dotPath, value);
-            log?.debug({ dotPath, value }, 'Assigned value via reducer');
-          }
-        }
-
-        // Process append expressions
-        if (reducer.append) {
-          for (const [dotPath, expr] of Object.entries(reducer.append)) {
-            if (schemaRegistry) {
-              guardAssignPath(schemaRegistry, boundary.boundary, dotPath);
-            }
-
-            // REQ-71 defense-in-depth
-            if (expr.startsWith(TS_SENTINEL)) {
-              throw new InternalExecutionError(
-                `ts: sentinel "${expr}" in reducer append path "${dotPath}" — forbidden in Reducer phase (REQ-71)`,
-                { code: 'SCRIPT_IN_REDUCER_PHASE', dotPath, expr },
-              );
-            }
-
-            let value: JsonValue;
-            try {
-              value = cel.evaluate(expr, celCtx, CelPhase.Reducer) as JsonValue;
-            } catch (err) {
-              throw new InternalExecutionError(
-                `CEL evaluation failed for append path '${dotPath}': ${err instanceof Error ? err.message : String(err)}`,
-                { dotPath, expr, eventType: event.type },
-              );
-            }
-
-            if (schemaRegistry) {
-              guardAssignedValue(schemaRegistry, boundary.boundary, dotPath, value, 'append');
-            }
-
-            const existing = getByDotPath(buf, dotPath);
-            const arr: JsonValue[] = Array.isArray(existing) ? [...existing] : [];
-            arr.push(value);
-            setByDotPath(buf, dotPath, arr);
-            log?.debug({ dotPath, value }, 'Appended value via reducer');
-          }
-        }
-
-        // Process patches: list via the single canonical applier
-        // (src/dsl/patches.ts). Each patch's value is evaluated as CEL against
-        // the state as mutated by prior patches in the list, so later patches
-        // can reference earlier ones (e.g. `state.totalConversions + 1`).
+        // Reducers express state mutation exclusively as a `patches:` list,
+        // applied via the single canonical applier (src/dsl/patches.ts). Each
+        // patch's value is evaluated as CEL against the state as mutated by
+        // prior patches in the list, so later patches can reference earlier
+        // ones (e.g. `state.totalConversions + 1`).
         if (reducer.patches) {
-          for (const patch of reducer.patches) {
-            const resolved = resolveReducerPatch(patch, cel, celCtx);
-            const { newState, journal } = applyPatches(buf, [resolved], 'reducer', {
-              autoVivify: true,
-            });
-            replaceInPlace(buf, newState as JsonObject);
-            reducerJournal.push(...journal);
-            log?.debug({ path: patch.path, op: patch.op }, 'Patched value');
+          reducerJournal.push(...applyReducerPatchList(buf, reducer.patches, cel, celCtx));
+        }
+      }
+
+      // Runtime type guard: for every value-bearing patch that landed on a
+      // schema-declared field, assert the written value is assignable to that
+      // field's type. guardAssignedValue silently ignores paths absent from the
+      // schema (audit/computed fields), so it only rejects genuine type
+      // mismatches. This runs during shadow projection (schemaRegistry is
+      // supplied there), so a mismatch aborts the unit of work before any event
+      // is committed.
+      if (schemaRegistry) {
+        for (const entry of reducerJournal) {
+          if (entry.value === undefined) continue; // remove / increment (no value)
+          if (
+            entry.op !== 'add' &&
+            entry.op !== 'replace' &&
+            entry.op !== 'append' &&
+            entry.op !== 'prepend'
+          ) {
+            continue; // merge/upsert carry composite values — validated by the entity contract
           }
+          const dotPath = entry.path.replace(/^\//, '').replace(/\//g, '.');
+          const mode = entry.op === 'append' || entry.op === 'prepend' ? 'append' : 'assign';
+          guardAssignedValue(schemaRegistry, boundary.boundary, dotPath, entry.value, mode);
         }
       }
     }
@@ -448,50 +381,3 @@ function replaceInPlace(target: JsonObject, source: JsonObject): void {
   }
 }
 
-// Convert a DSL reducer patch into a canonical src/dsl/patches.ts `Patch`,
-// evaluating its `value` as CEL against the supplied context. String values
-// are evaluated in the Reducer phase (so `event.payload.x` / `state.y` /
-// `${...}` references resolve); a value that is not valid CEL falls back to its
-// literal string. Non-string values (numbers, booleans, objects, arrays) pass
-// through unchanged. The boundary validator (A4) rejects ill-formed CEL at
-// boot, so the fallback only ever sees genuine string literals at runtime.
-function resolveReducerPatch(
-  patch: import('../dsl/types.js').ReducerPatchOp,
-  cel: CelEvaluator,
-  celCtx: Record<string, unknown>,
-): Patch {
-  const evaluate = (raw: unknown): JsonValue => {
-    if (typeof raw !== 'string') return raw as JsonValue;
-    try {
-      return cel.evaluate(raw, celCtx, CelPhase.Reducer) as JsonValue;
-    } catch {
-      return raw as JsonValue;
-    }
-  };
-
-  switch (patch.op) {
-    case 'remove':
-      return { op: 'remove', path: patch.path };
-    case 'increment':
-      return { op: 'increment', path: patch.path, by: patch.by ?? 0 };
-    case 'merge':
-      return {
-        op: 'merge',
-        path: patch.path,
-        value: evaluate(patch.value) as Record<string, JsonValue>,
-        ...(patch.deep !== undefined ? { deep: patch.deep } : {}),
-      };
-    case 'upsert':
-      return {
-        op: 'upsert',
-        path: patch.path,
-        key: patch.key ?? 'id',
-        value: evaluate(patch.value) as Record<string, JsonValue>,
-      };
-    case 'add':
-    case 'replace':
-    case 'append':
-    case 'prepend':
-      return { op: patch.op, path: patch.path, value: evaluate(patch.value) };
-  }
-}

@@ -337,7 +337,7 @@ describe('dsl/schema — permutations', () => {
           contract_path: '/b',
           event_catalog: [{ type: 'Created', payload_template: {} }],
           behaviors: [],
-          reducers: [{ assign: { field: 'value' } }],
+          reducers: [{ patches: [{ op: 'replace', path: '/field', value: '"value"' }] }],
         }),
       ).toThrow(BootError);
     });
@@ -349,88 +349,111 @@ describe('dsl/schema — permutations', () => {
           contract_path: '/b',
           event_catalog: [{ type: 'Created', payload_template: {} }],
           behaviors: [],
-          reducers: [{ on: 'NotInCatalog', assign: {} }],
+          reducers: [{ on: 'NotInCatalog', patches: [] }],
         }),
       ).toThrow(BootError);
     });
 
-    it('accepts reducer with assign as object map', () => {
+    it('accepts reducer with a replace patch list', () => {
       const result = validateBoundaryConfig({
         boundary: 'B',
         contract_path: '/b',
         event_catalog: [{ type: 'Created', payload_template: {} }],
         behaviors: [],
-        reducers: [{ on: 'Created', assign: { 'status': 'event.payload.status' } }],
+        reducers: [{ on: 'Created', patches: [{ op: 'replace', path: '/status', value: 'event.payload.status' }] }],
       });
-      expect(result.reducers[0]?.assign?.['status']).toBe('event.payload.status');
+      expect(result.reducers[0]?.patches?.[0]).toEqual({ op: 'replace', path: '/status', value: 'event.payload.status' });
     });
 
-    it('throws when reducer.assign value is not a string', () => {
+    it('rejects reducer with removed assign key (BOOT_ERR_REMOVED_SYNTAX)', () => {
+      let caught: BootError | undefined;
+      try {
+        validateBoundaryConfig({
+          boundary: 'B',
+          contract_path: '/b',
+          event_catalog: [{ type: 'Created', payload_template: {} }],
+          behaviors: [],
+          reducers: [{ on: 'Created', assign: { status: 'event.payload.status' } }],
+        });
+      } catch (e) {
+        caught = e as BootError;
+      }
+      expect(caught).toBeInstanceOf(BootError);
+      expect(caught?.code).toBe('BOOT_ERR_REMOVED_SYNTAX');
+    });
+
+    it('throws when a patch op is invalid', () => {
       expect(() =>
         validateBoundaryConfig({
           boundary: 'B',
           contract_path: '/b',
           event_catalog: [{ type: 'Created', payload_template: {} }],
           behaviors: [],
-          reducers: [{ on: 'Created', assign: { field: 123 } }],
+          reducers: [{ on: 'Created', patches: [{ op: 'bogus', path: '/field' }] }],
         }),
       ).toThrow(BootError);
     });
 
-    it('throws when reducer.assign is not an object', () => {
+    it('throws when patches is not an array', () => {
       expect(() =>
         validateBoundaryConfig({
           boundary: 'B',
           contract_path: '/b',
           event_catalog: [{ type: 'Created', payload_template: {} }],
           behaviors: [],
-          reducers: [{ on: 'Created', assign: 'bad' }],
+          reducers: [{ on: 'Created', patches: 'bad' }],
         }),
       ).toThrow(BootError);
     });
 
-    it('accepts reducer with append (object value serialized to JSON string)', () => {
+    it('accepts reducer with an append patch', () => {
       const result = validateBoundaryConfig({
         boundary: 'B',
         contract_path: '/b',
         event_catalog: [{ type: 'Created', payload_template: {} }],
         behaviors: [],
-        reducers: [{ on: 'Created', append: { items: 'event.payload.item' } }],
+        reducers: [{ on: 'Created', patches: [{ op: 'append', path: '/items', value: 'event.payload.item' }] }],
       });
-      expect(result.reducers[0]?.append?.['items']).toBe('event.payload.item');
+      expect(result.reducers[0]?.patches?.[0]).toEqual({ op: 'append', path: '/items', value: 'event.payload.item' });
     });
 
-    it('accepts reducer.append with object value (serialized to JSON string)', () => {
-      const result = validateBoundaryConfig({
-        boundary: 'B',
-        contract_path: '/b',
-        event_catalog: [{ type: 'Created', payload_template: {} }],
-        behaviors: [],
-        reducers: [{ on: 'Created', append: { items: { field: 'value' } } }],
-      });
-      expect(typeof result.reducers[0]?.append?.['items']).toBe('string');
+    it('rejects reducer with removed append key (BOOT_ERR_REMOVED_SYNTAX)', () => {
+      let caught: BootError | undefined;
+      try {
+        validateBoundaryConfig({
+          boundary: 'B',
+          contract_path: '/b',
+          event_catalog: [{ type: 'Created', payload_template: {} }],
+          behaviors: [],
+          reducers: [{ on: 'Created', append: { items: 'event.payload.item' } }],
+        });
+      } catch (e) {
+        caught = e as BootError;
+      }
+      expect(caught).toBeInstanceOf(BootError);
+      expect(caught?.code).toBe('BOOT_ERR_REMOVED_SYNTAX');
     });
 
-    it('throws when reducer.append value is neither string nor object', () => {
+    it('throws when a patch entry is not an object', () => {
       expect(() =>
         validateBoundaryConfig({
           boundary: 'B',
           contract_path: '/b',
           event_catalog: [{ type: 'Created', payload_template: {} }],
           behaviors: [],
-          reducers: [{ on: 'Created', append: { items: 123 } }],
+          reducers: [{ on: 'Created', patches: ['bad'] }],
         }),
       ).toThrow(BootError);
     });
 
-    it('throws when reducer.append is not an object', () => {
+    it('throws when a patch path is missing', () => {
       expect(() =>
         validateBoundaryConfig({
           boundary: 'B',
           contract_path: '/b',
           event_catalog: [{ type: 'Created', payload_template: {} }],
           behaviors: [],
-          reducers: [{ on: 'Created', append: 'bad' }],
+          reducers: [{ on: 'Created', patches: [{ op: 'replace', value: '"x"' }] }],
         }),
       ).toThrow(BootError);
     });
@@ -613,7 +636,10 @@ describe('dsl/schema — permutations', () => {
         reducers: [
           {
             on: 'Customer.Registered',
-            assign: { 'status': '"active"', 'name': 'event.payload.name' },
+            patches: [
+              { op: 'replace', path: '/status', value: '"active"' },
+              { op: 'replace', path: '/name', value: 'event.payload.name' },
+            ],
           },
         ],
         event_catalog: [

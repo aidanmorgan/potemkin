@@ -486,40 +486,23 @@ function validateReducerRule(raw: unknown, index: number): ReducerRule {
     throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}: must be an object`, { context: ctx });
   }
   const on = requireString(raw, 'on', ctx);
-  const assign = requireStringStringMap(raw, 'assign', ctx);
-  const append = requireStringMixedMap(raw, 'append', ctx);
 
-  // REQ-71: reject ts: sentinels in reducer-phase fields at boot
-  if (assign) {
-    for (const [k, v] of Object.entries(assign)) {
-      if (v.startsWith(TS_SENTINEL)) {
-        throw new BootError(
-          'BOOT_ERR_SCRIPT_IN_REDUCER',
-          `${ctx}.assign.${k}: ts: sentinel is not allowed in Reducer-phase fields (REQ-71). Value: "${v}"`,
-          { field: `${ctx}.assign.${k}`, value: v },
-        );
-      }
-    }
-  }
-  if (append) {
-    for (const [k, v] of Object.entries(append)) {
-      if (v.startsWith(TS_SENTINEL)) {
-        throw new BootError(
-          'BOOT_ERR_SCRIPT_IN_REDUCER',
-          `${ctx}.append.${k}: ts: sentinel is not allowed in Reducer-phase fields (REQ-71). Value: "${v}"`,
-          { field: `${ctx}.append.${k}`, value: v },
-        );
-      }
+  // Reducers express state mutation exclusively via `patches:`. The legacy
+  // assign:/append:/assignAll: keys were removed — reject them at boot.
+  for (const removed of ['assign', 'append', 'assignAll']) {
+    if (raw[removed] !== undefined) {
+      throw new BootError(
+        'BOOT_ERR_REMOVED_SYNTAX',
+        `${ctx}.${removed}: reducer field "${removed}" was removed — use "patches:" with the RFC 6902 + Potemkin extensions vocabulary`,
+        { field: `${ctx}.${removed}`, removed, replacement: 'patches' },
+      );
     }
   }
 
-  // New-format `patches:` list (additive — co-exists with legacy assign:/append:)
   const patches = optionalPatchList(raw, ctx);
 
   return {
     on,
-    ...(assign !== undefined ? { assign } : {}),
-    ...(append !== undefined ? { append } : {}),
     ...(patches !== undefined ? { patches } : {}),
   };
 }
@@ -542,6 +525,15 @@ function optionalPatchList(raw: Record<string, unknown>, ctx: string): readonly 
     const path = p['path'];
     if (typeof path !== 'string') {
       throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.patches[${i}].path: must be a string`, { context: ctx });
+    }
+    // REQ-71: reducer-phase values are CEL only — reject ts: script sentinels.
+    const patchValue = p['value'];
+    if (typeof patchValue === 'string' && patchValue.startsWith(TS_SENTINEL)) {
+      throw new BootError(
+        'BOOT_ERR_SCRIPT_IN_REDUCER',
+        `${ctx}.patches[${i}].value: ts: sentinel is not allowed in Reducer-phase fields (REQ-71). Value: "${patchValue}"`,
+        { field: `${ctx}.patches[${i}].value`, value: patchValue },
+      );
     }
     return {
       op: op as import('./types.js').ReducerPatchOp['op'],

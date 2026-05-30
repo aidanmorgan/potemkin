@@ -39,8 +39,8 @@ behaviors:
     postcondition: "state.balance >= 0"
 reducers:
   - on: WidgetRepaid
-    assign:
-      balance: "state.balance - event.payload.amount"
+    patches:
+      - { op: replace, path: /balance, value: "state.balance - event.payload.amount" }
 `,
     });
     expect(result.status).toBe(200);
@@ -80,8 +80,8 @@ behaviors:
     postcondition: "state.balance >= 0"
 reducers:
   - on: WidgetRepaid
-    assign:
-      balance: "state.balance - event.payload.amount"
+    patches:
+      - { op: replace, path: /balance, value: "state.balance - event.payload.amount" }
 `,
     });
     // Should fail with 500 POSTCONDITION_VIOLATED
@@ -125,8 +125,8 @@ behaviors:
     postcondition: "state.balance >= 0"
 reducers:
   - on: WidgetRepaid
-    assign:
-      balance: "state.balance - event.payload.amount"
+    patches:
+      - { op: replace, path: /balance, value: "state.balance - event.payload.amount" }
 `,
     });
 
@@ -169,8 +169,8 @@ behaviors:
     postcondition: "event.payload.amount <= state.maxAllowed"
 reducers:
   - on: WidgetRepaid
-    assign:
-      balance: "state.balance - event.payload.amount"
+    patches:
+      - { op: replace, path: /balance, value: "state.balance - event.payload.amount" }
 `,
     });
     expect(result.status).toBe(200);
@@ -202,8 +202,8 @@ behaviors:
     postcondition: "event.payload.amount <= state.maxAllowed"
 reducers:
   - on: WidgetRepaid
-    assign:
-      balance: "state.balance - event.payload.amount"
+    patches:
+      - { op: replace, path: /balance, value: "state.balance - event.payload.amount" }
 `,
     });
     expect(result.status).toBe(500);
@@ -252,8 +252,8 @@ behaviors:
     postcondition: "state.tags.size() > 0"
 reducers:
   - on: TagAdded
-    append:
-      tags: "event.payload.tag"
+    patches:
+      - { op: append, path: /tags, value: "event.payload.tag" }
 `,
     });
     expect(result.status).toBe(200);
@@ -285,8 +285,8 @@ behaviors:
     postcondition: "state.scores.size() > 0"
 reducers:
   - on: ScoresCleared
-    assign:
-      scores: "[]"
+    patches:
+      - { op: replace, path: /scores, value: "[]" }
 `,
     });
     // After clearing, scores.size() == 0, so postcondition fails

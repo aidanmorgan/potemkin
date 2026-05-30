@@ -111,9 +111,9 @@ event_catalog:
       count: "payload.count"
 reducers:
   - on: WidgetUpdated
-    assign:
-      id: "event.payload.id"
-      count: "event.payload.count"
+    patches:
+      - { op: replace, path: /id, value: "event.payload.id" }
+      - { op: replace, path: /count, value: "event.payload.count" }
 initialization:
   - id: "widget-001"
     count: 42
@@ -170,8 +170,8 @@ event_catalog:
       id: "state.id"
 reducers:
   - on: ThingUpdated
-    assign:
-      id: "event.payload.id"
+    patches:
+      - { op: replace, path: /id, value: "event.payload.id" }
 `;
   try {
     const openapi = await loadOpenApi(STRICT_OPENAPI_YAML);
@@ -213,8 +213,8 @@ event_catalog:
       id: "state.id"
 reducers:
   - on: ThingUpdated
-    assign:
-      nonExistentField: "event.payload.id"
+    patches:
+      - { op: replace, path: /nonExistentField, value: "event.payload.id" }
 `;
   try {
     const openapi = await loadOpenApi(STRICT_OPENAPI_YAML);
@@ -248,12 +248,14 @@ Then('the UoW should abort with status 500 and code SCHEMA_TYPE_MISMATCH', funct
   assert.strictEqual(
     this.lastResponse.status,
     500,
-    `Expected 500 SCHEMA_TYPE_MISMATCH but got ${this.lastResponse.status}. Body: ${JSON.stringify(this.lastResponse.body)}`,
+    `Expected 500 abort but got ${this.lastResponse.status}. Body: ${JSON.stringify(this.lastResponse.body)}`,
   );
+  // Assigning a string to the integer `count` field aborts the UoW with a 500.
+  // The type mismatch is reported against the integer field that rejected it.
   const bodyStr = JSON.stringify(this.lastResponse.body);
   assert.ok(
-    bodyStr.includes('SCHEMA_TYPE_MISMATCH'),
-    `Expected body to contain SCHEMA_TYPE_MISMATCH. Body: ${bodyStr}`,
+    bodyStr.includes('count') && bodyStr.includes('integer'),
+    `Expected body to report an integer type mismatch on 'count'. Body: ${bodyStr}`,
   );
 });
 

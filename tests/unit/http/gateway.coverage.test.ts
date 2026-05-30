@@ -81,9 +81,9 @@ behaviors:
     emit: ItemCreated
 reducers:
   - on: ItemCreated
-    assign:
-      id: "event.payload.id"
-      label: "event.payload.label"
+    patches:
+      - { op: replace, path: /id, value: "event.payload.id" }
+      - { op: replace, path: /label, value: "event.payload.label" }
 `;
 
 describe('http/gateway.ts — defensive guard coverage', () => {

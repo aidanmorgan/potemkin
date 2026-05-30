@@ -79,9 +79,9 @@ behaviors:
     emit: ThingCreated
 reducers:
   - on: ThingCreated
-    assign:
-      id: "event.payload.id"
-      name: "event.payload.name"
+    patches:
+      - { op: replace, path: /id, value: "event.payload.id" }
+      - { op: replace, path: /name, value: "event.payload.name" }
 `;
 
 describe('engine/boot.ts additional coverage', () => {

@@ -201,7 +201,13 @@ describe('audit fields — updatedAt / updatedBy', () => {
         match: { method: 'POST', intent: 'creation', condition: 'true' },
         emit: 'Created',
       }],
-      reducers: [{ on: 'Created', assign: { id: 'event.payload.id', name: 'event.payload.name' } }],
+      reducers: [{
+        on: 'Created',
+        patches: [
+          { op: 'replace', path: '/id', value: 'event.payload.id' },
+          { op: 'replace', path: '/name', value: 'event.payload.name' },
+        ],
+      }],
       eventCatalog: [{
         type: 'Created',
         payloadTemplate: { id: 'command.targetId', name: 'command.payload.name' },

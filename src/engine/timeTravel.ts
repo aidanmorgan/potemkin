@@ -10,13 +10,13 @@
  * project a transient state from the immutable event log.
  */
 
-import type { DomainEvent, JsonObject, JsonValue } from '../types.js';
+import type { DomainEvent, JsonObject } from '../types.js';
 import type { EventStore } from '../eventstore/store.js';
 import type { BoundaryConfig } from '../dsl/types.js';
 import type { CelEvaluator } from '../cel/evaluator.js';
 import type { Logger } from '../observability/logger.js';
-import { CelPhase } from '../cel/phases.js';
 import { deepClone, deepMerge } from '../stategraph/graph.js';
+import { applyReducerPatchList } from './reducerPatches.js';
 
 /**
  * Rebuild a single entity's state by replaying its events up to (and including)
@@ -49,7 +49,15 @@ export function rebuildEntityAtVersion(
   return state;
 }
 
-/** Replay an event into a working state copy using the boundary's reducer rules. */
+/**
+ * Replay an event into a working state copy using the boundary's reducer rules.
+ *
+ * Mirrors the live projection engine (projection.ts): `System.GenericUpdateEvent`
+ * deep-merges its payload, `BaselineEntityCreatedEvent` replaces state wholesale,
+ * and every other event runs the matching reducers' `patches:` lists through the
+ * single canonical applier (src/dsl/patches.ts) so historical state matches what
+ * the engine produced at commit time.
+ */
 function applyEventForReplay(
   state: JsonObject,
   evt: DomainEvent,
@@ -58,75 +66,29 @@ function applyEventForReplay(
   logger?: Logger,
 ): JsonObject {
   const buf: JsonObject = deepClone(state) as JsonObject;
-  const reducer = boundary.reducers.find(r => r.on === evt.type);
-  if (!reducer) return buf;
 
-  const celCtx: Record<string, unknown> = {
-    event: evt as unknown as Record<string, unknown>,
-    payload: evt.payload,
-    state: buf,
-  };
-
-  // assignAll: copy event payload onto state
-  if (reducer.assignAll) {
-    Object.assign(buf, evt.payload);
+  if (evt.type === 'System.GenericUpdateEvent') {
+    return deepMerge(buf, evt.payload) as JsonObject;
+  }
+  if (evt.type === 'BaselineEntityCreatedEvent') {
+    return deepClone(evt.payload) as JsonObject;
   }
 
-  if (reducer.assign) {
-    for (const [path, expr] of Object.entries(reducer.assign)) {
-      try {
-        const value = cel.evaluate(expr, celCtx, CelPhase.Reducer) as JsonValue;
-        if (value !== undefined) setByDotPath(buf, path, value);
-      } catch (err) {
-        logger?.debug({ aggregateId: evt.aggregateId, path, err }, 'Time-travel assign eval failed');
-      }
+  for (const reducer of boundary.reducers.filter(r => r.on === evt.type)) {
+    if (!reducer.patches) continue;
+    const celCtx: Record<string, unknown> = {
+      event: evt as unknown as Record<string, unknown>,
+      payload: evt.payload,
+      state: buf,
+    };
+    try {
+      applyReducerPatchList(buf, reducer.patches, cel, celCtx);
+    } catch (err) {
+      logger?.debug({ aggregateId: evt.aggregateId, event: evt.type, err }, 'Time-travel patch apply failed');
     }
   }
 
-  if (reducer.append) {
-    for (const [path, expr] of Object.entries(reducer.append)) {
-      try {
-        const value = cel.evaluate(expr, celCtx, CelPhase.Reducer) as JsonValue;
-        if (value !== undefined) {
-          const existing = getByDotPath(buf, path);
-          const arr: JsonValue[] = Array.isArray(existing) ? [...existing] : [];
-          arr.push(value);
-          setByDotPath(buf, path, arr);
-        }
-      } catch (err) {
-        logger?.debug({ aggregateId: evt.aggregateId, path, err }, 'Time-travel append eval failed');
-      }
-    }
-  }
-
-  // Merge any payload fields that the reducer did not explicitly map
-  // (mirrors the projection engine's implicit-merge behaviour for fields
-  // that the reducer did not touch). We use deepMerge so nested objects
-  // are preserved across reapplied events.
-  return deepMerge(buf, {});
-}
-
-function setByDotPath(obj: JsonObject, path: string, value: JsonValue): void {
-  const segs = path.split('.');
-  let cur: Record<string, JsonValue> = obj as Record<string, JsonValue>;
-  for (let i = 0; i < segs.length - 1; i++) {
-    const seg = segs[i];
-    if (cur[seg] === undefined || cur[seg] === null || typeof cur[seg] !== 'object' || Array.isArray(cur[seg])) {
-      cur[seg] = {};
-    }
-    cur = cur[seg] as Record<string, JsonValue>;
-  }
-  cur[segs[segs.length - 1]] = value;
-}
-
-function getByDotPath(obj: JsonObject, path: string): JsonValue | undefined {
-  const segs = path.split('.');
-  let cur: unknown = obj;
-  for (const seg of segs) {
-    if (cur === null || cur === undefined || typeof cur !== 'object') return undefined;
-    cur = (cur as Record<string, unknown>)[seg];
-  }
-  return cur as JsonValue | undefined;
+  return buf;
 }
 
 /** Look up an event by id in the event store; returns null if not found. */

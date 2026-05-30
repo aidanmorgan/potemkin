@@ -11,7 +11,7 @@ const minimalValid = {
       emit: 'Created',
     },
   ],
-  reducers: [{ on: 'Created', assign: { status: '"active"' } }],
+  reducers: [{ on: 'Created', patches: [{ op: 'replace', path: '/status', value: '"active"' }] }],
   event_catalog: [{ type: 'Created', payload_template: {} }],
 };
 
@@ -135,17 +135,57 @@ describe('dsl/schema', () => {
       expect(config.behaviors).toHaveLength(0);
     });
 
-    it('parses reducer assign and append correctly', () => {
+    it('parses a reducer patches list (replace + append) through to the config', () => {
       const raw = {
         boundary: 'B',
         contract_path: '/b',
         behaviors: [],
-        reducers: [{ on: 'Ev', assign: { field: '"val"' }, append: { list: '"item"' } }],
+        reducers: [{
+          on: 'Ev',
+          patches: [
+            { op: 'replace', path: '/field', value: '"val"' },
+            { op: 'append', path: '/list', value: '"item"' },
+          ],
+        }],
         event_catalog: [{ type: 'Ev', payload_template: {} }],
       };
       const config = validateBoundaryConfig(raw);
-      expect(config.reducers[0]?.assign?.['field']).toBe('"val"');
-      expect(config.reducers[0]?.append?.['list']).toBe('"item"');
+      expect(config.reducers[0]?.patches).toEqual([
+        { op: 'replace', path: '/field', value: '"val"' },
+        { op: 'append', path: '/list', value: '"item"' },
+      ]);
+    });
+
+    it('rejects removed reducer key assign with BOOT_ERR_REMOVED_SYNTAX', () => {
+      const raw = {
+        boundary: 'B',
+        contract_path: '/b',
+        behaviors: [],
+        reducers: [{ on: 'Ev', assign: { field: '"val"' } }],
+        event_catalog: [{ type: 'Ev', payload_template: {} }],
+      };
+      expect(() => validateBoundaryConfig(raw)).toThrow(BootError);
+      try {
+        validateBoundaryConfig(raw);
+      } catch (e) {
+        expect((e as BootError).code).toBe('BOOT_ERR_REMOVED_SYNTAX');
+      }
+    });
+
+    it('rejects removed reducer key append with BOOT_ERR_REMOVED_SYNTAX', () => {
+      const raw = {
+        boundary: 'B',
+        contract_path: '/b',
+        behaviors: [],
+        reducers: [{ on: 'Ev', append: { list: '"item"' } }],
+        event_catalog: [{ type: 'Ev', payload_template: {} }],
+      };
+      expect(() => validateBoundaryConfig(raw)).toThrow(BootError);
+      try {
+        validateBoundaryConfig(raw);
+      } catch (e) {
+        expect((e as BootError).code).toBe('BOOT_ERR_REMOVED_SYNTAX');
+      }
     });
 
     it('throws BootError for BOOT_ERR_DSL_SYNTAX code on invalid input', () => {

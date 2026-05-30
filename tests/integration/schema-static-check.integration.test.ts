@@ -70,9 +70,9 @@ behaviors:
     emit: WidgetCreated
 reducers:
   - on: WidgetCreated
-    assign:
-      id: "event.payload.id"
-      name: "event.payload.name"
+    patches:
+      - { op: replace, path: /id, value: "event.payload.id" }
+      - { op: replace, path: /name, value: "event.payload.name" }
 `;
 
 // A well-formed DSL for the same boundary (sanity check)
@@ -96,9 +96,9 @@ behaviors:
     emit: WidgetCreated
 reducers:
   - on: WidgetCreated
-    assign:
-      id: "event.payload.id"
-      name: "event.payload.name"
+    patches:
+      - { op: replace, path: /id, value: "event.payload.id" }
+      - { op: replace, path: /name, value: "event.payload.name" }
 `;
 
 describe('schema-static-check.integration: DSL with unknown state path triggers boot error', () => {

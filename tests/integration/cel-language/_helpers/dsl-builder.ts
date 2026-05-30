@@ -187,8 +187,8 @@ components:
 `;
       reducerDsl = `
   - on: TestEvent
-    assign:
-      status: "'MATCHED'"
+    patches:
+      - { op: replace, path: /status, value: "'MATCHED'" }
 `;
       break;
     }
@@ -212,9 +212,9 @@ components:
 ${extraLines}`;
       reducerDsl = `
   - on: TestEvent
-    assign:
-      computed: "event.payload.computed"
-      id: "event.payload.id"
+    patches:
+      - { op: replace, path: /computed, value: "event.payload.computed" }
+      - { op: replace, path: /id, value: "event.payload.id" }
 `;
       // Need to inject the payload template into the event catalog
       return runWithCustomEventCatalog({
@@ -231,7 +231,7 @@ ${extraLines}`;
       // Expression is used in the reducer assign for field `computed`
       const extraAssign = opts.extraReducerAssign ?? {};
       const extraLines = Object.entries(extraAssign)
-        .map(([k, v]) => `      ${k}: "${escapeForYamlString(v)}"`)
+        .map(([k, v]) => `      - { op: replace, path: /${k.replace(/\./g, '/')}, value: "${escapeForYamlString(v)}" }`)
         .join('\n');
       behaviorDsl = `
   - name: cel-test-behavior
@@ -242,8 +242,8 @@ ${extraLines}`;
 `;
       reducerDsl = `
   - on: TestEvent
-    assign:
-      computed: "${escapeForYamlString(opts.expression)}"
+    patches:
+      - { op: replace, path: /computed, value: "${escapeForYamlString(opts.expression)}" }
 ${extraLines}
 `;
       break;
@@ -477,8 +477,8 @@ function buildWidgetByIdDsl(opts: {
 `;
   const reducers = opts.reducerDsl ?? `
   - on: TestEvent
-    assign:
-      status: "'MATCHED'"
+    patches:
+      - { op: replace, path: /status, value: "'MATCHED'" }
 `;
   return `
 boundary: WidgetById

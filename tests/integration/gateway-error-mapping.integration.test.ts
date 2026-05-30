@@ -129,9 +129,9 @@ behaviors:
     emit: WidgetCreated
 reducers:
   - on: WidgetCreated
-    assign:
-      id: "event.payload.id"
-      label: "event.payload.label"
+    patches:
+      - { op: replace, path: /id, value: "event.payload.id" }
+      - { op: replace, path: /label, value: "event.payload.label" }
 `;
 
 // Item: PATCH /items/{id} — no fallback, no behaviors → UnhandledOperationError
@@ -254,11 +254,11 @@ behaviors:
         payload: {}
 reducers:
   - on: PingCreated
-    assign:
-      id: "event.payload.id"
+    patches:
+      - { op: replace, path: /id, value: "event.payload.id" }
   - on: PingMutated
-    assign:
-      id: "event.payload.id"
+    patches:
+      - { op: replace, path: /id, value: "event.payload.id" }
 `;
 
 const PONG_DSL = `
@@ -295,11 +295,11 @@ behaviors:
         payload: {}
 reducers:
   - on: PongCreated
-    assign:
-      id: "event.payload.id"
+    patches:
+      - { op: replace, path: /id, value: "event.payload.id" }
   - on: PongMutated
-    assign:
-      id: "event.payload.id"
+    patches:
+      - { op: replace, path: /id, value: "event.payload.id" }
 `;
 
 // ── Test suite ────────────────────────────────────────────────────────────────
@@ -453,11 +453,11 @@ describe('gateway — error mapping integration', () => {
     expect(res.body.error).toBeDefined();
   });
 
-  // ── Lines 226-227: InternalExecutionError → 500 ──────────────────────────────
+  // ── Invalid reducer patch CEL falls back to the literal string ───────────────
 
-  it('InternalExecutionError from UoW (CEL reducer failure) maps to 500', async () => {
-    // Create a DSL with a reducer CEL expression that throws (undefined variable).
-    // Use separate schemas for request body and entity to avoid pre-validation 400.
+  it('invalid reducer patch CEL falls back to the literal string and creation succeeds', async () => {
+    // A reducer patch value that is not valid CEL no longer throws at runtime; the
+    // applier falls back to storing the literal string. Creation therefore succeeds.
     const badCelOpenapi = `
 openapi: "3.0.3"
 info:
@@ -520,9 +520,9 @@ behaviors:
     emit: BadCelCreated
 reducers:
   - on: BadCelCreated
-    assign:
-      id: "event.payload.id"
-      label: "undefined_variable_that_throws_xyzzy_99"
+    patches:
+      - { op: replace, path: /id, value: "event.payload.id" }
+      - { op: replace, path: /label, value: "undefined_variable_that_throws_xyzzy_99" }
 `;
 
     const openapi = await loadOpenApi(badCelOpenapi);
@@ -536,10 +536,10 @@ reducers:
       .post('/badcels')
       .send({ label: 'test' });
 
-    // CEL evaluation in reducer fails → InternalExecutionError → 500
-    // (or the response validation fails if the entity is missing required fields)
-    expect([500, 400]).toContain(res.status);
-    expect(res.body).toBeDefined();
+    // Invalid reducer CEL falls back to the literal string → creation succeeds (201)
+    // and the literal expression text is stored as the label.
+    expect(res.status).toBe(201);
+    expect(res.body.label).toBe('undefined_variable_that_throws_xyzzy_99');
     resetSystem(sys);
   });
 

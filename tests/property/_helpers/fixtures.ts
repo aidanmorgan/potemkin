@@ -93,19 +93,19 @@ export function makeCustomerBoundaryConfig(): BoundaryConfig {
     reducers: [
       {
         on: 'Customer.Created',
-        assign: {
-          customerId: 'event.payload.customerId',
-          name: 'event.payload.name',
-          email: 'event.payload.email',
-          balance: '0',
-          active: 'true',
-        },
+        patches: [
+          { op: 'replace', path: '/customerId', value: 'event.payload.customerId' },
+          { op: 'replace', path: '/name', value: 'event.payload.name' },
+          { op: 'replace', path: '/email', value: 'event.payload.email' },
+          { op: 'replace', path: '/balance', value: '0' },
+          { op: 'replace', path: '/active', value: 'true' },
+        ],
       },
       {
         on: 'Customer.Updated',
-        assign: {
-          name: 'event.payload.name',
-        },
+        patches: [
+          { op: 'replace', path: '/name', value: 'event.payload.name' },
+        ],
       },
     ],
     eventCatalog: [

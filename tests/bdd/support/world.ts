@@ -228,21 +228,21 @@ event_catalog:
       status: "'status' in payload ? payload.status : state.status"
 reducers:
   - on: LeadQueried
-    assign:
-      noop: "event.payload.noop"
+    patches:
+      - { op: replace, path: /noop, value: "event.payload.noop" }
   - on: LeadCreated
-    assign:
-      id: "event.payload.id"
-      companyName: "event.payload.companyName"
-      contactName: "event.payload.contactName"
-      email: "event.payload.email"
-      status: "event.payload.status"
+    patches:
+      - { op: replace, path: /id, value: "event.payload.id" }
+      - { op: replace, path: /companyName, value: "event.payload.companyName" }
+      - { op: replace, path: /contactName, value: "event.payload.contactName" }
+      - { op: replace, path: /email, value: "event.payload.email" }
+      - { op: replace, path: /status, value: "event.payload.status" }
   - on: LeadUpdated
-    assign:
-      companyName: "event.payload.companyName"
-      contactName: "event.payload.contactName"
-      email: "event.payload.email"
-      status: "event.payload.status"
+    patches:
+      - { op: replace, path: /companyName, value: "event.payload.companyName" }
+      - { op: replace, path: /contactName, value: "event.payload.contactName" }
+      - { op: replace, path: /email, value: "event.payload.email" }
+      - { op: replace, path: /status, value: "event.payload.status" }
 initialization:
   - id: "lead-seed-001"
     companyName: "Apex Solutions"
@@ -308,21 +308,21 @@ event_catalog:
       stage: "state.stage"
 reducers:
   - on: OpportunityCreated
-    assign:
-      id: "event.payload.id"
-      leadId: "event.payload.leadId"
-      value: "event.payload.value"
-      stage: "event.payload.stage"
+    patches:
+      - { op: replace, path: /id, value: "event.payload.id" }
+      - { op: replace, path: /leadId, value: "event.payload.leadId" }
+      - { op: replace, path: /value, value: "event.payload.value" }
+      - { op: replace, path: /stage, value: "event.payload.stage" }
   - on: OpportunityNegotiating
-    assign:
-      stage: "event.payload.stage"
+    patches:
+      - { op: replace, path: /stage, value: "event.payload.stage" }
   - on: OpportunityWon
-    assign:
-      stage: "event.payload.stage"
+    patches:
+      - { op: replace, path: /stage, value: "event.payload.stage" }
   - on: OpportunityUpdated
-    assign:
-      value: "event.payload.value"
-      stage: "event.payload.stage"
+    patches:
+      - { op: replace, path: /value, value: "event.payload.value" }
+      - { op: replace, path: /stage, value: "event.payload.stage" }
 initialization:
   - id: "opportunity-seed-001"
     leadId: "lead-seed-001"
@@ -348,8 +348,8 @@ event_catalog:
       result: "'listed'"
 reducers:
   - on: OpportunityListQueried
-    assign:
-      result: "event.payload.result"
+    patches:
+      - { op: replace, path: /result, value: "event.payload.result" }
 initialization:
   - id: "opportunity-seed-001"
     leadId: "lead-seed-001"

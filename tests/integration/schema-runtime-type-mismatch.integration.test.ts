@@ -1,9 +1,10 @@
 /**
  * schema-runtime-type-mismatch.integration.test.ts
  *
- * Integration test: craft a CEL expression that assigns a wrong-typed value
- * (e.g. assign a string to a numeric balance); assert InternalExecutionError
- * with code SCHEMA_TYPE_MISMATCH.
+ * Integration test: a reducer patch sets a wrong-typed value (a string into a
+ * numeric `balance`). The projection-time runtime type guard rejects it during
+ * shadow projection with InternalExecutionError code SCHEMA_TYPE_MISMATCH, so
+ * the unit of work aborts before any event is committed.
  */
 
 import { bootSystem, type BootedSystem } from '../../src/engine/boot.js';
@@ -58,8 +59,8 @@ components:
         - balance
 `;
 
-// DSL that assigns a string literal to a numeric 'balance' field — a type mismatch.
-// The reducer assigns the string "NOT_A_NUMBER" to balance (which is schema type: number).
+// DSL whose reducer patch sets a string literal into the numeric 'balance'
+// field — a type mismatch caught by contract validation of the projected entity.
 const TYPE_MISMATCH_DSL = `
 boundary: Account
 contract_path: /accounts
@@ -80,9 +81,9 @@ behaviors:
     emit: AccountCreated
 reducers:
   - on: AccountCreated
-    assign:
-      id: "event.payload.id"
-      balance: "'NOT_A_NUMBER'"
+    patches:
+      - { op: replace, path: /id, value: "event.payload.id" }
+      - { op: replace, path: /balance, value: "'NOT_A_NUMBER'" }
 `;
 
 // A good DSL for sanity check
@@ -106,9 +107,9 @@ behaviors:
     emit: AccountCreated
 reducers:
   - on: AccountCreated
-    assign:
-      id: "event.payload.id"
-      balance: "event.payload.balance"
+    patches:
+      - { op: replace, path: /id, value: "event.payload.id" }
+      - { op: replace, path: /balance, value: "event.payload.balance" }
 `;
 
 describe('schema-runtime-type-mismatch.integration: wrong-typed CEL assignment throws InternalExecutionError', () => {

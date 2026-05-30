@@ -150,8 +150,8 @@ event_catalog:
       value: "payload.value"
 reducers:
   - on: TargetUpdated
-    assign:
-      value: "event.payload.value"
+    patches:
+      - { op: replace, path: /value, value: "event.payload.value" }
 initialization:
   - id: "target-seed-001"
     value: "original"
@@ -184,10 +184,10 @@ event_catalog:
       targetId: "'target-seed-001'"
 reducers:
   - on: SourceCreated
-    assign:
-      id: "event.payload.id"
-      name: "event.payload.name"
-      targetId: "event.payload.targetId"
+    patches:
+      - { op: replace, path: /id, value: "event.payload.id" }
+      - { op: replace, path: /name, value: "event.payload.name" }
+      - { op: replace, path: /targetId, value: "event.payload.targetId" }
 `;
 
 Given('a system with cross-boundary DSL configured', async function (this: SimWorld) {

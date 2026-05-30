@@ -39,48 +39,36 @@ describe('engine/projection', () => {
     });
   });
 
-  describe('projectEvent — reducer assign', () => {
-    it('applies assign expression to state', () => {
+  describe('projectEvent — reducer replace patch', () => {
+    it('applies a replace patch to state', () => {
       const graph = createStateGraph();
       graph.set('agg-1', { status: 'pending' });
       const boundary = makeBoundary({
-        reducers: [{ on: 'StatusChanged', assign: { status: '"active"' } }],
+        reducers: [{ on: 'StatusChanged', patches: [{ op: 'replace', path: '/status', value: '"active"' }] }],
       });
       const event = makeDomainEvent({ type: 'StatusChanged', payload: {} });
       projectEvent({ event, boundary, graph, cel });
       expect(graph.get('agg-1')?.status).toBe('active');
     });
 
-    it('applies nested assign via dot path', () => {
+    it('applies a nested replace patch via JSON pointer (auto-vivifies)', () => {
       const graph = createStateGraph();
       graph.set('agg-1', { meta: { version: 0 } });
       const boundary = makeBoundary({
-        reducers: [{ on: 'Updated', assign: { 'meta.version': '1' } }],
+        reducers: [{ on: 'Updated', patches: [{ op: 'replace', path: '/meta/version', value: '1' }] }],
       });
       const event = makeDomainEvent({ type: 'Updated', payload: {} });
       projectEvent({ event, boundary, graph, cel });
       expect((graph.get('agg-1')?.meta as any)?.version).toBe(1);
     });
-
-    it('throws InternalExecutionError when assign CEL throws', () => {
-      const graph = createStateGraph();
-      graph.set('agg-1', {});
-      const boundary = makeBoundary({
-        reducers: [{ on: 'Ev', assign: { field: 'undefined_ident' } }],
-      });
-      const event = makeDomainEvent({ type: 'Ev', payload: {} });
-      expect(() =>
-        projectEvent({ event, boundary, graph, cel }),
-      ).toThrow(InternalExecutionError);
-    });
   });
 
-  describe('projectEvent — reducer append', () => {
+  describe('projectEvent — reducer append patch', () => {
     it('appends value to existing array', () => {
       const graph = createStateGraph();
       graph.set('agg-1', { items: ['a'] });
       const boundary = makeBoundary({
-        reducers: [{ on: 'ItemAdded', append: { items: '"b"' } }],
+        reducers: [{ on: 'ItemAdded', patches: [{ op: 'append', path: '/items', value: '"b"' }] }],
       });
       const event = makeDomainEvent({ type: 'ItemAdded', payload: {} });
       projectEvent({ event, boundary, graph, cel });
@@ -91,7 +79,7 @@ describe('engine/projection', () => {
       const graph = createStateGraph();
       graph.set('agg-1', {});
       const boundary = makeBoundary({
-        reducers: [{ on: 'Ev', append: { tags: '"first"' } }],
+        reducers: [{ on: 'Ev', patches: [{ op: 'append', path: '/tags', value: '"first"' }] }],
       });
       const event = makeDomainEvent({ type: 'Ev', payload: {} });
       projectEvent({ event, boundary, graph, cel });

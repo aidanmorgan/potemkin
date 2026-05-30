@@ -59,11 +59,7 @@ export interface SecondaryCommandSpec {
 
 export interface ReducerRule {
   readonly on: string;                                // event catalog key
-  readonly assign?: Record<string, string>;           // dot-path → CEL expression
-  readonly append?: Record<string, string>;           // array path → CEL expression
-  /** Assign every value from a CEL expression returning a map (shallow merge). */
-  readonly assignAll?: string;
-  /** New-format patch list: { op, path, value }[]. Values are CEL expressions. */
+  /** Patch list: { op, path, value }[]. Values are CEL expressions. */
   readonly patches?: readonly ReducerPatchOp[];
 }
 

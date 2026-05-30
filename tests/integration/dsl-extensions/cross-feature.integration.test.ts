@@ -53,8 +53,8 @@ behaviors:
     emit: WidgetUpdated
 reducers:
   - on: WidgetUpdated
-    assign:
-      status: "'UPDATED'"
+    patches:
+      - { op: replace, path: /status, value: "'UPDATED'" }
 `,
     });
     expect(result.status).toBe(200);
@@ -95,8 +95,8 @@ behaviors:
     emit: WidgetUpdated
 reducers:
   - on: WidgetUpdated
-    assign:
-      status: "'UPDATED'"
+    patches:
+      - { op: replace, path: /status, value: "'UPDATED'" }
 `,
     });
     expect(result.status).toBe(422);
@@ -150,8 +150,8 @@ behaviors:
     postcondition: "state.transactions.all(t, t.amount > 0)"
 reducers:
   - on: TxAdded
-    append:
-      transactions: "{'amount': event.payload.amount}"
+    patches:
+      - { op: append, path: /transactions, value: "{'amount': event.payload.amount}" }
 `,
     });
     expect(result.status).toBe(200);
@@ -184,8 +184,8 @@ behaviors:
     postcondition: "state.transactions.all(t, t.amount > 0)"
 reducers:
   - on: TxAdded
-    append:
-      transactions: "{'amount': event.payload.amount}"
+    patches:
+      - { op: append, path: /transactions, value: "{'amount': event.payload.amount}" }
 `,
     });
     // amount is -10, postcondition fails
@@ -236,8 +236,8 @@ behaviors:
         payload: {}
 reducers:
   - on: WidgetUpdated
-    assign:
-      status: "'UPDATED'"
+    patches:
+      - { op: replace, path: /status, value: "'UPDATED'" }
 `,
       extraDslModules: [
         {
@@ -258,8 +258,8 @@ behaviors:
     emit: ReviewCreated
 reducers:
   - on: ReviewCreated
-    assign:
-      reviewed: "true"
+    patches:
+      - { op: replace, path: /reviewed, value: "true" }
 `,
         },
       ],
@@ -308,8 +308,8 @@ behaviors:
         payload: {}
 reducers:
   - on: WidgetUpdated
-    assign:
-      status: "'UPDATED'"
+    patches:
+      - { op: replace, path: /status, value: "'UPDATED'" }
 `,
       extraDslModules: [
         {
@@ -330,8 +330,8 @@ behaviors:
     emit: ReviewCreated
 reducers:
   - on: ReviewCreated
-    assign:
-      reviewed: "true"
+    patches:
+      - { op: replace, path: /reviewed, value: "true" }
 `,
         },
       ],
@@ -386,11 +386,11 @@ behaviors:
         emit: LoanRepaid
 reducers:
   - on: LoanRepaid
-    assign:
-      balance: "state.balance - event.payload.amount"
+    patches:
+      - { op: replace, path: /balance, value: "state.balance - event.payload.amount" }
   - on: LoanSettled
-    assign:
-      status: "'SETTLED'"
+    patches:
+      - { op: replace, path: /status, value: "'SETTLED'" }
 `,
     });
     expect(result.status).toBe(200);
@@ -463,11 +463,11 @@ behaviors:
         payload: {}
 reducers:
   - on: LoanRepaid
-    assign:
-      balance: "state.balance - event.payload.amount"
+    patches:
+      - { op: replace, path: /balance, value: "state.balance - event.payload.amount" }
   - on: NotificationQueued
-    assign:
-      notified: "true"
+    patches:
+      - { op: replace, path: /notified, value: "true" }
 `,
       extraDslModules: [
         {
@@ -488,8 +488,8 @@ behaviors:
     emit: AuditCreated
 reducers:
   - on: AuditCreated
-    assign:
-      logged: "true"
+    patches:
+      - { op: replace, path: /logged, value: "true" }
 `,
         },
       ],
@@ -547,9 +547,9 @@ behaviors:
     emit: WidgetUpdated
 reducers:
   - on: WidgetUpdated
-    assign:
-      label: "event.payload.label"
-      balance: "state.balance - event.payload.remaining"
+    patches:
+      - { op: replace, path: /label, value: "event.payload.label" }
+      - { op: replace, path: /balance, value: "state.balance - event.payload.remaining" }
 `,
     });
     expect(result.status).toBe(200);

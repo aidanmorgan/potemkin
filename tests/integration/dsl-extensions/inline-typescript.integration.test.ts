@@ -68,8 +68,8 @@ behaviors:
     emit: ${emitType}
 reducers:
   - on: WidgetUpdated
-    assign:
-      status: "'UPDATED'"
+    patches:
+      - { op: replace, path: /status, value: "'UPDATED'" }
 `;
 }
 
@@ -107,8 +107,8 @@ behaviors:
     emit: WidgetUpdated
 reducers:
   - on: WidgetUpdated
-    assign:
-      status: "'UPDATED'"
+    patches:
+      - { op: replace, path: /status, value: "'UPDATED'" }
 `,
     });
     expect(result.status).toBe(200);
@@ -144,8 +144,8 @@ behaviors:
     emit: WidgetUpdated
 reducers:
   - on: WidgetUpdated
-    assign:
-      status: "'UPDATED'"
+    patches:
+      - { op: replace, path: /status, value: "'UPDATED'" }
 `,
     });
     // Script returns false → behavior doesn't match → 422
@@ -188,8 +188,8 @@ behaviors:
     emit: WidgetUpdated
 reducers:
   - on: WidgetUpdated
-    assign:
-      computed: "event.payload.computed"
+    patches:
+      - { op: replace, path: /computed, value: "event.payload.computed" }
 `,
     });
     expect(result.status).toBe(200);
@@ -233,8 +233,8 @@ behaviors:
     emit: WidgetUpdated
 reducers:
   - on: WidgetUpdated
-    assign:
-      generatedId: "event.payload.generatedId"
+    patches:
+      - { op: replace, path: /generatedId, value: "event.payload.generatedId" }
 `,
     });
     expect(result.status).toBe(200);
@@ -273,8 +273,8 @@ behaviors:
     emit: WidgetUpdated
 reducers:
   - on: WidgetUpdated
-    assign:
-      lastTs: "event.payload.ts"
+    patches:
+      - { op: replace, path: /lastTs, value: "event.payload.ts" }
 `,
     });
     expect(result.status).toBe(200);
@@ -321,8 +321,8 @@ behaviors:
     emit: WidgetUpdated
 reducers:
   - on: WidgetUpdated
-    assign:
-      status: "'UPDATED'"
+    patches:
+      - { op: replace, path: /status, value: "'UPDATED'" }
 `,
     });
     expect(result.status).toBe(500);
@@ -370,8 +370,8 @@ behaviors:
     emit: WidgetUpdated
 reducers:
   - on: WidgetUpdated
-    assign:
-      status: "'UPDATED'"
+    patches:
+      - { op: replace, path: /status, value: "'UPDATED'" }
 `,
     });
     expect(result.status).toBe(500);
@@ -421,8 +421,8 @@ behaviors:
     emit: WidgetUpdated
 reducers:
   - on: WidgetUpdated
-    assign:
-      status: "'UPDATED'"
+    patches:
+      - { op: replace, path: /status, value: "'UPDATED'" }
 `,
     });
     // Script returns false (require fails) → condition is false → 422 no-match
@@ -462,8 +462,8 @@ behaviors:
     emit: WidgetUpdated
 reducers:
   - on: WidgetUpdated
-    assign:
-      status: "'UPDATED'"
+    patches:
+      - { op: replace, path: /status, value: "'UPDATED'" }
 `,
     });
     // process is undefined in sandbox → condition returns false → 422
@@ -503,8 +503,8 @@ behaviors:
     emit: WidgetUpdated
 reducers:
   - on: WidgetUpdated
-    assign:
-      status: "'UPDATED'"
+    patches:
+      - { op: replace, path: /status, value: "'UPDATED'" }
 `,
     });
     expect(bootError).toBeInstanceOf(BootError);
@@ -537,8 +537,8 @@ behaviors:
     emit: WidgetUpdated
 reducers:
   - on: WidgetUpdated
-    assign:
-      status: "'UPDATED'"
+    patches:
+      - { op: replace, path: /status, value: "'UPDATED'" }
 `,
     });
     expect(bootError).toBeInstanceOf(BootError);
@@ -547,11 +547,12 @@ reducers:
 });
 
 // ---------------------------------------------------------------------------
-// Test I: ts: reference in reducer position → BOOT_ERR_SCRIPT_IN_REDUCER
+// Test I: ts: in a reducer patch value → boot error (REQ-71)
+// Reducer-phase values are CEL only; a ts: script sentinel is rejected at boot.
 // ---------------------------------------------------------------------------
 
-describe('REQ-71: ts: in reducer → boot error', () => {
-  it('halts boot with BOOT_ERR_SCRIPT_IN_REDUCER when ts: sentinel is in reducer assign', async () => {
+describe('REQ-71: ts: script in a reducer patch value → boot error', () => {
+  it('halts boot with BOOT_ERR_SCRIPT_IN_REDUCER when a reducer patch value uses a ts: sentinel', async () => {
     const bootError = await expectBootError({
       boundaryName: 'Widget',
       contractPath: '/widgets/{id}',
@@ -562,7 +563,7 @@ fallback_override: false
 scripts:
   - name: computeValue
     code: |
-      export default function(ctx) { return 42; }
+      export default function(ctx) { return 'HACKED'; }
 event_catalog:
   - type: WidgetUpdated
     payload_template:
@@ -575,8 +576,8 @@ behaviors:
     emit: WidgetUpdated
 reducers:
   - on: WidgetUpdated
-    assign:
-      value: "ts:computeValue"
+    patches:
+      - { op: replace, path: /status, value: "ts:computeValue" }
 `,
     });
     expect(bootError).toBeInstanceOf(BootError);
@@ -620,8 +621,8 @@ behaviors:
     postcondition: "ts:checkBalance"
 reducers:
   - on: WidgetRepaid
-    assign:
-      balance: "state.balance - event.payload.amount"
+    patches:
+      - { op: replace, path: /balance, value: "state.balance - event.payload.amount" }
 `,
     });
     // balance goes to -150, postcondition script returns false → abort
@@ -660,8 +661,8 @@ behaviors:
     postcondition: "ts:checkBalance"
 reducers:
   - on: WidgetRepaid
-    assign:
-      balance: "state.balance - event.payload.amount"
+    patches:
+      - { op: replace, path: /balance, value: "state.balance - event.payload.amount" }
 `,
     });
     expect(result.status).toBe(200);
@@ -704,8 +705,8 @@ behaviors:
     emit: WidgetUpdated
 reducers:
   - on: WidgetUpdated
-    assign:
-      capturedBalance: "event.payload.capturedBalance"
+    patches:
+      - { op: replace, path: /capturedBalance, value: "event.payload.capturedBalance" }
 `;
 
     const [r1, r2] = await Promise.all([
@@ -772,8 +773,8 @@ behaviors:
     emit: WidgetUpdated
 reducers:
   - on: WidgetUpdated
-    assign:
-      band: "event.payload.band"
+    patches:
+      - { op: replace, path: /band, value: "event.payload.band" }
 `,
     });
     expect(result.status).toBe(200);

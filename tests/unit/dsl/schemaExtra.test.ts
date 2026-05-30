@@ -29,7 +29,7 @@ const fullBase = {
   behaviors: [
     { name: 'create', match: { intent: 'creation', condition: 'true' }, emit: 'Ev' },
   ],
-  reducers: [{ on: 'Ev', assign: { status: '"active"' } }],
+  reducers: [{ on: 'Ev', patches: [{ op: 'replace', path: '/status', value: '"active"' }] }],
   event_catalog: [{ type: 'Ev', payload_template: {} }],
 };
 
@@ -68,40 +68,53 @@ describe('dsl/schema — additional branch coverage', () => {
 
   // ── requireStringMixedMap ───────────────────────────────────────────────────
 
-  describe('reducer append validation', () => {
-    it('throws when append field value is invalid (not string or object)', () => {
+  describe('reducer patch validation', () => {
+    it('rejects the removed append key with BOOT_ERR_REMOVED_SYNTAX', () => {
       const raw = {
         ...minimalBase,
         behaviors: [],
-        reducers: [{ on: 'Ev', append: { list: 123 } }],
+        reducers: [{ on: 'Ev', append: { list: '"item"' } }],
+        event_catalog: [{ type: 'Ev', payload_template: {} }],
+      };
+      expect(() => validateBoundaryConfig(raw)).toThrow(BootError);
+      try {
+        validateBoundaryConfig(raw);
+      } catch (e) {
+        expect((e as BootError).code).toBe('BOOT_ERR_REMOVED_SYNTAX');
+      }
+    });
+
+    it('throws when patches is not an array', () => {
+      const raw = {
+        ...minimalBase,
+        behaviors: [],
+        reducers: [{ on: 'Ev', patches: 'not-an-array' }],
         event_catalog: [{ type: 'Ev', payload_template: {} }],
       };
       expect(() => validateBoundaryConfig(raw)).toThrow(BootError);
     });
 
-    it('throws when append is not an object', () => {
+    it('throws when a patch op is invalid', () => {
       const raw = {
         ...minimalBase,
         behaviors: [],
-        reducers: [{ on: 'Ev', append: 'not-an-object' }],
+        reducers: [{ on: 'Ev', patches: [{ op: 'bogus', path: '/list' }] }],
         event_catalog: [{ type: 'Ev', payload_template: {} }],
       };
       expect(() => validateBoundaryConfig(raw)).toThrow(BootError);
     });
 
-    it('serialises object append values as JSON strings', () => {
+    it('parses an append patch with a CEL value', () => {
       const raw = {
         ...minimalBase,
         behaviors: [],
         reducers: [
-          { on: 'Ev', append: { list: { type: 'repayment', amount: 100 } } },
+          { on: 'Ev', patches: [{ op: 'append', path: '/list', value: 'event.payload.item' }] },
         ],
         event_catalog: [{ type: 'Ev', payload_template: {} }],
       };
       const config = validateBoundaryConfig(raw);
-      const appendVal = config.reducers[0]?.append?.['list'];
-      expect(typeof appendVal).toBe('string');
-      expect(JSON.parse(appendVal!)).toMatchObject({ type: 'repayment', amount: 100 });
+      expect(config.reducers[0]?.patches?.[0]).toEqual({ op: 'append', path: '/list', value: 'event.payload.item' });
     });
   });
 
@@ -277,7 +290,7 @@ describe('dsl/schema — additional branch coverage', () => {
         boundary: 'B',
         contract_path: '/b',
         behaviors: [],
-        reducers: [{ on: 'UnknownEvent', assign: { x: '"y"' } }],
+        reducers: [{ on: 'UnknownEvent', patches: [{ op: 'replace', path: '/x', value: '"y"' }] }],
         event_catalog: [{ type: 'KnownEvent', payload_template: {} }],
       };
       try {

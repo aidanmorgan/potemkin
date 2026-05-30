@@ -89,11 +89,11 @@ describe('schema/dslStaticChecker', () => {
     expect(errors.some(e => e.code === 'DSL_BOUNDARY_UNKNOWN')).toBe(true);
   });
 
-  it('returns DSL_PATH_UNKNOWN for reducer assign with unknown path', async () => {
+  it('returns DSL_PATH_UNKNOWN for reducer patch with unknown path', async () => {
     const dsl = makeCompiledDsl([
       {
         ...minimalBoundary,
-        reducers: [{ on: 'Ev', assign: { unknownField: '"val"' } }],
+        reducers: [{ on: 'Ev', patches: [{ op: 'replace', path: '/unknownField', value: '"val"' }] }],
         eventCatalog: [{ type: 'Ev', payloadTemplate: {} }],
       },
     ]);
@@ -102,11 +102,11 @@ describe('schema/dslStaticChecker', () => {
     expect(errors.some(e => e.code === 'DSL_PATH_UNKNOWN')).toBe(true);
   });
 
-  it('returns DSL_PATH_UNKNOWN for reducer assign CEL with unknown state path', async () => {
+  it('returns DSL_PATH_UNKNOWN for reducer patch CEL with unknown state path', async () => {
     const dsl = makeCompiledDsl([
       {
         ...minimalBoundary,
-        reducers: [{ on: 'Ev', assign: { status: 'state.badPath' } }],
+        reducers: [{ on: 'Ev', patches: [{ op: 'replace', path: '/status', value: 'state.badPath' }] }],
         eventCatalog: [{ type: 'Ev', payloadTemplate: {} }],
       },
     ]);
@@ -115,11 +115,11 @@ describe('schema/dslStaticChecker', () => {
     expect(errors.some(e => e.code === 'DSL_PATH_UNKNOWN')).toBe(true);
   });
 
-  it('returns DSL_PATH_UNKNOWN for reducer append with unknown path', async () => {
+  it('returns DSL_PATH_UNKNOWN for reducer append patch with unknown path', async () => {
     const dsl = makeCompiledDsl([
       {
         ...minimalBoundary,
-        reducers: [{ on: 'Ev', append: { badArr: '"val"' } }],
+        reducers: [{ on: 'Ev', patches: [{ op: 'append', path: '/badArr', value: '"val"' }] }],
         eventCatalog: [{ type: 'Ev', payloadTemplate: {} }],
       },
     ]);

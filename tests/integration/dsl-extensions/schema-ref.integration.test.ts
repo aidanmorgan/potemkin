@@ -50,8 +50,8 @@ behaviors:
     emit: WidgetPaid
 reducers:
   - on: WidgetPaid
-    assign:
-      amount: "event.payload.amount"
+    patches:
+      - { op: replace, path: /amount, value: "event.payload.amount" }
 `,
     });
     expect(result.status).toBe(200);
@@ -101,8 +101,8 @@ behaviors:
     emit: WidgetPaid
 reducers:
   - on: WidgetPaid
-    assign:
-      amount: "event.payload.amount"
+    patches:
+      - { op: replace, path: /amount, value: "event.payload.amount" }
 `,
     });
     // Should fail validation
@@ -148,8 +148,8 @@ behaviors:
     emit: WidgetPaid
 reducers:
   - on: WidgetPaid
-    assign:
-      status: "'PAID'"
+    patches:
+      - { op: replace, path: /status, value: "'PAID'" }
 `,
     });
     expect(result.status).toBe(500);
@@ -182,8 +182,8 @@ behaviors:
     emit: WidgetPaid
 reducers:
   - on: WidgetPaid
-    assign:
-      status: "'PAID'"
+    patches:
+      - { op: replace, path: /status, value: "'PAID'" }
 `,
     });
     expect(bootError).toBeInstanceOf(BootError);
@@ -222,8 +222,8 @@ behaviors:
     emit: WidgetUpdated
 reducers:
   - on: WidgetUpdated
-    assign:
-      weirdValue: "event.payload.weirdValue"
+    patches:
+      - { op: replace, path: /weirdValue, value: "event.payload.weirdValue" }
 `,
     });
     expect(result.status).toBe(200);
@@ -280,8 +280,8 @@ behaviors:
     emit: PaymentMade
 reducers:
   - on: PaymentMade
-    assign:
-      lastPaymentAmount: "event.payload.amount"
+    patches:
+      - { op: replace, path: /lastPaymentAmount, value: "event.payload.amount" }
 `,
     });
     expect(result.status).toBe(200);

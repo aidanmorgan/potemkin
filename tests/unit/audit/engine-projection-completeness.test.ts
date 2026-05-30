@@ -24,7 +24,7 @@ it('CONTRACT: validator.validateEntity is called after successful reducer execut
   graph.set('agg-1', { status: 'pending' });
 
   const boundary = makeBoundary({
-    reducers: [{ on: 'StatusChanged', assign: { status: '"active"' } }],
+    reducers: [{ on: 'StatusChanged', patches: [{ op: 'replace', path: '/status', value: '"active"' }] }],
   });
 
   projectEvent({
@@ -86,34 +86,6 @@ it('CONTRACT: atomic swap (graph.set) occurs after validateEntity (write-after-v
   expect(graph.get('agg-1')?.status).toBe('old');
 });
 
-// ── AUDIT GAP: reducer assign with CEL returning undefined ────────────────────
-
-it('FIX N3: reducer assign where CEL returns undefined throws InternalExecutionError (JsonObject contract enforced)', () => {
-  // projection.ts N3 fix: explicit undefined guard added. CEL returning undefined throws
-  // InternalExecutionError with SCHEMA_TYPE_MISMATCH code, preventing JsonObject corruption.
-  const undefinedCel = {
-    compile: (e: string) => ({ source: e }),
-    evaluate: () => undefined,
-  } as any;
-
-  const graph = createStateGraph();
-  graph.set('agg-1', { existingField: 'value' });
-
-  const boundary = makeBoundary({
-    reducers: [{ on: 'Ev', assign: { newField: 'undefinedExpr' } }],
-  });
-
-  // Fixed: should now throw InternalExecutionError instead of silently setting undefined
-  expect(() =>
-    projectEvent({
-      event: makeDomainEvent({ type: 'Ev', payload: {} }),
-      boundary,
-      graph,
-      cel: undefinedCel,
-    }),
-  ).toThrow(InternalExecutionError);
-});
-
 // ── VERIFIED: GenericUpdateEvent deep-merges payload ─────────────────────────
 
 it('CONTRACT: GenericUpdateEvent deep-merges without overwriting unrelated keys', () => {
@@ -152,18 +124,16 @@ it('CONTRACT: BaselineEntityCreatedEvent replaces entire state (no merge)', () =
   expect(state).not.toHaveProperty('keep');
 });
 
-// ── VERIFIED: reducer assign CEL error throws InternalExecutionError ──────────
+// ── VERIFIED: reducer patch applies resolved CEL value ────────────────────────
 
-it('CONTRACT: reducer assign CEL error throws InternalExecutionError (not silently skipped)', () => {
-  // Unlike patternMatcher where CEL errors mean no-match, in projection CEL errors throw.
+it('CONTRACT: reducer replace patch applies the resolved CEL value to state', () => {
   const graph = createStateGraph();
-  graph.set('agg-1', {});
+  graph.set('agg-1', { field: 'old' });
   const boundary = makeBoundary({
-    reducers: [{ on: 'Ev', assign: { field: 'undefined_identifier' } }],
+    reducers: [{ on: 'Ev', patches: [{ op: 'replace', path: '/field', value: '"resolved"' }] }],
   });
-  expect(() =>
-    projectEvent({ event: makeDomainEvent({ type: 'Ev', payload: {} }), boundary, graph, cel }),
-  ).toThrow(InternalExecutionError);
+  projectEvent({ event: makeDomainEvent({ type: 'Ev', payload: {} }), boundary, graph, cel });
+  expect(graph.get('agg-1')?.field).toBe('resolved');
 });
 
 // ── AUDIT GAP: no matching reducer — entity left as-is (not an error) ─────────

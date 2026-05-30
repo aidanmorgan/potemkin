@@ -3,9 +3,6 @@
  *
  * Uncovered lines:
  *  - 49: non-Error thrown in projectEvent span catch (String(err) branch)
- *  - 104: non-Error CEL throw in assign reducer (String(err) branch)
- *  - 129: InternalExecutionError on append CEL evaluation failure
- *  - 130: non-Error CEL throw in append reducer (String(err) branch)
  *  - 151: validator.validateEntity branch (validator is supplied)
  *  - 177: parsePath returns empty array branch (unreachable — kept for documentation)
  *  - 183: `return; // Can't navigate further` inside setByDotPath loop when current is non-object
@@ -19,42 +16,22 @@ import { projectEvent, setByDotPath, getByDotPath } from '../../../src/engine/pr
 import { createStateGraph } from '../../../src/stategraph/graph';
 import { createCelEvaluator } from '../../../src/cel/evaluator';
 import { InternalExecutionError } from '../../../src/errors';
-import type { CelEvaluator } from '../../../src/cel/evaluator';
 import type { ContractValidator } from '../../../src/contract/validator';
 import { makeBoundary, makeDomainEvent } from '../_helpers';
 
 const cel = createCelEvaluator();
 
-// ── Line 129: append CEL evaluation failure ──────────────────────────────────
-
 describe('projection.ts additional coverage', () => {
-  describe('append CEL evaluation failure (line 129)', () => {
-    it('throws InternalExecutionError when append CEL expression throws', () => {
+  describe('append patch applies appended value (positive)', () => {
+    it('appends the resolved value to the target array', () => {
       const graph = createStateGraph();
-      graph.set('agg-1', { items: [] });
+      graph.set('agg-1', { items: ['a'] });
       const boundary = makeBoundary({
-        reducers: [{ on: 'ItemAdded', append: { items: 'undefined_ident_append' } }],
+        reducers: [{ on: 'ItemAdded', patches: [{ op: 'append', path: '/items', value: '"b"' }] }],
       });
       const event = makeDomainEvent({ type: 'ItemAdded', payload: {} });
-      expect(() =>
-        projectEvent({ event, boundary, graph, cel }),
-      ).toThrow(InternalExecutionError);
-    });
-
-    it('InternalExecutionError message mentions the append path', () => {
-      const graph = createStateGraph();
-      graph.set('agg-1', { tags: [] });
-      const boundary = makeBoundary({
-        reducers: [{ on: 'Tagged', append: { tags: 'undefined_cel_fn()' } }],
-      });
-      const event = makeDomainEvent({ type: 'Tagged', payload: {} });
-      try {
-        projectEvent({ event, boundary, graph, cel });
-        fail('expected InternalExecutionError');
-      } catch (err) {
-        expect(err).toBeInstanceOf(InternalExecutionError);
-        expect((err as InternalExecutionError).message).toContain('tags');
-      }
+      projectEvent({ event, boundary, graph, cel });
+      expect(graph.get('agg-1')?.items).toEqual(['a', 'b']);
     });
   });
 
@@ -71,7 +48,7 @@ describe('projection.ts additional coverage', () => {
       };
 
       const boundary = makeBoundary({
-        reducers: [{ on: 'StatusChanged', assign: { status: '"active"' } }],
+        reducers: [{ on: 'StatusChanged', patches: [{ op: 'replace', path: '/status', value: '"active"' }] }],
       });
       const event = makeDomainEvent({ type: 'StatusChanged', payload: {} });
 
@@ -97,7 +74,7 @@ describe('projection.ts additional coverage', () => {
       };
 
       const boundary = makeBoundary({
-        reducers: [{ on: 'StatusChanged', assign: { status: '"active"' } }],
+        reducers: [{ on: 'StatusChanged', patches: [{ op: 'replace', path: '/status', value: '"active"' }] }],
       });
       const event = makeDomainEvent({ type: 'StatusChanged', payload: {} });
 
@@ -237,7 +214,7 @@ describe('projection.ts additional coverage', () => {
       };
 
       const boundary = makeBoundary({
-        reducers: [{ on: 'StatusChanged', assign: { status: '"active"' } }],
+        reducers: [{ on: 'StatusChanged', patches: [{ op: 'replace', path: '/status', value: '"active"' }] }],
       });
       const event = makeDomainEvent({ type: 'StatusChanged', payload: {} });
 
@@ -251,67 +228,6 @@ describe('projection.ts additional coverage', () => {
           validator: mockValidator as ContractValidator,
         }),
       ).toThrow('non-error-string-from-validator');
-    });
-  });
-
-  // ── Non-Error throws in projectEvent (lines 104, 130) ───────────────────────
-
-  describe('non-Error throws in projectEvent — String(err) branches (lines 104, 130)', () => {
-    it('assign CEL throws non-Error (string) → InternalExecutionError uses String(err) (line 104)', () => {
-      const graph = createStateGraph();
-      graph.set('agg-1', { val: 'old' });
-
-      // Create a mock cel that throws a string (non-Error) for evaluate
-      const mockCel: CelEvaluator = {
-        ...cel,
-        evaluate: (expr: string, _ctx: unknown, _phase: unknown) => {
-          // Only throw for the CEL expressions in reducers (not for other phases)
-          throw 'non-error-string-from-cel';
-        },
-      };
-
-      const boundary = makeBoundary({
-        reducers: [{ on: 'ValueChanged', assign: { val: '"new"' } }],
-      });
-      const event = makeDomainEvent({ type: 'ValueChanged', payload: {} });
-
-      let caughtError: unknown;
-      try {
-        projectEvent({ event, boundary, graph, cel: mockCel });
-      } catch (err) {
-        caughtError = err;
-      }
-
-      expect(caughtError).toBeInstanceOf(InternalExecutionError);
-      // String(err) = 'non-error-string-from-cel' should appear in the message
-      expect((caughtError as InternalExecutionError).message).toContain('non-error-string-from-cel');
-    });
-
-    it('append CEL throws non-Error (string) → InternalExecutionError uses String(err) (line 130)', () => {
-      const graph = createStateGraph();
-      graph.set('agg-1', { tags: [] });
-
-      const mockCel: CelEvaluator = {
-        ...cel,
-        evaluate: (_expr: string, _ctx: unknown, _phase: unknown) => {
-          throw 'non-error-append-fail';
-        },
-      };
-
-      const boundary = makeBoundary({
-        reducers: [{ on: 'TagAdded', append: { tags: '"newtag"' } }],
-      });
-      const event = makeDomainEvent({ type: 'TagAdded', payload: {} });
-
-      let caughtError: unknown;
-      try {
-        projectEvent({ event, boundary, graph, cel: mockCel });
-      } catch (err) {
-        caughtError = err;
-      }
-
-      expect(caughtError).toBeInstanceOf(InternalExecutionError);
-      expect((caughtError as InternalExecutionError).message).toContain('non-error-append-fail');
     });
   });
 });

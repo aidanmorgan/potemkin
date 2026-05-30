@@ -18,7 +18,7 @@ const minimalRaw = {
   behaviors: [
     { name: 'create', match: { intent: 'creation', condition: 'true' }, emit: 'LoanCreated' },
   ],
-  reducers: [{ on: 'LoanCreated', assign: { status: '"active"' } }],
+  reducers: [{ on: 'LoanCreated', patches: [{ op: 'replace', path: '/status', value: '"active"' }] }],
   event_catalog: [{ type: 'LoanCreated', payload_template: {} }],
 };
 
@@ -33,8 +33,10 @@ behaviors:
     emit: LoanCreated
 reducers:
   - on: LoanCreated
-    assign:
-      status: '"active"'
+    patches:
+      - op: replace
+        path: /status
+        value: '"active"'
 event_catalog:
   - type: LoanCreated
     payload_template: {}
@@ -316,25 +318,55 @@ describe('DSL §7.2 – Behaviors Block', () => {
 // ---------------------------------------------------------------------------
 
 describe('DSL §7.3 – Reducers Block', () => {
-  it('accepts a reducer with assign', () => {
+  it('accepts a reducer with a replace patch', () => {
     const cfg = validateBoundaryConfig(minimalRaw);
     expect(cfg.reducers[0].on).toBe('LoanCreated');
-    expect(cfg.reducers[0].assign).toEqual({ status: '"active"' });
+    expect(cfg.reducers[0].patches).toEqual([
+      { op: 'replace', path: '/status', value: '"active"' },
+    ]);
   });
 
-  it('accepts a reducer with append (object value serialised to JSON string)', () => {
+  it('accepts a reducer with an append patch', () => {
     const cfg = validateBoundaryConfig({
       ...minimalRaw,
-      reducers: [{ on: 'LoanCreated', append: { items: { id: 'command.id' } } }],
+      reducers: [{ on: 'LoanCreated', patches: [{ op: 'append', path: '/items', value: 'event.payload.item' }] }],
     });
-    expect(cfg.reducers[0].append?.items).toBe(JSON.stringify({ id: 'command.id' }));
+    expect(cfg.reducers[0].patches?.[0]).toEqual({ op: 'append', path: '/items', value: 'event.payload.item' });
+  });
+
+  it('rejects a reducer that carries the removed assign key with BOOT_ERR_REMOVED_SYNTAX', () => {
+    let caught: BootError | undefined;
+    try {
+      validateBoundaryConfig({
+        ...minimalRaw,
+        reducers: [{ on: 'LoanCreated', assign: { status: '"active"' } }],
+      });
+    } catch (e) {
+      caught = e as BootError;
+    }
+    expect(caught).toBeInstanceOf(BootError);
+    expect(caught?.code).toBe('BOOT_ERR_REMOVED_SYNTAX');
+  });
+
+  it('rejects a reducer that carries the removed append key with BOOT_ERR_REMOVED_SYNTAX', () => {
+    let caught: BootError | undefined;
+    try {
+      validateBoundaryConfig({
+        ...minimalRaw,
+        reducers: [{ on: 'LoanCreated', append: { items: 'event.payload.item' } }],
+      });
+    } catch (e) {
+      caught = e as BootError;
+    }
+    expect(caught).toBeInstanceOf(BootError);
+    expect(caught?.code).toBe('BOOT_ERR_REMOVED_SYNTAX');
   });
 
   it('throws BootError when reducer references event not in event_catalog', () => {
     expect(() =>
       validateBoundaryConfig({
         ...minimalRaw,
-        reducers: [{ on: 'UnknownEvent', assign: { status: '"x"' } }],
+        reducers: [{ on: 'UnknownEvent', patches: [{ op: 'replace', path: '/status', value: '"x"' }] }],
       }),
     ).toThrow(BootError);
   });
@@ -343,7 +375,7 @@ describe('DSL §7.3 – Reducers Block', () => {
     try {
       validateBoundaryConfig({
         ...minimalRaw,
-        reducers: [{ on: 'NoSuchEvent', assign: { x: '1' } }],
+        reducers: [{ on: 'NoSuchEvent', patches: [{ op: 'replace', path: '/x', value: '1' }] }],
       });
       fail('should throw');
     } catch (e) {
@@ -351,13 +383,12 @@ describe('DSL §7.3 – Reducers Block', () => {
     }
   });
 
-  it('accepts reducer without assign or append (both optional)', () => {
+  it('accepts reducer without patches (optional)', () => {
     const cfg = validateBoundaryConfig({
       ...minimalRaw,
       reducers: [{ on: 'LoanCreated' }],
     });
-    expect(cfg.reducers[0].assign).toBeUndefined();
-    expect(cfg.reducers[0].append).toBeUndefined();
+    expect(cfg.reducers[0].patches).toBeUndefined();
   });
 });
 
@@ -424,8 +455,10 @@ behaviors:
     emit: LoanCreated
 reducers:
   - on: LoanCreated
-    assign:
-      status: '"active"'
+    patches:
+      - op: replace
+        path: /status
+        value: '"active"'
 `;
     const cfg = parseDslYaml(yamlWithAnchors);
     expect(cfg.eventCatalog[0].type).toBe('LoanCreated');
