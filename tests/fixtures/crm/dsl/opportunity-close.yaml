@@ -55,13 +55,23 @@ behaviors:
 reducers:
   - on: OpportunityWon
     patches:
-      - { op: replace, path: /stage, value: "${'WON'}" }
-      - { op: replace, path: /closedAt, value: "${event.payload.closedAt}" }
+      - op: replace
+        path: /stage
+        value: "${'WON'}"
+      - op: replace
+        path: /closedAt
+        value: "${event.payload.closedAt}"
 
   - on: OpportunityLost
     patches:
-      - { op: replace, path: /stage, value: "${'LOST'}" }
-      - { op: replace, path: /closedAt, value: "${event.payload.closedAt}" }
-      - { op: replace, path: /closureReason, value: "${event.payload.closureReason}" }
+      - op: replace
+        path: /stage
+        value: "${'LOST'}"
+      - op: replace
+        path: /closedAt
+        value: "${event.payload.closedAt}"
+      - op: replace
+        path: /closureReason
+        value: "${event.payload.closureReason}"
 
 initialization: []
