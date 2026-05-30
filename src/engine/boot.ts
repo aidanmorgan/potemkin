@@ -28,6 +28,9 @@ import { deriveSchemasFromOpenApi } from '../schema/fromOpenApi.js';
 import { staticCheckDsl } from '../schema/dslStaticChecker.js';
 import { createDerivedProjectionRegistry, applyEventToDerivedProjections } from '../projections/engine.js';
 import { createPluginControlClient } from '../lifecycle/pluginControlClient.js';
+import { scanTypescriptReducers, type TypescriptConfig } from '../dsl/typescriptScanner.js';
+import { validateReducerConflictsFromDsl } from '../dsl/reducerConflict.js';
+import { createTsReducerRegistry, type TsReducerRegistry } from './tsReducerRegistry.js';
 
 export interface BootInput {
   readonly openapi: OpenApiDoc;
@@ -53,6 +56,14 @@ export interface BootInput {
     readonly url: string;
     readonly timeoutMs?: number;
   };
+  /**
+   * Optional TypeScript-reducer scan config for the in-memory boot path
+   * (when `compiledDsl` is supplied directly rather than a potemkin.yaml).
+   * The on-disk path reads this from potemkin.yaml's typescript: block.
+   */
+  readonly typescript?: import('../dsl/typescriptScanner.js').TypescriptConfig;
+  /** Working directory for resolving `typescript.scan[]` globs on the in-memory path. */
+  readonly typescriptCwd?: string;
 }
 
 export interface BootedSystem {
@@ -91,6 +102,12 @@ export interface BootedSystem {
    * Used by the graceful-shutdown wrapper to send a /shutdown notification.
    */
   readonly pluginControl?: PluginControlClient;
+  /**
+   * TypeScript-reducer registry. Projection consults this FIRST for a
+   * (boundary, event) before falling back to YAML patches (C3). Empty when no
+   * typescript: block was configured. Atomic-swapped by the watcher (C6).
+   */
+  readonly tsReducerRegistry: TsReducerRegistry;
 }
 
 /** Header names that indicate an optimistic-concurrency precondition. */
@@ -160,6 +177,10 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
     const phaseStart2 = Date.now();
 
     let dsl: CompiledDsl;
+    // Captured from the on-disk loader path for the TypeScript-reducer scan
+    // (Step 2b) and the optional watcher (Step 11).
+    let loadedConfig: import('../dsl/configLoader.js').LoadedConfig | undefined;
+    let configDir: string | undefined;
     if (input.compiledDsl) {
       bootLog.info(
         { step: 'dsl_compile', source: 'compiledDsl', boundaryCount: input.compiledDsl.boundaries.length },
@@ -174,11 +195,13 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       // Lazy import to keep the loader's tinyglobby/fs deps off the cold path
       // when callers supply `compiledDsl` directly.
       const { loadPotemkinConfig } = await import('../dsl/configLoader.js');
-      const loaded = await loadPotemkinConfig(input.potemkinConfigPath);
+      loadedConfig = await loadPotemkinConfig(input.potemkinConfigPath);
+      const pathMod = await import('node:path');
+      configDir = pathMod.dirname(pathMod.resolve(input.potemkinConfigPath));
       // The loader compiles the resolved DSL modules through the SAME
       // snake_case compiler the inline path uses, so this CompiledDsl is
       // identical to one produced by compileDsl over the same modules.
-      dsl = loaded.compiledDsl;
+      dsl = loadedConfig.compiledDsl;
     } else {
       // No DSL supplied — boot in wait-for-DSL-push mode with an empty DSL.
       bootLog.info(
@@ -196,6 +219,33 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       { step: 'dsl_compile', boundaryCount: dsl.boundaries.length, durationMs: Date.now() - phaseStart2 },
       'Boot: DSL compilation complete',
     );
+
+    // ── Step 2b: TypeScript reducer scan + conflict check (C2) ───────────────
+    // When potemkin.yaml declares a typescript: block, scan + transpile every
+    // reducer file into the SDK registry, then cross-check the registered
+    // reducers against the compiled YAML BEFORE binding any routes. A YAML
+    // reducer and a TS reducer that target the same (boundary, event) are a
+    // BOOT_ERR_REDUCER_CONFLICT (with both source locations).
+    const tsReducerRegistry: TsReducerRegistry = createTsReducerRegistry();
+    const tsConfig: TypescriptConfig | undefined = loadedConfig?.typescript
+      ? (loadedConfig.typescript as unknown as TypescriptConfig)
+      : input.typescript;
+    const tsScanCwd = configDir ?? input.typescriptCwd;
+    if (tsConfig && tsScanCwd) {
+      const phaseStart2b = Date.now();
+      bootLog.info({ step: 'ts_scan' }, 'Boot: scanning TypeScript reducers');
+      const scan = await scanTypescriptReducers(tsConfig, { cwd: tsScanCwd });
+      validateReducerConflictsFromDsl({
+        dsl,
+        boundarySourcePaths: loadedConfig?.boundarySourcePaths ?? {},
+        tsReducers: scan.registered,
+      });
+      tsReducerRegistry.swap(scan.registered);
+      bootLog.info(
+        { step: 'ts_scan', files: scan.files.length, reducers: scan.registered.length, durationMs: Date.now() - phaseStart2b },
+        'Boot: TypeScript reducers scanned and registered',
+      );
+    }
 
     // ── Step 3: Contract Binding ──────────────────────────────────────────────
     const phaseStart3 = Date.now();
@@ -432,6 +482,7 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       derivedProjections,
       idempotencyStore: createIdempotencyStore(),
       aggregateLocks: new Map<string, Promise<void>>(),
+      tsReducerRegistry,
       ...(pluginControlClient !== undefined ? { pluginControl: pluginControlClient } : {}),
     };
 

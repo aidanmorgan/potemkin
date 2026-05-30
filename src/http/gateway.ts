@@ -495,6 +495,7 @@ async function handleContractRequest(
           tracer: sys.tracer,
           metrics: sys.metrics,
           derivedProjections: sys.derivedProjections,
+          tsReducerRegistry: sys.tsReducerRegistry,
           controls,
           // maxCascadeDepth=N means N levels of cascade allowed beyond the primary.
           // The UoW counts depth from 0 (primary), so we pass N+1 to allow the primary.

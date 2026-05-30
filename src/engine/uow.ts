@@ -108,6 +108,13 @@ export interface UowInput {
   readonly derivedProjections?: DerivedProjectionRegistry;
   /** Parsed X-Potemkin-* control headers (dry-run, skip-sagas, etc.). */
   readonly controls?: import('../http/controlHeaders.js').ControlHeaders;
+  /**
+   * C3: TypeScript-reducer registry. When supplied, projection consults it
+   * FIRST for each (boundary, event) and runs the TS reducer in place of the
+   * YAML reducer on a hit. Threaded from sys.tsReducerRegistry by the gateway,
+   * forwarding handler, and saga orchestrator.
+   */
+  readonly tsReducerRegistry?: import('./tsReducerRegistry.js').TsReducerRegistry;
 }
 
 // ---------------------------------------------------------------------------
@@ -410,6 +417,7 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
                       schemaRegistry,
                       tracer,
                       openapi: input.openapi,
+                      ...(input.tsReducerRegistry ? { tsReducerRegistry: input.tsReducerRegistry } : {}),
                     }),
                 });
               } catch (err) {
@@ -502,6 +510,7 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
                 logger,
                 schemaRegistry,
                 openapi: input.openapi,
+                ...(input.tsReducerRegistry ? { tsReducerRegistry: input.tsReducerRegistry } : {}),
               }).catch((err: unknown) => {
                 logger.error({ err, sagaName: saga.name }, 'Saga execution failed unexpectedly');
               });

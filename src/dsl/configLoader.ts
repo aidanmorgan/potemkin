@@ -46,6 +46,8 @@ export interface LoadedConfig {
   readonly compiledDsl: CompiledDsl;
   /** Absolute paths of the boundary module files that fed the compiler. */
   readonly boundaryModulePaths: readonly string[];
+  /** Maps each boundary name to the absolute path of the file that declared it. */
+  readonly boundarySourcePaths: Readonly<Record<string, string>>;
   /** Absolute paths of global module files (sagas/idempotency/etc, no `boundary:`). */
   readonly globalModulePaths: readonly string[];
   readonly pluginConfig: PotemkinConfigPlugin | undefined;
@@ -151,11 +153,23 @@ export async function loadPotemkinConfig(
   const compileModules = boundaryModules.map((m) => ({ name: m.path, yaml: m.text }));
   const compiledDsl = await compileDsl(compileModules, globalYaml);
 
+  // Map each compiled boundary back to the file that declared it (for
+  // reducer-conflict source locations). compileDsl preserves the order of
+  // compileModules in compiledDsl.boundaries.
+  const boundarySourcePaths: Record<string, string> = {};
+  for (const m of boundaryModules) {
+    const rec = m.parsed as Record<string, unknown>;
+    if (typeof rec['boundary'] === 'string') {
+      boundarySourcePaths[rec['boundary']] = m.path;
+    }
+  }
+
   return {
     potemkinConfigPath: absConfigPath,
     specmaticConfigPath: path.resolve(configDir, config.specmatic),
     compiledDsl,
     boundaryModulePaths: boundaryModules.map((m) => m.path),
+    boundarySourcePaths,
     globalModulePaths: globalModules.map((m) => m.path),
     pluginConfig: config.plugin,
     forwardBlocks: {

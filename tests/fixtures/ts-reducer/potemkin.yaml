@@ -1,0 +1,10 @@
+version: 1
+specmatic: ./specmatic.yaml
+modules:
+  - "dsl/**/*.yaml"
+typescript:
+  scan:
+    - include: ["scripts/**/*.ts"]
+      exclude: ["**/*.test.ts", "**/*.d.ts"]
+  watch: false
+  watchDebounceMs: 100
