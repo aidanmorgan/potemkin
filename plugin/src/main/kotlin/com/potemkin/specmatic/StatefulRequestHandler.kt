@@ -51,6 +51,14 @@ class StatefulRequestHandler(
                 return null
             }
 
+            // JWT auth gate: the request interceptor marks failed verification
+            // with PotemkinHeaders.AUTH_ERROR (carrying the WWW-Authenticate
+            // challenge). Emit a 401 before doing any forwarding or stub matching.
+            httpRequest.headers[PotemkinHeaders.AUTH_ERROR]?.let { challenge ->
+                log.debug("Rejecting '{} {}' with 401 — JWT verification failed", method, path)
+                return unauthorized(challenge)
+            }
+
             // If this (method, path) was registered as a Specmatic fixture stub, let Specmatic
             // serve it directly. The plugin must not intercept it.
             if (fixtures != null && fixtures.excludedPaths().contains(method to path)) {
@@ -100,5 +108,23 @@ class StatefulRequestHandler(
             )
             null
         }
+    }
+
+    /**
+     * Build a 401 response with a `WWW-Authenticate: Bearer realm=...` challenge,
+     * as required when JWT verification fails (AC-E2.2).
+     */
+    private fun unauthorized(challenge: String): HttpStubResponse {
+        val body = """{"error":"unauthorized"}"""
+        return HttpStubResponse(
+            response = HttpResponse(
+                status = 401,
+                headers = mapOf(
+                    "WWW-Authenticate" to challenge,
+                    "Content-Type" to "application/json",
+                ),
+                body = StringValue(body),
+            ),
+        )
     }
 }
