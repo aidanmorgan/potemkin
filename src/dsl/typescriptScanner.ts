@@ -119,6 +119,11 @@ function loadModule(
       );
     }
 
+    // Static safety scan: a TS reducer must not mutate process.env. `process`
+    // is absent from the sandbox (so a write would fail at runtime anyway), but
+    // we reject it statically with a clear, specific error before execution.
+    assertNoEnvMutation(transpiled, absPath);
+
     const moduleObj = { exports: {} as Record<string, unknown> };
     const requireFn = makeRequire(absPath, cwd, scan, inProgress);
     const wrapper = `(function(module, exports, require, __filename, __dirname){\n${transpiled}\n})(module, module.exports, require, __filename, __dirname);`;
@@ -259,4 +264,34 @@ function isForbidden(e: unknown): e is BootError {
     code === 'SANDBOX_ERR_PROCESS_CONTROL' ||
     code === 'SANDBOX_ERR_ENV_MUTATION'
   );
+}
+
+/**
+ * Reject any WRITE to `process.env` in a TS reducer with SANDBOX_ERR_ENV_MUTATION.
+ * Runs on the transpiled (comment- and type-stripped) source so comments/strings
+ * and TS syntax don't produce false hits. Detects member assignment
+ * (`process.env.X = …` / `process.env['X'] = …`, including compound/`++`/`--`),
+ * `delete process.env.X`, and `Object.assign|defineProperty(process.env, …)`.
+ * Reads of process.env are not flagged (only mutations); `process` itself is
+ * absent from the sandbox so reads resolve to undefined regardless.
+ */
+const ENV_WRITE_PATTERNS: readonly RegExp[] = [
+  // process.env.X = / += / ... / ++ / -- and process.env['X'] = ...
+  /process\s*\.\s*env\s*(?:\.\s*[A-Za-z_$][\w$]*|\[[^\]]*\])\s*(?:\+\+|--|(?:\+|-|\*|\/|%|\*\*|&&|\|\||\?\?|&|\||\^|<<|>>|>>>)?=(?!=))/,
+  // delete process.env.X
+  /delete\s+process\s*\.\s*env\b/,
+  // Object.assign(process.env, …) / Object.defineProperty(process.env, …)
+  /Object\s*\.\s*(?:assign|defineProperty|defineProperties)\s*\(\s*process\s*\.\s*env\b/,
+];
+
+function assertNoEnvMutation(transpiledSource: string, absPath: string): void {
+  for (const re of ENV_WRITE_PATTERNS) {
+    if (re.test(transpiledSource)) {
+      throw new BootError(
+        'SANDBOX_ERR_ENV_MUTATION',
+        `TS reducer ${absPath} mutates process.env — reducers must be pure and may not modify the host environment.`,
+        { path: absPath },
+      );
+    }
+  }
 }
