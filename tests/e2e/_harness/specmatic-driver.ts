@@ -66,6 +66,11 @@ export async function startSpecmatic(opts: SpecmaticOptions): Promise<SpecmaticH
   const classpath = `${opts.specmaticJar}${sep}${opts.pluginJar}`;
 
   const jvmArgs = [
+    // Cap the heap so several Specmatic JVMs (serialised across e2e suites, or
+    // running alongside another test process on the same host) cannot exhaust
+    // machine memory — keeps stub startup reliable under contention.
+    '-Xmx512m',
+    '-XX:+UseSerialGC',
     '-cp', classpath,
     'application.SpecmaticApplication',
     'stub',

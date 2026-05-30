@@ -1,0 +1,103 @@
+openapi: 3.0.3
+info:
+  title: Governance API (response-mutation + plugin-features fixture)
+  version: "1.0.0"
+paths:
+  /documents:
+    post:
+      operationId: createDocument
+      summary: Create a document
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title:
+                  type: string
+                internalNotes:
+                  type: string
+      responses:
+        "201":
+          description: Document created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Document"
+    get:
+      operationId: listDocuments
+      summary: List documents
+      responses:
+        "200":
+          description: Document list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Document"
+  /documents/{id}:
+    get:
+      operationId: getDocument
+      summary: Get a document by id (deprecated — use the v2 documents API)
+      deprecated: true
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Document found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Document"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+components:
+  schemas:
+    HateoasLink:
+      type: object
+      properties:
+        href:
+          type: string
+        method:
+          type: string
+    Document:
+      type: object
+      # additionalProperties permitted so the HATEOAS interceptor can inject
+      # _links into the Specmatic-served response without a contract violation.
+      required: [id, title, status]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+        # internalNotes is removed by the boundary mask before the response is
+        # served — it is therefore optional (not required).
+        internalNotes:
+          type: string
+        _links:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/HateoasLink"
+    DocumentById:
+      $ref: "#/components/schemas/Document"
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        message:
+          type: string

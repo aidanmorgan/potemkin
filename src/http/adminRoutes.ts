@@ -70,7 +70,39 @@ export function registerAdminRoutes(app: Express, sys: BootedSystem): void {
       withSpan(sys.tracer, 'http.admin.reset', async () => {
         sys.logger.info({ path: req.path }, 'Admin reset triggered');
         resetSystem(sys);
+        // Clear any live sessions and restore the virtual clock so a reset
+        // returns the system to a fully clean post-boot state.
+        sys.sessionStore.reset();
+        sys.cel.setClockOffset(0);
         res.status(204).end();
+      }).catch(next);
+    },
+  );
+
+  // POST /_admin/clock/advance — advance the virtual clock by { ms } so tests
+  // can deterministically cross TTL boundaries (session expiry, etc.).
+  app.post(
+    '/_admin/clock/advance',
+    adminAuthMiddleware,
+    (req: Request, res: Response, next: NextFunction) => {
+      withSpan(sys.tracer, 'http.admin.clock.advance', async () => {
+        const body = (req.body ?? {}) as { ms?: unknown };
+        const ms = typeof body.ms === 'number' && Number.isFinite(body.ms) ? body.ms : 0;
+        const offset = sys.cel.getClockOffset() + ms;
+        sys.cel.setClockOffset(offset);
+        res.status(200).json({ offsetMs: offset });
+      }).catch(next);
+    },
+  );
+
+  // POST /_admin/clock/reset — restore the virtual clock to real time.
+  app.post(
+    '/_admin/clock/reset',
+    adminAuthMiddleware,
+    (req: Request, res: Response, next: NextFunction) => {
+      withSpan(sys.tracer, 'http.admin.clock.reset', async () => {
+        sys.cel.setClockOffset(0);
+        res.status(200).json({ offsetMs: 0 });
       }).catch(next);
     },
   );

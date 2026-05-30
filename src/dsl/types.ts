@@ -283,6 +283,11 @@ export interface SessionAuthConfig {
   readonly ttlSeconds?: number;
   /** Require CSRF token on state-changing requests. Default: true. */
   readonly csrf?: boolean;
+  /**
+   * Header carrying the per-session CSRF token. When set, state-changing
+   * requests with a live session must present a matching value or receive 403.
+   */
+  readonly csrfHeader?: string;
   /** Path of the login endpoint. */
   readonly loginPath?: string;
   /** Path of the logout endpoint. */

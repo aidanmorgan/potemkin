@@ -1,0 +1,29 @@
+boundary: WidgetById
+contract_path: /widgets/{id}
+fallback_override: false
+
+event_catalog:
+  - type: WidgetRenamed
+    payload_template:
+      name: "command.payload.name"
+
+behaviors:
+  - name: renameWidget
+    match:
+      operationId: renameWidget
+      condition: "true"
+    emit: WidgetRenamed
+
+# WidgetRenamed is handled in YAML (no TS reducer): demonstrates the YAML
+# fallback path coexisting with a TS-owned event in another boundary.
+reducers:
+  - on: WidgetRenamed
+    patches:
+      - op: replace
+        path: /name
+        value: "${event.payload.name}"
+      - op: increment
+        path: /renameCount
+        by: 1
+
+initialization: []

@@ -56,6 +56,8 @@ import {
 } from '../errors.js';
 import type { Command, Intent } from '../types.js';
 import { resolveActor, JwtValidationError } from '../identity/actorResolver.js';
+import { createSessionAuthMiddleware, SESSION_ACTOR_KEY, SESSION_HANDLED_KEY } from './sessionAuth.js';
+import type { Actor } from '../types.js';
 import { createForwardingHandler, healthHandler, createRoutesHandler, createFixturesHandler } from '../forwarding/handler.js';
 import { parseControlHeaders, applyMask } from './controlHeaders.js';
 import { applyResponseMutations, buildOperationLookup } from './responseMutations.js';
@@ -125,6 +127,15 @@ export function createGateway(sys: BootedSystem): Express {
     res.setHeader('Access-Control-Allow-Headers', CORS_ALLOW_HEADERS);
     res.status(204).end();
   });
+
+  // Session/cookie auth (auth.mode: session) — intercepts the configured
+  // login/logout paths and resolves the session actor + CSRF for every other
+  // request. No-op (null) for jwt/simple/no-auth modes. Registered before the
+  // contract routes so login/logout win and the resolved actor is visible.
+  const sessionMiddleware = createSessionAuthMiddleware(sys.dsl.auth, sys.sessionStore);
+  if (sessionMiddleware) {
+    app.use(sessionMiddleware);
+  }
 
   // Admin routes registered first so they always win over dynamic OpenAPI routes.
   registerAdminRoutes(app, sys);
@@ -388,16 +399,26 @@ async function handleContractRequest(
       }
     }
 
-    // REQ-84 / F1: Resolve actor per auth mode (jwt → validateJwt; else legacy bearer shortcut).
-    let actor;
-    try {
-      actor = resolveActor(req.headers['authorization'] as string | undefined, sys.dsl.auth) ?? undefined;
-    } catch (e) {
-      if (e instanceof JwtValidationError) {
-        res.status(401).set('WWW-Authenticate', 'Bearer').json({ error: 'UNAUTHENTICATED', code: e.code, message: e.message });
-        return;
+    // REQ-84 / F1: Resolve actor per auth mode.
+    //  - session mode: the session middleware already resolved the actor from
+    //    the cookie (when present) onto the request; we use that and do NOT fall
+    //    back to the Authorization header.
+    //  - jwt mode: validateJwt; simple/no-auth: legacy bearer shortcut.
+    let actor: Actor | undefined;
+    const reqProps = req as unknown as Record<string, unknown>;
+    const sessionHandled = reqProps[SESSION_HANDLED_KEY] === true;
+    if (sessionHandled) {
+      actor = reqProps[SESSION_ACTOR_KEY] as Actor | undefined;
+    } else {
+      try {
+        actor = resolveActor(req.headers['authorization'] as string | undefined, sys.dsl.auth) ?? undefined;
+      } catch (e) {
+        if (e instanceof JwtValidationError) {
+          res.status(401).set('WWW-Authenticate', 'Bearer').json({ error: 'UNAUTHENTICATED', code: e.code, message: e.message });
+          return;
+        }
+        throw e;
       }
-      throw e;
     }
     // Tier 3: actor override / impersonate (admin-gated above) — format `<id>:<scope1>,<scope2>`.
     const adminOverride = controls.identity.actorOverride ?? controls.identity.impersonate;

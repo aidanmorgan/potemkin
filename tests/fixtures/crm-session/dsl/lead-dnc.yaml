@@ -1,26 +1,25 @@
 boundary: LeadDNC
-path: /leads/{id}/dnc
-fallback: false
+contract_path: /leads/{id}/dnc
+fallback_override: false
 
-events:
+event_catalog:
   - type: LeadMarkedDNC
-    payload:
-      dncAt: "${$now()}"
-      reason: "${command.payload?.reason != null ? command.payload.reason : 'No reason given'}"
+    payload_template:
+      dncAt: "$now()"
+      reason: "command.payload?.reason != null ? command.payload.reason : 'No reason given'"
 
 behaviors:
   - name: markLeadDNC
-    method: POST
-    condition: "true"
-    required_scopes:
-      - manager
+    match:
+      operationId: markLeadDNC
+      condition: "true"
+      required_scopes:
+        - manager
     emit: LeadMarkedDNC
 
 reducers:
   - on: LeadMarkedDNC
     patches:
-      - op: replace
-        path: /status
-        value: "${'DNC'}"
+      - { op: replace, path: /status, value: "${'DNC'}" }
 
 initialization: []

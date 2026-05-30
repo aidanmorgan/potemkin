@@ -1267,6 +1267,7 @@ function validateAuthConfig(raw: unknown): import('./types.js').AuthConfig {
       ...(typeof sessionRaw['cookie_name'] === 'string' ? { cookieName: sessionRaw['cookie_name'] } : {}),
       ...(typeof sessionRaw['ttl_seconds'] === 'number' ? { ttlSeconds: sessionRaw['ttl_seconds'] } : {}),
       ...(typeof sessionRaw['csrf'] === 'boolean' ? { csrf: sessionRaw['csrf'] } : {}),
+      ...(typeof sessionRaw['csrf_header'] === 'string' ? { csrfHeader: sessionRaw['csrf_header'] } : {}),
       ...(typeof sessionRaw['login_path'] === 'string' ? { loginPath: sessionRaw['login_path'] } : {}),
       ...(typeof sessionRaw['logout_path'] === 'string' ? { logoutPath: sessionRaw['logout_path'] } : {}),
     };
