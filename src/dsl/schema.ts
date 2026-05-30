@@ -926,10 +926,12 @@ function validateSagaCompensation(raw: unknown, ctx: string): SagaCompensation {
   if (intentRaw !== 'creation' && intentRaw !== 'mutation' && intentRaw !== 'query') {
     throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}: intent must be creation|mutation|query`, { context: ctx });
   }
+  const operationId = requireString(raw, 'operationId', ctx);
   const targetId = optionalString(raw, 'target_id', ctx);
   const payload = requireStringStringMap(raw, 'payload', ctx);
   return {
     intent: intentRaw,
+    operationId,
     ...(targetId !== undefined ? { targetId } : {}),
     ...(payload !== undefined ? { payload } : {}),
   };
@@ -946,6 +948,7 @@ function validateSagaStep(raw: unknown, idx: number): SagaStep {
   if (intentRaw !== 'creation' && intentRaw !== 'mutation' && intentRaw !== 'query') {
     throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}: intent must be creation|mutation|query`, { context: ctx });
   }
+  const operationId = requireString(raw, 'operationId', ctx);
   const targetId = optionalString(raw, 'target_id', ctx);
   const payload = requireStringStringMap(raw, 'payload', ctx);
   let compensation: SagaCompensation | undefined;
@@ -956,6 +959,7 @@ function validateSagaStep(raw: unknown, idx: number): SagaStep {
     name,
     boundary,
     intent: intentRaw,
+    operationId,
     ...(targetId !== undefined ? { targetId } : {}),
     ...(payload !== undefined ? { payload } : {}),
     ...(compensation !== undefined ? { compensation } : {}),

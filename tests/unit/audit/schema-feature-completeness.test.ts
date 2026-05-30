@@ -434,12 +434,13 @@ describe('dslStaticChecker: dispatch_commands CEL expressions', () => {
           behaviors: [
             {
               name: 'b1',
-              match: { intent: 'mutation', condition: 'true' },
+              match: { operationId: 'updateTest', condition: 'true' },
               emit: 'Ev',
               dispatchCommands: [
                 {
                   boundary: 'Ent',
                   intent: 'mutation',
+                  operationId: 'updateTest',
                   // This CEL references a non-existent path — should be caught
                   targetId: 'state.nonExistentId',
                   payload: {},
@@ -465,12 +466,13 @@ describe('dslStaticChecker: dispatch_commands CEL expressions', () => {
           behaviors: [
             {
               name: 'b1',
-              match: { intent: 'mutation', condition: 'true' },
+              match: { operationId: 'updateTest', condition: 'true' },
               emit: 'Ev',
               dispatchCommands: [
                 {
                   boundary: 'Ent',
                   intent: 'mutation',
+                  operationId: 'updateTest',
                   targetId: 'state.id',
                   payload: { someField: 'state.doesNotExist' },
                 },
@@ -494,12 +496,13 @@ describe('dslStaticChecker: dispatch_commands CEL expressions', () => {
         behaviors: [
           {
             name: 'b1',
-            match: { intent: 'mutation', condition: 'true' },
+            match: { operationId: 'updateTest', condition: 'true' },
             emit: 'Ev',
             dispatchCommands: [
               {
                 boundary: 'Ent',
                 intent: 'mutation',
+                operationId: 'updateTest',
                 targetId: 'state.id',
                 payload: {},
               },

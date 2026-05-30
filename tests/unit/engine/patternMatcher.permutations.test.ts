@@ -10,10 +10,32 @@ import {
   UnhandledOperationError,
   InternalExecutionError,
 } from '../../../src/errors';
-import { makeBoundary, makeCommand } from '../_helpers';
+import { makeBoundary, makeCommand as makeCommandBase, makeOpenApi } from '../_helpers';
 import type { ShadowGraph } from '../../../src/stategraph/shadow';
-import type { BoundaryConfig } from '../../../src/dsl/types';
 import type { CelEvaluator } from '../../../src/cel/evaluator';
+import type { Command } from '../../../src/types';
+
+// operationId for the behavior that should handle a given intent under the default
+// test OpenAPI: creation → POST /test (createTest), mutation → PATCH /test/{id}
+// (updateTest), query → GET /test/{id} (getTest).
+const OP_FOR = {
+  creation: 'createTest',
+  mutation: 'updateTest',
+  query: 'getTest',
+} as const;
+
+// Local makeCommand that derives a contract-consistent (method, path) from intent,
+// so the pattern matcher resolves the matching operationId. Explicit overrides win.
+function makeCommand(overrides: Partial<Command> = {}): Command {
+  const intent = overrides.intent ?? 'mutation';
+  const targetId = overrides.targetId !== undefined
+    ? overrides.targetId
+    : (intent === 'creation' ? null : 'agg-1');
+  const idForPath = typeof targetId === 'string' ? targetId : 'agg-1';
+  const method = intent === 'creation' ? 'POST' : intent === 'query' ? 'GET' : 'PATCH';
+  const path = intent === 'creation' ? '/test' : `/test/${idForPath}`;
+  return makeCommandBase({ httpMethod: method, path, ...overrides, targetId });
+}
 
 // ── Shadow helpers ────────────────────────────────────────────────────────────
 
@@ -88,7 +110,7 @@ function makeInput(overrides: Partial<PatternMatchInput> = {}): PatternMatchInpu
     boundary: makeBoundary({
       behaviors: [{
         name: 'create',
-        match: { intent: 'creation', condition: 'true' },
+        match: { operationId: 'createTest', condition: 'true' },
         emit: 'Created',
       }],
       eventCatalog: [{ type: 'Created', payloadTemplate: {} }],
@@ -99,6 +121,7 @@ function makeInput(overrides: Partial<PatternMatchInput> = {}): PatternMatchInpu
     nextSequenceVersion: () => 1,
     projectToShadow: jest.fn(),
     now: () => '2024-01-01T00:00:00.000Z',
+    openapi: makeOpenApi(),
     ...overrides,
   };
 }
@@ -150,7 +173,7 @@ describe('engine/patternMatcher — permutations', () => {
       const boundary = makeBoundary({
         behaviors: [{
           name: 'update',
-          match: { intent: 'mutation', condition: 'true' },
+          match: { operationId: 'updateTest', condition: 'true' },
           emit: 'Updated',
         }],
         eventCatalog: [{ type: 'Updated', payloadTemplate: {} }],
@@ -167,7 +190,7 @@ describe('engine/patternMatcher — permutations', () => {
       const boundary = makeBoundary({
         behaviors: [{
           name: 'update',
-          match: { intent: 'mutation', condition: 'true' },
+          match: { operationId: 'updateTest', condition: 'true' },
           emit: 'Updated',
         }],
         eventCatalog: [{ type: 'Updated', payloadTemplate: {} }],
@@ -186,7 +209,7 @@ describe('engine/patternMatcher — permutations', () => {
         runPatternMatch(makeInput({
           command: makeCommand({ intent: 'mutation', targetId: 'miss' }),
           boundary: makeBoundary({
-            behaviors: [{ name: 'b', match: { intent: 'mutation', condition: 'true' }, emit: 'E' }],
+            behaviors: [{ name: 'b', match: { operationId: 'updateTest', condition: 'true' }, emit: 'E' }],
             eventCatalog: [{ type: 'E', payloadTemplate: {} }],
           }),
           shadow: emptyShadow(),
@@ -275,8 +298,8 @@ describe('engine/patternMatcher — permutations', () => {
       };
       const boundary = makeBoundary({
         behaviors: [
-          { name: 'first', match: { intent: 'creation', condition: 'cond1' }, emit: 'Ev1' },
-          { name: 'second', match: { intent: 'creation', condition: 'cond2' }, emit: 'Ev2' },
+          { name: 'first', match: { operationId: 'createTest', condition: 'cond1' }, emit: 'Ev1' },
+          { name: 'second', match: { operationId: 'createTest', condition: 'cond2' }, emit: 'Ev2' },
         ],
         eventCatalog: [
           { type: 'Ev1', payloadTemplate: {} },
@@ -298,8 +321,8 @@ describe('engine/patternMatcher — permutations', () => {
       };
       const boundary = makeBoundary({
         behaviors: [
-          { name: 'first', match: { intent: 'creation', condition: 'cond1' }, emit: 'Ev1' },
-          { name: 'second', match: { intent: 'creation', condition: 'cond2' }, emit: 'Ev2' },
+          { name: 'first', match: { operationId: 'createTest', condition: 'cond1' }, emit: 'Ev1' },
+          { name: 'second', match: { operationId: 'createTest', condition: 'cond2' }, emit: 'Ev2' },
         ],
         eventCatalog: [
           { type: 'Ev1', payloadTemplate: {} },
@@ -367,7 +390,7 @@ describe('engine/patternMatcher — permutations', () => {
       const boundary = makeBoundary({
         behaviors: [{
           name: 'update-active',
-          match: { intent: 'mutation', condition: 'state.status == "active"' },
+          match: { operationId: 'updateTest', condition: 'state.status == "active"' },
           emit: 'Updated',
         }],
         eventCatalog: [{ type: 'Updated', payloadTemplate: {} }],
@@ -388,7 +411,7 @@ describe('engine/patternMatcher — permutations', () => {
       const boundary = makeBoundary({
         behaviors: [{
           name: 'b',
-          match: { intent: 'creation', condition: 'true' },
+          match: { operationId: 'createTest', condition: 'true' },
           emit: 'NonExistentEvent',
         }],
         eventCatalog: [{ type: 'SomeOtherEvent', payloadTemplate: {} }],
@@ -400,7 +423,7 @@ describe('engine/patternMatcher — permutations', () => {
       const boundary = makeBoundary({
         behaviors: [{
           name: 'b',
-          match: { intent: 'creation', condition: 'true' },
+          match: { operationId: 'createTest', condition: 'true' },
           emit: 'MissingEvent',
         }],
         eventCatalog: [],
@@ -424,11 +447,12 @@ describe('engine/patternMatcher — permutations', () => {
       const boundary = makeBoundary({
         behaviors: [{
           name: 'create',
-          match: { intent: 'creation', condition: 'true' },
+          match: { operationId: 'createTest', condition: 'true' },
           emit: 'Created',
           dispatchCommands: [{
             boundary: 'AuditBoundary',
             intent: 'creation',
+            operationId: 'op',
             targetId: '"audit-1"',
           }],
         }],
@@ -443,11 +467,11 @@ describe('engine/patternMatcher — permutations', () => {
       const boundary = makeBoundary({
         behaviors: [{
           name: 'create',
-          match: { intent: 'creation', condition: 'true' },
+          match: { operationId: 'createTest', condition: 'true' },
           emit: 'Created',
           dispatchCommands: [
-            { boundary: 'B1', intent: 'creation', targetId: '"t1"' },
-            { boundary: 'B2', intent: 'mutation', targetId: '"t2"' },
+            { boundary: 'B1', intent: 'creation', operationId: 'op', targetId: '"t1"' },
+            { boundary: 'B2', intent: 'mutation', operationId: 'op', targetId: '"t2"' },
           ],
         }],
         eventCatalog: [{ type: 'Created', payloadTemplate: {} }],
@@ -473,11 +497,12 @@ describe('engine/patternMatcher — permutations', () => {
       const boundary = makeBoundary({
         behaviors: [{
           name: 'create',
-          match: { intent: 'creation', condition: 'true' },
+          match: { operationId: 'createTest', condition: 'true' },
           emit: 'Created',
           dispatchCommands: [{
             boundary: 'OtherBoundary',
             intent: 'mutation',
+            operationId: 'op',
             targetId: 'target-id-expr',
           }],
         }],
@@ -505,9 +530,9 @@ describe('engine/patternMatcher — permutations', () => {
       const boundary = makeBoundary({
         behaviors: [{
           name: 'create',
-          match: { intent: 'creation', condition: 'true' },
+          match: { operationId: 'createTest', condition: 'true' },
           emit: 'Created',
-          dispatchCommands: [{ boundary: 'B', intent: 'creation', targetId: 'num-expr' }],
+          dispatchCommands: [{ boundary: 'B', intent: 'creation', operationId: 'op', targetId: 'num-expr' }],
         }],
         eventCatalog: [{ type: 'Created', payloadTemplate: {} }],
       });
@@ -531,11 +556,12 @@ describe('engine/patternMatcher — permutations', () => {
       const boundary = makeBoundary({
         behaviors: [{
           name: 'create',
-          match: { intent: 'creation', condition: 'true' },
+          match: { operationId: 'createTest', condition: 'true' },
           emit: 'Created',
           dispatchCommands: [{
             boundary: 'OtherBoundary',
             intent: 'creation',
+            operationId: 'op',
             targetId: '"resolved-id"',
             payload: { name: 'event.payload.name' },
           }],
@@ -550,9 +576,9 @@ describe('engine/patternMatcher — permutations', () => {
       const boundary = makeBoundary({
         behaviors: [{
           name: 'create',
-          match: { intent: 'creation', condition: 'true' },
+          match: { operationId: 'createTest', condition: 'true' },
           emit: 'Created',
-          dispatchCommands: [{ boundary: 'B', intent: 'creation', targetId: '"x"' }],
+          dispatchCommands: [{ boundary: 'B', intent: 'creation', operationId: 'op', targetId: '"x"' }],
         }],
         eventCatalog: [{ type: 'Created', payloadTemplate: {} }],
       });
@@ -564,9 +590,9 @@ describe('engine/patternMatcher — permutations', () => {
       const boundary = makeBoundary({
         behaviors: [{
           name: 'create',
-          match: { intent: 'creation', condition: 'true' },
+          match: { operationId: 'createTest', condition: 'true' },
           emit: 'Created',
-          dispatchCommands: [{ boundary: 'B', intent: 'mutation', targetId: '"x"' }],
+          dispatchCommands: [{ boundary: 'B', intent: 'mutation', operationId: 'op', targetId: '"x"' }],
         }],
         eventCatalog: [{ type: 'Created', payloadTemplate: {} }],
       });
@@ -578,9 +604,9 @@ describe('engine/patternMatcher — permutations', () => {
       const boundary = makeBoundary({
         behaviors: [{
           name: 'create',
-          match: { intent: 'creation', condition: 'true' },
+          match: { operationId: 'createTest', condition: 'true' },
           emit: 'Created',
-          dispatchCommands: [{ boundary: 'B', intent: 'creation', targetId: '"t"' }],
+          dispatchCommands: [{ boundary: 'B', intent: 'creation', operationId: 'op', targetId: '"t"' }],
         }],
         eventCatalog: [{ type: 'Created', payloadTemplate: {} }],
       });
@@ -667,7 +693,7 @@ describe('engine/patternMatcher — permutations', () => {
         identity: { creation: { generate: '$uuidv7()' } },
         behaviors: [{
           name: 'create',
-          match: { intent: 'creation', condition: 'true' },
+          match: { operationId: 'createTest', condition: 'true' },
           emit: 'Created',
         }],
         eventCatalog: [{ type: 'Created', payloadTemplate: {} }],
@@ -696,7 +722,7 @@ describe('engine/patternMatcher — permutations', () => {
         identity: { creation: { generate: 'gen-expr' } },
         behaviors: [{
           name: 'create',
-          match: { intent: 'creation', condition: 'true' },
+          match: { operationId: 'createTest', condition: 'true' },
           emit: 'Created',
         }],
         eventCatalog: [{ type: 'Created', payloadTemplate: {} }],
@@ -726,7 +752,7 @@ describe('engine/patternMatcher — permutations', () => {
         identity: { creation: { generate: 'gen-expr' } },
         behaviors: [{
           name: 'create',
-          match: { intent: 'creation', condition: 'true' },
+          match: { operationId: 'createTest', condition: 'true' },
           emit: 'Created',
         }],
         eventCatalog: [{ type: 'Created', payloadTemplate: {} }],
@@ -755,7 +781,7 @@ describe('engine/patternMatcher — permutations', () => {
       const boundary = makeBoundary({
         behaviors: [{
           name: 'q',
-          match: { intent: 'query', condition: 'true' },
+          match: { operationId: 'getTest', condition: 'true' },
           emit: 'Queried',
         }],
         eventCatalog: [{ type: 'Queried', payloadTemplate: {} }],
@@ -785,7 +811,7 @@ describe('engine/patternMatcher — permutations', () => {
       const boundary = makeBoundary({
         behaviors: [{
           name: 'create',
-          match: { intent: 'creation', condition: 'true' },
+          match: { operationId: 'createTest', condition: 'true' },
           emit: 'Created',
         }],
         eventCatalog: [{
@@ -803,8 +829,8 @@ describe('engine/patternMatcher — permutations', () => {
     it('command.intent=creation skips mutation behavior', () => {
       const boundary = makeBoundary({
         behaviors: [
-          { name: 'mutation-only', match: { intent: 'mutation', condition: 'true' }, emit: 'Updated' },
-          { name: 'creation-match', match: { intent: 'creation', condition: 'true' }, emit: 'Created' },
+          { name: 'mutation-only', match: { operationId: 'updateTest', condition: 'true' }, emit: 'Updated' },
+          { name: 'creation-match', match: { operationId: 'createTest', condition: 'true' }, emit: 'Created' },
         ],
         eventCatalog: [
           { type: 'Updated', payloadTemplate: {} },
@@ -818,7 +844,7 @@ describe('engine/patternMatcher — permutations', () => {
     it('skips all behaviors with wrong intent → UnhandledOperationError', () => {
       const boundary = makeBoundary({
         behaviors: [
-          { name: 'mutation-only', match: { intent: 'mutation', condition: 'true' }, emit: 'Updated' },
+          { name: 'mutation-only', match: { operationId: 'updateTest', condition: 'true' }, emit: 'Updated' },
         ],
         eventCatalog: [{ type: 'Updated', payloadTemplate: {} }],
       });

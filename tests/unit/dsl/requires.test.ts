@@ -6,7 +6,7 @@ import { validateBoundaryConfig } from '../../../src/dsl/schema';
 import { runPatternMatch } from '../../../src/engine/patternMatcher';
 import type { PatternMatchInput } from '../../../src/engine/patternMatcher';
 import { BootError, UnhandledOperationError } from '../../../src/errors';
-import { makeBoundary, makeCommand } from '../_helpers';
+import { makeBoundary, makeCommand, makeOpenApi } from '../_helpers';
 import type { ShadowGraph } from '../../../src/stategraph/shadow';
 import { createCelEvaluator } from '../../../src/cel/evaluator';
 
@@ -35,6 +35,7 @@ function makeInput(overrides: Partial<PatternMatchInput> = {}): PatternMatchInpu
     nextSequenceVersion: () => 1,
     projectToShadow: jest.fn(),
     now: () => '2024-01-01T00:00:00.000Z',
+    openapi: makeOpenApi(),
     ...overrides,
   };
 }
@@ -50,7 +51,7 @@ describe('REQ-61: match.requires[] DSL parsing', () => {
         {
           name: 'disburse',
           match: {
-            intent: 'mutation',
+            operationId: 'updateTest',
             condition: 'true',
             requires: [
               { name: 'loan-active', expression: "state.status != 'FROZEN'", message: 'Loan is frozen' },
@@ -75,7 +76,7 @@ describe('REQ-61: match.requires[] DSL parsing', () => {
         {
           name: 'disburse',
           match: {
-            intent: 'mutation',
+            operationId: 'updateTest',
             condition: 'true',
             requires: [
               {
@@ -105,7 +106,7 @@ describe('REQ-61: match.requires[] DSL parsing', () => {
         {
           name: 'b1',
           match: {
-            intent: 'mutation',
+            operationId: 'updateTest',
             condition: 'true',
             requires: [{ condition: 'true' }],
           },
@@ -125,7 +126,7 @@ describe('REQ-61: match.requires[] DSL parsing', () => {
         {
           name: 'b1',
           match: {
-            intent: 'mutation',
+            operationId: 'updateTest',
             condition: 'true',
             requires: [{ name: 'req1' }],
           },
@@ -148,7 +149,7 @@ describe('REQ-61: match.requires[] runtime behavior', () => {
           {
             name: 'transfer',
             match: {
-              intent: 'mutation',
+              operationId: 'updateTest',
               condition: 'true',
               requires: [
                 { name: 'is-active', condition: "state.status == 'ACTIVE'", errorCode: 'NOT_ACTIVE', errorMessage: 'Not active' },
@@ -174,7 +175,7 @@ describe('REQ-61: match.requires[] runtime behavior', () => {
           {
             name: 'transfer',
             match: {
-              intent: 'mutation',
+              operationId: 'updateTest',
               condition: 'true',
               requires: [
                 { name: 'is-active', condition: "state.status == 'ACTIVE'", errorCode: 'NOT_ACTIVE', errorMessage: 'Loan must be ACTIVE' },
@@ -216,7 +217,7 @@ describe('REQ-61: match.requires[] runtime behavior', () => {
           {
             name: 'transfer',
             match: {
-              intent: 'mutation',
+              operationId: 'updateTest',
               condition: 'command.payload.amount > 0',
               requires: [
                 { name: 'is-active', condition: "state.status == 'ACTIVE'", errorCode: 'E', errorMessage: 'E' },

@@ -963,6 +963,38 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Opportunity"
+    post:
+      operationId: createOpportunity
+      summary: Create an opportunity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                leadId:
+                  type: string
+                  format: uuid
+                agentId:
+                  type: string
+                  format: uuid
+                campaignId:
+                  type: string
+                  format: uuid
+                value:
+                  type: number
+                probability:
+                  type: integer
+                expectedCloseDate:
+                  type: string
+      responses:
+        "201":
+          description: Opportunity created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Opportunity"
 
   /opportunities/{id}:
     get:

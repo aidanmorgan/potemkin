@@ -16,7 +16,7 @@ const minimalRaw = {
   boundary: 'Loan',
   contract_path: '/loans',
   behaviors: [
-    { name: 'create', match: { intent: 'creation', condition: 'true' }, emit: 'LoanCreated' },
+    { name: 'create', match: { operationId: 'createLoan', condition: 'true' }, emit: 'LoanCreated' },
   ],
   reducers: [{ on: 'LoanCreated', assign: { status: '"active"' } }],
   event_catalog: [{ type: 'LoanCreated', payload_template: {} }],
@@ -28,7 +28,7 @@ contract_path: /loans
 behaviors:
   - name: create
     match:
-      intent: creation
+      operationId: createLoan
       condition: "true"
     emit: LoanCreated
 reducers:
@@ -127,39 +127,56 @@ describe('DSL §7.1 – Boundary Configuration Schema', () => {
 // ---------------------------------------------------------------------------
 
 describe('DSL §7.2 – Behaviors Block', () => {
-  it('accepts a valid creation behavior', () => {
+  it('accepts a valid behavior keyed by operationId', () => {
     const cfg = validateBoundaryConfig(minimalRaw);
     expect(cfg.behaviors[0].name).toBe('create');
-    expect(cfg.behaviors[0].match.intent).toBe('creation');
+    expect(cfg.behaviors[0].match.operationId).toBe('createLoan');
     expect(cfg.behaviors[0].emit).toBe('LoanCreated');
   });
 
-  it('accepts mutation and query intents', () => {
-    for (const intent of ['mutation', 'query'] as const) {
+  it('accepts arbitrary operationId values', () => {
+    for (const operationId of ['updateLoan', 'getLoan'] as const) {
       const cfg = validateBoundaryConfig({
         ...minimalRaw,
         behaviors: [
-          { name: 'op', match: { intent, condition: 'true' }, emit: 'LoanCreated' },
+          { name: 'op', match: { operationId, condition: 'true' }, emit: 'LoanCreated' },
         ],
       });
-      expect(cfg.behaviors[0].match.intent).toBe(intent);
+      expect(cfg.behaviors[0].match.operationId).toBe(operationId);
     }
   });
 
-  it('throws BootError for invalid match.intent value', () => {
-    expect(() =>
+  it('throws BootError (BOOT_ERR_REMOVED_SYNTAX) when match.intent is used', () => {
+    try {
       validateBoundaryConfig({
         ...minimalRaw,
-        behaviors: [{ name: 'op', match: { intent: 'deletion', condition: 'true' }, emit: 'LoanCreated' }],
-      }),
-    ).toThrow(BootError);
+        behaviors: [{ name: 'op', match: { intent: 'creation', condition: 'true' }, emit: 'LoanCreated' }],
+      });
+      throw new Error('expected BootError');
+    } catch (e) {
+      expect(e).toBeInstanceOf(BootError);
+      expect((e as BootError).code).toBe('BOOT_ERR_REMOVED_SYNTAX');
+    }
+  });
+
+  it('throws BootError (BOOT_ERR_MISSING_OPERATION_ID) when match.operationId is missing', () => {
+    try {
+      validateBoundaryConfig({
+        ...minimalRaw,
+        behaviors: [{ name: 'op', match: { condition: 'true' }, emit: 'LoanCreated' }],
+      });
+      throw new Error('expected BootError');
+    } catch (e) {
+      expect(e).toBeInstanceOf(BootError);
+      expect((e as BootError).code).toBe('BOOT_ERR_MISSING_OPERATION_ID');
+    }
   });
 
   it('throws BootError when match.condition is missing', () => {
     expect(() =>
       validateBoundaryConfig({
         ...minimalRaw,
-        behaviors: [{ name: 'op', match: { intent: 'creation' }, emit: 'LoanCreated' }],
+        behaviors: [{ name: 'op', match: { operationId: 'createLoan' }, emit: 'LoanCreated' }],
       }),
     ).toThrow(BootError);
   });

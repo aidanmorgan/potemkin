@@ -10,7 +10,7 @@ event_catalog:
 behaviors:
   - name: disqualifyLead
     match:
-      intent: mutation
+      operationId: disqualifyLead
       condition: "state.status == 'CONTACTED' || state.status == 'QUALIFIED'"
     emit: LeadDisqualified
 

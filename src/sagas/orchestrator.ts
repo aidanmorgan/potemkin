@@ -96,7 +96,7 @@ function evalStepContext(
 }
 
 function buildStepCommand(
-  step: SagaStep | { intent: SagaStep['intent']; targetId?: string; payload?: Record<string, string>; boundary?: string },
+  step: SagaStep | { intent: SagaStep['intent']; operationId: string; targetId?: string; payload?: Record<string, string>; boundary?: string },
   boundary: string,
   cel: CelEvaluator,
   celCtx: Record<string, unknown>,
@@ -119,6 +119,7 @@ function buildStepCommand(
     commandId: nextUuidv7(),
     boundary,
     intent: step.intent,
+    operationId: step.operationId,
     targetId,
     payload,
     queryParams: {},
@@ -223,6 +224,7 @@ export async function runSaga(input: SagaRunInput): Promise<void> {
           const compCommand = buildStepCommand(
             {
               intent: compensation.intent,
+              operationId: compensation.operationId,
               targetId: compensation.targetId ?? completedStep.targetId,
               payload: compensation.payload,
             },

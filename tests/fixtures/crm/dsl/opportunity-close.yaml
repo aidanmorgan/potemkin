@@ -22,7 +22,7 @@ behaviors:
   # REQ-62: postcondition on WON
   - name: closeWon
     match:
-      intent: mutation
+      operationId: closeOpportunity
       condition: "command.payload.outcome == 'WON'"
       requires:
         - name: must-be-active-stage
@@ -35,6 +35,7 @@ behaviors:
     dispatch_commands:
       - boundary: Agent
         intent: mutation
+        operationId: updateAgentStatus
         target_id: "state.agentId"
         payload:
           incrementConversions: "true"
@@ -43,7 +44,7 @@ behaviors:
   # REQ-64: emit_when with alternative
   - name: closeLost
     match:
-      intent: mutation
+      operationId: closeOpportunity
       condition: "command.payload.outcome == 'LOST'"
     emit_when:
       - when: "state.stage == 'NEGOTIATING'"

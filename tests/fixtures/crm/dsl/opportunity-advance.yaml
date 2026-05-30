@@ -12,7 +12,7 @@ behaviors:
   # REQ-61: requires not in terminal state
   - name: advanceOpportunity
     match:
-      intent: mutation
+      operationId: advanceOpportunity
       condition: "true"
       requires:
         - name: not-closed

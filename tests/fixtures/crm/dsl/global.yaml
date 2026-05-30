@@ -19,6 +19,7 @@ sagas:
       - name: createOpportunity
         boundary: Opportunity
         intent: creation
+        operationId: createOpportunity
         target_id: "$uuidv7()"
         payload:
           leadId: "event.aggregateId"
@@ -29,6 +30,7 @@ sagas:
           expectedCloseDate: "command.payload.expectedCloseDate"
         compensation:
           intent: mutation
+          operationId: closeOpportunity
           payload:
             revertStatus: "true"
 

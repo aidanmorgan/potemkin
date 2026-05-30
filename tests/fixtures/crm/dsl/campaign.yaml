@@ -39,7 +39,7 @@ behaviors:
   # Create campaign — REQ-61: match.requires to enforce startedAt < endedAt
   - name: createCampaign
     match:
-      intent: creation
+      operationId: createCampaign
       condition: "true"
       requires:
         - name: valid-date-range
@@ -51,7 +51,7 @@ behaviors:
   # Activate campaign — REQ-61: requires DRAFT/PAUSED status (path-guarded)
   - name: activateCampaign
     match:
-      intent: mutation
+      operationId: activateCampaign
       condition: "$concat('/campaigns/', command.targetId, '/activate') == command.path"
       requires:
         - name: must-be-draft-or-paused
@@ -63,7 +63,7 @@ behaviors:
   # Pause campaign — REQ-64: emit_when with multiple branches
   - name: pauseCampaign
     match:
-      intent: mutation
+      operationId: pauseCampaign
       condition: "$concat('/campaigns/', command.targetId, '/pause') == command.path && state.status == 'ACTIVE'"
     emit_when:
       - when: "state.actualCalls != null && state.actualCalls > 0"
@@ -74,14 +74,14 @@ behaviors:
   # Complete campaign
   - name: completeCampaign
     match:
-      intent: mutation
+      operationId: completeCampaign
       condition: "$concat('/campaigns/', command.targetId, '/complete') == command.path && (state.status == 'ACTIVE' || state.status == 'PAUSED')"
     emit: CampaignCompleted
 
   # Receive secondary command from Lead creation (dispatch_commands from lead.yaml)
   - name: updateLeadSource
     match:
-      intent: mutation
+      operationId: getCampaign
       condition: "has(command.payload.leadSource) && command.payload.leadSource != null"
     emit: CampaignLeadSourceUpdated
 

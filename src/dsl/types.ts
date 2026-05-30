@@ -144,6 +144,8 @@ export interface BoundaryConfig {
 /** REQ-73: Compensation handler for a saga step — runs in reverse order on failure */
 export interface SagaCompensation {
   readonly intent: Intent;
+  /** OpenAPI operationId of the target boundary behavior this compensation invokes. */
+  readonly operationId: string;
   /** CEL expression resolving to target aggregate ID */
   readonly targetId?: string;
   readonly payload?: Record<string, string>;  // CEL expressions
@@ -154,6 +156,8 @@ export interface SagaStep {
   readonly name: string;
   readonly boundary: string;
   readonly intent: Intent;
+  /** OpenAPI operationId of the target boundary behavior this step invokes. */
+  readonly operationId: string;
   /** CEL expression resolving to target aggregate ID */
   readonly targetId?: string;
   readonly payload?: Record<string, string>;  // CEL expressions

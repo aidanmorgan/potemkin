@@ -5,7 +5,7 @@ import { validateBoundaryConfig } from '../../../src/dsl/schema';
 import { runPatternMatch } from '../../../src/engine/patternMatcher';
 import type { PatternMatchInput } from '../../../src/engine/patternMatcher';
 import { BootError } from '../../../src/errors';
-import { makeBoundary, makeCommand } from '../_helpers';
+import { makeBoundary, makeCommand, makeOpenApi } from '../_helpers';
 import type { ShadowGraph } from '../../../src/stategraph/shadow';
 import { createCelEvaluator } from '../../../src/cel/evaluator';
 
@@ -32,6 +32,7 @@ function makeInput(overrides: Partial<PatternMatchInput> = {}): PatternMatchInpu
     nextSequenceVersion: (() => { let n = 0; return () => ++n; })(),
     projectToShadow: jest.fn(),
     now: () => '2024-01-01T00:00:00.000Z',
+    openapi: makeOpenApi(),
     ...overrides,
   };
 }
@@ -46,7 +47,7 @@ describe('REQ-64: emit_when DSL parsing', () => {
       behaviors: [
         {
           name: 'repay',
-          match: { intent: 'mutation', condition: 'true' },
+          match: { operationId: 'updateTest', condition: 'true' },
           emit_when: [
             { when: 'command.payload.amount < state.balance', emit: 'LoanRepaid' },
             { when: 'command.payload.amount >= state.balance', emit: 'LoanSettled' },
@@ -71,7 +72,7 @@ describe('REQ-64: emit_when DSL parsing', () => {
       behaviors: [
         {
           name: 'repay',
-          match: { intent: 'mutation', condition: 'true' },
+          match: { operationId: 'updateTest', condition: 'true' },
           emit: 'LoanRepaid',
           emit_when: [{ when: 'true', emit: 'LoanRepaid' }],
         },
@@ -88,7 +89,7 @@ describe('REQ-64: emit_when DSL parsing', () => {
       behaviors: [
         {
           name: 'repay',
-          match: { intent: 'mutation', condition: 'true' },
+          match: { operationId: 'updateTest', condition: 'true' },
         },
       ],
       reducers: [],
@@ -103,7 +104,7 @@ describe('REQ-64: emit_when DSL parsing', () => {
       behaviors: [
         {
           name: 'repay',
-          match: { intent: 'mutation', condition: 'true' },
+          match: { operationId: 'updateTest', condition: 'true' },
           emit_when: [{ when: 'true', emit: 'NonExistentEvent' }],
         },
       ],
@@ -119,7 +120,7 @@ describe('REQ-64: emit_when DSL parsing', () => {
       behaviors: [
         {
           name: 'repay',
-          match: { intent: 'mutation', condition: 'true' },
+          match: { operationId: 'updateTest', condition: 'true' },
           emit_when: [],
         },
       ],
@@ -140,7 +141,7 @@ describe('REQ-64: emit_when runtime multi-emit', () => {
         behaviors: [
           {
             name: 'repay',
-            match: { intent: 'mutation', condition: 'true' },
+            match: { operationId: 'updateTest', condition: 'true' },
             emitWhen: [
               { when: 'command.payload.amount < state.balance', emit: 'LoanRepaid' },
               { when: 'command.payload.amount >= state.balance', emit: 'LoanSettled' },
@@ -166,7 +167,7 @@ describe('REQ-64: emit_when runtime multi-emit', () => {
         behaviors: [
           {
             name: 'repay',
-            match: { intent: 'mutation', condition: 'true' },
+            match: { operationId: 'updateTest', condition: 'true' },
             emitWhen: [
               { when: 'command.payload.amount < state.balance', emit: 'LoanRepaid' },
               { when: 'command.payload.amount >= state.balance', emit: 'LoanSettled' },
@@ -192,7 +193,7 @@ describe('REQ-64: emit_when runtime multi-emit', () => {
         behaviors: [
           {
             name: 'repay',
-            match: { intent: 'mutation', condition: 'true' },
+            match: { operationId: 'updateTest', condition: 'true' },
             emitWhen: [
               { when: 'command.payload.amount >= state.balance', emit: 'LoanSettled' },
               { when: 'command.payload.notify == true', emit: 'NotificationSent' },
@@ -220,7 +221,7 @@ describe('REQ-64: emit_when runtime multi-emit', () => {
         behaviors: [
           {
             name: 'settle-only',
-            match: { intent: 'mutation', condition: 'true' },
+            match: { operationId: 'updateTest', condition: 'true' },
             emitWhen: [
               { when: 'command.payload.amount >= state.balance', emit: 'LoanSettled' },
             ],

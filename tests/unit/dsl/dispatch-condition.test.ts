@@ -5,7 +5,7 @@ import { validateBoundaryConfig } from '../../../src/dsl/schema';
 import { runPatternMatch } from '../../../src/engine/patternMatcher';
 import type { PatternMatchInput } from '../../../src/engine/patternMatcher';
 import { BootError } from '../../../src/errors';
-import { makeBoundary, makeCommand } from '../_helpers';
+import { makeBoundary, makeCommand, makeOpenApi } from '../_helpers';
 import type { ShadowGraph } from '../../../src/stategraph/shadow';
 import { createCelEvaluator } from '../../../src/cel/evaluator';
 
@@ -32,6 +32,7 @@ function makeInput(overrides: Partial<PatternMatchInput> = {}): PatternMatchInpu
     nextSequenceVersion: () => 1,
     projectToShadow: jest.fn(),
     now: () => '2024-01-01T00:00:00.000Z',
+    openapi: makeOpenApi(),
     ...overrides,
   };
 }
@@ -46,12 +47,13 @@ describe('REQ-63: dispatch_commands[].condition DSL parsing', () => {
       behaviors: [
         {
           name: 'repay',
-          match: { intent: 'mutation', condition: 'true' },
+          match: { operationId: 'updateTest', condition: 'true' },
           emit: 'LoanRepaid',
           dispatch_commands: [
             {
               boundary: 'CreditBureau',
               intent: 'mutation',
+              operationId: 'updateTest',
               target_id: 'state.customerId',
               condition: 'command.payload.amount > 50000',
               payload: { loanId: 'command.targetId' },
@@ -73,12 +75,13 @@ describe('REQ-63: dispatch_commands[].condition DSL parsing', () => {
       behaviors: [
         {
           name: 'repay',
-          match: { intent: 'mutation', condition: 'true' },
+          match: { operationId: 'updateTest', condition: 'true' },
           emit: 'LoanRepaid',
           dispatch_commands: [
             {
               boundary: 'Audit',
               intent: 'mutation',
+              operationId: 'updateTest',
               target_id: '"audit-target"',
               payload: {},
             },
@@ -103,12 +106,13 @@ describe('REQ-63: dispatch_commands[].condition runtime gating', () => {
         behaviors: [
           {
             name: 'repay',
-            match: { intent: 'mutation', condition: 'true' },
+            match: { operationId: 'updateTest', condition: 'true' },
             emit: 'LoanRepaid',
             dispatchCommands: [
               {
                 boundary: 'CreditBureau',
                 intent: 'mutation',
+                operationId: 'updateTest',
                 targetId: '"bureau-target"',
                 condition: 'command.payload.amount > 50000',
                 payload: {},
@@ -131,12 +135,13 @@ describe('REQ-63: dispatch_commands[].condition runtime gating', () => {
         behaviors: [
           {
             name: 'repay',
-            match: { intent: 'mutation', condition: 'true' },
+            match: { operationId: 'updateTest', condition: 'true' },
             emit: 'LoanRepaid',
             dispatchCommands: [
               {
                 boundary: 'CreditBureau',
                 intent: 'mutation',
+                operationId: 'updateTest',
                 targetId: '"bureau-target"',
                 condition: 'command.payload.amount > 50000',
                 payload: {},
@@ -158,12 +163,13 @@ describe('REQ-63: dispatch_commands[].condition runtime gating', () => {
         behaviors: [
           {
             name: 'repay',
-            match: { intent: 'mutation', condition: 'true' },
+            match: { operationId: 'updateTest', condition: 'true' },
             emit: 'LoanRepaid',
             dispatchCommands: [
               {
                 boundary: 'Audit',
                 intent: 'mutation',
+                operationId: 'updateTest',
                 targetId: '"audit-target"',
                 payload: {},
                 // No condition — always queued
@@ -171,6 +177,7 @@ describe('REQ-63: dispatch_commands[].condition runtime gating', () => {
               {
                 boundary: 'CreditBureau',
                 intent: 'mutation',
+                operationId: 'updateTest',
                 targetId: '"bureau-target"',
                 condition: 'command.payload.amount > 50000',
                 payload: {},

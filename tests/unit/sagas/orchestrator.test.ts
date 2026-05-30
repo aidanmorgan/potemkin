@@ -50,10 +50,12 @@ const loanApprovalSaga: SagaConfig = {
       name: 'reserveCredit',
       boundary: 'CreditBureau',
       intent: 'mutation',
+      operationId: 'reserveCredit',
       targetId: '"cust-1"',
       payload: { amount: 'command.payload.principal' },
       compensation: {
         intent: 'mutation',
+        operationId: 'releaseCredit',
         payload: { release: 'command.payload.principal' },
       },
     },

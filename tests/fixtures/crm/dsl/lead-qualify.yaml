@@ -11,7 +11,7 @@ behaviors:
   # REQ-61: requires guard using CEL comprehension (filter/exists)
   - name: qualifyLead
     match:
-      intent: mutation
+      operationId: qualifyLead
       condition: "true"
       requires:
         - name: must-be-contacted
