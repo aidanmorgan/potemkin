@@ -20,6 +20,7 @@ import { createEventStore } from '../eventstore/store.js';
 import { createStateGraph, deepFreeze } from '../stategraph/graph.js';
 import { createContractValidator } from '../contract/validator.js';
 import { createIdempotencyStore, type IdempotencyStore } from '../idempotency/store.js';
+import { createSessionStore, type SessionStore } from '../identity/sessionStore.js';
 import { projectEvent } from './projection.js';
 import { epochAnchoredUuidv7 } from '../ids/uuidv7.js';
 import { rootLogger, childLogger } from '../observability/logger.js';
@@ -101,6 +102,11 @@ export interface BootedSystem {
   readonly derivedProjections: DerivedProjectionRegistry;
   /** Per-system idempotency store (instance, not a shared singleton). */
   readonly idempotencyStore: IdempotencyStore;
+  /**
+   * Per-system session store backing session/cookie auth. Its clock is wired to
+   * the CEL clock offset so /_admin/clock/advance expires sessions deterministically.
+   */
+  readonly sessionStore: SessionStore;
   /** Per-system aggregate lock map (serializes concurrent same-aggregate UoWs). */
   readonly aggregateLocks: Map<string, Promise<void>>;
   /**
@@ -598,6 +604,9 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       requiresPrecondition: preconditionRequired,
       derivedProjections,
       idempotencyStore: createIdempotencyStore(),
+      // Session expiry tracks the CEL virtual clock so admin clock-advance can
+      // expire live sessions (and clock-reset restores them within TTL).
+      sessionStore: createSessionStore({ nowMs: () => Date.now() + cel.getClockOffset() }),
       aggregateLocks: new Map<string, Promise<void>>(),
       tsReducerRegistry,
       inferredSchemas,

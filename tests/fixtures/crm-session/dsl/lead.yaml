@@ -1,33 +1,46 @@
 boundary: Lead
-path: /leads
-fallback: true
+contract_path: /leads
+fallback_override: true
 identity:
-  generate: $uuidv7()
+  creation:
+    generate: $uuidv7()
 
-events:
+event_catalog:
   - type: LeadCreated
-    payload:
-      id: "${command.targetId}"
-      companyName: "${command.payload.companyName}"
-      contactName: "${command.payload.contactName}"
-      phone: "${command.payload.phone}"
-      email: "${command.payload.email}"
-      source: "${command.payload.source}"
-      status: NEW
-      score: 50
-      createdAt: "${$now()}"
-      callIds: []
-      notes: []
+    payload_template:
+      id: "command.targetId"
+      companyName: "command.payload.companyName"
+      contactName: "command.payload.contactName"
+      phone: "command.payload.phone"
+      email: "command.payload.email"
+      source: "command.payload.source"
+      status: "'NEW'"
+      score: "50"
+      createdAt: "$now()"
+      callIds: "[]"
+      notes: "[]"
 
 behaviors:
   - name: createLead
-    method: POST
-    condition: "true"
+    match:
+      operationId: createLead
+      condition: "true"
     emit: LeadCreated
 
 reducers:
   - on: LeadCreated
-    assign_all: true
+    patches:
+      - { op: replace, path: /id, value: "${event.payload.id}" }
+      - { op: replace, path: /companyName, value: "${event.payload.companyName}" }
+      - { op: replace, path: /contactName, value: "${event.payload.contactName}" }
+      - { op: replace, path: /phone, value: "${event.payload.phone}" }
+      - { op: replace, path: /email, value: "${event.payload.email}" }
+      - { op: replace, path: /source, value: "${event.payload.source}" }
+      - { op: replace, path: /status, value: "${'NEW'}" }
+      - { op: replace, path: /score, value: "${50}" }
+      - { op: replace, path: /createdAt, value: "${event.payload.createdAt}" }
+      - { op: replace, path: /callIds, value: "${[]}" }
+      - { op: replace, path: /notes, value: "${[]}" }
 
 initialization:
   - id: "00000000-0000-7000-8000-000000000010"
