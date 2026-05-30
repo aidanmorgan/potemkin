@@ -369,6 +369,35 @@ export const BUILTINS: Record<string, (...args: unknown[]) => unknown> = {
     throw new Error(`CEL_TYPE_ERROR: size() requires string, list, or map`);
   },
 
+  // length() — alias of size() for strings/lists/maps. Mirrors the type
+  // inference in schemaInference (RE_LENGTH_SIZE) and lets computed-field
+  // formulas read naturally (e.g. length(lineItems)).
+  length: (...args: unknown[]): unknown => {
+    const [x] = args;
+    if (typeof x === 'string') return x.length;
+    if (Array.isArray(x)) return x.length;
+    if (x !== null && typeof x === 'object') return Object.keys(x as Record<string, unknown>).length;
+    throw new Error(`CEL_TYPE_ERROR: length() requires string, list, or map`);
+  },
+
+  // sum() — total of a numeric list. Accepts either sum(list) or a spread of
+  // numbers. null/undefined elements are treated as 0 so an empty or
+  // partially-populated array sums cleanly.
+  sum: (...args: unknown[]): unknown => {
+    let flat: unknown[];
+    if (args.length === 1 && Array.isArray(args[0])) flat = args[0];
+    else flat = args;
+    let total = 0;
+    for (const v of flat) {
+      if (v === null || v === undefined) continue;
+      if (typeof v !== 'number') {
+        throw new Error(`CEL_TYPE_ERROR: sum() requires a list of numbers`);
+      }
+      total += v;
+    }
+    return total;
+  },
+
   keys: (...args: unknown[]): unknown => {
     const [x] = args;
     if (x === null || typeof x !== 'object' || Array.isArray(x))

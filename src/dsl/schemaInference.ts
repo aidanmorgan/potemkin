@@ -6,6 +6,7 @@
 import { BootError } from '../errors.js';
 import type { Patch } from './patches.js';
 import { parsePointer } from './patches.js';
+import type { BoundaryConfig } from './types.js';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -687,6 +688,41 @@ function targetsComputed(path: string, computedPaths: ReadonlySet<string>): bool
     if (path.startsWith(cp + '/')) return true;
   }
   return false;
+}
+
+// ---------------------------------------------------------------------------
+// Adapter: canonical snake_case BoundaryConfig → BoundaryInferenceInput
+// ---------------------------------------------------------------------------
+
+/**
+ * Map a compiled snake_case BoundaryConfig onto the inference input shape:
+ *   eventCatalog[].{type,payloadTemplate} → events[].{name,template}
+ *   reducers[].{on,patches}               → reducers[].{on,patches}
+ *   state (computed/internal)             → state
+ *   strictSchema                          → strict
+ *
+ * Reducer patch values use the ${...} template form; inference treats string
+ * values textually (RE_* matchers strip the wrapper via inferTypeFromCel), so
+ * the ReducerPatchOp list is passed straight through as Patch[].
+ */
+export function boundaryConfigToInferenceInput(
+  boundary: BoundaryConfig,
+): BoundaryInferenceInput {
+  const events: EventDecl[] = boundary.eventCatalog.map((e) => ({
+    name: e.type,
+    template: { ...e.payloadTemplate },
+  }));
+  const reducers: ReducerDecl[] = boundary.reducers.map((r) => ({
+    on: r.on,
+    ...(r.patches ? { patches: r.patches as unknown as readonly Patch[] } : {}),
+  }));
+  return {
+    boundary: boundary.boundary,
+    events,
+    reducers,
+    ...(boundary.state ? { state: boundary.state } : {}),
+    ...(boundary.strictSchema !== undefined ? { strict: boundary.strictSchema } : {}),
+  };
 }
 
 // ---------------------------------------------------------------------------

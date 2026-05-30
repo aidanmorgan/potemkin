@@ -7,7 +7,6 @@ modules:
   # converted to the canonical snake_case form.
   - "!dsl/call-add-transcript.yaml"
   - "!dsl/lead-add-note.yaml"
-  - "!dsl/opportunity-add-line-item.yaml"
 typescript:
   scan:
     - include: ["scripts/**/*.ts"]

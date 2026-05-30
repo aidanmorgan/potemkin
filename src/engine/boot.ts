@@ -31,6 +31,12 @@ import { createPluginControlClient } from '../lifecycle/pluginControlClient.js';
 import { scanTypescriptReducers, type TypescriptConfig } from '../dsl/typescriptScanner.js';
 import { validateReducerConflictsFromDsl } from '../dsl/reducerConflict.js';
 import { createTsReducerRegistry, type TsReducerRegistry } from './tsReducerRegistry.js';
+import {
+  buildInferredSchema,
+  boundaryConfigToInferenceInput,
+  lintUnusedComputed,
+  type BoundaryInferenceResult,
+} from '../dsl/schemaInference.js';
 
 export interface BootInput {
   readonly openapi: OpenApiDoc;
@@ -108,6 +114,12 @@ export interface BootedSystem {
    * typescript: block was configured. Atomic-swapped by the watcher (C6).
    */
   readonly tsReducerRegistry: TsReducerRegistry;
+  /**
+   * C4: per-boundary inferred state schema (keyed by boundary name). Carries
+   * the computed-field topological order + paths used by recomputeComputedFields
+   * (C5) and the computedFields surfaced on GET /_engine/state.
+   */
+  readonly inferredSchemas: Readonly<Record<string, BoundaryInferenceResult>>;
 }
 
 /** Header names that indicate an optimistic-concurrency precondition. */
@@ -147,6 +159,40 @@ function buildPreconditionMap(
 
   return (boundary: string, method: string): boolean =>
     required.has(`${boundary}:${method.toUpperCase()}`);
+}
+
+/**
+ * Names that count as "reading" a computed field for the unused-computed lint:
+ * every property declared on the boundary's OpenAPI entity schema (so a
+ * computed field surfaced in the documented response is considered used) plus
+ * any state.X referenced by another computed formula.
+ */
+function collectStateSurfaceNames(
+  boundary: BoundaryConfig,
+  openapi: OpenApiDoc,
+): string[] {
+  const names = new Set<string>();
+
+  // OpenAPI entity schema property names (resolved $ref to a sibling schema).
+  const rawDoc = openapi.raw as Record<string, unknown>;
+  const components = rawDoc['components'] as Record<string, unknown> | undefined;
+  const schemas = components?.['schemas'] as Record<string, unknown> | undefined;
+  let schema = schemas?.[boundary.boundary] as Record<string, unknown> | undefined;
+  // Follow one level of local $ref (sub-path boundaries mirror their parent).
+  const ref = schema?.['$ref'];
+  if (typeof ref === 'string') {
+    const m = /^#\/components\/schemas\/(.+)$/.exec(ref);
+    if (m && schemas) schema = schemas[m[1]] as Record<string, unknown> | undefined;
+  }
+  const props = schema?.['properties'] as Record<string, unknown> | undefined;
+  if (props) for (const k of Object.keys(props)) names.add(k);
+
+  // Names referenced by sibling computed formulas.
+  for (const cf of boundary.state?.computed ?? []) {
+    for (const dep of cf.dependsOn) names.add(dep);
+  }
+
+  return [...names];
 }
 
 /**
@@ -246,6 +292,37 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
         'Boot: TypeScript reducers scanned and registered',
       );
     }
+
+    // ── Step 2c: Per-boundary schema inference + computed-field lint (C4/C5) ──
+    // For every boundary, run the fixed-point inference over event templates +
+    // reducer patches and merge declared computed/internal fields. Divergence
+    // past the 4-iteration cap surfaces BOOT_ERR_SCHEMA_INFERENCE_DIVERGENT.
+    // Unused computed declarations are linted to a WARN (file:line where known).
+    const phaseStart2c = Date.now();
+    const inferredSchemas: Record<string, BoundaryInferenceResult> = {};
+    for (const boundary of dsl.boundaries) {
+      const result = buildInferredSchema(boundaryConfigToInferenceInput(boundary));
+      inferredSchemas[boundary.boundary] = result;
+      for (const w of result.warnings) {
+        bootLog.warn({ step: 'schema_inference', boundary: boundary.boundary }, `Boot: ${w}`);
+      }
+      // C5: WARN on computed fields that are declared but never read on the
+      // documented state surface. The state surface is every property name the
+      // boundary's reducers/events touch plus the computed names themselves.
+      const declaredComputed = boundary.state?.computed ?? [];
+      if (declaredComputed.length > 0) {
+        const surfaceNames = collectStateSurfaceNames(boundary, input.openapi);
+        const unused = lintUnusedComputed(declaredComputed, { stateSurfaceNames: surfaceNames });
+        for (const u of unused) {
+          const src = loadedConfig?.boundarySourcePaths?.[boundary.boundary] ?? `<boundary:${boundary.boundary}>`;
+          bootLog.warn({ step: 'computed_lint', boundary: boundary.boundary, source: src }, `Boot: ${u} (${src})`);
+        }
+      }
+    }
+    bootLog.info(
+      { step: 'schema_inference', boundaries: Object.keys(inferredSchemas).length, durationMs: Date.now() - phaseStart2c },
+      'Boot: per-boundary schema inference complete',
+    );
 
     // ── Step 3: Contract Binding ──────────────────────────────────────────────
     const phaseStart3 = Date.now();
@@ -483,6 +560,7 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       idempotencyStore: createIdempotencyStore(),
       aggregateLocks: new Map<string, Promise<void>>(),
       tsReducerRegistry,
+      inferredSchemas,
       ...(pluginControlClient !== undefined ? { pluginControl: pluginControlClient } : {}),
     };
 

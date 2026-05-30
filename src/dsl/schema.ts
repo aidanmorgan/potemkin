@@ -905,6 +905,19 @@ export function validateBoundaryConfig(raw: unknown): BoundaryConfig {
   // D3: optional per-boundary response field mask.
   const mask = validateMaskFields(raw['mask'], 'root');
 
+  // C4: optional declared state schema (computed + internal fields).
+  const state = validateDeclaredState(raw['state'], 'root');
+
+  // C5: opt-out of the strict computed-field dependency check.
+  let strictSchema: boolean | undefined;
+  if (raw['strict_schema'] !== undefined || raw['strictSchema'] !== undefined) {
+    const v = raw['strict_schema'] ?? raw['strictSchema'];
+    if (typeof v !== 'boolean') {
+      throw new BootError('BOOT_ERR_DSL_SYNTAX', `root: "strict_schema" must be a boolean`, { field: 'strict_schema' });
+    }
+    strictSchema = v;
+  }
+
   // Cross-reference validation
   crossValidate({ behaviors, reducers, eventCatalog, boundary, scripts });
 
@@ -922,7 +935,103 @@ export function validateBoundaryConfig(raw: unknown): BoundaryConfig {
     ...(deprecated !== undefined ? { deprecated } : {}),
     ...(hateoas !== undefined ? { hateoas } : {}),
     ...(mask !== undefined ? { mask } : {}),
+    ...(state !== undefined ? { state } : {}),
+    ...(strictSchema !== undefined ? { strictSchema } : {}),
   };
+}
+
+/**
+ * C4: parse an optional `state:` block of declared computed and internal
+ * fields. computed entries are { name, formula, depends_on } — the formula is
+ * a CEL expression (compiled at parse time so syntax errors fail fast).
+ * internal entries are { name, type } where type names a scalar/array/object
+ * field kind. Both feed buildInferredSchema at boot.
+ */
+function validateDeclaredState(
+  raw: unknown,
+  ctx: string,
+): import('./schemaInference.js').DeclaredState | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (!isRecord(raw)) {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.state must be a mapping`, { field: 'state' });
+  }
+
+  let computed: import('./schemaInference.js').DeclaredComputedField[] | undefined;
+  const computedRaw = raw['computed'];
+  if (computedRaw !== undefined && computedRaw !== null) {
+    if (!Array.isArray(computedRaw)) {
+      throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.state.computed must be an array`, { field: 'state.computed' });
+    }
+    computed = computedRaw.map((item, i) => {
+      const ictx = `${ctx}.state.computed[${i}]`;
+      if (!isRecord(item)) {
+        throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ictx} must be a mapping`, { context: ictx });
+      }
+      const name = requireString(item, 'name', ictx);
+      const formula = requireString(item, 'formula', ictx);
+      try {
+        celEvaluator.compile(formula);
+      } catch (err) {
+        throw new BootError(
+          'BOOT_ERR_DSL_SYNTAX',
+          `${ictx}.formula is not a valid CEL expression: ${err instanceof Error ? err.message : String(err)}`,
+          { context: ictx, formula },
+        );
+      }
+      const dependsOnRaw = item['depends_on'] ?? item['dependsOn'];
+      let dependsOn: string[] = [];
+      if (dependsOnRaw !== undefined && dependsOnRaw !== null) {
+        if (!Array.isArray(dependsOnRaw)) {
+          throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ictx}.depends_on must be an array`, { context: ictx });
+        }
+        dependsOn = dependsOnRaw.map((d, j) => {
+          if (typeof d !== 'string' || d.trim() === '') {
+            throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ictx}.depends_on[${j}] must be a non-empty string`, { context: ictx });
+          }
+          return d;
+        });
+      }
+      return { name, formula, dependsOn };
+    });
+  }
+
+  let internal: import('./schemaInference.js').DeclaredInternalField[] | undefined;
+  const internalRaw = raw['internal'];
+  if (internalRaw !== undefined && internalRaw !== null) {
+    if (!Array.isArray(internalRaw)) {
+      throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.state.internal must be an array`, { field: 'state.internal' });
+    }
+    internal = internalRaw.map((item, i) => {
+      const ictx = `${ctx}.state.internal[${i}]`;
+      if (!isRecord(item)) {
+        throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ictx} must be a mapping`, { context: ictx });
+      }
+      const name = requireString(item, 'name', ictx);
+      const typeName = requireString(item, 'type', ictx);
+      return { name, type: fieldTypeFromName(typeName, ictx) };
+    });
+  }
+
+  return {
+    ...(computed !== undefined ? { computed } : {}),
+    ...(internal !== undefined ? { internal } : {}),
+  };
+}
+
+const SCALAR_FIELD_KINDS = new Set(['string', 'integer', 'number', 'boolean', 'null', 'array', 'object']);
+
+function fieldTypeFromName(
+  typeName: string,
+  ctx: string,
+): import('./schemaInference.js').FieldType {
+  if (!SCALAR_FIELD_KINDS.has(typeName)) {
+    throw new BootError(
+      'BOOT_ERR_DSL_SYNTAX',
+      `${ctx}.type "${typeName}" is not a known field kind (${[...SCALAR_FIELD_KINDS].join(', ')})`,
+      { context: ctx, type: typeName },
+    );
+  }
+  return { kind: typeName as import('./schemaInference.js').FieldKind, confidence: 'known' };
 }
 
 /** D2: parse an optional `deprecated:` envelope { date?, sunset?, replacement? }. */
