@@ -8,6 +8,11 @@ import express from 'express';
 
 import type { BootedSystem } from '../engine/boot.js';
 import { compileDsl } from '../dsl/parser.js';
+import { computeSpecVersion } from '../dsl/specVersion.js';
+import { createCelEvaluator } from '../cel/evaluator.js';
+import { createStateGraph } from '../stategraph/graph.js';
+import { projectEvent } from '../engine/projection.js';
+import type { JournalEntry } from '../dsl/patches.js';
 import {
   handleEngineDsl,
   handleEngineState,
@@ -39,11 +44,14 @@ function makeInstallProducer(sys: BootedSystem): InstallProducer {
       // Atomic swap: replace the BootedSystem.dsl reference. The graph is
       // left untouched so projected state survives the swap.
       (sys as { dsl: typeof dsl }).dsl = dsl;
+      // The stored bundle's specVersion must equal what handleEngineDsl derives
+      // from the same payload.modules — otherwise the replay (304) check never
+      // matches and every install recompiles.
       return {
-        specVersion: 'computed-by-handler',
+        specVersion: computeSpecVersion(payload.modules),
         boundaryCount: dsl.boundaries.length,
         yamlReducerCount: dsl.boundaries.reduce((n, b) => n + b.reducers.length, 0),
-        tsReducerCount: 0,
+        tsReducerCount: sys.tsReducerRegistry.snapshot().length,
       };
     },
   };
@@ -66,11 +74,59 @@ function makeStateAccessor(sys: BootedSystem): StateAccessor {
           version: events.length,
           lastEvent: last ? last.type : null,
           computedFields,
-          patchJournal: [],
+          patchJournal: reproduceAggregateJournal(sys, events),
         },
       };
     },
   };
+}
+
+/**
+ * Reproduce the cumulative reducer patch journal for an aggregate by replaying
+ * its events through the canonical projectEvent path onto a throwaway graph and
+ * a throwaway CelEvaluator. Using fresh instances means the live sys.cel's
+ * per-instance faker/clock state is never mutated, so concurrent reads stay
+ * thread-safe. The validator/schemaRegistry are deliberately omitted: the state
+ * was already validated at write time, and re-validating here could throw on a
+ * read; we only need the patch provenance. Guarded so a read never 500s — a
+ * reproduction failure degrades to an empty journal and is logged.
+ */
+function reproduceAggregateJournal(
+  sys: BootedSystem,
+  events: readonly import('../types.js').DomainEvent[],
+): JournalEntry[] {
+  const graph = createStateGraph();
+  const cel = createCelEvaluator();
+  const journal: JournalEntry[] = [];
+  try {
+    for (const event of events) {
+      const boundaryConfig = sys.dsl.byBoundaryName[event.boundary];
+      if (!boundaryConfig) continue;
+      const inferred = sys.inferredSchemas[boundaryConfig.boundary];
+      const result = projectEvent({
+        event,
+        boundary: boundaryConfig,
+        graph,
+        cel,
+        openapi: sys.openapi,
+        tsReducerRegistry: sys.tsReducerRegistry,
+        ...(inferred && inferred.computedOrder.length > 0
+          ? {
+              computed: sys.dsl.byBoundaryName[boundaryConfig.boundary]?.state?.computed ?? [],
+              computedOrder: inferred.computedOrder,
+            }
+          : {}),
+      });
+      journal.push(...result.journal);
+    }
+  } catch (err) {
+    sys.logger.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      'engine-state: patch-journal reproduction failed; returning empty journal',
+    );
+    return [];
+  }
+  return journal;
 }
 
 export function mountEngineDslRoutes(app: Express, sys: BootedSystem): void {

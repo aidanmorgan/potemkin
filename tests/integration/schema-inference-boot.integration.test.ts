@@ -71,6 +71,73 @@ describe('C4: boot attaches per-boundary inferred schemas', () => {
     const computed = (res.body._meta as { computedFields: string[] }).computedFields;
     expect([...computed].sort()).toEqual(['itemCount', 'totalValue']);
   });
+
+  it('surfaces the real reducer patch journal on GET /_engine/state/:boundary/:id (potemkin-q5d)', async () => {
+    const created = await agent
+      .post('/opportunities')
+      .send({ leadId: '00000000-0000-7000-8000-000000000011', value: 100 })
+      .expect(201);
+    const oppId = created.body.id as string;
+
+    // The addLineItem reducer appends event.payload to /lineItems — a single
+    // deterministic 'reducer'-sourced append the state endpoint must surface.
+    await agent
+      .post(`/opportunities/${oppId}/line-items`)
+      .send({ description: 'widget', quantity: 2, unitPrice: 50 })
+      .expect(200);
+
+    const res = await agent
+      .get(`/_engine/state/OpportunityAddLineItem/${oppId}`)
+      .expect(200);
+
+    const journal = (res.body._meta as { patchJournal: Array<{ source: string; op: string; path: string }> })
+      .patchJournal;
+    const appendToLineItems = journal.find((j) => j.op === 'append' && j.path === '/lineItems');
+    expect(appendToLineItems).toBeDefined();
+    expect(appendToLineItems?.source).toBe('reducer');
+  });
+});
+
+describe('POST /_engine/dsl: install then replay (potemkin-q5d)', () => {
+  // Boots its own system because a successful install swaps sys.dsl; isolating
+  // it here keeps the swap from leaking into the C4 suite above.
+  let sys: BootedSystem;
+  let agent: PersistentAgent;
+
+  const minimalModule = {
+    path: 'minimal.yaml',
+    yaml: 'boundary: MyBoundary\ncontract_path: /my/path\nbehaviors: []\nreducers: []\nevent_catalog: []\n',
+  };
+  const wirePayload = { modules: [minimalModule], typescript: null, specEndpoints: [] };
+
+  beforeAll(async () => {
+    const inline = await loadFixtureWithGlobal();
+    sys = await bootSystem({ openapi: inline.openapi, potemkinConfigPath: CRM_CONFIG });
+    const app = createGateway(sys);
+    const persistent = await withPersistentServer(app);
+    agent = persistent.agent;
+    registerFileTeardown(persistent.close);
+  });
+
+  // No resetSystem here: a successful install swaps sys.dsl to the minimal
+  // module, so replaying the CRM baseline events against it would fail. This
+  // system is isolated to this describe and torn down via the server close.
+
+  it('returns 200 on first install with tsReducerCount drawn from the live registry', async () => {
+    const res = await agent.post('/_engine/dsl').send(wirePayload).expect(200);
+    expect(res.body.boundaryCount).toBe(1);
+    // The wiring must read the live TS-reducer registry, not a hardcoded 0.
+    expect(res.body.tsReducerCount).toBe(sys.tsReducerRegistry.snapshot().length);
+    expect(typeof res.body.specVersion).toBe('string');
+    expect(res.body.specVersion.length).toBeGreaterThan(0);
+  });
+
+  it('returns 304 replay when the same modules are installed again (stored specVersion matches)', async () => {
+    // The stored bundle's specVersion now equals computeSpecVersion(modules), so
+    // the handler short-circuits to replay instead of recompiling every time.
+    const res = await agent.post('/_engine/dsl').send(wirePayload).expect(304);
+    expect(res.headers['x-potemkin-spec-version']).toBeTruthy();
+  });
 });
 
 describe('C4: schema inference converges and is guarded by the iteration cap', () => {
