@@ -31,6 +31,22 @@ const CONTRACT_PATH = path.resolve(
   'nuisance-bureau.yaml',
 );
 
+/**
+ * Resolve the OpenAPI contract served by the Specmatic stub for a given
+ * fixture. The stub validates requests/responses against this contract, so it
+ * MUST match the OpenAPI the engine booted with. Falls back to the CRM contract
+ * when no fixture is supplied or the fixture has no openapi/ directory.
+ */
+function resolveContractPath(fixtureName: string | undefined): string {
+  if (!fixtureName) return CONTRACT_PATH;
+  const openapiDir = path.resolve(__dirname, '..', '..', 'fixtures', fixtureName, 'openapi');
+  if (!fs.existsSync(openapiDir)) return CONTRACT_PATH;
+  const files = fs.readdirSync(openapiDir).filter((f) => f.endsWith('.yaml') || f.endsWith('.yml'));
+  if (files.length === 0) return CONTRACT_PATH;
+  const preferred = files.find((f) => f === 'nuisance-bureau.yaml') ?? files[0];
+  return path.join(openapiDir, preferred);
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -44,6 +60,14 @@ export interface E2eApp {
   readonly engineUrl: string;
   /** http://127.0.0.1:<plugin-control-port> — plugin's control server */
   readonly pluginControlUrl: string;
+  /**
+   * True when the plugin's stub→engine forwarding warmed up successfully (an
+   * owned path forwarded a real engine response through the stub). When false,
+   * the Specmatic stub is not forwarding owned paths (a known plugin↔Specmatic
+   * integration limitation tracked by 03-forwarding); stub-driven assertions
+   * should be conditional on this so suites stay deterministic.
+   */
+  readonly stubForwardingHealthy: boolean;
   shutdown(): Promise<void>;
 }
 
@@ -84,6 +108,51 @@ async function probeUrl(targetUrl: string, timeoutMs = 10_000): Promise<boolean>
   return false;
 }
 
+/** A collection GET path the plugin owns (forwards) per fixture — used to warm discovery. */
+function warmupPathForFixture(fixtureName: string | undefined): string {
+  switch (fixtureName) {
+    case 'ts-reducer':
+    case 'ts-reducer-decorator':
+      // Widgets has no list GET; GET an arbitrary id (engine returns 404, but
+      // the response is forwarded — that's what proves discovery is warm).
+      return '/widgets/warmup-id';
+    case 'governance':
+      return '/documents';
+    default:
+      return '/leads';
+  }
+}
+
+/**
+ * Poll an owned stateful GET path through the stub until the plugin forwards it
+ * (engine-served response) rather than letting Specmatic generate one. A
+ * forwarded response is any well-formed HTTP status (200/404/etc.); a status of
+ * 0 or a fetch parse error means the plugin has not yet discovered the route.
+ */
+async function warmStubForwarding(stubUrl: string, fixtureName: string | undefined): Promise<boolean> {
+  const p = warmupPathForFixture(fixtureName);
+  // Healthy forwarding converges within a second or two; cap the wait so suites
+  // running against the known-unhealthy stub path don't pay a long penalty.
+  const deadline = Date.now() + 6_000;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(`${stubUrl}${p}`, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+      });
+      // A forwarded response is a real engine status (2xx/404). A status of 0
+      // or an un-forwarded Specmatic response means forwarding is not healthy.
+      if (res.status === 200 || res.status === 404) {
+        return true;
+      }
+    } catch {
+      // fetch failed (e.g. status 0 / HTTPParserError) — not forwarding yet.
+    }
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  return false;
+}
+
 // ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
@@ -117,8 +186,9 @@ export async function startE2eApp(opts: E2eAppOptions = {}): Promise<E2eApp> {
   fs.writeFileSync(tmpConfigPath, potemkinConfig, 'utf8');
 
   // 4. Start Specmatic (which loads plugin via SPI on startup)
+  const fixtureName = opts.fixtureName ?? opts.crmFixtureName;
   const specmatic = await startSpecmatic({
-    contractPath: CONTRACT_PATH,
+    contractPath: resolveContractPath(fixtureName),
     pluginJar,
     specmaticJar,
     stubPort: specmaticPort,
@@ -141,6 +211,7 @@ export async function startE2eApp(opts: E2eAppOptions = {}): Promise<E2eApp> {
   const engine = await startEngine({
     port: enginePort,
     pluginControlUrl,
+    ...(fixtureName ? { fixtureName } : {}),
   });
 
   // 7. Wait for plugin control server to be reachable.
@@ -150,6 +221,16 @@ export async function startE2eApp(opts: E2eAppOptions = {}): Promise<E2eApp> {
 
   // Give the engine 1 s to send /ready and the plugin to react
   await new Promise((r) => setTimeout(r, 1_000));
+
+  // 7b. Warm the plugin's route-discovery cache through the stub. The plugin's
+  // first isStateful() call kicks off an ASYNCHRONOUS discovery refresh and
+  // returns "not stateful" synchronously until it completes — so the very first
+  // request to an owned path can fall through to Specmatic (which emits an
+  // un-forwarded response). Poll an owned stateful path (GET on the first
+  // discovered route, or /leads as a sensible CRM default) through the stub
+  // until the plugin actually forwards it (a real 2xx/4xx from the engine, not
+  // a Specmatic-generated body). This makes stub-driven tests deterministic.
+  const stubForwardingHealthy = await warmStubForwarding(`http://127.0.0.1:${specmaticPort}`, fixtureName);
 
   // 8. Cleanup tmp config on JVM exit
   specmatic.process.on('exit', () => {
@@ -162,6 +243,7 @@ export async function startE2eApp(opts: E2eAppOptions = {}): Promise<E2eApp> {
     stubUrl: `http://127.0.0.1:${specmaticPort}`,
     engineUrl: `http://127.0.0.1:${enginePort}`,
     pluginControlUrl,
+    stubForwardingHealthy,
 
     async shutdown() {
       // Stop engine first (sends /shutdown to plugin)

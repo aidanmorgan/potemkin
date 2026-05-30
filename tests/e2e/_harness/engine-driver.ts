@@ -10,7 +10,7 @@ import type { BootedSystem } from '../../../src/engine/boot';
 import { bootSystem } from '../../../src/engine/boot';
 import { resetSystem } from '../../../src/engine/reset';
 import { createGateway } from '../../../src/http/gateway';
-import { loadFixtureWithGlobal } from '../../fixtures/index';
+import { loadEngineFixture } from '../../fixtures/index';
 import { expandByContractPath } from '../../integration/_helpers/crm-boot';
 import { getFreePort } from './port-allocator';
 
@@ -30,6 +30,14 @@ interface EngineDriverOpts {
   port?: number;
   /** If set, the engine will POST /ready and /shutdown notifications here. */
   pluginControlUrl?: string;
+  /**
+   * Fixture directory under tests/fixtures (e.g. "crm", "crm-jwt",
+   * "crm-session", "ts-reducer"). Defaults to "crm". When the fixture declares
+   * a typescript: reducer block, the engine boots via its potemkin.yaml so the
+   * TS reducers are scanned + registered; otherwise it boots from the composed
+   * CompiledDsl + global config.
+   */
+  fixtureName?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -38,8 +46,9 @@ interface EngineDriverOpts {
 
 export async function startEngine(opts: EngineDriverOpts = {}): Promise<EngineHandle> {
   const port = opts.port ?? (await getFreePort());
+  const fixtureName = opts.fixtureName ?? 'crm';
 
-  let sys = await _boot(opts.pluginControlUrl);
+  let sys = await _boot(opts.pluginControlUrl, fixtureName);
   let server = await _serve(sys, port);
 
   const handle: EngineHandle = {
@@ -69,7 +78,7 @@ export async function startEngine(opts: EngineDriverOpts = {}): Promise<EngineHa
       }
       await _closeServer(server);
       resetSystem(sys);
-      sys = await _boot(controlUrl);
+      sys = await _boot(controlUrl, fixtureName);
       server = await _serve(sys, port);
     },
   };
@@ -81,21 +90,20 @@ export async function startEngine(opts: EngineDriverOpts = {}): Promise<EngineHa
 // Private helpers
 // ---------------------------------------------------------------------------
 
-async function _boot(pluginControlUrl?: string): Promise<BootedSystem> {
+async function _boot(pluginControlUrl?: string, fixtureName = 'crm'): Promise<BootedSystem> {
   // Each bootSystem() creates its own idempotency store, so a fresh boot
-  // already starts with a clean slate.
-  const fixture = await loadFixtureWithGlobal();
+  // already starts with a clean slate. Every fixture boots through its
+  // potemkin.yaml (the canonical loader) so module globbing/exclusions, the
+  // global-config merge, and the TypeScript-reducer scan all run identically
+  // to production.
+  const fixture = await loadEngineFixture(fixtureName);
+  const pluginControl = pluginControlUrl
+    ? { pluginControl: { url: pluginControlUrl, timeoutMs: 2000 } }
+    : {};
   const sys = await bootSystem({
     openapi: fixture.openapi,
-    compiledDsl: fixture.compiledDsl,
-    ...(pluginControlUrl
-      ? {
-          pluginControl: {
-            url: pluginControlUrl,
-            timeoutMs: 2000,
-          },
-        }
-      : {}),
+    potemkinConfigPath: fixture.potemkinConfigPath,
+    ...pluginControl,
   });
   // Expand byContractPath so the gateway registers routes for all OpenAPI
   // sub-paths (e.g. /leads/{id}/contact), not just the boundary base paths.

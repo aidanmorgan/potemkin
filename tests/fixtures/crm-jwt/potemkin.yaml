@@ -2,6 +2,10 @@ version: 1
 specmatic: ./specmatic.yaml
 modules:
   - "dsl/**/*.yaml"
+  # WIP boundaries authored in the older path:/fallback: dialect with no
+  # contract path — excluded until converted to canonical snake_case form.
+  - "!dsl/call-add-transcript.yaml"
+  - "!dsl/lead-add-note.yaml"
 typescript:
   scan:
     - include: ["scripts/**/*.ts"]

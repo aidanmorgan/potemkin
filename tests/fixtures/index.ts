@@ -85,3 +85,46 @@ export async function loadFixtureWithGlobal(
   const compiledDsl = await compileDsl(dslModules, globalYaml || undefined);
   return { openapi, compiledDsl, globalYaml, scriptsDir, dslModules };
 }
+
+/** Resolve the single OpenAPI document for a fixture's `openapi/` directory. */
+function resolveOpenApiPath(dir: string): string {
+  const openapiDir = path.join(dir, 'openapi');
+  const files = fs
+    .readdirSync(openapiDir)
+    .filter((f) => f.endsWith('.yaml') || f.endsWith('.yml'));
+  if (files.length === 0) {
+    throw new Error(`Fixture at ${dir} has no OpenAPI document under openapi/`);
+  }
+  // Prefer the conventional name when present; otherwise take the only file.
+  const preferred = files.find((f) => f === 'nuisance-bureau.yaml') ?? files[0];
+  return path.join(openapiDir, preferred);
+}
+
+export interface EngineFixture {
+  readonly openapi: BootInput['openapi'];
+  /** Absolute path to the fixture's potemkin.yaml — boot the engine via this. */
+  readonly potemkinConfigPath: string;
+  /** The fixture directory. */
+  readonly dir: string;
+}
+
+/**
+ * Generic, fixture-aware loader used by the e2e engine driver.
+ *
+ * Resolves the OpenAPI document from `<fixture>/openapi/` (any filename) and
+ * the fixture's potemkin.yaml. The engine boots through potemkinConfigPath so
+ * that loadPotemkinConfig performs the canonical module globbing (+ exclusions),
+ * global-config merge (auth/sagas/idempotency/seeds/overlay/workflow), and
+ * TypeScript-reducer scan — exactly as production does. This is the single
+ * supported boot path for every fixture (crm, crm-jwt, crm-session, ts-reducer,
+ * ts-reducer-decorator).
+ */
+export async function loadEngineFixture(fixtureName = 'crm'): Promise<EngineFixture> {
+  const dir = path.join(__dirname, fixtureName);
+  const openapi = await loadOpenApi(resolveOpenApiPath(dir));
+  const potemkinConfigPath = path.join(dir, 'potemkin.yaml');
+  if (!fs.existsSync(potemkinConfigPath)) {
+    throw new Error(`Fixture "${fixtureName}" has no potemkin.yaml at ${potemkinConfigPath}`);
+  }
+  return { openapi, potemkinConfigPath, dir };
+}
