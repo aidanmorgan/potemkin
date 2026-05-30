@@ -1,0 +1,43 @@
+boundary: Document
+contract_path: /documents
+fallback_override: true
+identity:
+  creation:
+    generate: $uuidv7()
+
+# D1 HATEOAS: a static self link injected into the response body.
+# D3 mask: internalNotes is removed from the response before it is served.
+hateoas:
+  - rel: self
+    href: /documents
+mask:
+  - internalNotes
+
+event_catalog:
+  - type: DocumentCreated
+    payload_template:
+      id: "command.targetId"
+      title: "command.payload.title"
+      internalNotes: "command.payload?.internalNotes != null ? command.payload.internalNotes : ''"
+      status: "'DRAFT'"
+
+behaviors:
+  - name: createDocument
+    match:
+      operationId: createDocument
+      condition: "true"
+    emit: DocumentCreated
+
+reducers:
+  - on: DocumentCreated
+    patches:
+      - { op: replace, path: /id, value: "${event.payload.id}" }
+      - { op: replace, path: /title, value: "${event.payload.title}" }
+      - { op: replace, path: /internalNotes, value: "${event.payload.internalNotes}" }
+      - { op: replace, path: /status, value: "${'DRAFT'}" }
+
+initialization:
+  - id: "11111111-1111-7000-8000-000000000001"
+    title: "Seed Document"
+    internalNotes: "classified — must be masked"
+    status: "DRAFT"

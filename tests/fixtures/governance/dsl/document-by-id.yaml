@@ -1,0 +1,20 @@
+boundary: DocumentById
+contract_path: /documents/{id}
+fallback_override: true
+
+# D1 HATEOAS self link + D3 mask of internalNotes on the by-id read.
+# D2 deprecation: getDocument is deprecated; emit Deprecation + Sunset + a
+# successor-version Link header on the served response.
+hateoas:
+  - rel: self
+    href: /documents
+mask:
+  - internalNotes
+deprecated:
+  sunset: "2027-01-01T00:00:00Z"
+  replacement: /v2/documents
+
+event_catalog: []
+behaviors: []
+reducers: []
+initialization: []
