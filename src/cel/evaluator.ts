@@ -52,59 +52,92 @@
 
 import { CelPhase } from './phases.js';
 import {
-  callBuiltin, deepEqual, naturalCompare,
-  type BuiltinContext,
+  callBuiltin, deepEqual, naturalCompare, createFakeRng,
+  type BuiltinContext, type FakeRng,
 } from './builtins.js';
 import { createLogger } from '../observability/logger.js';
 
 // ---------------------------------------------------------------------------
-// ReDoS protection for matches()
+// ReDoS protection for matches() — synchronous, shape-based guard.
 //
-// Option A (chosen): run each regex test in a worker_threads Worker with a
-// hard 50 ms wall-clock timeout.  If the worker does not complete in time,
-// it is terminated and the call throws:
-//   CEL_RUNTIME_ERROR: REGEX_TIMEOUT
-// This prevents adversarial backtracking patterns (e.g. `(a+)+$`) from
-// hanging the Node.js event loop.
+// `matches()` runs entirely on the calling thread: there are no Worker threads,
+// no Atomics, and no SharedArrayBuffer. An earlier design ran each regex in a
+// worker_threads Worker with an Atomics.wait wall-clock timeout; that was
+// correct but its blocking + worker-creation overhead caused supertest-driven
+// integration tests to flake under jest's parallel worker load (socket
+// hang-ups). It has been removed entirely.
 //
-// Why Option A over Option B (re2 npm):
-//   - `re2` requires node-gyp + platform-specific binaries at install time,
-//     complicating CI/CD.
-//   - `worker_threads` is built into Node.js ≥ 12; zero new dependencies.
-// Why Option A over Option C (static pattern analysis):
-//   - Robust static detection of polynomial-backtracking patterns is a
-//     research-grade problem with known false-positive and false-negative
-//     rates.  A runtime timeout is simpler, more reliable, and language-
-//     agnostic.
-//
-// Implementation detail: we use Atomics.wait() (blocking) so that the
-// synchronous evalStringMethod call site does not need to become async.
-// SharedArrayBuffer + Atomics is available in Node.js without special flags.
+// Instead, the DSL author is trusted, so we reject patterns whose *shape* is
+// known to backtrack catastrophically (nested/overlapping unbounded
+// quantifiers) before ever constructing the RegExp, then run the remainder
+// synchronously via the native engine. The shape check is O(pattern length),
+// independent of input length, so an adversarial pattern is rejected instantly
+// rather than hanging the event loop.
 // ---------------------------------------------------------------------------
 
 /**
- * Execute `new RegExp(pattern).test(input)` with a heuristic ReDoS guard.
+ * Detect a catastrophic-backtracking *shape* in a regex source string.
  *
- * The previous implementation spawned a Node Worker per call and used
- * Atomics.wait for a hard wall-clock timeout. That approach was correct but
- * its blocking + worker-creation overhead caused supertest-driven integration
- * tests to flake under jest's parallel worker load (~10% socket hang-up rate).
+ * This is a deliberately conservative heuristic (the well-known "safe-regex"
+ * family of checks): it looks for an unbounded quantifier (`+`, `*`, or
+ * open-ended `{n,}`) applied to a group that itself contains an unbounded
+ * quantifier or an overlapping alternation. These are the classic exponential
+ * shapes:
+ *   - nested quantifier:        (a+)+   (a*)*   (a+)*   (\d+)+
+ *   - quantified, open-repeat:  (a+){2,}
+ *   - overlapping alternation:  (a|a)+  (a|ab)+
  *
- * The DSL author is trusted, so we now reject patterns that *look* ReDoS-prone
- * (catastrophic-backtracking shapes like `(a+)+`, `(a|a)+`) at compile time
- * and run the rest synchronously. End-user-supplied regexes do not flow into
- * this path.
+ * @returns a human-readable reason when the pattern looks ReDoS-prone, else null.
+ */
+function detectCatastrophicRegexShape(pattern: string): string | null {
+  // An unbounded quantifier that closes a group: `)` followed by +, *, or {n,}.
+  const groupRepeat = /\)\s*(?:[+*]|\{\d+,\}?)/;
+
+  // Walk each parenthesised group and inspect its body.
+  // A group body that contains its own unbounded quantifier (`+`, `*`, `{n,}`)
+  // AND is itself repeated is the nested-quantifier shape.
+  const groupRe = /\(([^()]*)\)\s*([+*]|\{\d+,?\d*\}?)?/g;
+  let m: RegExpExecArray | null;
+  while ((m = groupRe.exec(pattern)) !== null) {
+    const body = m[1] ?? '';
+    const outerQuant = m[2] ?? '';
+    // Only an *unbounded* outer quantifier can cause exponential blow-up.
+    const outerUnbounded = outerQuant === '+' || outerQuant === '*' || /^\{\d+,\}?$/.test(outerQuant);
+    if (!outerUnbounded) continue;
+
+    // (a) nested unbounded quantifier inside the repeated group.
+    if (/[+*]|\{\d+,/.test(body)) {
+      return `nested-quantifier shape /(${body})${outerQuant}/`;
+    }
+    // (b) overlapping alternation inside the repeated group, e.g. (a|a)+,
+    //     (a|ab)+. Any alternation under an unbounded repeat is treated as
+    //     potentially overlapping and rejected conservatively.
+    if (body.includes('|')) {
+      return `overlapping-alternation shape /(${body})${outerQuant}/`;
+    }
+  }
+
+  // Defensive catch-all for shapes the per-group scan above can miss because of
+  // nested parentheses (the body regex is intentionally non-recursive).
+  if (groupRepeat.test(pattern) && /\([^)]*[+*]/.test(pattern)) {
+    return 'nested-quantifier shape (nested groups)';
+  }
+  return null;
+}
+
+/**
+ * Execute `new RegExp(pattern).test(input)` with a synchronous, shape-based
+ * ReDoS guard. No Worker threads are involved.
  *
+ * @throws {Error} `CEL_TYPE_ERROR: REGEX_REJECTED` if the pattern has a
+ *   catastrophic-backtracking shape.
  * @throws {Error} `CEL_TYPE_ERROR` if the pattern is syntactically invalid.
- * @throws {Error} `CEL_TYPE_ERROR: REGEX_REJECTED` if a known-bad pattern shape
- *   is supplied.
  */
 function evalMatchesSafe(pattern: string, input: string): boolean {
-  // Heuristic reject: nested quantifiers like (X+)+ or (X*)* are classic
-  // catastrophic-backtracking shapes. Cheap to detect, cheap to reject.
-  if (/\([^)]*[+*]\)\s*[+*]/.test(pattern)) {
+  const reason = detectCatastrophicRegexShape(pattern);
+  if (reason !== null) {
     throw new Error(
-      `CEL_TYPE_ERROR: REGEX_REJECTED — regex /${pattern}/ has a nested-quantifier shape known to backtrack catastrophically`,
+      `CEL_TYPE_ERROR: REGEX_REJECTED — regex /${pattern}/ has a ${reason} known to backtrack catastrophically`,
     );
   }
   let re: RegExp;
@@ -115,6 +148,8 @@ function evalMatchesSafe(pattern: string, input: string): boolean {
   }
   return re.test(input);
 }
+
+export { detectCatastrophicRegexShape };
 
 const logger = createLogger({ name: 'cel' });
 
@@ -148,10 +183,16 @@ export interface CelEvaluator {
    *   - `$${literal}` → escapes to the literal `${literal}` (no evaluation)
    */
   evaluateDslValue(value: unknown, ctx: CelContext, phase: CelPhase): unknown;
-  /** Return the current global clock offset in milliseconds. */
+  /** Return the current clock offset in milliseconds (per-instance). */
   getClockOffset(): number;
-  /** Set the global clock offset in milliseconds (positive moves $now() forward). */
+  /** Set the clock offset in milliseconds (positive moves $now() forward). Per-instance. */
   setClockOffset(ms: number): void;
+  /**
+   * Set (or clear) this evaluator's faker seed from a string. The seed and RNG
+   * state are per-instance, so concurrent evaluators with different seeds do not
+   * interfere. Passing `undefined` clears the seed (reverts $fake* to Math.random).
+   */
+  setFakerSeed(s: string | undefined): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -866,7 +907,7 @@ function evalStringMethod(s: string, method: string, args: unknown[]): unknown {
     }
     case 'matches': {
       if (typeof args[0] !== 'string') throw new Error(`CEL_TYPE_ERROR: matches requires a string (regex) argument`);
-      // Use ReDoS-safe worker-thread timeout (Option A). See evalMatchesSafe().
+      // Synchronous, shape-based ReDoS guard (no Worker threads). See evalMatchesSafe().
       return evalMatchesSafe(args[0], s);
     }
     case 'size':
@@ -1146,9 +1187,11 @@ function findClosingBrace(s: string, start: number): number {
 }
 
 export function createCelEvaluator(): CelEvaluator {
-  // Per-instance clock offset (ms). Instance state — NOT a module global — so
-  // concurrent booted systems and parallel requests do not share/clobber it.
+  // Per-instance clock offset (ms) and faker RNG. Instance state — NOT module
+  // globals — so concurrent booted systems and parallel requests do not
+  // share/clobber them.
   let clockOffsetMs = 0;
+  const fakeRng: FakeRng = createFakeRng();
   const evaluator: CelEvaluator = {
     compile(expression: string): CompiledCel {
       let ast: Expr;
@@ -1176,6 +1219,7 @@ export function createCelEvaluator(): CelEvaluator {
       const builtinCtx: BuiltinContext = {
         phase,
         now: () => new Date(Date.now() + clockOffsetMs).toISOString(),
+        fake: fakeRng,
       };
 
       try {
@@ -1214,6 +1258,7 @@ export function createCelEvaluator(): CelEvaluator {
 
     getClockOffset(): number { return clockOffsetMs; },
     setClockOffset(ms: number): void { clockOffsetMs = Number.isFinite(ms) ? ms : 0; },
+    setFakerSeed(s: string | undefined): void { fakeRng.seedString(s); },
   };
   return evaluator;
 }

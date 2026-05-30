@@ -58,7 +58,6 @@ import type { Command, Intent } from '../types.js';
 import { resolveActor, JwtValidationError } from '../identity/actorResolver.js';
 import { createForwardingHandler, healthHandler, createRoutesHandler, createFixturesHandler } from '../forwarding/handler.js';
 import { parseControlHeaders, applyMask } from './controlHeaders.js';
-import { setFakerSeedFromString } from '../cel/builtins.js';
 import { rebuildEntityAtVersion, findEventById } from '../engine/timeTravel.js';
 
 /** Node.js normalises header names to lowercase; this is the lowercased If-Match header. */
@@ -283,8 +282,8 @@ async function handleContractRequest(
     if (controls.transparency.clockOffsetMs !== undefined) {
       sys.cel.setClockOffset(previousClockOffset + controls.transparency.clockOffsetMs);
     }
-    // Tier 1: faker seed.
-    if (controls.transparency.seed !== undefined) setFakerSeedFromString(controls.transparency.seed);
+    // Tier 1: faker seed — per-evaluator-instance (no module global).
+    if (controls.transparency.seed !== undefined) sys.cel.setFakerSeed(controls.transparency.seed);
 
     // Tier 2: bulk-transactional — when the body is an array, treat each item as a
     // separate UoW. The whole batch aborts (400 BULK_TRANSACTION_ABORTED) on the
@@ -325,7 +324,7 @@ async function handleContractRequest(
         }
       }
       sys.cel.setClockOffset(previousClockOffset);
-      if (controls.transparency.seed !== undefined) setFakerSeedFromString(undefined);
+      if (controls.transparency.seed !== undefined) sys.cel.setFakerSeed(undefined);
       if (abortIndex !== null) {
         res.status(400).json({
           error: 'BULK_TRANSACTION_ABORTED',
@@ -356,7 +355,7 @@ async function handleContractRequest(
       if (controls.timeTravel.readAtVersion !== undefined && targetId !== null) {
         const rebuilt = rebuildEntityAtVersion(targetId, controls.timeTravel.readAtVersion, boundary, sys.events, sys.cel, logger);
         sys.cel.setClockOffset(previousClockOffset);
-        if (controls.transparency.seed !== undefined) setFakerSeedFromString(undefined);
+        if (controls.transparency.seed !== undefined) sys.cel.setFakerSeed(undefined);
         const headers = { 'X-Potemkin-Read-At-Version': String(controls.timeTravel.readAtVersion) };
         if (rebuilt === null) {
           res.status(404).set(headers).json({ error: 'ENTITY_ABSENCE', message: `entity ${targetId} not found at version ${controls.timeTravel.readAtVersion}` });
@@ -368,7 +367,7 @@ async function handleContractRequest(
       if (controls.timeTravel.replayEvent) {
         const evt = findEventById(controls.timeTravel.replayEvent, sys.events);
         sys.cel.setClockOffset(previousClockOffset);
-        if (controls.transparency.seed !== undefined) setFakerSeedFromString(undefined);
+        if (controls.transparency.seed !== undefined) sys.cel.setFakerSeed(undefined);
         const headers = { 'X-Potemkin-Replayed-Event': controls.timeTravel.replayEvent };
         if (!evt) {
           res.status(404).set(headers).json({ error: 'EVENT_NOT_FOUND', message: `event ${controls.timeTravel.replayEvent} not found` });
@@ -505,7 +504,7 @@ async function handleContractRequest(
     } catch (err) {
       // Restore clock offset on error too.
       sys.cel.setClockOffset(previousClockOffset);
-      if (controls.transparency.seed !== undefined) setFakerSeedFromString(undefined);
+      if (controls.transparency.seed !== undefined) sys.cel.setFakerSeed(undefined);
       logger.error({ err }, 'UoW execution error');
       // 8. Error → HTTP mapping (reqs 25-32, REQ-84/85/86).
       if (err instanceof AuthenticationRequiredError) {
@@ -642,7 +641,7 @@ async function handleContractRequest(
 
     // Restore global side-effects.
     sys.cel.setClockOffset(previousClockOffset);
-    if (controls.transparency.seed !== undefined) setFakerSeedFromString(undefined);
+    if (controls.transparency.seed !== undefined) sys.cel.setFakerSeed(undefined);
 
     // HEAD response: same status + headers as GET, but empty body (RFC 7231 §4.3.2).
     if (isHead) {

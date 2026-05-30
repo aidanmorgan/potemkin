@@ -7,7 +7,7 @@
  * Benign patterns run synchronously via the native RegExp engine.
  */
 
-import { createCelEvaluator } from '../../../src/cel/evaluator';
+import { createCelEvaluator, detectCatastrophicRegexShape } from '../../../src/cel/evaluator';
 import { CelPhase } from '../../../src/cel/phases';
 
 const cel = createCelEvaluator();
@@ -78,6 +78,44 @@ describe('matches() — nested-quantifier patterns are rejected', () => {
     const elapsed = Date.now() - start;
     // The shape check is O(pattern length), not O(input length).
     expect(elapsed).toBeLessThan(200);
+  });
+
+  it('rejects overlapping alternation under an unbounded quantifier (a|a)+', () => {
+    expect(() => evaluate('"aaa".matches("(a|a)+")')).toThrow(/REGEX_REJECTED/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Shape detector unit tests — exercise detectCatastrophicRegexShape directly.
+// ---------------------------------------------------------------------------
+describe('detectCatastrophicRegexShape — catastrophic shapes are detected', () => {
+  it.each([
+    ['(a+)+'],
+    ['(a*)*'],
+    ['(a+)*'],
+    ['(\\d+)+'],
+    ['(a+){2,}'],
+    ['^(a+)+$'],
+    ['(a|a)+'],
+    ['(a|ab)+'],
+  ])('rejects %s', (pattern) => {
+    expect(detectCatastrophicRegexShape(pattern)).not.toBeNull();
+  });
+});
+
+describe('detectCatastrophicRegexShape — benign shapes are accepted', () => {
+  it.each([
+    ['^LOAN-[0-9]+$'],
+    ['ACTIVE|DRAFT|SETTLED'],
+    ['hello'],
+    ['^[a-z]{3,8}$'],
+    ['\\d{4}-\\d{2}-\\d{2}'],
+    ['(abc)+'],          // single repeated group with no inner quantifier/alternation
+    ['(abc){2,5}'],      // bounded outer repeat
+    ['a+b+c+'],          // sequential, not nested
+    ['[A-Z]+@[a-z]+'],
+  ])('accepts %s', (pattern) => {
+    expect(detectCatastrophicRegexShape(pattern)).toBeNull();
   });
 });
 

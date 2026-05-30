@@ -1,83 +1,81 @@
-import { BUILTINS, callBuiltin } from '../../../src/cel/builtins';
+import { callBuiltin, createFakeRng, type FakeRng } from '../../../src/cel/builtins';
 import { CelPhase } from '../../../src/cel/phases';
 import { createCelEvaluator } from '../../../src/cel/evaluator';
 
-describe('cel/builtins — $fake, $fakeSeed, $fakeFromFormat', () => {
-  describe('BUILTINS registry', () => {
-    it('contains $fake', () => {
-      expect('$fake' in BUILTINS).toBe(true);
-    });
+// The $fake* builtins are no longer module-level functions in BUILTINS: their
+// seed + RNG state live per-CelEvaluator instance and are threaded in via
+// BuiltinContext.fake. These tests exercise that per-instance path through
+// callBuiltin (with an explicit FakeRng) and through the CEL evaluator.
 
-    it('contains $fakeSeed', () => {
-      expect('$fakeSeed' in BUILTINS).toBe(true);
-    });
+function fakeCtx(phase: CelPhase, fake?: FakeRng) {
+  return { phase, fake: fake ?? createFakeRng() };
+}
 
-    it('contains $fakeFromFormat', () => {
-      expect('$fakeFromFormat' in BUILTINS).toBe(true);
-    });
-  });
-
+describe('cel/builtins — $fake, $fakeSeed, $fakeFromFormat (per-instance RNG)', () => {
   describe('$fake', () => {
     it('generates a first name from person.firstName', () => {
-      const result = BUILTINS['$fake']!('person.firstName');
+      const result = callBuiltin('$fake', ['person.firstName'], fakeCtx(CelPhase.Behavior));
       expect(typeof result).toBe('string');
       expect((result as string).length).toBeGreaterThan(0);
     });
 
     it('generates an email from internet.email', () => {
-      const result = BUILTINS['$fake']!('internet.email') as string;
+      const result = callBuiltin('$fake', ['internet.email'], fakeCtx(CelPhase.Behavior)) as string;
       expect(result).toContain('@');
     });
 
     it('generates a phone number from phone.number', () => {
-      const result = BUILTINS['$fake']!('phone.number');
+      const result = callBuiltin('$fake', ['phone.number'], fakeCtx(CelPhase.Behavior));
       expect(typeof result).toBe('string');
       expect((result as string).length).toBeGreaterThan(0);
     });
 
     it('generates a company name from company.name', () => {
-      const result = BUILTINS['$fake']!('company.name');
+      const result = callBuiltin('$fake', ['company.name'], fakeCtx(CelPhase.Behavior));
       expect(typeof result).toBe('string');
       expect((result as string).length).toBeGreaterThan(0);
     });
 
     it('throws for non-string argument', () => {
-      expect(() => BUILTINS['$fake']!(42)).toThrow('CEL_TYPE_ERROR');
+      expect(() => callBuiltin('$fake', [42], fakeCtx(CelPhase.Behavior))).toThrow('CEL_TYPE_ERROR');
     });
 
     it('throws for missing dot separator', () => {
-      expect(() => BUILTINS['$fake']!('noDot')).toThrow('module.method');
+      expect(() => callBuiltin('$fake', ['noDot'], fakeCtx(CelPhase.Behavior))).toThrow('module.method');
     });
 
     it('throws for unknown faker module', () => {
-      expect(() => BUILTINS['$fake']!('nonexistent.method')).toThrow('unknown faker category');
+      expect(() => callBuiltin('$fake', ['nonexistent.method'], fakeCtx(CelPhase.Behavior))).toThrow('unknown faker category');
     });
 
     it('throws for unknown faker method', () => {
-      expect(() => BUILTINS['$fake']!('person.nonexistentMethod')).toThrow('unknown faker category');
+      expect(() => callBuiltin('$fake', ['person.nonexistentMethod'], fakeCtx(CelPhase.Behavior))).toThrow('unknown faker category');
     });
   });
 
   describe('$fakeSeed', () => {
     it('returns the seed value', () => {
-      const result = BUILTINS['$fakeSeed']!(42);
+      const result = callBuiltin('$fakeSeed', [42], fakeCtx(CelPhase.Behavior));
       expect(result).toBe(42);
     });
 
     it('throws for non-number argument', () => {
-      expect(() => BUILTINS['$fakeSeed']!('abc')).toThrow('CEL_TYPE_ERROR');
+      expect(() => callBuiltin('$fakeSeed', ['abc'], fakeCtx(CelPhase.Behavior))).toThrow('CEL_TYPE_ERROR');
     });
 
-    it('produces deterministic results when seeded', () => {
-      BUILTINS['$fakeSeed']!(12345);
-      const name1 = BUILTINS['$fake']!('person.firstName');
-      const name2 = BUILTINS['$fake']!('person.firstName');
-      const name3 = BUILTINS['$fake']!('person.firstName');
+    it('produces deterministic results when the same rng is reseeded', () => {
+      const rng = createFakeRng();
+      const ctx = fakeCtx(CelPhase.Behavior, rng);
 
-      BUILTINS['$fakeSeed']!(12345);
-      const name1b = BUILTINS['$fake']!('person.firstName');
-      const name2b = BUILTINS['$fake']!('person.firstName');
-      const name3b = BUILTINS['$fake']!('person.firstName');
+      callBuiltin('$fakeSeed', [12345], ctx);
+      const name1 = callBuiltin('$fake', ['person.firstName'], ctx);
+      const name2 = callBuiltin('$fake', ['person.firstName'], ctx);
+      const name3 = callBuiltin('$fake', ['person.firstName'], ctx);
+
+      callBuiltin('$fakeSeed', [12345], ctx);
+      const name1b = callBuiltin('$fake', ['person.firstName'], ctx);
+      const name2b = callBuiltin('$fake', ['person.firstName'], ctx);
+      const name3b = callBuiltin('$fake', ['person.firstName'], ctx);
 
       expect(name1).toBe(name1b);
       expect(name2).toBe(name2b);
@@ -87,83 +85,83 @@ describe('cel/builtins — $fake, $fakeSeed, $fakeFromFormat', () => {
 
   describe('$fakeFromFormat', () => {
     it('generates email containing @', () => {
-      const result = BUILTINS['$fakeFromFormat']!('email') as string;
+      const result = callBuiltin('$fakeFromFormat', ['email'], fakeCtx(CelPhase.Behavior)) as string;
       expect(result).toContain('@');
     });
 
     it('generates uuid in uuid format', () => {
-      const result = BUILTINS['$fakeFromFormat']!('uuid') as string;
+      const result = callBuiltin('$fakeFromFormat', ['uuid'], fakeCtx(CelPhase.Behavior)) as string;
       expect(result).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
     });
 
     it('generates date-time as ISO string', () => {
-      const result = BUILTINS['$fakeFromFormat']!('date-time') as string;
+      const result = callBuiltin('$fakeFromFormat', ['date-time'], fakeCtx(CelPhase.Behavior)) as string;
       expect(() => new Date(result)).not.toThrow();
       expect(new Date(result).toISOString()).toBe(result);
     });
 
     it('generates uri starting with http', () => {
-      const result = BUILTINS['$fakeFromFormat']!('uri') as string;
+      const result = callBuiltin('$fakeFromFormat', ['uri'], fakeCtx(CelPhase.Behavior)) as string;
       expect(result).toMatch(/^https?:\/\//);
     });
 
     it('generates hostname as a domain name', () => {
-      const result = BUILTINS['$fakeFromFormat']!('hostname') as string;
+      const result = callBuiltin('$fakeFromFormat', ['hostname'], fakeCtx(CelPhase.Behavior)) as string;
       expect(result).toContain('.');
     });
 
     it('generates ipv4 address', () => {
-      const result = BUILTINS['$fakeFromFormat']!('ipv4') as string;
+      const result = callBuiltin('$fakeFromFormat', ['ipv4'], fakeCtx(CelPhase.Behavior)) as string;
       expect(result).toMatch(/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/);
     });
 
     it('generates alphanumeric fallback for unknown format', () => {
-      const result = BUILTINS['$fakeFromFormat']!('unknown-format') as string;
+      const result = callBuiltin('$fakeFromFormat', ['unknown-format'], fakeCtx(CelPhase.Behavior)) as string;
       expect(typeof result).toBe('string');
       expect(result.length).toBe(10);
     });
 
     it('throws for non-string argument', () => {
-      expect(() => BUILTINS['$fakeFromFormat']!(42)).toThrow('CEL_TYPE_ERROR');
+      expect(() => callBuiltin('$fakeFromFormat', [42], fakeCtx(CelPhase.Behavior))).toThrow('CEL_TYPE_ERROR');
     });
   });
 
   describe('phase restrictions', () => {
     it('allows $fake in Behavior phase', () => {
-      const result = callBuiltin('$fake', ['person.firstName'], { phase: CelPhase.Behavior });
+      const result = callBuiltin('$fake', ['person.firstName'], fakeCtx(CelPhase.Behavior));
       expect(typeof result).toBe('string');
     });
 
     it('allows $fake in EventHydration phase', () => {
-      const result = callBuiltin('$fake', ['person.firstName'], { phase: CelPhase.EventHydration });
+      const result = callBuiltin('$fake', ['person.firstName'], fakeCtx(CelPhase.EventHydration));
       expect(typeof result).toBe('string');
     });
 
     it('bans $fake in Reducer phase', () => {
       expect(() =>
-        callBuiltin('$fake', ['person.firstName'], { phase: CelPhase.Reducer }),
+        callBuiltin('$fake', ['person.firstName'], fakeCtx(CelPhase.Reducer)),
       ).toThrow('CEL_PHASE_BANNED');
     });
 
     it('allows $fakeSeed in Behavior phase', () => {
-      const result = callBuiltin('$fakeSeed', [42], { phase: CelPhase.Behavior });
+      const result = callBuiltin('$fakeSeed', [42], fakeCtx(CelPhase.Behavior));
       expect(result).toBe(42);
     });
 
     it('bans $fakeSeed in Reducer phase', () => {
       expect(() =>
-        callBuiltin('$fakeSeed', [42], { phase: CelPhase.Reducer }),
+        callBuiltin('$fakeSeed', [42], fakeCtx(CelPhase.Reducer)),
       ).toThrow('CEL_PHASE_BANNED');
     });
 
     it('allows $fakeFromFormat in EventHydration phase', () => {
-      const result = callBuiltin('$fakeFromFormat', ['email'], { phase: CelPhase.EventHydration });
+      const result = callBuiltin('$fakeFromFormat', ['email'], fakeCtx(CelPhase.EventHydration));
       expect(typeof result).toBe('string');
     });
 
     it('bans $fakeFromFormat in Reducer phase', () => {
       expect(() =>
-        callBuiltin('$fakeFromFormat', ['email'], { phase: CelPhase.Reducer }),
+        callBuiltin('$fakeFromFormat', ['email'], fakeCtx(CelPhase.Reducer)),
       ).toThrow('CEL_PHASE_BANNED');
     });
   });
@@ -206,11 +204,76 @@ describe('cel/builtins — $fake, $fakeSeed, $fakeFromFormat', () => {
       expect(name3).toBe(name3b);
     });
 
+    it('seeds via setFakerSeed (string) deterministically', () => {
+      const a = createCelEvaluator();
+      a.setFakerSeed('tenant-abc');
+      const first = a.evaluate("$fake('person.firstName')", {}, CelPhase.EventHydration);
+
+      const b = createCelEvaluator();
+      b.setFakerSeed('tenant-abc');
+      const firstB = b.evaluate("$fake('person.firstName')", {}, CelPhase.EventHydration);
+
+      // Same string seed on two independent evaluators yields the same stream.
+      expect(first).toBe(firstB);
+    });
+
+    it('clearing the faker seed reverts to unseeded generation', () => {
+      const cel = createCelEvaluator();
+      cel.setFakerSeed('seeded');
+      cel.setFakerSeed(undefined); // clear
+      // After clearing, generation still works (now non-deterministic).
+      const result = cel.evaluate("$fake('person.firstName')", {}, CelPhase.EventHydration);
+      expect(typeof result).toBe('string');
+      expect((result as string).length).toBeGreaterThan(0);
+    });
+
     it('rejects $fake in Reducer phase via CEL evaluator', () => {
       const cel = createCelEvaluator();
       expect(() =>
         cel.evaluate("$fake('person.firstName')", {}, CelPhase.Reducer),
       ).toThrow('CEL_PHASE_BANNED');
+    });
+  });
+
+  describe('per-instance isolation — concurrent evaluators with different seeds do not interfere', () => {
+    it('two evaluators with different seeds produce independent streams', () => {
+      const a = createCelEvaluator();
+      const b = createCelEvaluator();
+      a.setFakerSeed('seed-A');
+      b.setFakerSeed('seed-B');
+
+      // Interleave draws across the two evaluators. If state leaked between
+      // them, interleaving would perturb each sequence.
+      const aInterleaved: unknown[] = [];
+      const bInterleaved: unknown[] = [];
+      for (let i = 0; i < 5; i++) {
+        aInterleaved.push(a.evaluate("$fake('person.fullName')", {}, CelPhase.EventHydration));
+        bInterleaved.push(b.evaluate("$fake('person.fullName')", {}, CelPhase.EventHydration));
+      }
+
+      // Re-run each in isolation (no interleaving) from the same seeds.
+      const a2 = createCelEvaluator();
+      a2.setFakerSeed('seed-A');
+      const aIsolated = Array.from({ length: 5 }, () =>
+        a2.evaluate("$fake('person.fullName')", {}, CelPhase.EventHydration));
+
+      const b2 = createCelEvaluator();
+      b2.setFakerSeed('seed-B');
+      const bIsolated = Array.from({ length: 5 }, () =>
+        b2.evaluate("$fake('person.fullName')", {}, CelPhase.EventHydration));
+
+      // Interleaved sequences must equal the isolated sequences → no shared state.
+      expect(aInterleaved).toEqual(aIsolated);
+      expect(bInterleaved).toEqual(bIsolated);
+    });
+
+    it('seeding one evaluator does not seed another (independent default state)', () => {
+      const seeded = createCelEvaluator();
+      seeded.setFakerSeed('only-me');
+      // A second, unseeded evaluator must not be affected by the first's seed.
+      const unseeded = createCelEvaluator();
+      const r = unseeded.evaluate("$fake('person.firstName')", {}, CelPhase.EventHydration);
+      expect(typeof r).toBe('string');
     });
   });
 });

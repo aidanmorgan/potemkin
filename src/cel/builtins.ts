@@ -5,74 +5,159 @@ export interface BuiltinContext {
   readonly phase: CelPhase;
   readonly now?: () => string;
   readonly uuid?: () => string;
+  /**
+   * Per-evaluator-instance faker RNG. When supplied, callBuiltin routes the
+   * `$fake*` builtins through it so the seed and RNG state are isolated per
+   * CelEvaluator instance (no module-level globals that race across concurrent
+   * requests or leak across jest worker test files). When absent, $fake* fall
+   * back to an unseeded RNG (Math.random).
+   */
+  readonly fake?: FakeRng;
 }
 
-/** Functions banned in the Reducer phase (non-deterministic side-effects). */
-const REDUCER_BANNED = new Set(['$uuidv7', '$now', 'now', 'timestamp', '$fake', '$fakeSeed', '$fakeFromFormat']);
+// ── Seeded PRNG (Mulberry32) — one instance per CelEvaluator ──────────────────
+//
+// The seed and RNG state live inside a FakeRng instance (created in
+// createCelEvaluator), NOT in module-level variables. This keeps concurrent
+// evaluators isolated: seeding one does not perturb another's stream.
 
-// ── Seeded PRNG (Mulberry32) shared by all $fake* builtins ────────────────────
-let fakeRngSeed = 0;
-let fakeRngState = 0;
-let fakeRngSeeded = false;
-function nextRandom(): number {
-  if (!fakeRngSeeded) return Math.random();
-  fakeRngState = (fakeRngState + 0x6D2B79F5) | 0;
-  let t = fakeRngState;
-  t = Math.imul(t ^ (t >>> 15), t | 1);
-  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+/** Per-instance seeded PRNG for the $fake* builtins. */
+export interface FakeRng {
+  /** Next pseudo-random float in [0, 1). Unseeded → Math.random(). */
+  next(): number;
+  /** Seed from a 32-bit-ish number (used by $fakeSeed). */
+  seedNumber(seed: number): void;
+  /**
+   * Seed from a string (used by the gateway transparency seed). `undefined`
+   * clears the seed, reverting to Math.random().
+   */
+  seedString(s: string | undefined): void;
 }
-function setFakeSeed(seed: number): void {
-  fakeRngSeed = seed >>> 0;
-  fakeRngState = fakeRngSeed;
-  fakeRngSeeded = true;
+
+/** Create a fresh, independent faker RNG with its own seed/state. */
+export function createFakeRng(): FakeRng {
+  let state = 0;
+  let seeded = false;
+  return {
+    next(): number {
+      if (!seeded) return Math.random();
+      state = (state + 0x6d2b79f5) | 0;
+      let t = state;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    },
+    seedNumber(seed: number): void {
+      state = seed >>> 0;
+      seeded = true;
+    },
+    seedString(s: string | undefined): void {
+      if (s === undefined) { seeded = false; state = 0; return; }
+      // Simple FNV-like hash to a 32-bit int seed.
+      let h = 2166136261;
+      for (let i = 0; i < s.length; i++) {
+        h ^= s.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+      }
+      state = h >>> 0;
+      seeded = true;
+    },
+  };
 }
-function pick<T>(arr: readonly T[]): T {
-  return arr[Math.floor(nextRandom() * arr.length)]!;
+
+function pick<T>(rng: FakeRng, arr: readonly T[]): T {
+  return arr[Math.floor(rng.next() * arr.length)]!;
 }
-function randomDigits(n: number): string {
+function randomDigits(rng: FakeRng, n: number): string {
   let s = '';
-  for (let i = 0; i < n; i++) s += Math.floor(nextRandom() * 10).toString();
+  for (let i = 0; i < n; i++) s += Math.floor(rng.next() * 10).toString();
   return s;
 }
-function randomAlphanumeric(n: number): string {
+function randomAlphanumeric(rng: FakeRng, n: number): string {
   const alphabet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let s = '';
-  for (let i = 0; i < n; i++) s += alphabet[Math.floor(nextRandom() * alphabet.length)]!;
+  for (let i = 0; i < n; i++) s += alphabet[Math.floor(rng.next() * alphabet.length)]!;
   return s;
 }
 
-const FAKE_DATA: Record<string, Record<string, () => string>> = {
+const FAKE_DATA: Record<string, Record<string, (rng: FakeRng) => string>> = {
   person: {
-    firstName: () => pick(['Alex', 'Jordan', 'Sam', 'Taylor', 'Casey', 'Morgan', 'Riley', 'Quinn', 'Avery', 'Drew']),
-    lastName: () => pick(['Smith', 'Jones', 'Brown', 'Taylor', 'Wilson', 'Davies', 'Evans', 'Robinson', 'Walker', 'Wright']),
-    fullName: () => `${FAKE_DATA['person']!['firstName']!()} ${FAKE_DATA['person']!['lastName']!()}`,
+    firstName: (rng) => pick(rng, ['Alex', 'Jordan', 'Sam', 'Taylor', 'Casey', 'Morgan', 'Riley', 'Quinn', 'Avery', 'Drew']),
+    lastName: (rng) => pick(rng, ['Smith', 'Jones', 'Brown', 'Taylor', 'Wilson', 'Davies', 'Evans', 'Robinson', 'Walker', 'Wright']),
+    fullName: (rng) => `${FAKE_DATA['person']!['firstName']!(rng)} ${FAKE_DATA['person']!['lastName']!(rng)}`,
   },
   internet: {
-    email: () => `${randomAlphanumeric(8).toLowerCase()}@${pick(['example.com', 'test.org', 'fake.net'])}`,
-    url: () => `https://${randomAlphanumeric(6).toLowerCase()}.example.com/${randomAlphanumeric(4).toLowerCase()}`,
-    domainName: () => `${randomAlphanumeric(6).toLowerCase()}.example.com`,
+    email: (rng) => `${randomAlphanumeric(rng, 8).toLowerCase()}@${pick(rng, ['example.com', 'test.org', 'fake.net'])}`,
+    url: (rng) => `https://${randomAlphanumeric(rng, 6).toLowerCase()}.example.com/${randomAlphanumeric(rng, 4).toLowerCase()}`,
+    domainName: (rng) => `${randomAlphanumeric(rng, 6).toLowerCase()}.example.com`,
   },
   phone: {
-    number: () => `+61 ${randomDigits(1)} ${randomDigits(4)} ${randomDigits(4)}`,
+    number: (rng) => `+61 ${randomDigits(rng, 1)} ${randomDigits(rng, 4)} ${randomDigits(rng, 4)}`,
   },
   company: {
-    name: () => `${pick(['Apex', 'BlueSky', 'Cornerstone', 'Delta', 'Echo', 'Foxtrot'])} ${pick(['Solutions', 'Systems', 'Holdings', 'Group', 'Industries'])}`,
+    name: (rng) => `${pick(rng, ['Apex', 'BlueSky', 'Cornerstone', 'Delta', 'Echo', 'Foxtrot'])} ${pick(rng, ['Solutions', 'Systems', 'Holdings', 'Group', 'Industries'])}`,
   },
   address: {
-    city: () => pick(['Sydney', 'Melbourne', 'Brisbane', 'Perth', 'Adelaide', 'Hobart']),
-    streetAddress: () => `${Math.floor(nextRandom() * 999) + 1} ${pick(['George', 'King', 'Queen', 'High', 'Main'])} St`,
+    city: (rng) => pick(rng, ['Sydney', 'Melbourne', 'Brisbane', 'Perth', 'Adelaide', 'Hobart']),
+    streetAddress: (rng) => `${Math.floor(rng.next() * 999) + 1} ${pick(rng, ['George', 'King', 'Queen', 'High', 'Main'])} St`,
   },
 };
 
-function fakeUuid(): string {
-  // Random UUIDv4 — deterministic when seeded.
+function fakeUuid(rng: FakeRng): string {
+  // Random UUIDv4 — deterministic when the rng is seeded.
   const hex = (n: number): string => {
     let s = '';
-    for (let i = 0; i < n; i++) s += Math.floor(nextRandom() * 16).toString(16);
+    for (let i = 0; i < n; i++) s += Math.floor(rng.next() * 16).toString(16);
     return s;
   };
-  return `${hex(8)}-${hex(4)}-4${hex(3)}-${pick(['8', '9', 'a', 'b'])}${hex(3)}-${hex(12)}`;
+  return `${hex(8)}-${hex(4)}-4${hex(3)}-${pick(rng, ['8', '9', 'a', 'b'])}${hex(3)}-${hex(12)}`;
+}
+
+// ── $fake* implementations (take a per-instance FakeRng) ──────────────────────
+
+function fake(rng: FakeRng, ...args: unknown[]): unknown {
+  const [spec] = args;
+  if (typeof spec !== 'string') {
+    throw new Error(`CEL_TYPE_ERROR: $fake() requires a string argument like 'person.firstName'`);
+  }
+  const dot = spec.indexOf('.');
+  if (dot === -1) {
+    throw new Error(`CEL_TYPE_ERROR: $fake() argument must be 'module.method'`);
+  }
+  const module = spec.slice(0, dot);
+  const method = spec.slice(dot + 1);
+  const mod = FAKE_DATA[module];
+  if (!mod) throw new Error(`CEL_RUNTIME_ERROR: $fake() unknown faker category '${module}'`);
+  const fn = mod[method];
+  if (!fn) throw new Error(`CEL_RUNTIME_ERROR: $fake() unknown faker category '${module}.${method}'`);
+  return fn(rng);
+}
+
+function fakeSeed(rng: FakeRng, ...args: unknown[]): unknown {
+  const [n] = args;
+  if (typeof n !== 'number' || !Number.isFinite(n)) {
+    throw new Error(`CEL_TYPE_ERROR: $fakeSeed() requires a number`);
+  }
+  rng.seedNumber(n);
+  return n;
+}
+
+function fakeFromFormat(rng: FakeRng, ...args: unknown[]): unknown {
+  const [fmt] = args;
+  if (typeof fmt !== 'string') {
+    throw new Error(`CEL_TYPE_ERROR: $fakeFromFormat() requires a string argument`);
+  }
+  switch (fmt) {
+    case 'email':     return FAKE_DATA['internet']!['email']!(rng);
+    case 'uuid':      return fakeUuid(rng);
+    case 'date':      return new Date().toISOString().slice(0, 10);
+    case 'date-time': return new Date().toISOString();
+    case 'uri':
+    case 'url':       return FAKE_DATA['internet']!['url']!(rng);
+    case 'hostname':  return FAKE_DATA['internet']!['domainName']!(rng);
+    case 'ipv4':      return `${Math.floor(rng.next() * 256)}.${Math.floor(rng.next() * 256)}.${Math.floor(rng.next() * 256)}.${Math.floor(rng.next() * 256)}`;
+    default:          return randomAlphanumeric(rng, 10);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -144,23 +229,11 @@ function parseDuration(s: string): number {
 // Builtin implementations
 // ---------------------------------------------------------------------------
 
-// The clock offset is per-CelEvaluator-instance state (see createCelEvaluator),
-// NOT a module global, so concurrent systems/requests stay isolated. The $now
-// builtin receives the offset-aware clock via BuiltinContext.now.
-
-// Optional faker seed — when set, $fake* builtins (if any) use a deterministic RNG.
-let fakerSeed: number | undefined = undefined;
-export function setFakerSeedFromString(s: string | undefined): void {
-  if (s === undefined) { fakerSeed = undefined; return; }
-  // Simple FNV-like hash to a 32-bit int seed.
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  fakerSeed = h >>> 0;
-}
-export function getFakerSeed(): number | undefined { return fakerSeed; }
+// The clock offset and faker seed/RNG are per-CelEvaluator-instance state (see
+// createCelEvaluator), NOT module globals, so concurrent systems/requests stay
+// isolated. The $now builtin receives the offset-aware clock via
+// BuiltinContext.now; the $fake* builtins receive the per-instance FakeRng via
+// BuiltinContext.fake.
 
 /**
  * Registry of built-in CEL functions available to expression evaluators.
@@ -379,56 +452,32 @@ export const BUILTINS: Record<string, (...args: unknown[]) => unknown> = {
   },
 
   now: (..._args: unknown[]): unknown => new Date().toISOString(),
-
-  // ── Faker ────────────────────────────────────────────────────────────────
-  $fake: (...args: unknown[]): unknown => {
-    const [spec] = args;
-    if (typeof spec !== 'string') {
-      throw new Error(`CEL_TYPE_ERROR: $fake() requires a string argument like 'person.firstName'`);
-    }
-    const dot = spec.indexOf('.');
-    if (dot === -1) {
-      throw new Error(`CEL_TYPE_ERROR: $fake() argument must be 'module.method'`);
-    }
-    const module = spec.slice(0, dot);
-    const method = spec.slice(dot + 1);
-    const mod = FAKE_DATA[module];
-    if (!mod) throw new Error(`CEL_RUNTIME_ERROR: $fake() unknown faker category '${module}'`);
-    const fn = mod[method];
-    if (!fn) throw new Error(`CEL_RUNTIME_ERROR: $fake() unknown faker category '${module}.${method}'`);
-    return fn();
-  },
-
-  $fakeSeed: (...args: unknown[]): unknown => {
-    const [n] = args;
-    if (typeof n !== 'number' || !Number.isFinite(n)) {
-      throw new Error(`CEL_TYPE_ERROR: $fakeSeed() requires a number`);
-    }
-    setFakeSeed(n);
-    return n;
-  },
-
-  $fakeFromFormat: (...args: unknown[]): unknown => {
-    const [fmt] = args;
-    if (typeof fmt !== 'string') {
-      throw new Error(`CEL_TYPE_ERROR: $fakeFromFormat() requires a string argument`);
-    }
-    switch (fmt) {
-      case 'email':     return FAKE_DATA['internet']!['email']!();
-      case 'uuid':      return fakeUuid();
-      case 'date':      return new Date().toISOString().slice(0, 10);
-      case 'date-time': return new Date().toISOString();
-      case 'uri':
-      case 'url':       return FAKE_DATA['internet']!['url']!();
-      case 'hostname':  return FAKE_DATA['internet']!['domainName']!();
-      case 'ipv4':      return `${Math.floor(nextRandom() * 256)}.${Math.floor(nextRandom() * 256)}.${Math.floor(nextRandom() * 256)}.${Math.floor(nextRandom() * 256)}`;
-      default:          return randomAlphanumeric(10);
-    }
-  },
 };
+
+// ── Faker builtin names ───────────────────────────────────────────────────────
+// The $fake* builtins are NOT entries in BUILTINS because they require a
+// per-instance FakeRng (supplied via BuiltinContext.fake). callBuiltin routes
+// them to the rng-aware implementations below. Listing the names here lets
+// callBuiltin recognise them (and the Reducer phase ban) without a module-level
+// RNG global.
+const FAKE_BUILTINS = new Set(['$fake', '$fakeSeed', '$fakeFromFormat']);
+
+/** Functions banned in the Reducer phase (non-deterministic side-effects). */
+const REDUCER_BANNED = new Set(['$uuidv7', '$now', 'now', 'timestamp', '$fake', '$fakeSeed', '$fakeFromFormat']);
 
 // Export deepEqual for use in evaluator
 export { deepEqual, naturalCompare };
+
+// A shared unseeded RNG for the fallback path when no BuiltinContext.fake is
+// supplied (e.g. direct callBuiltin without an evaluator). It is never seeded,
+// so it carries no cross-request determinism state — every call is Math.random().
+const UNSEEDED_FAKE_RNG: FakeRng = {
+  next: () => Math.random(),
+  /* istanbul ignore next — the unseeded fallback never seeds; seeding flows through a per-instance rng */
+  seedNumber: () => { /* no-op: fallback rng is intentionally never seeded */ },
+  /* istanbul ignore next */
+  seedString: () => { /* no-op */ },
+};
 
 /**
  * Invoke a built-in by name, enforcing phase restrictions.
@@ -439,7 +488,8 @@ export function callBuiltin(
   args: unknown[],
   ctx: BuiltinContext,
 ): unknown {
-  if (!(name in BUILTINS)) {
+  const isFake = FAKE_BUILTINS.has(name);
+  if (!isFake && !(name in BUILTINS)) {
     throw new Error(`CEL_UNKNOWN_BUILTIN: unknown function '${name}'`);
   }
 
@@ -449,7 +499,7 @@ export function callBuiltin(
     );
   }
 
-  // Dispatch with context-provided overrides for $uuidv7 and $now
+  // Dispatch with context-provided overrides for $uuidv7, $now, and $fake*.
   switch (name) {
     case '$uuidv7':
       return ctx.uuid ? ctx.uuid() : nextUuidv7();
@@ -457,6 +507,12 @@ export function callBuiltin(
       return ctx.now ? ctx.now() : new Date().toISOString();
     case 'now':
       return ctx.now ? ctx.now() : new Date().toISOString();
+    case '$fake':
+      return fake(ctx.fake ?? UNSEEDED_FAKE_RNG, ...args);
+    case '$fakeSeed':
+      return fakeSeed(ctx.fake ?? UNSEEDED_FAKE_RNG, ...args);
+    case '$fakeFromFormat':
+      return fakeFromFormat(ctx.fake ?? UNSEEDED_FAKE_RNG, ...args);
     default:
       return BUILTINS[name]!(...args);
   }
