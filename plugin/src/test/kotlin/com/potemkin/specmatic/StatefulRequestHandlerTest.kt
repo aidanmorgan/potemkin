@@ -125,6 +125,22 @@ class StatefulRequestHandlerTest {
     }
 
     @Test
+    fun `auth-error header yields 401 with WWW-Authenticate before forwarding`() {
+        val client = FakeClient(cannedResponse(200))
+        val handler = StatefulRequestHandler(FixedDiscoveryClient(true), client)
+
+        val req = request().copy(
+            headers = mapOf(PotemkinHeaders.AUTH_ERROR to "Bearer realm=\"bank\""),
+        )
+        val result = handler.handleRequest(req)
+
+        assertNotNull(result)
+        assertEquals(401, result.response.status)
+        assertEquals("Bearer realm=\"bank\"", result.response.headers["WWW-Authenticate"])
+        assertEquals(false, client.called, "must reject before forwarding")
+    }
+
+    @Test
     fun `4xx response from client is propagated`() {
         val notFound = cannedResponse(404)
         val handler = StatefulRequestHandler(FixedDiscoveryClient(true), FakeClient(notFound))
