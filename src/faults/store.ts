@@ -62,15 +62,9 @@ export function createFaultStore(): FaultStore {
   };
 }
 
-let _singleton: FaultStore | null = null;
-
-export function getFaultStore(): FaultStore {
-  if (_singleton === null) {
-    _singleton = createFaultStore();
-  }
-  return _singleton;
-}
-
-export function resetFaultStore(): void {
-  _singleton?.clear();
-}
+// NOTE: there is intentionally NO module-level singleton FaultStore. A shared
+// singleton would leak dynamic fault entries across booted systems and across
+// concurrent requests (Specmatic dispatches in parallel). Callers that need a
+// store create one via createFaultStore() and own its lifecycle. Header-driven
+// faults flow through src/engine/faultSim.ts and the per-system dsl.faults
+// rules, which hold no shared mutable state.
