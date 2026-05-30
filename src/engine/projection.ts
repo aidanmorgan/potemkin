@@ -10,8 +10,10 @@ import type { Tracer } from '../observability/tracing.js';
 import type { ObjectGraphSchemaRegistry } from '../schema/types.js';
 import type { OpenApiDoc } from '../contract/loader.js';
 import { deepClone, deepMerge } from '../stategraph/graph.js';
-import { type JournalEntry } from '../dsl/patches.js';
+import { applyPatches, type JournalEntry, type Patch } from '../dsl/patches.js';
 import { applyReducerPatchList } from './reducerPatches.js';
+import type { TsReducerRegistry } from './tsReducerRegistry.js';
+import type { ReducerContext } from '../sdk/index.js';
 import { guardAssignedValue } from '../schema/runtimeGuard.js';
 import { getTracer } from '../observability/tracing.js';
 import { SpanStatusCode } from '@opentelemetry/api';
@@ -109,6 +111,13 @@ export interface ProjectionInput {
   readonly tracer?: Tracer;
   /** REQ-65: Optional OpenAPI document for schema_ref payload validation. */
   readonly openapi?: OpenApiDoc;
+  /**
+   * TypeScript-reducer registry (C3). When a (boundary, event) is registered
+   * here it OVERRIDES the YAML reducer: the TS reducer runs and its returned
+   * Patch[] flows through the same applyPatches path. YAML patches are used
+   * only on a registry miss.
+   */
+  readonly tsReducerRegistry?: TsReducerRegistry;
 }
 
 /** Outcome of projecting a single event. */
@@ -154,7 +163,7 @@ export function projectEvent(input: ProjectionInput): ProjectionResult {
 }
 
 function _projectEvent(input: ProjectionInput): ProjectionResult {
-  const { event, boundary, graph, cel, validator, logger, schemaRegistry, openapi } = input;
+  const { event, boundary, graph, cel, validator, logger, schemaRegistry, openapi, tsReducerRegistry } = input;
   const log = logger?.child({
     component: 'projection',
     eventId: event.eventId,
@@ -181,23 +190,37 @@ function _projectEvent(input: ProjectionInput): ProjectionResult {
       replaceInPlace(buf, event.payload);
       log?.debug({}, 'Applied BaselineEntityCreatedEvent — replaced state with payload');
     } else {
-      // Find matching reducers (by event type key)
-      const matchingReducers = boundary.reducers.filter(r => r.on === event.type);
+      // C3: a TypeScript reducer registered for this (boundary, event) WINS.
+      // It runs in place of the YAML reducer; its returned Patch[] flows
+      // through the same applyPatches path so the journal records source
+      // 'reducer' just like YAML patches. YAML patches are consulted ONLY on a
+      // registry miss.
+      const tsReducer = tsReducerRegistry?.get(boundary.boundary, event.type);
+      if (tsReducer) {
+        const patches = runTsReducer(tsReducer, buf, event, cel);
+        const result = applyPatches(buf, patches, 'reducer', { autoVivify: true });
+        replaceInPlace(buf, result.newState as JsonObject);
+        reducerJournal.push(...result.journal);
+        log?.debug({ patchCount: patches.length, source: tsReducer.source }, 'Applied TS reducer');
+      } else {
+        // Find matching reducers (by event type key)
+        const matchingReducers = boundary.reducers.filter(r => r.on === event.type);
 
-      for (const reducer of matchingReducers) {
-        const celCtx = {
-          event: event as unknown as Record<string, unknown>,
-          state: buf as Record<string, unknown>,
-          payload: event.payload,
-        };
+        for (const reducer of matchingReducers) {
+          const celCtx = {
+            event: event as unknown as Record<string, unknown>,
+            state: buf as Record<string, unknown>,
+            payload: event.payload,
+          };
 
-        // Reducers express state mutation exclusively as a `patches:` list,
-        // applied via the single canonical applier (src/dsl/patches.ts). Each
-        // patch's value is evaluated as CEL against the state as mutated by
-        // prior patches in the list, so later patches can reference earlier
-        // ones (e.g. `state.totalConversions + 1`).
-        if (reducer.patches) {
-          reducerJournal.push(...applyReducerPatchList(buf, reducer.patches, cel, celCtx));
+          // Reducers express state mutation exclusively as a `patches:` list,
+          // applied via the single canonical applier (src/dsl/patches.ts). Each
+          // patch's value is evaluated as CEL against the state as mutated by
+          // prior patches in the list, so later patches can reference earlier
+          // ones (e.g. `state.totalConversions + 1`).
+          if (reducer.patches) {
+            reducerJournal.push(...applyReducerPatchList(buf, reducer.patches, cel, celCtx));
+          }
         }
       }
 
@@ -259,6 +282,46 @@ function _projectEvent(input: ProjectionInput): ProjectionResult {
   }
 
   return { journal: reducerJournal };
+}
+
+// ---------------------------------------------------------------------------
+// TypeScript reducer invocation (C3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Invoke a registered TS reducer against the post-state buffer and the event.
+ * The reducer must return an array of Patch objects; any non-array return is a
+ * RUNTIME_ERR_REDUCER_NON_ARRAY (HTTP 500). The reducer sees a deep clone of
+ * the state so it cannot mutate the buffer out from under applyPatches.
+ */
+function runTsReducer(
+  reducer: import('../sdk/index.js').RegisteredReducer,
+  state: JsonObject,
+  event: DomainEvent,
+  cel: CelEvaluator,
+): Patch[] {
+  const ctx: ReducerContext = {
+    now: () => new Date(Date.now() + cel.getClockOffset()).toISOString(),
+    log: {
+      info: () => { /* reducer logs are swallowed at projection time */ },
+      warn: () => { /* swallowed */ },
+      debug: () => { /* swallowed */ },
+    },
+  };
+  const returned = reducer.fn(deepClone(state), event as unknown, ctx);
+  if (!Array.isArray(returned)) {
+    throw new InternalExecutionError(
+      `TS reducer (${reducer.source}) for ${reducer.boundary}:${reducer.event} did not return an array of patches`,
+      {
+        code: 'RUNTIME_ERR_REDUCER_NON_ARRAY',
+        boundary: reducer.boundary,
+        event: reducer.event,
+        source: reducer.source,
+        returnedType: returned === null ? 'null' : typeof returned,
+      },
+    );
+  }
+  return returned as Patch[];
 }
 
 // ---------------------------------------------------------------------------
