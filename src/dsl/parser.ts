@@ -103,6 +103,11 @@ export async function compileDsl(
     let idempotency: IdempotencyConfig | undefined;
     let derivedProjections: readonly DerivedProjectionConfig[] | undefined;
     let auth: import('./types.js').AuthConfig | undefined;
+    let hateoas: import('./types.js').HateoasConfig | undefined;
+    let versioning: import('./types.js').VersioningConfig | undefined;
+    let securityHeaders: import('./types.js').SecurityHeadersConfig | undefined;
+    let faults: readonly import('./types.js').FaultRule[] | undefined;
+    let webhooks: readonly import('./types.js').WebhookConfig[] | undefined;
 
     if (globalYaml) {
       let rawGlobal: unknown;
@@ -121,6 +126,11 @@ export async function compileDsl(
       idempotency = globalConfig.idempotency;
       derivedProjections = globalConfig.derivedProjections;
       auth = globalConfig.auth;
+      hateoas = globalConfig.hateoas;
+      versioning = globalConfig.versioning;
+      securityHeaders = globalConfig.securityHeaders;
+      faults = globalConfig.faults;
+      webhooks = globalConfig.webhooks;
     }
 
     const partialDsl: Omit<CompiledDsl, 'scriptRegistry'> = {
@@ -131,6 +141,11 @@ export async function compileDsl(
       ...(idempotency !== undefined ? { idempotency } : {}),
       ...(derivedProjections !== undefined ? { derivedProjections } : {}),
       ...(auth !== undefined ? { auth } : {}),
+      ...(hateoas !== undefined ? { hateoas } : {}),
+      ...(versioning !== undefined ? { versioning } : {}),
+      ...(securityHeaders !== undefined ? { securityHeaders } : {}),
+      ...(faults !== undefined ? { faults } : {}),
+      ...(webhooks !== undefined ? { webhooks } : {}),
     };
 
     // REQ-68: Build script registry — transpiles all TS scripts at compile time.

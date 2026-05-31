@@ -303,10 +303,18 @@ export interface AuthConfig {
 
 /** Security response headers config. */
 export interface SecurityHeadersConfig {
+  /** Master switch. When false, no security headers are injected. Default: true. */
+  readonly enabled?: boolean;
+  /** Emit `Strict-Transport-Security`. */
   readonly hsts?: boolean;
+  /** Emit `X-Content-Type-Options: nosniff`. */
   readonly nosniff?: boolean;
+  /** Emit `X-Frame-Options: DENY`. */
   readonly frame_deny?: boolean;
+  /** Emit `Referrer-Policy: <value>`. */
   readonly referrer_policy?: string;
+  /** Arbitrary additional response headers (name → value). */
+  readonly custom_headers?: Record<string, string>;
 }
 
 /** HATEOAS link generation config. */
@@ -318,11 +326,45 @@ export interface HateoasConfig {
   readonly selfLinks?: boolean;
 }
 
-/** API versioning config. */
+/** A single declared API version. */
+export interface VersionDecl {
+  /** Version name, e.g. "v1". */
+  readonly version: string;
+  /** URL path prefix that selects this version, e.g. "/v1". */
+  readonly prefix: string;
+  /** When true, requests without a recognised version prefix route to this version. */
+  readonly default?: boolean;
+}
+
+/**
+ * API versioning config. When `enabled`, the router strips the matching version
+ * prefix from the request path before contract lookup, and responses are tagged
+ * with `X-Potemkin-Version`.
+ */
 export interface VersioningConfig {
-  readonly mode?: 'url' | 'header';
-  readonly default?: string;
-  readonly versions?: readonly { readonly name: string; readonly openapi?: string; readonly dsl?: readonly string[] }[];
+  readonly enabled?: boolean;
+  readonly versions?: readonly VersionDecl[];
+}
+
+/** Outbound webhook declaration: HMAC-signed HTTP POST on matching event emission. */
+export interface WebhookConfig {
+  readonly name: string;
+  readonly trigger: {
+    readonly boundary?: string;
+    readonly intent?: Intent;
+    /** CEL guard evaluated against the emitted event (defaults to "true"). */
+    readonly condition: string;
+  };
+  /** Destination URL (CEL string expression or literal). */
+  readonly url: string;
+  /** Shared secret used to compute the HMAC-SHA256 signature. */
+  readonly secret?: string;
+  /** Payload template (CEL string values), serialised to JSON for the POST body. */
+  readonly payload?: Record<string, string>;
+  readonly retry?: {
+    readonly maxAttempts?: number;
+    readonly delayMs?: number;
+  };
 }
 
 /** Event snapshot of request that produced an event (for reducer chaining). */
@@ -363,6 +405,8 @@ export interface CompiledDsl {
   readonly hateoas?: HateoasConfig;
   /** API versioning. */
   readonly versioning?: VersioningConfig;
+  /** Outbound webhook declarations (HMAC-signed dispatch on event emission). */
+  readonly webhooks?: readonly WebhookConfig[];
 }
 
 // suppress unused import lint warning — JsonValue used by SagaStep indirectly

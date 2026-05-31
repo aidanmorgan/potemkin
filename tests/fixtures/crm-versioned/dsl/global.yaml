@@ -58,7 +58,7 @@ sagas:
           intent: mutation
           operationId: closeOpportunity
           payload:
-            revertStatus: true
+            revertStatus: "true"
 
 # Webhook declarations — outbound HTTP POST on event emission
 webhooks:

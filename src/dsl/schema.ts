@@ -1,7 +1,8 @@
 import { BootError } from '../errors.js';
 import { assertNoRemovedReducerKeys } from './removedSyntax.js';
 import { firstBareCelReference } from './celInterpolation.js';
-import type { JsonObject } from '../types.js';
+import type { JsonObject, JsonValue } from '../types.js';
+import { POTEMKIN_SIGNAL_ALIASES } from '../http/potemkinHeaders.js';
 import type {
   BehaviorRule,
   BoundaryConfig,
@@ -1232,7 +1233,29 @@ export interface GlobalConfig {
   readonly idempotency?: IdempotencyConfig;
   readonly derivedProjections?: readonly DerivedProjectionConfig[];
   readonly auth?: import('./types.js').AuthConfig;
+  readonly hateoas?: import('./types.js').HateoasConfig;
+  readonly versioning?: import('./types.js').VersioningConfig;
+  readonly securityHeaders?: import('./types.js').SecurityHeadersConfig;
+  readonly faults?: readonly import('./types.js').FaultRule[];
+  readonly webhooks?: readonly import('./types.js').WebhookConfig[];
 }
+
+/**
+ * Top-level keys that validateGlobalConfig knows how to parse. Any other
+ * top-level key in a global module is a BOOT_ERR — global config is fail-fast so
+ * a misspelled or unsupported block is never silently dropped.
+ */
+const KNOWN_GLOBAL_KEYS: ReadonlySet<string> = new Set([
+  'sagas',
+  'idempotency',
+  'derived_projections',
+  'auth',
+  'hateoas',
+  'versioning',
+  'security_headers',
+  'fault_rules',
+  'webhooks',
+]);
 
 function validateAuthConfig(raw: unknown): import('./types.js').AuthConfig {
   if (!isRecord(raw)) {
@@ -1279,13 +1302,197 @@ function validateAuthConfig(raw: unknown): import('./types.js').AuthConfig {
   };
 }
 
+/** Parse the global `hateoas:` block. */
+function validateGlobalHateoas(raw: unknown): import('./types.js').HateoasConfig {
+  if (!isRecord(raw)) {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', 'Global config: "hateoas" must be a mapping', { received: typeof raw });
+  }
+  return {
+    ...(typeof raw['enabled'] === 'boolean' ? { enabled: raw['enabled'] } : {}),
+    ...(typeof raw['base_url'] === 'string' ? { baseUrl: raw['base_url'] } : {}),
+    ...(typeof raw['self_links'] === 'boolean' ? { selfLinks: raw['self_links'] } : {}),
+  };
+}
+
+/** Parse the global `security_headers:` block. */
+function validateGlobalSecurityHeaders(raw: unknown): import('./types.js').SecurityHeadersConfig {
+  if (!isRecord(raw)) {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', 'Global config: "security_headers" must be a mapping', { received: typeof raw });
+  }
+  const customHeaders = requireStringStringMap(raw, 'custom_headers', 'security_headers');
+  return {
+    ...(typeof raw['enabled'] === 'boolean' ? { enabled: raw['enabled'] } : {}),
+    ...(typeof raw['hsts'] === 'boolean' ? { hsts: raw['hsts'] } : {}),
+    ...(typeof raw['nosniff'] === 'boolean' ? { nosniff: raw['nosniff'] } : {}),
+    ...(typeof raw['frame_deny'] === 'boolean' ? { frame_deny: raw['frame_deny'] } : {}),
+    ...(typeof raw['referrer_policy'] === 'string' ? { referrer_policy: raw['referrer_policy'] } : {}),
+    ...(customHeaders !== undefined ? { custom_headers: customHeaders } : {}),
+  };
+}
+
+/** Parse the global `versioning:` block. Exactly one version may be marked default. */
+function validateGlobalVersioning(raw: unknown): import('./types.js').VersioningConfig {
+  if (!isRecord(raw)) {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', 'Global config: "versioning" must be a mapping', { received: typeof raw });
+  }
+  let versions: import('./types.js').VersionDecl[] | undefined;
+  if (raw['versions'] !== undefined && raw['versions'] !== null) {
+    if (!Array.isArray(raw['versions'])) {
+      throw new BootError('BOOT_ERR_DSL_SYNTAX', 'Global config: "versioning.versions" must be an array', { field: 'versioning.versions' });
+    }
+    versions = (raw['versions'] as unknown[]).map((v, i) => {
+      const ctx = `versioning.versions[${i}]`;
+      if (!isRecord(v)) {
+        throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx} must be a mapping`, { context: ctx });
+      }
+      const version = requireString(v, 'version', ctx);
+      const prefix = requireString(v, 'prefix', ctx);
+      return {
+        version,
+        prefix,
+        ...(typeof v['default'] === 'boolean' ? { default: v['default'] } : {}),
+      };
+    });
+    const defaults = versions.filter((v) => v.default === true);
+    if (defaults.length > 1) {
+      throw new BootError('BOOT_ERR_DSL_SYNTAX', 'Global config: "versioning" declares more than one default version', {
+        defaults: defaults.map((d) => d.version),
+      });
+    }
+  }
+  return {
+    ...(typeof raw['enabled'] === 'boolean' ? { enabled: raw['enabled'] } : {}),
+    ...(versions !== undefined ? { versions } : {}),
+  };
+}
+
+/** Parse a single `fault_rules[i]` entry into a FaultRule. */
+function validateFaultRule(raw: unknown, i: number): import('./types.js').FaultRule {
+  const ctx = `fault_rules[${i}]`;
+  if (!isRecord(raw)) {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx} must be a mapping`, { context: ctx });
+  }
+  const name = requireString(raw, 'name', ctx);
+
+  const matchRaw = raw['match'];
+  if (!isRecord(matchRaw)) {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.match must be a mapping`, { context: ctx });
+  }
+  const condition = typeof matchRaw['condition'] === 'string' ? matchRaw['condition'] : 'true';
+  const headers = requireStringStringMap(matchRaw, 'headers', `${ctx}.match`);
+  const potemkin = requireStringStringMap(matchRaw, 'potemkin', `${ctx}.match`);
+
+  // Expand the `potemkin:` convenience aliases (e.g. rate_limit) into concrete
+  // X-Potemkin-* header matchers so the evaluator's header-match path fires.
+  const expandedHeaders: Record<string, string> = { ...(headers ?? {}) };
+  if (potemkin) {
+    for (const [alias, value] of Object.entries(potemkin)) {
+      const headerName = POTEMKIN_SIGNAL_ALIASES[alias];
+      if (headerName === undefined) {
+        throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.match.potemkin: unknown alias "${alias}"`, { context: ctx, alias });
+      }
+      expandedHeaders[headerName] = value;
+    }
+  }
+
+  const responseRaw = raw['response'];
+  if (!isRecord(responseRaw)) {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.response must be a mapping`, { context: ctx });
+  }
+  if (typeof responseRaw['status'] !== 'number') {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.response.status must be a number`, { context: ctx });
+  }
+  const responseHeaders = requireStringStringMap(responseRaw, 'headers', `${ctx}.response`);
+  // delay_ms may sit under response (fixture style) or at the top level (type style).
+  const delayMs = typeof responseRaw['delay_ms'] === 'number'
+    ? responseRaw['delay_ms']
+    : (typeof raw['delay_ms'] === 'number' ? raw['delay_ms'] : undefined);
+
+  const intentRaw = matchRaw['intent'];
+  const probabilityRaw = matchRaw['probability'];
+
+  return {
+    name,
+    match: {
+      ...(typeof matchRaw['boundary'] === 'string' ? { boundary: matchRaw['boundary'] } : {}),
+      ...(typeof intentRaw === 'string' ? { intent: intentRaw as import('../types.js').Intent } : {}),
+      ...(Object.keys(expandedHeaders).length > 0 ? { headers: expandedHeaders } : {}),
+      condition,
+      ...(typeof probabilityRaw === 'number' ? { probability: probabilityRaw } : {}),
+    },
+    response: {
+      status: responseRaw['status'],
+      ...(responseRaw['body'] !== undefined ? { body: responseRaw['body'] as JsonValue } : {}),
+      ...(responseHeaders !== undefined ? { headers: responseHeaders } : {}),
+    },
+    ...(delayMs !== undefined ? { delay_ms: delayMs } : {}),
+  };
+}
+
+/** Parse a single `webhooks[i]` entry into a WebhookConfig. */
+function validateWebhookConfig(raw: unknown, i: number): import('./types.js').WebhookConfig {
+  const ctx = `webhooks[${i}]`;
+  if (!isRecord(raw)) {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx} must be a mapping`, { context: ctx });
+  }
+  const name = requireString(raw, 'name', ctx);
+  const url = requireString(raw, 'url', ctx);
+
+  const triggerRaw = raw['trigger'];
+  if (!isRecord(triggerRaw)) {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.trigger must be a mapping`, { context: ctx });
+  }
+  const condition = typeof triggerRaw['condition'] === 'string' ? triggerRaw['condition'] : 'true';
+
+  const payload = requireStringStringMap(raw, 'payload', ctx);
+
+  let retry: import('./types.js').WebhookConfig['retry'];
+  if (raw['retry'] !== undefined && raw['retry'] !== null) {
+    if (!isRecord(raw['retry'])) {
+      throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.retry must be a mapping`, { context: ctx });
+    }
+    const r = raw['retry'];
+    retry = {
+      ...(typeof r['maxAttempts'] === 'number' ? { maxAttempts: r['maxAttempts'] } : {}),
+      ...(typeof r['delayMs'] === 'number' ? { delayMs: r['delayMs'] } : {}),
+    };
+  }
+
+  return {
+    name,
+    trigger: {
+      ...(typeof triggerRaw['boundary'] === 'string' ? { boundary: triggerRaw['boundary'] } : {}),
+      ...(typeof triggerRaw['intent'] === 'string' ? { intent: triggerRaw['intent'] as import('../types.js').Intent } : {}),
+      condition,
+    },
+    url,
+    ...(typeof raw['secret'] === 'string' ? { secret: raw['secret'] } : {}),
+    ...(payload !== undefined ? { payload } : {}),
+    ...(retry !== undefined ? { retry } : {}),
+  };
+}
+
 /**
- * Validate a raw global config object (top-level Tier-2 fields).
+ * Validate a raw global config object (top-level global fields).
  * This is parsed from an optional globalYaml string in compileDsl.
+ *
+ * Fail-fast: every top-level key MUST be one the engine knows how to handle.
+ * An unknown/unsupported key is a BOOT_ERR so a misspelled or new block is never
+ * silently dropped.
  */
 export function validateGlobalConfig(raw: unknown): GlobalConfig {
   if (!isRecord(raw)) {
     throw new BootError('BOOT_ERR_DSL_SYNTAX', 'Global config must be a YAML mapping object', { received: typeof raw });
+  }
+
+  for (const key of Object.keys(raw)) {
+    if (!KNOWN_GLOBAL_KEYS.has(key)) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `Global config: unknown top-level key "${key}". Supported keys: ${[...KNOWN_GLOBAL_KEYS].sort().join(', ')}`,
+        { key, supported: [...KNOWN_GLOBAL_KEYS].sort() },
+      );
+    }
   }
 
   let sagas: readonly SagaConfig[] | undefined;
@@ -1314,10 +1521,46 @@ export function validateGlobalConfig(raw: unknown): GlobalConfig {
     auth = validateAuthConfig(raw['auth']);
   }
 
+  let hateoas: import('./types.js').HateoasConfig | undefined;
+  if (raw['hateoas'] !== undefined && raw['hateoas'] !== null) {
+    hateoas = validateGlobalHateoas(raw['hateoas']);
+  }
+
+  let versioning: import('./types.js').VersioningConfig | undefined;
+  if (raw['versioning'] !== undefined && raw['versioning'] !== null) {
+    versioning = validateGlobalVersioning(raw['versioning']);
+  }
+
+  let securityHeaders: import('./types.js').SecurityHeadersConfig | undefined;
+  if (raw['security_headers'] !== undefined && raw['security_headers'] !== null) {
+    securityHeaders = validateGlobalSecurityHeaders(raw['security_headers']);
+  }
+
+  let faults: readonly import('./types.js').FaultRule[] | undefined;
+  if (raw['fault_rules'] !== undefined && raw['fault_rules'] !== null) {
+    if (!Array.isArray(raw['fault_rules'])) {
+      throw new BootError('BOOT_ERR_DSL_SYNTAX', 'Global config: "fault_rules" must be an array', { field: 'fault_rules' });
+    }
+    faults = (raw['fault_rules'] as unknown[]).map((f, i) => validateFaultRule(f, i));
+  }
+
+  let webhooks: readonly import('./types.js').WebhookConfig[] | undefined;
+  if (raw['webhooks'] !== undefined && raw['webhooks'] !== null) {
+    if (!Array.isArray(raw['webhooks'])) {
+      throw new BootError('BOOT_ERR_DSL_SYNTAX', 'Global config: "webhooks" must be an array', { field: 'webhooks' });
+    }
+    webhooks = (raw['webhooks'] as unknown[]).map((w, i) => validateWebhookConfig(w, i));
+  }
+
   return {
     ...(sagas !== undefined ? { sagas } : {}),
     ...(idempotency !== undefined ? { idempotency } : {}),
     ...(derivedProjections !== undefined ? { derivedProjections } : {}),
     ...(auth !== undefined ? { auth } : {}),
+    ...(hateoas !== undefined ? { hateoas } : {}),
+    ...(versioning !== undefined ? { versioning } : {}),
+    ...(securityHeaders !== undefined ? { securityHeaders } : {}),
+    ...(faults !== undefined ? { faults } : {}),
+    ...(webhooks !== undefined ? { webhooks } : {}),
   };
 }
