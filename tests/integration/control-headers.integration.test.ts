@@ -446,7 +446,7 @@ describe('X-Potemkin-* control headers — full integration', () => {
       expect(res.body.error).toBe('ADMIN_REQUIRED');
     });
 
-    it('X-Potemkin-Actor with :admin in caller scopes overrides actor on events', async () => {
+    it('X-Potemkin-Actor with :admin in caller scopes stamps the overridden actor on the created entity', async () => {
       const res = await agent
         .post('/leads')
         .set('Authorization', 'Bearer admin-1:admin')
@@ -458,9 +458,29 @@ describe('X-Potemkin-* control headers — full integration', () => {
         });
 
       expect([200, 201]).toContain(res.status);
-      // Event was emitted; subsequent inspection isn't strictly required —
-      // the integration test verifies the override path doesn't 401.
       expect(res.body._events.length).toBeGreaterThan(0);
+      // audit_fields on the Lead boundary stamps updatedBy from the request's
+      // actor. The override replaced the admin caller with alice, so the
+      // persisted entity must be attributed to alice — not admin-1.
+      expect(res.body.updatedBy).toBe('alice');
+    });
+
+    it('X-Potemkin-Impersonate with admin auth attributes the entity to the impersonated identity', async () => {
+      const res = await agent
+        .post('/leads')
+        .set('Authorization', 'Bearer admin-1:admin')
+        .set('X-Potemkin-Impersonate', 'bob:manager')
+        .set('X-Potemkin-Include-Events', 'true')
+        .send({
+          companyName: 'Impersonate Corp', contactName: 'I',
+          phone: '+61 0', email: 'imp@t.com', source: 'WEBSITE',
+        });
+
+      expect([200, 201]).toContain(res.status);
+      expect(res.body._events.length).toBeGreaterThan(0);
+      // The emitted/persisted entity is attributed to the impersonated actor
+      // (bob), not the admin caller that issued the request.
+      expect(res.body.updatedBy).toBe('bob');
     });
 
     it('X-Potemkin-Caused-By is reflected on emitted events', async () => {
@@ -483,17 +503,19 @@ describe('X-Potemkin-* control headers — full integration', () => {
 
   describe('Tier 4: time travel', () => {
     it('X-Potemkin-Read-At-Version=1 returns the entity state after the first event only', async () => {
-      // BlueSky lead starts at CONTACTED status. Reading at version 1 should
-      // return the LeadCreated state (status: NEW), NOT the latest state.
       const res = await agent
         .get(`/leads/${BLUESKY_LEAD_ID}`)
         .set('X-Potemkin-Read-At-Version', '1');
 
       expect(res.status).toBe(200);
       expect(res.headers['x-potemkin-read-at-version']).toBe('1');
-      // After only the BaselineEntityCreatedEvent (version 1), the state
-      // reflects the initial payload before subsequent contact events.
+      // Version 1 is the BaselineEntityCreatedEvent — the state must reflect the
+      // seeded baseline payload (status CONTACTED, the original company), proving
+      // the read is reconstructed from events up to that version and not the
+      // latest projection.
       expect(res.body.id).toBe(BLUESKY_LEAD_ID);
+      expect(res.body.status).toBe('CONTACTED');
+      expect(res.body.companyName).toBe('BlueSky Tech');
     });
 
     it('X-Potemkin-Read-At-Version on missing entity returns 404', async () => {

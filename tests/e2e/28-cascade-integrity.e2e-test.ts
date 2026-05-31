@@ -284,10 +284,10 @@ describeWithJava('28 — Cascade Integrity (full Specmatic stack)', () => {
 
   // --- 10 & 11. POST /calls with non-existent agentId via forward ---
 
-  describe('cascade failure tolerance: non-existent agentId', () => {
+  describe('cascade failure atomicity: non-existent agentId', () => {
     const FAKE_AGENT_ID = '00000000-0000-0000-0000-fffffffffffe';
 
-    it('POST /calls with non-existent agentId via forward -- call still created, lead still updated', async () => {
+    it('POST /calls whose agent cascade target is missing is rejected atomically — no Call, no Lead mutation', async () => {
       // Create a fresh lead for this test
       const lr = await fwd(app.engineUrl, 'POST', '/leads', {
         companyName: 'Cascade Fail Corp',
@@ -298,8 +298,10 @@ describeWithJava('28 — Cascade Integrity (full Specmatic stack)', () => {
       });
       expect([200, 201]).toContain(lr.status);
       const cfLeadId = (lr.body as JsonObject)['id'] as string;
+      const callIdsBefore = ((await getGraphNode(app.engineUrl, cfLeadId))!['callIds'] as string[]).length;
 
-      // Use fwd to send a call with a non-existent agentId
+      // POST a call whose Agent cascade target does not exist. The cascade to the
+      // missing Agent fails (ENTITY_ABSENCE), which aborts the entire unit of work.
       const fwdRes = await fwd(app.engineUrl, 'POST', '/calls', {
         leadId: cfLeadId,
         agentId: FAKE_AGENT_ID,
@@ -307,26 +309,16 @@ describeWithJava('28 — Cascade Integrity (full Specmatic stack)', () => {
         outcome: 'NO_ANSWER',
       });
 
-      // The primary command should still commit (call created)
+      // The whole transaction is rejected — the engine does not partially commit.
+      expect(fwdRes.status).toBe(404);
       const callId = (fwdRes.body as JsonObject)['id'] as string | undefined;
+      expect(callId).toBeUndefined();
 
-      if ([200, 201].includes(fwdRes.status) && callId) {
-        // Call graph node exists
-        const callNode = await getGraphNode(app.engineUrl, callId);
-        expect(callNode).not.toBeNull();
-        expect(callNode!['leadId']).toBe(cfLeadId);
-        expect(callNode!['agentId']).toBe(FAKE_AGENT_ID);
-
-        // Lead.callIds was updated
-        const leadNode = await getGraphNode(app.engineUrl, cfLeadId);
-        expect((leadNode!['callIds'] as string[])).toContain(callId);
-      } else {
-        // If the system rejects the whole transaction due to cascade failure,
-        // that is also acceptable -- verify the graph is consistent
-        const leadNode = await getGraphNode(app.engineUrl, cfLeadId);
-        expect(leadNode).not.toBeNull();
-        expect(leadNode!['companyName']).toBe('Cascade Fail Corp');
-      }
+      // Atomicity: the Lead was NOT mutated — its callIds is unchanged, proving
+      // the primary Call write was rolled back when the cascade failed.
+      const leadNode = await getGraphNode(app.engineUrl, cfLeadId);
+      expect(leadNode).not.toBeNull();
+      expect((leadNode!['callIds'] as string[]).length).toBe(callIdsBefore);
     }, 60_000);
   });
 });

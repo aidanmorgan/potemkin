@@ -53,6 +53,10 @@ event_catalog:
       createdAt: "$now()"
       callIds: "[]"
       notes: "[]"
+      # Persist the agent/campaign a lead is created against (when supplied) so
+      # the conversion saga can attribute the Opportunity it creates.
+      assignedAgentId: "coalesce(command.payload.assignedAgentId, command.payload.agentId, null)"
+      assignedCampaignId: "coalesce(command.payload.assignedCampaignId, command.payload.campaignId, null)"
 
   - type: LeadContacted
     payload_template:
@@ -204,6 +208,12 @@ reducers:
       - op: replace
         path: /notes
         value: "${[]}"
+      - op: replace
+        path: /assignedAgentId
+        value: "${coalesce(event.payload.assignedAgentId, null)}"
+      - op: replace
+        path: /assignedCampaignId
+        value: "${coalesce(event.payload.assignedCampaignId, null)}"
 
   - on: LeadContacted
     patches:

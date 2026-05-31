@@ -69,14 +69,19 @@ describeWithJava('03 — Forwarding: POST /leads via Specmatic stub', () => {
     });
     expect([200, 201]).toContain(createRes.status);
 
-    // Verify via engine admin endpoint that entity was created
+    // The forwarded create must be observable in the engine's state graph.
     const stateRes = await fetch(`${app.engineUrl}/_admin/state`);
-    if (stateRes.status === 200) {
-      const stateBody = await stateRes.json() as Record<string, unknown>;
-      // Admin state should include the entities
-      expect(typeof stateBody).toBe('object');
-    }
-    // If admin endpoint not available, the creation success itself is the signal
+    expect(stateRes.status).toBe(200);
+    const stateBody = await stateRes.json() as { entities: Record<string, Record<string, unknown>> };
+    expect(stateBody.entities).toBeDefined();
+    const entities = Object.values(stateBody.entities);
+    // The lead we just created (unique email) is present with the forwarded
+    // payload fields intact.
+    const created = entities.find((e) => e['email'] === payload.email);
+    expect(created).toBeDefined();
+    expect(created!['companyName']).toBe(payload.companyName);
+    expect(created!['source']).toBe(payload.source);
+    expect(created!['status']).toBe('NEW');
   }, 60_000);
 
   it('forwarded POST /leads creates a lead accessible via Node directly', async () => {

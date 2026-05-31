@@ -58,22 +58,17 @@ describeWithJava('10 — Full CRM happy-path flow', () => {
     await app.shutdown();
   }, 30_000);
 
-  /**
-   * BUG: The LeadConversionSaga step uses `event.payload.agentId` and
-   * `event.payload.campaignId` but the LeadConverted event's payload_template
-   * only contains `convertedAt`. The saga step payload evaluates agentId/campaignId
-   * to null, causing the Opportunity creation to fail silently (saga runs fire-and-forget).
-   * Fix: add agentId + campaignId to LeadConverted payload_template in lead.yaml, or
-   * change the saga step to use `state.assignedAgentId` / `state.assignedCampaignId`.
-   */
-  it('complete Lead lifecycle: create → contact → qualify → convert → close WON [BUG: saga step uses wrong event fields]', async () => {
-    // Step 1: Create lead
+  it('complete Lead lifecycle: create → contact → qualify → convert → close WON', async () => {
+    // Step 1: Create lead with an assigned agent + campaign so the conversion
+    // saga produces a fully-attributed Opportunity.
     const createRes = await fwd(app.engineUrl, 'POST', '/leads', {
       companyName: 'Happy Path Corp',
       contactName: 'Happy User',
       phone: '+61 2 9100 0001',
       email: 'happy@path.test',
       source: 'REFERRAL',
+      assignedAgentId: AGENT_ID,
+      assignedCampaignId: CAMPAIGN_ID,
     });
     expect([200, 201]).toContain(createRes.status);
     const leadId = createRes.body['id'] as string;
@@ -106,12 +101,17 @@ describeWithJava('10 — Full CRM happy-path flow', () => {
     expect([200, 201]).toContain(convertRes.status);
     expect((convertRes.body as Record<string, unknown>)['status']).toBe('CONVERTED');
 
-    // Step 6: Find the created opportunity
+    // Step 6: Find the Opportunity the conversion saga created. The
+    // agentId/campaignId assertions fail if the LeadConverted payload no
+    // longer carries the lead's assigned agent + campaign.
     const oppsRes = await fwd(app.engineUrl, 'GET', '/opportunities');
     expect(oppsRes.status).toBe(200);
     const opps = oppsRes.body as unknown as Array<Record<string, unknown>>;
     const opp = opps.find((o) => o['leadId'] === leadId);
     expect(opp).toBeDefined();
+    expect(opp!['agentId']).toBe(AGENT_ID);
+    expect(opp!['campaignId']).toBe(CAMPAIGN_ID);
+    expect(opp!['value']).toBe(50000);
     const oppId = opp!['id'] as string;
 
     // Step 7: Advance opportunity to NEGOTIATING
@@ -127,23 +127,28 @@ describeWithJava('10 — Full CRM happy-path flow', () => {
     expect((closeRes.body as Record<string, unknown>)['stage']).toBe('WON');
   }, 60_000);
 
-  it('derived CampaignDashboard projection reflects lead created event', async () => {
-    // Create a lead assigned to a known campaign
+  it('derived CampaignDashboard projection records a new lead under its campaign', async () => {
+    // Create a lead assigned to a known campaign so the CampaignDashboard
+    // projection (keyed on the lead's campaign) gains/increments an entry.
     const createRes = await fwd(app.engineUrl, 'POST', '/leads', {
       companyName: 'Projection Test Corp',
       contactName: 'Projection User',
       phone: '+61 2 9100 0002',
       email: 'proj@test.com',
       source: 'COLD_LIST',
+      assignedCampaignId: CAMPAIGN_ID,
     });
     expect([200, 201]).toContain(createRes.status);
 
-    // Verify derived projections endpoint (if available)
-    const projRes = await fetch(`${app.engineUrl}/_admin/derived`);
-    if (projRes.status === 200) {
-      const projBody = await projRes.json() as Record<string, unknown>;
-      expect(typeof projBody).toBe('object');
-    }
-    // If endpoint not available, creation success alone demonstrates the pipeline works
+    // The CampaignDashboard derived projection must record an entry keyed on
+    // the lead's campaign, carrying the totalLeads slot the LeadCreated reduce
+    // owns. This proves the LeadCreated event keyed to the campaign (it fails
+    // if the LeadCreated payload no longer carries assignedCampaignId, leaving
+    // the projection without a campaign entry).
+    const projRes = await fetch(`${app.engineUrl}/_admin/derived/CampaignDashboard`);
+    expect(projRes.status).toBe(200);
+    const projBody = await projRes.json() as Record<string, Record<string, unknown>>;
+    expect(projBody[CAMPAIGN_ID]).toBeDefined();
+    expect(Object.prototype.hasOwnProperty.call(projBody[CAMPAIGN_ID]!, 'totalLeads')).toBe(true);
   }, 60_000);
 });

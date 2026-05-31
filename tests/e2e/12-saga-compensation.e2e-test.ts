@@ -54,22 +54,17 @@ describeWithJava('12 — Saga: LeadConversionSaga creates Opportunity on convert
     await app.shutdown();
   }, 30_000);
 
-  /**
-   * BUG: LeadConversionSaga step uses `event.payload.agentId` and
-   * `event.payload.campaignId` but the LeadConverted event's payload_template
-   * only sets `convertedAt`.  agentId/campaignId evaluate to null, the
-   * Opportunity creation fails silently (fire-and-forget saga).
-   * Fix: update the saga step to use `state.assignedAgentId` or add agentId/campaignId
-   * to the LeadConverted payload_template.
-   */
-  it('converting a qualified lead triggers the saga and creates an Opportunity [BUG: saga payload uses wrong event fields]', async () => {
-    // Create fresh lead
+  it('converting a qualified lead triggers the saga and creates a fully-attributed Opportunity', async () => {
+    // Create fresh lead with an assigned agent + campaign so the conversion
+    // saga can carry both attributes through to the Opportunity it creates.
     const createRes = await fwd(app.engineUrl, 'POST', '/leads', {
       companyName: 'Saga Test Corp',
       contactName: 'Saga User',
       phone: '+61 2 9300 0001',
       email: 'saga@test.com',
       source: 'REFERRAL',
+      assignedAgentId: AGENT_ID,
+      assignedCampaignId: CAMPAIGN_ID,
     });
     const leadId = createRes.body['id'] as string;
 
@@ -95,7 +90,9 @@ describeWithJava('12 — Saga: LeadConversionSaga creates Opportunity on convert
     expect([200, 201]).toContain(convertRes.status);
     expect(convertRes.body['status']).toBe('CONVERTED');
 
-    // Verify Opportunity was created by the saga
+    // Verify the saga created an Opportunity carrying the lead's agent +
+    // campaign. The agentId/campaignId assertions fail if the LeadConverted
+    // payload no longer resolves them from lead state (the original bug).
     const oppsRes = await fwd(app.engineUrl, 'GET', '/opportunities');
     expect(oppsRes.status).toBe(200);
     const opps = oppsRes.body as unknown as Array<Record<string, unknown>>;
@@ -103,9 +100,11 @@ describeWithJava('12 — Saga: LeadConversionSaga creates Opportunity on convert
     expect(sagaOpp).toBeDefined();
     expect(sagaOpp!['stage']).toBe('PROPOSED');
     expect(sagaOpp!['value']).toBe(25000);
+    expect(sagaOpp!['agentId']).toBe(AGENT_ID);
+    expect(sagaOpp!['campaignId']).toBe(CAMPAIGN_ID);
   }, 60_000);
 
-  it('saga Opportunity has correct leadId linking it to the converted Lead [BUG: same saga payload issue]', async () => {
+  it('saga Opportunity has correct leadId linking it to the converted Lead', async () => {
     // Create + contact + qualify + convert a second lead
     const createRes = await fwd(app.engineUrl, 'POST', '/leads', {
       companyName: 'Saga Link Corp',
@@ -113,6 +112,8 @@ describeWithJava('12 — Saga: LeadConversionSaga creates Opportunity on convert
       phone: '+61 2 9300 0002',
       email: 'sagalink@test.com',
       source: 'PARTNER',
+      assignedAgentId: AGENT_ID,
+      assignedCampaignId: CAMPAIGN_ID,
     });
     const leadId = createRes.body['id'] as string;
 
@@ -128,5 +129,6 @@ describeWithJava('12 — Saga: LeadConversionSaga creates Opportunity on convert
     const opp = opps.find((o) => o['leadId'] === leadId);
     expect(opp).toBeDefined();
     expect(opp!['leadId']).toBe(leadId);
+    expect(opp!['agentId']).toBe(AGENT_ID);
   }, 60_000);
 });
