@@ -50,6 +50,22 @@ const customerSummaryProjection: DerivedProjectionConfig = {
 };
 
 describe('projections/engine - derived projections', () => {
+  it('evaluates a ${...} interpolated counter reduce to a real number (potemkin-a0w)', () => {
+    const registry = createDerivedProjectionRegistry();
+    const proj: DerivedProjectionConfig = {
+      name: 'Counter',
+      key: 'event.aggregateId',
+      subscribe: ['Lead:LeadCreated'],
+      reduce: [
+        { on: 'LeadCreated', assign: { total: '${coalesce(state.total, 0) + 1}' } },
+      ],
+    };
+    applyEventToDerivedProjections(makeEvent(), [proj], registry, cel);
+    applyEventToDerivedProjections(makeEvent({ eventId: 'evt-2' }), [proj], registry, cel);
+    const result = getDerivedProjection(registry, 'Counter');
+    expect(result!['cust-1']).toMatchObject({ total: 2 });
+  });
+
   it('creates a new entry for the first subscribed event', () => {
     const registry = createDerivedProjectionRegistry();
     const event = makeEvent();

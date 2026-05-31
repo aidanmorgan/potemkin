@@ -149,6 +149,10 @@ describeWithJava('10 — Full CRM happy-path flow', () => {
     expect(projRes.status).toBe(200);
     const projBody = await projRes.json() as Record<string, Record<string, unknown>>;
     expect(projBody[CAMPAIGN_ID]).toBeDefined();
-    expect(Object.prototype.hasOwnProperty.call(projBody[CAMPAIGN_ID]!, 'totalLeads')).toBe(true);
+    // The totalLeads reduce uses a ${...} counter expression; it must produce a
+    // real finite number (>=1 for the lead(s) created on this campaign), not
+    // null/NaN as it did before potemkin-a0w (raw cel.evaluate + a != null guard).
+    const totalLeads = projBody[CAMPAIGN_ID]!['totalLeads'];
+    expect(typeof totalLeads === 'number' && Number.isFinite(totalLeads) && totalLeads >= 1).toBe(true);
   }, 60_000);
 });

@@ -146,7 +146,7 @@ function applyReduceEntry(
   if (entry.assign) {
     for (const [dotPath, expr] of Object.entries(entry.assign)) {
       try {
-        const value = cel.evaluate(expr, celCtx, CelPhase.Reducer) as JsonValue;
+        const value = cel.evaluateDslValue(expr, celCtx, CelPhase.Reducer) as JsonValue;
         if (value !== undefined) {
           setByDotPath(buf, dotPath, value);
         }
@@ -162,7 +162,7 @@ function applyReduceEntry(
   if (entry.append) {
     for (const [dotPath, expr] of Object.entries(entry.append)) {
       try {
-        const value = cel.evaluate(expr, celCtx, CelPhase.Reducer) as JsonValue;
+        const value = cel.evaluateDslValue(expr, celCtx, CelPhase.Reducer) as JsonValue;
         if (value !== undefined) {
           const existing = getByDotPath(buf, dotPath);
           const arr: JsonValue[] = Array.isArray(existing) ? [...existing] : [];
@@ -197,7 +197,7 @@ function applyDerivedProjectionPatch(
   const evaluate = (raw: unknown): JsonValue => {
     if (typeof raw !== 'string') return raw as JsonValue;
     try {
-      return cel.evaluate(raw, celCtx, CelPhase.Reducer) as JsonValue;
+      return cel.evaluateDslValue(raw, celCtx, CelPhase.Reducer) as JsonValue;
     } catch (err) {
       logger?.warn({ projName, dotPath, expr: raw, err }, 'Derived projection patch CEL failed');
       return null;
