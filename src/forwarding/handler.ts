@@ -46,6 +46,31 @@ import {
 const PKG_VERSION: string = (require('../../package.json') as { version: string }).version;
 
 // ---------------------------------------------------------------------------
+// Header helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Case-insensitively read a header from a forwarded headers map.
+ *
+ * The forwarding contract (forwarding/types.ts) documents lowercase keys, but
+ * the engine must not 500 / silently mis-route when a caller forwards original
+ * casing (e.g. `If-Match`, `Authorization`, `Idempotency-Key`). We first try the
+ * exact lowercase key (the documented fast path) and fall back to a
+ * case-insensitive scan only when that misses.
+ */
+export function readForwardedHeader(
+  headers: Record<string, string>,
+  lowercaseName: string,
+): string | undefined {
+  const direct = headers[lowercaseName];
+  if (direct !== undefined) return direct;
+  for (const key of Object.keys(headers)) {
+    if (key.toLowerCase() === lowercaseName) return headers[key];
+  }
+  return undefined;
+}
+
+// ---------------------------------------------------------------------------
 // Validation helpers
 // ---------------------------------------------------------------------------
 
@@ -208,7 +233,7 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
     //    (F1: jwt → validateJwt; else the legacy bearer shortcut).
     let actor;
     try {
-      actor = resolveActor(fwd.headers['authorization'], sys.dsl.auth) ?? undefined;
+      actor = resolveActor(readForwardedHeader(fwd.headers, 'authorization'), sys.dsl.auth) ?? undefined;
     } catch (e) {
       if (e instanceof JwtValidationError) {
         // Return the ForwardedResponse envelope (HTTP 200 carrying the real
@@ -225,15 +250,15 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       throw e;
     }
 
-    // 7. Extract sequenceVersion from forwarded If-Match header.
-    const ifMatchValue = fwd.headers['if-match'];
+    // 7. Extract sequenceVersion from forwarded If-Match header (case-insensitive).
+    const ifMatchValue = readForwardedHeader(fwd.headers, 'if-match');
     const sequenceVersion = ifMatchValue !== undefined
       ? Number(String(ifMatchValue).replace(/^"|"$/g, ''))
       : undefined;
 
     // 8. Extract fault signal from forwarded x-specmatic-fault header (already handled above,
     //    but the Command also carries faultSignal for the UoW fault-sim path).
-    const faultHeaderRaw = fwd.headers['x-specmatic-fault'];
+    const faultHeaderRaw = readForwardedHeader(fwd.headers, 'x-specmatic-fault');
 
     // 9. Build Command.
     const command: Command = {
@@ -253,7 +278,7 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
     };
 
     // 10. Idempotency check (mirrors gateway.ts logic).
-    const idempotencyKey = fwd.headers['idempotency-key'];
+    const idempotencyKey = readForwardedHeader(fwd.headers, 'idempotency-key');
     const idempotencyCfg = sys.dsl.idempotency;
     const idempotencyEnabled = idempotencyCfg?.enabled ?? false;
 

@@ -153,8 +153,6 @@ export const POTEMKIN_IMPERSONATE = 'x-potemkin-impersonate';
 export const POTEMKIN_READ_AT_VERSION = 'x-potemkin-read-at-version';
 /** Re-emit a historic event by id (idempotency testing). */
 export const POTEMKIN_REPLAY_EVENT = 'x-potemkin-replay-event';
-/** Force snapshot mode: `replay` (rebuild from events) or `cached` (use state graph). */
-export const POTEMKIN_SNAPSHOT_MODE = 'x-potemkin-snapshot-mode';
 
 // ── Tier 5 — Response format control ───────────────────────────────────────
 
@@ -164,8 +162,6 @@ export const POTEMKIN_RESPONSE_FORMAT = 'x-potemkin-response-format';
 export const POTEMKIN_PAGINATION_STYLE = 'x-potemkin-pagination-style';
 /** Redact named fields in response: comma-separated list. */
 export const POTEMKIN_MASK = 'x-potemkin-mask';
-/** Maximum recursion depth for ?include= expansion. */
-export const POTEMKIN_EXPAND_DEPTH = 'x-potemkin-expand-depth';
 
 // ── Tier 6 — Observability injection ───────────────────────────────────────
 
@@ -231,12 +227,10 @@ export const POTEMKIN_SIGNAL_ALIASES: Record<string, string> = {
   // Tier 4
   read_at_version: POTEMKIN_READ_AT_VERSION,
   replay_event: POTEMKIN_REPLAY_EVENT,
-  snapshot_mode: POTEMKIN_SNAPSHOT_MODE,
   // Tier 5
   response_format: POTEMKIN_RESPONSE_FORMAT,
   pagination_style: POTEMKIN_PAGINATION_STYLE,
   mask: POTEMKIN_MASK,
-  expand_depth: POTEMKIN_EXPAND_DEPTH,
   // Tier 6
   trace_id: POTEMKIN_TRACE_ID,
   span_name: POTEMKIN_SPAN_NAME,

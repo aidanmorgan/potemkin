@@ -4,7 +4,6 @@
  * Used by Tier 4 of X-Potemkin-* control headers:
  *   - X-Potemkin-Read-At-Version: <n>  → query against state-as-of version N
  *   - X-Potemkin-Replay-Event: <event-id>  → re-emit a historic event
- *   - X-Potemkin-Snapshot-Mode: replay|cached  → force replay vs state-graph read
  *
  * These functions intentionally avoid mutating the live state graph; they
  * project a transient state from the immutable event log.

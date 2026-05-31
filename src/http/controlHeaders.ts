@@ -20,8 +20,8 @@ import {
   POTEMKIN_SKIP_SAGAS, POTEMKIN_SKIP_WEBHOOKS, POTEMKIN_SKIP_PROJECTIONS,
   POTEMKIN_SKIP_DISPATCH, POTEMKIN_MAX_CASCADE_DEPTH, POTEMKIN_BULK_TRANSACTIONAL,
   POTEMKIN_ACTOR_OVERRIDE, POTEMKIN_CAUSED_BY, POTEMKIN_IMPERSONATE,
-  POTEMKIN_READ_AT_VERSION, POTEMKIN_REPLAY_EVENT, POTEMKIN_SNAPSHOT_MODE,
-  POTEMKIN_RESPONSE_FORMAT, POTEMKIN_PAGINATION_STYLE, POTEMKIN_MASK, POTEMKIN_EXPAND_DEPTH,
+  POTEMKIN_READ_AT_VERSION, POTEMKIN_REPLAY_EVENT,
+  POTEMKIN_RESPONSE_FORMAT, POTEMKIN_PAGINATION_STYLE, POTEMKIN_MASK,
   POTEMKIN_TRACE_ID, POTEMKIN_SPAN_NAME, POTEMKIN_LOG_LEVEL, POTEMKIN_METRIC_TAG,
   POTEMKIN_SKIP_REQUEST_VALIDATION, POTEMKIN_SKIP_RESPONSE_VALIDATION,
   POTEMKIN_ALLOW_ADDITIONAL_PROPERTIES,
@@ -57,7 +57,6 @@ export interface IdentityControls {
 export interface TimeTravelControls {
   readonly readAtVersion?: number;
   readonly replayEvent?: string;
-  readonly snapshotMode?: 'replay' | 'cached';
 }
 
 export type ResponseFormat = 'hal' | 'jsonapi' | 'plain';
@@ -67,7 +66,6 @@ export interface FormatControls {
   readonly responseFormat?: ResponseFormat;
   readonly paginationStyle?: PaginationStyle;
   readonly maskFields?: readonly string[];
-  readonly expandDepth?: number;
 }
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
@@ -126,13 +124,6 @@ function parseNonNegInt(raw: string | undefined): number | undefined {
   const n = parseSignedInt(raw);
   if (n === undefined || n < 0) return undefined;
   return n;
-}
-
-function parseSnapshotMode(raw: string | undefined): TimeTravelControls['snapshotMode'] {
-  if (raw === undefined) return undefined;
-  const v = raw.trim().toLowerCase();
-  if (v === 'replay' || v === 'cached') return v;
-  return undefined;
 }
 
 function parseResponseFormat(raw: string | undefined): ResponseFormat | undefined {
@@ -220,8 +211,6 @@ export function parseControlHeaders(
         ? { readAtVersion: parseNonNegInt(readHeader(headers, POTEMKIN_READ_AT_VERSION)) } : {}),
       ...(readHeader(headers, POTEMKIN_REPLAY_EVENT) !== undefined
         ? { replayEvent: readHeader(headers, POTEMKIN_REPLAY_EVENT) } : {}),
-      ...(parseSnapshotMode(readHeader(headers, POTEMKIN_SNAPSHOT_MODE)) !== undefined
-        ? { snapshotMode: parseSnapshotMode(readHeader(headers, POTEMKIN_SNAPSHOT_MODE)) } : {}),
     },
     format: {
       ...(parseResponseFormat(readHeader(headers, POTEMKIN_RESPONSE_FORMAT)) !== undefined
@@ -230,8 +219,6 @@ export function parseControlHeaders(
         ? { paginationStyle: parsePaginationStyle(readHeader(headers, POTEMKIN_PAGINATION_STYLE)) } : {}),
       ...(parseCsv(readHeader(headers, POTEMKIN_MASK)) !== undefined
         ? { maskFields: parseCsv(readHeader(headers, POTEMKIN_MASK)) } : {}),
-      ...(parseNonNegInt(readHeader(headers, POTEMKIN_EXPAND_DEPTH)) !== undefined
-        ? { expandDepth: parseNonNegInt(readHeader(headers, POTEMKIN_EXPAND_DEPTH)) } : {}),
     },
     observability: {
       ...(readHeader(headers, POTEMKIN_TRACE_ID) !== undefined

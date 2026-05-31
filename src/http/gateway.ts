@@ -35,7 +35,7 @@ export type ExpressApp = Express;
 import type { BootedSystem } from '../engine/boot.js';
 import { registerAdminRoutes } from './adminRoutes.js';
 import { extractFaultSignal } from '../engine/faultSim.js';
-import { matchRoute } from '../contract/router.js';
+import { matchRoute, resolveVersion } from '../contract/router.js';
 import { translateIntent } from '../engine/router.js';
 import { executeUnitOfWork } from '../engine/uow.js';
 import { nextUuidv7 } from '../ids/uuidv7.js';
@@ -60,12 +60,18 @@ import { createSessionAuthMiddleware, SESSION_ACTOR_KEY, SESSION_HANDLED_KEY } f
 import type { Actor } from '../types.js';
 import { createForwardingHandler, healthHandler, createRoutesHandler, createFixturesHandler } from '../forwarding/handler.js';
 import { parseControlHeaders, applyMask } from './controlHeaders.js';
+import { applyPaginationStyle, applyResponseFormat } from './responseFormat.js';
+import { buildSecurityHeaders } from './securityHeaders.js';
+import { evaluateFaultRules } from '../faults/index.js';
 import { applyResponseMutations, buildOperationLookup } from './responseMutations.js';
 import type { OpenApiOperation } from '../contract/loader.js';
 import { rebuildEntityAtVersion, findEventById } from '../engine/timeTravel.js';
 
 /** Node.js normalises header names to lowercase; this is the lowercased If-Match header. */
 const IF_MATCH_HEADER_LC = 'if-match';
+
+/** Request property key under which the resolved API version is stashed by the versioning middleware. */
+const RESOLVED_VERSION_KEY = '__potemkinResolvedVersion';
 
 /**
  * Resolve the CORS allowed-origin value.
@@ -119,6 +125,18 @@ export function createGateway(sys: BootedSystem): Express {
     next();
   });
 
+  // Security headers — inject the configured global security response headers on
+  // every response (applied via setHeader so they survive all handler branches).
+  const securityHeaders = buildSecurityHeaders(sys.dsl.securityHeaders);
+  if (Object.keys(securityHeaders).length > 0) {
+    app.use((_req: Request, res: Response, next: NextFunction) => {
+      for (const [name, value] of Object.entries(securityHeaders)) {
+        res.setHeader(name, value);
+      }
+      next();
+    });
+  }
+
   // OPTIONS preflight handler — respond 204 immediately before any route matching (H-2).
   app.options('*', (req: Request, res: Response) => {
     const origin = getAllowedOrigin(req.headers['origin']);
@@ -127,6 +145,32 @@ export function createGateway(sys: BootedSystem): Express {
     res.setHeader('Access-Control-Allow-Headers', CORS_ALLOW_HEADERS);
     res.status(204).end();
   });
+
+  // API versioning — strip the matched version prefix from the request URL so
+  // the downstream contract routes (registered with un-versioned paths) match,
+  // and stash the resolved version so the handler can tag the response with
+  // X-Potemkin-Version. Skipped for engine/admin control-plane paths.
+  if (sys.dsl.versioning?.enabled) {
+    app.use((req: Request, res: Response, next: NextFunction) => {
+      if (req.path.startsWith('/_engine') || req.path.startsWith('/_admin')) {
+        next();
+        return;
+      }
+      const resolution = resolveVersion(req.path, sys.dsl.versioning);
+      (req as unknown as Record<string, unknown>)[RESOLVED_VERSION_KEY] = resolution.version;
+      if (resolution.version !== undefined) {
+        // Tag the response with the resolved version; survives every handler branch.
+        res.setHeader('X-Potemkin-Version', resolution.version);
+      }
+      if (resolution.path !== req.path) {
+        // Preserve any query string when rewriting the URL.
+        const qIndex = req.url.indexOf('?');
+        const query = qIndex >= 0 ? req.url.slice(qIndex) : '';
+        req.url = resolution.path + query;
+      }
+      next();
+    });
+  }
 
   // Session/cookie auth (auth.mode: session) — intercepts the configured
   // login/logout paths and resolves the session actor + CSRF for every other
@@ -272,7 +316,12 @@ async function handleContractRequest(
     // 4. Contract validation (req 12, 24).
     // Use effectiveMethod so HEAD requests are validated as GET.
     // Tier 7: admin-gated skip.
-    if (controls.validation.skipRequestValidation !== true) {
+    // Tier 2: a bulk-transactional array body is validated per-item inside the
+    // bulk block below (the contract schema describes a single item, not the
+    // array envelope), so skip the top-level whole-body validation here.
+    const isBulkArrayBody =
+      controls.sideEffects.bulkTransactional === true && Array.isArray(req.body);
+    if (controls.validation.skipRequestValidation !== true && !isBulkArrayBody) {
       try {
         sys.validator.validateRequest(
           effectiveMethod,
@@ -298,14 +347,47 @@ async function handleContractRequest(
     // Tier 1: faker seed — per-evaluator-instance (no module global).
     if (controls.transparency.seed !== undefined) sys.cel.setFakerSeed(controls.transparency.seed);
 
-    // Tier 2: bulk-transactional — when the body is an array, treat each item as a
-    // separate UoW. The whole batch aborts (400 BULK_TRANSACTION_ABORTED) on the
-    // first item that fails validation or domain rules.
+    // Tier 2: bulk-transactional — when the body is an array, execute each item
+    // through the full CQRS/ES Unit of Work with all-or-nothing semantics. The
+    // EventStore and StateGraph are snapshotted before the batch; the first item
+    // that fails validation or a domain rule aborts the WHOLE batch
+    // (400 BULK_TRANSACTION_ABORTED) and BOTH stores are rolled back so no prior
+    // item is persisted. On full success every item is committed and observable
+    // via GET /_admin/state.
     if (controls.sideEffects.bulkTransactional === true && Array.isArray(req.body)) {
       const items = req.body as JsonValue[];
-      const succeeded: JsonValue[] = [];
+      const bulkBoundary = sys.dsl.byContractPath[route.contractPath];
+      const bulkIntent: Intent = translateIntent({ method: effectiveMethod, boundary: bulkBoundary });
+
+      // Resolve the actor once for the whole batch (same auth rules as a single request).
+      let bulkActor: Actor | undefined;
+      {
+        const bulkReqProps = req as unknown as Record<string, unknown>;
+        if (bulkReqProps[SESSION_HANDLED_KEY] === true) {
+          bulkActor = bulkReqProps[SESSION_ACTOR_KEY] as Actor | undefined;
+        } else {
+          try {
+            bulkActor = resolveActor(req.headers['authorization'] as string | undefined, sys.dsl.auth) ?? undefined;
+          } catch (e) {
+            sys.cel.setClockOffset(previousClockOffset);
+            if (controls.transparency.seed !== undefined) sys.cel.setFakerSeed(undefined);
+            if (e instanceof JwtValidationError) {
+              res.status(401).set('WWW-Authenticate', 'Bearer').json({ error: 'UNAUTHENTICATED', message: e.message, details: { code: e.code } });
+              return;
+            }
+            throw e;
+          }
+        }
+      }
+
+      // Snapshot both stores so a mid-batch failure can roll back fully.
+      const eventSnapshot = sys.events.snapshot();
+      const graphSnapshot = sys.graph.snapshot();
+
+      const results: JsonValue[] = [];
       let abortIndex: number | null = null;
       let abortError: string | undefined;
+
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
         const isObj = item !== null && typeof item === 'object' && !Array.isArray(item);
@@ -314,38 +396,89 @@ async function handleContractRequest(
           abortError = 'item must be an object';
           break;
         }
-        try {
-          if (controls.validation.skipRequestValidation !== true) {
+
+        // Per-item contract validation (unless admin-gated skip is in effect).
+        if (controls.validation.skipRequestValidation !== true) {
+          try {
             sys.validator.validateRequest(
               effectiveMethod, route.contractPath,
               item as JsonValue, req.query as Record<string, string | string[]>, route.pathParams,
             );
-          }
-          // Quick required-field sanity: required string fields must be present and non-empty.
-          // (Mirrors the OpenAPI request body check; surfaced so skip-validation can't smuggle bad rows.)
-          const obj = item as Record<string, JsonValue>;
-          if (effectiveMethod === 'POST' && Object.keys(obj).length < 3) {
+          } catch (err) {
             abortIndex = i;
-            abortError = 'item missing required fields';
+            abortError = err instanceof ContractViolationError
+              ? (typeof err.details === 'string' ? err.details : err.message)
+              : (err instanceof Error ? err.message : 'item rejected');
             break;
           }
-          succeeded.push(item);
+        }
+
+        // Resolve a per-item targetId (path id for sub-paths; generated for creations).
+        let itemTargetId: string | null = route.pathParams['id'] ?? null;
+        if (bulkIntent === 'creation' && itemTargetId === null) {
+          const genRule = bulkBoundary.identity?.creation?.generate;
+          if (genRule === '$uuidv7()') itemTargetId = nextUuidv7();
+        }
+
+        const itemCommand: Command = {
+          commandId: nextUuidv7(),
+          boundary: bulkBoundary.boundary,
+          intent: bulkIntent,
+          targetId: itemTargetId,
+          payload: item as JsonObject,
+          queryParams: req.query as Record<string, string | string[]>,
+          httpMethod: effectiveMethod,
+          path: req.path,
+          origin: 'inbound',
+          depth: 0,
+          headers: {},
+          ...(bulkActor !== undefined ? { actor: bulkActor } : {}),
+        };
+
+        try {
+          const itemResult = await Promise.resolve(
+            executeUnitOfWork({
+              command: itemCommand,
+              dsl: sys.dsl,
+              graph: sys.graph,
+              events: sys.events,
+              cel: sys.cel,
+              validator: sys.validator,
+              schemaRegistry: sys.schemaRegistry,
+              aggregateLocks: sys.aggregateLocks,
+              openapi: sys.openapi,
+              requiresPrecondition: sys.requiresPrecondition,
+              logger,
+              tracer: sys.tracer,
+              metrics: sys.metrics,
+              derivedProjections: sys.derivedProjections,
+              tsReducerRegistry: sys.tsReducerRegistry,
+              inferredSchemas: sys.inferredSchemas,
+              controls,
+            }),
+          );
+          results.push(itemResult.body ?? null);
         } catch (err) {
           abortIndex = i;
           abortError = err instanceof Error ? err.message : 'item rejected';
           break;
         }
       }
+
       sys.cel.setClockOffset(previousClockOffset);
       if (controls.transparency.seed !== undefined) sys.cel.setFakerSeed(undefined);
+
       if (abortIndex !== null) {
+        // Roll back every committed item so the batch is all-or-nothing.
+        sys.events.restore(eventSnapshot);
+        sys.graph.restore(graphSnapshot);
         res.status(400).json({
           error: 'BULK_TRANSACTION_ABORTED',
           message: `bulk transaction aborted at item ${abortIndex}: ${abortError ?? 'unknown'}`,
           abortIndex,
         });
       } else {
-        res.status(201).json(succeeded);
+        res.status(201).json(results);
       }
       return;
     }
@@ -454,6 +587,35 @@ async function handleContractRequest(
       headers: requestHeaders,
       ...(actor !== undefined ? { actor } : {}),
     };
+
+    // 6a-bis: DSL fault rules — evaluate the global `fault_rules:` against this
+    // command (header / boundary / intent / CEL / probability matchers). On a
+    // match, short-circuit with the configured status/body/headers BEFORE the
+    // UoW so no state is mutated. The X-Potemkin-Skip-Dispatch control bypasses
+    // fault injection so callers can deterministically opt out.
+    if (
+      sys.dsl.faults && sys.dsl.faults.length > 0 &&
+      controls.sideEffects.skipDispatch !== true
+    ) {
+      const faultResponse = evaluateFaultRules({
+        command,
+        boundaryFaults: [],
+        globalFaults: sys.dsl.faults,
+        dynamicFaults: [],
+        cel: sys.cel,
+        state: command.targetId !== null ? sys.graph.get(command.targetId) : null,
+        logger,
+      });
+      if (faultResponse !== null) {
+        sys.metrics.faultsSimulatedTotal.add(1);
+        sys.cel.setClockOffset(previousClockOffset);
+        if (controls.transparency.seed !== undefined) sys.cel.setFakerSeed(undefined);
+        if (faultResponse.headers) res.set(faultResponse.headers);
+        if (isHead) res.status(faultResponse.status).end();
+        else res.status(faultResponse.status).json(faultResponse.body ?? null);
+        return;
+      }
+    }
 
     // 6b. REQ-81/82/83: Idempotency check
     const idempotencyKey = req.headers['idempotency-key'] as string | undefined;
@@ -644,6 +806,35 @@ async function handleContractRequest(
     // which REMOVES fields). Preserved as established runtime behaviour (D3.3).
     if (controls.format.maskFields && controls.format.maskFields.length > 0) {
       outBody = applyMask(outBody, controls.format.maskFields) as JsonValue | null | undefined;
+    }
+
+    // Tier 5: pagination style — re-shape collection responses between the
+    // envelope and a bare array (+ Link header). Applied before response-format
+    // so HAL/JSON:API see the chosen collection shape. Successful responses only.
+    if (
+      controls.format.paginationStyle !== undefined &&
+      result.status >= 200 && result.status < 300 &&
+      outBody !== null && outBody !== undefined
+    ) {
+      const paged = applyPaginationStyle(
+        outBody,
+        controls.format.paginationStyle,
+        req.query as Record<string, string | string[]>,
+        req.path,
+      );
+      outBody = paged.body;
+      Object.assign(responseHeaders, paged.headers);
+    }
+
+    // Tier 5: response format — HAL / JSON:API body representation. `plain` is a
+    // no-op. Successful responses only.
+    if (
+      controls.format.responseFormat !== undefined &&
+      result.status >= 200 && result.status < 300 &&
+      outBody !== null && outBody !== undefined
+    ) {
+      outBody = applyResponseFormat(outBody, controls.format.responseFormat, boundary.boundary, req.path);
+      responseHeaders['X-Potemkin-Response-Format'] = controls.format.responseFormat;
     }
 
     // Tier 1: include events / echo debug envelope.

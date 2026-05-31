@@ -103,15 +103,6 @@ describe('parseControlHeaders', () => {
         .timeTravel.readAtVersion).toBe(0);
     });
 
-    it('accepts only valid snapshot-mode values', () => {
-      expect(parseControlHeaders({ 'x-potemkin-snapshot-mode': 'replay' })
-        .timeTravel.snapshotMode).toBe('replay');
-      expect(parseControlHeaders({ 'x-potemkin-snapshot-mode': 'cached' })
-        .timeTravel.snapshotMode).toBe('cached');
-      expect(parseControlHeaders({ 'x-potemkin-snapshot-mode': 'magical' })
-        .timeTravel.snapshotMode).toBeUndefined();
-    });
-
     it('captures replay-event id as raw string', () => {
       const c = parseControlHeaders({ 'x-potemkin-replay-event': 'evt-123' });
       expect(c.timeTravel.replayEvent).toBe('evt-123');
@@ -146,11 +137,6 @@ describe('parseControlHeaders', () => {
         .format.maskFields).toEqual(['email', 'phone', 'ssn']);
       expect(parseControlHeaders({ 'x-potemkin-mask': ' email , phone ' })
         .format.maskFields).toEqual(['email', 'phone']);
-    });
-
-    it('parses expand-depth as non-negative integer', () => {
-      expect(parseControlHeaders({ 'x-potemkin-expand-depth': '2' })
-        .format.expandDepth).toBe(2);
     });
   });
 

@@ -183,4 +183,49 @@ describe('eventstore/store', () => {
       expect(() => store.append([makeEvent({ eventId: 'e2', sequenceVersion: 1 })])).not.toThrow();
     });
   });
+
+  describe('snapshot / restore (transactional rollback)', () => {
+    it('restore discards events appended after the snapshot was taken', () => {
+      const store = createEventStore();
+      store.append([makeEvent({ eventId: 'e1', sequenceVersion: 1 })]);
+      const snap = store.snapshot();
+
+      store.append([makeEvent({ eventId: 'e2', sequenceVersion: 2 })]);
+      expect(store.size()).toBe(2);
+
+      store.restore(snap);
+      expect(store.size()).toBe(1);
+      expect(store.all().map((e) => e.eventId)).toEqual(['e1']);
+    });
+
+    it('restore rewinds the aggregate sequence so the next append is monotonic', () => {
+      const store = createEventStore();
+      store.append([makeEvent({ eventId: 'e1', sequenceVersion: 1 })]);
+      const snap = store.snapshot();
+      store.append([makeEvent({ eventId: 'e2', sequenceVersion: 2 })]);
+
+      store.restore(snap);
+      expect(store.currentSequenceVersion('agg-1')).toBe(1);
+      // After rollback, version 2 is once again the valid next append.
+      expect(() => store.append([makeEvent({ eventId: 'e2b', sequenceVersion: 2 })])).not.toThrow();
+    });
+
+    it('restore frees eventIds appended after the snapshot for reuse', () => {
+      const store = createEventStore();
+      const snap = store.snapshot();
+      store.append([makeEvent({ eventId: 'dup', sequenceVersion: 1 })]);
+      store.restore(snap);
+      // The eventId 'dup' was rolled back, so re-appending it must not collide.
+      expect(() => store.append([makeEvent({ eventId: 'dup', sequenceVersion: 1 })])).not.toThrow();
+      expect(store.size()).toBe(1);
+    });
+
+    it('restore to an empty snapshot empties the store', () => {
+      const store = createEventStore();
+      const empty = store.snapshot();
+      store.append([makeEvent({ eventId: 'e1', sequenceVersion: 1 })]);
+      store.restore(empty);
+      expect(store.size()).toBe(0);
+    });
+  });
 });

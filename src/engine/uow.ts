@@ -202,6 +202,10 @@ function shadowAsStateGraph(shadow: ShadowGraph, global: StateGraph): StateGraph
     },
     purge: () => { /* no-op */ },
     size: () => shadowAsStateGraph(shadow, global).keys().length,
+    // The shadow adapter is a per-UoW read view; transactional snapshot/restore
+    // operate on the real (committed) global graph, never this ephemeral wrapper.
+    snapshot: () => global.snapshot(),
+    restore: (snap) => global.restore(snap),
   };
 }
 

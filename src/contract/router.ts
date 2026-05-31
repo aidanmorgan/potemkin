@@ -1,9 +1,56 @@
 import type { OpenApiDoc, OpenApiOperation } from './loader.js';
+import type { VersioningConfig } from '../dsl/types.js';
 
 export interface MatchedRoute {
   readonly contractPath: string;
   readonly pathParams: Record<string, string>;
   readonly operation: OpenApiOperation;
+}
+
+/** Result of resolving an API version from a request path. */
+export interface VersionResolution {
+  /** The path with any matched version prefix stripped (e.g. /v1/leads → /leads). */
+  readonly path: string;
+  /** The resolved version name, or undefined when versioning is disabled. */
+  readonly version?: string;
+}
+
+/**
+ * Resolve the API version for a request path and strip the matching version
+ * prefix so the downstream contract lookup sees the un-versioned path.
+ *
+ *  - When versioning is disabled/absent → path is returned unchanged, no version.
+ *  - When a declared prefix matches (longest-prefix wins) → that prefix is
+ *    stripped and its version name returned.
+ *  - When no prefix matches → the path is unchanged and the `default` version
+ *    (if one is declared) is returned.
+ *
+ * A prefix matches when the path equals the prefix or continues with a `/`
+ * after it, so `/v1` and `/v1/leads` match but `/v10/leads` does not.
+ */
+export function resolveVersion(
+  path: string,
+  versioning: VersioningConfig | undefined,
+): VersionResolution {
+  if (!versioning?.enabled || !versioning.versions || versioning.versions.length === 0) {
+    return { path };
+  }
+
+  const pathOnly = path.split('?')[0]!;
+
+  // Longest prefix first for deterministic specificity (e.g. /v1/beta over /v1).
+  const sorted = [...versioning.versions].sort((a, b) => b.prefix.length - a.prefix.length);
+  for (const v of sorted) {
+    const prefix = v.prefix;
+    if (pathOnly === prefix || pathOnly.startsWith(prefix + '/')) {
+      const stripped = pathOnly.slice(prefix.length) || '/';
+      return { path: stripped, version: v.version };
+    }
+  }
+
+  // No prefix matched — route to the default version, leaving the path intact.
+  const def = versioning.versions.find((v) => v.default === true);
+  return def !== undefined ? { path: pathOnly, version: def.version } : { path: pathOnly };
 }
 
 /**
