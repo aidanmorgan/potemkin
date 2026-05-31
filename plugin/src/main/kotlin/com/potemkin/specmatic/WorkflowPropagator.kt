@@ -31,8 +31,33 @@ import java.util.concurrent.ConcurrentHashMap
  * subsequent request's `/leads/{leadId}` placeholder resolves to that id before
  * forwarding — the caller never has to thread the id by hand.
  *
- * State (the captured ids) is per-instance — one propagator is created per plugin
- * boot and injected into [StatefulRequestHandler]; there is no static/global state.
+ * ## Concurrency / isolation
+ *
+ * A single propagator instance is created per plugin boot and shared across all
+ * concurrent requests (Specmatic dispatches requests in parallel). The captured
+ * ids are therefore NOT a flat `name -> value` map — that would let one chain's
+ * `leadId` overwrite another's under Specmatic's parallel dispatch (last writer
+ * wins), substituting the wrong chain's id into a later path.
+ *
+ * Instead captured ids are namespaced by a per-chain **session key** derived from
+ * the request itself ([sessionKeyOf]). Specmatic's `RequestHandler.handleRequest`
+ * receives ONLY the [HttpRequest] (verified against specmatic-2.46.2.jar:
+ * `handleRequest(HttpRequest): HttpStubResponse` — no connection/scenario id, and
+ * `HttpRequestMetadata` carries only `securityHeaderNames`), so the chain must be
+ * correlated from request data. Resolution order:
+ *
+ *  1. The JWT subject (`sub`) from the verified claims in the
+ *     [PotemkinHeaders.JWT_CLAIMS] header (set by [PotemkinRequestInterceptor]).
+ *  2. An explicit [PotemkinHeaders.WORKFLOW_SESSION] correlation header.
+ *  3. Otherwise a single shared default namespace.
+ *
+ * Two interleaved chains that carry distinct subjects (or session headers) each
+ * extract and substitute their OWN value for the same id name. Chains that supply
+ * no correlation share the default namespace — the documented single-session
+ * fallback (callers wanting isolation must supply (1) or (2)).
+ *
+ * Both [applyToRequest] and [observeResponse] derive the key from the request they
+ * are given, so capture and substitution always target the same namespace.
  */
 class WorkflowPropagator(
     private val block: WorkflowBlock,
@@ -40,8 +65,8 @@ class WorkflowPropagator(
 ) {
     private val log = LoggerFactory.getLogger(WorkflowPropagator::class.java)
 
-    /** name -> last extracted id value. */
-    private val captured = ConcurrentHashMap<String, String>()
+    /** session key -> (id name -> last extracted value). */
+    private val capturedBySession = ConcurrentHashMap<String, ConcurrentHashMap<String, String>>()
 
     /** name -> the response-body field to extract (the leaf of `extract`). */
     private val extractField: Map<String, String>
@@ -72,6 +97,7 @@ class WorkflowPropagator(
         if (!isActive) return request
         val path = request.path ?: return request
         if (!path.contains('{')) return request
+        val captured = capturedBySession[sessionKeyOf(request)] ?: return request
         var rewritten = path
         for ((name, token) in useToken) {
             val value = captured[name] ?: continue
@@ -101,16 +127,51 @@ class WorkflowPropagator(
             return
         }
         if (parsed !is Map<*, *>) return
+        val key = sessionKeyOf(request)
+        val captured = capturedBySession.computeIfAbsent(key) { ConcurrentHashMap() }
         for ((name, field) in extractField) {
             val value = parsed[field]
             if (value is String && value.isNotEmpty()) {
                 captured[name] = value
-                log.debug("WorkflowPropagator: captured {}='{}' from {} {}", name, value, request.method, request.path)
+                log.debug("WorkflowPropagator: captured {}='{}' (session={}) from {} {}", name, value, key, request.method, request.path)
             }
         }
     }
 
+    /**
+     * The session namespace for [request]. Prefers the verified JWT subject, then
+     * an explicit [PotemkinHeaders.WORKFLOW_SESSION] header, else the shared
+     * default. See the class doc for the isolation guarantee this provides.
+     */
+    private fun sessionKeyOf(request: HttpRequest): String {
+        jwtSubject(request)?.let { return "sub:$it" }
+        header(request, PotemkinHeaders.WORKFLOW_SESSION)?.let { return "ws:$it" }
+        return DEFAULT_SESSION
+    }
+
+    private fun jwtSubject(request: HttpRequest): String? {
+        val claimsJson = header(request, PotemkinHeaders.JWT_CLAIMS) ?: return null
+        return try {
+            val claims = mapper.readValue(claimsJson, Map::class.java)
+            (claims["sub"] as? String)?.takeIf { it.isNotEmpty() }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun header(request: HttpRequest, name: String): String? =
+        request.headers.entries
+            .firstOrNull { it.key.equals(name, ignoreCase = true) }
+            ?.value
+            ?.takeIf { it.isNotEmpty() }
+
     companion object {
+        /**
+         * Shared namespace used when a request carries neither a JWT subject nor a
+         * [PotemkinHeaders.WORKFLOW_SESSION] header — the single-session fallback.
+         */
+        internal const val DEFAULT_SESSION = "__default__"
+
         /**
          * The leaf of an extract/use expression: the last `.`-delimited segment,
          * with a leading `$` (JSONPath root) stripped. `BODY.id` -> `id`,
