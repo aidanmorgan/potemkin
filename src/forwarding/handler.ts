@@ -29,6 +29,7 @@ import { parseControlHeaders, applyMask } from '../http/controlHeaders.js';
 import { applyPaginationStyle, applyResponseFormat } from '../http/responseFormat.js';
 import { resolveChaosHeaders, truncateBody } from '../http/chaosHeaders.js';
 import { evaluateFaultRules } from '../faults/index.js';
+import { rebuildEntityAtVersion, findEventById } from '../engine/timeTravel.js';
 import {
   corsPreflightHeaders,
   resolveBoundaryLatencyMs,
@@ -290,7 +291,48 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       actor = { id: id ?? 'unknown', scopes: (scopesStr ?? '').split(',').filter(Boolean) };
     }
 
-    // 8. Chaos headers — resolve direct X-Potemkin-* chaos primitives. Latency
+    // 8. Tier 4: time-travel intercepts for GET requests (read-at-version /
+    //    replay-event). These project transient state from the immutable event
+    //    log and never run the UoW — mirroring gateway.ts semantics exactly.
+    if (method === 'GET') {
+      const ttTargetId = route.pathParams['id'] ?? null;
+      if (controls.timeTravel.readAtVersion !== undefined && ttTargetId !== null) {
+        const rebuilt = rebuildEntityAtVersion(
+          ttTargetId, controls.timeTravel.readAtVersion, boundary, sys.events, sys.cel, logger,
+        );
+        const headers = { 'x-potemkin-read-at-version': String(controls.timeTravel.readAtVersion) };
+        if (rebuilt === null) {
+          send({ status: 404, headers, body: { error: 'ENTITY_ABSENCE', message: `entity ${ttTargetId} not found at version ${controls.timeTravel.readAtVersion}` } });
+        } else {
+          send({ status: 200, headers, body: isHead ? null : rebuilt });
+        }
+        return;
+      }
+      if (controls.timeTravel.replayEvent) {
+        const evt = findEventById(controls.timeTravel.replayEvent, sys.events);
+        const headers = { 'x-potemkin-replayed-event': controls.timeTravel.replayEvent };
+        if (!evt) {
+          send({ status: 404, headers, body: { error: 'EVENT_NOT_FOUND', message: `event ${controls.timeTravel.replayEvent} not found` } });
+        } else {
+          send({
+            status: 200,
+            headers,
+            body: isHead ? null : {
+              eventId: evt.eventId,
+              type: evt.type,
+              aggregateId: evt.aggregateId,
+              sequenceVersion: evt.sequenceVersion,
+              timestamp: evt.timestamp,
+              payload: evt.payload,
+              causedBy: evt.causedBy ?? null,
+            },
+          });
+        }
+        return;
+      }
+    }
+
+    // 8b. Chaos headers — resolve direct X-Potemkin-* chaos primitives. Latency
     //    accrues here; an override response short-circuits BEFORE the UoW.
     const faultRules = sys.dsl.faults ?? [];
     const chaos = resolveChaosHeaders(lc, faultRules);

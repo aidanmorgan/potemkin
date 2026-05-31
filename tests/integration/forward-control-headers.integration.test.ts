@@ -117,4 +117,88 @@ describe('/_engine/forward honours X-Potemkin control headers', () => {
     expect(sys.events.size()).toBe(eventsBefore);
     expect(sys.events.byAggregate(id)).toHaveLength(0);
   });
+
+  it('X-Potemkin-Read-At-Version=1 reconstructs the entity from its first event and echoes the version', async () => {
+    const id = nextUuidv7();
+    await agent
+      .post('/_engine/forward')
+      .send({ method: 'POST', path: `/widgets/${id}`, headers: {}, query: {}, body: { id, status: 'NEW' } } satisfies ForwardedRequest)
+      .expect(200);
+
+    const res = await agent
+      .post('/_engine/forward')
+      .send({
+        method: 'GET',
+        path: `/widgets/${id}`,
+        headers: { 'X-Potemkin-Read-At-Version': '1' },
+        query: {},
+        body: null,
+      } satisfies ForwardedRequest)
+      .expect(200);
+
+    expect(res.body.status).toBe(200);
+    expect(res.body.headers['x-potemkin-read-at-version']).toBe('1');
+    expect(res.body.body.id).toBe(id);
+    expect(res.body.body.status).toBe('NEW');
+  });
+
+  it('X-Potemkin-Read-At-Version on an unknown entity returns 404 ENTITY_ABSENCE', async () => {
+    const res = await agent
+      .post('/_engine/forward')
+      .send({
+        method: 'GET',
+        path: '/widgets/00000000-dead-7000-8000-000000000099',
+        headers: { 'X-Potemkin-Read-At-Version': '3' },
+        query: {},
+        body: null,
+      } satisfies ForwardedRequest)
+      .expect(200);
+
+    expect(res.body.status).toBe(404);
+    expect(res.body.headers['x-potemkin-read-at-version']).toBe('3');
+    expect(res.body.body.error).toBe('ENTITY_ABSENCE');
+  });
+
+  it('X-Potemkin-Replay-Event with an unknown id returns 404 EVENT_NOT_FOUND', async () => {
+    const res = await agent
+      .post('/_engine/forward')
+      .send({
+        method: 'GET',
+        path: '/widgets/00000000-dead-7000-8000-000000000099',
+        headers: { 'X-Potemkin-Replay-Event': 'evt-does-not-exist' },
+        query: {},
+        body: null,
+      } satisfies ForwardedRequest)
+      .expect(200);
+
+    expect(res.body.status).toBe(404);
+    expect(res.body.headers['x-potemkin-replayed-event']).toBe('evt-does-not-exist');
+    expect(res.body.body.error).toBe('EVENT_NOT_FOUND');
+  });
+
+  it('X-Potemkin-Replay-Event resolves a real event by id', async () => {
+    const id = nextUuidv7();
+    await agent
+      .post('/_engine/forward')
+      .send({ method: 'POST', path: `/widgets/${id}`, headers: {}, query: {}, body: { id, status: 'NEW' } } satisfies ForwardedRequest)
+      .expect(200);
+
+    const eventId = sys.events.byAggregate(id)[0]!.eventId;
+
+    const res = await agent
+      .post('/_engine/forward')
+      .send({
+        method: 'GET',
+        path: `/widgets/${id}`,
+        headers: { 'X-Potemkin-Replay-Event': eventId },
+        query: {},
+        body: null,
+      } satisfies ForwardedRequest)
+      .expect(200);
+
+    expect(res.body.status).toBe(200);
+    expect(res.body.headers['x-potemkin-replayed-event']).toBe(eventId);
+    expect(res.body.body.eventId).toBe(eventId);
+    expect(res.body.body.aggregateId).toBe(id);
+  });
 });
