@@ -1,6 +1,7 @@
 boundary: LeadContact
 contract_path: /leads/{id}/contact
 fallback_override: false
+audit_fields: true
 
 event_catalog:
   - type: LeadContacted
@@ -10,9 +11,15 @@ event_catalog:
 behaviors:
   # REQ-61: match.requires with error_code/error_message
   # REQ-64: emit_when with 2+ alternatives
+  # HATEOAS: surfaced as the `contact` action link, but only while the lead is
+  # still NEW — once contacted the link disappears (link_condition is independent
+  # of the runtime match condition, which still allows re-contact).
   - name: contactLead
+    link_name: contact
+    link_condition: "state.status == 'NEW'"
     match:
       operationId: contactLead
+      method: POST
       condition: "true"
       requires:
         - name: not-dnc

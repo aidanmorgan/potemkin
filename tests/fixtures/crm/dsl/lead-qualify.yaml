@@ -1,6 +1,7 @@
 boundary: LeadQualify
 contract_path: /leads/{id}/qualify
 fallback_override: false
+audit_fields: true
 
 event_catalog:
   - type: LeadQualified
@@ -9,9 +10,13 @@ event_catalog:
 
 behaviors:
   # REQ-61: requires guard using CEL comprehension (filter/exists)
+  # HATEOAS: surfaced as the `qualify` action link only while CONTACTED.
   - name: qualifyLead
+    link_name: qualify
+    link_condition: "state.status == 'CONTACTED'"
     match:
       operationId: qualifyLead
+      method: POST
       condition: "true"
       requires:
         - name: must-be-contacted

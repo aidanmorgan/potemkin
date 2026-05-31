@@ -1,6 +1,7 @@
 boundary: LeadDNC
 contract_path: /leads/{id}/dnc
 fallback_override: false
+audit_fields: true
 
 event_catalog:
   - type: LeadMarkedDNC
@@ -10,9 +11,13 @@ event_catalog:
 
 behaviors:
   # REQ-84/85/86: RBAC required_scopes
+  # HATEOAS: surfaced as the `dnc` action link in any state except DNC/CONVERTED.
   - name: markLeadDNC
+    link_name: dnc
+    link_condition: "state.status != 'DNC' && state.status != 'CONVERTED'"
     match:
       operationId: dncLead
+      method: POST
       condition: "true"
       required_scopes:
         - manager

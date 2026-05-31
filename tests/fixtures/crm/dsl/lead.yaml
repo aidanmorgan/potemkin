@@ -1,9 +1,27 @@
 boundary: Lead
 contract_path: /leads
 fallback_override: true
+# Auto-populate updatedAt/updatedBy on every non-baseline event for this boundary.
+audit_fields: true
 identity:
   creation:
     generate: $uuidv7()
+
+# Boundary-level fault rules — scoped to this boundary, evaluated before behaviors.
+# Simulate a slow external duplicate-check on lead creation. The checkDuplicates
+# flag is not part of the OpenAPI POST /leads schema, so callers must send
+# X-Potemkin-Skip-Request-Validation to reach this rule (see suite 30).
+fault_rules:
+  - name: duplicate-check-slow
+    match:
+      intent: creation
+      condition: "command.payload.checkDuplicates == true"
+    response:
+      status: 504
+      body:
+        error: DUPLICATE_CHECK_TIMEOUT
+        message: External duplicate-check service timed out
+      delay_ms: 50
 query_mapping:
   status: "state.status == param"
   campaignId: "state.assignedCampaignId == param"
