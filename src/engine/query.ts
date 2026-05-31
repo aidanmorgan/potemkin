@@ -73,6 +73,24 @@ export function runQuery(req: QueryRequest): JsonValue {
   return result;
 }
 
+/** Encode an opaque cursor carrying the id of the last item on the current page. */
+function encodeCursor(lastId: string): string {
+  return Buffer.from(JSON.stringify({ lastId }), 'utf8').toString('base64');
+}
+
+/** Decode an opaque cursor. Returns null when the cursor is malformed. */
+function decodeCursor(cursor: string): { lastId: string } | null {
+  try {
+    const parsed = JSON.parse(Buffer.from(cursor, 'base64').toString('utf8'));
+    if (parsed && typeof parsed === 'object' && typeof parsed.lastId === 'string') {
+      return { lastId: parsed.lastId };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 function compareValues(a: unknown, b: unknown): number {
   // Nulls/undefined sort to the end regardless of order.
   const aMissing = a === null || a === undefined;
@@ -84,7 +102,34 @@ function compareValues(a: unknown, b: unknown): number {
   return String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0;
 }
 
+/**
+ * Resolve a dotted path (e.g. `customer.contact.email`) against an object.
+ * A single segment with no dot behaves identically to a direct property lookup.
+ * Returns undefined when any intermediate segment is missing or not an object.
+ */
+function getByDotPath(obj: unknown, path: string): unknown {
+  if (path.indexOf('.') === -1) {
+    return (obj as Record<string, unknown> | null | undefined)?.[path];
+  }
+  let cur: unknown = obj;
+  for (const segment of path.split('.')) {
+    if (cur === null || cur === undefined || typeof cur !== 'object' || Array.isArray(cur)) {
+      return undefined;
+    }
+    cur = (cur as Record<string, unknown>)[segment];
+  }
+  return cur;
+}
+
 function operatorMatch(fieldValue: unknown, op: string, expected: string): boolean {
+  // arrayContains: strict array-only membership. Non-arrays never match.
+  if (op === 'arrayContains') {
+    return Array.isArray(fieldValue) && fieldValue.some(el => String(el) === expected);
+  }
+  // contains against an array does membership rather than substring.
+  if (op === 'contains' && Array.isArray(fieldValue)) {
+    return fieldValue.some(el => String(el) === expected);
+  }
   // Null/undefined: only `ne` may match.
   if (fieldValue === null || fieldValue === undefined) {
     return op === 'ne';
@@ -128,7 +173,11 @@ function _runQuery(req: QueryRequest): JsonValue {
       );
     }
 
-    const entity = applyDerivedProperties(raw, boundary, openapi, cel, log);
+    let entity = applyDerivedProperties(raw, boundary, openapi, cel, log);
+    const includeFields = parseCsvParam(queryParams['include']);
+    if (includeFields.length > 0) entity = expandIncludes(entity, includeFields, graph);
+    const selectFields = parseCsvParam(queryParams['fields']);
+    if (selectFields.length > 0) entity = projectFields(entity, selectFields);
     log?.info({ targetId, boundary: boundary.boundary }, 'Single-entity query result returned');
     return entity;
   }
@@ -183,7 +232,7 @@ function _runQuery(req: QueryRequest): JsonValue {
 
   // Apply operator filters (?field:op=value, where op ∈ gt,gte,lt,lte,ne,in,contains,startsWith,endsWith).
   // The same field can carry multiple operator filters; all must match (AND).
-  const opRegex = /^(.+):(gt|gte|lt|lte|ne|in|contains|startsWith|endsWith)$/;
+  const opRegex = /^(.+):(gt|gte|lt|lte|ne|in|contains|arrayContains|startsWith|endsWith)$/;
   for (const [key, rawVal] of Object.entries(queryParams)) {
     const m = opRegex.exec(key);
     if (!m) continue;
@@ -191,7 +240,7 @@ function _runQuery(req: QueryRequest): JsonValue {
     const op = m[2]!;
     const val = Array.isArray(rawVal) ? rawVal[0] : rawVal;
     if (val === undefined) continue;
-    entities = entities.filter(e => operatorMatch(e[field], op, val));
+    entities = entities.filter(e => operatorMatch(getByDotPath(e, field), op, val));
   }
 
   // Apply ?q=searchTerm full-text search across string fields.
@@ -206,21 +255,39 @@ function _runQuery(req: QueryRequest): JsonValue {
     });
   }
 
-  // Apply ?sort=field&order=asc|desc sorting before pagination.
+  // Apply sorting before pagination.
+  // Multi-field form: ?sort=status,-score — comma-separated keys, `-` prefix = descending.
+  // Single-field form (no comma, no `-`): ?sort=field&order=asc|desc (backward compatible).
   const sortParam = queryParams['sort'];
   if (sortParam !== undefined) {
-    const field = Array.isArray(sortParam) ? sortParam[0] : sortParam;
-    const orderParam = queryParams['order'];
-    const orderRaw = orderParam !== undefined
-      ? (Array.isArray(orderParam) ? orderParam[0] : orderParam)
-      : 'asc';
-    const dir = orderRaw === 'desc' ? -1 : 1;
-    entities = [...entities].sort((a, b) => dir * compareValues(a[field], b[field]));
+    const sortRaw = Array.isArray(sortParam) ? sortParam[0]! : sortParam;
+    const isMultiField = sortRaw.includes(',') || sortRaw.startsWith('-');
+    if (isMultiField) {
+      const keys = sortRaw.split(',').map(s => s.trim()).filter(s => s.length > 0).map(s => {
+        const desc = s.startsWith('-');
+        return { field: desc ? s.slice(1) : s, dir: desc ? -1 : 1 };
+      });
+      entities = [...entities].sort((a, b) => {
+        for (const { field, dir } of keys) {
+          const cmp = dir * compareValues(getByDotPath(a, field), getByDotPath(b, field));
+          if (cmp !== 0) return cmp;
+        }
+        return 0;
+      });
+    } else {
+      const orderParam = queryParams['order'];
+      const orderRaw = orderParam !== undefined
+        ? (Array.isArray(orderParam) ? orderParam[0] : orderParam)
+        : 'asc';
+      const dir = orderRaw === 'desc' ? -1 : 1;
+      entities = [...entities].sort((a, b) => dir * compareValues(getByDotPath(a, sortRaw), getByDotPath(b, sortRaw)));
+    }
   }
 
-  // Apply pagination: limit and offset from query params
+  // Apply pagination: limit and offset/cursor from query params.
   const offsetParam = queryParams['offset'];
   const limitParam = queryParams['limit'];
+  const cursorParam = queryParams['cursor'];
 
   const offset = offsetParam !== undefined
     ? parseInt(Array.isArray(offsetParam) ? offsetParam[0] : offsetParam, 10)
@@ -229,19 +296,48 @@ function _runQuery(req: QueryRequest): JsonValue {
     ? parseInt(Array.isArray(limitParam) ? limitParam[0] : limitParam, 10)
     : undefined;
 
-  const safeOffset = isNaN(offset) || offset < 0 ? 0 : offset;
-
   const totalCount = entities.length;
-  let sliced = entities.slice(safeOffset);
+
+  // Cursor takes precedence over offset. A cursor carries the id of the last item
+  // emitted on the previous page; the next page begins after that id in the current
+  // (filtered + sorted) ordering. A malformed cursor yields an empty page.
+  const cursor = cursorParam !== undefined
+    ? (Array.isArray(cursorParam) ? cursorParam[0]! : cursorParam)
+    : undefined;
+
+  let startIndex: number;
+  let cursorMalformed = false;
+  if (cursor !== undefined) {
+    const decoded = decodeCursor(cursor);
+    if (decoded === null) {
+      cursorMalformed = true;
+      startIndex = entities.length; // empty page
+    } else {
+      const lastIdx = entities.findIndex(e => e['id'] === decoded.lastId);
+      startIndex = lastIdx === -1 ? entities.length : lastIdx + 1;
+    }
+  } else {
+    startIndex = isNaN(offset) || offset < 0 ? 0 : offset;
+  }
+
+  let sliced = entities.slice(startIndex);
   if (limit !== undefined && !isNaN(limit) && limit >= 0) {
     sliced = sliced.slice(0, limit);
   }
 
-  // Apply derived properties to each entity
-  const result = sliced.map(entity => applyDerivedProperties(entity, boundary, openapi, cel, log));
+  // Apply derived properties to each entity, then optional relationship expansion
+  // (?include=field) and sparse fieldset projection (?fields=a,b).
+  const includeFields = parseCsvParam(queryParams['include']);
+  const selectFields = parseCsvParam(queryParams['fields']);
+  const result = sliced.map(entity => {
+    let e = applyDerivedProperties(entity, boundary, openapi, cel, log);
+    if (includeFields.length > 0) e = expandIncludes(e, includeFields, graph);
+    if (selectFields.length > 0) e = projectFields(e, selectFields);
+    return e;
+  });
 
   log?.info(
-    { boundary: boundary.boundary, resultCount: result.length, appliedFilters, offset: safeOffset, limit },
+    { boundary: boundary.boundary, resultCount: result.length, appliedFilters, offset: startIndex, limit },
     'Collection query result returned',
   );
 
@@ -249,15 +345,59 @@ function _runQuery(req: QueryRequest): JsonValue {
   // (preserves backwards compatibility for callers that expect a raw array).
   if (limitParam !== undefined) {
     const limitN = limit !== undefined && !isNaN(limit) && limit >= 0 ? limit : 0;
-    return {
+    const hasMore = !cursorMalformed && startIndex + result.length < totalCount;
+    const envelope: JsonObject = {
       items: result as unknown as JsonValue,
       totalCount,
-      offset: safeOffset,
+      offset: startIndex,
       limit: limitN,
-      hasMore: safeOffset + result.length < totalCount,
-    } as unknown as JsonValue;
+      hasMore,
+    };
+    // Emit nextCursor only when there is another page and we have a last id to anchor on.
+    if (hasMore && result.length > 0) {
+      const lastId = result[result.length - 1]!['id'];
+      if (typeof lastId === 'string') {
+        envelope['nextCursor'] = encodeCursor(lastId);
+      }
+    }
+    return envelope as unknown as JsonValue;
   }
 
+  return result;
+}
+
+/** Parse a comma-separated query param into a trimmed, non-empty string array. */
+function parseCsvParam(param: string | string[] | undefined): string[] {
+  if (param === undefined) return [];
+  const raw = Array.isArray(param) ? param[0] ?? '' : param;
+  return raw.split(',').map(s => s.trim()).filter(s => s.length > 0);
+}
+
+/**
+ * For each included field, resolve the ids stored in entity[field] against the graph
+ * and embed the referenced entities under `_<field>`. The original id array is retained.
+ */
+function expandIncludes(entity: JsonObject, fields: readonly string[], graph: StateGraph): JsonObject {
+  const result: JsonObject = { ...entity };
+  for (const field of fields) {
+    const ids = entity[field];
+    if (!Array.isArray(ids)) continue;
+    const embedded = ids
+      .map(id => (typeof id === 'string' ? graph.get(id) : null))
+      .filter((e): e is JsonObject => e !== null && e !== undefined);
+    result[`_${field}`] = embedded as unknown as JsonValue;
+  }
+  return result;
+}
+
+/** Project an entity down to the selected fields. `id` is always preserved. */
+function projectFields(entity: JsonObject, fields: readonly string[]): JsonObject {
+  const keep = new Set<string>(fields);
+  keep.add('id');
+  const result: JsonObject = {};
+  for (const key of keep) {
+    if (key in entity) result[key] = entity[key]!;
+  }
   return result;
 }
 
