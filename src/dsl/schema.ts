@@ -850,6 +850,19 @@ function crossValidate(config: {
  * @throws {BootError} with code `BOOT_ERR_DSL_REFERENCE` if cross-references are broken.
  * @throws {BootError} with code `BOOT_ERR_SCRIPT_IN_REDUCER` if ts: in reducer phase.
  */
+/**
+ * Every valid top-level key in a boundary DSL module — used for fail-fast
+ * rejection of typos, symmetric with KNOWN_GLOBAL_KEYS for the global config.
+ */
+const KNOWN_BOUNDARY_KEYS: ReadonlySet<string> = new Set([
+  'boundary', 'contract_path', 'fallback_override', 'identity', 'query_mapping',
+  'behaviors', 'reducers', 'event_catalog', 'initialization', 'scripts',
+  'deprecated', 'hateoas', 'mask', 'state', 'strict_schema', 'latency',
+  'audit_fields', 'fault_rules',
+  // Spec-endpoint cross-check keys consumed by configLoader (camelCase + snake).
+  'specId', 'spec_id', 'outOfContract', 'out_of_contract', 'method', 'methods',
+]);
+
 export function validateBoundaryConfig(raw: unknown): BoundaryConfig {
   if (!isRecord(raw)) {
     throw new BootError(
@@ -857,6 +870,19 @@ export function validateBoundaryConfig(raw: unknown): BoundaryConfig {
       'DSL module root must be a YAML mapping object',
       { received: typeof raw },
     );
+  }
+
+  // Fail-fast on unknown top-level keys so a boundary-DSL typo (e.g.
+  // `reducerss:`) is rejected at boot rather than silently dropped — symmetric
+  // with validateGlobalConfig's unknown-key guard.
+  for (const key of Object.keys(raw)) {
+    if (!KNOWN_BOUNDARY_KEYS.has(key)) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `Unknown boundary key "${key}" — supported keys: ${[...KNOWN_BOUNDARY_KEYS].sort().join(', ')}`,
+        { key, ...(typeof raw['boundary'] === 'string' ? { boundary: raw['boundary'] } : {}) },
+      );
+    }
   }
 
   // Required top-level fields
