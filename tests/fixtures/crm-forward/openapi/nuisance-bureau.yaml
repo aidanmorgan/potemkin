@@ -1436,9 +1436,11 @@ components:
         assignedCampaignId:
           type: string
           format: uuid
+          nullable: true
         assignedAgentId:
           type: string
           format: uuid
+          nullable: true
         callIds:
           type: array
           items:
