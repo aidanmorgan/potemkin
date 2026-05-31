@@ -121,6 +121,8 @@ export interface DeprecationConfig {
 export interface LatencyConfig {
   readonly min_ms?: number;
   readonly max_ms?: number;
+  /** Fixed pre-response delay in milliseconds (stacks on top of any min/max range). */
+  readonly fixed_ms?: number;
 }
 
 export interface BoundaryConfig {

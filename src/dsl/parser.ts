@@ -2,14 +2,31 @@ import * as yaml from 'js-yaml';
 import { BootError } from '../errors.js';
 import { createLogger, getTracer, withSpan } from '../observability/index.js';
 import { validateBoundaryConfig, validateGlobalConfig } from './schema.js';
-import type { BoundaryConfig, CompiledDsl, SagaConfig, IdempotencyConfig, DerivedProjectionConfig } from './types.js';
+import type { BoundaryConfig, CompiledDsl, SagaConfig, IdempotencyConfig, DerivedProjectionConfig, LatencyConfig } from './types.js';
 import { buildScriptRegistry } from '../scripts/registry.js';
 
 const log = createLogger({ name: 'dsl' });
 
 /**
+ * Parse an optional per-boundary `latency:` block. Each field is an integer
+ * millisecond count; non-numeric or negative values are dropped. Returns
+ * undefined when the block is absent or carries no usable field.
+ */
+function parseLatencyConfig(raw: unknown): LatencyConfig | undefined {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const obj = raw as Record<string, unknown>;
+  const out: { min_ms?: number; max_ms?: number; fixed_ms?: number } = {};
+  for (const key of ['min_ms', 'max_ms', 'fixed_ms'] as const) {
+    const v = obj[key];
+    if (typeof v === 'number' && Number.isFinite(v) && v >= 0) out[key] = v;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/**
  * Parse a single YAML module string into a BoundaryConfig.
- * Delegates shape validation to `validateBoundaryConfig`.
+ * Delegates shape validation to `validateBoundaryConfig`, then layers on the
+ * optional `latency:` block (which `validateBoundaryConfig` does not surface).
  * @throws {BootError} with code `BOOT_ERR_DSL_SYNTAX` on parse or validation failure.
  */
 export function parseDslYaml(text: string): BoundaryConfig {
@@ -25,7 +42,9 @@ export function parseDslYaml(text: string): BoundaryConfig {
     );
   }
 
-  return validateBoundaryConfig(raw);
+  const config = validateBoundaryConfig(raw);
+  const latency = parseLatencyConfig((raw as Record<string, unknown> | null)?.['latency']);
+  return latency !== undefined ? { ...config, latency } : config;
 }
 
 /**
