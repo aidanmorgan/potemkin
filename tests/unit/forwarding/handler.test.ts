@@ -213,6 +213,37 @@ describe('forwarding/handler — createForwardingHandler', () => {
     expect(res.body.status).toBe(412);
   });
 
+  it('maps original-cased If-Match with a stale sequenceVersion to a 412 envelope', async () => {
+    // Regression: the handler must read forwarded headers case-insensitively, so
+    // an `If-Match` sent with original casing (not the documented lowercase key)
+    // still drives the optimistic-concurrency precondition and yields 412.
+    const createRes = await app.agent
+      .post('/_engine/forward')
+      .send({
+        method: 'POST',
+        path: '/leads',
+        headers: {},
+        query: {},
+        body: LEAD_PAYLOAD,
+      })
+      .expect(200);
+    expect(createRes.body.status).toBe(201);
+    const leadId = createRes.body.body.id as string;
+
+    const res = await app.agent
+      .post('/_engine/forward')
+      .send({
+        method: 'POST',
+        path: `/leads/${leadId}/contact`,
+        // Original (non-lowercased) header casing — must still be honoured.
+        headers: { 'If-Match': '9999' },
+        query: {},
+        body: { notes: 'test' },
+      })
+      .expect(200);
+    expect(res.body.status).toBe(412);
+  });
+
   it('returns ForwardedResponse with status 422 for UnhandledOperationError (no matching behavior)', async () => {
     // GET on an unknown call id → EntityAbsenceError (404)
     const unknownId = nextUuidv7();
