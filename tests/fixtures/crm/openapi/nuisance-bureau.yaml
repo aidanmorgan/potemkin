@@ -1671,6 +1671,8 @@ components:
                 type: number
               lineTotal:
                 type: number
+              total:
+                type: number
               addedAt:
                 type: string
                 format: date-time

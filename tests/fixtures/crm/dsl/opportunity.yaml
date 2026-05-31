@@ -131,6 +131,9 @@ reducers:
       - op: replace
         path: /expectedCloseDate
         value: "${coalesce(event.payload.expectedCloseDate, null)}"
+      - op: replace
+        path: /lineItems
+        value: "${[]}"
 
   - on: OpportunityAdvanced
     patches:
