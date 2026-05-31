@@ -25,6 +25,22 @@ export interface StateGraph {
 
   /** Return the total number of entries. */
   size(): number;
+
+  /**
+   * Capture an opaque snapshot of the current projection so a caller can later
+   * roll back to exactly this state. Used together with EventStore.snapshot to
+   * give multi-item transactional batches all-or-nothing semantics.
+   */
+  snapshot(): StateGraphSnapshot;
+
+  /** Restore the projection to a previously-captured snapshot. */
+  restore(snapshot: StateGraphSnapshot): void;
+}
+
+/** Opaque, immutable capture of StateGraph contents for transactional rollback. */
+export interface StateGraphSnapshot {
+  /** Frozen [targetId, frozen-state] pairs as of capture. */
+  readonly entries: readonly (readonly [string, JsonObject])[];
 }
 
 /**
@@ -141,6 +157,20 @@ export function createStateGraph(): StateGraph {
 
     size(): number {
       return store.size;
+    },
+
+    snapshot(): StateGraphSnapshot {
+      // Stored values are already deep-frozen on set(); capturing the pairs is a
+      // faithful, side-effect-free snapshot.
+      return Object.freeze({ entries: Object.freeze([...store.entries()]) });
+    },
+
+    restore(snap: StateGraphSnapshot): void {
+      store.clear();
+      for (const [id, value] of snap.entries) {
+        store.set(id, value);
+      }
+      logger.info({ count: snap.entries.length }, 'State graph restored to snapshot');
     },
   };
 }

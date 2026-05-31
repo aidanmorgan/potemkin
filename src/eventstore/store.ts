@@ -33,6 +33,22 @@ export interface EventStore {
 
   /** Attach a response snapshot retroactively to the named events. */
   attachResponse(eventIds: readonly string[], response: EventResponseSnapshot): void;
+
+  /**
+   * Capture an opaque snapshot of the current ledger so a caller can later roll
+   * back to exactly this state. Used to give multi-item transactional batches
+   * (bulk-transactional) all-or-nothing semantics without a real DB transaction.
+   */
+  snapshot(): EventStoreSnapshot;
+
+  /** Restore the ledger to a previously-captured snapshot, discarding later appends. */
+  restore(snapshot: EventStoreSnapshot): void;
+}
+
+/** Opaque, immutable capture of EventStore contents for transactional rollback. */
+export interface EventStoreSnapshot {
+  /** Frozen events as of capture, in insertion order. */
+  readonly events: readonly DomainEvent[];
 }
 
 const logger = createLogger({ name: 'eventstore' });
@@ -160,6 +176,33 @@ export function createEventStore(): EventStore {
         rewriteList(list);
         byAggMap.set(aggId, list);
       }
+    },
+
+    snapshot(): EventStoreSnapshot {
+      // Events are already individually frozen; a shallow copy of the array is a
+      // faithful, side-effect-free capture.
+      return Object.freeze({ events: Object.freeze([...events]) });
+    },
+
+    restore(snap: EventStoreSnapshot): void {
+      // Rebuild the ledger and all derived indices from the captured events,
+      // discarding anything appended after the snapshot was taken.
+      events.length = 0;
+      byAggMap.clear();
+      seqByAgg.clear();
+      eventIdSet.clear();
+
+      for (const event of snap.events) {
+        events.push(event);
+        const aggList = byAggMap.get(event.aggregateId);
+        if (aggList) aggList.push(event);
+        else byAggMap.set(event.aggregateId, [event]);
+        const prevSeq = seqByAgg.get(event.aggregateId) ?? 0;
+        if (event.sequenceVersion > prevSeq) seqByAgg.set(event.aggregateId, event.sequenceVersion);
+        eventIdSet.add(event.eventId);
+      }
+
+      logger.info({ count: snap.events.length }, 'Event store restored to snapshot');
     },
   };
 }

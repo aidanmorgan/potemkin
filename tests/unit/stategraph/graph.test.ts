@@ -195,4 +195,50 @@ describe('stategraph/graph', () => {
       expect(graph.get('a')?.v).toBe(2);
     });
   });
+
+  describe('snapshot / restore (transactional rollback)', () => {
+    it('restore discards entries added after the snapshot', () => {
+      const graph = createStateGraph();
+      graph.set('a', { v: 1 });
+      const snap = graph.snapshot();
+      graph.set('b', { v: 2 });
+      expect(graph.size()).toBe(2);
+
+      graph.restore(snap);
+      expect(graph.size()).toBe(1);
+      expect(graph.get('a')?.v).toBe(1);
+      expect(graph.get('b')).toBeNull();
+    });
+
+    it('restore reverts a value mutated after the snapshot', () => {
+      const graph = createStateGraph();
+      graph.set('a', { v: 1 });
+      const snap = graph.snapshot();
+      graph.set('a', { v: 99 });
+      graph.restore(snap);
+      expect(graph.get('a')?.v).toBe(1);
+    });
+
+    it('restore re-adds an entry deleted after the snapshot', () => {
+      const graph = createStateGraph();
+      graph.set('a', { v: 1 });
+      const snap = graph.snapshot();
+      graph.delete('a');
+      expect(graph.get('a')).toBeNull();
+      graph.restore(snap);
+      expect(graph.get('a')?.v).toBe(1);
+    });
+
+    it('snapshot is not affected by later mutations (immutable capture)', () => {
+      const graph = createStateGraph();
+      graph.set('a', { v: 1 });
+      const snap = graph.snapshot();
+      graph.set('a', { v: 2 });
+      graph.set('b', { v: 3 });
+      // Restoring the original snapshot must reflect the captured state only.
+      graph.restore(snap);
+      expect(graph.get('a')?.v).toBe(1);
+      expect(graph.get('b')).toBeNull();
+    });
+  });
 });
