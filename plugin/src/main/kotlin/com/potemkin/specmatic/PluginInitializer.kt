@@ -82,12 +82,16 @@ class PluginInitializer : StubInitializer {
             log.warn("ControlServer failed to start on port {}: {} — continuing without control server", config.controlPort, e.message)
         }
 
-        // Forward-blocks → live components. The overlay file itself is loaded by
-        // Specmatic at HttpStub construction (the `overlayFilePath` env var the
-        // launcher sets); here the plugin derives the runtime behaviours that ride
-        // on top of the overlaid spec:
-        //  - E5: a [DeprecationPolicy] so deprecated operations carry `Deprecation:true`.
-        //  - E6: a [WorkflowPropagator] that chains ids across the forward path.
+        // Forward-blocks → live components. The overlay is NOT applied by this
+        // plugin at runtime: it is written to a file by the test launcher, which
+        // points Specmatic's `overlayFilePath` env var at it so Specmatic applies
+        // it at HttpStub construction (before this `initialize` runs). Here the
+        // plugin only derives the runtime behaviours that ride on top of the
+        // already-overlaid spec:
+        //  - E5: a [DeprecationPolicy] so deprecated operations carry `Deprecation:true`
+        //    (Specmatic emits no Deprecation header for `deprecated:true` operations).
+        //  - E6: a [WorkflowPropagator] that chains ids across the forward path
+        //    (Specmatic's workflow is contract-test-mode-only; see applyForwardBlocks).
         val blocks = config.forwardBlocks
         val deprecationPolicy = DeprecationPolicy.fromOverlayPatches(blocks.overlay.patches)
         val workflowPropagator = WorkflowPropagator(blocks.workflow)
@@ -111,28 +115,42 @@ class PluginInitializer : StubInitializer {
     }
 
     /**
-     * Apply the parsed forward-blocks at boot:
-     *  - E6: merge `workflow.ids` + `governance` (precedence via [SpecmaticConfigMerger])
-     *    for logging/diagnostics; the live id-propagation runs in [WorkflowPropagator].
-     *  - E5: the overlay-merged spec is produced for parity logging; the live overlay is
-     *    loaded by Specmatic from the file the launcher points `overlayFilePath` at.
-     *  - E4: compile `seeds` and register them via `httpStub.setExpectation`.
+     * Forward-block application map — where each block actually takes effect.
      *
-     * ## Specmatic 2.46.2 wiring (verified against specmatic-2.46.2.jar + experiment)
+     * | block      | applied where                          | mechanism                                  |
+     * |------------|----------------------------------------|--------------------------------------------|
+     * | seeds      | here, at `initialize`                  | [SeedApplier] -> `httpStub.setExpectation` |
+     * | overlay    | Specmatic, at `HttpStub` construction  | overlay FILE via `overlayFilePath` env var |
+     * | workflow   | plugin forward path, per request       | [WorkflowPropagator] (id-propagation)      |
+     * | governance | here, merged + logged only             | [SpecmaticConfigMerger] (diagnostics)      |
      *
-     * E4 (seeds): `HttpStub.setExpectation(ScenarioStub)` is the public runtime API.
+     * This method only handles the blocks that are realised at boot: it registers
+     * seed expectations and merges+logs workflow/governance for diagnostics. It
+     * does NOT apply the overlay — that is done out-of-process (see below).
      *
-     * E5 (overlay): loaded at HttpStub CONSTRUCTION via `SpecmaticConfig.getStubOverlayFilePath`,
-     * which reads `System.getenv("overlayFilePath")` (fallback system property) — confirmed by
-     * booting `stub` with that env var and observing the overlay applied to the served spec. The
-     * launcher therefore translates `overlay.patches` to a Specmatic overlay file and sets the env
-     * var before Specmatic starts. Specmatic emits no `Deprecation` header for `deprecated:true`
-     * operations, so [DeprecationPolicy] + [PotemkinResponseInterceptor] add it.
+     * ## Specmatic 2.46.2 limitations that force the file-based design
+     * (verified against specmatic-2.46.2.jar by decompilation + a boot experiment)
      *
-     * E6 (workflow): `io.specmatic.core.Workflow` is referenced ONLY by `Feature.scenarioAsTest`
-     * / `generateContractTests` (TEST-mode contract-test chaining); `getWorkflowDetails()` resolves
-     * from the *test* service config. Stub mode never consults it. Workflow id-propagation is
-     * therefore implemented in the plugin forward path via [WorkflowPropagator].
+     * E4 (seeds): `HttpStub.setExpectation(ScenarioStub)` IS a public runtime API,
+     * so seeds are applied directly here.
+     *
+     * E5 (overlay): `SpecmaticConfig` exposes NO runtime overlay setter. The overlay
+     * is read once at HttpStub CONSTRUCTION via `SpecmaticConfig.getStubOverlayFilePath`,
+     * which reads `System.getenv("overlayFilePath")` (system-property fallback) —
+     * confirmed by booting `stub` with that env var and observing the overlay applied
+     * to the served spec. Because construction precedes this `initialize`, the plugin
+     * cannot re-seat an overlaid spec into the already-loaded features. The launcher
+     * therefore translates `overlay.patches` to a Specmatic overlay file (the unit
+     * proven by [OverlayApplier.applyTo]) and sets the env var before Specmatic starts.
+     * Specmatic emits no `Deprecation` header for `deprecated:true` operations, so
+     * [DeprecationPolicy] + [PotemkinResponseInterceptor] add it on the response path.
+     *
+     * E6 (workflow): `SpecmaticConfig` exposes no runtime workflow setter either, and
+     * `io.specmatic.core.Workflow` is referenced ONLY by `Feature.scenarioAsTest` /
+     * `generateContractTests` (TEST-mode contract-test chaining); `getWorkflowDetails()`
+     * resolves from the *test* service config and stub mode never consults it. Workflow
+     * id-propagation is therefore implemented in the plugin forward path via
+     * [WorkflowPropagator]; the merge below is for diagnostics only.
      */
     private fun applyForwardBlocks(
         config: PluginConfig,
@@ -141,26 +159,26 @@ class PluginInitializer : StubInitializer {
     ) {
         val blocks = config.forwardBlocks
 
-        // E6 — workflow + governance merge.
+        // E6 — workflow + governance merged for diagnostics only. The live
+        // id-propagation runs in WorkflowPropagator (stub mode never reads
+        // Specmatic's test-mode workflow); governance is not enforced by Specmatic
+        // in stub mode, so we only record what was requested.
         val merger = SpecmaticConfigMerger()
         if (blocks.workflow.ids.isNotEmpty()) {
             val existing = (specmaticConfig.getWorkflowDetails() as? WorkflowConfiguration)?.ids ?: emptyMap()
             val mergedWorkflow = merger.mergeWorkflow(existing, blocks.workflow)
-            log.info("Forward-blocks: merged {} workflow id-operation(s)", mergedWorkflow.ids.size)
+            log.info("Forward-blocks: merged {} workflow id-operation(s) for diagnostics (live propagation via WorkflowPropagator)", mergedWorkflow.ids.size)
         }
         if (blocks.governance.report != null || blocks.governance.successCriterion != null) {
             val mergedGovernance = merger.mergeGovernance(emptyMap(), blocks.governance)
-            log.info("Forward-blocks: merged governance keys {}", mergedGovernance.keys)
+            log.info("Forward-blocks: merged governance keys {} for diagnostics", mergedGovernance.keys)
         }
 
-        // E5 — overlay translation (the merged spec is the e2e seam).
-        if (blocks.overlay.patches.isNotEmpty()) {
-            runCatching { OverlayApplier().toOverlay(blocks.overlay.patches) }
-                .onSuccess { log.info("Forward-blocks: translated {} overlay patch(es)", blocks.overlay.patches.size) }
-                .onFailure { log.warn("Forward-blocks: overlay translation failed: {}", it.message) }
-        }
+        // E5 — overlay is applied by Specmatic from the launcher-written file
+        // (overlayFilePath); nothing to do here. Translation/merge is exercised by
+        // OverlayApplier's tests, not at boot.
 
-        // E4 — seeds.
+        // E4 — seeds are applied directly via the public setExpectation API.
         if (blocks.seeds.isNotEmpty()) {
             SeedApplier(bridge).applyAll(blocks.seeds)
         }
