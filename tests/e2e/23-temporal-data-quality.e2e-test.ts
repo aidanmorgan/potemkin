@@ -335,14 +335,50 @@ describeWithJava('23 — Temporal Data Quality (full Specmatic stack)', () => {
 
   // --- 11. Opportunity with value:0 -> rejected ---
 
-  it('opportunity via forward with value:0 is rejected by positive-value guard', async () => {
-    const entityCountBefore = await getEntityCount(app.engineUrl);
+  it('converting a lead with value:0 is rejected by the opportunity positive-value guard', async () => {
+    // Opportunities are created only via the LeadConversionSaga (no POST
+    // /opportunities in the contract). The saga forwards command.payload.value
+    // into createOpportunity, whose positive-value guard requires value > 0.
+    // Converting a qualified lead with value:0 must therefore fail the saga step
+    // so that no Opportunity is created for that lead.
+    const createRes = await fwd(app.engineUrl, 'POST', '/leads', {
+      companyName: 'ZeroValue Corp',
+      contactName: 'ZV User',
+      phone: '+61 2 9100 0011',
+      email: 'zerovalue@test.com',
+      source: 'WEBSITE',
+      assignedAgentId: AGENT_ID,
+      assignedCampaignId: CAMPAIGN_ID,
+    });
+    expect([200, 201]).toContain(createRes.status);
+    const leadId = (createRes.body as JsonObject)['id'] as string;
 
-    // Opportunities are created only via saga (no POST /opportunities in OpenAPI).
-    // The positive-value guard is tested by converting a lead with value:0.
-    // The guard existence is verified via DSL audit.
-    expect(true).toBe(true); // Guard existence verified via DSL audit
-    const entityCountAfter = await getEntityCount(app.engineUrl);
-    expect(entityCountAfter).toBe(entityCountBefore);
+    // Drive the lead to QUALIFIED so it can be converted.
+    await fwd(app.engineUrl, 'POST', '/calls', {
+      leadId,
+      agentId: AGENT_ID,
+      campaignId: CAMPAIGN_ID,
+      outcome: 'INTERESTED',
+    });
+    await fwd(app.engineUrl, 'POST', `/leads/${leadId}/contact`, {});
+    await fwd(app.engineUrl, 'POST', `/leads/${leadId}/qualify`, {});
+
+    // Count opportunities before the value:0 conversion attempt.
+    const oppsBeforeRes = await fwd(app.engineUrl, 'GET', '/opportunities');
+    expect(oppsBeforeRes.status).toBe(200);
+    const oppsBefore = oppsBeforeRes.body as unknown as Array<Record<string, unknown>>;
+    const oppCountBefore = oppsBefore.length;
+
+    // Convert with value:0 — the saga's createOpportunity step hits the
+    // positive-value guard (command.payload.value > 0) and fails.
+    await fwd(app.engineUrl, 'POST', `/leads/${leadId}/convert`, { value: 0 });
+
+    // The guard rejected the opportunity, so no Opportunity exists for this lead
+    // and the total opportunity count is unchanged.
+    const oppsAfterRes = await fwd(app.engineUrl, 'GET', '/opportunities');
+    expect(oppsAfterRes.status).toBe(200);
+    const oppsAfter = oppsAfterRes.body as unknown as Array<Record<string, unknown>>;
+    expect(oppsAfter.some((o) => o['leadId'] === leadId)).toBe(false);
+    expect(oppsAfter.length).toBe(oppCountBefore);
   }, 60_000);
 });

@@ -91,33 +91,24 @@ describe('observability/tracing', () => {
       }
     });
 
-    it('enabled=true path: initTracing returns a shutdown function', async () => {
-      // We verify the control-flow branch without actually starting the SDK's
-      // metric exporter background timers that would prevent Jest from exiting.
-      // The enabled=false → no-op path is already covered above; here we just
-      // confirm the function signature is correct for the enabled=true branch
-      // by checking that opts.enabled=true does NOT return immediately (i.e.,
-      // the code reaches the SDK-construction block and returns a shutdown fn).
-      // We call with OTEL_SDK_DISABLED=false so the branch is taken, then
-      // immediately shut down before background timers cause leaks.
+    it('enabled=true path: initTracing returns a callable shutdown function', async () => {
+      // The enabled=true branch reaches the SDK-construction block and returns a
+      // shutdown fn. The OTLP exporters buffer rather than connect at init, so
+      // SDK construction does not require network reachability; we point at a
+      // local no-op endpoint so no real traffic goes out, then shut down
+      // immediately to avoid background-timer leaks.
       const prevDisabled = process.env['OTEL_SDK_DISABLED'];
       const prevEndpoint = process.env['OTEL_EXPORTER_OTLP_ENDPOINT'];
-      // Point at a local no-op endpoint so no real network traffic goes out
       process.env['OTEL_EXPORTER_OTLP_ENDPOINT'] = 'http://127.0.0.1:19999';
       delete process.env['OTEL_SDK_DISABLED'];
 
-      let shutdownFn: (() => Promise<void>) | undefined;
       try {
         const result = await initTracing({ enabled: true, serviceName: 'test-coverage-svc' });
-        shutdownFn = result.shutdown;
-        expect(typeof shutdownFn).toBe('function');
-      } catch {
-        // Network-less environments may fail SDK init — acceptable
+        // Distinct from the disabled path: a real (callable) shutdown is returned
+        // that resolves without throwing.
+        expect(typeof result.shutdown).toBe('function');
+        await expect(result.shutdown()).resolves.toBeUndefined();
       } finally {
-        if (shutdownFn) {
-          await shutdownFn().catch(() => undefined);
-        }
-        // Restore env
         if (prevDisabled !== undefined) process.env['OTEL_SDK_DISABLED'] = prevDisabled;
         else delete process.env['OTEL_SDK_DISABLED'];
         if (prevEndpoint !== undefined) process.env['OTEL_EXPORTER_OTLP_ENDPOINT'] = prevEndpoint;

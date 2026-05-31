@@ -36,12 +36,11 @@ import org.yaml.snakeyaml.Yaml
  * map's entries into the existing node, so an action `{ <leaf>: null }` writes a
  * literal null at `<leaf>` rather than copying the source value. A null update is
  * therefore unsafe for `copy`: it would null out the destination leaf, not
- * duplicate the source. The engine's TS translator emits this null only as a
- * placeholder ("Stage 4 plugin translator can swap in a richer strategy that
- * reads the spec doc"); this Kotlin applier IS that translator. [applyTo]
- * resolves the `copy` source value from the parsed spec and emits it as the
- * update; spec-free [translate]/[toOverlay] reject `copy` because the source
- * cannot be resolved without the spec.
+ * duplicate the source. The engine's spec-free TS translator rejects `copy`
+ * for this reason; this Kotlin applier resolves the source value from the
+ * parsed spec. [applyTo] reads the `copy`/`move` source value from the spec
+ * and emits it as the update; spec-free [translate]/[toOverlay] reject `copy`
+ * because the source cannot be resolved without the spec.
  *
  * Dependencies are injected so the applier holds no static state.
  */

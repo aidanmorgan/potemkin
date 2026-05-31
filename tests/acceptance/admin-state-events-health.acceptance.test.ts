@@ -57,6 +57,44 @@ describe('admin-state-events-health.acceptance', () => {
     expect(entityCountFromState).toBe(entityCountFromHealth);
   });
 
+  it('GET /_admin/state?boundary=X returns only entities originating in that boundary', async () => {
+    // Derive a real boundary name from the seeded events, then filter on it.
+    const eventsRes = await app.agent.get('/_admin/events').expect(200);
+    const boundary = eventsRes.body.events[0].boundary as string;
+    const aggregateIdsInBoundary = new Set<string>(
+      eventsRes.body.events
+        .filter((e: { boundary: string }) => e.boundary === boundary)
+        .map((e: { aggregateId: string }) => e.aggregateId),
+    );
+
+    const res = await app.agent.get(`/_admin/state?boundary=${boundary}`).expect(200);
+
+    expect(res.body).toHaveProperty('entities');
+    const keys = Object.keys(res.body.entities);
+    expect(keys.length).toBeGreaterThan(0);
+    for (const key of keys) {
+      expect(aggregateIdsInBoundary.has(key)).toBe(true);
+    }
+  });
+
+  it('GET /_admin/state?boundary=X filtered dump uses the same shape as the unfiltered dump', async () => {
+    const eventsRes = await app.agent.get('/_admin/events').expect(200);
+    const boundary = eventsRes.body.events[0].boundary as string;
+
+    const filtered = await app.agent.get(`/_admin/state?boundary=${boundary}`).expect(200);
+    const full = await app.agent.get('/_admin/state').expect(200);
+
+    for (const [key, value] of Object.entries(filtered.body.entities)) {
+      expect(full.body.entities[key]).toEqual(value);
+    }
+  });
+
+  it('GET /_admin/state?boundary=X returns 404 for an unknown boundary', async () => {
+    const res = await app.agent.get('/_admin/state?boundary=NoSuchBoundary').expect(404);
+
+    expect(res.body.error).toBe('NOT_FOUND');
+  });
+
   // ── /_admin/events ────────────────────────────────────────────────────────
 
   it('GET /_admin/events returns 200', async () => {

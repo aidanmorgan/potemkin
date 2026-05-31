@@ -1,5 +1,6 @@
 package com.potemkin.specmatic
 
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.potemkin.specmatic.control.ControlServer
 import com.potemkin.specmatic.control.ControlServerConfig
 import com.potemkin.specmatic.reliability.FixtureLifecycleManager
@@ -7,9 +8,13 @@ import com.potemkin.specmatic.reliability.HealthMonitor
 import com.potemkin.specmatic.reliability.HealthProbeConfig
 import com.potemkin.specmatic.reliability.ResilienceConfig
 import com.potemkin.specmatic.reliability.ResilientForwarder
+import io.specmatic.core.Feature
+import io.specmatic.core.HttpRequest
 import io.specmatic.core.SpecmaticConfig
 import io.specmatic.core.WorkflowConfiguration
+import io.specmatic.core.value.JSONObjectValue
 import io.specmatic.stub.HttpStub
+import io.specmatic.stub.RequestContext
 import io.specmatic.stub.StubInitializer
 import org.slf4j.LoggerFactory
 
@@ -106,7 +111,7 @@ class PluginInitializer : StubInitializer {
         httpStub.registerResponseInterceptor(PotemkinResponseInterceptor(deprecationPolicy))
 
         // Apply workflow/governance merge logging + register seed expectations.
-        applyForwardBlocks(config, specmaticConfig, bridge)
+        applyForwardBlocks(config, specmaticConfig, bridge, httpStub)
         log.info(
             "Potemkin StatefulRequestHandler registered — routes discovered via {}/_engine/routes, control server on port {}",
             config.backendUrl,
@@ -156,6 +161,7 @@ class PluginInitializer : StubInitializer {
         config: PluginConfig,
         specmaticConfig: SpecmaticConfig,
         bridge: SpecmaticStubBridge,
+        httpStub: HttpStub,
     ) {
         val blocks = config.forwardBlocks
 
@@ -179,8 +185,79 @@ class PluginInitializer : StubInitializer {
         // OverlayApplier's tests, not at boot.
 
         // E4 — seeds are applied directly via the public setExpectation API.
+        // `base: contract` seeds need the contract-generated body for their target,
+        // so we wire a resolver backed by the loaded Specmatic features.
         if (blocks.seeds.isNotEmpty()) {
-            SeedApplier(bridge).applyAll(blocks.seeds)
+            val resolver = SpecmaticContractBaseResolver(httpStub)
+            SeedApplier(bridge, resolver::resolve).applyAll(blocks.seeds)
         }
+    }
+}
+
+/**
+ * Resolves the `contract`-base body for a seed by asking the loaded Specmatic
+ * features for the body they would generate for the seed's target request.
+ *
+ * For each seed `{ method, path }` it builds a bare [HttpRequest] and calls
+ * [Feature.stubResponse], which performs Specmatic's own request→scenario
+ * matching (including path-template matching, e.g. `/loans/L-1` →
+ * `/loans/(id:string)`) and returns a [io.specmatic.core.ResponseBuilder] for the
+ * best-matching scenario. Building it generates the contract example/response body,
+ * which is parsed back into a `Map<String, Any?>` for [PatchApplier].
+ *
+ * The loaded features are read from [HttpStub] via reflection: Specmatic 2.46.2
+ * keeps them in the private `features: List<Feature>` field and exposes no public
+ * accessor at runtime (verified by decompiling specmatic-2.46.2.jar).
+ *
+ * Fail-loud contract: if no feature can generate a body for the target — no
+ * matching scenario, a non-JSON-object body, or the features field is
+ * inaccessible — [resolve] throws [IllegalStateException]. A `base: contract` seed
+ * that silently compiled from `{}` would drop every contract-derived field, so we
+ * refuse rather than ship an empty body.
+ */
+class SpecmaticContractBaseResolver(private val httpStub: HttpStub) {
+
+    private val log = LoggerFactory.getLogger(SpecmaticContractBaseResolver::class.java)
+    private val mapper = jacksonObjectMapper()
+
+    @Suppress("UNCHECKED_CAST")
+    private val features: List<Feature> by lazy {
+        val field = httpStub.javaClass.getDeclaredField("features")
+        field.isAccessible = true
+        (field.get(httpStub) as? List<Feature>)
+            ?: throw IllegalStateException(
+                "SpecmaticContractBaseResolver: HttpStub.features was null — cannot resolve contract bodies.",
+            )
+    }
+
+    /** Resolver entry point passed to [SeedApplier]. */
+    @Suppress("UNCHECKED_CAST")
+    fun resolve(request: SeedRequestMatcher): Map<String, Any?> {
+        val specRequest = HttpRequest(method = request.method.uppercase(), path = request.path)
+        for (feature in features) {
+            val (builder, results) = feature.stubResponse(specRequest)
+            if (!results.success() || builder == null) continue
+            val response = try {
+                builder.build(RequestContext(specRequest))
+            } catch (e: Exception) {
+                log.debug(
+                    "SpecmaticContractBaseResolver: {} {} matched a scenario but body generation failed: {}",
+                    request.method, request.path, e.message,
+                )
+                continue
+            } ?: continue
+            val body = response.body
+            if (body is JSONObjectValue) {
+                return mapper.readValue(body.toStringLiteral(), Map::class.java) as Map<String, Any?>
+            }
+            throw IllegalStateException(
+                "SpecmaticContractBaseResolver: seed ${request.method} ${request.path} base: contract " +
+                    "resolved to a non-object body (${body::class.java.simpleName}); only JSON objects are supported.",
+            )
+        }
+        throw IllegalStateException(
+            "SpecmaticContractBaseResolver: no loaded contract scenario matches seed ${request.method} " +
+                "${request.path} — cannot produce a contract body for base: contract.",
+        )
     }
 }

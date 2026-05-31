@@ -108,11 +108,15 @@ describe('dsl/parser.ts — line 19 non-Error throw coverage', () => {
     const { parseDslYaml } = require('../../../src/dsl/parser');
     const { BootError } = require('../../../src/errors');
 
+    let caughtError: unknown;
     try {
       parseDslYaml('{ bad yaml [[[');
+      fail('should have thrown BootError for malformed YAML');
     } catch (err) {
-      expect(err).toBeInstanceOf(BootError);
-      expect((err as typeof BootError).code).toBe('BOOT_ERR_DSL_SYNTAX');
+      caughtError = err;
     }
+
+    expect(caughtError).toBeInstanceOf(BootError);
+    expect((caughtError as InstanceType<typeof BootError>).code).toBe('BOOT_ERR_DSL_SYNTAX');
   });
 });

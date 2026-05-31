@@ -62,8 +62,6 @@ export function parseDslYaml(text: string): BoundaryConfig {
 export async function compileDsl(
   modules: readonly { name: string; yaml: string }[],
   globalYaml?: string,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _scriptsDir?: string,
 ): Promise<CompiledDsl> {
   return withSpan(getTracer('dsl'), 'dsl.compile', (_span) => {
     log.info({ moduleCount: modules.length }, 'Compiling DSL modules');

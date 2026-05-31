@@ -15,13 +15,20 @@ import org.slf4j.LoggerFactory
  * Dependencies are injected (rule: no static lifecycle state):
  *  - [bridge]: registers compiled seeds with Specmatic.
  *  - [contractBaseResolver]: supplies the `contract`-base body for a seed request.
- *    The plugin can wire this to query Specmatic for the matching scenario's
- *    generated body; when unavailable it returns an empty object — the same
- *    fallback the TS compiler documents (`() => ({})`).
+ *    Production wires this to [SpecmaticContractBaseResolver], which asks the
+ *    loaded Specmatic features for the matching scenario's generated body.
+ *    The default resolver fails loudly: a `base: contract` seed with no wired
+ *    resolver is a configuration error, not a silently-empty body. Compiling
+ *    `contract` from `{}` would drop every contract-derived field, so we refuse.
  */
 class SeedApplier(
     private val bridge: SpecmaticStubBridge,
-    private val contractBaseResolver: (SeedRequestMatcher) -> Map<String, Any?> = { emptyMap() },
+    private val contractBaseResolver: (SeedRequestMatcher) -> Map<String, Any?> = {
+        throw IllegalStateException(
+            "SeedApplier: no contractBaseResolver wired but seed ${it.method} ${it.path} " +
+                "uses base: contract — refusing to ship an empty contract body.",
+        )
+    },
 ) {
     private val log = LoggerFactory.getLogger(SeedApplier::class.java)
 

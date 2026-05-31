@@ -13,6 +13,7 @@ import type { IdentityKeyConfig, BoundaryConfig } from '../dsl/types.js';
 import type { Command } from '../types.js';
 import type { CelEvaluator } from '../cel/evaluator.js';
 import { CelPhase } from '../cel/phases.js';
+import { rootLogger } from '../observability/logger.js';
 
 export interface ExtractKeyInput {
   readonly boundary: BoundaryConfig;
@@ -64,7 +65,11 @@ export function extractEntityKey(input: ExtractKeyInput): string | null {
         CelPhase.Behavior,
       );
       if (typeof result === 'string' && result.length > 0) return result;
-    } catch {
+    } catch (err) {
+      rootLogger().warn(
+        { boundary: input.boundary.boundary, keyCel: cfg.cel, err },
+        'identity.key.cel evaluation failed — falling through to declarative key sources',
+      );
       // fall through to declarative sources
     }
   }

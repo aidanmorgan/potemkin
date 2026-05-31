@@ -4,7 +4,7 @@
  * Endpoints:
  *  POST /_admin/reset  — deterministic system reset to post-boot baseline state; 204 No Content.
  *  GET  /_admin/state  — dump full state graph as { entities: { [targetId]: JsonObject } };
- *                        supports ?boundary=X filter (returns 400 if param sent, future work).
+ *                        supports ?boundary=X filter (restricts to that boundary; 404 if unknown).
  *  GET  /_admin/events — list all events; supports ?aggregateId=X and ?type=X
  *                        filters, ?count=true (returns { count: N }),
  *                        ?limit=N and ?offset=M pagination.
@@ -111,18 +111,31 @@ export function registerAdminRoutes(app: Express, sys: BootedSystem): void {
   );
 
   // GET /_admin/state — diagnostic dump of the full entity state graph (req 38).
-  // ?boundary=X filter: not yet implemented — returns 400 if the param is supplied.
-  // Future work: infer boundary from the last event per aggregate to support filtering.
+  // ?boundary=X filter: restrict the dump to entities originating in that boundary.
+  // An entity's boundary is inferred from its first event (same strategy as the
+  // collection-query engine), so 404 if no entity belongs to the requested boundary.
   app.get(
     '/_admin/state',
     adminAuthMiddleware,
     (req: Request, res: Response, next: NextFunction) => {
       withSpan(sys.tracer, 'http.admin.state', async () => {
-        if (req.query['boundary'] !== undefined) {
-          res.status(400).json({
-            error: 'NOT_IMPLEMENTED',
-            message: '?boundary= filter is not yet implemented — future work',
-          });
+        const boundaryParam = req.query['boundary'];
+        if (boundaryParam !== undefined) {
+          const boundary = Array.isArray(boundaryParam) ? boundaryParam[0] : boundaryParam;
+          const filtered = sys.graph
+            .entries()
+            .filter(([targetId]) => {
+              const entityEvents = sys.events.byAggregate(targetId);
+              return entityEvents.length > 0 && entityEvents[0].boundary === boundary;
+            });
+          if (filtered.length === 0) {
+            res.status(404).json({
+              error: 'NOT_FOUND',
+              message: `No entities found for boundary "${boundary as string}"`,
+            });
+            return;
+          }
+          res.status(200).json({ entities: Object.fromEntries(filtered) });
           return;
         }
         const entities = Object.fromEntries(sys.graph.entries());

@@ -10,7 +10,7 @@
  *     "application/json; charset=utf-8" but NOT "text/json".
  *  4. HEAD request on a contract path — Express auto-strips body for HEAD;
  *     we verify it responds 200 (not 404/405) with empty body.
- *  5. Admin /_admin/state — no ?boundary= filter support (missing feature).
+ *  5. Admin /_admin/state — ?boundary= filter returns that boundary (404 if unknown).
  *  6. Admin /_admin/events — no pagination support (missing feature).
  *  7. Admin /_admin/health — shape expected by most monitoring systems.
  *  8. Admin routes — no auth protection (open by design but worth asserting).
@@ -148,26 +148,30 @@ describe('http/gateway — completeness probes', () => {
     expect(res.headers['content-type']).toMatch(/application\/json/);
   });
 
-  // ── Admin /_admin/state — no boundary filter ─────────────────────────────────
+  // ── Admin /_admin/state — boundary filter ────────────────────────────────────
 
   it(
-    'GET /_admin/state?boundary=X returns 400 NOT_IMPLEMENTED (boundary filter is future work)',
+    'GET /_admin/state?boundary=Lead returns only that boundary in the same shape',
     async () => {
-      // adminRoutes.ts:86-90: ?boundary= filter is not yet implemented — returns 400
+      const created = await app.agent
+        .post('/leads')
+        .send({ ...LEAD_PAYLOAD, companyName: 'FilterCo' })
+        .expect(201);
+      const leadId = created.body.id;
+
       const res = await app.agent
         .get('/_admin/state?boundary=Lead')
-        .expect(400);
-      expect(res.body).toMatchObject({
-        error: 'NOT_IMPLEMENTED',
-      });
+        .expect(200);
+      expect(res.body.entities).toBeDefined();
+      expect(res.body.entities[leadId]).toBeDefined();
     },
   );
 
-  it('GET /_admin/state?boundary=X returns 400 NOT_IMPLEMENTED (filter is future work)', async () => {
+  it('GET /_admin/state?boundary=<unknown> returns 404 NOT_FOUND', async () => {
     const res = await app.agent
-      .get('/_admin/state?boundary=Lead')
-      .expect(400);
-    expect(res.body.error).toBe('NOT_IMPLEMENTED');
+      .get('/_admin/state?boundary=NoSuchBoundary')
+      .expect(404);
+    expect(res.body.error).toBe('NOT_FOUND');
   });
 
   it('GET /_admin/state without boundary param returns all entities', async () => {

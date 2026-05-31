@@ -17,6 +17,7 @@ import type { DomainEvent, JsonValue } from '../types.js';
 import type { CelEvaluator } from '../cel/evaluator.js';
 import { CelPhase } from '../cel/phases.js';
 import { POTEMKIN_WEBHOOK_SIGNATURE } from '../http/potemkinHeaders.js';
+import { rootLogger } from '../observability/logger.js';
 
 /**
  * Header carrying the webhook body signature, formatted `sha256=<hex>`.
@@ -43,7 +44,11 @@ export function webhookMatches(
   };
   try {
     return cel.evaluate(trigger.condition, celCtx, CelPhase.Behavior) === true;
-  } catch {
+  } catch (err) {
+    rootLogger().warn(
+      { webhook: webhook.name, condition: trigger.condition, err },
+      'Webhook trigger condition CEL failed — treating as no match',
+    );
     return false;
   }
 }
@@ -61,8 +66,11 @@ export function resolveWebhookUrl(
   try {
     const resolved = cel.evaluate(webhook.url, celCtx, CelPhase.Behavior);
     if (typeof resolved === 'string') return resolved;
-  } catch {
-    // Fall through to the literal value.
+  } catch (err) {
+    rootLogger().warn(
+      { webhook: webhook.name, url: webhook.url, err },
+      'Webhook url CEL failed — falling back to literal url',
+    );
   }
   return webhook.url;
 }
@@ -83,7 +91,11 @@ export function buildWebhookPayload(
     try {
       // Payload values use the `${expr}` DSL micro-syntax.
       out[key] = cel.evaluateDslValue(expr, celCtx, CelPhase.Behavior) as JsonValue;
-    } catch {
+    } catch (err) {
+      rootLogger().warn(
+        { webhook: webhook.name, key, expr, err },
+        'Webhook payload CEL failed — setting field to null',
+      );
       out[key] = null;
     }
   }
@@ -149,6 +161,7 @@ export async function deliverWebhook(
   retry?: { maxAttempts?: number; delayMs?: number },
 ): Promise<{ attempts: number; delivered: boolean; lastStatus?: number }> {
   const maxAttempts = Math.max(1, retry?.maxAttempts ?? 1);
+  const delayMs = retry?.delayMs;
   let lastStatus: number | undefined;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -160,8 +173,16 @@ export async function deliverWebhook(
       });
       lastStatus = res.status;
       if (res.ok) return { attempts: attempt, delivered: true, lastStatus };
-    } catch {
+    } catch (err) {
       // Treat a transport throw as a failed attempt.
+      rootLogger().warn(
+        { url: delivery.url, attempt, maxAttempts, err },
+        'Webhook delivery transport threw — counting as a failed attempt',
+      );
+    }
+    // Back off between attempts only — no delay after the final attempt.
+    if (delayMs !== undefined && delayMs > 0 && attempt < maxAttempts) {
+      await new Promise((r) => setTimeout(r, delayMs));
     }
   }
 

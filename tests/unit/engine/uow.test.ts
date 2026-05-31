@@ -244,22 +244,23 @@ describe('engine/uow — additional branch coverage', () => {
 
   // ── global lock path (targetId null) ─────────────────────────────────────────
 
-  it('creation with targetId null exercises the global lock sentinel key', async () => {
-    // A creation with targetId null exercises GLOBAL_LOCK_KEY in acquireLock.
-    // We use a faultSignal so execution short-circuits immediately (no state writes).
-    // Note: faultSignal check is BEFORE the tracing span & lock, so to actually
-    // reach the lock we need a real execution. Use Widget creation — but targetId null
-    // means the id field of the created entity will be "null" (CEL evaluates command.targetId).
-    // We accept an InternalExecutionError here (schema type mismatch) as long as the lock
-    // code path was reached (the error comes from projection, not from the lock).
-    // The test documents that targetId: null reaches GLOBAL_LOCK_KEY.
+  it('creation with targetId null registers the global lock sentinel key in the locks map', async () => {
+    // A creation with targetId null resolves the lock key to GLOBAL_LOCK_KEY
+    // ('__global__') in acquireLock. We pass an explicit locks map so the
+    // sentinel key registration is directly observable: acquireLock stores the
+    // serialized slot under the resolved key, so after execution the map must
+    // contain '__global__'. The execution itself may fail (a null targetId
+    // produces a non-conforming entity id during projection), but the lock is
+    // acquired before projection, so the sentinel key is registered regardless.
+    const aggregateLocks = new Map<string, Promise<void>>();
+
     try {
       await executeUnitOfWork({
         command: {
           commandId: nextUuidv7(),
           boundary: 'Widget',
           intent: 'creation',
-          targetId: null,     // ← triggers GLOBAL_LOCK_KEY in acquireLock
+          targetId: null,     // ← resolves lockKey to GLOBAL_LOCK_KEY
           payload: { label: 'global-lock' },
           queryParams: {},
           httpMethod: 'POST',
@@ -274,13 +275,13 @@ describe('engine/uow — additional branch coverage', () => {
         cel: sys.cel,
         validator: sys.validator,
         schemaRegistry: sys.schemaRegistry,
+        aggregateLocks,
       });
     } catch {
-      // An execution error is expected (id becomes null in schema) — what matters
-      // is that the code path through acquireLock(GLOBAL_LOCK_KEY) was exercised.
+      // Projection may reject the null-derived id; the lock is acquired earlier.
     }
-    // Just assert no uncaught crash — the global lock path was visited
-    expect(true).toBe(true);
+
+    expect(aggregateLocks.has('__global__')).toBe(true);
   });
 
   // ── requiresPrecondition → 428 ────────────────────────────────────────────────

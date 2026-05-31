@@ -1,4 +1,5 @@
 import type { HateoasEntry, DeprecationConfig } from './responseDslCompiler.js';
+import { parsePointer } from './patches.js';
 
 // Walks an OpenAPI document to extract HATEOAS and deprecation defaults
 // for a matched operation. These defaults are used when a boundary does
@@ -52,12 +53,28 @@ function resolveLinkHref(link: OpenApiLinkObject, lookup: OperationLookup): stri
     return applyLinkParameters(path, link.parameters);
   }
   if (link.operationRef) {
-    // operationRef points at the OpenAPI doc; for templated paths it's
-    // already the templated string after a `#/paths/...` pointer. For now
-    // we surface it as-is — Stage 4 plugin can resolve fully.
-    return link.operationRef;
+    // operationRef is a JSON Pointer into the OpenAPI doc of the form
+    // `#/paths/<escaped-path>/<method>`. The path segment IS the templated
+    // URL path, so we can extract it locally without the full spec doc.
+    // External refs (`<uri>#/paths/...`) point at a different document and
+    // cannot be resolved here. Returning the raw `#/paths/...` pointer as an
+    // href would surface an internal JSON Pointer as a client-facing URL, so
+    // we return null when extraction isn't possible rather than ship a
+    // non-URL string.
+    return extractPathFromOperationRef(link.operationRef);
   }
   return null;
+}
+
+// Pull the templated URL path out of an internal `#/paths/<path>/<method>`
+// operationRef pointer. Returns null for external refs or malformed pointers.
+function extractPathFromOperationRef(operationRef: string): string | null {
+  if (!operationRef.startsWith('#/paths/')) return null;
+  const segs = parsePointer(operationRef.slice(1));
+  // Expect ['paths', '<path>', '<method>']; the path is the unescaped middle.
+  if (segs.length !== 3 || segs[0] !== 'paths') return null;
+  const path = segs[1];
+  return path && path.startsWith('/') ? path : null;
 }
 
 function applyLinkParameters(

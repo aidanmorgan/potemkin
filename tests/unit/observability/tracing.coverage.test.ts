@@ -7,24 +7,49 @@
  *  - 67-68: `{}` branch in traceExporterOpts/metricsExporterOpts when otlpEndpoint is undefined
  */
 
+// The Resource constructor receives the resolved service.version attribute, so
+// we observe what tracing.ts puts there by subclassing the real Resource and
+// recording the attributes it is constructed with. The subclass delegates to
+// the real implementation, so SDK behaviour is unchanged.
+const capturedResourceAttrs: { value: Record<string, unknown> | undefined } = {
+  value: undefined,
+};
+jest.mock('@opentelemetry/resources', () => {
+  const actual = jest.requireActual('@opentelemetry/resources');
+  return {
+    ...actual,
+    Resource: class extends actual.Resource {
+      constructor(attrs: Record<string, unknown>) {
+        capturedResourceAttrs.value = attrs;
+        super(attrs);
+      }
+    },
+  };
+});
+
 // ── Module-level: _serviceVersion ?? 'unknown' fallback (line 24) ────────────
 
 describe('observability/tracing.ts — _serviceVersion fallback (line 24)', () => {
   it('_serviceVersion falls back to unknown when package.json has no version field', async () => {
     jest.resetModules();
+    capturedResourceAttrs.value = undefined;
 
     // Mock the package.json so it has no 'version' field → _serviceVersion = 'unknown'
-    jest.mock('../../../package.json', () => ({ name: 'test-no-version' }), { virtual: false });
+    jest.doMock('../../../package.json', () => ({ name: 'test-no-version' }), { virtual: false });
 
-    // Importing tracing.ts will re-execute the module-level code with the mocked package.json
-    await import('../../../src/observability/tracing');
+    const { initTracing } = await import('../../../src/observability/tracing');
 
-    // If we got here without throwing, the ?? 'unknown' fallback was reached
-    expect(true).toBe(true);
-
-    jest.resetModules();
-    jest.unmock('../../../package.json');
-  });
+    const result = await initTracing({ enabled: true, serviceName: 'version-fallback-test' });
+    try {
+      expect(capturedResourceAttrs.value).toBeDefined();
+      // The fallback value flows through to the OTel Resource's service.version.
+      expect(capturedResourceAttrs.value?.['service.version']).toBe('unknown');
+    } finally {
+      await result.shutdown().catch(() => undefined);
+      jest.resetModules();
+      jest.dontMock('../../../package.json');
+    }
+  }, 15000);
 });
 
 describe('observability/tracing.ts — coverage backfill', () => {
@@ -40,26 +65,22 @@ describe('observability/tracing.ts — coverage backfill', () => {
 
       const { initTracing } = await import('../../../src/observability/tracing');
 
-      let shutdownFn: (() => Promise<void>) | undefined;
       const prevDisabled = process.env['OTEL_SDK_DISABLED'];
       const prevEndpoint = process.env['OTEL_EXPORTER_OTLP_ENDPOINT'];
+      capturedResourceAttrs.value = undefined;
 
+      // Use a non-reachable endpoint to avoid real network I/O
+      process.env['OTEL_EXPORTER_OTLP_ENDPOINT'] = 'http://127.0.0.1:19998';
+      delete process.env['OTEL_SDK_DISABLED'];
+
+      const result = await initTracing({ enabled: true, serviceName: 'test-tracing-fallback' });
       try {
-        // Use a non-reachable endpoint to avoid real network I/O
-        process.env['OTEL_EXPORTER_OTLP_ENDPOINT'] = 'http://127.0.0.1:19998';
-        delete process.env['OTEL_SDK_DISABLED'];
-
-        const result = await initTracing({ enabled: true, serviceName: 'test-tracing-fallback' });
-        shutdownFn = result.shutdown;
-        // The function should succeed (using 'not-implemented' as instanceId)
-        expect(typeof shutdownFn).toBe('function');
-      } catch {
-        // Some CI environments may fail SDK init; that is acceptable
-        // The branch was still exercised if initTracing was called
+        // When nextUuidv7 throws, instanceId falls back to 'not-implemented',
+        // which is observable on the OTel Resource's service.instance.id attribute.
+        expect(typeof result.shutdown).toBe('function');
+        expect(capturedResourceAttrs.value?.['service.instance.id']).toBe('not-implemented');
       } finally {
-        if (shutdownFn) {
-          await shutdownFn().catch(() => undefined);
-        }
+        await result.shutdown().catch(() => undefined);
         if (prevDisabled !== undefined) process.env['OTEL_SDK_DISABLED'] = prevDisabled;
         else delete process.env['OTEL_SDK_DISABLED'];
         if (prevEndpoint !== undefined) process.env['OTEL_EXPORTER_OTLP_ENDPOINT'] = prevEndpoint;
@@ -81,25 +102,25 @@ describe('observability/tracing.ts — coverage backfill', () => {
 
       const prevEndpoint = process.env['OTEL_EXPORTER_OTLP_ENDPOINT'];
       const prevDisabled = process.env['OTEL_SDK_DISABLED'];
+      capturedResourceAttrs.value = undefined;
 
-      let shutdownFn: (() => Promise<void>) | undefined;
+      // Ensure no endpoint is set — forces the `{}` branch at lines 67-68
+      delete process.env['OTEL_EXPORTER_OTLP_ENDPOINT'];
+      delete process.env['OTEL_SDK_DISABLED'];
 
+      const result = await initTracing({
+        enabled: true,
+        serviceName: 'test-no-endpoint',
+        // otlpEndpoint deliberately omitted → undefined
+      });
       try {
-        // Ensure no endpoint is set — forces the `{}` branch at lines 67-68
-        delete process.env['OTEL_EXPORTER_OTLP_ENDPOINT'];
-        delete process.env['OTEL_SDK_DISABLED'];
-
-        const result = await initTracing({
-          enabled: true,
-          serviceName: 'test-no-endpoint',
-          // otlpEndpoint deliberately omitted → undefined
-        });
-        shutdownFn = result.shutdown;
-        expect(typeof shutdownFn).toBe('function');
-      } catch {
-        // SDK init may fail in test environment — acceptable
+        // SDK construction succeeds even with no OTLP endpoint configured,
+        // taking the empty-exporter-opts branch; the full init path ran, which
+        // we confirm via the resolved service.name on the Resource.
+        expect(typeof result.shutdown).toBe('function');
+        expect(capturedResourceAttrs.value?.['service.name']).toBe('test-no-endpoint');
       } finally {
-        if (shutdownFn) await shutdownFn().catch(() => undefined);
+        await result.shutdown().catch(() => undefined);
         if (prevEndpoint !== undefined) process.env['OTEL_EXPORTER_OTLP_ENDPOINT'] = prevEndpoint;
         else delete process.env['OTEL_EXPORTER_OTLP_ENDPOINT'];
         if (prevDisabled !== undefined) process.env['OTEL_SDK_DISABLED'] = prevDisabled;
@@ -141,23 +162,20 @@ describe('observability/tracing.ts — coverage backfill', () => {
       const prevServiceName = process.env['OTEL_SERVICE_NAME'];
       const prevDisabled = process.env['OTEL_SDK_DISABLED'];
       const prevEndpoint = process.env['OTEL_EXPORTER_OTLP_ENDPOINT'];
+      capturedResourceAttrs.value = undefined;
 
-      let shutdownFn: (() => Promise<void>) | undefined;
+      // No serviceName and no OTEL_SERVICE_NAME → uses 'specmatic-stateful-sim' default
+      delete process.env['OTEL_SERVICE_NAME'];
+      delete process.env['OTEL_EXPORTER_OTLP_ENDPOINT'];
+      delete process.env['OTEL_SDK_DISABLED'];
 
+      // Call with enabled:true but no serviceName → hits ?? 'specmatic-stateful-sim' branch
+      const result = await initTracing({ enabled: true });
       try {
-        // No serviceName and no OTEL_SERVICE_NAME → uses 'specmatic-stateful-sim' default
-        delete process.env['OTEL_SERVICE_NAME'];
-        delete process.env['OTEL_EXPORTER_OTLP_ENDPOINT'];
-        delete process.env['OTEL_SDK_DISABLED'];
-
-        // Call with enabled:true but no serviceName → hits ?? 'specmatic-stateful-sim' branch
-        const result = await initTracing({ enabled: true });
-        shutdownFn = result.shutdown;
-        expect(typeof shutdownFn).toBe('function');
-      } catch {
-        // Acceptable in test environment
+        expect(typeof result.shutdown).toBe('function');
+        expect(capturedResourceAttrs.value?.['service.name']).toBe('specmatic-stateful-sim');
       } finally {
-        if (shutdownFn) await shutdownFn().catch(() => undefined);
+        await result.shutdown().catch(() => undefined);
         if (prevServiceName !== undefined) process.env['OTEL_SERVICE_NAME'] = prevServiceName;
         else delete process.env['OTEL_SERVICE_NAME'];
         if (prevDisabled !== undefined) process.env['OTEL_SDK_DISABLED'] = prevDisabled;
@@ -180,22 +198,19 @@ describe('observability/tracing.ts — coverage backfill', () => {
       const prevServiceName = process.env['OTEL_SERVICE_NAME'];
       const prevDisabled = process.env['OTEL_SDK_DISABLED'];
       const prevEndpoint = process.env['OTEL_EXPORTER_OTLP_ENDPOINT'];
+      capturedResourceAttrs.value = undefined;
 
-      let shutdownFn: (() => Promise<void>) | undefined;
+      process.env['OTEL_SERVICE_NAME'] = 'env-service-name-test';
+      delete process.env['OTEL_EXPORTER_OTLP_ENDPOINT'];
+      delete process.env['OTEL_SDK_DISABLED'];
 
+      // Pass enabled:true but NO serviceName — should use env var
+      const result = await initTracing({ enabled: true });
       try {
-        process.env['OTEL_SERVICE_NAME'] = 'env-service-name-test';
-        delete process.env['OTEL_EXPORTER_OTLP_ENDPOINT'];
-        delete process.env['OTEL_SDK_DISABLED'];
-
-        // Pass enabled:true but NO serviceName — should use env var
-        const result = await initTracing({ enabled: true });
-        shutdownFn = result.shutdown;
-        expect(typeof shutdownFn).toBe('function');
-      } catch {
-        // Acceptable in test environment
+        expect(typeof result.shutdown).toBe('function');
+        expect(capturedResourceAttrs.value?.['service.name']).toBe('env-service-name-test');
       } finally {
-        if (shutdownFn) await shutdownFn().catch(() => undefined);
+        await result.shutdown().catch(() => undefined);
         if (prevServiceName !== undefined) process.env['OTEL_SERVICE_NAME'] = prevServiceName;
         else delete process.env['OTEL_SERVICE_NAME'];
         if (prevDisabled !== undefined) process.env['OTEL_SDK_DISABLED'] = prevDisabled;

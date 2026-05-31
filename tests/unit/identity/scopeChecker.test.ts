@@ -54,6 +54,7 @@ describe('identity/scopeChecker', () => {
   it('includes missing scopes in error details', () => {
     try {
       checkScopes(viewerOnly, ['admin', 'trader'], 'secureBehavior');
+      fail('should have thrown');
     } catch (err) {
       const details = (err as AuthorizationDeniedError).details as Record<string, unknown>;
       expect(details['missingScopes']).toEqual(['admin', 'trader']);

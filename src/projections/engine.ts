@@ -84,7 +84,7 @@ export function applyEventToDerivedProjections(
     const buf: JsonObject = deepClone(currentState ?? {}) as JsonObject;
 
     // Apply the reduce entry
-    applyReduceEntry(buf, reduceEntry, event, cel, logger, proj.name);
+    applyReduceEntry(buf, reduceEntry, event, cel, logger, proj.name, event.type);
 
     stateMap.set(derivedKey, buf);
 
@@ -136,6 +136,7 @@ function applyReduceEntry(
   cel: CelEvaluator,
   logger: Logger | undefined,
   projName: string,
+  eventType: string,
 ): void {
   const celCtx: Record<string, unknown> = {
     event: event as unknown as Record<string, unknown>,
@@ -152,7 +153,7 @@ function applyReduceEntry(
         }
       } catch (err) {
         logger?.warn(
-          { projName, dotPath, expr, err },
+          { projName, eventType, dotPath, expr, err },
           'Derived projection assign CEL failed — skipping field',
         );
       }
@@ -171,7 +172,7 @@ function applyReduceEntry(
         }
       } catch (err) {
         logger?.warn(
-          { projName, dotPath, expr, err },
+          { projName, eventType, dotPath, expr, err },
           'Derived projection append CEL failed — skipping field',
         );
       }
@@ -180,7 +181,7 @@ function applyReduceEntry(
 
   if (entry.patches) {
     for (const patch of entry.patches) {
-      applyDerivedProjectionPatch(buf, patch, cel, celCtx, logger, projName);
+      applyDerivedProjectionPatch(buf, patch, cel, celCtx, logger, projName, eventType);
     }
   }
 }
@@ -192,22 +193,34 @@ function applyDerivedProjectionPatch(
   celCtx: Record<string, unknown>,
   logger: Logger | undefined,
   projName: string,
+  eventType: string,
 ): void {
   const dotPath = patch.path.startsWith('/') ? patch.path.slice(1).replace(/\//g, '.') : patch.path;
-  const evaluate = (raw: unknown): JsonValue => {
+
+  // Sentinel distinguishing a genuine CEL eval failure from a legitimate
+  // null/undefined result. On failure we skip the write so prior derived
+  // state is left intact rather than silently overwritten with null.
+  const EVAL_FAILED = Symbol('evalFailed');
+  const evaluate = (raw: unknown): JsonValue | typeof EVAL_FAILED => {
     if (typeof raw !== 'string') return raw as JsonValue;
     try {
       return cel.evaluateDslValue(raw, celCtx, CelPhase.Reducer) as JsonValue;
     } catch (err) {
-      logger?.warn({ projName, dotPath, expr: raw, err }, 'Derived projection patch CEL failed');
-      return null;
+      logger?.warn(
+        { projName, eventType, dotPath, expr: raw, op: patch.op, err },
+        'Derived projection patch CEL failed — skipping patch, leaving prior value intact',
+      );
+      return EVAL_FAILED;
     }
   };
   switch (patch.op) {
     case 'add':
-    case 'replace':
-      setByDotPath(buf, dotPath, evaluate(patch.value));
+    case 'replace': {
+      const v = evaluate(patch.value);
+      if (v === EVAL_FAILED) return;
+      setByDotPath(buf, dotPath, v);
       return;
+    }
     case 'remove': {
       const segs = dotPath.split('.');
       let cur: JsonObject = buf;
@@ -221,6 +234,7 @@ function applyDerivedProjectionPatch(
     }
     case 'append': {
       const v = evaluate(patch.value);
+      if (v === EVAL_FAILED) return;
       const existing = getByDotPath(buf, dotPath);
       const arr: JsonValue[] = Array.isArray(existing) ? [...existing] : [];
       arr.push(v);
@@ -229,6 +243,7 @@ function applyDerivedProjectionPatch(
     }
     case 'prepend': {
       const v = evaluate(patch.value);
+      if (v === EVAL_FAILED) return;
       const existing = getByDotPath(buf, dotPath);
       const arr: JsonValue[] = Array.isArray(existing) ? [...existing] : [];
       arr.unshift(v);
@@ -242,22 +257,25 @@ function applyDerivedProjectionPatch(
       return;
     }
     case 'merge': {
-      const v = evaluate(patch.value) as JsonObject;
+      const v = evaluate(patch.value);
+      if (v === EVAL_FAILED) return;
       const existing = getByDotPath(buf, dotPath);
       const base: JsonObject = existing && typeof existing === 'object' && !Array.isArray(existing)
         ? { ...(existing as JsonObject) }
         : {};
-      setByDotPath(buf, dotPath, { ...base, ...v });
+      setByDotPath(buf, dotPath, { ...base, ...(v as JsonObject) });
       return;
     }
     case 'upsert': {
-      const v = evaluate(patch.value) as JsonObject;
+      const v = evaluate(patch.value);
+      if (v === EVAL_FAILED) return;
+      const vObj = v as JsonObject;
       const existing = getByDotPath(buf, dotPath);
       const arr: JsonObject[] = Array.isArray(existing) ? [...(existing as JsonObject[])] : [];
       const keyField = patch.key ?? 'id';
-      const idx = arr.findIndex((item) => item && typeof item === 'object' && item[keyField] === v[keyField]);
-      if (idx >= 0) arr[idx] = v;
-      else arr.push(v);
+      const idx = arr.findIndex((item) => item && typeof item === 'object' && item[keyField] === vObj[keyField]);
+      if (idx >= 0) arr[idx] = vObj;
+      else arr.push(vObj);
       setByDotPath(buf, dotPath, arr as unknown as JsonValue);
       return;
     }

@@ -18,6 +18,7 @@ import type { JsonObject, JsonValue } from '../types.js';
 import type { BoundaryConfig, CompiledDsl } from '../dsl/types.js';
 import type { CelEvaluator } from '../cel/evaluator.js';
 import { CelPhase } from '../cel/phases.js';
+import { rootLogger } from '../observability/logger.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -91,6 +92,7 @@ function evaluateBehaviorMatch(
   condition: string | undefined,
   entity: JsonObject,
   cel: CelEvaluator,
+  linkName: string,
 ): boolean {
   if (typeof condition !== 'string' || condition.trim() === '') return false;
   // Trivial-true short-circuit — common in sub-path boundaries where the path
@@ -103,7 +105,11 @@ function evaluateBehaviorMatch(
       CelPhase.Behavior,
     );
     return result === true;
-  } catch {
+  } catch (err) {
+    rootLogger().warn(
+      { linkName, precondition: condition, err },
+      'HATEOAS link precondition evaluation failed — suppressing link',
+    );
     // Treat any CEL failure (missing field, type error, etc.) as "link not
     // available" — never include a link whose precondition cannot be verified.
     return false;
@@ -180,7 +186,7 @@ export function computeLinks(input: HateoasInput): Record<string, HateoasLink> |
       // falls back to the runtime `match.condition` (matches the design intent
       // when condition is state-aware, e.g. lead-convert/lead-disqualify).
       const gate = behavior.linkCondition ?? behavior.match.condition;
-      if (!evaluateBehaviorMatch(gate, entity, cel)) continue;
+      if (!evaluateBehaviorMatch(gate, entity, cel, linkName)) continue;
 
       links[linkName] = {
         href: expandPath(other.contractPath, id),

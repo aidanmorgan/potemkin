@@ -42,6 +42,7 @@ describe('schema/runtimeGuard', () => {
       const registry = makeRegistry('Loan', entitySchema);
       try {
         guardAssignPath(registry, 'Loan', 'bogus');
+        fail('should have thrown InternalExecutionError');
       } catch (e) {
         expect((e as InternalExecutionError).details).toMatchObject({ code: 'SCHEMA_PATH_UNKNOWN' });
       }
@@ -90,6 +91,7 @@ describe('schema/runtimeGuard', () => {
       const registry = makeRegistry('Loan', entitySchema);
       try {
         guardAssignedValue(registry, 'Loan', 'amount', 'not-a-number');
+        fail('should have thrown InternalExecutionError');
       } catch (e) {
         expect((e as InternalExecutionError).details).toMatchObject({ code: 'SCHEMA_TYPE_MISMATCH' });
       }

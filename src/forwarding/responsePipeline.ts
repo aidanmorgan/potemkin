@@ -20,12 +20,24 @@ import { applyHateoasLinks } from '../engine/hateoas.js';
 const CORS_ALLOW_METHODS = 'GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS';
 const CORS_ALLOW_HEADERS = 'Content-Type, If-Match, x-specmatic-fault';
 
+/**
+ * Resolve the CORS allowed-origin value for a request. Replicates
+ * getAllowedOrigin in gateway.ts (the source of truth): with ALLOWED_ORIGINS
+ * unset or '*' every origin is allowed; otherwise the request Origin is
+ * reflected when it is in the list, falling back to the first entry.
+ */
+function resolveAllowedOrigin(requestOrigin: string | undefined): string {
+  const raw = process.env['ALLOWED_ORIGINS'] ?? '*';
+  if (raw === '*') return '*';
+  const allowed = raw.split(',').map((s) => s.trim());
+  if (requestOrigin && allowed.includes(requestOrigin)) return requestOrigin;
+  return allowed[0] ?? '*';
+}
+
 /** CORS response headers (lowercased keys) for a forwarded OPTIONS preflight. */
-export function corsPreflightHeaders(): Record<string, string> {
+export function corsPreflightHeaders(requestOrigin?: string): Record<string, string> {
   return {
-    'access-control-allow-origin': process.env['ALLOWED_ORIGINS']
-      ? (process.env['ALLOWED_ORIGINS'].split(',')[0]?.trim() ?? '*')
-      : '*',
+    'access-control-allow-origin': resolveAllowedOrigin(requestOrigin),
     'access-control-allow-methods': CORS_ALLOW_METHODS,
     'access-control-allow-headers': CORS_ALLOW_HEADERS,
   };

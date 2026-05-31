@@ -5,6 +5,7 @@ import io.specmatic.mock.ScenarioStub
 import io.specmatic.stub.HttpStubData
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /**
@@ -85,6 +86,20 @@ class SeedApplierTest {
         val parsed = mapper.readValue(bridge.captured[0].response.body.toStringLiteral(), Map::class.java) as Map<String, Any?>
         assertEquals("from-contract", parsed["id"])
         assertEquals("ACTIVE", parsed["status"])
+    }
+
+    @Test
+    fun `a contract-base seed with no wired resolver fails loudly`() {
+        val bridge = CapturingBridge()
+        // Default resolver: production wires SpecmaticContractBaseResolver; an
+        // unwired contract seed must throw rather than ship an empty body.
+        val ex = assertFailsWith<IllegalStateException> {
+            SeedApplier(bridge).compile(
+                seed(base = SeedBase.CONTRACT, patches = listOf(Patch.Add("/x", 1))),
+            )
+        }
+        assertTrue(ex.message!!.contains("base: contract"))
+        assertTrue(bridge.captured.isEmpty())
     }
 
     @Test

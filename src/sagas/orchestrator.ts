@@ -71,6 +71,7 @@ function makeSagaEvent(
   type: string,
   payload: JsonObject,
   events: EventStore,
+  now: () => string,
 ): DomainEvent {
   const seqVersion = events.currentSequenceVersion(sagaInstanceId) + 1;
   const evt: DomainEvent = {
@@ -79,7 +80,7 @@ function makeSagaEvent(
     aggregateId: sagaInstanceId,
     type,
     payload,
-    timestamp: new Date().toISOString(),
+    timestamp: now(),
     sequenceVersion: seqVersion,
     causedBy: null,
   };
@@ -159,6 +160,7 @@ export async function runSaga(input: SagaRunInput): Promise<void> {
 
   const sagaInstanceId = nextUuidv7();
   const log = logger?.child({ component: 'saga', sagaName: saga.name, sagaInstanceId });
+  const now = (): string => new Date(Date.now() + cel.getClockOffset()).toISOString();
 
   // Build CEL context from trigger
   const celCtx: Record<string, unknown> = {
@@ -172,7 +174,7 @@ export async function runSaga(input: SagaRunInput): Promise<void> {
     sagaName: saga.name,
     triggeredBy: triggerCommand.commandId,
     triggerEventId: triggerEvent.eventId,
-  }, events);
+  }, events, now);
 
   log?.info({ step: 'start' }, 'Saga started');
 
@@ -204,7 +206,7 @@ export async function runSaga(input: SagaRunInput): Promise<void> {
         sagaName: saga.name,
         stepIndex: i,
         stepName: step.name,
-      }, events);
+      }, events, now);
 
       log?.debug({ stepIndex: i, stepName: step.name }, 'Saga step completed');
     } catch (err) {
@@ -216,7 +218,7 @@ export async function runSaga(input: SagaRunInput): Promise<void> {
         stepIndex: i,
         stepName: step.name,
         error: errMsg,
-      }, events);
+      }, events, now);
 
       // Run compensation handlers in reverse order for completed steps
       for (let j = completedSteps.length - 1; j >= 0; j--) {
@@ -260,7 +262,7 @@ export async function runSaga(input: SagaRunInput): Promise<void> {
             sagaName: saga.name,
             compensatedStepIndex: completedIdx,
             compensatedStepName: completedStep.name,
-          }, events);
+          }, events, now);
 
           log?.debug({ compensatedStep: completedIdx }, 'Compensation completed');
         } catch (compErr) {
@@ -272,7 +274,7 @@ export async function runSaga(input: SagaRunInput): Promise<void> {
             sagaName: saga.name,
             compensatedStepIndex: completedIdx,
             error: compErrMsg,
-          }, events);
+          }, events, now);
         }
       }
 
@@ -280,7 +282,7 @@ export async function runSaga(input: SagaRunInput): Promise<void> {
         sagaName: saga.name,
         failedAtStep: i,
         error: errMsg,
-      }, events);
+      }, events, now);
 
       log?.warn({ saga: saga.name }, 'Saga failed with compensation');
       return;
@@ -290,7 +292,7 @@ export async function runSaga(input: SagaRunInput): Promise<void> {
   makeSagaEvent(sagaInstanceId, 'SagaCompleted', {
     sagaName: saga.name,
     stepsCompleted: saga.steps.length,
-  }, events);
+  }, events, now);
 
   log?.info({ saga: saga.name }, 'Saga completed successfully');
 }
@@ -304,9 +306,11 @@ export function findTriggeredSagas(
   triggerCommand: Command,
   triggerEvent: DomainEvent,
   cel: CelEvaluator,
+  logger?: Logger,
 ): SagaConfig[] {
   if (!sagas || sagas.length === 0) return [];
 
+  const log = logger?.child({ component: 'saga' });
   const matched: SagaConfig[] = [];
   const celCtx: Record<string, unknown> = {
     command: triggerCommand as unknown as Record<string, unknown>,
@@ -324,8 +328,13 @@ export function findTriggeredSagas(
       if (result === true) {
         matched.push(saga);
       }
-    } catch {
-      // CEL evaluation error → treat as no-match
+    } catch (err) {
+      // A throwing trigger condition is treated as no-match, but surfaced so a
+      // malformed condition does not silently prevent a saga from ever firing.
+      log?.warn(
+        { sagaName: saga.name, condition: trigger.condition, err },
+        'Saga trigger condition evaluation failed — treating as no-match',
+      );
     }
   }
 

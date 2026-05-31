@@ -39,6 +39,7 @@ describe('schema/fromOpenApi', () => {
       const doc = makeDoc({});
       try {
         deriveSchemasFromOpenApi(doc, [loanBoundary]);
+        fail('should have thrown BootError');
       } catch (e) {
         expect((e as BootError).code).toBe('BOOT_ERR_SCHEMA_MISSING');
       }

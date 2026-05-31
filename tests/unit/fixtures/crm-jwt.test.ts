@@ -8,7 +8,7 @@ import { loadFixtureWithGlobal } from '../../fixtures/index';
 describe('fixtures/crm-jwt', () => {
   it('compiles with auth.mode=jwt', async () => {
     const fixture = await loadFixtureWithGlobal('crm-jwt');
-    const dsl = await compileDsl(fixture.dslModules, fixture.globalYaml, fixture.scriptsDir);
+    const dsl = await compileDsl(fixture.dslModules, fixture.globalYaml);
     expect(dsl.auth).toBeDefined();
     expect(dsl.auth?.mode).toBe('jwt');
     expect(dsl.auth?.jwt?.secret).toBeTruthy();
@@ -18,7 +18,7 @@ describe('fixtures/crm-jwt', () => {
 
   it('default crm fixture has no auth block (backward compat)', async () => {
     const fixture = await loadFixtureWithGlobal();
-    const dsl = await compileDsl(fixture.dslModules, fixture.globalYaml, fixture.scriptsDir);
+    const dsl = await compileDsl(fixture.dslModules, fixture.globalYaml);
     expect(dsl.auth).toBeUndefined();
   });
 });

@@ -435,11 +435,29 @@ describeWithJava('31 — Missing Features (full Specmatic stack)', () => {
   // ═══════════════════════════════════════════════════════════════════════════
 
   describe('Fault simulation extensions -- TCP-level (Specmatic plugin scope)', () => {
-    // Connection resets and chunked delivery require raw TCP socket control.
-    // These must be implemented in the Specmatic Kotlin plugin, not the Node engine.
-    it('TCP-level fault injection is a Specmatic plugin concern, not Node engine', () => {
-      expect(true).toBe(true); // Documented scope boundary
-    });
+    let app: E2eApp;
+
+    beforeAll(async () => { app = await startE2eApp(); }, 120_000);
+    afterAll(async () => { await app.shutdown(); }, 30_000);
+
+    // Connection resets and chunked delivery require raw TCP socket control,
+    // which lives in the Specmatic Kotlin plugin, not the Node engine. The
+    // engine's chaos surface is HTTP-level only (X-Potemkin-* headers). We
+    // assert the boundary by confirming the engine does NOT honour a TCP-level
+    // fault request: it completes a well-formed HTTP response rather than
+    // resetting the connection or truncating the body.
+    it('engine ignores a TCP-level fault header and returns a complete HTTP response', async () => {
+      const res = await fwd(
+        app.engineUrl, 'GET', '/leads', null,
+        { 'x-potemkin-connection-reset': 'true', 'x-potemkin-chunked-truncate': 'true' },
+      );
+
+      // The request resolved (no socket reset) with a normal status and a
+      // fully-parsed JSON body — proof the engine treats TCP-level faults as
+      // out of scope rather than acting on them.
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body)).toBe(true);
+    }, 60_000);
   });
 
   // ═══════════════════════════════════════════════════════════════════════════

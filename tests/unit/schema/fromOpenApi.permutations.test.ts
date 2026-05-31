@@ -304,6 +304,7 @@ describe('schema/fromOpenApi — permutations', () => {
     it('BOOT_ERR_SCHEMA_MISSING code', () => {
       try {
         deriveSchemasFromOpenApi(makeDoc({}), [baseBoundary]);
+        fail('should have thrown BootError');
       } catch (e) {
         expect((e as BootError).code).toBe('BOOT_ERR_SCHEMA_MISSING');
       }

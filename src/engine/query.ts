@@ -223,7 +223,11 @@ function _runQuery(req: QueryRequest): JsonValue {
         try {
           const match = cel.evaluate(filterExpr, celCtx, CelPhase.Behavior);
           return match === true;
-        } catch {
+        } catch (err) {
+          log?.warn(
+            { boundary: boundary.boundary, entityId: entity['id'], filterExpr, err },
+            'Query filter CEL evaluation failed — excluding entity from results',
+          );
           return false;
         }
       });

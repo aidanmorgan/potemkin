@@ -34,6 +34,7 @@ import { scanTypescriptReducers, type TypescriptConfig } from '../dsl/typescript
 import { validateReducerConflictsFromDsl } from '../dsl/reducerConflict.js';
 import { createTsReducerRegistry, type TsReducerRegistry } from './tsReducerRegistry.js';
 import { createFetchWebhookTransport } from '../webhooks/transport.js';
+import { deriveFixtures } from '../forwarding/fixtures.js';
 import {
   buildInferredSchema,
   boundaryConfigToInferenceInput,
@@ -168,6 +169,54 @@ const IF_MATCH_HEADER_NAMES = new Set(['if-match', 'If-Match']);
  *
  * Returns a callback suitable for `BootedSystem.requiresPrecondition`.
  */
+/**
+ * Validate the shape of a `typescript:` config block loaded from potemkin.yaml
+ * before trusting it as a TypescriptConfig. YAML is untyped, so a malformed
+ * block (missing/empty scan, non-array include) must fail loudly here at boot
+ * rather than as an opaque error deep in the reducer scan.
+ */
+function assertTypescriptConfig(raw: unknown): TypescriptConfig {
+  if (typeof raw !== 'object' || raw === null) {
+    throw new BootError(
+      'BOOT_ERR_TYPESCRIPT_CONFIG',
+      'typescript: must be a mapping',
+      { received: typeof raw },
+    );
+  }
+  const block = raw as Record<string, unknown>;
+  if (!Array.isArray(block['scan']) || block['scan'].length === 0) {
+    throw new BootError(
+      'BOOT_ERR_TYPESCRIPT_CONFIG',
+      'typescript.scan: must be a non-empty array of { include } entries',
+      { scan: JSON.stringify(block['scan']) ?? null },
+    );
+  }
+  for (const [i, entry] of block['scan'].entries()) {
+    const include = (entry as Record<string, unknown> | null)?.['include'];
+    if (
+      typeof entry !== 'object' ||
+      entry === null ||
+      !Array.isArray(include) ||
+      include.length === 0 ||
+      include.some((g) => typeof g !== 'string')
+    ) {
+      throw new BootError(
+        'BOOT_ERR_TYPESCRIPT_CONFIG',
+        `typescript.scan[${i}].include: must be a non-empty array of glob strings`,
+        { entry },
+      );
+    }
+  }
+  if (block['watch'] !== undefined && typeof block['watch'] !== 'boolean') {
+    throw new BootError(
+      'BOOT_ERR_TYPESCRIPT_CONFIG',
+      'typescript.watch: must be a boolean',
+      { watch: JSON.stringify(block['watch']) ?? null },
+    );
+  }
+  return raw as TypescriptConfig;
+}
+
 function buildPreconditionMap(
   openapi: OpenApiDoc,
   boundaries: readonly BoundaryConfig[],
@@ -310,7 +359,7 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
     // BOOT_ERR_REDUCER_CONFLICT (with both source locations).
     const tsReducerRegistry: TsReducerRegistry = createTsReducerRegistry();
     const tsConfig: TypescriptConfig | undefined = loadedConfig?.typescript
-      ? (loadedConfig.typescript as unknown as TypescriptConfig)
+      ? assertTypescriptConfig(loadedConfig.typescript)
       : input.typescript;
     const tsScanCwd = configDir ?? input.typescriptCwd;
     // C6: watch mode is a development-only feature. Fail fast at boot if it is
@@ -644,7 +693,17 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       const sortedPaths = Object.keys(dsl.byContractPath).sort();
       const { createHash } = await import('node:crypto');
       const routesChecksum = createHash('sha256').update(sortedPaths.join('\n')).digest('hex');
-      const fixturesChecksum = createHash('sha256').update(String(frozenBaseline.length)).digest('hex');
+      // Must match the ETag of GET /_engine/fixtures so the plugin's conditional
+      // refresh sees an unchanged fixture set. Source of truth for this formula is
+      // computeFixturesChecksum in src/forwarding/handler.ts: derive the stubs, sort
+      // by bound path, sha256 over the JSON serialisation. That helper is private to
+      // handler.ts; inline here to avoid editing a third file (follow-up: export and
+      // share a single computeFixturesChecksum).
+      const fixtureStubs = deriveFixtures(bootedSystem);
+      const sortedStubs = [...fixtureStubs].sort((a, b) =>
+        a.httpRequest.path.localeCompare(b.httpRequest.path),
+      );
+      const fixturesChecksum = createHash('sha256').update(JSON.stringify(sortedStubs)).digest('hex');
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const pkgVersion: string = (require('../../package.json') as { version: string }).version;
 

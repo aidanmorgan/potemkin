@@ -87,7 +87,11 @@ function matchesFaultRule(
   if (rule.match.requiredScopes && rule.match.requiredScopes.length > 0) {
     try {
       checkScopes(command.actor, rule.match.requiredScopes as string[], rule.name);
-    } catch {
+    } catch (err) {
+      logger?.warn(
+        { faultName: rule.name, requiredScopes: rule.match.requiredScopes, err },
+        'Fault rule scope check failed — treating as no-match',
+      );
       return false;
     }
   }
@@ -103,7 +107,11 @@ function matchesFaultRule(
       try {
         const result = cel.evaluateDslValue(req.condition, celCtx, CelPhase.Behavior);
         if (result !== true) return false;
-      } catch {
+      } catch (err) {
+        logger?.warn(
+          { faultName: rule.name, expr: req.condition, err },
+          'Fault rule requires-guard evaluation failed — treating as no-match',
+        );
         return false;
       }
     }

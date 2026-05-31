@@ -62,13 +62,16 @@ describe('translateOverlayPatches', () => {
     ]);
   });
 
-  it('unrolls move into remove + add (null update)', () => {
-    expect(
+  it('rejects move because the source value is unavailable without the spec', () => {
+    expect(() =>
       translateOverlayPatches([{ op: 'move', from: '/a/b', path: '/c/d' }]),
-    ).toEqual([
-      { target: '$.a.b', remove: true },
-      { target: '$.c.d', update: null },
-    ]);
+    ).toThrow(/cannot be translated without the source spec/);
+  });
+
+  it('rejects copy because the source value is unavailable without the spec', () => {
+    expect(() =>
+      translateOverlayPatches([{ op: 'copy', from: '/a/b', path: '/c/d' }]),
+    ).toThrow(/cannot be translated without the source spec/);
   });
 
   it('rejects Potemkin extension ops', () => {

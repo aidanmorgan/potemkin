@@ -74,8 +74,15 @@ export function validateGovernanceForward(raw: unknown): GovernanceConfig {
 
 // Translate RFC 6902 patches against the OpenAPI spec document into the
 // `actions[]` shape Specmatic's Overlay consumes: each patch becomes a
-// { target: <JSONPath>, update | remove: <value> } action. move/copy
-// are unrolled into pairs of remove + add at translation time.
+// { target: <JSONPath>, update | remove: <value> } action.
+//
+// `move`/`copy` need the source node's value to emit a faithful `update`,
+// and the source value is not available on the engine's translate path
+// (only the patch list is). Rather than emit `update: null` — which the
+// Specmatic OverlayMerger would write as a literal null at the destination
+// leaf, silently corrupting the spec — we reject them here. The Kotlin
+// OverlayApplier.applyTo resolves the source value against the parsed spec
+// and is the path that supports move/copy.
 
 export interface OverlayAction {
   readonly target: string;
@@ -95,19 +102,12 @@ export function translateOverlayPatches(patches: readonly Patch[]): OverlayActio
         out.push({ target: pointerToJsonPath(p.path), remove: true });
         break;
       case 'move':
-      case 'copy': {
-        const fromTarget = pointerToJsonPath(p.from);
-        const toTarget = pointerToJsonPath(p.path);
-        if (p.op === 'move') {
-          out.push({ target: fromTarget, remove: true });
-        }
-        // For copy we'd need the source value at runtime; we synthesise an
-        // action whose update is null and rely on Specmatic to supply the
-        // copied value. Stage 4 plugin translator can swap in a richer
-        // strategy that reads the spec doc before translating.
-        out.push({ target: toTarget, update: null });
-        break;
-      }
+      case 'copy':
+        throw new Error(
+          `Overlay '${p.op}' cannot be translated without the source spec ` +
+            `(from '${p.from}' to '${p.path}'): the source value is not available ` +
+            `on this path. Apply move/copy via the spec-aware OverlayApplier instead.`,
+        );
       default:
         // Potemkin extensions don't apply to spec-doc overlays.
         throw new Error(`Overlay translation only supports RFC 6902 ops; got '${p.op}'`);

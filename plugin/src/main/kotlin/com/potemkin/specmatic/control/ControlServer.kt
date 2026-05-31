@@ -97,8 +97,10 @@ internal fun Application.configure(
             )
             healthMonitor.markUpExternal()
             // Trigger a forced refresh of routes and fixtures so new contract paths
-            // and stubs are picked up immediately.
+            // and stubs are picked up immediately. FixturesClient has no forceRefresh;
+            // fetchFixtures() performs the same conditional GET + cache update.
             routes?.forceRefresh()
+            fixtures?.fetchFixtures()
             call.respond(HttpStatusCode.NoContent)
         }
 

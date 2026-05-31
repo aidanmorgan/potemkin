@@ -308,8 +308,8 @@ describe('observability/metrics — emission completeness (REQ-43)', () => {
       const sys = await bootSystem(fixture);
       const { nextUuidv7 } = await import('../../../src/ids/uuidv7.js');
 
-      try {
-        await executeUnitOfWork({
+      const runConflictingUow = () =>
+        executeUnitOfWork({
           command: {
             commandId: nextUuidv7(),
             boundary: 'Lead',
@@ -334,24 +334,20 @@ describe('observability/metrics — emission completeness (REQ-43)', () => {
           tracer: otel.tracer,
           metrics,
         });
-      } catch {
-        // expected
-      }
+
+      // The stale sequenceVersion (9999) forces a ConcurrencyConflictError, which
+      // aborts the UoW. The outer abort catch increments uowAbortsTotal for ANY
+      // aborting exception, so the counter must register at least one abort.
+      await expect(runConflictingUow()).rejects.toThrow();
 
       await otel.meterProvider.forceFlush();
 
-      // NOTE: ConcurrencyConflictError is thrown BEFORE runPatternMatch, so
-      // uowAbortsTotal is NOT incremented for concurrency errors — only for
-      // PatternMatch failures. This test documents the gap.
-      // The counter IS incremented only when runPatternMatch itself throws.
-      // For a genuine pattern match abort, we'd need a more complex fixture.
-      // This test verifies the metric CAN be read (even if 0 for this scenario).
       const values = await collectMetricDataPoints(
         otel.metricExporter,
         'engine.uow_aborts.total',
       );
-      // The metric should be readable (may be 0 or >= 1 depending on scenario)
-      expect(Array.isArray(values)).toBe(true);
+      const total = values.reduce((sum, v) => sum + v, 0);
+      expect(total).toBeGreaterThanOrEqual(1);
 
       await otel.teardown();
     });

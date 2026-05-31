@@ -298,9 +298,59 @@ export function validateBoundaryModule(raw: unknown, ctx: ValidationContext): Bo
     }
   }
 
+  // Optional fields with a fixed primitive shape are checked so the hot-swap
+  // path can't accept structurally-wrong YAML and pass it through the cast.
+  assertOptionalStringArray(raw['methods'], 'methods', ctx.source);
+  assertOptionalStringArray(raw['mask'], 'mask', ctx.source);
+  assertOptionalBoolean(raw['outOfContract'], 'outOfContract', ctx.source);
+  assertOptionalBoolean(raw['strict'], 'strict', ctx.source);
+  if (raw['behaviors'] !== undefined && !Array.isArray(raw['behaviors'])) {
+    throw new BootError(
+      'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+      `${ctx.source}: "behaviors" must be an array`,
+      { source: ctx.source },
+    );
+  }
+  if (raw['hateoas'] !== undefined && !Array.isArray(raw['hateoas'])) {
+    throw new BootError(
+      'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+      `${ctx.source}: "hateoas" must be an array`,
+      { source: ctx.source },
+    );
+  }
+  if (raw['state'] !== undefined && !isObject(raw['state'])) {
+    throw new BootError(
+      'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+      `${ctx.source}: "state" must be an object`,
+      { source: ctx.source },
+    );
+  }
+
   // Unknown keys at boundary level are tolerated for forward-compat —
   // callers log INFO when they see fields outside the canonical set.
   return raw as unknown as BoundaryModule;
+}
+
+function assertOptionalStringArray(value: unknown, field: string, source: string): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value) || value.some((v) => typeof v !== 'string')) {
+    throw new BootError(
+      'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+      `${source}: "${field}" must be an array of strings`,
+      { source, field },
+    );
+  }
+}
+
+function assertOptionalBoolean(value: unknown, field: string, source: string): void {
+  if (value === undefined) return;
+  if (typeof value !== 'boolean') {
+    throw new BootError(
+      'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+      `${source}: "${field}" must be a boolean`,
+      { source, field },
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------

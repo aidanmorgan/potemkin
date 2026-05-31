@@ -91,6 +91,7 @@ describe('schema/runtimeGuard — permutations', () => {
     it('error details.code is SCHEMA_PATH_UNKNOWN for unknown boundary', () => {
       try {
         guardAssignPath(registry, 'UnknownBoundary', 'name');
+        fail('should have thrown InternalExecutionError');
       } catch (e) {
         expect((e as InternalExecutionError).details).toMatchObject({ code: 'SCHEMA_PATH_UNKNOWN' });
       }
@@ -106,6 +107,7 @@ describe('schema/runtimeGuard — permutations', () => {
     it('error details.code is SCHEMA_PATH_UNKNOWN', () => {
       try {
         guardAssignPath(registry, 'TestBoundary', 'totally.missing');
+        fail('should have thrown InternalExecutionError');
       } catch (e) {
         expect((e as InternalExecutionError).details).toMatchObject({ code: 'SCHEMA_PATH_UNKNOWN' });
       }

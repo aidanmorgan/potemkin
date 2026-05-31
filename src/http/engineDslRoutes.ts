@@ -98,8 +98,10 @@ function reproduceAggregateJournal(
   const graph = createStateGraph();
   const cel = createCelEvaluator();
   const journal: JournalEntry[] = [];
+  let failedOn: import('../types.js').DomainEvent | undefined;
   try {
     for (const event of events) {
+      failedOn = event;
       const boundaryConfig = sys.dsl.byBoundaryName[event.boundary];
       if (!boundaryConfig) continue;
       const inferred = sys.inferredSchemas[boundaryConfig.boundary];
@@ -121,7 +123,13 @@ function reproduceAggregateJournal(
     }
   } catch (err) {
     sys.logger.warn(
-      { err: err instanceof Error ? err.message : String(err) },
+      {
+        err: err instanceof Error ? err.message : String(err),
+        boundary: failedOn?.boundary,
+        aggregateId: failedOn?.aggregateId,
+        eventId: failedOn?.eventId,
+        eventType: failedOn?.type,
+      },
       'engine-state: patch-journal reproduction failed; returning empty journal',
     );
     return [];

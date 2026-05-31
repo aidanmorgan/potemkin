@@ -326,17 +326,32 @@ describe('cel/evaluator — permutations', () => {
     });
   });
 
-  // ── Non-Error thrown objects (lines 534, 565 branches) ──────────────────────
+  // ── Non-Error thrown objects ────────────────────────────────────────────────
   describe('non-Error thrown objects', () => {
-    it('throws a non-Error from a builtin (string thrown) — String(err) branch in compile', () => {
-      // Trigger a compile error with an expression that causes a non-Error throw
-      // We can't easily do this via normal compile, but we can at least test that string errors
-      // are handled — test a custom error via evaluate path by making CEL throw a string
-      // The main coverage path is via the tokenizer throwing Error objects.
-      // Coverage for 'String(err)' branches requires non-Error to be thrown —
-      // inject via a crafted scenario. Since these are unreachable via normal usage,
-      // we add istanbul ignore to them.
-      expect(true).toBe(true); // placeholder - see istanbul-ignore below
+    it('re-throws a non-Error (string) thrown during member access in the evaluate path', () => {
+      // The evaluate path's catch handles non-Error throws via the String(err)
+      // branch. A context property defined as a getter that throws a bare string
+      // makes evalExpr throw a non-Error, which evaluate logs then re-throws
+      // unchanged (the original string identity is preserved).
+      const ctx: Record<string, unknown> = {};
+      Object.defineProperty(ctx, 'boom', {
+        enumerable: true,
+        get() {
+          throw 'non-error-string';
+        },
+      });
+
+      let thrown: unknown;
+      try {
+        cel.evaluate('boom', ctx, CelPhase.Behavior);
+        throw new Error('expected evaluate to re-throw the non-Error');
+      } catch (err) {
+        thrown = err;
+      }
+
+      // The non-Error value is re-thrown verbatim (not wrapped in an Error).
+      expect(thrown).toBe('non-error-string');
+      expect(thrown).not.toBeInstanceOf(Error);
     });
   });
 
