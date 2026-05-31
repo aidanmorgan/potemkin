@@ -118,10 +118,11 @@ fault_rules:
         Retry-After: "60"
 
   # Header-matched scoped to a boundary via convenience `potemkin.feature_flag`.
-  # Expands to X-Potemkin-Feature-Flag: v2-experimental. Scoped to Lead queries.
+  # Expands to X-Potemkin-Feature-Flag: v2-experimental. Scoped to single-lead
+  # GET /leads/{id} (boundary LeadById, intent query).
   - name: lead-feature-flag-error
     match:
-      boundary: Lead
+      boundary: LeadById
       intent: query
       condition: "true"
       potemkin:
