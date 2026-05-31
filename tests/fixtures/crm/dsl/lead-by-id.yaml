@@ -1,7 +1,32 @@
 boundary: LeadById
 contract_path: /leads/{id}
 fallback_override: true
-event_catalog: []
-behaviors: []
-reducers: []
+audit_fields: true
+
+event_catalog:
+  # Soft delete: marks the lead as deleted without removing it from the graph.
+  - type: LeadDeleted
+    payload_template:
+      deletedAt: "$now()"
+
+behaviors:
+  # DELETE /leads/{id} → soft delete. The reducer sets _deleted/_deletedAt so the
+  # entity is excluded from collection queries unless ?includeDeleted=true.
+  - name: deleteLead
+    match:
+      operationId: deleteLead
+      method: DELETE
+      condition: "true"
+    emit: LeadDeleted
+
+reducers:
+  - on: LeadDeleted
+    patches:
+      - op: replace
+        path: /_deleted
+        value: "${true}"
+      - op: replace
+        path: /_deletedAt
+        value: "${event.payload.deletedAt}"
+
 initialization: []

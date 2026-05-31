@@ -1,6 +1,7 @@
 boundary: LeadConvert
 contract_path: /leads/{id}/convert
 fallback_override: false
+audit_fields: true
 
 event_catalog:
   - type: LeadConverted
@@ -11,9 +12,13 @@ event_catalog:
 
 behaviors:
   # REQ-62: postcondition
+  # HATEOAS: surfaced as the `convert` action link only while QUALIFIED.
   - name: convertLead
+    link_name: convert
+    link_condition: "state.status == 'QUALIFIED'"
     match:
       operationId: convertLead
+      method: POST
       condition: "state.status == 'QUALIFIED'"
     emit: LeadConverted
     postcondition: "state.status == 'CONVERTED'"

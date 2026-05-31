@@ -1,6 +1,7 @@
 boundary: LeadAddNote
 contract_path: /leads/{id}/notes
 fallback_override: false
+audit_fields: true
 
 # Deprecation: this boundary is scheduled for retirement.
 # Drives the Deprecation / Sunset / Link response headers.

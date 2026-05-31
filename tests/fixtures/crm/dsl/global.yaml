@@ -7,6 +7,11 @@ idempotency:
   ttl_seconds: 86400
   hash_includes_body: true
 
+# HATEOAS — auto-generate _links on query responses
+hateoas:
+  enabled: true
+  self_links: true
+
 # HTTP security headers — applied to every response by the gateway middleware.
 security_headers:
   enabled: true
@@ -44,6 +49,173 @@ sagas:
           operationId: closeOpportunity
           payload:
             revertStatus: "true"
+
+# Webhook declarations — outbound HTTP POST on event emission
+webhooks:
+  - name: lead-converted-webhook
+    trigger:
+      boundary: LeadConvert
+      intent: mutation
+      condition: "event.type == 'LeadConverted'"
+    url: "'http://127.0.0.1:19876/webhook'"
+    secret: "webhook-test-secret-do-not-use-in-prod"
+    payload:
+      leadId: "${event.aggregateId}"
+      event: "${event.type}"
+    retry:
+      maxAttempts: 3
+      delayMs: 100
+
+# Fault injection rules — DSL-driven chaos engineering.
+# These use the same match syntax as behaviors but produce HTTP error responses
+# instead of state mutations. Evaluated BEFORE behaviors (first match wins).
+fault_rules:
+  # Simulate external DNC registry timeout — fires when the DNC reason signals
+  # an external registry check (suite 30).
+  - name: dnc-registry-slow
+    match:
+      boundary: LeadDNC
+      intent: mutation
+      condition: "command.payload.reason == 'REGISTRY_CHECK'"
+    response:
+      status: 504
+      body:
+        error: DNC_REGISTRY_TIMEOUT
+        message: External DNC registry check timed out
+      delay_ms: 100
+
+  # Header-matched via convenience `potemkin.rate_limit` — expands to X-Potemkin-Rate-Limit.
+  # Any value on the header triggers the rule (presence-only via "*").
+  - name: rate-limit-via-header
+    match:
+      condition: "true"
+      potemkin:
+        rate_limit: "*"
+    response:
+      status: 429
+      body:
+        error: RATE_LIMITED
+        message: Simulated rate limit (header-triggered)
+        retryAfter: 30
+      headers:
+        Retry-After: "30"
+        X-RateLimit-Limit: "100"
+        X-RateLimit-Remaining: "0"
+
+  # Header-matched via convenience `potemkin.force_response` with specific value.
+  # Expands to X-Potemkin-Force-Response: maintenance.
+  - name: maintenance-mode-via-header
+    match:
+      condition: "true"
+      potemkin:
+        force_response: "maintenance"
+    response:
+      status: 503
+      body:
+        error: SERVICE_UNAVAILABLE
+        message: Service in maintenance mode
+      headers:
+        Retry-After: "60"
+
+  # Header-matched scoped to a boundary via convenience `potemkin.feature_flag`.
+  # Expands to X-Potemkin-Feature-Flag: v2-experimental. Scoped to Lead queries.
+  - name: lead-feature-flag-error
+    match:
+      boundary: Lead
+      intent: query
+      condition: "true"
+      potemkin:
+        feature_flag: "v2-experimental"
+    response:
+      status: 418
+      body:
+        error: TEAPOT
+        message: Feature v2-experimental not available for this user
+
+  # Header-matched via raw `headers:` form — useful for ad-hoc / non-aliased headers.
+  # Matches X-Potemkin-Scenario: slow_db on any Call creation request.
+  - name: call-slow-db-scenario
+    match:
+      boundary: Call
+      intent: creation
+      condition: "true"
+      headers:
+        x-potemkin-scenario: "slow_db"
+    response:
+      status: 504
+      body:
+        error: GATEWAY_TIMEOUT
+        message: Simulated slow database scenario
+      headers:
+        Retry-After: "5"
+
+  # ── Chaos-header response overrides (suite 46) ────────────────────────────
+  # These rules own the response shape when a client opts in via the matching
+  # X-Potemkin-* chaos header. The engine consults them by header name/value;
+  # absent the header they never fire (a normal request omits these headers).
+
+  # X-Potemkin-Force-Status: 599 → YAML body overrides the generic forced-status body.
+  - name: force-status-599-backpressure
+    match:
+      condition: "true"
+      headers:
+        x-potemkin-force-status: "599"
+    response:
+      status: 599
+      body:
+        error: UPSTREAM_BACKPRESSURE
+        hint: "Client should back off and retry with a smaller batch."
+      headers:
+        Retry-After: "15"
+
+  # X-Potemkin-Force-Latency: 750 → YAML response returned after the delay.
+  - name: force-latency-750-accepted
+    match:
+      condition: "true"
+      headers:
+        x-potemkin-force-latency: "750"
+    response:
+      status: 202
+      body:
+        accepted: true
+        delayed: true
+
+  # X-Potemkin-Error-Class: throttle → custom QUOTA_EXCEEDED body (overrides canonical 429).
+  - name: error-class-throttle-custom
+    match:
+      condition: "true"
+      headers:
+        x-potemkin-error-class: "throttle"
+    response:
+      status: 429
+      body:
+        error: QUOTA_EXCEEDED
+        quotaRemaining: 0
+      headers:
+        Retry-After: "45"
+
+  # X-Potemkin-Jitter: any value → 200 body marked jittered (delay applied by engine).
+  - name: jitter-yaml-response
+    match:
+      condition: "true"
+      headers:
+        x-potemkin-jitter: "*"
+    response:
+      status: 200
+      body:
+        jittered: true
+
+  # X-Potemkin-Success-Rate: 0 → always fails the gate, custom degraded body.
+  - name: success-rate-failure-custom
+    match:
+      condition: "true"
+      headers:
+        x-potemkin-success-rate: "0"
+    response:
+      status: 503
+      body:
+        error: DEPENDENCY_DEGRADED
+        message: Downstream dependency degraded — failing fast
 
 # REQ-88/89/90: Derived projections aggregating across boundaries
 derived_projections:

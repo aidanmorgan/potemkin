@@ -1,6 +1,7 @@
 boundary: LeadDisqualify
 contract_path: /leads/{id}/disqualify
 fallback_override: false
+audit_fields: true
 
 event_catalog:
   - type: LeadDisqualified
@@ -8,9 +9,13 @@ event_catalog:
       reason: "command.payload?.reason != null ? command.payload.reason : 'Not qualified'"
 
 behaviors:
+  # HATEOAS: surfaced as the `disqualify` action link while CONTACTED or QUALIFIED.
   - name: disqualifyLead
+    link_name: disqualify
+    link_condition: "state.status == 'CONTACTED' || state.status == 'QUALIFIED'"
     match:
       operationId: disqualifyLead
+      method: POST
       condition: "state.status == 'CONTACTED' || state.status == 'QUALIFIED'"
     emit: LeadDisqualified
 

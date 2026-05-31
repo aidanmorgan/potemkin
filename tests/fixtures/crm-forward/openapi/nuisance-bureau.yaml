@@ -43,6 +43,90 @@ paths:
           schema:
             type: integer
             minimum: 0
+        # Query sophistication params (suites 31/45). Declared permissively —
+        # request validation rejects undeclared params, so every supported
+        # operator must appear here.
+        - name: sort
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: order
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [asc, desc]
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: include
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: fields
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: includeDeleted
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: "score:gte"
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: "score:gt"
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: "score:lte"
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: "score:lt"
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: "score:ne"
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: "status:in"
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: "companyName:contains"
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: "companyName:startsWith"
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: "companyName:endsWith"
+          in: query
+          required: false
+          schema:
+            type: string
       responses:
         "200":
           description: List of leads (raw array, or envelope when ?limit is supplied)
@@ -170,6 +254,29 @@ paths:
       responses:
         "200":
           description: Updated lead
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+        "404":
+          description: Lead not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      operationId: deleteLead
+      summary: Soft-delete a lead (sets _deleted/_deletedAt; not removed from graph)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Lead soft-deleted (returns the lead with _deleted/_deletedAt set)
           content:
             application/json:
               schema:
@@ -1354,6 +1461,29 @@ components:
                 type: string
                 format: date-time
           default: []
+        # Audit fields (auto-populated on mutation when audit_fields: true).
+        updatedAt:
+          type: string
+          format: date-time
+        updatedBy:
+          type: string
+          nullable: true
+        # Soft-delete markers (set by the LeadDeleted reducer).
+        _deleted:
+          type: boolean
+        _deletedAt:
+          type: string
+          format: date-time
+        # HATEOAS hypermedia links (added after response validation).
+        _links:
+          type: object
+          additionalProperties: true
+        # Relationship expansion (?include=callIds embeds the resolved calls).
+        _callIds:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
 
     Campaign:
       type: object
@@ -1493,6 +1623,23 @@ components:
                 type: integer
                 minimum: 1
           default: []
+        # Audit fields (auto-populated on mutation when audit_fields: true).
+        updatedAt:
+          type: string
+          format: date-time
+        updatedBy:
+          type: string
+          nullable: true
+        # Soft-delete markers.
+        _deleted:
+          type: boolean
+        _deletedAt:
+          type: string
+          format: date-time
+        # HATEOAS hypermedia links (added after response validation).
+        _links:
+          type: object
+          additionalProperties: true
 
     Opportunity:
       type: object
