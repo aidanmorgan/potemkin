@@ -92,6 +92,29 @@ event_catalog: []
       const config = parseDslYaml(yaml);
       expect(config.fallbackOverride).toBe(true);
     });
+
+    it('parses a boundary latency block (fixed_ms / min_ms / max_ms)', () => {
+      const yaml = `
+boundary: B
+contract_path: /b
+latency:
+  fixed_ms: 50
+  min_ms: 10
+  max_ms: 30
+behaviors: []
+reducers: []
+event_catalog: []
+`;
+      const config = parseDslYaml(yaml);
+      expect(config.latency).toEqual({ fixed_ms: 50, min_ms: 10, max_ms: 30 });
+    });
+
+    it('omits latency when the block is absent or carries no usable field', () => {
+      const noBlock = parseDslYaml('boundary: B\ncontract_path: /b\nbehaviors: []\nreducers: []\nevent_catalog: []');
+      expect(noBlock.latency).toBeUndefined();
+      const negative = parseDslYaml('boundary: B\ncontract_path: /b\nlatency: { fixed_ms: -5 }\nbehaviors: []\nreducers: []\nevent_catalog: []');
+      expect(negative.latency).toBeUndefined();
+    });
   });
 
   describe('compileDsl', () => {
