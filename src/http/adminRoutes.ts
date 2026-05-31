@@ -5,7 +5,8 @@
  *  POST /_admin/reset  — deterministic system reset to post-boot baseline state; 204 No Content.
  *  GET  /_admin/state  — dump full state graph as { entities: { [targetId]: JsonObject } };
  *                        supports ?boundary=X filter (returns 400 if param sent, future work).
- *  GET  /_admin/events — list all events; supports ?aggregateId=X filter,
+ *  GET  /_admin/events — list all events; supports ?aggregateId=X and ?type=X
+ *                        filters, ?count=true (returns { count: N }),
  *                        ?limit=N and ?offset=M pagination.
  *  GET  /_admin/health — liveness/readiness probe; includes version and checks array.
  *
@@ -23,6 +24,7 @@ import { resetSystem } from '../engine/reset.js';
 import { withSpan } from '../observability/tracing.js';
 import { getDerivedProjection } from '../projections/engine.js';
 import type { FaultRule } from '../dsl/types.js';
+import type { DomainEvent } from '../types.js';
 
 // Read package.json version at module load time.
 let _pkgVersion = 'unknown';
@@ -130,6 +132,8 @@ export function registerAdminRoutes(app: Express, sys: BootedSystem): void {
   );
 
   // GET /_admin/events — list all events; optional ?aggregateId=X filter (req 39).
+  // ?type=<eventType> filters to events of that type (combinable with ?aggregateId).
+  // ?count=true returns { count: N } instead of the event array.
   // Supports ?limit=N and ?offset=M for pagination (H-6).
   app.get(
     '/_admin/events',
@@ -137,10 +141,21 @@ export function registerAdminRoutes(app: Express, sys: BootedSystem): void {
     (req: Request, res: Response, next: NextFunction) => {
       withSpan(sys.tracer, 'http.admin.events', async () => {
         const aggregateId = req.query['aggregateId'];
-        let events =
+        let events: readonly DomainEvent[] =
           typeof aggregateId === 'string' && aggregateId.length > 0
             ? sys.events.byAggregate(aggregateId)
             : sys.events.all();
+
+        const type = req.query['type'];
+        if (typeof type === 'string' && type.length > 0) {
+          events = events.filter(e => e.type === type);
+        }
+
+        // ?count=true — return a count payload rather than the events themselves.
+        if (req.query['count'] === 'true') {
+          res.status(200).json({ count: events.length });
+          return;
+        }
 
         // Pagination: ?offset=M&limit=N (H-6)
         const offsetRaw = req.query['offset'];
