@@ -60,6 +60,9 @@ import {
 } from '../errors.js';
 import { applyEventToDerivedProjections } from '../projections/engine.js';
 import { findTriggeredSagas, runSaga } from '../sagas/orchestrator.js';
+import { prepareWebhookDelivery, deliverWebhook, type FetchLike } from '../webhooks/dispatcher.js';
+import type { SideEffectQueue, SideEffectThunk } from './sideEffects.js';
+import type { WebhookConfig } from '../dsl/types.js';
 
 // ---------------------------------------------------------------------------
 // Public interface
@@ -121,6 +124,22 @@ export interface UowInput {
    * to projectEvent so computed fields recompute after reducer patches apply.
    */
   readonly inferredSchemas?: Readonly<Record<string, import('../dsl/schemaInference.js').BoundaryInferenceResult>>;
+  /**
+   * Injectable webhook transport. When supplied alongside `dsl.webhooks`, each
+   * committed event is matched against the webhook subscriptions and a signed
+   * delivery is dispatched fire-and-forget via this transport (honouring
+   * `controls.sideEffects.skipWebhooks`). Tests inject a fake to assert delivery
+   * without real HTTP. When absent, webhook dispatch is skipped entirely.
+   */
+  readonly webhookTransport?: FetchLike;
+  /**
+   * Deferred-side-effect queue for bulk-transactional batches. When supplied,
+   * the UoW ENQUEUES its post-commit sagas and webhooks here instead of firing
+   * them inline; the gateway flushes the queue once the whole batch commits, or
+   * discards it on abort, so no side-effect runs against state that is later
+   * rolled back. When absent, side-effects fire immediately (the normal path).
+   */
+  readonly deferSideEffects?: SideEffectQueue;
 }
 
 // ---------------------------------------------------------------------------
@@ -246,21 +265,35 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
     schemaRegistry,
   } = input;
 
-  const logger = (input.logger ?? createLogger()).child({
-    name: 'uow',
-    commandId: command.commandId,
-    boundary: command.boundary,
-    intent: command.intent,
-  });
+  // Tier 6: observability — an explicit X-Potemkin-Log-Level overrides the level
+  // of this request's UoW child logger (and its descendants), so callers can dial
+  // verbosity up/down per request without touching the global logger.
+  const requestLogLevel = input.controls?.observability.logLevel;
+  const logger = (input.logger ?? createLogger()).child(
+    {
+      name: 'uow',
+      commandId: command.commandId,
+      boundary: command.boundary,
+      intent: command.intent,
+    },
+    requestLogLevel ? { level: requestLogLevel } : {},
+  );
 
   const tracer = input.tracer ?? getTracer('engine');
   const startMs = Date.now();
+
+  // Tier 6: observability — a request-scoped metric tag (key=value) is attached
+  // to every metric attribute set this UoW records, so callers can slice engine
+  // metrics by their own dimension. Empty when the control header is absent.
+  const metricTag = input.controls?.observability.metricTag;
+  const tagAttrs: Record<string, string> = metricTag ? { [metricTag.key]: metricTag.value } : {};
 
   // O-1 fix: increment commandsTotal for EVERY command entering executeUnitOfWork,
   // including the fault-sim short-circuit path that bypasses the outer span.
   metrics?.commandsTotal.add(1, {
     boundary: command.boundary,
     intent: command.intent,
+    ...tagAttrs,
   });
 
   // -------------------------------------------------------------------------
@@ -279,6 +312,7 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
     metrics?.faultsSimulatedTotal.add(1, {
       boundary: command.boundary,
       intent: command.intent,
+      ...tagAttrs,
     });
 
     logger.warn({ faultStatus: signal.status }, 'UoW fault-sim short-circuit');
@@ -473,6 +507,7 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
         const dryRun = input.controls?.transparency.dryRun === true;
         const skipProjections = input.controls?.sideEffects.skipProjections === true;
         const skipSagas = input.controls?.sideEffects.skipSagas === true;
+        const skipWebhooks = input.controls?.sideEffects.skipWebhooks === true;
 
         // Tier 3: caused-by override — rewrite the (frozen) DomainEvents to carry the
         // overridden causedBy. Mutates the array in place before append.
@@ -488,6 +523,7 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
           eventStore.append(stagedEvents);
           metrics?.eventsAppendedTotal.add(stagedEvents.length, {
             boundary: command.boundary,
+            ...tagAttrs,
           });
           shadow.commitInto(graph);
         }
@@ -505,31 +541,63 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
           }
         }
 
-        // REQ-73/79: Post-commit saga dispatch (fire-and-forget; non-blocking in background)
-        // We run sagas after commit so that compensation events are truly compensating,
-        // not pre-staged alongside the primary event.
-        if (!dryRun && !skipSagas && dsl.sagas && dsl.sagas.length > 0 && stagedEvents.length > 0) {
-          for (const evt of stagedEvents) {
-            const triggeredSagas = findTriggeredSagas(dsl.sagas, command, evt, cel);
-            for (const saga of triggeredSagas) {
-              // Fire-and-forget — saga failures are recorded in the event log but do not
-              // abort the primary UoW's response.
-              runSaga({
-                saga,
-                triggerCommand: command,
-                triggerEvent: evt,
-                dsl,
-                graph,
-                events: eventStore,
-                cel,
-                validator,
-                logger,
-                schemaRegistry,
-                openapi: input.openapi,
-                ...(input.tsReducerRegistry ? { tsReducerRegistry: input.tsReducerRegistry } : {}),
-                ...(input.inferredSchemas ? { inferredSchemas: input.inferredSchemas } : {}),
-              }).catch((err: unknown) => {
-                logger.error({ err, sagaName: saga.name }, 'Saga execution failed unexpectedly');
+        // Post-commit side-effects (sagas + webhooks). These run AFTER commit and
+        // are fire-and-forget so a failure is logged but never aborts the primary
+        // response. Each is built as a thunk; under a bulk-transactional batch the
+        // gateway supplies `deferSideEffects`, in which case we ENQUEUE the thunks
+        // for the batch to flush on success (or discard on abort) rather than
+        // firing them inline against state that may still be rolled back.
+        if (!dryRun && stagedEvents.length > 0) {
+          const sideEffects: SideEffectThunk[] = [];
+
+          // REQ-73/79: sagas — run after commit so compensation events are truly
+          // compensating, not pre-staged alongside the primary event.
+          if (!skipSagas && dsl.sagas && dsl.sagas.length > 0) {
+            for (const evt of stagedEvents) {
+              const triggeredSagas = findTriggeredSagas(dsl.sagas, command, evt, cel);
+              for (const saga of triggeredSagas) {
+                sideEffects.push(() =>
+                  runSaga({
+                    saga,
+                    triggerCommand: command,
+                    triggerEvent: evt,
+                    dsl,
+                    graph,
+                    events: eventStore,
+                    cel,
+                    validator,
+                    logger,
+                    schemaRegistry,
+                    openapi: input.openapi,
+                    ...(input.tsReducerRegistry ? { tsReducerRegistry: input.tsReducerRegistry } : {}),
+                    ...(input.inferredSchemas ? { inferredSchemas: input.inferredSchemas } : {}),
+                  }).catch((err: unknown) => {
+                    logger.error({ err, sagaName: saga.name }, 'Saga execution failed unexpectedly');
+                  }),
+                );
+              }
+            }
+          }
+
+          // Outbound webhooks — match each committed event against the configured
+          // subscriptions and dispatch a signed delivery via the injected transport.
+          if (!skipWebhooks && input.webhookTransport && dsl.webhooks && dsl.webhooks.length > 0) {
+            const transport = input.webhookTransport;
+            for (const evt of stagedEvents) {
+              for (const webhook of dsl.webhooks) {
+                sideEffects.push(() =>
+                  dispatchWebhook(webhook, evt, command, cel, transport, logger),
+                );
+              }
+            }
+          }
+
+          for (const thunk of sideEffects) {
+            if (input.deferSideEffects) {
+              input.deferSideEffects.enqueue(thunk);
+            } else {
+              thunk().catch((err: unknown) => {
+                logger.error({ err }, 'Post-commit side-effect failed unexpectedly');
               });
             }
           }
@@ -589,6 +657,7 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
           boundary: command.boundary,
           intent: command.intent,
           outcome,
+          ...tagAttrs,
         });
 
         return {
@@ -603,13 +672,14 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
         // MissingPreconditionError, etc.). The inner catch inside the cascade span
         // still handles pattern-match-specific logging; this outer catch ensures
         // the metric is always incremented on abort.
-        metrics?.uowAbortsTotal.add(1, { boundary: command.boundary });
+        metrics?.uowAbortsTotal.add(1, { boundary: command.boundary, ...tagAttrs });
         if (outcome === 'error') {
           const elapsedMs = Date.now() - startMs;
           metrics?.commandDurationMs.record(elapsedMs, {
             boundary: command.boundary,
             intent: command.intent,
             outcome: 'abort',
+            ...tagAttrs,
           });
         }
         throw err;
@@ -629,3 +699,38 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
 // Internal type alias (avoids re-importing the full PatternMatchOutcome type)
 // ---------------------------------------------------------------------------
 type PatternMatchResult = Awaited<ReturnType<typeof runPatternMatch>>;
+
+// ---------------------------------------------------------------------------
+// Webhook dispatch
+// ---------------------------------------------------------------------------
+
+/**
+ * Match a single committed event against one webhook subscription and, on a
+ * match, deliver a signed POST via the injected transport. The event boundary +
+ * the triggering command's intent are used for trigger matching. Never throws —
+ * delivery outcome is logged; fire-and-forget callers ignore the result.
+ */
+async function dispatchWebhook(
+  webhook: WebhookConfig,
+  event: DomainEvent,
+  command: Command,
+  cel: CelEvaluator,
+  transport: FetchLike,
+  logger: Logger,
+): Promise<void> {
+  const delivery = prepareWebhookDelivery(webhook, event, event.boundary, command.intent, cel);
+  if (delivery === null) return;
+
+  const result = await deliverWebhook(delivery, transport, webhook.retry);
+  if (result.delivered) {
+    logger.debug(
+      { webhook: webhook.name, eventId: event.eventId, attempts: result.attempts },
+      'Webhook delivered',
+    );
+  } else {
+    logger.warn(
+      { webhook: webhook.name, eventId: event.eventId, attempts: result.attempts, lastStatus: result.lastStatus },
+      'Webhook delivery failed',
+    );
+  }
+}
