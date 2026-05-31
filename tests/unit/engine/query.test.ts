@@ -347,6 +347,70 @@ describe('engine/query', () => {
       expect(Object.keys(result).sort()).toEqual(['id', 'status']);
       expect(result.score).toBeUndefined();
     });
+
+    it('projects each item inside the pagination envelope when ?limit is supplied', () => {
+      const graph = createStateGraph();
+      graph.set('a', { id: 'a', name: 'A', score: 1, status: 'NEW' });
+      graph.set('b', { id: 'b', name: 'B', score: 2, status: 'NEW' });
+      graph.set('c', { id: 'c', name: 'C', score: 3, status: 'NEW' });
+      const env = runQuery({
+        boundary: makeBoundary(),
+        targetId: null,
+        queryParams: { fields: 'id,score', limit: '2' },
+        graph,
+        cel,
+        openapi: emptyDoc,
+      }) as any;
+      // Envelope shape preserved; only items are projected.
+      expect(env.totalCount).toBe(3);
+      expect(env.limit).toBe(2);
+      expect(env.hasMore).toBe(true);
+      expect(typeof env.nextCursor).toBe('string');
+      expect(Array.isArray(env.items)).toBe(true);
+      expect(env.items.length).toBe(2);
+      for (const item of env.items) {
+        expect(Object.keys(item).sort()).toEqual(['id', 'score']);
+        expect(item.name).toBeUndefined();
+        expect(item.status).toBeUndefined();
+      }
+    });
+
+    it('projection interacts with cursor + sort across pages without dropping the cursor anchor', () => {
+      const graph = createStateGraph();
+      graph.set('a', { id: 'a', score: 10 });
+      graph.set('b', { id: 'b', score: 20 });
+      graph.set('c', { id: 'c', score: 30 });
+      graph.set('d', { id: 'd', score: 40 });
+      const page1 = runQuery({
+        boundary: makeBoundary(),
+        targetId: null,
+        queryParams: { fields: 'id,score', sort: 'score', order: 'desc', limit: '2' },
+        graph,
+        cel,
+        openapi: emptyDoc,
+      }) as any;
+      expect(page1.items.map((i: any) => i.id)).toEqual(['d', 'c']);
+      for (const item of page1.items) {
+        expect(Object.keys(item).sort()).toEqual(['id', 'score']);
+      }
+      // The cursor anchors on the last id even though the item is projected.
+      const cursor = page1.nextCursor as string;
+      expect(typeof cursor).toBe('string');
+
+      const page2 = runQuery({
+        boundary: makeBoundary(),
+        targetId: null,
+        queryParams: { fields: 'id,score', sort: 'score', order: 'desc', limit: '2', cursor },
+        graph,
+        cel,
+        openapi: emptyDoc,
+      }) as any;
+      // Next two by score desc, no overlap, still projected.
+      expect(page2.items.map((i: any) => i.id)).toEqual(['b', 'a']);
+      for (const item of page2.items) {
+        expect(Object.keys(item).sort()).toEqual(['id', 'score']);
+      }
+    });
   });
 
   describe('cursor pagination (?cursor)', () => {
