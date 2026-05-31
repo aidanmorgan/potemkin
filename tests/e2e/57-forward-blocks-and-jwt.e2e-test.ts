@@ -89,6 +89,11 @@ describeWithJava('57 — G6 forward blocks + JWT through the stub', () => {
 
   beforeAll(async () => {
     app = await startE2eApp({ fixtureName: 'crm-forward' });
+    // Every assertion in this suite is driven through app.stubUrl to prove the
+    // forward blocks reach the client via Specmatic. Fail fast in beforeAll if
+    // stub→plugin→engine forwarding did not warm up healthy — never silently
+    // skip or fall back to the engine.
+    expect(app.stubForwardingHealthy).toBe(true);
   }, 180_000);
 
   afterAll(async () => {
@@ -120,9 +125,6 @@ describeWithJava('57 — G6 forward blocks + JWT through the stub', () => {
   // ---- AC-G6.2: workflow id-propagation -----------------------------------
 
   it('AC-G6.2 workflow.ids propagate the created lead id into a later request', async () => {
-    if (!app.stubForwardingHealthy) {
-      throw new Error('stub forwarding not healthy — workflow propagation cannot be exercised');
-    }
     const auth = { authorization: `Bearer ${signHs256(defaultClaims())}` };
 
     // 1. Create a lead through the stub; the plugin captures its id under leadId.
@@ -156,9 +158,6 @@ describeWithJava('57 — G6 forward blocks + JWT through the stub', () => {
   // ---- AC-G6.3: overlay deprecation ---------------------------------------
 
   it('AC-G6.3 overlay deprecates GET /leads/{id}; the served response carries Deprecation: true', async () => {
-    if (!app.stubForwardingHealthy) {
-      throw new Error('stub forwarding not healthy — overlay deprecation cannot be exercised');
-    }
     const auth = { authorization: `Bearer ${signHs256(defaultClaims())}` };
 
     // Create a lead so the GET has a real target.
@@ -186,9 +185,6 @@ describeWithJava('57 — G6 forward blocks + JWT through the stub', () => {
   // ---- AC-G6.4: JWT through the stub --------------------------------------
 
   it('AC-G6.4 valid JWT → 200 through the stub', async () => {
-    if (!app.stubForwardingHealthy) {
-      throw new Error('stub forwarding not healthy — JWT path cannot be exercised');
-    }
     const res = await fetch(`${app.stubUrl}/leads`, {
       headers: { Accept: 'application/json', authorization: `Bearer ${signHs256(defaultClaims())}` },
     });

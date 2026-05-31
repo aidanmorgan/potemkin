@@ -31,7 +31,7 @@ export interface TestApp {
  * to the boundary that owns the base path.
  *
  * The CRM DSL registers 5 base paths (e.g. /leads, /campaigns).
- * The OpenAPI spec declares 21 paths (sub-paths like /leads/{id}/contact).
+ * The OpenAPI spec declares 23 paths (sub-paths like /leads/{id}/contact).
  * The gateway registers Express routes only for byContractPath keys, so
  * sub-paths need explicit entries pointing to the correct boundary.
  *

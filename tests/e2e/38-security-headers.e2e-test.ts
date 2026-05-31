@@ -29,11 +29,8 @@
  * HTTP response headers via fetch().
  */
 
-import { startE2eApp } from './_harness/e2e-test-app';
-import type { E2eApp } from './_harness/e2e-test-app';
-import { javaAvailable } from './_harness/crm-e2e-helpers';
-
-const describeWithJava = javaAvailable() ? describe : describe.skip;
+import { startEngineOnlyApp } from './_harness/engine-only-app';
+import type { EngineOnlyApp } from './_harness/engine-only-app';
 
 const APEX_LEAD_ID = '00000000-0000-7000-8000-000000000010';
 const NONEXISTENT_LEAD_ID = '00000000-dead-7000-8000-000000000000';
@@ -45,8 +42,9 @@ const H_FRAME = 'x-frame-options';
 const H_REFERRER = 'referrer-policy';
 const H_CUSTOM = 'x-custom-sim-header';
 
-// Expected values per global.yaml.
-const V_HSTS = 'max-age=31536000';
+// Expected values per global.yaml. The engine's HSTS value includes the
+// includeSubDomains directive (src/http/securityHeaders.ts).
+const V_HSTS = 'max-age=31536000; includeSubDomains';
 const V_NOSNIFF = 'nosniff';
 const V_FRAME = 'DENY';
 const V_REFERRER = 'strict-origin-when-cross-origin';
@@ -55,7 +53,7 @@ const V_CUSTOM = 'potemkin-sim';
 // Helper: issue a direct HTTP request to the engine (through the full Express
 // gateway / security middleware chain) and return the raw fetch Response.
 async function engineFetch(
-  app: E2eApp,
+  app: EngineOnlyApp,
   method: string,
   path: string,
   body?: unknown,
@@ -71,10 +69,10 @@ async function engineFetch(
   return fetch(`${app.engineUrl}${path}`, init);
 }
 
-describeWithJava('38 — HTTP Security Headers (full Specmatic stack)', () => {
-  let app: E2eApp;
+describe('38 — HTTP Security Headers (engine-only)', () => {
+  let app: EngineOnlyApp;
 
-  beforeAll(async () => { app = await startE2eApp(); }, 120_000);
+  beforeAll(async () => { app = await startEngineOnlyApp(); }, 120_000);
   afterAll(async () => { await app.shutdown(); }, 30_000);
 
   // ---- 1. Header presence on successful responses ----
@@ -213,11 +211,11 @@ describeWithJava('38 — HTTP Security Headers (full Specmatic stack)', () => {
       expect(res.headers.get(H_HSTS)).toBe(V_HSTS);
     }, 60_000);
 
-    it('OPTIONS /leads — preflight 204 documents actual behaviour (handled before security middleware)', async () => {
-      // OPTIONS preflight goes through a dedicated app.options('*') handler that
-      // short-circuits BEFORE the security middleware runs. We assert what
-      // actually happens — the preflight succeeds with CORS but without
-      // security headers.
+    it('OPTIONS /leads — preflight 204 carries both CORS and security headers', async () => {
+      // The security-headers middleware is registered (app.use) before the
+      // app.options('*') preflight handler, so it sets the security headers on
+      // the response before the handler ends it with 204 — the preflight
+      // therefore carries CORS AND the configured security headers.
       const res = await fetch(`${app.engineUrl}/leads`, { method: 'OPTIONS' });
       expect(res.status).toBe(204);
 
@@ -225,12 +223,12 @@ describeWithJava('38 — HTTP Security Headers (full Specmatic stack)', () => {
       expect(res.headers.get('access-control-allow-origin')).not.toBeNull();
       expect(res.headers.get('access-control-allow-methods')).not.toBeNull();
 
-      // Security middleware is NOT invoked on OPTIONS preflight in current code.
-      expect(res.headers.get(H_HSTS)).toBeNull();
-      expect(res.headers.get(H_NOSNIFF)).toBeNull();
-      expect(res.headers.get(H_FRAME)).toBeNull();
-      expect(res.headers.get(H_REFERRER)).toBeNull();
-      expect(res.headers.get(H_CUSTOM)).toBeNull();
+      // Security headers ARE present on the preflight response.
+      expect(res.headers.get(H_HSTS)).toBe(V_HSTS);
+      expect(res.headers.get(H_NOSNIFF)).toBe(V_NOSNIFF);
+      expect(res.headers.get(H_FRAME)).toBe(V_FRAME);
+      expect(res.headers.get(H_REFERRER)).toBe(V_REFERRER);
+      expect(res.headers.get(H_CUSTOM)).toBe(V_CUSTOM);
     }, 60_000);
   });
 

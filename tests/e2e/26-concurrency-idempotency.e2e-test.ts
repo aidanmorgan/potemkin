@@ -10,23 +10,20 @@
  * hermetic testing, property-based concurrent command testing (POES)
  */
 
-import { startE2eApp } from './_harness/e2e-test-app';
-import type { E2eApp } from './_harness/e2e-test-app';
+import { startEngineOnlyApp } from './_harness/engine-only-app';
+import type { EngineOnlyApp } from './_harness/engine-only-app';
 import {
   fwd, getGraphNode, getEventsByAggregate,
-  javaAvailable,
 } from './_harness/crm-e2e-helpers';
 import type { JsonObject } from './_harness/crm-e2e-helpers';
-
-const describeWithJava = javaAvailable() ? describe : describe.skip;
 
 const AGENT_ID = '00000000-0000-7000-8000-000000000003';
 const CAMPAIGN_ID = '00000000-0000-7000-8000-000000000001';
 
-describeWithJava('26 — Concurrency & Idempotency (full Specmatic stack)', () => {
-  let app: E2eApp;
+describe('26 — Concurrency & Idempotency (engine-only)', () => {
+  let app: EngineOnlyApp;
 
-  beforeAll(async () => { app = await startE2eApp(); }, 120_000);
+  beforeAll(async () => { app = await startEngineOnlyApp(); }, 120_000);
   afterAll(async () => { await app.shutdown(); }, 30_000);
 
   describe('optimistic concurrency -- multi-step ETag chain', () => {

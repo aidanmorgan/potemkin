@@ -116,8 +116,9 @@ describeWithJava('29 — Nested Graph Shape Mismatches (full Specmatic stack)', 
       const noteEvents = events.filter(e => e.type === 'NoteAppended');
       expect(noteEvents.length).toBe(3);
 
-      // Event payload has the computed fields
-      expect(noteEvents[0].payload['noteId']).toBeDefined();
+      // Event payload has the computed fields. The note id is carried as `id`
+      // (the event payload is the fully-formed note object the reducer appends).
+      expect(noteEvents[0].payload['id']).toBeDefined();
       expect(noteEvents[0].payload['createdAt']).toBeDefined();
       expect(noteEvents[0].payload['text']).toBe('Initial contact made via phone');
     }, 60_000);

@@ -1,6 +1,6 @@
 boundary: CallAddTranscript
-path: /calls/{id}/transcript
-fallback: false
+contract_path: /calls/{id}/transcript
+fallback_override: false
 
 # Demonstrates request/response shape mismatch with nested graph:
 #   Request:  { speaker: string, text: string }  (flat, 2 fields)
@@ -9,38 +9,50 @@ fallback: false
 # The DSL adds a timestamp and auto-incrementing sequence number to each entry.
 # The graph accumulates transcript entries over multiple sequential requests.
 
-events:
+# Inline TypeScript helper: auto-incrementing transcript sequence number,
+# computed from the current length of the call's transcript array.
+scripts:
+  - name: computeSequenceNum
+    code: |
+      export default function(ctx) {
+        const existing = ctx.state?.transcript ?? [];
+        return existing.length + 1;
+      }
+
+event_catalog:
   - type: TranscriptEntryAppended
-    payload:
-      speaker: "${command.payload.speaker}"
-      text: "${command.payload.text}"
-      timestamp: "${$now()}"
-      sequenceNum: "${ts:computeSequenceNum}"
+    payload_template:
+      speaker: "command.payload.speaker"
+      text: "command.payload.text"
+      timestamp: "$now()"
+      sequenceNum: "ts:computeSequenceNum"
 
 behaviors:
   - name: addTranscriptEntry
-    method: POST
-    condition: "true"
-    requires:
-      - name: has-speaker
-        condition: "command.payload.speaker != null && command.payload.speaker != ''"
-        error_code: SPEAKER_REQUIRED
-        error_message: "Transcript entry must have a speaker"
-      - name: has-text
-        condition: "command.payload.text != null && command.payload.text != ''"
-        error_code: TRANSCRIPT_TEXT_REQUIRED
-        error_message: "Transcript entry must have text"
+    match:
+      operationId: addTranscriptEntry
+      condition: "true"
+      requires:
+        - name: has-speaker
+          condition: "command.payload.speaker != null && command.payload.speaker != ''"
+          error_code: SPEAKER_REQUIRED
+          error_message: "Transcript entry must have a speaker"
+        - name: has-text
+          condition: "command.payload.text != null && command.payload.text != ''"
+          error_code: TRANSCRIPT_TEXT_REQUIRED
+          error_message: "Transcript entry must have text"
     emit: TranscriptEntryAppended
 
 reducers:
   - on: TranscriptEntryAppended
     patches:
+      # Append the whole event payload — a fully-formed transcript entry
+      # ({ speaker, text, timestamp, sequenceNum }). Reducer patch values must be
+      # a single CEL expression; an inline object literal with nested ${...}
+      # would not be interpolated (non-string patch values pass through
+      # unchanged).
       - op: append
         path: /transcript
-        value:
-          speaker: "${event.payload.speaker}"
-          text: "${event.payload.text}"
-          timestamp: "${event.payload.timestamp}"
-          sequenceNum: "${event.payload.sequenceNum}"
+        value: "${event.payload}"
 
 initialization: []

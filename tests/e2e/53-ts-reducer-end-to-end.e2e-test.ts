@@ -16,12 +16,11 @@
  * All boundary/reducer behaviour lives in the fixtures; this suite only sends
  * HTTP requests and inspects engine state via /_engine/state.
  *
- * Transport: requests target the Specmatic stub URL when the plugin's
- * stub→engine forwarding warmed up healthy (app.stubForwardingHealthy); when it
- * did not (the known 03-forwarding plugin↔Specmatic limitation), the same
- * requests target the engine's HTTP gateway directly so the full CQRS/projection
- * pipeline — including the TS reducer dispatch under test — is still exercised
- * end-to-end over HTTP. The conflict/boot sub-tests are transport-independent.
+ * Transport: requests target the Specmatic stub URL UNCONDITIONALLY — this
+ * suite proves the Specmatic→plugin→engine forwarding path, so each stub-driven
+ * describe asserts app.stubForwardingHealthy === true in beforeAll and fails
+ * fast if forwarding did not warm up (no silent engineUrl fallback). The
+ * conflict/boot sub-tests are transport-independent and boot the engine in-proc.
  */
 
 import * as path from 'node:path';
@@ -48,9 +47,14 @@ interface WidgetState {
   renameCount?: number;
 }
 
-/** Base URL for boundary requests — the stub when forwarding is healthy, else the gateway. */
+/**
+ * Base URL for boundary requests — ALWAYS the Specmatic stub. This suite proves
+ * the stub→plugin→engine forwarding path, so it must never fall back to the
+ * engine gateway. Stub-driven describes assert app.stubForwardingHealthy in
+ * beforeAll, so reaching here implies forwarding is healthy.
+ */
 function target(app: E2eApp): string {
-  return app.stubForwardingHealthy ? app.stubUrl : app.engineUrl;
+  return app.stubUrl;
 }
 
 describeWithJava('53 — G2: TypeScript reducers fire end-to-end via Specmatic', () => {
@@ -62,6 +66,9 @@ describeWithJava('53 — G2: TypeScript reducers fire end-to-end via Specmatic',
       // prior e2e suite cannot leave a stale (boundary,event) registration.
       await sdkRegistry.reset();
       app = await startE2eApp({ fixtureName: 'ts-reducer' });
+      // Fail fast: this suite proves stub→plugin→engine forwarding, so it must
+      // not run if forwarding did not warm up healthy.
+      expect(app.stubForwardingHealthy).toBe(true);
     }, 120_000);
 
     afterAll(async () => {
@@ -118,6 +125,7 @@ describeWithJava('53 — G2: TypeScript reducers fire end-to-end via Specmatic',
     beforeAll(async () => {
       await sdkRegistry.reset();
       app = await startE2eApp({ fixtureName: 'ts-reducer-decorator' });
+      expect(app.stubForwardingHealthy).toBe(true);
     }, 120_000);
 
     afterAll(async () => {

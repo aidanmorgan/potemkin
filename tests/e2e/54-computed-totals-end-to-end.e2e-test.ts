@@ -32,10 +32,11 @@ interface OpportunityState {
   itemCount?: number;
 }
 
-// Requests target the Specmatic stub when stub→engine forwarding is healthy,
-// else the engine HTTP gateway directly (same CQRS + computed-field pipeline).
+// Requests target the Specmatic stub UNCONDITIONALLY — this suite proves the
+// stub→plugin→engine forwarding path, so beforeAll asserts forwarding is
+// healthy and there is no engineUrl fallback.
 function target(app: E2eApp): string {
-  return app.stubForwardingHealthy ? app.stubUrl : app.engineUrl;
+  return app.stubUrl;
 }
 
 async function createOpportunityViaStub(stubUrl: string): Promise<string> {
@@ -76,7 +77,11 @@ async function getOpportunityViaStub(stubUrl: string, oppId: string): Promise<Op
 describeWithJava('54 — G3: Opportunity computed totalValue + itemCount via Specmatic', () => {
   let app: E2eApp;
 
-  beforeAll(async () => { app = await startE2eApp(); }, 120_000);
+  beforeAll(async () => {
+    app = await startE2eApp();
+    // Fail fast: this suite proves stub→plugin→engine forwarding.
+    expect(app.stubForwardingHealthy).toBe(true);
+  }, 120_000);
   afterAll(async () => { if (app) await app.shutdown(); }, 30_000);
 
   it('totalValue + itemCount recompute through the stub across a 3-line-item sequence', async () => {

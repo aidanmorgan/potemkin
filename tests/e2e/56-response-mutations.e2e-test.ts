@@ -35,11 +35,12 @@ interface DocumentState {
   _links?: DocLinks;
 }
 
-// Served-response tests target the Specmatic stub when stub→engine forwarding
-// is healthy, else the engine HTTP gateway (which applies the same D1/D2/D3
-// response mutations). The _patches replay test always uses /_engine/forward.
+// Served-response tests target the Specmatic stub UNCONDITIONALLY — this suite
+// proves the mutations reach the Specmatic-served response, so beforeAll
+// asserts stub→plugin→engine forwarding is healthy (no engineUrl fallback). The
+// separate _patches replay describe deliberately uses /_engine/forward directly.
 function target(app: E2eApp): string {
-  return app.stubForwardingHealthy ? app.stubUrl : app.engineUrl;
+  return app.stubUrl;
 }
 
 async function createDocViaStub(base: string, title: string): Promise<string> {
@@ -57,7 +58,11 @@ async function createDocViaStub(base: string, title: string): Promise<string> {
 describeWithJava('56 — G5: response mutations via Specmatic + _patches replay', () => {
   let app: E2eApp;
 
-  beforeAll(async () => { app = await startE2eApp({ fixtureName: 'governance' }); }, 120_000);
+  beforeAll(async () => {
+    app = await startE2eApp({ fixtureName: 'governance' });
+    // Fail fast: this suite proves stub→plugin→engine forwarding.
+    expect(app.stubForwardingHealthy).toBe(true);
+  }, 120_000);
   afterAll(async () => { if (app) await app.shutdown(); }, 30_000);
 
   describe('Specmatic-served response carries the mutations', () => {

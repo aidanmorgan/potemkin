@@ -70,12 +70,25 @@ export async function fwd(
   headers: Record<string, string> = {},
   query: Record<string, string> = {},
 ): Promise<ForwardedResponse> {
+  // Contract: the Kotlin plugin lowercases all header keys before POSTing a
+  // ForwardedRequest to the engine. The harness must honour the same contract so
+  // engine-direct tests exercise the real lowercased-key path (e.g. If-Match →
+  // if-match for optimistic-concurrency conflict detection).
   const res = await fetch(`${engineUrl}/_engine/forward`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ method, path, headers, query, body }),
+    body: JSON.stringify({ method, path, headers: lowercaseKeys(headers), query, body }),
   });
   return res.json() as Promise<ForwardedResponse>;
+}
+
+/** Lowercase every key in a header map, matching the plugin's forwarding contract. */
+function lowercaseKeys(headers: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(headers)) {
+    out[k.toLowerCase()] = v;
+  }
+  return out;
 }
 
 export async function adminReset(engineUrl: string): Promise<void> {
