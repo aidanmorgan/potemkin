@@ -17,6 +17,7 @@ import { ensureSpecmaticJar, ensurePluginJar } from './binary-fetcher';
 import { startSpecmatic } from './specmatic-driver';
 import { startEngine } from './engine-driver';
 import { getFreePort } from './port-allocator';
+import { buildFixtureForwardBlocks } from './forward-blocks';
 import type { SpecmaticHandle } from './specmatic-driver';
 import type { EngineHandle } from './engine-driver';
 
@@ -176,7 +177,12 @@ export async function startE2eApp(opts: E2eAppOptions = {}): Promise<E2eApp> {
   ]);
 
   // 3. Write a temporary potemkin.yaml carrying the dynamic ports under
-  // the plugin: block; the plugin reads engine.url, controlPort etc.
+  // the plugin: block; the plugin reads engine.url, controlPort etc. The
+  // fixture's auth + forward-blocks (seeds/workflow/overlay/governance) are
+  // spliced in so the plugin exercises them through the stub.
+  const fixtureName = opts.fixtureName ?? opts.crmFixtureName;
+  const forward = buildFixtureForwardBlocks(fixtureName);
+
   const potemkinConfig = [
     `version: 1`,
     `specmatic: ./specmatic.yaml`,
@@ -186,21 +192,26 @@ export async function startE2eApp(opts: E2eAppOptions = {}): Promise<E2eApp> {
     `    url: "http://127.0.0.1:${enginePort}"`,
     `    timeoutMs: 5000`,
     `  controlPort: ${pluginControlPort}`,
+    forward.pluginConfigYaml,
   ].join('\n');
 
   const tmpConfigPath = path.join(os.tmpdir(), `potemkin-${Date.now()}.yaml`);
   fs.writeFileSync(tmpConfigPath, potemkinConfig, 'utf8');
 
-  // 4. Start Specmatic (which loads plugin via SPI on startup)
-  const fixtureName = opts.fixtureName ?? opts.crmFixtureName;
+  // 4. Start Specmatic (which loads plugin via SPI on startup). When the fixture
+  // declares an overlay, point Specmatic at the generated overlay file via the
+  // `overlayFilePath` env var — Specmatic reads it at HttpStub construction and
+  // serves the overlaid spec (E5).
+  const specmaticEnv: Record<string, string> = { POTEMKIN_CONFIG_PATH: tmpConfigPath };
+  if (forward.overlayFilePath) {
+    specmaticEnv['overlayFilePath'] = forward.overlayFilePath;
+  }
   const specmatic = await startSpecmatic({
     contractPath: resolveContractPath(fixtureName),
     pluginJar,
     specmaticJar,
     stubPort: specmaticPort,
-    extraEnv: {
-      POTEMKIN_CONFIG_PATH: tmpConfigPath,
-    },
+    extraEnv: specmaticEnv,
   });
 
   // 5. Wait for Specmatic stub to be ready
@@ -238,9 +249,12 @@ export async function startE2eApp(opts: E2eAppOptions = {}): Promise<E2eApp> {
   // a Specmatic-generated body). This makes stub-driven tests deterministic.
   const stubForwardingHealthy = await warmStubForwarding(`http://127.0.0.1:${specmaticPort}`, fixtureName);
 
-  // 8. Cleanup tmp config on JVM exit
+  // 8. Cleanup tmp config + overlay file on JVM exit
   specmatic.process.on('exit', () => {
     try { fs.unlinkSync(tmpConfigPath); } catch { /* ignore */ }
+    if (forward.overlayFilePath) {
+      try { fs.unlinkSync(forward.overlayFilePath); } catch { /* ignore */ }
+    }
   });
 
   const app: E2eApp = {

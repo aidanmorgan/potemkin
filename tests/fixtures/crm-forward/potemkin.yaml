@@ -1,0 +1,80 @@
+version: 1
+specmatic: ./specmatic.yaml
+modules:
+  - "dsl/**/*.yaml"
+  # WIP boundaries authored in the older path:/fallback: dialect with no
+  # contract path — excluded until converted to canonical snake_case form.
+  - "!dsl/call-add-transcript.yaml"
+  - "!dsl/lead-add-note.yaml"
+typescript:
+  scan:
+    - include: ["scripts/**/*.ts"]
+      exclude: ["**/*.test.ts", "**/*.d.ts"]
+  watch: false
+  watchDebounceMs: 200
+plugin:
+  engine:
+    url: "${POTEMKIN_ENGINE_URL:http://localhost:3000}"
+    timeoutMs: 30000
+  controlPort: 0
+
+# E4 — Seeds: dynamic Specmatic expectations registered at boot. Each targets a
+# seed-only contract path (no engine boundary), so the plugin lets Specmatic
+# serve the seeded response. One starts from the contract base, one from empty;
+# both apply patches to produce the served body.
+seeds:
+  - description: seed-from-contract
+    request:
+      method: GET
+      path: /seed-contract/contract-1
+    base: contract
+    patches:
+      - op: add
+        path: /id
+        value: contract-1
+      - op: add
+        path: /origin
+        value: CONTRACT_SEED
+      - op: add
+        path: /label
+        value: from-contract
+  - description: seed-from-empty
+    request:
+      method: GET
+      path: /seed-empty/empty-1
+    base: empty
+    patches:
+      - op: add
+        path: /id
+        value: empty-1
+      - op: add
+        path: /origin
+        value: EMPTY_SEED
+      - op: add
+        path: /label
+        value: from-empty
+
+# E6 — Workflow: capture the created lead id and propagate it into a later
+# request path placeholder (`/leads/{leadId}`).
+workflow:
+  ids:
+    leadId:
+      extract: "BODY.id"
+      use: "PATH.leadId"
+
+# E5 — Overlay: flip GET /leads/{id} to deprecated in the served spec.
+overlay:
+  patches:
+    - op: add
+      path: /paths/~1leads~1{id}/get/deprecated
+      value: true
+
+# Governance: reporting + success criterion forward block.
+governance:
+  successCriterion: "coverage >= 0.8"
+  report:
+    successCriteria:
+      minCoverage: 0.8
+      excludedEndpoints:
+        - "/seed-contract/{id}"
+        - "/seed-empty/{id}"
