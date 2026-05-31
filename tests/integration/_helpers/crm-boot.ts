@@ -6,7 +6,7 @@
  * CRM sub-paths (e.g. /leads/{id}, /leads/{id}/contact, etc.).
  *
  * The CRM DSL defines only 5 base contract_paths (one per boundary).
- * The OpenAPI spec declares 21 paths. Without expansion, requests to
+ * The OpenAPI spec declares 23 paths. Without expansion, requests to
  * sub-paths like GET /leads/{id} return 404.
  *
  * This matches the logic in tests/acceptance/_helpers/test-app.ts.
@@ -62,7 +62,7 @@ export function expandByContractPath(sys: BootedSystem): void {
 }
 
 /**
- * Boot the CRM fixture and expand byContractPath for all 21 OpenAPI paths.
+ * Boot the CRM fixture and expand byContractPath for all 23 OpenAPI paths.
  */
 export async function bootCrmSystem(): Promise<BootedSystem> {
   const fixture = await loadFixture();

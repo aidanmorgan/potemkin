@@ -1,10 +1,21 @@
 # The Nuisance Bureau CRM — Global configuration
-# Contains: idempotency, sagas (with compensation), derived projections
+# Contains: idempotency, sagas (with compensation), derived projections,
+# security headers
 # REQ-81/82/83: Idempotency config
 idempotency:
   enabled: true
   ttl_seconds: 86400
   hash_includes_body: true
+
+# HTTP security headers — applied to every response by the gateway middleware.
+security_headers:
+  enabled: true
+  hsts: true
+  nosniff: true
+  frame_deny: true
+  referrer_policy: "strict-origin-when-cross-origin"
+  custom_headers:
+    X-Custom-Sim-Header: "potemkin-sim"
 
 # REQ-73–80: Sagas with compensation
 sagas:

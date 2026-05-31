@@ -109,47 +109,99 @@ async function probeUrl(targetUrl: string, timeoutMs = 10_000): Promise<boolean>
   return false;
 }
 
-/** A collection GET path the plugin owns (forwards) per fixture — used to warm discovery. */
-function warmupPathForFixture(fixtureName: string | undefined): string {
+// Shared JWT secret for the crm-jwt / crm-forward fixtures (auth.mode: jwt).
+// Kept in sync with tests/fixtures/crm-jwt/dsl/global.yaml — used only to mint a
+// warmup token so the discovery probe can reach the engine past JWT auth.
+const WARMUP_JWT_SECRET = 'potemkin-jwt-e2e-test-secret-do-not-use';
+const WARMUP_JWT_ISSUER = 'potemkin-test';
+const WARMUP_JWT_AUDIENCE = 'potemkin-api';
+
+function base64url(buf: Buffer): string {
+  return buf.toString('base64').replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
+}
+
+/** Mint an HS256 JWT valid for the crm-jwt/crm-forward fixtures. */
+function mintWarmupJwt(): string {
+  const now = Math.floor(Date.now() / 1000);
+  const header = base64url(Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' }), 'utf8'));
+  const payload = base64url(Buffer.from(JSON.stringify({
+    sub: 'warmup', scopes: 'manager admin',
+    iss: WARMUP_JWT_ISSUER, aud: WARMUP_JWT_AUDIENCE,
+    iat: now, exp: now + 3600,
+  }), 'utf8'));
+  const signingInput = `${header}.${payload}`;
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { createHmac } = require('node:crypto');
+  const sig = base64url(createHmac('sha256', WARMUP_JWT_SECRET).update(signingInput).digest());
+  return `${signingInput}.${sig}`;
+}
+
+/**
+ * An owned single-entity GET on a KNOWN-ABSENT id per fixture — used to warm
+ * discovery AND to prove the response came from the engine rather than from
+ * Specmatic's generator.
+ *
+ * Why a bogus id: a well-formed GET /leads/{uuid} satisfies the OpenAPI
+ * contract, so when the plugin is NOT forwarding, Specmatic generates a happy
+ * 2xx example for it. The ENGINE, in contrast, returns a deterministic
+ * entity-absence response for an id it does not hold (404 for query boundaries;
+ * 422 for the ts-reducer WidgetById boundary, which declares no GET-query
+ * behaviour). So a 404/422 on a bogus id is something ONLY the engine produces
+ * — a Specmatic-generated response for the same request would be a 2xx example.
+ *
+ * For JWT-auth fixtures (crm-jwt, crm-forward) the probe carries a valid bearer
+ * token so it reaches the engine's entity-absence path rather than the auth
+ * 401 (which would be ambiguous against operations that declare a 401 response).
+ */
+function warmupProbeForFixture(
+  fixtureName: string | undefined,
+): { path: string; engineStatuses: readonly number[]; headers: Record<string, string> } {
+  // A syntactically valid UUID that no fixture seeds, so the engine never holds
+  // an entity for it.
+  const BOGUS_ID = '00000000-0000-7000-8000-0000deadbeef';
+  const accept: Record<string, string> = { Accept: 'application/json' };
   switch (fixtureName) {
     case 'ts-reducer':
     case 'ts-reducer-decorator':
-      // Widgets has no list GET; GET an arbitrary id. The WidgetById boundary
-      // defines no GET-query behaviour so the engine forwards a 422, but any
-      // forwarded engine status proves discovery + forwarding are warm.
-      return '/widgets/warmup-id';
+      // WidgetById declares no GET-query behaviour, so the engine returns 422
+      // (unhandled operation) for any GET — a status Specmatic would not
+      // generate for a contract-valid request.
+      return { path: `/widgets/${BOGUS_ID}`, engineStatuses: [422], headers: accept };
     case 'governance':
-      return '/documents';
+      return { path: `/documents/${BOGUS_ID}`, engineStatuses: [404, 422], headers: accept };
+    case 'crm-jwt':
+    case 'crm-forward':
+      return {
+        path: `/leads/${BOGUS_ID}`,
+        engineStatuses: [404],
+        headers: { ...accept, authorization: `Bearer ${mintWarmupJwt()}` },
+      };
     default:
-      return '/leads';
+      return { path: `/leads/${BOGUS_ID}`, engineStatuses: [404], headers: accept };
   }
 }
 
 /**
- * Poll an owned stateful GET path through the stub until the plugin forwards it
- * (engine-served response) rather than letting Specmatic generate one. A
- * forwarded response is any well-formed HTTP status (200/404/etc.); a status of
- * 0 or a fetch parse error means the plugin has not yet discovered the route.
+ * Poll an owned single-entity GET path through the stub until the plugin
+ * forwards it to the ENGINE — proven by an engine-specific status (entity
+ * absence / unhandled query) on a known-absent id, NOT merely any numeric
+ * status. A 2xx here means Specmatic generated the response itself (forwarding
+ * is not yet healthy); a status 0 / parse error means the route is not yet
+ * discovered. Only the engine-specific status proves a real forwarded response.
  */
 async function warmStubForwarding(stubUrl: string, fixtureName: string | undefined): Promise<boolean> {
-  const p = warmupPathForFixture(fixtureName);
+  const { path: p, engineStatuses, headers } = warmupProbeForFixture(fixtureName);
   // Healthy forwarding converges within a second or two; cap the wait so suites
   // running against the known-unhealthy stub path don't pay a long penalty.
   const deadline = Date.now() + 6_000;
   while (Date.now() < deadline) {
     try {
-      const res = await fetch(`${stubUrl}${p}`, {
-        method: 'GET',
-        headers: { Accept: 'application/json' },
-      });
-      // A forwarded response is any well-formed engine HTTP status (200/404/422/
-      // …). When forwarding is NOT yet healthy, the plugin returns null for the
-      // owned path and Specmatic emits an invalid "status 0" response, which
-      // surfaces here as an HTTPParserError in the catch block below — never as a
-      // numeric status. So any numeric status from a successful fetch proves the
-      // engine response was forwarded through the stub.
+      const res = await fetch(`${stubUrl}${p}`, { method: 'GET', headers });
       res.body?.cancel?.().catch(() => { /* ignore */ });
-      if (res.status >= 100 && res.status < 600) {
+      // Only an engine-specific status proves the engine served this response.
+      // A 2xx is a Specmatic-generated example (not forwarding); 0/parse error
+      // means the route is not yet discovered.
+      if (engineStatuses.includes(res.status)) {
         return true;
       }
     } catch {

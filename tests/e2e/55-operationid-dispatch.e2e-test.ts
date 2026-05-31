@@ -37,10 +37,11 @@ const LEAD_QUALIFIED = '00000000-0000-7000-8000-000000000012'; // QUALIFIED → 
 
 interface Json { [k: string]: unknown }
 
-// Base URL — Specmatic stub when stub→engine forwarding is healthy, else the
-// engine HTTP gateway (same operationId-dispatch pipeline either way).
+// Base URL — the Specmatic stub UNCONDITIONALLY. This suite proves
+// operationId dispatch over the stub→plugin→engine path, so beforeAll asserts
+// forwarding is healthy and there is no engineUrl fallback.
 function target(app: E2eApp): string {
-  return app.stubForwardingHealthy ? app.stubUrl : app.engineUrl;
+  return app.stubUrl;
 }
 
 async function stub(
@@ -62,7 +63,11 @@ async function stub(
 describeWithJava('55 — G4: operationId dispatch via Specmatic stub', () => {
   let app: E2eApp;
 
-  beforeAll(async () => { app = await startE2eApp(); }, 120_000);
+  beforeAll(async () => {
+    app = await startE2eApp();
+    // Fail fast: this suite proves stub→plugin→engine forwarding.
+    expect(app.stubForwardingHealthy).toBe(true);
+  }, 120_000);
   afterAll(async () => { if (app) await app.shutdown(); }, 30_000);
 
   it('createLead (POST /leads) dispatches the create behaviour → NEW lead', async () => {

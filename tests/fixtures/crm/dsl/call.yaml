@@ -91,5 +91,11 @@ reducers:
       - op: replace
         path: /notes
         value: "${event.payload.notes}"
+      # Initialise the transcript array so the CallAddTranscript boundary can
+      # append entries and the Call response always carries a (possibly empty)
+      # transcript array.
+      - op: replace
+        path: /transcript
+        value: "${[]}"
 
 initialization: []

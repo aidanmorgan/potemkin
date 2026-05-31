@@ -24,6 +24,22 @@ Or use the combined script:
 npm run test:e2e:build
 ```
 
+## Engine-only subset (no Java required)
+
+A subset of suites exercise behaviour that lives entirely in the Node engine and
+reach it only through the engine HTTP surface (`/_engine/forward` + `/_admin`).
+These boot via `startEngineOnlyApp` (no Specmatic JVM, no Kotlin plugin) and run
+UNCONDITIONALLY — including on CI hosts with no Java:
+
+```sh
+npm run test:e2e:engine     # jest.e2e.engine.config.js — no Java needed
+```
+
+The full `npm run test:e2e` (jest.e2e.config.js) still requires Java + the
+plugin JAR for the Specmatic-backed suites. As more suites migrate to
+`startEngineOnlyApp`, add their path to `engineOnlySuites` in
+`jest.e2e.engine.config.js`.
+
 ## What gets downloaded automatically
 
 - **Specmatic JAR v2.6.0** — downloaded on first run from the GitHub releases page and cached at `tests/e2e/.cache/specmatic-2.6.0.jar`.

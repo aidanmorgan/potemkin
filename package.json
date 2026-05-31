@@ -17,8 +17,9 @@
     "start:example": "tsx examples/run-nuisance-bureau-sim.ts",
     "specmatic-cli:download": "node -e \"require('./tests/integration/specmatic-cli/_helpers/specmatic-binary').ensureSpecmaticJar().then(p => console.log('Cached at:', p)).catch(e => { console.error(e); process.exit(1); })\"",
     "test:contract": "jest --config jest.contract.config.js",
-    "test:e2e": "jest --config jest.e2e.config.js",
-    "test:e2e:build": "cd plugin && ./gradlew shadowJar && cd .. && jest --config jest.e2e.config.js"
+    "test:e2e": "jest --config jest.e2e.config.js --runInBand",
+    "test:e2e:engine": "jest --config jest.e2e.engine.config.js --runInBand",
+    "test:e2e:build": "cd plugin && ./gradlew shadowJar && cd .. && jest --config jest.e2e.config.js --runInBand"
   },
   "dependencies": {
     "@apidevtools/swagger-parser": "^10.1.0",

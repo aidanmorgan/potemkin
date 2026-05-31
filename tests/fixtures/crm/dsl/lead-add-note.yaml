@@ -1,48 +1,56 @@
 boundary: LeadAddNote
-path: /leads/{id}/notes
-fallback: false
+contract_path: /leads/{id}/notes
+fallback_override: false
 
 # Deprecation: this boundary is scheduled for retirement.
 # Drives the Deprecation / Sunset / Link response headers.
 deprecated:
   date: "2025-01-01"
   sunset: "2025-06-01"
-  link: "/v2/leads/{id}/notes"
+  replacement: "/v2/leads/{id}/notes"
 
 # Latency: simulate a slow downstream so client retry/timeout logic can
 # exercise the boundary without needing chaos injection.
 latency:
   fixed_ms: 50
 
+# Inline TypeScript helper: generate a unique note id.
+scripts:
+  - name: generateNoteId
+    code: |
+      export default function(ctx) {
+        return ctx.helpers.uuid();
+      }
 
-events:
+event_catalog:
   - type: NoteAppended
-    payload:
-      noteId: "${ts:generateNoteId}"
-      text: "${command.payload.text}"
-      author: "${command.payload.author}"
-      createdAt: "${$now()}"
+    payload_template:
+      id: "ts:generateNoteId"
+      text: "command.payload.text"
+      author: "command.payload.author"
+      createdAt: "$now()"
 
 behaviors:
   - name: addNote
-    method: POST
-    condition: "true"
-    requires:
-      - name: has-text
-        condition: "command.payload.text != null && command.payload.text != ''"
-        error_code: NOTE_TEXT_REQUIRED
-        error_message: "Note text is required"
+    match:
+      operationId: addNote
+      condition: "true"
+      requires:
+        - name: has-text
+          condition: "command.payload.text != null && command.payload.text != ''"
+          error_code: NOTE_TEXT_REQUIRED
+          error_message: "Note text is required"
     emit: NoteAppended
 
 reducers:
   - on: NoteAppended
     patches:
+      # Append the whole event payload — a fully-formed note object
+      # ({ id, text, author, createdAt }). Reducer patch values must be a single
+      # CEL expression; an inline object literal with nested ${...} would not be
+      # interpolated (non-string patch values pass through unchanged).
       - op: append
         path: /notes
-        value:
-          id: "${event.payload.noteId}"
-          text: "${event.payload.text}"
-          author: "${event.payload.author}"
-          createdAt: "${event.payload.createdAt}"
+        value: "${event.payload}"
 
 initialization: []
