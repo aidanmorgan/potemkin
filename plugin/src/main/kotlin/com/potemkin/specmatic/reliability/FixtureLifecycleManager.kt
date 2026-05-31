@@ -40,8 +40,12 @@ class FixtureLifecycleManager(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var refreshJob: Job? = null
 
-    /** Last ETag seen from the fixtures endpoint, used to detect hot-reload changes. */
-    private val lastEtag = AtomicReference<String?>(null)
+    /**
+     * Last change signal seen from the fixtures endpoint, used to detect hot-reload changes.
+     * Prefers the HTTP ETag exposed by [FixturesClient.lastEtag]; falls back to a content
+     * hash of the fixture list when the server omits an ETag.
+     */
+    private val lastSignal = AtomicReference<String?>(null)
 
     // ---- public API ----------------------------------------------------------------------
 
@@ -86,11 +90,27 @@ class FixtureLifecycleManager(
         }
     }
 
+    /**
+     * Computes the change signal for a freshly fetched [fixtures] list. Uses the ETag from
+     * the last fixtures response when the server supplied one; otherwise falls back to the
+     * order-insensitive content hash of the fixture set.
+     *
+     * Must be called immediately after [FixturesClient.fetchFixtures] so that
+     * [FixturesClient.lastEtag] reflects the same response that produced [fixtures].
+     */
+    private fun changeSignal(fixtures: List<FixtureStub>): String {
+        val etag = fixturesClient.lastEtag()
+        if (!etag.isNullOrBlank()) {
+            return "etag:$etag"
+        }
+        return "hash:${fixtures.toHashSet().hashCode()}"
+    }
+
     internal fun pushFixtures() {
         try {
             val fixtures = fixturesClient.fetchFixtures()
-            // Record the current checksum so hotReloadIfChanged can detect subsequent changes.
-            lastEtag.set(fixtures.hashCode().toString())
+            // Record the current change signal so hotReloadIfChanged can detect subsequent changes.
+            lastSignal.set(changeSignal(fixtures))
             val pushed = mutableSetOf<Pair<String, String>>()
             var count = 0
             for (fixture in fixtures) {
@@ -110,7 +130,7 @@ class FixtureLifecycleManager(
         try {
             bridge.clearExpectations()
             fixturesClient.recordPushedPaths(emptySet())
-            lastEtag.set(null)
+            lastSignal.set(null)
             log.info("FixtureLifecycleManager: cleared all registered fixtures")
         } catch (e: Exception) {
             log.warn("FixtureLifecycleManager: failed to clear fixtures: {}", e.message, e)
@@ -120,20 +140,19 @@ class FixtureLifecycleManager(
     internal fun hotReloadIfChanged() {
         try {
             val fixtures = fixturesClient.fetchFixtures()
-            // Detect changes by comparing a content checksum.
-            // Use the fixture list's hashCode as a lightweight change signal when the
-            // FixturesClient does not expose the raw ETag directly.
-            val newChecksum = fixtures.hashCode().toString()
-            val known = lastEtag.getAndSet(newChecksum)
+            // Prefer the HTTP ETag as the change signal; fall back to a content hash only
+            // when the server omits an ETag.
+            val newSignal = changeSignal(fixtures)
+            val known = lastSignal.getAndSet(newSignal)
 
             if (known == null) {
-                // First call — record the baseline checksum; no reload needed.
-                log.debug("FixtureLifecycleManager: hot-reload baseline set (checksum={})", newChecksum)
+                // First call — record the baseline signal; no reload needed.
+                log.debug("FixtureLifecycleManager: hot-reload baseline set (signal={})", newSignal)
                 return
             }
 
-            if (known == newChecksum) {
-                log.debug("FixtureLifecycleManager: fixtures unchanged (checksum match), skipping hot-reload")
+            if (known == newSignal) {
+                log.debug("FixtureLifecycleManager: fixtures unchanged (signal match), skipping hot-reload")
                 return
             }
 

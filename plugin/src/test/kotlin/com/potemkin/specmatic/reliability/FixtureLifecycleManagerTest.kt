@@ -32,11 +32,20 @@ class FixtureLifecycleManagerTest {
     ) {
         val pushedPathHistory = mutableListOf<Set<Pair<String, String>>>()
 
+        /** When set, [lastEtag] returns this; when null, the client behaves as if the server omitted an ETag. */
+        private var etag: String? = null
+
         fun setFixtures(newFixtures: List<FixtureStub>) {
             fixtures = newFixtures
         }
 
+        fun setEtag(newEtag: String?) {
+            etag = newEtag
+        }
+
         override fun fetchFixtures(): List<FixtureStub> = fixtures
+
+        override fun lastEtag(): String? = etag
 
         override fun recordPushedPaths(paths: Set<Pair<String, String>>) {
             pushedPathHistory.add(paths)
@@ -220,6 +229,64 @@ class FixtureLifecycleManagerTest {
         // Should have cleared once and re-registered the new fixture.
         assertTrue(bridge.clearCount >= 1, "Expected at least one clear during hot-reload")
         assertEquals(fixtureV2.httpRequest.path, bridge.registered.last().httpRequest.path)
+    }
+
+    // ---- ETag-driven change detection ---------------------------------------------------
+
+    @Test
+    fun `hotReloadIfChanged skips reload when ETag is unchanged even if content hash would differ`() {
+        // Same ETag but different fixture content: the ETag is authoritative, so no reload.
+        fixturesClient.setEtag("\"v1\"")
+        fixturesClient.setFixtures(listOf(makeFixture("GET", "/original")))
+
+        val manager = FixtureLifecycleManager(monitor, fixturesClient, bridge)
+        manager.start()   // baseline signal = etag:"v1"
+        val clearsBefore = bridge.clearCount
+
+        // Content changes but the server reports the same ETag.
+        fixturesClient.setFixtures(listOf(makeFixture("GET", "/changed-but-same-etag")))
+        manager.hotReloadIfChanged()
+
+        assertEquals(clearsBefore, bridge.clearCount, "Unchanged ETag must not trigger a reload")
+    }
+
+    @Test
+    fun `hotReloadIfChanged reloads when ETag changes even if content hash is identical`() {
+        // Identical fixture content but a new ETag: the ETag is authoritative, so reload.
+        val fixture = makeFixture("GET", "/stable")
+        fixturesClient.setEtag("\"v1\"")
+        fixturesClient.setFixtures(listOf(fixture))
+
+        val manager = FixtureLifecycleManager(monitor, fixturesClient, bridge)
+        manager.start()   // baseline signal = etag:"v1"
+        val clearsBefore = bridge.clearCount
+
+        // Same content, new ETag.
+        fixturesClient.setEtag("\"v2\"")
+        manager.hotReloadIfChanged()
+
+        assertTrue(bridge.clearCount > clearsBefore, "Changed ETag must trigger a reload")
+    }
+
+    @Test
+    fun `hotReloadIfChanged falls back to content hash when server omits the ETag`() {
+        // No ETag at all → change detection must fall back to the fixture content hash.
+        fixturesClient.setEtag(null)
+        fixturesClient.setFixtures(listOf(makeFixture("GET", "/v1")))
+
+        val manager = FixtureLifecycleManager(monitor, fixturesClient, bridge)
+        manager.start()   // baseline signal = hash of [/v1]
+        val clearsBefore = bridge.clearCount
+
+        // Content changes; with no ETag the hash fallback must detect it.
+        fixturesClient.setFixtures(listOf(makeFixture("GET", "/v2")))
+        manager.hotReloadIfChanged()
+        assertTrue(bridge.clearCount > clearsBefore, "Hash fallback must detect content change when ETag is absent")
+
+        // Identical content again → hash fallback reports no change.
+        val clearsAfterReload = bridge.clearCount
+        manager.hotReloadIfChanged()
+        assertEquals(clearsAfterReload, bridge.clearCount, "Hash fallback must report no change for identical content")
     }
 
     // ---- concurrency tests --------------------------------------------------------------

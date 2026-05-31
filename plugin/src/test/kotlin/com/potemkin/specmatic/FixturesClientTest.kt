@@ -154,6 +154,58 @@ class FixturesClientTest {
         assertEquals(2, server.requestCount)
     }
 
+    // ---- lastEtag -----------------------------------------------------------------------
+
+    @Test
+    fun `lastEtag is null before any fetch`() {
+        val client = clientWithNoNetworkInit()
+        assertEquals(null, client.lastEtag())
+    }
+
+    @Test
+    fun `lastEtag returns the ETag from the last successful fetch`() {
+        server.enqueue(fixturesResponse("GET" to "/loans", etag = "\"v1\""))
+
+        val client = clientWithNoNetworkInit()
+        client.fetchFixtures()
+
+        assertEquals("\"v1\"", client.lastEtag())
+    }
+
+    @Test
+    fun `lastEtag is null when server omits the ETag header`() {
+        server.enqueue(fixturesResponse("GET" to "/loans"))   // no ETag header
+
+        val client = clientWithNoNetworkInit()
+        client.fetchFixtures()
+
+        assertEquals(null, client.lastEtag())
+    }
+
+    @Test
+    fun `lastEtag is preserved across a 304 Not Modified response`() {
+        server.enqueue(fixturesResponse("GET" to "/loans", etag = "\"v1\""))
+        server.enqueue(MockResponse().setResponseCode(304))
+
+        val client = clientWithNoNetworkInit()
+        client.fetchFixtures()
+        client.fetchFixtures()
+
+        assertEquals("\"v1\"", client.lastEtag())
+    }
+
+    @Test
+    fun `lastEtag updates when the server returns a new ETag`() {
+        server.enqueue(fixturesResponse("GET" to "/loans", etag = "\"v1\""))
+        server.enqueue(fixturesResponse("GET" to "/loans", "POST" to "/loans", etag = "\"v2\""))
+
+        val client = clientWithNoNetworkInit()
+        client.fetchFixtures()
+        assertEquals("\"v1\"", client.lastEtag())
+        client.fetchFixtures()
+        assertEquals("\"v2\"", client.lastEtag())
+    }
+
     // ---- failure handling ---------------------------------------------------------------
 
     @Test

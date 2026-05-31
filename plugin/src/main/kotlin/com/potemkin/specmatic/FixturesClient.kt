@@ -67,6 +67,17 @@ open class FixturesClient(
     }
 
     /**
+     * Returns the ETag from the last fixtures response, or null if the server has not
+     * supplied one (or no successful fetch has occurred yet). Read under the same lock
+     * that guards the cache.
+     *
+     * Callers use this as the authoritative change signal for hot-reload: a changed ETag
+     * means the fixture set changed. When this is null, callers must fall back to a
+     * content hash.
+     */
+    open fun lastEtag(): String? = lock.read { cache.etag }
+
+    /**
      * Records the set of (method, path) tuples that have been successfully pushed to Specmatic.
      * Called by [SpecmaticStubBridge] after registration.
      */
