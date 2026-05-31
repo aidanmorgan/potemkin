@@ -16,7 +16,7 @@ import { createHash } from 'node:crypto';
 import type { BootedSystem } from '../engine/boot.js';
 import type { ForwardedRequest, ForwardedResponse, RoutesDiscoveryResponse, FixturesResponse } from './types.js';
 import { deriveFixtures } from './fixtures.js';
-import type { Command, Intent, JsonObject, JsonValue } from '../types.js';
+import type { Actor, Command, Intent, JsonObject, JsonValue } from '../types.js';
 import { matchRoute } from '../contract/router.js';
 import { translateIntent } from '../engine/router.js';
 import { executeUnitOfWork } from '../engine/uow.js';
@@ -25,8 +25,22 @@ import { extractFaultSignal } from '../engine/faultSim.js';
 import { nextUuidv7 } from '../ids/uuidv7.js';
 import { resolveActor, JwtValidationError } from '../identity/actorResolver.js';
 import { applyResponseMutations, buildOperationLookup } from '../http/responseMutations.js';
-import { parseControlHeaders } from '../http/controlHeaders.js';
+import { parseControlHeaders, applyMask } from '../http/controlHeaders.js';
 import { applyPaginationStyle, applyResponseFormat } from '../http/responseFormat.js';
+import { resolveChaosHeaders, truncateBody } from '../http/chaosHeaders.js';
+import { evaluateFaultRules } from '../faults/index.js';
+import {
+  corsPreflightHeaders,
+  resolveBoundaryLatencyMs,
+  delay,
+  shouldReturnNotModified,
+  lastModifiedFromBody,
+  isSingleEntityBody,
+  applyHateoasToQueryBody,
+  applyDebugEnvelope,
+  lowercaseHeaders,
+  splitBoundaryFaults,
+} from './responsePipeline.js';
 import {
   EntityAbsenceError,
   EntityConflictError,
@@ -166,119 +180,169 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
 
     const fwd: ForwardedRequest = req.body as ForwardedRequest;
 
-    // Normalise method to uppercase.
-    const method = fwd.method.toUpperCase();
+    // Send a ForwardedResponse envelope (always HTTP 200 on the wire; the real
+    // status travels in the envelope's `status` field for the plugin to apply).
+    const send = (r: ForwardedResponse): void => { res.status(200).json(r); };
+
+    const rawMethod = fwd.method.toUpperCase();
     const path = fwd.path;
+
+    // HEAD is routed/processed as GET (RFC 7231 §4.3.2); the body is emptied on
+    // the way out. OPTIONS is answered as a CORS preflight before any routing.
+    const isHead = rawMethod === 'HEAD';
+    const method = isHead ? 'GET' : rawMethod;
+
+    if (rawMethod === 'OPTIONS') {
+      send({ status: 204, headers: corsPreflightHeaders(), body: null });
+      return;
+    }
+
+    // Normalise the forwarded headers to lowercase keys once (the plugin already
+    // lowercases on the wire, but original casing must never mis-route).
+    const lc = lowercaseHeaders(fwd.headers);
 
     // 2. Fault-sim: honour x-specmatic-fault forwarded in the fwd.headers.
     try {
       const fault = extractFaultSignal(fwd.headers as Record<string, string | string[] | undefined>);
       if (fault !== null) {
         sys.metrics.faultsSimulatedTotal.add(1);
-        const fwdResponse: ForwardedResponse = {
-          status: fault.status,
-          headers: fault.headers ?? {},
-          body: fault.body,
-        };
-        res.status(200).json(fwdResponse);
+        send({ status: fault.status, headers: fault.headers ?? {}, body: isHead ? null : fault.body });
         return;
       }
     } catch (err) {
       const mapped = mapErrorToStatus(err);
-      res.status(200).json({ status: mapped.status, headers: mapped.headers ?? {}, body: mapped.body } satisfies ForwardedResponse);
+      send({ status: mapped.status, headers: mapped.headers ?? {}, body: mapped.body });
       return;
     }
 
-    // 3. Match route against OpenAPI.
+    // 3. Match route against OpenAPI (HEAD looked up as GET).
     const route = matchRoute(sys.openapi, method, path);
     if (route === null) {
-      const fwdResponse: ForwardedResponse = {
-        status: 404,
-        headers: {},
-        body: { error: 'NO_ROUTE', path },
-      };
-      res.status(200).json(fwdResponse);
+      send({ status: 404, headers: {}, body: { error: 'NO_ROUTE', path } });
       return;
     }
 
-    // 4. Resolve boundary and intent.
+    // 4. Resolve boundary.
     const boundary = sys.dsl.byContractPath[route.contractPath];
     if (boundary === undefined) {
-      const fwdResponse: ForwardedResponse = {
-        status: 404,
-        headers: {},
-        body: { error: 'NO_BOUNDARY', contractPath: route.contractPath },
-      };
-      res.status(200).json(fwdResponse);
+      send({ status: 404, headers: {}, body: { error: 'NO_BOUNDARY', contractPath: route.contractPath } });
       return;
     }
 
+    // 5. Parse X-Potemkin-* control headers from the lowercased map.
+    const controls = parseControlHeaders(lc);
+
+    // 5a. Admin gating for Tier 3 actor-override / impersonate and the Tier 7
+    //     request-validation skip — these require an `admin`-scoped caller.
+    //     (Response-validation / additional-properties skips are NOT gated on the
+    //     forwarding path: they only relax how the engine validates its OWN
+    //     output, never the caller's request, so they carry no privilege.)
+    const usesAdminGated =
+      Boolean(controls.identity.actorOverride) ||
+      Boolean(controls.identity.impersonate) ||
+      controls.validation.skipRequestValidation === true;
+    if (usesAdminGated) {
+      let callerActor;
+      try {
+        callerActor = resolveActor(readForwardedHeader(fwd.headers, 'authorization'), sys.dsl.auth);
+      } catch (e) {
+        if (e instanceof JwtValidationError) {
+          send({ status: 401, headers: { 'www-authenticate': 'Bearer' }, body: { error: 'UNAUTHENTICATED', message: e.message, details: { code: e.code } } });
+          return;
+        }
+        throw e;
+      }
+      const isAdmin = (callerActor?.scopes ?? []).includes('admin');
+      if (!isAdmin) {
+        send({ status: 401, headers: {}, body: { error: 'ADMIN_REQUIRED', message: 'admin scope required for this X-Potemkin-* header' } });
+        return;
+      }
+    }
+
+    // 6. Translate intent.
     let intent: Intent;
     try {
       intent = translateIntent({ method, boundary });
     } catch (err) {
       const mapped = mapErrorToStatus(err);
-      const fwdResponse: ForwardedResponse = { status: mapped.status, headers: mapped.headers ?? {}, body: mapped.body };
-      res.status(200).json(fwdResponse);
+      send({ status: mapped.status, headers: mapped.headers ?? {}, body: mapped.body });
       return;
     }
 
-    // 5. Resolve targetId from path params; generate one for creation commands if needed.
-    let targetId: string | null = route.pathParams['id'] ?? null;
-    if (intent === 'creation' && targetId === null) {
-      const genRule = boundary.identity?.creation?.generate;
-      if (genRule === '$uuidv7()') {
-        targetId = nextUuidv7();
-      }
-    }
+    const logger = sys.logger.child({ forwardedPath: path, forwardedMethod: rawMethod });
 
-    // 6. Resolve actor from the forwarded Authorization header per auth mode
-    //    (F1: jwt → validateJwt; else the legacy bearer shortcut).
-    //    NOTE (potemkin-0la): the /_engine/forward path is JWT/Bearer-only — it
-    //    resolves the actor solely from the forwarded `authorization` header.
-    //    Cookie/session-mode auth (auth.mode: session) is NOT reachable here: a
-    //    ForwardedRequest carries no session cookie and createSessionAuthMiddleware
-    //    runs only on the gateway's own contract routes, not on /_engine/forward.
-    //    Plugin-forwarded traffic must therefore present a Bearer/JWT credential.
-    let actor;
+    // 7. Resolve actor (jwt → validateJwt; else legacy bearer shortcut). The
+    //    forwarding path is Bearer/JWT-only — there is no session cookie here.
+    let actor: Actor | undefined;
     try {
       actor = resolveActor(readForwardedHeader(fwd.headers, 'authorization'), sys.dsl.auth) ?? undefined;
     } catch (e) {
       if (e instanceof JwtValidationError) {
-        // Return the ForwardedResponse envelope (HTTP 200 carrying the real
-        // status) like every other branch here — a bare 401 would leave the
-        // envelope's `status` field undefined for the plugin/caller to read.
-        const fwdResponse: ForwardedResponse = {
-          status: 401,
-          headers: { 'WWW-Authenticate': 'Bearer' },
-          body: { error: 'UNAUTHENTICATED', message: e.message, details: { code: e.code } },
-        };
-        res.status(200).json(fwdResponse);
+        send({ status: 401, headers: { 'www-authenticate': 'Bearer' }, body: { error: 'UNAUTHENTICATED', message: e.message, details: { code: e.code } } });
         return;
       }
       throw e;
     }
+    // Tier 3: actor override / impersonate (admin-gated above) — `<id>:<scopes>`.
+    const adminOverride = controls.identity.actorOverride ?? controls.identity.impersonate;
+    if (adminOverride) {
+      const [id, scopesStr] = adminOverride.split(':', 2);
+      actor = { id: id ?? 'unknown', scopes: (scopesStr ?? '').split(',').filter(Boolean) };
+    }
 
-    // 7. Extract sequenceVersion from forwarded If-Match header (case-insensitive).
+    // 8. Chaos headers — resolve direct X-Potemkin-* chaos primitives. Latency
+    //    accrues here; an override response short-circuits BEFORE the UoW.
+    const faultRules = sys.dsl.faults ?? [];
+    const chaos = resolveChaosHeaders(lc, faultRules);
+
+    // 9. Request-body validation (unless admin-gated skip, or a bulk array body
+    //    which is validated per-item below). A ContractViolationError maps to 400.
+    const isBulkArrayBody =
+      controls.sideEffects.bulkTransactional === true && Array.isArray(fwd.body);
+    const isCreationArrayBody = intent === 'creation' && Array.isArray(fwd.body);
+    if (
+      controls.validation.skipRequestValidation !== true &&
+      !isBulkArrayBody && !isCreationArrayBody &&
+      chaos.response === undefined
+    ) {
+      try {
+        sys.validator.validateRequest(
+          method,
+          route.contractPath,
+          (fwd.body as JsonValue | null | undefined) ?? {},
+          fwd.query,
+          route.pathParams,
+        );
+      } catch (err) {
+        if (err instanceof ContractViolationError) {
+          send({ status: 400, headers: { 'x-specmatic-result': 'failure' }, body: { error: 'CONTRACT_VIOLATION', details: err.details ?? err.message } });
+          return;
+        }
+        throw err;
+      }
+    }
+
+    // 10. Bulk array body on a creation boundary — execute each item through its
+    //     own UoW (validate per-item) and return the results array. Mirrors the
+    //     gateway bulk pattern; non-transactional arrays still loop (best-effort).
+    if (Array.isArray(fwd.body) && (isBulkArrayBody || isCreationArrayBody)) {
+      await runBulkCreate({ sys, fwd, route, boundary, intent, method, path, actor, controls, logger, send });
+      return;
+    }
+
+    // 11. Build Command (lowercased headers carried for fault matching + chaining).
     const ifMatchValue = readForwardedHeader(fwd.headers, 'if-match');
     const sequenceVersion = ifMatchValue !== undefined
       ? Number(String(ifMatchValue).replace(/^"|"$/g, ''))
       : undefined;
-
-    // 8. Extract fault signal from forwarded x-specmatic-fault header (already handled above,
-    //    but the Command also carries faultSignal for the UoW fault-sim path).
     const faultHeaderRaw = readForwardedHeader(fwd.headers, 'x-specmatic-fault');
 
-    // 8b. Parse X-Potemkin-* control headers. parseControlHeaders looks header
-    //     constants up by their canonical lowercase name, so normalise the
-    //     forwarded headers (which may carry original casing) to lowercase keys.
-    const lowercasedHeaders: Record<string, string> = {};
-    for (const [k, v] of Object.entries(fwd.headers)) {
-      lowercasedHeaders[k.toLowerCase()] = v;
+    let targetId: string | null = route.pathParams['id'] ?? null;
+    if (intent === 'creation' && targetId === null) {
+      const genRule = boundary.identity?.creation?.generate;
+      if (genRule === '$uuidv7()') targetId = nextUuidv7();
     }
-    const controls = parseControlHeaders(lowercasedHeaders);
 
-    // 9. Build Command.
     const command: Command = {
       commandId: nextUuidv7(),
       boundary: boundary.boundary,
@@ -291,11 +355,60 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       sequenceVersion,
       origin: 'inbound',
       depth: 0,
+      headers: lc,
       ...(faultHeaderRaw ? { faultSignal: faultHeaderRaw } : {}),
       ...(actor !== undefined ? { actor } : {}),
     };
 
-    // 10. Idempotency check (mirrors gateway.ts logic).
+    // 12. DSL fault rules — evaluate global + boundary-scoped rules against the
+    //     command (header / boundary / intent / CEL / probability matchers)
+    //     BEFORE the UoW so a match mutates no state. Skipped under Skip-Dispatch.
+    if (
+      chaos.response === undefined &&
+      faultRules.length > 0 &&
+      controls.sideEffects.skipDispatch !== true
+    ) {
+      const split = splitBoundaryFaults(faultRules, boundary.boundary);
+      const faultResponse = evaluateFaultRules({
+        command,
+        boundaryFaults: split.boundary,
+        globalFaults: split.global,
+        dynamicFaults: [],
+        cel: sys.cel,
+        state: command.targetId !== null ? (sys.graph.get(command.targetId) as JsonObject | null) : null,
+        logger,
+      });
+      if (faultResponse !== null) {
+        sys.metrics.faultsSimulatedTotal.add(1);
+        await delay(resolveBoundaryLatencyMs(boundary.latency));
+        const headers = lowercaseHeaderMap(faultResponse.headers);
+        send({ status: faultResponse.status, headers, body: isHead ? null : (faultResponse.body ?? null) });
+        return;
+      }
+    }
+
+    // 13. Apply chaos-header override (force-status / error-class / use-fault /
+    //     success-rate / drop-connection) BEFORE the UoW. Latency from chaos +
+    //     boundary config is applied first.
+    const boundaryLatencyMs = resolveBoundaryLatencyMs(boundary.latency);
+    if (chaos.response !== undefined || chaos.dropConnection === true) {
+      await delay(chaos.extraLatencyMs + boundaryLatencyMs);
+      if (chaos.dropConnection === true) {
+        // The forwarding layer cannot destroy the upstream socket, so it surfaces
+        // a synthetic 504 + marker for the plugin to honour as a dropped connection.
+        send({ status: 504, headers: { 'x-potemkin-dropped': 'true' }, body: null });
+        return;
+      }
+      const cr = chaos.response!;
+      let body: JsonValue | null | undefined = cr.body ?? null;
+      if (chaos.bodyTruncateBytes !== undefined && body !== null && body !== undefined) {
+        body = truncateBody(body, chaos.bodyTruncateBytes);
+      }
+      send({ status: cr.status, headers: lowercaseHeaderMap(cr.headers), body: isHead ? null : body });
+      return;
+    }
+
+    // 14. Idempotency check (mirrors gateway.ts logic).
     const idempotencyKey = readForwardedHeader(fwd.headers, 'idempotency-key');
     const idempotencyCfg = sys.dsl.idempotency;
     const idempotencyEnabled = idempotencyCfg?.enabled ?? false;
@@ -304,44 +417,26 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       const store = sys.idempotencyStore;
       const requestBody: JsonValue = fwd.body ?? {};
       const hashIncludesBody = idempotencyCfg?.hashIncludesBody ?? true;
-
       try {
-        const checkResult = store.check({
-          method,
-          path,
-          idempotencyKey,
-          body: requestBody,
-          hashIncludesBody,
-        });
-
+        const checkResult = store.check({ method, path, idempotencyKey, body: requestBody, hashIncludesBody });
         if (checkResult.hit) {
           const cached = checkResult.response;
-          const fwdResponse: ForwardedResponse = {
-            status: cached.status,
-            headers: { ...(cached.headers ?? {}), 'x-idempotency-replay': 'true' },
-            body: cached.body ?? null,
-          };
-          res.status(200).json(fwdResponse);
+          send({ status: cached.status, headers: { ...(cached.headers ?? {}), 'x-idempotency-replay': 'true' }, body: isHead ? null : (cached.body ?? null) });
           return;
         }
       } catch (err) {
         if (err instanceof IdempotencyConflictError) {
-          const fwdResponse: ForwardedResponse = { status: 409, headers: {}, body: err.toJSON() as JsonValue };
-          res.status(200).json(fwdResponse);
+          send({ status: 409, headers: {}, body: err.toJSON() as JsonValue });
           return;
         }
         throw err;
       }
     }
 
-    // 11. Execute Unit of Work.
-    const logger = sys.logger.child({ forwardedPath: path, forwardedMethod: method });
+    // 15. Apply boundary latency for the normal (non-chaos) path before responding.
+    await delay(boundaryLatencyMs + chaos.extraLatencyMs);
 
-    // Mirror the gateway's side-effect wiring: outbound webhooks fire via the
-    // injected transport (sys.webhookTransport); a bulk-transactional forwarded
-    // request defers its post-commit sagas/webhooks into a batch-scoped queue so
-    // they fire exactly once after a successful commit (and never against state
-    // that an abort would discard).
+    // 16. Execute Unit of Work.
     const deferred = controls.sideEffects.bulkTransactional === true
       ? createSideEffectQueue()
       : undefined;
@@ -369,31 +464,21 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
           webhookTransport: sys.webhookTransport,
           controls,
           ...(deferred ? { deferSideEffects: deferred } : {}),
-          // maxCascadeDepth=N allows N levels beyond the primary; the UoW counts
-          // depth from 0 (primary), so pass N+1 to include the primary.
           ...(controls.sideEffects.maxCascadeDepth !== undefined
             ? { maxDepth: controls.sideEffects.maxCascadeDepth + 1 }
             : {}),
         }),
       );
-      // Single-UoW forward: the command committed, so flush the deferred batch.
       deferred?.flush(logger);
     } catch (err) {
-      // Aborted before commit — discard any enqueued side-effects so none fire.
       deferred?.discard();
       logger.error({ err }, 'UoW execution error in forwarding handler');
       const mapped = mapErrorToStatus(err);
-      const fwdResponse: ForwardedResponse = {
-        status: mapped.status,
-        // X-Specmatic-Result: every UoW error path is a contract-test failure.
-        headers: { ...(mapped.headers ?? {}), 'x-specmatic-result': 'failure' },
-        body: mapped.body,
-      };
-      res.status(200).json(fwdResponse);
+      send({ status: mapped.status, headers: { ...(mapped.headers ?? {}), 'x-specmatic-result': 'failure' }, body: mapped.body });
       return;
     }
 
-    // 12. Build response headers including ETag for mutating commands.
+    // 17. Build response headers including ETag.
     const responseHeaders: Record<string, string> = { ...(result.headers ?? {}) };
 
     const isMutating = intent === 'mutation' || intent === 'creation';
@@ -405,12 +490,45 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       const seqForEtag = primaryEvents.length > 0
         ? primaryEvents.at(-1)?.sequenceVersion
         : result.events.at(-1)?.sequenceVersion;
-      if (seqForEtag !== undefined) {
-        responseHeaders['etag'] = '"' + String(seqForEtag) + '"';
+      if (seqForEtag !== undefined) responseHeaders['etag'] = '"' + String(seqForEtag) + '"';
+    }
+
+    // Single-entity GET (RFC 7232): emit ETag (from the entity's current
+    // sequenceVersion) + Last-Modified (from the body's updatedAt audit field).
+    const isSingleEntityGet =
+      intent === 'query' && command.targetId !== null &&
+      result.status >= 200 && result.status < 300 &&
+      isSingleEntityBody(result.body);
+    let lastModified: string | undefined;
+    if (isSingleEntityGet && command.targetId !== null) {
+      const seq = sys.events.currentSequenceVersion(command.targetId);
+      if (seq > 0) responseHeaders['etag'] = '"' + String(seq) + '"';
+      lastModified = lastModifiedFromBody(result.body);
+      if (lastModified !== undefined) responseHeaders['last-modified'] = lastModified;
+    }
+
+    // 18. Conditional requests — short-circuit a single-entity GET to 304 when
+    //     If-None-Match / If-Modified-Since indicate the client is up to date.
+    //     The ETag is retained on the 304 for cache revalidation.
+    if (isSingleEntityGet) {
+      const notModified = shouldReturnNotModified({
+        ...(responseHeaders['etag'] !== undefined ? { etag: responseHeaders['etag'] } : {}),
+        ...(lastModified !== undefined ? { lastModified } : {}),
+        ...(readForwardedHeader(fwd.headers, 'if-none-match') !== undefined
+          ? { ifNoneMatch: readForwardedHeader(fwd.headers, 'if-none-match') } : {}),
+        ...(readForwardedHeader(fwd.headers, 'if-modified-since') !== undefined
+          ? { ifModifiedSince: readForwardedHeader(fwd.headers, 'if-modified-since') } : {}),
+      });
+      if (notModified) {
+        const condHeaders: Record<string, string> = {};
+        if (responseHeaders['etag'] !== undefined) condHeaders['etag'] = responseHeaders['etag'];
+        if (responseHeaders['last-modified'] !== undefined) condHeaders['last-modified'] = responseHeaders['last-modified'];
+        send({ status: 304, headers: condHeaders, body: null });
+        return;
       }
     }
 
-    // 13. Record idempotency entry after successful execution (mirrors gateway.ts).
+    // 19. Record idempotency entry after successful execution.
     if (idempotencyEnabled && idempotencyKey && intent !== 'query') {
       const store = sys.idempotencyStore;
       const requestBody: JsonValue = fwd.body ?? {};
@@ -418,16 +536,8 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       const ttlMs = (idempotencyCfg?.ttlSeconds ?? 86400) * 1000;
       try {
         store.record({
-          method,
-          path,
-          idempotencyKey,
-          body: requestBody,
-          hashIncludesBody,
-          response: {
-            status: result.status,
-            body: result.body,
-            headers: responseHeaders,
-          },
+          method, path, idempotencyKey, body: requestBody, hashIncludesBody,
+          response: { status: result.status, body: result.body, headers: responseHeaders },
           ttlMs,
         });
       } catch {
@@ -435,45 +545,47 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       }
     }
 
-    // D4: compute response-mutation patches (HATEOAS/mask) + deprecation headers.
-    // The base body is returned unchanged and the body patches are reported in
-    // `_patches` for the plugin's response interceptor to re-apply (E1); the
-    // deprecation/sunset/link headers are merged into the response headers.
+    let outBody: JsonValue | null | undefined = result.body;
+
+    // 20. Response mutations (per-boundary HATEOAS/mask via _patches) + deprecation
+    //     headers. Body patches are reported in `_patches` for the plugin's
+    //     response interceptor (the base body stays unchanged here).
     let patches: readonly import('../dsl/patches.js').JournalEntry[] | undefined;
-    if (result.status >= 200 && result.status < 300 && result.body !== null && result.body !== undefined) {
+    if (result.status >= 200 && result.status < 300 && outBody !== null && outBody !== undefined) {
       const pathItem = sys.openapi.paths[route.contractPath] as
         | Record<string, import('../contract/loader.js').OpenApiOperation | undefined>
         | undefined;
       const mutation = applyResponseMutations({
-        body: result.body,
+        body: outBody,
         boundary,
         operation: pathItem ? pathItem[method.toLowerCase()] : undefined,
         statusCode: result.status,
         operationLookup: buildOperationLookup(sys.openapi),
       });
-      // ForwardedResponse header keys are lowercase by convention.
       for (const [k, v] of Object.entries(mutation.headers)) responseHeaders[k.toLowerCase()] = v;
-      // Body-affecting patches only (hateoas/mask); deprecation went to headers.
       const bodyPatches = mutation.journal.filter((e) => e.source === 'hateoas' || e.source === 'mask');
       if (bodyPatches.length > 0) patches = bodyPatches;
     }
 
-    // Tier 5: pagination style + response format — mirror gateway.ts ordering
-    // (pagination first so HAL/JSON:API see the chosen collection shape), applied
-    // to the base body for successful responses. Header keys are lowercased per
-    // the ForwardedResponse convention used throughout this handler.
-    let outBody: JsonValue | null | undefined = result.body;
+    // 21. HATEOAS — embed state-dependent `_links` into query response bodies
+    //     (global `hateoas:` block). Applied to the live body (in addition to the
+    //     per-boundary `_patches` above) so plugin-less callers see the links.
+    if (intent === 'query' && result.status >= 200 && result.status < 300) {
+      outBody = applyHateoasToQueryBody(outBody, boundary, sys.dsl, sys.cel, fwd.query);
+    }
+
+    // 22. Tier 5: field mask (X-Potemkin-Mask replaces named fields with [MASKED]).
+    if (controls.format.maskFields && controls.format.maskFields.length > 0) {
+      outBody = applyMask(outBody, controls.format.maskFields) as JsonValue | null | undefined;
+    }
+
+    // Tier 5: pagination style then response format (mirror gateway ordering).
     if (
       controls.format.paginationStyle !== undefined &&
       result.status >= 200 && result.status < 300 &&
       outBody !== null && outBody !== undefined
     ) {
-      const paged = applyPaginationStyle(
-        outBody,
-        controls.format.paginationStyle,
-        fwd.query,
-        path,
-      );
+      const paged = applyPaginationStyle(outBody, controls.format.paginationStyle, fwd.query, path);
       outBody = paged.body;
       for (const [k, v] of Object.entries(paged.headers)) responseHeaders[k.toLowerCase()] = v;
     }
@@ -486,23 +598,177 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       responseHeaders['x-potemkin-response-format'] = controls.format.responseFormat;
     }
 
-    // Tier 1: signal that dry-run executed (the UoW already suppressed event
-    // append / side-effects because `controls` was passed into executeUnitOfWork).
+    // Tier 1: include-events / echo debug envelope.
+    outBody = applyDebugEnvelope({
+      body: outBody,
+      includeEvents: controls.transparency.includeEvents === true,
+      echo: controls.transparency.echo === true,
+      events: (result.events ?? []).map(e => ({
+        eventId: e.eventId, type: e.type, aggregateId: e.aggregateId,
+        sequenceVersion: e.sequenceVersion, timestamp: e.timestamp,
+        payload: e.payload as JsonValue, causedBy: e.causedBy,
+      })),
+      boundary: boundary.boundary,
+      intent,
+      targetId: command.targetId,
+      dryRun: controls.transparency.dryRun === true,
+      method,
+      path,
+    });
+
+    // Tier 1: signal that dry-run executed.
     if (controls.transparency.dryRun === true) responseHeaders['x-potemkin-dry-run'] = 'true';
 
-    // X-Specmatic-Result: mirror the gateway — success on 2xx, failure otherwise
-    // (header keys are lowercase per the ForwardedResponse convention).
+    // Tier 6: echo trace id / span name back to the caller for correlation.
+    if (controls.observability.traceId) responseHeaders['x-potemkin-trace-id'] = controls.observability.traceId;
+    if (controls.observability.spanName) responseHeaders['x-potemkin-span-name'] = controls.observability.spanName;
+
+    // X-Specmatic-Result: success on 2xx, failure otherwise.
     responseHeaders['x-specmatic-result'] = result.status >= 200 && result.status < 300 ? 'success' : 'failure';
 
-    const fwdResponse: ForwardedResponse = {
+    // X-Potemkin-Body-Truncate — slice the serialised body to N bytes.
+    if (chaos.bodyTruncateBytes !== undefined && outBody !== null && outBody !== undefined) {
+      outBody = truncateBody(outBody, chaos.bodyTruncateBytes);
+    }
+
+    send({
       status: result.status,
       headers: responseHeaders,
-      body: outBody,
-      ...(patches !== undefined ? { _patches: patches } : {}),
+      // HEAD responses carry no entity body (RFC 7231 §4.3.2).
+      body: isHead ? null : (outBody ?? null),
+      ...(patches !== undefined && !isHead ? { _patches: patches } : {}),
+    });
+  };
+}
+
+/** Lowercase the keys of an optional header map (chaos/fault responses use mixed casing). */
+function lowercaseHeaderMap(headers: Record<string, string> | undefined): Record<string, string> {
+  if (!headers) return {};
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(headers)) out[k.toLowerCase()] = v;
+  return out;
+}
+
+/**
+ * Execute a bulk-create: loop each item in an array body through its own Unit of
+ * Work (validating per-item) and return the collected result bodies as an array.
+ * Mirrors the gateway bulk pattern. Side-effects defer into one batch-scoped queue
+ * flushed once on full success.
+ */
+async function runBulkCreate(args: {
+  sys: BootedSystem;
+  fwd: ForwardedRequest;
+  route: { contractPath: string; pathParams: Record<string, string> };
+  boundary: import('../dsl/types.js').BoundaryConfig;
+  intent: Intent;
+  method: string;
+  path: string;
+  actor: Actor | undefined;
+  controls: import('../http/controlHeaders.js').ControlHeaders;
+  logger: import('../observability/logger.js').Logger;
+  send: (r: ForwardedResponse) => void;
+}): Promise<void> {
+  const { sys, fwd, route, boundary, intent, method, path, actor, controls, logger, send } = args;
+  const items = fwd.body as JsonValue[];
+
+  const eventSnapshot = sys.events.snapshot();
+  const graphSnapshot = sys.graph.snapshot();
+  const deferred = createSideEffectQueue();
+
+  const results: JsonValue[] = [];
+  let abortIndex: number | null = null;
+  let abortError: string | undefined;
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    const isObj = item !== null && typeof item === 'object' && !Array.isArray(item);
+    if (!isObj) {
+      abortIndex = i;
+      abortError = 'item must be an object';
+      break;
+    }
+
+    if (controls.validation.skipRequestValidation !== true) {
+      try {
+        sys.validator.validateRequest(method, route.contractPath, item as JsonValue, fwd.query, route.pathParams);
+      } catch (err) {
+        abortIndex = i;
+        abortError = err instanceof ContractViolationError
+          ? (typeof err.details === 'string' ? err.details : err.message)
+          : (err instanceof Error ? err.message : 'item rejected');
+        break;
+      }
+    }
+
+    let itemTargetId: string | null = route.pathParams['id'] ?? null;
+    if (intent === 'creation' && itemTargetId === null) {
+      const genRule = boundary.identity?.creation?.generate;
+      if (genRule === '$uuidv7()') itemTargetId = nextUuidv7();
+    }
+
+    const itemCommand: Command = {
+      commandId: nextUuidv7(),
+      boundary: boundary.boundary,
+      intent,
+      targetId: itemTargetId,
+      payload: item as JsonObject,
+      queryParams: fwd.query,
+      httpMethod: method,
+      path,
+      origin: 'inbound',
+      depth: 0,
+      headers: lowercaseHeaders(fwd.headers),
+      ...(actor !== undefined ? { actor } : {}),
     };
 
-    res.status(200).json(fwdResponse);
-  };
+    try {
+      const itemResult = await Promise.resolve(
+        executeUnitOfWork({
+          command: itemCommand,
+          dsl: sys.dsl,
+          graph: sys.graph,
+          events: sys.events,
+          cel: sys.cel,
+          validator: sys.validator,
+          schemaRegistry: sys.schemaRegistry,
+          aggregateLocks: sys.aggregateLocks,
+          openapi: sys.openapi,
+          requiresPrecondition: sys.requiresPrecondition,
+          logger,
+          tracer: sys.tracer,
+          metrics: sys.metrics,
+          derivedProjections: sys.derivedProjections,
+          tsReducerRegistry: sys.tsReducerRegistry,
+          inferredSchemas: sys.inferredSchemas,
+          webhookTransport: sys.webhookTransport,
+          deferSideEffects: deferred,
+          controls,
+        }),
+      );
+      results.push(itemResult.body ?? null);
+    } catch (err) {
+      abortIndex = i;
+      abortError = err instanceof Error ? err.message : 'item rejected';
+      break;
+    }
+  }
+
+  // A bulk-transactional batch is all-or-nothing; a best-effort (non-transactional)
+  // array also aborts on first failure here, matching the gateway's behaviour.
+  if (abortIndex !== null) {
+    deferred.discard();
+    sys.events.restore(eventSnapshot);
+    sys.graph.restore(graphSnapshot);
+    send({
+      status: 400,
+      headers: { 'x-specmatic-result': 'failure' },
+      body: { error: 'BULK_TRANSACTION_ABORTED', message: `bulk transaction aborted at item ${abortIndex}: ${abortError ?? 'unknown'}`, abortIndex },
+    });
+    return;
+  }
+
+  deferred.flush(logger);
+  send({ status: 201, headers: { 'x-specmatic-result': 'success' }, body: results });
 }
 
 // ---------------------------------------------------------------------------
