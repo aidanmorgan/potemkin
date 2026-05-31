@@ -22,6 +22,7 @@ import type { BootedSystem } from '../engine/boot.js';
 import { resetSystem } from '../engine/reset.js';
 import { withSpan } from '../observability/tracing.js';
 import { getDerivedProjection } from '../projections/engine.js';
+import type { FaultRule } from '../dsl/types.js';
 
 // Read package.json version at module load time.
 let _pkgVersion = 'unknown';
@@ -166,6 +167,65 @@ export function registerAdminRoutes(app: Express, sys: BootedSystem): void {
           return;
         }
         res.status(200).json(result);
+      }).catch(next);
+    },
+  );
+
+  // POST /_admin/faults — register a dynamic fault rule. Body is a FaultRule
+  // ({ name, match, response, delay_ms? }). Returns 201 with { id, name }.
+  app.post(
+    '/_admin/faults',
+    adminAuthMiddleware,
+    (req: Request, res: Response, next: NextFunction) => {
+      withSpan(sys.tracer, 'http.admin.faults.add', async () => {
+        const rule = (req.body ?? {}) as FaultRule;
+        if (
+          typeof rule !== 'object' ||
+          rule === null ||
+          typeof rule.match !== 'object' ||
+          rule.match === null ||
+          typeof rule.response !== 'object' ||
+          rule.response === null
+        ) {
+          res.status(400).json({
+            error: 'INVALID_FAULT_RULE',
+            message: 'A fault rule requires `match` and `response` objects',
+          });
+          return;
+        }
+        const id = sys.faultStore.add(rule);
+        sys.logger.info({ faultId: id, name: rule.name }, 'Admin: dynamic fault rule registered');
+        res.status(201).json({ id, name: rule.name });
+      }).catch(next);
+    },
+  );
+
+  // GET /_admin/faults — list active dynamic fault rules as [{ id, rule }].
+  app.get(
+    '/_admin/faults',
+    adminAuthMiddleware,
+    (_req: Request, res: Response, next: NextFunction) => {
+      withSpan(sys.tracer, 'http.admin.faults.list', async () => {
+        const entries = sys.faultStore.list().map(e => ({ id: e.id, rule: e.rule }));
+        res.status(200).json(entries);
+      }).catch(next);
+    },
+  );
+
+  // DELETE /_admin/faults/:id — remove a dynamic fault rule; 204 on success,
+  // 404 when the id is unknown.
+  app.delete(
+    '/_admin/faults/:id',
+    adminAuthMiddleware,
+    (req: Request, res: Response, next: NextFunction) => {
+      withSpan(sys.tracer, 'http.admin.faults.remove', async () => {
+        const id = Array.isArray(req.params['id']) ? req.params['id'][0] : req.params['id'];
+        const removed = sys.faultStore.remove(id as string);
+        if (!removed) {
+          res.status(404).json({ error: 'NOT_FOUND', message: `No fault rule with id "${id}"` });
+          return;
+        }
+        res.status(204).end();
       }).catch(next);
     },
   );
