@@ -82,16 +82,26 @@ class PluginInitializer : StubInitializer {
             log.warn("ControlServer failed to start on port {}: {} — continuing without control server", config.controlPort, e.message)
         }
 
-        val handler = StatefulRequestHandler(discovery, backendClient, fixturesClient, resilient)
+        // Forward-blocks → live components. The overlay file itself is loaded by
+        // Specmatic at HttpStub construction (the `overlayFilePath` env var the
+        // launcher sets); here the plugin derives the runtime behaviours that ride
+        // on top of the overlaid spec:
+        //  - E5: a [DeprecationPolicy] so deprecated operations carry `Deprecation:true`.
+        //  - E6: a [WorkflowPropagator] that chains ids across the forward path.
+        val blocks = config.forwardBlocks
+        val deprecationPolicy = DeprecationPolicy.fromOverlayPatches(blocks.overlay.patches)
+        val workflowPropagator = WorkflowPropagator(blocks.workflow)
+
+        val handler = StatefulRequestHandler(
+            discovery, backendClient, fixturesClient, resilient, workflowPropagator,
+        )
         httpStub.registerHandler(handler)
         httpStub.registerRequestInterceptor(
             PotemkinRequestInterceptor(config.auth, JwtVerifier(config.auth)),
         )
-        httpStub.registerResponseInterceptor(PotemkinResponseInterceptor())
+        httpStub.registerResponseInterceptor(PotemkinResponseInterceptor(deprecationPolicy))
 
-        // Forward-blocks: apply overlay + workflow/governance to the running
-        // SpecmaticConfig, then seed dynamic expectations. Overlay must run
-        // before httpStub serves traffic (it rewrites the served spec).
+        // Apply workflow/governance merge logging + register seed expectations.
         applyForwardBlocks(config, specmaticConfig, bridge)
         log.info(
             "Potemkin StatefulRequestHandler registered — routes discovered via {}/_engine/routes, control server on port {}",
@@ -102,33 +112,27 @@ class PluginInitializer : StubInitializer {
 
     /**
      * Apply the parsed forward-blocks at boot:
-     *  - E6: merge `workflow.ids` and `governance` into the SpecmaticConfig
-     *    representation (precedence honoured by [SpecmaticConfigMerger]).
-     *  - E5: produce the overlay-merged spec from `overlay.patches`.
+     *  - E6: merge `workflow.ids` + `governance` (precedence via [SpecmaticConfigMerger])
+     *    for logging/diagnostics; the live id-propagation runs in [WorkflowPropagator].
+     *  - E5: the overlay-merged spec is produced for parity logging; the live overlay is
+     *    loaded by Specmatic from the file the launcher points `overlayFilePath` at.
      *  - E4: compile `seeds` and register them via `httpStub.setExpectation`.
      *
-     * ## E5/E6 Specmatic 2.46.2 API limitation (verified against specmatic-2.46.2.jar)
+     * ## Specmatic 2.46.2 wiring (verified against specmatic-2.46.2.jar + experiment)
      *
-     * E4 (seeds) is the ONLY supported runtime mutation: `HttpStub.setExpectation(ScenarioStub)`
-     * is a public method that pushes a dynamic expectation into the running stub.
+     * E4 (seeds): `HttpStub.setExpectation(ScenarioStub)` is the public runtime API.
      *
-     * E5 (overlay) and E6 (workflow/governance) CANNOT be pushed into the running stub:
-     *  - `io.specmatic.core.SpecmaticConfig` is an INTERFACE exposing only a read-only
-     *    `getWorkflowDetails()` getter and 12 immutable `withX` copy-builders
-     *    (withTestBaseURL/withTestModes/withStubModes/withTestFilter/withStubFilter/
-     *    withTestTimeout/withGlobalMockDelay/withMatchBranch/…). There is NO
-     *    `withWorkflow*`/`withWorkflowDetails`/`withOverlay*` builder and no setter, so a
-     *    merged workflow cannot be installed.
-     *  - Overlay is read from a file at construction: `SpecmaticConfig.getStubOverlayFilePath`
-     *    / `HttpStub.stubOverlayContent(File)` (private). By the time [initialize] runs (during
-     *    HttpStub construction, after the spec + overlay file are already loaded) the overlaid
-     *    spec is fixed; there is no API to replace the served spec.
+     * E5 (overlay): loaded at HttpStub CONSTRUCTION via `SpecmaticConfig.getStubOverlayFilePath`,
+     * which reads `System.getenv("overlayFilePath")` (fallback system property) — confirmed by
+     * booting `stub` with that env var and observing the overlay applied to the served spec. The
+     * launcher therefore translates `overlay.patches` to a Specmatic overlay file and sets the env
+     * var before Specmatic starts. Specmatic emits no `Deprecation` header for `deprecated:true`
+     * operations, so [DeprecationPolicy] + [PotemkinResponseInterceptor] add it.
      *
-     * The merge ([SpecmaticConfigMerger]) and overlay translation ([OverlayApplier]) therefore
-     * run for real and are unit-tested for correctness, but the result can only be logged — the
-     * jar exposes no SUPPORTED mechanism to install it, and reflection hacks are out of scope by
-     * project rule. Inspected classes: io.specmatic.core.SpecmaticConfig,
-     * io.specmatic.core.WorkflowConfiguration, io.specmatic.stub.HttpStub.
+     * E6 (workflow): `io.specmatic.core.Workflow` is referenced ONLY by `Feature.scenarioAsTest`
+     * / `generateContractTests` (TEST-mode contract-test chaining); `getWorkflowDetails()` resolves
+     * from the *test* service config. Stub mode never consults it. Workflow id-propagation is
+     * therefore implemented in the plugin forward path via [WorkflowPropagator].
      */
     private fun applyForwardBlocks(
         config: PluginConfig,

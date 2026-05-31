@@ -37,11 +37,16 @@ data class AuthConfig(
             if (raw !is Map<*, *>) throw IllegalArgumentException("auth: must be an object")
             val auth = raw as Map<String, Any?>
             val mode = auth["mode"] as? String ?: "none"
-            val algorithm = auth["algorithm"] as? String ?: "HS256"
-            val secret = auth["secret"] as? String
-            val realm = auth["realm"] as? String ?: "potemkin"
-            val jwksUrl = auth["jwksUrl"] as? String
-            val jwks = when (val j = auth["jwks"]) {
+            // The canonical DSL form nests the scheme detail under `jwt:`
+            // (matching the engine's global.yaml); accept that, falling back to
+            // flat keys directly under `auth:`. A nested value wins when present.
+            val jwt = auth["jwt"] as? Map<String, Any?> ?: emptyMap()
+            fun field(name: String): Any? = jwt[name] ?: auth[name]
+            val algorithm = field("algorithm") as? String ?: "HS256"
+            val secret = field("secret") as? String
+            val realm = field("realm") as? String ?: "potemkin"
+            val jwksUrl = field("jwksUrl") as? String
+            val jwks = when (val j = field("jwks")) {
                 null -> emptyList()
                 is List<*> -> j.map { entry ->
                     if (entry !is Map<*, *>) throw IllegalArgumentException("auth.jwks[]: must be JWK objects")

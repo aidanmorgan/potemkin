@@ -21,9 +21,16 @@ import org.slf4j.LoggerFactory
  * is attached describing the failure. A successful application replaces the body
  * with the patched JSON.
  *
+ * Deprecation (E5 / AC-G6.3): when the request's operation is one the
+ * `overlay.patches` flipped to `deprecated:true` (per the injected
+ * [DeprecationPolicy]), a `Deprecation: true` header is attached. Specmatic
+ * applies the overlay to its served spec but emits no such header, so the plugin
+ * surfaces the deprecation signal here.
+ *
  * The [mapper] is injected so the interceptor holds no static mutable state.
  */
 class PotemkinResponseInterceptor(
+    private val deprecationPolicy: DeprecationPolicy = DeprecationPolicy.fromOverlayPatches(emptyList()),
     private val mapper: ObjectMapper = jacksonObjectMapper(),
 ) : ResponseInterceptor {
 
@@ -32,10 +39,24 @@ class PotemkinResponseInterceptor(
     override val name: String = "PotemkinResponseInterceptor"
 
     override fun interceptResponse(httpRequest: HttpRequest, httpResponse: HttpResponse): HttpResponse {
-        val bodyText = httpResponse.body.toStringLiteral()
+        val withDeprecation = applyDeprecation(httpRequest, httpResponse)
+        val bodyText = withDeprecation.body.toStringLiteral()
         if (bodyText.isBlank() || !bodyText.contains("\"_patches\"")) {
-            return httpResponse
+            return withDeprecation
         }
+        return applyResponsePatches(withDeprecation, bodyText)
+    }
+
+    /** Attach `Deprecation: true` when the overlay deprecated this operation. */
+    private fun applyDeprecation(httpRequest: HttpRequest, httpResponse: HttpResponse): HttpResponse {
+        return if (deprecationPolicy.isDeprecated(httpRequest.method, httpRequest.path)) {
+            httpResponse.copy(headers = httpResponse.headers + ("Deprecation" to "true"))
+        } else {
+            httpResponse
+        }
+    }
+
+    private fun applyResponsePatches(httpResponse: HttpResponse, bodyText: String): HttpResponse {
 
         val parsed: Any? = try {
             mapper.readValue(bodyText, Any::class.java)

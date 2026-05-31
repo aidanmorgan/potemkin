@@ -31,6 +31,26 @@ class PotemkinResponseInterceptorTest {
     }
 
     @Test
+    fun `adds Deprecation header for an operation the overlay deprecated`() {
+        val policy = DeprecationPolicy.fromOverlayPatches(
+            listOf(Patch.Add("/paths/~1loans~1{id}/get/deprecated", true)),
+        )
+        val deprecating = PotemkinResponseInterceptor(policy)
+        val result = deprecating.interceptResponse(req, response("""{"id":"L-1"}"""))
+        assertEquals("true", result.headers["Deprecation"])
+    }
+
+    @Test
+    fun `no Deprecation header for an operation that is not deprecated`() {
+        val policy = DeprecationPolicy.fromOverlayPatches(
+            listOf(Patch.Add("/paths/~1campaigns~1{id}/get/deprecated", true)),
+        )
+        val deprecating = PotemkinResponseInterceptor(policy)
+        val result = deprecating.interceptResponse(req, response("""{"id":"L-1"}"""))
+        assertNull(result.headers["Deprecation"])
+    }
+
+    @Test
     fun `applies _patches to the response body and strips the field`() {
         val resp = response(
             """{"status":"PENDING","version":1,"_patches":[{"op":"replace","path":"/status","value":"ACTIVE"},{"op":"increment","path":"/version","by":1}]}""",

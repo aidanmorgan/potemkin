@@ -34,14 +34,19 @@ class StatefulRequestHandler(
     private val client: CqrsBackendClient,
     private val fixtures: FixturesClient? = null,
     private val resilientForwarder: ResilientForwarder? = null,
+    private val workflow: WorkflowPropagator? = null,
 ) : RequestHandler {
 
     override val name: String = "potemkin-stateful"
 
     private val log = LoggerFactory.getLogger(StatefulRequestHandler::class.java)
 
-    override fun handleRequest(httpRequest: HttpRequest): HttpStubResponse? {
+    override fun handleRequest(rawRequest: HttpRequest): HttpStubResponse? {
         return try {
+            // Workflow id-propagation (E6): substitute captured ids into the path
+            // BEFORE statefulness/forwarding decisions so the resolved path is used
+            // throughout. No-op when no workflow ids are configured.
+            val httpRequest = workflow?.applyToRequest(rawRequest) ?: rawRequest
             val method = (httpRequest.method ?: "").uppercase()
             val path = httpRequest.path ?: ""
 
@@ -85,6 +90,7 @@ class StatefulRequestHandler(
                         path,
                     )
                 }
+                workflow?.observeResponse(httpRequest, response.response)
                 return response
             }
 
@@ -95,6 +101,8 @@ class StatefulRequestHandler(
                     "Node engine returned null for path '{}'; falling through to Specmatic stub matching",
                     httpRequest.path,
                 )
+            } else {
+                workflow?.observeResponse(httpRequest, response.response)
             }
             response
         } catch (e: Exception) {
@@ -102,7 +110,7 @@ class StatefulRequestHandler(
             // interrupted by plugin code.
             log.error(
                 "Unexpected error in StatefulRequestHandler for path '{}': {}; falling through to Specmatic",
-                httpRequest.path,
+                rawRequest.path,
                 e.message,
                 e,
             )
