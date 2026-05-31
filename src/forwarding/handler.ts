@@ -22,6 +22,7 @@ import { translateIntent } from '../engine/router.js';
 import { executeUnitOfWork } from '../engine/uow.js';
 import { createSideEffectQueue } from '../engine/sideEffects.js';
 import { extractFaultSignal } from '../engine/faultSim.js';
+import { evaluateFaultRules } from '../faults/index.js';
 import { nextUuidv7 } from '../ids/uuidv7.js';
 import { resolveActor, JwtValidationError } from '../identity/actorResolver.js';
 import { applyResponseMutations, buildOperationLookup } from '../http/responseMutations.js';
@@ -291,9 +292,61 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       sequenceVersion,
       origin: 'inbound',
       depth: 0,
+      headers: lowercasedHeaders,
       ...(faultHeaderRaw ? { faultSignal: faultHeaderRaw } : {}),
       ...(actor !== undefined ? { actor } : {}),
     };
+
+    // 9a. DSL fault rules — evaluate dynamic (admin-registered), boundary-scoped,
+    //     and global `fault_rules:` against this command (header / boundary /
+    //     intent / CEL / probability matchers). On a match, short-circuit with the
+    //     configured status/body/headers BEFORE the UoW so no state is mutated.
+    //     X-Potemkin-Skip-Dispatch bypasses fault injection for deterministic opt-out.
+    const boundaryFaults = boundary.faults ?? [];
+    const globalFaults = sys.dsl.faults ?? [];
+    const dynamicFaults = sys.faultStore.all();
+    if (
+      (boundaryFaults.length > 0 || globalFaults.length > 0 || dynamicFaults.length > 0) &&
+      controls.sideEffects.skipDispatch !== true
+    ) {
+      const faultResponse = evaluateFaultRules({
+        command,
+        boundaryFaults,
+        globalFaults,
+        dynamicFaults,
+        cel: sys.cel,
+        state: command.targetId !== null ? sys.graph.get(command.targetId) : null,
+        logger: sys.logger,
+      });
+      if (faultResponse !== null) {
+        sys.metrics.faultsSimulatedTotal.add(1);
+        // Honour the matched rule's pre-response delay. evaluateFaultRules returns
+        // the rule's own response object by reference, so the matched rule is the
+        // one whose response is identical to faultResponse.
+        const matchedRule = [...dynamicFaults, ...boundaryFaults, ...globalFaults]
+          .find((r) => r.response === faultResponse);
+        // delay_ms may sit at the rule top level (parsed form) or under response
+        // (raw admin-registered form, which the store keeps verbatim).
+        const delayMs = matchedRule?.delay_ms
+          ?? (matchedRule?.response as { delay_ms?: number } | undefined)?.delay_ms;
+        if (delayMs !== undefined && delayMs > 0) {
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
+        // ForwardedResponse header keys are lowercase by convention (the plugin
+        // and the e2e harness read them case-insensitively as lowercase).
+        const faultHeaders: Record<string, string> = {};
+        for (const [k, v] of Object.entries(faultResponse.headers ?? {})) {
+          faultHeaders[k.toLowerCase()] = v;
+        }
+        const fwdResponse: ForwardedResponse = {
+          status: faultResponse.status,
+          headers: faultHeaders,
+          body: faultResponse.body ?? null,
+        };
+        res.status(200).json(fwdResponse);
+        return;
+      }
+    }
 
     // 10. Idempotency check (mirrors gateway.ts logic).
     const idempotencyKey = readForwardedHeader(fwd.headers, 'idempotency-key');

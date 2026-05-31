@@ -94,4 +94,25 @@ describe('admin fault-injection API — integration', () => {
     const listRes = await agent.get('/_admin/faults').expect(200);
     expect(listRes.body).toHaveLength(0);
   });
+
+  it('a registered dynamic fault fires on a matching gateway request', async () => {
+    // Baseline: GET /leads succeeds before any dynamic fault is registered.
+    await agent.get('/leads').expect(200);
+
+    // Register a dynamic fault that blocks all query-intent requests.
+    await agent.post('/_admin/faults').send(SAMPLE_RULE).expect(201);
+
+    // The same query now returns the fault response (503 UNAVAILABLE), proving
+    // the gateway passes sys.faultStore.all() as dynamicFaults to evaluateFaultRules.
+    const blocked = await agent.get('/leads').expect(503);
+    expect(blocked.body.error).toBe('UNAVAILABLE');
+  });
+
+  it('a removed dynamic fault no longer fires on a matching request', async () => {
+    const addRes = await agent.post('/_admin/faults').send(SAMPLE_RULE).expect(201);
+    await agent.get('/leads').expect(503);
+
+    await agent.delete(`/_admin/faults/${addRes.body.id as string}`).expect(204);
+    await agent.get('/leads').expect(200);
+  });
 });
