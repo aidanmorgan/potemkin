@@ -647,8 +647,15 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
             : {};
         }
 
-        // Validate the response body against the contract (throws InternalExecutionError on fail)
-        validator.validateResponse(command.httpMethod, command.path, status, body);
+        // Validate the response body against the contract (throws InternalExecutionError on fail).
+        // Tier 7 (admin-gated): X-Potemkin-Skip-Response-Validation bypasses the check
+        // entirely; X-Potemkin-Allow-Additional-Properties relaxes the contract so a
+        // response carrying undeclared properties still validates.
+        if (input.controls?.validation.skipResponseValidation !== true) {
+          validator.validateResponse(command.httpMethod, command.path, status, body, {
+            allowAdditionalProperties: input.controls?.validation.allowAdditionalProperties === true,
+          });
+        }
 
         outcome = 'success';
 

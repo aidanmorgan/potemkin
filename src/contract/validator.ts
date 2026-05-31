@@ -23,6 +23,10 @@ export interface ContractValidator {
 
   /**
    * Validate an outbound response body against the OpenAPI spec.
+   * @param options.allowAdditionalProperties When true, the response schema is
+   *   relaxed so that objects carrying properties beyond those declared in the
+   *   contract no longer fail validation (the strict `additionalProperties: false`
+   *   constraint is dropped recursively before compiling the validator).
    * @throws {InternalExecutionError} (500) on failure.
    */
   validateResponse(
@@ -30,6 +34,7 @@ export interface ContractValidator {
     path: string,
     status: number,
     body: JsonValue,
+    options?: { readonly allowAdditionalProperties?: boolean },
   ): void;
 
   /**
@@ -40,6 +45,32 @@ export interface ContractValidator {
 }
 
 const logger = createLogger({ name: 'contract.validator' });
+
+/**
+ * Return a deep copy of a JSON-Schema fragment with every strict
+ * `additionalProperties: false` / `unevaluatedProperties: false` constraint
+ * removed (recursively, through nested objects/arrays and the standard schema
+ * combinators). Used to honour X-Potemkin-Allow-Additional-Properties without
+ * mutating the document or the cached strict validators. Schema-valued
+ * `additionalProperties` (an object schema, not the literal `false`) is
+ * preserved and recursed into.
+ */
+function relaxAdditionalProperties(schema: JsonObject): JsonObject {
+  const relax = (node: JsonValue): JsonValue => {
+    if (Array.isArray(node)) return node.map(relax);
+    if (node === null || typeof node !== 'object') return node;
+    const out: JsonObject = {};
+    for (const [key, value] of Object.entries(node)) {
+      if ((key === 'additionalProperties' || key === 'unevaluatedProperties') && value === false) {
+        // Drop the strict constraint entirely (default is permissive).
+        continue;
+      }
+      out[key] = relax(value);
+    }
+    return out;
+  };
+  return relax(schema) as JsonObject;
+}
 
 /**
  * Create a ContractValidator backed by the given OpenAPI document and boundary configs.
@@ -192,6 +223,7 @@ export function createContractValidator(
     path: string,
     status: number,
     body: JsonValue,
+    options?: { readonly allowAdditionalProperties?: boolean },
   ): void {
     const matched = matchRoute(doc, method, path);
     if (!matched) {
@@ -211,7 +243,15 @@ export function createContractValidator(
 
     if (!schema) return;
 
-    const validate = getValidator(schema);
+    // X-Potemkin-Allow-Additional-Properties (admin-gated): relax the schema so a
+    // response carrying undeclared properties still validates. We strip every
+    // `additionalProperties: false` (and `unevaluatedProperties: false`) recursively
+    // from a deep copy so the cached strict validator is never mutated.
+    const effectiveSchema = options?.allowAdditionalProperties === true
+      ? relaxAdditionalProperties(schema)
+      : schema;
+
+    const validate = getValidator(effectiveSchema);
     if (!validate(body)) {
       logger.debug(
         { method, path, status, errors: validate.errors },

@@ -707,6 +707,8 @@ async function handleContractRequest(
       sys.cel.setClockOffset(previousClockOffset);
       if (controls.transparency.seed !== undefined) sys.cel.setFakerSeed(undefined);
       logger.error({ err }, 'UoW execution error');
+      // X-Specmatic-Result: every UoW error path is a contract-test failure.
+      res.setHeader('X-Specmatic-Result', 'failure');
       // 8. Error → HTTP mapping (reqs 25-32, REQ-84/85/86).
       if (err instanceof AuthenticationRequiredError) {
         res.status(401).json(err.toJSON());
@@ -886,7 +888,16 @@ async function handleContractRequest(
     // Tier 1: signal that dry-run executed.
     if (controls.transparency.dryRun === true) responseHeaders['X-Potemkin-Dry-Run'] = 'true';
 
-    // Tier 6: echo trace id / span name.
+    // X-Specmatic-Result: tag the Specmatic plugin's contract-test outcome.
+    // Success on every non-error (2xx) UoW response; the error catch above tags
+    // 'failure'. The body-parse error handler tags 'failure' for malformed JSON.
+    responseHeaders['X-Specmatic-Result'] = result.status >= 200 && result.status < 300 ? 'success' : 'failure';
+
+    // Tier 6: echo trace id / span name. NOTE: these are ECHO-ONLY — the supplied
+    // X-Potemkin-Trace-Id / X-Potemkin-Span-Name are reflected back in the response
+    // headers for caller correlation but are NOT wired into the OTel trace context
+    // (the active span is created by withSpan('http.request') above; the caller does
+    // not control its trace/span identifiers). See potemkin-0la.
     if (controls.observability.traceId) responseHeaders['X-Potemkin-Trace-Id'] = controls.observability.traceId;
     if (controls.observability.spanName) responseHeaders['X-Potemkin-Span-Name'] = controls.observability.spanName;
 
