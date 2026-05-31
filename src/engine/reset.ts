@@ -88,6 +88,11 @@ export function resetSystem(sys: BootedSystem): void {
       // ── Step 6: Reset idempotency store ────────────────────────────────────
       sys.idempotencyStore.clear();
 
+      // ── Step 7: Clear dynamic fault rules ──────────────────────────────────
+      // Runtime faults registered via POST /_admin/faults are ephemeral; a
+      // reset returns the system to its post-boot fault-free state.
+      sys.faultStore?.clear();
+
       const durationMs = Date.now() - start;
       const entityCount = sys.graph.size();
 

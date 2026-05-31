@@ -21,6 +21,7 @@ import { createStateGraph, deepFreeze } from '../stategraph/graph.js';
 import { createContractValidator } from '../contract/validator.js';
 import { createIdempotencyStore, type IdempotencyStore } from '../idempotency/store.js';
 import { createSessionStore, type SessionStore } from '../identity/sessionStore.js';
+import { createFaultStore, type FaultStore } from '../faults/store.js';
 import { projectEvent } from './projection.js';
 import { epochAnchoredUuidv7 } from '../ids/uuidv7.js';
 import { rootLogger, childLogger } from '../observability/logger.js';
@@ -114,6 +115,14 @@ export interface BootedSystem {
    * the CEL clock offset so /_admin/clock/advance expires sessions deterministically.
    */
   readonly sessionStore: SessionStore;
+  /**
+   * Per-system dynamic fault store backing the runtime fault-injection admin
+   * API (POST/GET/DELETE /_admin/faults). Holds fault rules registered at
+   * runtime; the forwarding handler reads its rules when evaluating faults.
+   * Cleared on /_admin/reset. Created per system (instance, not a singleton)
+   * so dynamic faults never leak across booted systems.
+   */
+  readonly faultStore: FaultStore;
   /** Per-system aggregate lock map (serializes concurrent same-aggregate UoWs). */
   readonly aggregateLocks: Map<string, Promise<void>>;
   /**
@@ -621,6 +630,7 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       // Session expiry tracks the CEL virtual clock so admin clock-advance can
       // expire live sessions (and clock-reset restores them within TTL).
       sessionStore: createSessionStore({ nowMs: () => Date.now() + cel.getClockOffset() }),
+      faultStore: createFaultStore(),
       aggregateLocks: new Map<string, Promise<void>>(),
       tsReducerRegistry,
       inferredSchemas,
