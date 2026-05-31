@@ -20,6 +20,7 @@ import type { Command, Intent, JsonObject, JsonValue } from '../types.js';
 import { matchRoute } from '../contract/router.js';
 import { translateIntent } from '../engine/router.js';
 import { executeUnitOfWork } from '../engine/uow.js';
+import { createSideEffectQueue } from '../engine/sideEffects.js';
 import { extractFaultSignal } from '../engine/faultSim.js';
 import { nextUuidv7 } from '../ids/uuidv7.js';
 import { resolveActor, JwtValidationError } from '../identity/actorResolver.js';
@@ -233,6 +234,12 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
 
     // 6. Resolve actor from the forwarded Authorization header per auth mode
     //    (F1: jwt → validateJwt; else the legacy bearer shortcut).
+    //    NOTE (potemkin-0la): the /_engine/forward path is JWT/Bearer-only — it
+    //    resolves the actor solely from the forwarded `authorization` header.
+    //    Cookie/session-mode auth (auth.mode: session) is NOT reachable here: a
+    //    ForwardedRequest carries no session cookie and createSessionAuthMiddleware
+    //    runs only on the gateway's own contract routes, not on /_engine/forward.
+    //    Plugin-forwarded traffic must therefore present a Bearer/JWT credential.
     let actor;
     try {
       actor = resolveActor(readForwardedHeader(fwd.headers, 'authorization'), sys.dsl.auth) ?? undefined;
@@ -330,6 +337,15 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
     // 11. Execute Unit of Work.
     const logger = sys.logger.child({ forwardedPath: path, forwardedMethod: method });
 
+    // Mirror the gateway's side-effect wiring: outbound webhooks fire via the
+    // injected transport (sys.webhookTransport); a bulk-transactional forwarded
+    // request defers its post-commit sagas/webhooks into a batch-scoped queue so
+    // they fire exactly once after a successful commit (and never against state
+    // that an abort would discard).
+    const deferred = controls.sideEffects.bulkTransactional === true
+      ? createSideEffectQueue()
+      : undefined;
+
     let result;
     try {
       result = await Promise.resolve(
@@ -350,7 +366,9 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
           derivedProjections: sys.derivedProjections,
           tsReducerRegistry: sys.tsReducerRegistry,
           inferredSchemas: sys.inferredSchemas,
+          webhookTransport: sys.webhookTransport,
           controls,
+          ...(deferred ? { deferSideEffects: deferred } : {}),
           // maxCascadeDepth=N allows N levels beyond the primary; the UoW counts
           // depth from 0 (primary), so pass N+1 to include the primary.
           ...(controls.sideEffects.maxCascadeDepth !== undefined
@@ -358,12 +376,17 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
             : {}),
         }),
       );
+      // Single-UoW forward: the command committed, so flush the deferred batch.
+      deferred?.flush(logger);
     } catch (err) {
+      // Aborted before commit — discard any enqueued side-effects so none fire.
+      deferred?.discard();
       logger.error({ err }, 'UoW execution error in forwarding handler');
       const mapped = mapErrorToStatus(err);
       const fwdResponse: ForwardedResponse = {
         status: mapped.status,
-        headers: mapped.headers ?? {},
+        // X-Specmatic-Result: every UoW error path is a contract-test failure.
+        headers: { ...(mapped.headers ?? {}), 'x-specmatic-result': 'failure' },
         body: mapped.body,
       };
       res.status(200).json(fwdResponse);
@@ -466,6 +489,10 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
     // Tier 1: signal that dry-run executed (the UoW already suppressed event
     // append / side-effects because `controls` was passed into executeUnitOfWork).
     if (controls.transparency.dryRun === true) responseHeaders['x-potemkin-dry-run'] = 'true';
+
+    // X-Specmatic-Result: mirror the gateway — success on 2xx, failure otherwise
+    // (header keys are lowercase per the ForwardedResponse convention).
+    responseHeaders['x-specmatic-result'] = result.status >= 200 && result.status < 300 ? 'success' : 'failure';
 
     const fwdResponse: ForwardedResponse = {
       status: result.status,
