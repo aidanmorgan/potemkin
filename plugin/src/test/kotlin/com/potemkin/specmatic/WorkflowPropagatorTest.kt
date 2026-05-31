@@ -75,4 +75,112 @@ class WorkflowPropagatorTest {
         assertEquals("id", WorkflowPropagator.leafOf("$.id"))
         assertEquals("id", WorkflowPropagator.leafOf("$.data.id"))
     }
+
+    private fun jwtClaims(sub: String): Map<String, String> =
+        mapOf(PotemkinHeaders.JWT_CLAIMS to """{"sub":"$sub"}""")
+
+    private fun workflowSession(id: String): Map<String, String> =
+        mapOf(PotemkinHeaders.WORKFLOW_SESSION to id)
+
+    @Test
+    fun `two interleaved chains keyed by JWT subject each substitute their own captured id`() {
+        val prop = WorkflowPropagator(blockOf(extract = "BODY.id", use = "PATH.leadId"))
+
+        // Interleave: A creates, B creates (same id NAME, different values), then
+        // each reads back. With a shared flat map B's create would clobber A's.
+        prop.observeResponse(
+            HttpRequest(method = "POST", path = "/leads", headers = jwtClaims("alice")),
+            HttpResponse(status = 201, body = StringValue("""{"id":"lead-A"}""")),
+        )
+        prop.observeResponse(
+            HttpRequest(method = "POST", path = "/leads", headers = jwtClaims("bob")),
+            HttpResponse(status = 201, body = StringValue("""{"id":"lead-B"}""")),
+        )
+
+        val aRead = prop.applyToRequest(
+            HttpRequest(method = "GET", path = "/leads/{leadId}", headers = jwtClaims("alice")),
+        )
+        val bRead = prop.applyToRequest(
+            HttpRequest(method = "GET", path = "/leads/{leadId}", headers = jwtClaims("bob")),
+        )
+
+        assertEquals("/leads/lead-A", aRead.path)
+        assertEquals("/leads/lead-B", bRead.path)
+    }
+
+    @Test
+    fun `two interleaved chains keyed by workflow-session header each substitute their own captured id`() {
+        val prop = WorkflowPropagator(blockOf(extract = "BODY.id", use = "PATH.leadId"))
+
+        prop.observeResponse(
+            HttpRequest(method = "POST", path = "/leads", headers = workflowSession("chain-1")),
+            HttpResponse(status = 201, body = StringValue("""{"id":"lead-1"}""")),
+        )
+        prop.observeResponse(
+            HttpRequest(method = "POST", path = "/leads", headers = workflowSession("chain-2")),
+            HttpResponse(status = 201, body = StringValue("""{"id":"lead-2"}""")),
+        )
+
+        assertEquals(
+            "/leads/lead-2",
+            prop.applyToRequest(
+                HttpRequest(method = "GET", path = "/leads/{leadId}", headers = workflowSession("chain-2")),
+            ).path,
+        )
+        assertEquals(
+            "/leads/lead-1",
+            prop.applyToRequest(
+                HttpRequest(method = "GET", path = "/leads/{leadId}", headers = workflowSession("chain-1")),
+            ).path,
+        )
+    }
+
+    @Test
+    fun `concurrent interleaved chains stay isolated under parallel dispatch`() {
+        val prop = WorkflowPropagator(blockOf(extract = "BODY.id", use = "PATH.leadId"))
+        val chains = 200
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(16)
+        val start = java.util.concurrent.CountDownLatch(1)
+        val mismatches = java.util.concurrent.atomic.AtomicInteger(0)
+
+        val tasks = (0 until chains).map { i ->
+            java.util.concurrent.Callable {
+                start.await()
+                val sub = "actor-$i"
+                val expectedId = "lead-$i"
+                // Each chain captures the SAME id NAME (leadId) with its own value,
+                // then immediately reads it back interleaved with every other chain.
+                prop.observeResponse(
+                    HttpRequest(method = "POST", path = "/leads", headers = jwtClaims(sub)),
+                    HttpResponse(status = 201, body = StringValue("""{"id":"$expectedId"}""")),
+                )
+                val read = prop.applyToRequest(
+                    HttpRequest(method = "GET", path = "/leads/{leadId}", headers = jwtClaims(sub)),
+                )
+                if (read.path != "/leads/$expectedId") mismatches.incrementAndGet()
+            }
+        }
+        val futures = tasks.map { pool.submit(it) }
+        start.countDown()
+        futures.forEach { it.get() }
+        pool.shutdown()
+
+        assertEquals(0, mismatches.get(), "every chain must read back its own captured id")
+    }
+
+    @Test
+    fun `chains without correlation share the default session namespace`() {
+        // Documented single-session fallback: requests carrying neither a JWT
+        // subject nor a workflow-session header share one namespace, so a later
+        // capture under the same id name is visible to all such requests.
+        val prop = WorkflowPropagator(blockOf(extract = "BODY.id", use = "PATH.leadId"))
+        prop.observeResponse(
+            HttpRequest(method = "POST", path = "/leads"),
+            HttpResponse(status = 201, body = StringValue("""{"id":"shared"}""")),
+        )
+        assertEquals(
+            "/leads/shared",
+            prop.applyToRequest(HttpRequest(method = "GET", path = "/leads/{leadId}")).path,
+        )
+    }
 }

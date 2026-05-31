@@ -15,4 +15,13 @@ object PotemkinHeaders {
      * the `WWW-Authenticate` challenge string to echo back.
      */
     const val AUTH_ERROR = "X-Potemkin-Auth-Error"
+
+    /**
+     * Optional client-supplied correlation id that scopes workflow id-propagation
+     * to a single chain. When two clients run interleaved workflow chains that
+     * extract the SAME id name, each sets a distinct value here so their captured
+     * ids never clobber one another. See [WorkflowPropagator] for the full
+     * session-key resolution order.
+     */
+    const val WORKFLOW_SESSION = "X-Potemkin-Workflow-Session"
 }
