@@ -182,7 +182,7 @@ describe('Tier-2 webhook dispatch (potemkin-422)', () => {
     const signature = delivery.headers[WEBHOOK_SIGNATURE_HEADER];
     expect(typeof signature).toBe('string');
     const { createHmac } = await import('node:crypto');
-    const expected = createHmac('sha256', WEBHOOK_SECRET).update(delivery.body).digest('hex');
+    const expected = 'sha256=' + createHmac('sha256', WEBHOOK_SECRET).update(delivery.body).digest('hex');
     expect(signature).toBe(expected);
   });
 
