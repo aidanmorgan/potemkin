@@ -97,6 +97,50 @@ describe('admin-state-events-health.acceptance', () => {
     }
   });
 
+  it('GET /_admin/events?type=X returns only events of that type', async () => {
+    const res = await app.agent
+      .get('/_admin/events?type=BaselineEntityCreatedEvent')
+      .expect(200);
+
+    expect(Array.isArray(res.body.events)).toBe(true);
+    expect(res.body.events.length).toBe(BASELINE_EVENT_COUNT);
+    for (const evt of res.body.events) {
+      expect(evt.type).toBe('BaselineEntityCreatedEvent');
+    }
+  });
+
+  it('GET /_admin/events?type=X with no matches returns an empty array', async () => {
+    const res = await app.agent.get('/_admin/events?type=NoSuchEventType').expect(200);
+
+    expect(res.body.events).toEqual([]);
+  });
+
+  it('GET /_admin/events?type=X&count=true returns a count of matching events', async () => {
+    const res = await app.agent
+      .get('/_admin/events?type=BaselineEntityCreatedEvent&count=true')
+      .expect(200);
+
+    expect(res.body).toEqual({ count: BASELINE_EVENT_COUNT });
+  });
+
+  it('GET /_admin/events?count=true counts all events when no type filter is given', async () => {
+    const res = await app.agent.get('/_admin/events?count=true').expect(200);
+
+    expect(res.body.count).toBe(BASELINE_EVENT_COUNT);
+  });
+
+  it('GET /_admin/events?aggregateId=X&type=Y combines both filters', async () => {
+    const res = await app.agent
+      .get(`/_admin/events?aggregateId=${APEX_LEAD_ID}&type=BaselineEntityCreatedEvent`)
+      .expect(200);
+
+    expect(Array.isArray(res.body.events)).toBe(true);
+    for (const evt of res.body.events) {
+      expect(evt.aggregateId).toBe(APEX_LEAD_ID);
+      expect(evt.type).toBe('BaselineEntityCreatedEvent');
+    }
+  });
+
   // ── /_admin/health ────────────────────────────────────────────────────────
 
   it('GET /_admin/health returns 200', async () => {
