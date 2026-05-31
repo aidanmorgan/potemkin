@@ -24,6 +24,8 @@ import { extractFaultSignal } from '../engine/faultSim.js';
 import { nextUuidv7 } from '../ids/uuidv7.js';
 import { resolveActor, JwtValidationError } from '../identity/actorResolver.js';
 import { applyResponseMutations, buildOperationLookup } from '../http/responseMutations.js';
+import { parseControlHeaders } from '../http/controlHeaders.js';
+import { applyPaginationStyle, applyResponseFormat } from '../http/responseFormat.js';
 import {
   EntityAbsenceError,
   EntityConflictError,
@@ -260,6 +262,15 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
     //    but the Command also carries faultSignal for the UoW fault-sim path).
     const faultHeaderRaw = readForwardedHeader(fwd.headers, 'x-specmatic-fault');
 
+    // 8b. Parse X-Potemkin-* control headers. parseControlHeaders looks header
+    //     constants up by their canonical lowercase name, so normalise the
+    //     forwarded headers (which may carry original casing) to lowercase keys.
+    const lowercasedHeaders: Record<string, string> = {};
+    for (const [k, v] of Object.entries(fwd.headers)) {
+      lowercasedHeaders[k.toLowerCase()] = v;
+    }
+    const controls = parseControlHeaders(lowercasedHeaders);
+
     // 9. Build Command.
     const command: Command = {
       commandId: nextUuidv7(),
@@ -339,6 +350,12 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
           derivedProjections: sys.derivedProjections,
           tsReducerRegistry: sys.tsReducerRegistry,
           inferredSchemas: sys.inferredSchemas,
+          controls,
+          // maxCascadeDepth=N allows N levels beyond the primary; the UoW counts
+          // depth from 0 (primary), so pass N+1 to include the primary.
+          ...(controls.sideEffects.maxCascadeDepth !== undefined
+            ? { maxDepth: controls.sideEffects.maxCascadeDepth + 1 }
+            : {}),
         }),
       );
     } catch (err) {
@@ -418,10 +435,42 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       if (bodyPatches.length > 0) patches = bodyPatches;
     }
 
+    // Tier 5: pagination style + response format — mirror gateway.ts ordering
+    // (pagination first so HAL/JSON:API see the chosen collection shape), applied
+    // to the base body for successful responses. Header keys are lowercased per
+    // the ForwardedResponse convention used throughout this handler.
+    let outBody: JsonValue | null | undefined = result.body;
+    if (
+      controls.format.paginationStyle !== undefined &&
+      result.status >= 200 && result.status < 300 &&
+      outBody !== null && outBody !== undefined
+    ) {
+      const paged = applyPaginationStyle(
+        outBody,
+        controls.format.paginationStyle,
+        fwd.query,
+        path,
+      );
+      outBody = paged.body;
+      for (const [k, v] of Object.entries(paged.headers)) responseHeaders[k.toLowerCase()] = v;
+    }
+    if (
+      controls.format.responseFormat !== undefined &&
+      result.status >= 200 && result.status < 300 &&
+      outBody !== null && outBody !== undefined
+    ) {
+      outBody = applyResponseFormat(outBody, controls.format.responseFormat, boundary.boundary, path);
+      responseHeaders['x-potemkin-response-format'] = controls.format.responseFormat;
+    }
+
+    // Tier 1: signal that dry-run executed (the UoW already suppressed event
+    // append / side-effects because `controls` was passed into executeUnitOfWork).
+    if (controls.transparency.dryRun === true) responseHeaders['x-potemkin-dry-run'] = 'true';
+
     const fwdResponse: ForwardedResponse = {
       status: result.status,
       headers: responseHeaders,
-      body: result.body,
+      body: outBody,
       ...(patches !== undefined ? { _patches: patches } : {}),
     };
 
