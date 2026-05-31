@@ -36,15 +36,8 @@ describe('45 — Stage 6 Polish Features (engine-only)', () => {
   }, 30_000);
 
   // ── Webhook HMAC signing ──────────────────────────────────────────────────
-  //
-  // Pending engine wiring: src/webhooks/dispatcher.ts exists and can sign a
-  // body (signWebhookBody), but it is NOT invoked from the engine request path
-  // (boot/uow/forwarding never construct or call it), so configured webhooks
-  // never fire from app.engineUrl. The dispatcher also emits the header
-  // X-Potemkin-Webhook-Signature, whereas these tests expect
-  // x-potemkin-signature. Skipped until the dispatcher is wired into the
-  // event-emission pipeline and the header name is reconciled.
-  describe.skip('Webhook HMAC signing (secret in global.yaml)', () => {
+
+  describe('Webhook HMAC signing (secret in global.yaml)', () => {
     const WEBHOOK_PORT = 19876;
     let webhookServer: import('node:http').Server;
     let receivedRequests: Array<{
@@ -181,13 +174,7 @@ describe('45 — Stage 6 Polish Features (engine-only)', () => {
   // ── Latency injection (LeadAddNote: fixed_ms=50) ──────────────────────────
 
   describe('Latency injection (LeadAddNote boundary)', () => {
-    // Pending engine wiring: the boundary `latency:` config is parsed into
-    // LatencyConfig (src/dsl/types.ts) but is never read in the request path —
-    // neither the gateway contract handler nor the /_engine/forward handler nor
-    // the UoW applies a per-boundary delay (no code references boundary.latency
-    // / fixed_ms outside the DSL types). Skipped until boundary latency is
-    // applied in the request pipeline.
-    it.skip('POST /leads/{id}/notes incurs at least the configured fixed_ms delay', async () => {
+    it('POST /leads/{id}/notes incurs at least the configured fixed_ms delay', async () => {
       const start = Date.now();
       const res = await fwd(app.engineUrl, 'POST', `/leads/${APEX_LEAD_ID}/notes`, {
         text: 'Latency check', author: 'Tester',

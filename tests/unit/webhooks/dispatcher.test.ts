@@ -75,7 +75,7 @@ describe('webhooks/dispatcher — signing', () => {
     const delivery = prepareWebhookDelivery(WEBHOOK, makeEvent(), 'LeadConvert', 'mutation', cel);
     expect(delivery).not.toBeNull();
     const sig = delivery!.headers[WEBHOOK_SIGNATURE_HEADER];
-    const recomputed = createHmac('sha256', 'webhook-secret').update(delivery!.body).digest('hex');
+    const recomputed = 'sha256=' + createHmac('sha256', 'webhook-secret').update(delivery!.body).digest('hex');
     expect(sig).toBe(recomputed);
     expect(delivery!.url).toBe('http://example.test/webhook');
   });

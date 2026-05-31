@@ -21,6 +21,13 @@
 /** Generic catch-all signal header. Value is the signal name (e.g. "rate_limit"). */
 export const POTEMKIN_SIGNAL = 'x-potemkin-signal';
 
+/**
+ * Outbound-webhook HMAC signature header. Value is `sha256=<hex>` — the hex
+ * HMAC-SHA256 of the delivered request body under the webhook's configured
+ * secret, so a recipient can recompute and verify it.
+ */
+export const POTEMKIN_WEBHOOK_SIGNATURE = 'x-potemkin-signature';
+
 /** Force a specific named response variant (e.g. "maintenance", "degraded"). */
 export const POTEMKIN_FORCE_RESPONSE = 'x-potemkin-force-response';
 

@@ -199,7 +199,7 @@ describe('forwarding/gateway feature parity (adversarial audit)', () => {
       expect(deliveries[0]!.url).toBe('http://127.0.0.1:1/widget-hook');
       // Signed with HMAC-SHA256 over the templated body.
       const { createHmac } = await import('node:crypto');
-      const expected = createHmac('sha256', WEBHOOK_SECRET).update(deliveries[0]!.body).digest('hex');
+      const expected = 'sha256=' + createHmac('sha256', WEBHOOK_SECRET).update(deliveries[0]!.body).digest('hex');
       expect(deliveries[0]!.headers[WEBHOOK_SIGNATURE_HEADER]).toBe(expected);
       const payload = JSON.parse(deliveries[0]!.body) as { widgetId: string };
       expect(payload.widgetId).toBe(id);

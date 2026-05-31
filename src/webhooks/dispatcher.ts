@@ -16,9 +16,14 @@ import type { WebhookConfig } from '../dsl/types.js';
 import type { DomainEvent, JsonValue } from '../types.js';
 import type { CelEvaluator } from '../cel/evaluator.js';
 import { CelPhase } from '../cel/phases.js';
+import { POTEMKIN_WEBHOOK_SIGNATURE } from '../http/potemkinHeaders.js';
 
-/** Header carrying the hex HMAC-SHA256 signature of the request body. */
-export const WEBHOOK_SIGNATURE_HEADER = 'X-Potemkin-Webhook-Signature';
+/**
+ * Header carrying the webhook body signature, formatted `sha256=<hex>`.
+ * Re-exported from the canonical X-Potemkin-* registry so the dispatcher and
+ * any consumer share one source of truth for the header name.
+ */
+export const WEBHOOK_SIGNATURE_HEADER = POTEMKIN_WEBHOOK_SIGNATURE;
 
 /** Return true when the webhook's trigger matches the emitted event/boundary/intent. */
 export function webhookMatches(
@@ -122,7 +127,7 @@ export function prepareWebhookDelivery(
   const body = serialiseWebhookBody(payload);
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (webhook.secret) {
-    headers[WEBHOOK_SIGNATURE_HEADER] = signWebhookBody(body, webhook.secret);
+    headers[WEBHOOK_SIGNATURE_HEADER] = `sha256=${signWebhookBody(body, webhook.secret)}`;
   }
   return { url, body, headers };
 }
