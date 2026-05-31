@@ -196,5 +196,115 @@ describe('dsl/schema', () => {
         expect((e as BootError).code).toBe('BOOT_ERR_DSL_SYNTAX');
       }
     });
+
+    describe('audit_fields', () => {
+      it('maps audit_fields: true to boundary.auditFields', () => {
+        const config = validateBoundaryConfig({ ...minimalValid, audit_fields: true });
+        expect(config.auditFields).toBe(true);
+      });
+
+      it('maps audit_fields: false to boundary.auditFields', () => {
+        const config = validateBoundaryConfig({ ...minimalValid, audit_fields: false });
+        expect(config.auditFields).toBe(false);
+      });
+
+      it('leaves auditFields undefined when audit_fields is absent', () => {
+        const config = validateBoundaryConfig(minimalValid);
+        expect(config.auditFields).toBeUndefined();
+      });
+
+      it('throws BootError when audit_fields is not a boolean', () => {
+        expect(() => validateBoundaryConfig({ ...minimalValid, audit_fields: 'yes' })).toThrow(BootError);
+      });
+    });
+
+    describe('boundary-level fault_rules', () => {
+      it('maps fault_rules to boundary.faults', () => {
+        const config = validateBoundaryConfig({
+          ...minimalValid,
+          fault_rules: [
+            {
+              name: 'duplicate-check-slow',
+              match: { intent: 'creation', condition: 'command.payload.checkDuplicates == true' },
+              response: { status: 504, body: { error: 'TIMEOUT' }, delay_ms: 50 },
+            },
+          ],
+        });
+        expect(config.faults).toHaveLength(1);
+        expect(config.faults?.[0]?.name).toBe('duplicate-check-slow');
+        expect(config.faults?.[0]?.match.intent).toBe('creation');
+        expect(config.faults?.[0]?.response.status).toBe(504);
+      });
+
+      it('leaves faults undefined when fault_rules is absent', () => {
+        const config = validateBoundaryConfig(minimalValid);
+        expect(config.faults).toBeUndefined();
+      });
+
+      it('throws BootError when fault_rules is not an array', () => {
+        expect(() => validateBoundaryConfig({ ...minimalValid, fault_rules: {} })).toThrow(BootError);
+      });
+    });
+
+    describe('behavior match.method and HATEOAS link fields', () => {
+      const withBehavior = (behavior: Record<string, unknown>) => ({
+        ...minimalValid,
+        behaviors: [behavior],
+      });
+
+      it('maps match.method to behavior.match.method, uppercased', () => {
+        const config = validateBoundaryConfig(withBehavior({
+          name: 'convertLead',
+          match: { operationId: 'convertLead', condition: 'true', method: 'post' },
+          emit: 'Created',
+        }));
+        expect(config.behaviors[0]?.match.method).toBe('POST');
+      });
+
+      it('throws BootError when match.method is an empty string', () => {
+        expect(() => validateBoundaryConfig(withBehavior({
+          name: 'convertLead',
+          match: { operationId: 'convertLead', condition: 'true', method: '' },
+          emit: 'Created',
+        }))).toThrow(BootError);
+      });
+
+      it('maps link_name to behavior.linkName', () => {
+        const config = validateBoundaryConfig(withBehavior({
+          name: 'convertLead',
+          link_name: 'convert',
+          match: { operationId: 'convertLead', condition: 'true' },
+          emit: 'Created',
+        }));
+        expect(config.behaviors[0]?.linkName).toBe('convert');
+      });
+
+      it('maps link_condition to behavior.linkCondition', () => {
+        const config = validateBoundaryConfig(withBehavior({
+          name: 'convertLead',
+          link_name: 'convert',
+          link_condition: "state.status == 'QUALIFIED'",
+          match: { operationId: 'convertLead', condition: 'true' },
+          emit: 'Created',
+        }));
+        expect(config.behaviors[0]?.linkCondition).toBe("state.status == 'QUALIFIED'");
+      });
+
+      it('throws BootError when link_condition is not valid CEL', () => {
+        expect(() => validateBoundaryConfig(withBehavior({
+          name: 'convertLead',
+          link_condition: 'state.status ==',
+          match: { operationId: 'convertLead', condition: 'true' },
+          emit: 'Created',
+        }))).toThrow(BootError);
+      });
+
+      it('leaves method/linkName/linkCondition undefined when absent', () => {
+        const config = validateBoundaryConfig(minimalValid);
+        expect(config.behaviors[0]?.match.method).toBeUndefined();
+        expect(config.behaviors[0]?.linkName).toBeUndefined();
+        expect(config.behaviors[0]?.linkCondition).toBeUndefined();
+      });
+    });
   });
 });
