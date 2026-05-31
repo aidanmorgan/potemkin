@@ -491,7 +491,31 @@ async function handleContractRequest(
       } else {
         // Whole batch committed — now fire every deferred saga/webhook once.
         deferredSideEffects.flush(logger);
-        res.status(201).json(results);
+        // Route the created-array through the same mask → pagination → format
+        // pipeline single responses use, so X-Potemkin-Mask / -Pagination-Style /
+        // -Response-Format are honoured for bulk results too (potemkin-ldy).
+        let bulkBody: JsonValue = results;
+        const bulkHeaders: Record<string, string> = {};
+        if (controls.format.maskFields && controls.format.maskFields.length > 0) {
+          const fields = controls.format.maskFields;
+          bulkBody = (results as JsonValue[]).map((item) => applyMask(item, fields) as JsonValue);
+        }
+        if (controls.format.paginationStyle !== undefined) {
+          const paged = applyPaginationStyle(
+            bulkBody,
+            controls.format.paginationStyle,
+            req.query as Record<string, string | string[]>,
+            req.path,
+          );
+          bulkBody = paged.body;
+          Object.assign(bulkHeaders, paged.headers);
+        }
+        if (controls.format.responseFormat !== undefined) {
+          bulkBody = applyResponseFormat(bulkBody, controls.format.responseFormat, bulkBoundary.boundary, req.path);
+          bulkHeaders['X-Potemkin-Response-Format'] = controls.format.responseFormat;
+        }
+        for (const [k, v] of Object.entries(bulkHeaders)) res.setHeader(k, v);
+        res.status(201).json(bulkBody);
       }
       return;
     }

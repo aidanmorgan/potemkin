@@ -281,6 +281,26 @@ describe('X-Potemkin-* control headers — full integration', () => {
       }
     });
 
+    it('X-Potemkin-Bulk-Transactional + X-Potemkin-Mask masks the field in EVERY created item (potemkin-ldy)', async () => {
+      const res = await agent
+        .post('/leads')
+        .set('X-Potemkin-Bulk-Transactional', 'true')
+        .set('X-Potemkin-Mask', 'companyName')
+        .send([
+          { companyName: 'Mask One', contactName: 'One', phone: '+61 2 9100 3001', email: 'm1@bulk.com', source: 'WEBSITE' },
+          { companyName: 'Mask Two', contactName: 'Two', phone: '+61 2 9100 3002', email: 'm2@bulk.com', source: 'WEBSITE' },
+        ]);
+
+      expect(res.status).toBe(201);
+      expect(Array.isArray(res.body)).toBe(true);
+      expect(res.body).toHaveLength(2);
+      // Before potemkin-ldy the bulk array was returned raw, bypassing the mask
+      // pipeline. Now every item must be masked.
+      for (const item of res.body as { companyName?: string }[]) {
+        expect(item.companyName).toBe('[MASKED]');
+      }
+    });
+
     it('X-Potemkin-Bulk-Transactional: an aborted batch persists NO prior items (rollback)', async () => {
       const beforeEvents = sys.events.size();
       const beforeGraph = sys.graph.size();

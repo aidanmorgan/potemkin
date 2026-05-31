@@ -813,7 +813,25 @@ async function runBulkCreate(args: {
   }
 
   deferred.flush(logger);
-  send({ status: 201, headers: { 'x-specmatic-result': 'success' }, body: results });
+  // Route the created-array through mask → pagination → format like single
+  // responses, so X-Potemkin-Mask/-Pagination-Style/-Response-Format apply to
+  // bulk results too (potemkin-ldy), consistent with the gateway.
+  let bulkBody: JsonValue = results;
+  const bulkHeaders: Record<string, string> = { 'x-specmatic-result': 'success' };
+  if (controls.format.maskFields && controls.format.maskFields.length > 0) {
+    const fields = controls.format.maskFields;
+    bulkBody = results.map((item) => applyMask(item, fields) as JsonValue);
+  }
+  if (controls.format.paginationStyle !== undefined) {
+    const paged = applyPaginationStyle(bulkBody, controls.format.paginationStyle, fwd.query, path);
+    bulkBody = paged.body;
+    for (const [k, v] of Object.entries(paged.headers)) bulkHeaders[k.toLowerCase()] = v;
+  }
+  if (controls.format.responseFormat !== undefined) {
+    bulkBody = applyResponseFormat(bulkBody, controls.format.responseFormat, boundary.boundary, path);
+    bulkHeaders['x-potemkin-response-format'] = controls.format.responseFormat;
+  }
+  send({ status: 201, headers: bulkHeaders, body: bulkBody });
 }
 
 // ---------------------------------------------------------------------------
