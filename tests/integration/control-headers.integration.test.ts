@@ -6,10 +6,13 @@
  * through the Specmatic stack.
  */
 
+import { createHmac } from 'node:crypto';
 import type { BootedSystem } from '../../src/engine/boot.js';
+import { bootSystem } from '../../src/engine/boot.js';
 import { createGateway } from '../../src/http/gateway.js';
 import { resetSystem } from '../../src/engine/reset.js';
-import { bootCrmSystem } from './_helpers/crm-boot.js';
+import { bootCrmSystem, expandByContractPath } from './_helpers/crm-boot.js';
+import { loadFixtureWithGlobal } from '../fixtures/index.js';
 import {
   withPersistentServer,
   type PersistentAgent,
@@ -124,6 +127,105 @@ describe('X-Potemkin-* control headers — full integration', () => {
           phone: '+61 0', email: 's@t.com', source: 'WEBSITE',
         });
       expect([200, 201]).toContain(res1.status);
+    });
+
+    // Concurrency isolation (potemkin-03t): two requests fired together through
+    // the gateway — one with a large X-Potemkin-Clock-Offset, one with NONE —
+    // each must observe its OWN clock. The awaited UoW inside the gateway lets
+    // the two requests interleave between "apply offset" and "respond"; under the
+    // previous shared-instance design the offset-bearing request would have
+    // shifted the no-offset request's $now()/event timestamp (cross-request
+    // leak). The per-request sub-evaluator makes each request see only its own
+    // offset.
+    it('concurrent requests with and without Clock-Offset each observe their own clock', async () => {
+      const ONE_YEAR_MS = 365 * 24 * 3600 * 1000;
+      const startMs = Date.now();
+
+      // Fire both at once so they interleave at the gateway's awaited UoW.
+      const [offsetRes, plainRes] = await Promise.all([
+        agent
+          .post('/leads')
+          .set('X-Potemkin-Clock-Offset', String(ONE_YEAR_MS))
+          .set('X-Potemkin-Include-Events', 'true')
+          .send({
+            companyName: 'Offset Corp', contactName: 'O',
+            phone: '+61 0', email: 'offset@t.com', source: 'WEBSITE',
+          }),
+        agent
+          .post('/leads')
+          .set('X-Potemkin-Include-Events', 'true')
+          .send({
+            companyName: 'Plain Corp', contactName: 'P',
+            phone: '+61 0', email: 'plain@t.com', source: 'WEBSITE',
+          }),
+      ]);
+      const endMs = Date.now();
+
+      expect([200, 201]).toContain(offsetRes.status);
+      expect([200, 201]).toContain(plainRes.status);
+
+      const offsetTs = new Date(
+        (offsetRes.body._events as Array<{ timestamp: string }>)[0].timestamp,
+      ).getTime();
+      const plainTs = new Date(
+        (plainRes.body._events as Array<{ timestamp: string }>)[0].timestamp,
+      ).getTime();
+
+      // The offset request's event timestamp is ~1 year in the future.
+      expect(offsetTs - startMs).toBeGreaterThanOrEqual(ONE_YEAR_MS - 10000);
+
+      // The no-offset request observes the REAL clock — completely unaffected by
+      // the concurrent offset request. Its timestamp is within the test window.
+      expect(plainTs).toBeGreaterThanOrEqual(startMs - 10000);
+      expect(plainTs).toBeLessThanOrEqual(endMs + 10000);
+
+      // And the server-wide admin clock was never mutated by either request.
+      expect(sys.cel.getClockOffset()).toBe(0);
+    });
+
+    // Concurrency isolation (potemkin-03t), burst variant: fire a BURST of
+    // simultaneous requests, each carrying a DISTINCT X-Potemkin-Clock-Offset,
+    // and assert every response's event timestamp matches ITS OWN offset. Under
+    // the previous shared-instance design the offset was set on the shared
+    // evaluator then restored around an awaited UoW, so a request that resumed
+    // while a sibling held a different offset observed the sibling's clock —
+    // a cross-request leak. The per-request sub-evaluator gives each request its
+    // own offset, so all N requests stay isolated regardless of interleaving.
+    it('a burst of concurrent requests each observe their own distinct Clock-Offset', async () => {
+      const startMs = Date.now();
+      const DAY_MS = 24 * 3600 * 1000;
+      // Distinct, widely-separated offsets so any cross-request bleed is obvious.
+      const offsets = [1, 50, 100, 200, 365, 500, 800, 1000].map((d) => d * DAY_MS);
+
+      const responses = await Promise.all(
+        offsets.map((offsetMs, i) =>
+          agent
+            .post('/leads')
+            .set('X-Potemkin-Clock-Offset', String(offsetMs))
+            .set('X-Potemkin-Include-Events', 'true')
+            .send({
+              companyName: `Burst Co ${i}`, contactName: `B${i}`,
+              phone: '+61 0', email: `burst${i}@t.com`, source: 'WEBSITE',
+            }),
+        ),
+      );
+
+      const endMs = Date.now();
+      responses.forEach((res, i) => {
+        expect([200, 201]).toContain(res.status);
+        const ts = new Date(
+          (res.body._events as Array<{ timestamp: string }>)[0].timestamp,
+        ).getTime();
+        // Each request's event timestamp must equal real-now + its OWN offset
+        // (within the test's wall-clock window) — never a sibling's offset.
+        const expectedLow = startMs + offsets[i]! - 10000;
+        const expectedHigh = endMs + offsets[i]! + 10000;
+        expect(ts).toBeGreaterThanOrEqual(expectedLow);
+        expect(ts).toBeLessThanOrEqual(expectedHigh);
+      });
+
+      // The server-wide admin clock was never mutated by any request.
+      expect(sys.cel.getClockOffset()).toBe(0);
     });
 
     it('Dry-Run + Include-Events: events appear but state stays unchanged', async () => {
@@ -625,5 +727,103 @@ describe('X-Potemkin-* control headers — full integration', () => {
       expect(res.body.email).toBe('[MASKED]');
       expect(res.body._debug).toBeDefined();
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Per-request clock-offset isolation across an EARLY RETURN (potemkin-03t).
+//
+// The previous shared-instance design set the clock offset on the shared CEL
+// evaluator at the top of the handler and restored it at the end. Several early
+// returns (JWT validation error, idempotency replay/conflict) returned BEFORE
+// the restore ran — permanently shifting the shared offset so EVERY later
+// request observed the leaked clock. This is deterministic (no interleaving
+// needed): one offset-bearing request that 401s must not move the clock for the
+// next request. The per-request sub-evaluator never mutates shared state, so
+// there is nothing to leak and nothing to restore.
+//
+// JWT mode is required to reach the gateway's offset-set → JWT-validate → 401
+// early return, so this block boots the crm-jwt fixture.
+// ---------------------------------------------------------------------------
+describe('X-Potemkin-Clock-Offset — no leak across a JWT-error early return', () => {
+  const JWT_SECRET = 'potemkin-jwt-e2e-test-secret-do-not-use';
+
+  function b64url(buf: Buffer): string {
+    return buf.toString('base64').replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
+  }
+
+  /** Mint a valid HS256 token for the crm-jwt fixture (1-hour expiry). */
+  function validToken(scopes: string): string {
+    const now = Math.floor(Date.now() / 1000);
+    const claims = {
+      sub: 'mgr1', scopes, iss: 'potemkin-test', aud: 'potemkin-api',
+      iat: now, exp: now + 3600,
+    };
+    const header = b64url(Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' }), 'utf8'));
+    const payload = b64url(Buffer.from(JSON.stringify(claims), 'utf8'));
+    const sig = b64url(createHmac('sha256', JWT_SECRET).update(`${header}.${payload}`).digest());
+    return `${header}.${payload}.${sig}`;
+  }
+
+  let sys: BootedSystem;
+  let agent: PersistentAgent;
+  let persistent: PersistentServer;
+
+  beforeAll(async () => {
+    const fixture = await loadFixtureWithGlobal('crm-jwt');
+    sys = await bootSystem(fixture);
+    expandByContractPath(sys);
+    const app = createGateway(sys);
+    persistent = await withPersistentServer(app);
+    agent = persistent.agent;
+  });
+
+  afterAll(async () => {
+    await persistent.close();
+  });
+
+  beforeEach(() => {
+    resetSystem(sys);
+  });
+
+  it('an offset request that 401s leaves the clock unshifted for the next request', async () => {
+    const ONE_YEAR_MS = 365 * 24 * 3600 * 1000;
+
+    // 1. Offset-bearing request with a bogus bearer token → 401 (JwtValidation).
+    //    On the shared-instance design this set the offset then short-circuited
+    //    on the 401 BEFORE restoring it — leaking the offset onto the shared
+    //    evaluator.
+    const denied = await agent
+      .post('/leads')
+      .set('Authorization', 'Bearer not-a-valid-jwt')
+      .set('X-Potemkin-Clock-Offset', String(ONE_YEAR_MS))
+      .send({
+        companyName: 'Denied Co', contactName: 'D',
+        phone: '+61 0', email: 'denied@t.com', source: 'WEBSITE',
+      });
+    expect(denied.status).toBe(401);
+
+    // 2. A valid follow-up request with NO offset must observe the REAL clock.
+    //    On the leaked design its event timestamp would be ~1 year in the future.
+    const startMs = Date.now();
+    const ok = await agent
+      .post('/leads')
+      .set('Authorization', `Bearer ${validToken('manager')}`)
+      .set('X-Potemkin-Include-Events', 'true')
+      .send({
+        companyName: 'Allowed Co', contactName: 'A',
+        phone: '+61 0', email: 'allowed@t.com', source: 'WEBSITE',
+      });
+    const endMs = Date.now();
+    expect([200, 201]).toContain(ok.status);
+
+    const ts = new Date(
+      (ok.body._events as Array<{ timestamp: string }>)[0].timestamp,
+    ).getTime();
+    expect(ts).toBeGreaterThanOrEqual(startMs - 10000);
+    expect(ts).toBeLessThanOrEqual(endMs + 10000);
+
+    // The server-wide admin clock was never mutated.
+    expect(sys.cel.getClockOffset()).toBe(0);
   });
 });

@@ -340,13 +340,15 @@ async function handleContractRequest(
       }
     }
 
-    // Tier 1: clock offset — push the global offset for the duration of this request.
-    const previousClockOffset = sys.cel.getClockOffset();
-    if (controls.transparency.clockOffsetMs !== undefined) {
-      sys.cel.setClockOffset(previousClockOffset + controls.transparency.clockOffsetMs);
-    }
-    // Tier 1: faker seed — per-evaluator-instance (no module global).
-    if (controls.transparency.seed !== undefined) sys.cel.setFakerSeed(controls.transparency.seed);
+    // Tier 1: clock offset + faker seed — per-request, immutable. A lightweight
+    // sub-evaluator layers this request's X-Potemkin-Clock-Offset / -Seed on top
+    // of the shared evaluator WITHOUT mutating it, so two concurrent requests
+    // each observe their own offset/seed with no cross-request leak. All the
+    // request-scoped CEL consumers below receive `reqCel` instead of `sys.cel`.
+    const reqCel = sys.cel.withRequestContext({
+      ...(controls.transparency.clockOffsetMs !== undefined ? { clockOffsetMs: controls.transparency.clockOffsetMs } : {}),
+      ...(controls.transparency.seed !== undefined ? { seed: controls.transparency.seed } : {}),
+    });
 
     // Tier 2: bulk-transactional — when the body is an array, execute each item
     // through the full CQRS/ES Unit of Work with all-or-nothing semantics. The
@@ -370,8 +372,6 @@ async function handleContractRequest(
           try {
             bulkActor = resolveActor(req.headers['authorization'] as string | undefined, sys.dsl.auth) ?? undefined;
           } catch (e) {
-            sys.cel.setClockOffset(previousClockOffset);
-            if (controls.transparency.seed !== undefined) sys.cel.setFakerSeed(undefined);
             if (e instanceof JwtValidationError) {
               res.status(401).set('WWW-Authenticate', 'Bearer').json({ error: 'UNAUTHENTICATED', message: e.message, details: { code: e.code } });
               return;
@@ -449,7 +449,7 @@ async function handleContractRequest(
               dsl: sys.dsl,
               graph: sys.graph,
               events: sys.events,
-              cel: sys.cel,
+              cel: reqCel,
               validator: sys.validator,
               schemaRegistry: sys.schemaRegistry,
               aggregateLocks: sys.aggregateLocks,
@@ -473,9 +473,6 @@ async function handleContractRequest(
           break;
         }
       }
-
-      sys.cel.setClockOffset(previousClockOffset);
-      if (controls.transparency.seed !== undefined) sys.cel.setFakerSeed(undefined);
 
       if (abortIndex !== null) {
         // Roll back every committed item so the batch is all-or-nothing, and
@@ -536,9 +533,7 @@ async function handleContractRequest(
     // Tier 4: time-travel intercepts for GET requests (read-at-version / replay-event).
     if (effectiveMethod === 'GET') {
       if (controls.timeTravel.readAtVersion !== undefined && targetId !== null) {
-        const rebuilt = rebuildEntityAtVersion(targetId, controls.timeTravel.readAtVersion, boundary, sys.events, sys.cel, logger);
-        sys.cel.setClockOffset(previousClockOffset);
-        if (controls.transparency.seed !== undefined) sys.cel.setFakerSeed(undefined);
+        const rebuilt = rebuildEntityAtVersion(targetId, controls.timeTravel.readAtVersion, boundary, sys.events, reqCel, logger);
         const headers = { 'X-Potemkin-Read-At-Version': String(controls.timeTravel.readAtVersion) };
         if (rebuilt === null) {
           res.status(404).set(headers).json({ error: 'ENTITY_ABSENCE', message: `entity ${targetId} not found at version ${controls.timeTravel.readAtVersion}` });
@@ -549,8 +544,6 @@ async function handleContractRequest(
       }
       if (controls.timeTravel.replayEvent) {
         const evt = findEventById(controls.timeTravel.replayEvent, sys.events);
-        sys.cel.setClockOffset(previousClockOffset);
-        if (controls.transparency.seed !== undefined) sys.cel.setFakerSeed(undefined);
         const headers = { 'X-Potemkin-Replayed-Event': controls.timeTravel.replayEvent };
         if (!evt) {
           res.status(404).set(headers).json({ error: 'EVENT_NOT_FOUND', message: `event ${controls.timeTravel.replayEvent} not found` });
@@ -642,14 +635,12 @@ async function handleContractRequest(
         boundaryFaults,
         globalFaults,
         dynamicFaults,
-        cel: sys.cel,
+        cel: reqCel,
         state: command.targetId !== null ? sys.graph.get(command.targetId) : null,
         logger,
       });
       if (faultResponse !== null) {
         sys.metrics.faultsSimulatedTotal.add(1);
-        sys.cel.setClockOffset(previousClockOffset);
-        if (controls.transparency.seed !== undefined) sys.cel.setFakerSeed(undefined);
         if (faultResponse.headers) res.set(faultResponse.headers);
         if (isHead) res.status(faultResponse.status).end();
         else res.status(faultResponse.status).json(faultResponse.body ?? null);
@@ -708,7 +699,7 @@ async function handleContractRequest(
           dsl: sys.dsl,
           graph: sys.graph,
           events: sys.events,
-          cel: sys.cel,
+          cel: reqCel,
           validator: sys.validator,
           schemaRegistry: sys.schemaRegistry,
           aggregateLocks: sys.aggregateLocks,
@@ -730,9 +721,6 @@ async function handleContractRequest(
         }),
       );
     } catch (err) {
-      // Restore clock offset on error too.
-      sys.cel.setClockOffset(previousClockOffset);
-      if (controls.transparency.seed !== undefined) sys.cel.setFakerSeed(undefined);
       logger.error({ err }, 'UoW execution error');
       // X-Specmatic-Result: every UoW error path is a contract-test failure.
       res.setHeader('X-Specmatic-Result', 'failure');
@@ -927,10 +915,6 @@ async function handleContractRequest(
     // not control its trace/span identifiers). See potemkin-0la.
     if (controls.observability.traceId) responseHeaders['X-Potemkin-Trace-Id'] = controls.observability.traceId;
     if (controls.observability.spanName) responseHeaders['X-Potemkin-Span-Name'] = controls.observability.spanName;
-
-    // Restore global side-effects.
-    sys.cel.setClockOffset(previousClockOffset);
-    if (controls.transparency.seed !== undefined) sys.cel.setFakerSeed(undefined);
 
     // HEAD response: same status + headers as GET, but empty body (RFC 7231 §4.3.2).
     if (isHead) {

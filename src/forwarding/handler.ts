@@ -233,6 +233,15 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
     // 5. Parse X-Potemkin-* control headers from the lowercased map.
     const controls = parseControlHeaders(lc);
 
+    // Tier 1: clock offset + faker seed — per-request, immutable. A lightweight
+    // sub-evaluator layers this request's X-Potemkin-Clock-Offset / -Seed on top
+    // of the shared evaluator WITHOUT mutating it, so concurrent forwarded
+    // requests each observe their own offset/seed with no cross-request leak.
+    const reqCel = sys.cel.withRequestContext({
+      ...(controls.transparency.clockOffsetMs !== undefined ? { clockOffsetMs: controls.transparency.clockOffsetMs } : {}),
+      ...(controls.transparency.seed !== undefined ? { seed: controls.transparency.seed } : {}),
+    });
+
     // 5a. Admin gating for Tier 3 actor-override / impersonate and the Tier 7
     //     request-validation skip — these require an `admin`-scoped caller.
     //     (Response-validation / additional-properties skips are NOT gated on the
@@ -298,7 +307,7 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       const ttTargetId = route.pathParams['id'] ?? null;
       if (controls.timeTravel.readAtVersion !== undefined && ttTargetId !== null) {
         const rebuilt = rebuildEntityAtVersion(
-          ttTargetId, controls.timeTravel.readAtVersion, boundary, sys.events, sys.cel, logger,
+          ttTargetId, controls.timeTravel.readAtVersion, boundary, sys.events, reqCel, logger,
         );
         const headers = { 'x-potemkin-read-at-version': String(controls.timeTravel.readAtVersion) };
         if (rebuilt === null) {
@@ -368,7 +377,7 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
     //     own UoW (validate per-item) and return the results array. Mirrors the
     //     gateway bulk pattern; non-transactional arrays still loop (best-effort).
     if (Array.isArray(fwd.body) && (isBulkArrayBody || isCreationArrayBody)) {
-      await runBulkCreate({ sys, fwd, route, boundary, intent, method, path, actor, controls, logger, send });
+      await runBulkCreate({ sys, fwd, route, boundary, intent, method, path, actor, controls, logger, send, reqCel });
       return;
     }
 
@@ -417,7 +426,7 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
         boundaryFaults: [...split.boundary, ...(boundary.faults ?? [])],
         globalFaults: split.global,
         dynamicFaults,
-        cel: sys.cel,
+        cel: reqCel,
         state: command.targetId !== null ? (sys.graph.get(command.targetId) as JsonObject | null) : null,
         logger,
       });
@@ -494,7 +503,7 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
           dsl: sys.dsl,
           graph: sys.graph,
           events: sys.events,
-          cel: sys.cel,
+          cel: reqCel,
           validator: sys.validator,
           schemaRegistry: sys.schemaRegistry,
           aggregateLocks: sys.aggregateLocks,
@@ -616,7 +625,7 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
     //     (global `hateoas:` block). Applied to the live body (in addition to the
     //     per-boundary `_patches` above) so plugin-less callers see the links.
     if (intent === 'query' && result.status >= 200 && result.status < 300) {
-      outBody = applyHateoasToQueryBody(outBody, boundary, sys.dsl, sys.cel, fwd.query);
+      outBody = applyHateoasToQueryBody(outBody, boundary, sys.dsl, reqCel, fwd.query);
     }
 
     // 22. Tier 5: field mask (X-Potemkin-Mask replaces named fields with [MASKED]).
@@ -712,8 +721,9 @@ async function runBulkCreate(args: {
   controls: import('../http/controlHeaders.js').ControlHeaders;
   logger: import('../observability/logger.js').Logger;
   send: (r: ForwardedResponse) => void;
+  reqCel: import('../cel/evaluator.js').CelEvaluator;
 }): Promise<void> {
-  const { sys, fwd, route, boundary, intent, method, path, actor, controls, logger, send } = args;
+  const { sys, fwd, route, boundary, intent, method, path, actor, controls, logger, send, reqCel } = args;
   const items = fwd.body as JsonValue[];
 
   const eventSnapshot = sys.events.snapshot();
@@ -773,7 +783,7 @@ async function runBulkCreate(args: {
           dsl: sys.dsl,
           graph: sys.graph,
           events: sys.events,
-          cel: sys.cel,
+          cel: reqCel,
           validator: sys.validator,
           schemaRegistry: sys.schemaRegistry,
           aggregateLocks: sys.aggregateLocks,

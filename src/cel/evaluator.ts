@@ -143,6 +143,22 @@ export interface CelContext {
   readonly [k: string]: unknown;
 }
 
+/**
+ * Per-request, immutable CEL context controls (X-Potemkin-Clock-Offset /
+ * X-Potemkin-Seed). Produced once per inbound request by the gateway /
+ * forwarding handler via {@link CelEvaluator.withRequestContext} and carried
+ * for the request's lifetime — NEVER mutated onto the shared evaluator. This is
+ * what makes concurrent requests isolated: a request's clock offset and faker
+ * seed live in the per-request sub-evaluator, so a second concurrent request
+ * cannot read or clobber the first's offset/seed.
+ */
+export interface CelRequestContext {
+  /** Additional clock offset (ms) layered on top of the server-wide admin clock. */
+  readonly clockOffsetMs?: number;
+  /** Faker seed string; seeds the per-request RNG so $fake* output is deterministic. */
+  readonly seed?: string;
+}
+
 export interface CelEvaluator {
   compile(expression: string): CompiledCel;
   evaluate(
@@ -159,16 +175,26 @@ export interface CelEvaluator {
    *   - `$${literal}` → escapes to the literal `${literal}` (no evaluation)
    */
   evaluateDslValue(value: unknown, ctx: CelContext, phase: CelPhase): unknown;
-  /** Return the current clock offset in milliseconds (per-instance). */
+  /**
+   * Effective clock offset in milliseconds (positive moves $now() forward).
+   * On the root evaluator this is the server-wide admin clock; on a per-request
+   * sub-evaluator it is the admin clock PLUS this request's offset.
+   */
   getClockOffset(): number;
-  /** Set the clock offset in milliseconds (positive moves $now() forward). Per-instance. */
+  /**
+   * Set the server-wide admin clock offset in milliseconds. Used only by the
+   * admin clock endpoints (/_admin/clock/*) and reset — NOT by per-request
+   * control headers, which flow through {@link withRequestContext} instead.
+   */
   setClockOffset(ms: number): void;
   /**
-   * Set (or clear) this evaluator's faker seed from a string. The seed and RNG
-   * state are per-instance, so concurrent evaluators with different seeds do not
-   * interfere. Passing `undefined` clears the seed (reverts $fake* to Math.random).
+   * Derive a lightweight per-request sub-evaluator that layers this request's
+   * clock offset and faker seed on top of the shared evaluator WITHOUT mutating
+   * it. The sub-evaluator shares the parent's compile cache and admin clock, so
+   * concurrent requests each get their own offset/seed with no cross-request
+   * leak. Returns `this` when the request context carries neither control.
    */
-  setFakerSeed(s: string | undefined): void;
+  withRequestContext(reqCtx: CelRequestContext): CelEvaluator;
 }
 
 // ---------------------------------------------------------------------------
@@ -629,27 +655,44 @@ function evalComprehension(
 // Public factory
 // ---------------------------------------------------------------------------
 
-export function createCelEvaluator(): CelEvaluator {
-  // Per-instance clock offset (ms) and faker RNG. Instance state — NOT module
-  // globals — so concurrent booted systems and parallel requests do not
-  // share/clobber them.
-  let clockOffsetMs = 0;
-  const fakeRng: FakeRng = createFakeRng();
+/**
+ * Build a CelEvaluator whose effective clock offset is supplied by `offsetOf()`
+ * (re-read on every $now/timestamp call) and whose $fake* RNG is `rng`. Both the
+ * root evaluator and per-request sub-evaluators share this implementation:
+ *   - root:        offsetOf reads the mutable admin clock; rng is unseeded.
+ *   - per-request: offsetOf adds the request offset to the admin clock; rng is
+ *                  seeded from the request seed (or the parent's unseeded rng).
+ *
+ * `setAdminOffset` mutates the server-wide admin clock and is wired only on the
+ * root evaluator (admin endpoints + reset). `parentRoot` is the root evaluator
+ * a sub-evaluator was derived from, so chained `withRequestContext` calls always
+ * re-layer onto the same admin clock rather than onto another request's offset.
+ */
+function buildEvaluator(args: {
+  offsetOf: () => number;
+  rng: FakeRng;
+  setAdminOffset: (ms: number) => void;
+  parentRoot: CelEvaluator | null;
+}): CelEvaluator {
+  const { offsetOf, rng, setAdminOffset } = args;
+
+  const compile = (expression: string): CompiledCel => {
+    let ast: Expr;
+    try {
+      ast = parse(expression);
+    } catch (err) {
+      logger.debug(
+        { src: expression.slice(0, 120) },
+        // eslint-disable-next-line @typescript-eslint/no-base-to-string
+        `CEL compile error: ${err instanceof Error ? err.message : /* istanbul ignore next */ String(err)}`,
+      );
+      throw err;
+    }
+    return { source: expression, _ast: ast };
+  };
+
   const evaluator: CelEvaluator = {
-    compile(expression: string): CompiledCel {
-      let ast: Expr;
-      try {
-        ast = parse(expression);
-      } catch (err) {
-        logger.debug(
-          { src: expression.slice(0, 120) },
-          // eslint-disable-next-line @typescript-eslint/no-base-to-string
-          `CEL compile error: ${err instanceof Error ? err.message : /* istanbul ignore next */ String(err)}`,
-        );
-        throw err;
-      }
-      return { source: expression, _ast: ast };
-    },
+    compile,
 
     evaluate(
       expression: string | CompiledCel,
@@ -657,12 +700,12 @@ export function createCelEvaluator(): CelEvaluator {
       phase: CelPhase,
     ): unknown {
       const compiled: CompiledCel =
-        typeof expression === 'string' ? this.compile(expression) : expression;
+        typeof expression === 'string' ? compile(expression) : expression;
 
       const builtinCtx: BuiltinContext = {
         phase,
-        now: () => new Date(Date.now() + clockOffsetMs).toISOString(),
-        fake: fakeRng,
+        now: () => new Date(Date.now() + offsetOf()).toISOString(),
+        fake: rng,
       };
 
       try {
@@ -699,9 +742,51 @@ export function createCelEvaluator(): CelEvaluator {
       }
     },
 
-    getClockOffset(): number { return clockOffsetMs; },
-    setClockOffset(ms: number): void { clockOffsetMs = Number.isFinite(ms) ? ms : 0; },
-    setFakerSeed(s: string | undefined): void { fakeRng.seedString(s); },
+    getClockOffset(): number { return offsetOf(); },
+    setClockOffset(ms: number): void { setAdminOffset(ms); },
+
+    withRequestContext(reqCtx: CelRequestContext): CelEvaluator {
+      // Always layer onto the originating root's admin clock, so chaining
+      // withRequestContext never compounds one request's offset onto another's.
+      const root = args.parentRoot ?? evaluator;
+      const reqOffset = Number.isFinite(reqCtx.clockOffsetMs ?? NaN) ? (reqCtx.clockOffsetMs as number) : 0;
+      const hasOffset = reqCtx.clockOffsetMs !== undefined && reqOffset !== 0;
+      const hasSeed = reqCtx.seed !== undefined;
+      if (!hasOffset && !hasSeed) return root;
+
+      // Per-request RNG: a fresh, independently-seeded stream when a seed is
+      // supplied; otherwise the parent's (unseeded → Math.random) rng so $fake*
+      // behaviour is byte-identical to a request that set no seed.
+      let reqRng: FakeRng = rng;
+      if (hasSeed) {
+        reqRng = createFakeRng();
+        reqRng.seedString(reqCtx.seed);
+      }
+      return buildEvaluator({
+        offsetOf: () => root.getClockOffset() + reqOffset,
+        rng: reqRng,
+        // A sub-evaluator's admin-clock setter delegates to the root so the
+        // single server-wide clock is never forked per request.
+        setAdminOffset: (ms: number) => root.setClockOffset(ms),
+        parentRoot: root,
+      });
+    },
   };
   return evaluator;
+}
+
+export function createCelEvaluator(): CelEvaluator {
+  // Server-wide admin clock offset (ms) and an unseeded fallback faker RNG.
+  // Instance state — NOT module globals — so concurrent booted systems stay
+  // isolated. Per-request clock offset and faker seed do NOT mutate these; they
+  // live in a per-request sub-evaluator (see withRequestContext), so concurrent
+  // requests cannot read or clobber each other's offset/seed.
+  let adminClockOffsetMs = 0;
+  const fakeRng: FakeRng = createFakeRng();
+  return buildEvaluator({
+    offsetOf: () => adminClockOffsetMs,
+    rng: fakeRng,
+    setAdminOffset: (ms: number) => { adminClockOffsetMs = Number.isFinite(ms) ? ms : 0; },
+    parentRoot: null,
+  });
 }

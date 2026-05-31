@@ -67,7 +67,7 @@ function makeAlwaysTrueCel(): CelEvaluator {
     evaluateDslValue: jest.fn() as any,
     getClockOffset: jest.fn(() => 0),
     setClockOffset: jest.fn(),
-    setFakerSeed: jest.fn(),
+    withRequestContext(this: CelEvaluator) { return this; },
     evaluate: jest.fn(() => true),
   };
 }
@@ -78,7 +78,7 @@ function makeAlwaysFalseCel(): CelEvaluator {
     evaluateDslValue: jest.fn() as any,
     getClockOffset: jest.fn(() => 0),
     setClockOffset: jest.fn(),
-    setFakerSeed: jest.fn(),
+    withRequestContext(this: CelEvaluator) { return this; },
     evaluate: jest.fn(() => false),
   };
 }
@@ -89,7 +89,7 @@ function makeThrowingCel(): CelEvaluator {
     evaluateDslValue: jest.fn() as any,
     getClockOffset: jest.fn(() => 0),
     setClockOffset: jest.fn(),
-    setFakerSeed: jest.fn(),
+    withRequestContext(this: CelEvaluator) { return this; },
     evaluate: jest.fn(() => { throw new Error('CEL evaluation error'); }),
   };
 }
@@ -100,7 +100,7 @@ function makeValueCel(value: unknown): CelEvaluator {
     evaluateDslValue: jest.fn() as any,
     getClockOffset: jest.fn(() => 0),
     setClockOffset: jest.fn(),
-    setFakerSeed: jest.fn(),
+    withRequestContext(this: CelEvaluator) { return this; },
     evaluate: jest.fn(() => value),
   };
 }
@@ -294,7 +294,7 @@ describe('engine/patternMatcher — permutations', () => {
     evaluateDslValue: jest.fn() as any,
     getClockOffset: jest.fn(() => 0),
     setClockOffset: jest.fn(),
-    setFakerSeed: jest.fn(),
+    withRequestContext(this: CelEvaluator) { return this; },
         evaluate: jest.fn((e: any) => {
           const src = typeof e === 'string' ? e : e.source;
           callOrder.push(src);
@@ -322,7 +322,7 @@ describe('engine/patternMatcher — permutations', () => {
     evaluateDslValue: jest.fn() as any,
     getClockOffset: jest.fn(() => 0),
     setClockOffset: jest.fn(),
-    setFakerSeed: jest.fn(),
+    withRequestContext(this: CelEvaluator) { return this; },
         evaluate: jest.fn(() => { return ++callCount > 1; }),
       };
       const boundary = makeBoundary({
@@ -373,7 +373,7 @@ describe('engine/patternMatcher — permutations', () => {
     evaluateDslValue: jest.fn() as any,
     getClockOffset: jest.fn(() => 0),
     setClockOffset: jest.fn(),
-    setFakerSeed: jest.fn(),
+    withRequestContext(this: CelEvaluator) { return this; },
         evaluate: jest.fn((expr, ctx: any) => {
           // Only match when payload.amount > 100
           return (ctx?.payload?.amount ?? 0) > 100;
@@ -390,7 +390,7 @@ describe('engine/patternMatcher — permutations', () => {
     evaluateDslValue: jest.fn() as any,
     getClockOffset: jest.fn(() => 0),
     setClockOffset: jest.fn(),
-    setFakerSeed: jest.fn(),
+    withRequestContext(this: CelEvaluator) { return this; },
         evaluate: jest.fn((expr, ctx: any) => {
           return ctx?.state?.status === 'active';
         }),
@@ -496,7 +496,7 @@ describe('engine/patternMatcher — permutations', () => {
     evaluateDslValue: jest.fn() as any,
     getClockOffset: jest.fn(() => 0),
     setClockOffset: jest.fn(),
-    setFakerSeed: jest.fn(),
+    withRequestContext(this: CelEvaluator) { return this; },
         evaluate: jest.fn((expr) => {
           const src = typeof expr === 'string' ? expr : (expr as any).source;
           if (src === 'target-id-expr') return 'resolved-target-id';
@@ -527,7 +527,7 @@ describe('engine/patternMatcher — permutations', () => {
     evaluateDslValue: jest.fn() as any,
     getClockOffset: jest.fn(() => 0),
     setClockOffset: jest.fn(),
-    setFakerSeed: jest.fn(),
+    withRequestContext(this: CelEvaluator) { return this; },
         evaluate: jest.fn((expr) => {
           const src = typeof expr === 'string' ? expr : (expr as any).source;
           // Condition evaluation must return true to match behavior
@@ -556,7 +556,7 @@ describe('engine/patternMatcher — permutations', () => {
     evaluateDslValue: jest.fn() as any,
     getClockOffset: jest.fn(() => 0),
     setClockOffset: jest.fn(),
-    setFakerSeed: jest.fn(),
+    withRequestContext(this: CelEvaluator) { return this; },
         evaluate: jest.fn((expr) => {
           const src = typeof expr === 'string' ? expr : (expr as any).source;
           if (src === '"resolved-id"') return 'resolved-id';
@@ -694,7 +694,7 @@ describe('engine/patternMatcher — permutations', () => {
     evaluateDslValue: jest.fn() as any,
     getClockOffset: jest.fn(() => 0),
     setClockOffset: jest.fn(),
-    setFakerSeed: jest.fn(),
+    withRequestContext(this: CelEvaluator) { return this; },
         evaluate: jest.fn((expr) => {
           const src = typeof expr === 'string' ? expr : (expr as any).source;
           if (src === '$uuidv7()') return 'generated-uuid';
@@ -724,7 +724,7 @@ describe('engine/patternMatcher — permutations', () => {
     evaluateDslValue: jest.fn() as any,
     getClockOffset: jest.fn(() => 0),
     setClockOffset: jest.fn(),
-    setFakerSeed: jest.fn(),
+    withRequestContext(this: CelEvaluator) { return this; },
         evaluate: jest.fn((expr) => {
           const src = typeof expr === 'string' ? expr : (expr as any).source;
           if (src === 'gen-expr') return '';
@@ -755,7 +755,7 @@ describe('engine/patternMatcher — permutations', () => {
     evaluateDslValue: jest.fn() as any,
     getClockOffset: jest.fn(() => 0),
     setClockOffset: jest.fn(),
-    setFakerSeed: jest.fn(),
+    withRequestContext(this: CelEvaluator) { return this; },
         evaluate: jest.fn((expr) => {
           const src = typeof expr === 'string' ? expr : (expr as any).source;
           if (src === 'gen-expr') return 42; // non-string
@@ -816,7 +816,7 @@ describe('engine/patternMatcher — permutations', () => {
     evaluateDslValue: jest.fn() as any,
     getClockOffset: jest.fn(() => 0),
     setClockOffset: jest.fn(),
-    setFakerSeed: jest.fn(),
+    withRequestContext(this: CelEvaluator) { return this; },
         evaluate: jest.fn((expr) => {
           const src = typeof expr === 'string' ? expr : (expr as any).source;
           if (src === 'command.payload.name') return 'Alice';

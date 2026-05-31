@@ -255,24 +255,21 @@ describe('cel/builtins — $fake, $fakeSeed, $fakeFromFormat (per-instance RNG)'
       expect(name3).toBe(name3b);
     });
 
-    it('seeds via setFakerSeed (string) deterministically', () => {
-      const a = createCelEvaluator();
-      a.setFakerSeed('tenant-abc');
+    it('seeds via withRequestContext (string) deterministically', () => {
+      const a = createCelEvaluator().withRequestContext({ seed: 'tenant-abc' });
       const first = a.evaluate("$fake('person.firstName')", {}, CelPhase.EventHydration);
 
-      const b = createCelEvaluator();
-      b.setFakerSeed('tenant-abc');
+      const b = createCelEvaluator().withRequestContext({ seed: 'tenant-abc' });
       const firstB = b.evaluate("$fake('person.firstName')", {}, CelPhase.EventHydration);
 
-      // Same string seed on two independent evaluators yields the same stream.
+      // Same string seed on two independent per-request evaluators yields the same stream.
       expect(first).toBe(firstB);
     });
 
-    it('clearing the faker seed reverts to unseeded generation', () => {
-      const cel = createCelEvaluator();
-      cel.setFakerSeed('seeded');
-      cel.setFakerSeed(undefined); // clear
-      // After clearing, generation still works (now non-deterministic).
+    it('a request without a seed produces unseeded generation', () => {
+      // withRequestContext with no seed returns the (unseeded) root: generation
+      // still works (now non-deterministic).
+      const cel = createCelEvaluator().withRequestContext({});
       const result = cel.evaluate("$fake('person.firstName')", {}, CelPhase.EventHydration);
       expect(typeof result).toBe('string');
       expect((result as string).length).toBeGreaterThan(0);
@@ -286,14 +283,15 @@ describe('cel/builtins — $fake, $fakeSeed, $fakeFromFormat (per-instance RNG)'
     });
   });
 
-  describe('per-instance isolation — concurrent evaluators with different seeds do not interfere', () => {
-    it('two evaluators with different seeds produce independent streams', () => {
-      const a = createCelEvaluator();
-      const b = createCelEvaluator();
-      a.setFakerSeed('seed-A');
-      b.setFakerSeed('seed-B');
+  describe('per-request isolation — concurrent sub-evaluators with different seeds do not interfere', () => {
+    it('two per-request evaluators with different seeds produce independent streams', () => {
+      // Both sub-evaluators derive from the SAME shared root, proving the seed
+      // lives per-request (in the sub-evaluator), not on the shared instance.
+      const root = createCelEvaluator();
+      const a = root.withRequestContext({ seed: 'seed-A' });
+      const b = root.withRequestContext({ seed: 'seed-B' });
 
-      // Interleave draws across the two evaluators. If state leaked between
+      // Interleave draws across the two sub-evaluators. If state leaked between
       // them, interleaving would perturb each sequence.
       const aInterleaved: unknown[] = [];
       const bInterleaved: unknown[] = [];
@@ -303,13 +301,11 @@ describe('cel/builtins — $fake, $fakeSeed, $fakeFromFormat (per-instance RNG)'
       }
 
       // Re-run each in isolation (no interleaving) from the same seeds.
-      const a2 = createCelEvaluator();
-      a2.setFakerSeed('seed-A');
+      const a2 = createCelEvaluator().withRequestContext({ seed: 'seed-A' });
       const aIsolated = Array.from({ length: 5 }, () =>
         a2.evaluate("$fake('person.fullName')", {}, CelPhase.EventHydration));
 
-      const b2 = createCelEvaluator();
-      b2.setFakerSeed('seed-B');
+      const b2 = createCelEvaluator().withRequestContext({ seed: 'seed-B' });
       const bIsolated = Array.from({ length: 5 }, () =>
         b2.evaluate("$fake('person.fullName')", {}, CelPhase.EventHydration));
 
@@ -318,11 +314,11 @@ describe('cel/builtins — $fake, $fakeSeed, $fakeFromFormat (per-instance RNG)'
       expect(bInterleaved).toEqual(bIsolated);
     });
 
-    it('seeding one evaluator does not seed another (independent default state)', () => {
-      const seeded = createCelEvaluator();
-      seeded.setFakerSeed('only-me');
-      // A second, unseeded evaluator must not be affected by the first's seed.
-      const unseeded = createCelEvaluator();
+    it('seeding one request does not seed another request on the same root', () => {
+      const root = createCelEvaluator();
+      root.withRequestContext({ seed: 'only-me' });
+      // A second, unseeded request on the same root must not be affected.
+      const unseeded = root.withRequestContext({});
       const r = unseeded.evaluate("$fake('person.firstName')", {}, CelPhase.EventHydration);
       expect(typeof r).toBe('string');
     });
