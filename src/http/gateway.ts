@@ -67,6 +67,7 @@ import { evaluateFaultRules } from '../faults/index.js';
 import { applyResponseMutations, buildOperationLookup } from './responseMutations.js';
 import type { OpenApiOperation } from '../contract/loader.js';
 import { rebuildEntityAtVersion, findEventById } from '../engine/timeTravel.js';
+import { resolveBoundaryLatencyMs, delay } from '../forwarding/responsePipeline.js';
 
 /** Node.js normalises header names to lowercase; this is the lowercased If-Match header. */
 const IF_MATCH_HEADER_LC = 'if-match';
@@ -617,6 +618,12 @@ async function handleContractRequest(
       headers: requestHeaders,
       ...(actor !== undefined ? { actor } : {}),
     };
+
+    // Boundary latency — apply the per-boundary `latency:` delay before any
+    // response leaves this handler (fault short-circuit, idempotency replay, or
+    // the normal UoW path), mirroring the forwarding pipeline so engine-direct
+    // and plugin-forwarded traffic incur the same configured delay.
+    await delay(resolveBoundaryLatencyMs(boundary.latency));
 
     // 6a-bis: DSL fault rules — evaluate the global `fault_rules:` against this
     // command (header / boundary / intent / CEL / probability matchers). On a
