@@ -124,6 +124,57 @@ describe('cel/builtins — $fake, $fakeSeed, $fakeFromFormat (per-instance RNG)'
     it('throws for non-string argument', () => {
       expect(() => callBuiltin('$fakeFromFormat', [42], fakeCtx(CelPhase.Behavior))).toThrow('CEL_TYPE_ERROR');
     });
+
+    it('generates date as a valid YYYY-MM-DD string', () => {
+      const result = callBuiltin('$fakeFromFormat', ['date'], fakeCtx(CelPhase.Behavior)) as string;
+      expect(result).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(Number.isNaN(new Date(result).getTime())).toBe(false);
+    });
+
+    it('generates date-time as a valid round-tripping ISO-8601 string', () => {
+      const result = callBuiltin('$fakeFromFormat', ['date-time'], fakeCtx(CelPhase.Behavior)) as string;
+      expect(Number.isNaN(new Date(result).getTime())).toBe(false);
+      expect(new Date(result).toISOString()).toBe(result);
+    });
+
+    it('produces identical date output for the same seed across two evaluations', () => {
+      const a = createFakeRng();
+      a.seedNumber(98765);
+      const dateA = callBuiltin('$fakeFromFormat', ['date'], fakeCtx(CelPhase.Behavior, a));
+
+      const b = createFakeRng();
+      b.seedNumber(98765);
+      const dateB = callBuiltin('$fakeFromFormat', ['date'], fakeCtx(CelPhase.Behavior, b));
+
+      expect(dateA).toBe(dateB);
+    });
+
+    it('produces identical date-time output for the same seed across two evaluations', () => {
+      const a = createFakeRng();
+      a.seedNumber(98765);
+      const dtA = callBuiltin('$fakeFromFormat', ['date-time'], fakeCtx(CelPhase.Behavior, a));
+
+      const b = createFakeRng();
+      b.seedNumber(98765);
+      const dtB = callBuiltin('$fakeFromFormat', ['date-time'], fakeCtx(CelPhase.Behavior, b));
+
+      expect(dtA).toBe(dtB);
+    });
+
+    it('produces different date and date-time output for different seeds', () => {
+      const a = createFakeRng();
+      a.seedNumber(1);
+      const dateA = callBuiltin('$fakeFromFormat', ['date'], fakeCtx(CelPhase.Behavior, a));
+      const dtA = callBuiltin('$fakeFromFormat', ['date-time'], fakeCtx(CelPhase.Behavior, a));
+
+      const b = createFakeRng();
+      b.seedNumber(2);
+      const dateB = callBuiltin('$fakeFromFormat', ['date'], fakeCtx(CelPhase.Behavior, b));
+      const dtB = callBuiltin('$fakeFromFormat', ['date-time'], fakeCtx(CelPhase.Behavior, b));
+
+      expect(dateA).not.toBe(dateB);
+      expect(dtA).not.toBe(dtB);
+    });
   });
 
   describe('phase restrictions', () => {

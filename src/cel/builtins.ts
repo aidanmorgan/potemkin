@@ -142,6 +142,18 @@ function fakeSeed(rng: FakeRng, ...args: unknown[]): unknown {
   return n;
 }
 
+// Bounded window for the deterministic faker dates: 2000-01-01 to 2050-01-01.
+// A seeded rng draw maps to an epoch-ms offset inside this window so the output
+// is a plausible ISO date AND fully determined by the seed.
+const FAKE_DATE_EPOCH_START = Date.UTC(2000, 0, 1);
+const FAKE_DATE_EPOCH_END = Date.UTC(2050, 0, 1);
+
+function fakeDate(rng: FakeRng): Date {
+  const span = FAKE_DATE_EPOCH_END - FAKE_DATE_EPOCH_START;
+  const offset = Math.floor(rng.next() * span);
+  return new Date(FAKE_DATE_EPOCH_START + offset);
+}
+
 function fakeFromFormat(rng: FakeRng, ...args: unknown[]): unknown {
   const [fmt] = args;
   if (typeof fmt !== 'string') {
@@ -150,8 +162,8 @@ function fakeFromFormat(rng: FakeRng, ...args: unknown[]): unknown {
   switch (fmt) {
     case 'email':     return FAKE_DATA['internet']!['email']!(rng);
     case 'uuid':      return fakeUuid(rng);
-    case 'date':      return new Date().toISOString().slice(0, 10);
-    case 'date-time': return new Date().toISOString();
+    case 'date':      return fakeDate(rng).toISOString().slice(0, 10);
+    case 'date-time': return fakeDate(rng).toISOString();
     case 'uri':
     case 'url':       return FAKE_DATA['internet']!['url']!(rng);
     case 'hostname':  return FAKE_DATA['internet']!['domainName']!(rng);
