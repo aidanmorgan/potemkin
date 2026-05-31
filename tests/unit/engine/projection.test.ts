@@ -96,6 +96,173 @@ describe('engine/projection', () => {
     });
   });
 
+  describe('projectEvent — audit fields', () => {
+    it('sets updatedAt to the event timestamp on a mutation when auditFields is enabled', () => {
+      const graph = createStateGraph();
+      graph.set('agg-1', { status: 'pending' });
+      const boundary = makeBoundary({
+        auditFields: true,
+        reducers: [{ on: 'StatusChanged', patches: [{ op: 'replace', path: '/status', value: '${"active"}' }] }],
+      });
+      const event = makeDomainEvent({
+        type: 'StatusChanged',
+        payload: {},
+        timestamp: '2025-03-04T12:34:56.000Z',
+      });
+      projectEvent({ event, boundary, graph, cel });
+      expect(graph.get('agg-1')?.updatedAt).toBe('2025-03-04T12:34:56.000Z');
+    });
+
+    it('sets updatedBy to the request actorId when present', () => {
+      const graph = createStateGraph();
+      graph.set('agg-1', {});
+      const boundary = makeBoundary({ auditFields: true });
+      const event = makeDomainEvent({
+        type: 'StatusChanged',
+        payload: {},
+        request: { method: 'POST', path: '/test', headers: {}, payload: {}, actorId: 'user-77' },
+      });
+      projectEvent({ event, boundary, graph, cel });
+      expect(graph.get('agg-1')?.updatedBy).toBe('user-77');
+    });
+
+    it('sets updatedBy to null when the request has no actorId', () => {
+      const graph = createStateGraph();
+      graph.set('agg-1', {});
+      const boundary = makeBoundary({ auditFields: true });
+      const event = makeDomainEvent({ type: 'StatusChanged', payload: {} });
+      projectEvent({ event, boundary, graph, cel });
+      expect(graph.get('agg-1')?.updatedBy).toBeNull();
+    });
+
+    it('does not inject audit fields when auditFields is not enabled', () => {
+      const graph = createStateGraph();
+      graph.set('agg-1', {});
+      const boundary = makeBoundary(); // auditFields defaults to undefined
+      const event = makeDomainEvent({ type: 'StatusChanged', payload: {} });
+      projectEvent({ event, boundary, graph, cel });
+      expect(graph.get('agg-1')).not.toHaveProperty('updatedAt');
+      expect(graph.get('agg-1')).not.toHaveProperty('updatedBy');
+    });
+
+    it('does not inject audit fields on a BaselineEntityCreatedEvent', () => {
+      const graph = createStateGraph();
+      const boundary = makeBoundary({ auditFields: true });
+      const event = makeDomainEvent({
+        type: 'BaselineEntityCreatedEvent',
+        payload: { id: 'agg-1', status: 'new' },
+      });
+      projectEvent({ event, boundary, graph, cel });
+      expect(graph.get('agg-1')).toEqual({ id: 'agg-1', status: 'new' });
+    });
+
+    it('refreshes updatedAt on each successive mutation', () => {
+      const graph = createStateGraph();
+      graph.set('agg-1', {});
+      const boundary = makeBoundary({ auditFields: true });
+      projectEvent({
+        event: makeDomainEvent({ type: 'A', payload: {}, timestamp: '2025-01-01T00:00:00.000Z' }),
+        boundary, graph, cel,
+      });
+      expect(graph.get('agg-1')?.updatedAt).toBe('2025-01-01T00:00:00.000Z');
+      projectEvent({
+        event: makeDomainEvent({ type: 'B', payload: {}, timestamp: '2025-06-15T09:00:00.000Z' }),
+        boundary, graph, cel,
+      });
+      expect(graph.get('agg-1')?.updatedAt).toBe('2025-06-15T09:00:00.000Z');
+    });
+  });
+
+  describe('projectEvent — soft delete via DSL reducer', () => {
+    it('projects _deleted=true (boolean) and _deletedAt from a reducer patch list', () => {
+      const graph = createStateGraph();
+      graph.set('agg-1', { id: 'agg-1', status: 'active' });
+      const boundary = makeBoundary({
+        reducers: [{
+          on: 'LeadDeleted',
+          patches: [
+            { op: 'replace', path: '/_deleted', value: '${true}' },
+            { op: 'replace', path: '/_deletedAt', value: '${event.timestamp}' },
+          ],
+        }],
+      });
+      const event = makeDomainEvent({
+        type: 'LeadDeleted',
+        payload: {},
+        timestamp: '2025-04-04T08:00:00.000Z',
+      });
+      projectEvent({ event, boundary, graph, cel });
+      const node = graph.get('agg-1');
+      expect(node?._deleted).toBe(true);
+      expect(typeof node?._deleted).toBe('boolean');
+      expect(node?._deletedAt).toBe('2025-04-04T08:00:00.000Z');
+    });
+
+    it('preserves the rest of the entity state when soft-deleting (does not remove from graph)', () => {
+      const graph = createStateGraph();
+      graph.set('agg-1', { id: 'agg-1', companyName: 'Acme', status: 'active' });
+      const boundary = makeBoundary({
+        reducers: [{
+          on: 'LeadDeleted',
+          patches: [{ op: 'replace', path: '/_deleted', value: '${true}' }],
+        }],
+      });
+      const event = makeDomainEvent({ type: 'LeadDeleted', payload: {} });
+      projectEvent({ event, boundary, graph, cel });
+      const node = graph.get('agg-1');
+      expect(node).not.toBeNull();
+      expect(node?.companyName).toBe('Acme');
+      expect(node?.status).toBe('active');
+      expect(node?._deleted).toBe(true);
+    });
+
+    it('records the soft-delete patches in the projection journal', () => {
+      const graph = createStateGraph();
+      graph.set('agg-1', { id: 'agg-1' });
+      const boundary = makeBoundary({
+        reducers: [{
+          on: 'LeadDeleted',
+          patches: [
+            { op: 'replace', path: '/_deleted', value: '${true}' },
+            { op: 'replace', path: '/_deletedAt', value: '${event.timestamp}' },
+          ],
+        }],
+      });
+      const event = makeDomainEvent({ type: 'LeadDeleted', payload: {} });
+      const { journal } = projectEvent({ event, boundary, graph, cel });
+      const paths = journal.map(j => j.path);
+      expect(paths).toContain('/_deleted');
+      expect(paths).toContain('/_deletedAt');
+    });
+
+    it('sets both soft-delete and audit fields when auditFields is enabled on a delete event', () => {
+      const graph = createStateGraph();
+      graph.set('agg-1', { id: 'agg-1' });
+      const boundary = makeBoundary({
+        auditFields: true,
+        reducers: [{
+          on: 'LeadDeleted',
+          patches: [
+            { op: 'replace', path: '/_deleted', value: '${true}' },
+            { op: 'replace', path: '/_deletedAt', value: '${event.timestamp}' },
+          ],
+        }],
+      });
+      const event = makeDomainEvent({
+        type: 'LeadDeleted',
+        payload: {},
+        timestamp: '2025-05-05T05:05:05.000Z',
+        request: { method: 'DELETE', path: '/test/agg-1', headers: {}, payload: {}, actorId: 'user-88' },
+      });
+      projectEvent({ event, boundary, graph, cel });
+      const node = graph.get('agg-1');
+      expect(node?._deleted).toBe(true);
+      expect(node?._deletedAt).toBe('2025-05-05T05:05:05.000Z');
+      expect(node?.updatedAt).toBe('2025-05-05T05:05:05.000Z');
+      expect(node?.updatedBy).toBe('user-88');
+    });
+  });
+
   describe('setByDotPath', () => {
     it('sets a top-level key', () => {
       const obj = { a: 1 };
