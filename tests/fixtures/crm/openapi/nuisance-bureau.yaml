@@ -193,6 +193,18 @@ paths:
                 source:
                   type: string
                   enum: [WEBSITE, COLD_LIST, REFERRAL, PARTNER]
+                campaignId:
+                  type: string
+                  format: uuid
+                agentId:
+                  type: string
+                  format: uuid
+                assignedCampaignId:
+                  type: string
+                  format: uuid
+                assignedAgentId:
+                  type: string
+                  format: uuid
       responses:
         "201":
           description: Lead created
@@ -964,7 +976,7 @@ paths:
               required: [leadId, agentId, campaignId, outcome]
               properties:
                 leadId:
-                  type: string
+                  type: [string, "null"]
                   format: uuid
                 agentId:
                   type: string
@@ -982,8 +994,8 @@ paths:
                   type: integer
                   minimum: 0
                 outcome:
-                  type: string
-                  enum: [NO_ANSWER, CALLBACK_SCHEDULED, INTERESTED, NOT_INTERESTED, CONVERTED, DNC_REQUESTED]
+                  type: [string, "null"]
+                  enum: [NO_ANSWER, CALLBACK_SCHEDULED, INTERESTED, NOT_INTERESTED, CONVERTED, DNC_REQUESTED, null]
                 notes:
                   type: string
                 recordingUrl:
