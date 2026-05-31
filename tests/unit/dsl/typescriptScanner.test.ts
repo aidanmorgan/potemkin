@@ -130,6 +130,43 @@ describe('typescriptScanner — sandbox require-hook', () => {
   });
 });
 
+describe('typescriptScanner — per-scan module isolation', () => {
+  it('a second scan of the same path sees new content, not a stale cached module', async () => {
+    const root = await makeTree({
+      'src/r/shared.ts': `module.exports = { boundary: 'First', event: 'FirstEvent' };`,
+      'src/r/main.ts': `
+        const meta = require('./shared');
+        require('@potemkin/sdk').reducer(meta, () => []);
+      `,
+    });
+
+    const first = await scanTypescriptReducers(
+      { scan: [{ include: ['src/r/**/*.ts'] }] },
+      { cwd: root },
+    );
+    expect(first.registered.length).toBe(1);
+    expect(registry.get({ boundary: 'First', event: 'FirstEvent' })).toBeDefined();
+
+    // Rewrite the imported sibling at the SAME path with DIFFERENT content.
+    await fs.writeFile(
+      path.join(root, 'src/r/shared.ts'),
+      `module.exports = { boundary: 'Second', event: 'SecondEvent' };`,
+      'utf8',
+    );
+
+    const second = await scanTypescriptReducers(
+      { scan: [{ include: ['src/r/**/*.ts'] }] },
+      { cwd: root },
+    );
+    expect(second.registered.length).toBe(1);
+    // With a shared module cache the second scan would re-use the stale `First`
+    // export and register the old metadata; per-scan isolation re-reads the
+    // file and registers the new metadata.
+    expect(registry.get({ boundary: 'Second', event: 'SecondEvent' })).toBeDefined();
+    expect(registry.get({ boundary: 'First', event: 'FirstEvent' })).toBeUndefined();
+  });
+});
+
 describe('typescriptScanner — transpile errors', () => {
   it('throws BOOT_ERR_TS_TRANSPILE when a file fails to parse', async () => {
     const root = await makeTree({

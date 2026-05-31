@@ -50,7 +50,6 @@ export async function scanTypescriptReducers(
   opts: ScannerOptions,
 ): Promise<ScannerResult> {
   await sdkRegistry.reset();
-  moduleCache.clear();
 
   const files: string[] = [];
   for (const entry of config.scan) {
@@ -64,8 +63,12 @@ export async function scanTypescriptReducers(
   }
   const dedup = [...new Set(files)].sort();
 
+  // Module cache is local to this scan so transpiled exports never leak across
+  // scans (or across tests sharing a worker process). A fresh Map per scan
+  // means a file re-loaded by a later scan sees its current on-disk content.
+  const moduleCache = new Map<string, unknown>();
   for (const file of dedup) {
-    loadModule(file, opts.cwd, config.scan, new Set());
+    loadModule(file, opts.cwd, config.scan, new Set(), moduleCache);
   }
 
   return { files: dedup, registered: sdkRegistry.snapshot() };
@@ -80,6 +83,7 @@ function loadModule(
   cwd: string,
   scan: readonly ScanEntry[],
   inProgress: Set<string>,
+  moduleCache: Map<string, unknown>,
 ): unknown {
   if (inProgress.has(absPath)) {
     throw new BootError(
@@ -125,7 +129,7 @@ function loadModule(
     assertNoEnvMutation(transpiled, absPath);
 
     const moduleObj = { exports: {} as Record<string, unknown> };
-    const requireFn = makeRequire(absPath, cwd, scan, inProgress);
+    const requireFn = makeRequire(absPath, cwd, scan, inProgress, moduleCache);
     const wrapper = `(function(module, exports, require, __filename, __dirname){\n${transpiled}\n})(module, module.exports, require, __filename, __dirname);`;
 
     const ctx = vm.createContext({
@@ -156,13 +160,12 @@ function loadModule(
   }
 }
 
-const moduleCache = new Map<string, unknown>();
-
 function makeRequire(
   fromFile: string,
   cwd: string,
   scan: readonly ScanEntry[],
   inProgress: Set<string>,
+  moduleCache: Map<string, unknown>,
 ): SandboxRequire {
   return (specifier: string) => {
     if (specifier === '@potemkin/sdk') {
@@ -204,7 +207,7 @@ function makeRequire(
         { specifier, from: fromFile, resolved },
       );
     }
-    return loadModule(resolved, cwd, scan, inProgress);
+    return loadModule(resolved, cwd, scan, inProgress, moduleCache);
   };
 }
 
