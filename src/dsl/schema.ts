@@ -463,6 +463,48 @@ function validateBehaviorRule(raw: unknown, index: number): BehaviorRule {
     validateCelOrScript(postcondition, `${ctx}.postcondition`, 'behavior');
   }
 
+  // Optional HTTP method filter on the matcher (uppercased for case-insensitive matching).
+  let method: string | undefined;
+  const methodRaw = matchRaw['method'];
+  if (methodRaw !== undefined && methodRaw !== null) {
+    if (typeof methodRaw !== 'string' || methodRaw.trim() === '') {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `${ctx}.match: "method" must be a non-empty string`,
+        { field: 'match.method', context: ctx },
+      );
+    }
+    method = methodRaw.trim().toUpperCase();
+  }
+
+  // HATEOAS: optional link_name + link_condition advertised by this behavior.
+  let linkName: string | undefined;
+  const linkNameRaw = raw['link_name'];
+  if (linkNameRaw !== undefined && linkNameRaw !== null) {
+    if (typeof linkNameRaw !== 'string' || linkNameRaw.trim() === '') {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `${ctx}: "link_name" must be a non-empty string`,
+        { field: 'link_name', context: ctx },
+      );
+    }
+    linkName = linkNameRaw;
+  }
+
+  let linkCondition: string | undefined;
+  const linkConditionRaw = raw['link_condition'];
+  if (linkConditionRaw !== undefined && linkConditionRaw !== null) {
+    if (typeof linkConditionRaw !== 'string' || linkConditionRaw.trim() === '') {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `${ctx}: "link_condition" must be a non-empty string`,
+        { field: 'link_condition', context: ctx },
+      );
+    }
+    validateCelOrScript(linkConditionRaw, `${ctx}.link_condition`, 'behavior');
+    linkCondition = linkConditionRaw;
+  }
+
   let dispatchCommands: readonly SecondaryCommandSpec[] | undefined;
   const dispatchRaw = raw['dispatch_commands'];
   if (dispatchRaw !== undefined && dispatchRaw !== null) {
@@ -483,12 +525,15 @@ function validateBehaviorRule(raw: unknown, index: number): BehaviorRule {
     match: {
       operationId,
       condition,
+      ...(method !== undefined ? { method } : {}),
       ...(requires !== undefined ? { requires } : {}),
       ...(requiredScopes !== undefined ? { requiredScopes } : {}),
     },
     ...(emit !== undefined ? { emit } : {}),
     ...(emitWhen !== undefined ? { emitWhen } : {}),
     ...(postcondition !== undefined ? { postcondition } : {}),
+    ...(linkName !== undefined ? { linkName } : {}),
+    ...(linkCondition !== undefined ? { linkCondition } : {}),
     ...(dispatchCommands !== undefined ? { dispatchCommands } : {}),
   };
 }
@@ -920,6 +965,34 @@ export function validateBoundaryConfig(raw: unknown): BoundaryConfig {
     strictSchema = v;
   }
 
+  // When true, projection auto-stamps updatedAt/updatedBy on each non-baseline event.
+  let auditFields: boolean | undefined;
+  const auditFieldsRaw = raw['audit_fields'];
+  if (auditFieldsRaw !== undefined && auditFieldsRaw !== null) {
+    if (typeof auditFieldsRaw !== 'boolean') {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `root: "audit_fields" must be a boolean (got ${JSON.stringify(auditFieldsRaw)})`,
+        { field: 'audit_fields' },
+      );
+    }
+    auditFields = auditFieldsRaw;
+  }
+
+  // Boundary-scoped fault rules — reuse the same parser as global fault_rules.
+  let faults: readonly import('./types.js').FaultRule[] | undefined;
+  const faultRulesRaw = raw['fault_rules'];
+  if (faultRulesRaw !== undefined && faultRulesRaw !== null) {
+    if (!Array.isArray(faultRulesRaw)) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        'root: "fault_rules" must be an array',
+        { field: 'fault_rules' },
+      );
+    }
+    faults = faultRulesRaw.map((item, i) => validateFaultRule(item, i));
+  }
+
   // Cross-reference validation
   crossValidate({ behaviors, reducers, eventCatalog, boundary, scripts });
 
@@ -939,6 +1012,8 @@ export function validateBoundaryConfig(raw: unknown): BoundaryConfig {
     ...(mask !== undefined ? { mask } : {}),
     ...(state !== undefined ? { state } : {}),
     ...(strictSchema !== undefined ? { strictSchema } : {}),
+    ...(auditFields !== undefined ? { auditFields } : {}),
+    ...(faults !== undefined ? { faults } : {}),
   };
 }
 

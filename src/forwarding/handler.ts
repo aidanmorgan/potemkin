@@ -363,17 +363,18 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
     // 12. DSL fault rules — evaluate global + boundary-scoped rules against the
     //     command (header / boundary / intent / CEL / probability matchers)
     //     BEFORE the UoW so a match mutates no state. Skipped under Skip-Dispatch.
+    const dynamicFaults = sys.faultStore.all();
     if (
       chaos.response === undefined &&
-      faultRules.length > 0 &&
+      (faultRules.length > 0 || (boundary.faults?.length ?? 0) > 0 || dynamicFaults.length > 0) &&
       controls.sideEffects.skipDispatch !== true
     ) {
       const split = splitBoundaryFaults(faultRules, boundary.boundary);
       const faultResponse = evaluateFaultRules({
         command,
-        boundaryFaults: split.boundary,
+        boundaryFaults: [...split.boundary, ...(boundary.faults ?? [])],
         globalFaults: split.global,
-        dynamicFaults: [],
+        dynamicFaults,
         cel: sys.cel,
         state: command.targetId !== null ? (sys.graph.get(command.targetId) as JsonObject | null) : null,
         logger,

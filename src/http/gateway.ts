@@ -606,15 +606,18 @@ async function handleContractRequest(
     // match, short-circuit with the configured status/body/headers BEFORE the
     // UoW so no state is mutated. The X-Potemkin-Skip-Dispatch control bypasses
     // fault injection so callers can deterministically opt out.
+    const boundaryFaults = boundary.faults ?? [];
+    const globalFaults = sys.dsl.faults ?? [];
+    const dynamicFaults = sys.faultStore.all();
     if (
-      sys.dsl.faults && sys.dsl.faults.length > 0 &&
+      (boundaryFaults.length > 0 || globalFaults.length > 0 || dynamicFaults.length > 0) &&
       controls.sideEffects.skipDispatch !== true
     ) {
       const faultResponse = evaluateFaultRules({
         command,
-        boundaryFaults: [],
-        globalFaults: sys.dsl.faults,
-        dynamicFaults: [],
+        boundaryFaults,
+        globalFaults,
+        dynamicFaults,
         cel: sys.cel,
         state: command.targetId !== null ? sys.graph.get(command.targetId) : null,
         logger,

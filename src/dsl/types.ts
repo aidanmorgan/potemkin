@@ -147,6 +147,8 @@ export interface BoundaryConfig {
   readonly latency?: LatencyConfig;
   /** When true, projection auto-sets updatedAt/updatedBy on every non-baseline event. */
   readonly auditFields?: boolean;
+  /** Boundary-scoped fault rules — evaluated before global faults for commands on this boundary. */
+  readonly faults?: readonly FaultRule[];
   /**
    * Declared state schema: computed (formula-derived, recomputed after patches)
    * and internal (typed) fields. Feeds buildInferredSchema at boot and
