@@ -651,7 +651,17 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
         // Tier 7 (admin-gated): X-Potemkin-Skip-Response-Validation bypasses the check
         // entirely; X-Potemkin-Allow-Additional-Properties relaxes the contract so a
         // response carrying undeclared properties still validates.
-        if (input.controls?.validation.skipResponseValidation !== true) {
+        //
+        // A sparse-fieldset query (?fields=a,b) deliberately projects each entity down to a
+        // subset of its properties, so the response intentionally omits schema-required fields
+        // and cannot satisfy the strict entity schema. Skip response validation in that case;
+        // projectFields already guarantees a well-formed object (id is always preserved).
+        const isSparseFieldset =
+          command.intent === 'query' && command.queryParams['fields'] !== undefined;
+        if (
+          input.controls?.validation.skipResponseValidation !== true &&
+          !isSparseFieldset
+        ) {
           validator.validateResponse(command.httpMethod, command.path, status, body, {
             allowAdditionalProperties: input.controls?.validation.allowAdditionalProperties === true,
           });
