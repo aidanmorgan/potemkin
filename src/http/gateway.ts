@@ -38,6 +38,7 @@ import { extractFaultSignal } from '../engine/faultSim.js';
 import { matchRoute, resolveVersion } from '../contract/router.js';
 import { translateIntent } from '../engine/router.js';
 import { executeUnitOfWork } from '../engine/uow.js';
+import { createSideEffectQueue } from '../engine/sideEffects.js';
 import { nextUuidv7 } from '../ids/uuidv7.js';
 import { withSpan } from '../observability/tracing.js';
 import {
@@ -384,6 +385,12 @@ async function handleContractRequest(
       const eventSnapshot = sys.events.snapshot();
       const graphSnapshot = sys.graph.snapshot();
 
+      // Defer every item's post-commit side-effects (sagas + webhooks) into one
+      // batch-scoped queue. On full success the queue is flushed once (all fire);
+      // on abort it is discarded so NO side-effect runs against state that the
+      // rollback below throws away — preserving all-or-nothing semantics.
+      const deferredSideEffects = createSideEffectQueue();
+
       const results: JsonValue[] = [];
       let abortIndex: number | null = null;
       let abortError: string | undefined;
@@ -454,6 +461,8 @@ async function handleContractRequest(
               derivedProjections: sys.derivedProjections,
               tsReducerRegistry: sys.tsReducerRegistry,
               inferredSchemas: sys.inferredSchemas,
+              webhookTransport: sys.webhookTransport,
+              deferSideEffects: deferredSideEffects,
               controls,
             }),
           );
@@ -469,7 +478,9 @@ async function handleContractRequest(
       if (controls.transparency.seed !== undefined) sys.cel.setFakerSeed(undefined);
 
       if (abortIndex !== null) {
-        // Roll back every committed item so the batch is all-or-nothing.
+        // Roll back every committed item so the batch is all-or-nothing, and
+        // discard the deferred side-effects so none run against rolled-back state.
+        deferredSideEffects.discard();
         sys.events.restore(eventSnapshot);
         sys.graph.restore(graphSnapshot);
         res.status(400).json({
@@ -478,6 +489,8 @@ async function handleContractRequest(
           abortIndex,
         });
       } else {
+        // Whole batch committed — now fire every deferred saga/webhook once.
+        deferredSideEffects.flush(logger);
         res.status(201).json(results);
       }
       return;
@@ -680,6 +693,7 @@ async function handleContractRequest(
           derivedProjections: sys.derivedProjections,
           tsReducerRegistry: sys.tsReducerRegistry,
           inferredSchemas: sys.inferredSchemas,
+          webhookTransport: sys.webhookTransport,
           controls,
           // maxCascadeDepth=N means N levels of cascade allowed beyond the primary.
           // The UoW counts depth from 0 (primary), so we pass N+1 to allow the primary.

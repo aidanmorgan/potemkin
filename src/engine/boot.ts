@@ -32,6 +32,7 @@ import { createPluginControlClient } from '../lifecycle/pluginControlClient.js';
 import { scanTypescriptReducers, type TypescriptConfig } from '../dsl/typescriptScanner.js';
 import { validateReducerConflictsFromDsl } from '../dsl/reducerConflict.js';
 import { createTsReducerRegistry, type TsReducerRegistry } from './tsReducerRegistry.js';
+import { createFetchWebhookTransport } from '../webhooks/transport.js';
 import {
   buildInferredSchema,
   boundaryConfigToInferenceInput,
@@ -71,6 +72,12 @@ export interface BootInput {
   readonly typescript?: import('../dsl/typescriptScanner.js').TypescriptConfig;
   /** Working directory for resolving `typescript.scan[]` globs on the in-memory path. */
   readonly typescriptCwd?: string;
+  /**
+   * Optional override for the outbound-webhook transport. When omitted, boot
+   * wires a `fetch`-backed transport. Tests inject a fake to assert webhook
+   * deliveries without performing real HTTP.
+   */
+  readonly webhookTransport?: import('../webhooks/dispatcher.js').FetchLike;
 }
 
 export interface BootedSystem {
@@ -126,6 +133,13 @@ export interface BootedSystem {
    * (C5) and the computedFields surfaced on GET /_engine/state.
    */
   readonly inferredSchemas: Readonly<Record<string, BoundaryInferenceResult>>;
+  /**
+   * Injectable webhook transport used by the UoW to deliver outbound webhooks
+   * when `dsl.webhooks` is non-empty. Defaults to a `fetch`-backed transport;
+   * tests may override it (via BootInput.webhookTransport) to assert deliveries
+   * without real HTTP.
+   */
+  readonly webhookTransport: import('../webhooks/dispatcher.js').FetchLike;
   /**
    * C6: active TypeScript watcher when typescript.watch was enabled (and
    * NODE_ENV !== 'production'). Its onSwap atomic-replaces tsReducerRegistry on
@@ -610,6 +624,7 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       aggregateLocks: new Map<string, Promise<void>>(),
       tsReducerRegistry,
       inferredSchemas,
+      webhookTransport: input.webhookTransport ?? createFetchWebhookTransport(),
       ...(tsWatcher !== undefined ? { tsWatcher } : {}),
       ...(pluginControlClient !== undefined ? { pluginControl: pluginControlClient } : {}),
     };
