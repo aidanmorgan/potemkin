@@ -72,6 +72,41 @@ function relaxAdditionalProperties(schema: JsonObject): JsonObject {
   return relax(schema) as JsonObject;
 }
 
+/** Numeric value-range keywords the engine owns at runtime, not the request contract. */
+const VALUE_RANGE_KEYWORDS = new Set([
+  'minimum',
+  'maximum',
+  'exclusiveMinimum',
+  'exclusiveMaximum',
+]);
+
+/**
+ * Return a deep copy of a JSON-Schema fragment with every numeric value-range
+ * keyword (`minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`) removed.
+ *
+ * Value ranges describe business rules the engine enforces at runtime — DSL
+ * `requires` guards (e.g. `dailyCallQuota > 0` → 422 INVALID_QUOTA) and the query
+ * engine's pagination clamping (negative offset → 0, limit handling → 200). The
+ * request contract validates SHAPE only (type, required, format, enum, length,
+ * additionalProperties); a right-typed-but-out-of-range value must reach the
+ * engine so the guard fires (422) or the value is clamped (200) rather than being
+ * pre-empted by a 400. Type/required/enum/format constraints are left intact so a
+ * genuinely malformed request (wrong type, missing field) still 400s.
+ */
+function stripValueRanges(schema: JsonObject): JsonObject {
+  const strip = (node: JsonValue): JsonValue => {
+    if (Array.isArray(node)) return node.map(strip);
+    if (node === null || typeof node !== 'object') return node;
+    const out: JsonObject = {};
+    for (const [key, value] of Object.entries(node)) {
+      if (VALUE_RANGE_KEYWORDS.has(key)) continue;
+      out[key] = strip(value);
+    }
+    return out;
+  };
+  return strip(schema) as JsonObject;
+}
+
 /**
  * Create a ContractValidator backed by the given OpenAPI document and boundary configs.
  */
@@ -189,7 +224,9 @@ export function createContractValidator(
           if (param.schema) {
             const valueToValidate = Array.isArray(rawValue) ? rawValue[0] : rawValue;
             const coerced = coerceParamValue(valueToValidate, param.schema);
-            const validate = getValidator(param.schema);
+            // Pagination/range query params (offset, limit, …) carry value-range
+            // bounds the query engine clamps at runtime; validate the type only.
+            const validate = getValidator(stripValueRanges(param.schema));
             if (!validate(coerced)) {
               logger.debug(
                 { param: param.name, errors: validate.errors },
@@ -205,9 +242,13 @@ export function createContractValidator(
       }
     }
 
-    // Validate request body
+    // Validate request body — shape only. Numeric value-range bounds are stripped
+    // so a right-typed but out-of-range value (e.g. dailyCallQuota: 0 against
+    // minimum: 1) reaches the engine and trips the DSL `requires` guard (422)
+    // instead of being pre-empted by a 400. Type/required/enum/format/length
+    // constraints remain, so genuinely malformed bodies still 400.
     if (operation.requestBodySchema) {
-      const validate = getValidator(operation.requestBodySchema);
+      const validate = getValidator(stripValueRanges(operation.requestBodySchema));
       if (!validate(payload)) {
         logger.debug({ errors: validate.errors }, 'Request body validation failed');
         throw new ContractViolationError(

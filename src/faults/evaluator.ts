@@ -15,7 +15,16 @@ export interface FaultEvalInput {
   readonly logger?: Logger;
 }
 
-export function evaluateFaultRules(input: FaultEvalInput): FaultResponse | null {
+/**
+ * Resolved fault response: the rule's canned response plus the effective
+ * pre-response delay in milliseconds. `delay_ms` may be authored either at the
+ * top level of the rule (the FaultRule type) or nested under `response` (the
+ * dynamic-fault admin payload, which is stored raw and never passes through the
+ * DSL parser that normalises the two). Callers apply the delay before responding.
+ */
+export type ResolvedFaultResponse = FaultResponse & { readonly delay_ms?: number };
+
+export function evaluateFaultRules(input: FaultEvalInput): ResolvedFaultResponse | null {
   const { command, boundaryFaults, globalFaults, dynamicFaults, cel, state, logger } = input;
 
   // Priority: dynamic > boundary > global
@@ -26,12 +35,26 @@ export function evaluateFaultRules(input: FaultEvalInput): FaultResponse | null 
       const matched = matchesFaultRule(rule, command, cel, state, logger);
       if (matched) {
         logger?.info({ faultName: rule.name, status: rule.response.status }, 'DSL fault rule matched');
-        return rule.response;
+        const delayMs = resolveFaultDelayMs(rule);
+        return delayMs !== undefined
+          ? { ...rule.response, delay_ms: delayMs }
+          : rule.response;
       }
     }
   }
 
   return null;
+}
+
+/**
+ * Resolve a rule's effective pre-response delay. Prefer the normalised top-level
+ * `delay_ms` (DSL-parsed rules); fall back to a `delay_ms` nested under `response`
+ * (dynamic admin rules stored verbatim).
+ */
+function resolveFaultDelayMs(rule: FaultRule): number | undefined {
+  if (typeof rule.delay_ms === 'number') return rule.delay_ms;
+  const nested = (rule.response as { delay_ms?: unknown }).delay_ms;
+  return typeof nested === 'number' ? nested : undefined;
 }
 
 function matchesFaultRule(

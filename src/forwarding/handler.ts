@@ -381,7 +381,9 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       });
       if (faultResponse !== null) {
         sys.metrics.faultsSimulatedTotal.add(1);
-        await delay(resolveBoundaryLatencyMs(boundary.latency));
+        // Apply the rule's own pre-response delay (delay_ms) on top of any
+        // configured boundary latency before surfacing the canned fault.
+        await delay(resolveBoundaryLatencyMs(boundary.latency) + (faultResponse.delay_ms ?? 0));
         const headers = lowercaseHeaderMap(faultResponse.headers);
         send({ status: faultResponse.status, headers, body: isHead ? null : (faultResponse.body ?? null) });
         return;
