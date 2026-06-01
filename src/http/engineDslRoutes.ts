@@ -10,6 +10,11 @@ import type { BootedSystem } from '../engine/boot.js';
 import type { CompiledDsl } from '../dsl/types.js';
 import type { DomainEvent } from '../types.js';
 import { compileDsl } from '../dsl/parser.js';
+import {
+  buildInferredSchema,
+  boundaryConfigToInferenceInput,
+  type BoundaryInferenceResult,
+} from '../dsl/schemaInference.js';
 import { computeSpecVersion } from '../dsl/specVersion.js';
 import { createCelEvaluator } from '../cel/evaluator.js';
 import { createStateGraph } from '../stategraph/graph.js';
@@ -119,6 +124,17 @@ function makeInstallProducer(sys: BootedSystem): InstallProducer {
       // Atomic swap: replace the BootedSystem.dsl reference. The graph is
       // left untouched so projected state survives the swap.
       (sys as { dsl: typeof dsl }).dsl = dsl;
+      // Rebuild inferred schemas (computed-field order, internal fields, wire
+      // schemas) from the merged DSL — mirrors the boot-time loop. Without this,
+      // a push that adds/changes `state.computed` fields would leave the C5
+      // recompute path reading a stale computedOrder from boot.
+      const inferredSchemas: Record<string, BoundaryInferenceResult> = {};
+      for (const boundary of dsl.boundaries) {
+        inferredSchemas[boundary.boundary] = buildInferredSchema(
+          boundaryConfigToInferenceInput(boundary),
+        );
+      }
+      (sys as { inferredSchemas: typeof inferredSchemas }).inferredSchemas = inferredSchemas;
       // The stored bundle's specVersion must equal what handleEngineDsl derives
       // from the same payload.modules — otherwise the replay (304) check never
       // matches and every install recompiles.

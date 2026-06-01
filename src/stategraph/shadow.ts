@@ -69,8 +69,9 @@ export function createShadowGraph(global: StateGraph): ShadowGraph {
         graph.set(id, value);
         logger.trace({ targetId: id }, 'Committed shadow entry into state graph');
       }
+      const committed = staged.size;
       staged.clear();
-      logger.trace({ count: staged.size }, 'Shadow graph committed and cleared');
+      logger.trace({ count: committed }, 'Shadow graph committed and cleared');
     },
   };
 }

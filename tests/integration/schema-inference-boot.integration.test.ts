@@ -138,6 +138,39 @@ describe('POST /_engine/dsl: install then replay (potemkin-q5d)', () => {
     const res = await agent.post('/_engine/dsl').send(wirePayload).expect(304);
     expect(res.headers['x-potemkin-spec-version']).toBeTruthy();
   });
+
+  it('rebuilds sys.inferredSchemas on install so computed fields from a pushed boundary recompute (potemkin-xch2)', async () => {
+    // Before the fix, the install swapped sys.dsl but left sys.inferredSchemas
+    // (and its computedOrder) stale, so computed fields added via a push never
+    // recomputed. Push a boundary that declares a computed field and assert the
+    // inferred schema is rebuilt to include it.
+    const before = sys.inferredSchemas;
+    const computedModule = {
+      path: 'computed-push.yaml',
+      yaml:
+        'boundary: ComputedPush\n' +
+        'contract_path: /computed/push\n' +
+        'behaviors: []\n' +
+        'reducers: []\n' +
+        'event_catalog: []\n' +
+        'state:\n' +
+        '  computed:\n' +
+        '    - name: itemCount\n' +
+        '      formula: "length(state.items)"\n' +
+        '      depends_on: [items]\n',
+    };
+    await agent
+      .post('/_engine/dsl')
+      .send({ modules: [computedModule], typescript: null, specEndpoints: [] })
+      .expect(200);
+
+    // inferredSchemas must be a freshly-built object (not the stale boot one)…
+    expect(sys.inferredSchemas).not.toBe(before);
+    // …and must carry the computed field declared by the pushed boundary.
+    const inferred = sys.inferredSchemas['ComputedPush'];
+    expect(inferred).toBeDefined();
+    expect([...inferred.computedOrder]).toContain('itemCount');
+  });
 });
 
 describe('C4: schema inference converges and is guarded by the iteration cap', () => {
