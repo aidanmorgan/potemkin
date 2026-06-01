@@ -133,6 +133,28 @@ class FixtureLifecycleManagerTest {
         assertTrue(bridge.registered.isEmpty())
     }
 
+    @Test
+    fun `start() initial push goes through the seq+mutex scheme and is ordered before a following clear`() {
+        // potemkin-2ld8: start()'s initial push now participates in the transitionSeq +
+        // transitionMutex scheme (it no longer bypasses it via a synchronous pushFixtures).
+        // The initial push registers exactly once (no double-register), and a DOWN
+        // transition dispatched afterwards correctly clears the booted fixtures —
+        // proving the boot push and the async clear are serialized through the mutex.
+        fixturesClient.setFixtures(listOf(makeFixture("GET", "/boot")))
+
+        val manager = FixtureLifecycleManager(monitor, fixturesClient, bridge)
+        manager.start()
+
+        // Exactly one registration from the boot push (no race-induced duplicate).
+        assertEquals(1, bridge.registered.size)
+        assertEquals("/boot", bridge.registered[0].httpRequest.path)
+
+        // A DOWN transition (higher seq) must clear the booted fixtures.
+        manager.onTransition(HealthState.Up, HealthState.Down)
+        awaitCondition { bridge.clearCount >= 1 }
+        assertEquals(1, bridge.clearCount)
+    }
+
     // ---- UP transition ------------------------------------------------------------------
 
     @Test

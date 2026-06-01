@@ -308,32 +308,55 @@ Secondary commands execute inside the same UoW. All events (primary and secondar
 
 ## 5. Reducers
 
-Reducers project domain events onto aggregate state. Each reducer subscribes to one event type and declares `assign` and/or `append` operations.
+Reducers project domain events onto aggregate state. Each reducer subscribes to one event type and declares a list of `patches` — RFC 6902 JSON-Patch operations extended with a few Potemkin-specific ops. (The legacy `assign:` / `append:` map form was removed; using either now halts boot with `BOOT_ERR_REMOVED_SYNTAX`.)
 
 ```yaml
 reducers:
   - on: LeadCreated
-    assign:
-      id: "event.payload.id"
-      companyName: "event.payload.companyName"
-      contactName: "event.payload.contactName"
-      status: "'NEW'"
-      score: "event.payload.score"
-      createdAt: "event.payload.createdAt"
-      callIds: "[]"
+    patches:
+      - op: add
+        path: /id
+        value: "${event.payload.id}"
+      - op: add
+        path: /companyName
+        value: "${event.payload.companyName}"
+      - op: add
+        path: /status
+        value: "${'NEW'}"
+      - op: add
+        path: /callIds
+        value: "${[]}"
   - on: LeadContacted
-    assign:
-      status: "'CONTACTED'"
-      lastContactedAt: "event.payload.lastContactedAt"
-    append:
-      callIds: "event.payload.callId"
+    patches:
+      - op: replace
+        path: /status
+        value: "${'CONTACTED'}"
+      - op: append            # push onto the array at /callIds
+        path: /callIds
+        value: "${event.payload.callId}"
 ```
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `on` | string | yes | Event catalog key to subscribe to |
-| `assign` | `map<string, CEL>` | no | Dot-path keys mapped to CEL expressions. Overwrites the field at that path. |
-| `append` | `map<string, CEL>` | no | Dot-path keys mapped to CEL expressions. The evaluated value is pushed onto the array at that path. |
+| `patches` | `Patch[]` | yes | Ordered list of patch operations applied in sequence |
+
+Each patch has `op`, `path` (a JSON Pointer like `/status` or `/address/city`), and — for value-bearing ops — `value`.
+
+**Patch `op` vocabulary** (see `src/dsl/patches.ts`):
+
+| `op` | Effect |
+|------|--------|
+| `add` | Set the field (creating it), or insert into an array at the pointer index |
+| `replace` | Overwrite an existing field |
+| `remove` | Delete the field |
+| `append` / `prepend` | Push `value` onto the end / front of the array at `path` |
+| `increment` | Add the numeric `value` (default `1`) to the number at `path` |
+| `merge` | Shallow-merge the object `value` into the object at `path` |
+| `upsert` | Insert-or-replace an array element matched by a key field |
+| `copy` / `move` | Copy/move from a `from` pointer to `path` |
+
+**`value` interpolation:** a bare string is a **literal**; only `${...}` is evaluated as CEL (with type preservation — `value: "${0}"` is the number `0`, `value: "ACTIVE"` is the string `"ACTIVE"`). This is why the examples above wrap CEL in `${…}` (e.g. `"${event.payload.id}"`, `"${'NEW'}"`, `"${[]}"`).
 
 ### CEL context in reducers
 
@@ -353,17 +376,21 @@ The `ts:` script sentinel is also banned in reducer fields at boot time (`BOOT_E
 
 This restriction preserves event-sourcing determinism: replaying the event log from epoch must always produce identical state.
 
-### Dot-path notation
+### JSON Pointer paths
 
-Both `assign` and `append` keys support dot-path notation to address nested fields:
+Patch `path` values are JSON Pointers (`/segment/segment`) and can address nested fields and array indices:
 
 ```yaml
-assign:
-  address.city: "event.payload.city"
-  transactions[0].amount: "event.payload.amount"
+patches:
+  - op: replace
+    path: /address/city
+    value: "${event.payload.city}"
+  - op: replace
+    path: /transactions/0/amount
+    value: "${event.payload.amount}"
 ```
 
-The projection engine (`src/engine/projection.ts`) initialises missing intermediate objects/arrays automatically.
+The projection engine (`src/engine/projection.ts`) auto-vivifies missing intermediate objects/arrays.
 
 ---
 
@@ -510,9 +537,9 @@ Declared on individual behaviors. All listed scopes must be present in the actor
 behaviors:
   - name: markLeadDNC
     match:
-      intent: mutation
+      operationId: markLeadDNC
       required_scopes: [manager]
-      condition: "$concat('/leads/', command.targetId, '/dnc') == command.path"
+      condition: "state.status != 'DNC'"
     emit: LeadMarkedDNC
 ```
 
@@ -531,22 +558,32 @@ See `src/identity/scopeChecker.ts` for the implementation.
 
 Derived projections aggregate events from multiple boundaries into a separate read model, exposed via an admin endpoint. Declared in the global config file.
 
+Each `reduce` rule uses the same `patches:` vocabulary as boundary reducers (§5) — the legacy `assign:`/`append:` map form was removed here too.
+
 ```yaml
 derived_projections:
   - name: LeadSummary
     key: "event.aggregateId"
     subscribe:
-      - Lead:LeadCreated
-      - Opportunity:OpportunityCreated
+      - "Lead:LeadCreated"
+      - "Opportunity:OpportunityCreated"
     reduce:
-      - on: LeadCreated
-        assign:
-          lead_id: "event.aggregateId"
-          companyName: "event.payload.companyName"
-          total_opportunities: "0"
-      - on: OpportunityCreated
-        assign:
-          total_opportunities: "coalesce(state.total_opportunities, 0) + 1"
+      - on: "Lead:LeadCreated"
+        patches:
+          - op: add
+            path: /lead_id
+            value: "${event.aggregateId}"
+          - op: add
+            path: /companyName
+            value: "${event.payload.companyName}"
+          - op: add
+            path: /total_opportunities
+            value: "${0}"
+      - on: "Opportunity:OpportunityCreated"
+        patches:
+          - op: replace
+            path: /total_opportunities
+            value: "${coalesce(state.total_opportunities, 0) + 1}"
 ```
 
 | Field | Required | Description |
@@ -554,9 +591,8 @@ derived_projections:
 | `name` | yes | Unique projection name |
 | `key` | yes | CEL expression returning the string key for the derived entity |
 | `subscribe[]` | yes | Event subscriptions as `<Boundary>:<EventType>` or bare `<EventType>` |
-| `reduce[].on` | yes | Event type this reduce rule handles |
-| `reduce[].assign` | no | Dot-path → CEL assignments |
-| `reduce[].append` | no | Dot-path → CEL array appends |
+| `reduce[].on` | yes | Event subscription this reduce rule handles (`<Boundary>:<EventType>` or bare `<EventType>`) |
+| `reduce[].patches` | yes | Ordered patch operations (same vocabulary as §5 reducers) |
 
 ### `key` expression
 
@@ -724,7 +760,7 @@ This is the mechanism that ensures `GET /leads` returns the same seed data after
 | `PRECONDITION_FAILED` | 428 | `If-Match` header required but missing |
 | `CONCURRENCY_CONFLICT` | 412 | `If-Match` sequence version mismatch |
 | `POSTCONDITION_VIOLATED` | 500 | `postcondition` expression evaluated to `false` |
-| `SCHEMA_TYPE_MISMATCH` | 500 | `assign`/`append` value violates OpenAPI schema; event payload violates `schema_ref` |
+| `SCHEMA_TYPE_MISMATCH` | 500 | reducer `patches` value violates OpenAPI schema; event payload violates `schema_ref` |
 | `INTERNAL_EXECUTION_FAILURE` | 500 | Uncaught exception in CEL or script during UoW |
 | `SCRIPT_TIMEOUT` | 500 | Inline TypeScript script exceeded 50 ms CPU budget |
 | `AUTH_MISSING` | 401 | `required_scopes` declared, but no `Authorization` header present |
@@ -756,7 +792,7 @@ Payload:
 1. **Contract Gateway** validates the payload against the OpenAPI spec.
 2. **Command Router** translates to a `creation` command for the `Lead` boundary. A new UUIDv7 is generated as `targetId` (via `identity.creation.generate`).
 3. **Pattern Matcher** iterates `Lead.behaviors`:
-   - `createLead`: intent matches `creation`, `true` → `true`. Match!
+   - `createLead`: `match.operationId` matches the `createLead` operation, `condition` → `true`. Match!
 4. **Event hydration**: `LeadCreated` payload template evaluated — `id`, `companyName`, `contactName`, `score` (via `ts:computeScore`) populated.
 5. **Shadow projection**: `LeadCreated` projected into shadow graph. Lead state now has `status: 'NEW'`.
 6. **UoW commit**: `LeadCreated` event appended atomically to the event log.
@@ -774,17 +810,34 @@ Payload: `{ "outcome": "LOST", "closureReason": "Budget constraints" }`
 
 ### Testing the fixture (jest + supertest)
 
+There is no `buildApp` helper — the public API is `bootSystem` (boot the engine from compiled DSL + an OpenAPI doc) followed by `createGateway` (mount the Express app). Both are exported from `src/index.ts`:
+
 ```typescript
 import request from 'supertest';
-import { buildApp } from '../src/app.js';
+import { readFileSync } from 'node:fs';
+import {
+  parseDslYaml, compileDsl, loadOpenApi,
+  bootSystem, createGateway, resetSystem,
+} from '../src/index.js';
 
 describe('Lead boundary', () => {
-  let app: Express;
+  let app: import('express').Express;
+  let sys: Awaited<ReturnType<typeof bootSystem>>;
 
   beforeEach(async () => {
-    app = await buildApp({ dslDir: 'docs/_examples/dsl' });
-    await request(app).post('/_admin/reset').expect(204);
+    // Compile the boundary + global YAML and load the OpenAPI contract.
+    const modules = ['lead', 'opportunity'].map((n) =>
+      parseDslYaml(readFileSync(`docs/_examples/dsl/${n}.yaml`, 'utf8'), `${n}.yaml`),
+    );
+    const globalYaml = readFileSync('docs/_examples/dsl/global.yaml', 'utf8');
+    const compiledDsl = compileDsl(modules, globalYaml);
+    const openapi = await loadOpenApi('docs/_examples/openapi.yaml');
+
+    sys = await bootSystem({ openapi, compiledDsl });
+    app = createGateway(sys);
   });
+
+  afterEach(() => resetSystem(sys));
 
   it('creates a lead and scores it by source', async () => {
     const res = await request(app)
@@ -878,16 +931,22 @@ derived_projections:
   - name: LeadSummary
     key: "event.aggregateId"
     subscribe:
-      - Lead:LeadCreated
-      - Opportunity:OpportunityCreated
+      - "Lead:LeadCreated"
+      - "Opportunity:OpportunityCreated"
     reduce:
-      - on: LeadCreated
-        assign:
-          companyName: "event.payload.companyName"
-          total_opportunities: "0"
-      - on: OpportunityCreated
-        assign:
-          total_opportunities: "coalesce(state.total_opportunities, 0) + 1"
+      - on: "Lead:LeadCreated"
+        patches:
+          - op: add
+            path: /companyName
+            value: "${event.payload.companyName}"
+          - op: add
+            path: /total_opportunities
+            value: "${0}"
+      - on: "Opportunity:OpportunityCreated"
+        patches:
+          - op: replace
+            path: /total_opportunities
+            value: "${coalesce(state.total_opportunities, 0) + 1}"
 ```
 
 Poll `GET /_admin/derived/LeadSummary` to retrieve the aggregated map.

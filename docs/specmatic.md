@@ -1,9 +1,11 @@
 # Specmatic Integration — Plugin Architecture
 
 The engine no longer ships its own Specmatic-compatible HTTP surface. Contract testing is
-now handled via a Kotlin plugin that runs inside the Specmatic process as a `RequestHandler`
-extension. This document describes the plugin model, how to configure it, and what the
-engine receives and returns.
+now handled via a Kotlin plugin that runs inside the Specmatic **stub** process. The plugin
+registers as a Specmatic `StubInitializer` (`com.potemkin.specmatic.PluginInitializer`) and
+installs request/response interceptors that forward stubbed requests to the Node engine.
+This document describes the plugin model, how to configure it, and what the engine receives
+and returns.
 
 ---
 
@@ -19,30 +21,30 @@ engine receives and returns.
 │  │  - generates test scenarios                          │  │
 │  │  - validates responses                               │  │
 │  └────────────────────┬─────────────────────────────────┘  │
-│                        │ RequestHandler.handleRequest()     │
+│                        │ request / response interceptors    │
 │  ┌─────────────────────▼───────────────────────────────┐   │
 │  │  Potemkin Kotlin Plugin                             │   │
-│  │  plugin/src/main/kotlin/...                         │   │
-│  │  - implements RequestHandler SPI                    │   │
-│  │  - translates Specmatic request → HTTP call         │   │
-│  │  - POSTs to Node engine /forward endpoint           │   │
-│  │  - translates response back to HttpStubResponse     │   │
+│  │  plugin/src/main/kotlin/com/potemkin/specmatic/...  │   │
+│  │  - registered as a StubInitializer (Java SPI)       │   │
+│  │  - intercepts each stubbed request                  │   │
+│  │  - POSTs to Node engine /_engine/forward endpoint   │   │
+│  │  - applies the engine response (+ _patches) back    │   │
 │  └────────────────────┬────────────────────────────────┘   │
 └───────────────────────┼─────────────────────────────────────┘
-                        │ HTTP  POST /forward
+                        │ HTTP  POST /_engine/forward
                         ▼
           ┌─────────────────────────────┐
           │  Node Engine  (this repo)   │
           │  - CQRS / ES / DSL / CEL    │
           │  - deterministic state      │
-          │  - returns HttpStubResponse │
+          │  - returns ForwardedResponse│
           └─────────────────────────────┘
 ```
 
-The Kotlin plugin is loaded by Specmatic via the `META-INF/services` Java SPI mechanism.
-Specmatic calls `handleRequest()` for each test scenario it generates. The plugin forwards
-the request to the Node engine's `/forward` endpoint and returns the response to Specmatic
-for contract validation.
+The Kotlin plugin is loaded by Specmatic via the `META-INF/services` Java SPI mechanism
+(`io.specmatic.stub.StubInitializer`). For each request the stub serves, the plugin's
+interceptors forward it to the Node engine's `/_engine/forward` endpoint and apply the
+returned response (and any `_patches`) before Specmatic performs contract validation.
 
 ---
 
@@ -53,7 +55,7 @@ for contract validation.
 - Java 17+
 - `specmatic.jar` (tested against Specmatic 2.x)
 - The plugin JAR built from `plugin/`
-- Node engine running (default port 4000)
+- Node engine running (default port 3000)
 
 ### Gradle drop-in
 
@@ -73,27 +75,29 @@ tasks.test {
 
 ### META-INF/services registration
 
-The plugin registers itself as a Specmatic `RequestHandler` by including the file:
+The plugin registers itself as a Specmatic `StubInitializer` by including the file:
 
 ```
-plugin/src/main/resources/META-INF/services/io.specmatic.core.RequestHandler
+plugin/src/main/resources/META-INF/services/io.specmatic.stub.StubInitializer
 ```
 
-containing the fully-qualified class name of the plugin implementation. No additional
-configuration is required for Specmatic to discover and load the plugin.
+containing the fully-qualified class name of the plugin entrypoint
+(`com.potemkin.specmatic.PluginInitializer`). No additional configuration is required for
+Specmatic to discover and load the plugin.
 
 ### java -cp invocation
 
-To run Specmatic contract tests directly from the command line:
+To run the Specmatic **stub** server (virtualized API) with the plugin on the classpath:
 
 ```bash
 java -cp "specmatic.jar:potemkin-plugin.jar" \
-  io.specmatic.core.TestRunner \
-  --testBaseURL=http://127.0.0.1:4000 \
+  application.SpecmaticApplication \
+  stub \
+  --port 9000 \
   path/to/nuisance-bureau.yaml
 ```
 
-The plugin intercepts all `handleRequest()` calls before Specmatic's default behaviour.
+This is exactly how the e2e harness launches it (see `tests/e2e/_harness/specmatic-driver.ts`). The plugin intercepts every request the stub serves and forwards it to the Node engine (configured via `potemkin.yaml`, see §3) before Specmatic's default stub behaviour.
 
 ---
 
@@ -101,20 +105,45 @@ The plugin intercepts all `handleRequest()` calls before Specmatic's default beh
 
 ### Plugin configuration
 
-The plugin reads a small configuration block, typically supplied via system properties or
-an environment variable:
+The plugin is configured from a `potemkin.yaml` file (NOT JVM system properties). It is
+resolved in this order (see `PluginConfig.load()` in `plugin/src/main/kotlin/.../PluginConfig.kt`):
 
-| Property | Default | Description |
-|----------|---------|-------------|
-| `potemkin.engineUrl` | `http://localhost:4000` | Base URL of the Node engine's `/forward` endpoint |
-| `potemkin.timeoutMs` | `10000` | HTTP timeout (milliseconds) for each forward call |
+1. The path in the `POTEMKIN_CONFIG_PATH` environment variable, if set.
+2. `./potemkin.yaml` in the working directory.
+3. Built-in defaults if neither is found.
 
-Example:
+The plugin reads the `plugin:` block:
+
+```yaml
+# potemkin.yaml
+plugin:
+  engine:
+    url: "${POTEMKIN_ENGINE_URL:http://localhost:3000}"  # Node engine base URL
+    timeoutMs: 30000                                      # per-forward HTTP timeout (ms)
+  controlPort: 0                                          # plugin control server port (0 = ephemeral)
+  # Optional resilience / health tuning:
+  resilience:
+    maxRetries: 5
+    backoffMs: 100
+  healthProbe:
+    initialMs: 300
+    stableMs: 45000
+  discovery:
+    refreshOnFailureMs: 8000
+```
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `plugin.engine.url` | `http://localhost:3000` | Base URL of the Node engine's `/_engine/forward` endpoint |
+| `plugin.engine.timeoutMs` | `10000` | HTTP timeout (milliseconds) for each forward call |
+| `plugin.controlPort` | `0` | Plugin control server port (`0` = ephemeral) |
+
+Run with an explicit config path:
 
 ```bash
-java -Dpotemkin.engineUrl=http://localhost:4000 \
-     -cp "specmatic.jar:potemkin-plugin.jar" \
-     io.specmatic.core.TestRunner ...
+POTEMKIN_CONFIG_PATH=/path/to/potemkin.yaml \
+  java -cp "specmatic.jar:potemkin-plugin.jar" \
+       application.SpecmaticApplication stub --port 9000 path/to/contract.yaml
 ```
 
 ### Path patterns the plugin owns
@@ -122,7 +151,7 @@ java -Dpotemkin.engineUrl=http://localhost:4000 \
 The plugin handles **all** paths that Specmatic generates from the OpenAPI spec. There is
 no path-prefix filtering; the plugin forwards every request Specmatic passes to it.
 
-The Node engine URL (`potemkin.engineUrl`) must point to the running Node process. The
+The Node engine URL (`plugin.engine.url`) must point to the running Node process. The
 engine's own contract routes (defined via the DSL `contract_path`) receive the forwarded
 requests and return CQRS-derived responses.
 
@@ -203,16 +232,21 @@ plugin/
   src/
     main/
       kotlin/
-        au/com/bankwest/potemkin/
-          PotemkinRequestHandler.kt   ← RequestHandler implementation
-          ForwardClient.kt            ← HTTP client for /forward endpoint
-          Config.kt                   ← Configuration (engineUrl, timeoutMs)
+        com/potemkin/specmatic/
+          PluginInitializer.kt          ← StubInitializer entrypoint; wires everything
+          PotemkinRequestInterceptor.kt ← inbound request interception
+          PotemkinResponseInterceptor.kt← outbound response (_patches, Warning header)
+          StatefulRequestHandler.kt     ← forwards matched requests to the engine
+          CqrsBackendClient.kt          ← HTTP client for the engine /_engine/forward endpoint
+          PluginConfig.kt               ← potemkin.yaml parsing (engine.url, timeoutMs, …)
+          reliability/HealthMonitor.kt  ← engine health probing
+          reliability/FixtureLifecycleManager.kt ← fixture seating lifecycle
       resources/
         META-INF/services/
-          io.specmatic.core.RequestHandler
+          io.specmatic.stub.StubInitializer   ← service registration (FQCN of PluginInitializer)
     test/
       kotlin/
-        ...                           ← Plugin unit tests
+        ...                             ← Plugin unit tests
 ```
 
 The Node engine's `/forward` endpoint is implemented by a separate agent (see the

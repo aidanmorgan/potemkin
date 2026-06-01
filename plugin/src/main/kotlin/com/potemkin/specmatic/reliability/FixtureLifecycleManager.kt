@@ -10,6 +10,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.slf4j.LoggerFactory
@@ -70,8 +71,29 @@ class FixtureLifecycleManager(
 
     fun start() {
         // Perform an initial push if the engine is already UP at plugin boot.
+        //
+        // The initial push participates in the SAME transitionSeq + transitionMutex
+        // scheme as onTransition(), so it cannot race a concurrent probe transition
+        // (which would otherwise double-register or clobber). We bump the seq first,
+        // then apply under the mutex only if still current — if a probe transition
+        // superseded us during the fetch, that transition wins and we discard.
+        // runBlocking keeps start() synchronous (it is called once at boot, before
+        // the plugin begins serving) so the initial seating is complete on return;
+        // the async transition coroutines run on Dispatchers.IO and can release the
+        // mutex while this blocks, so there is no deadlock.
         if (monitor.currentState() == HealthState.Up) {
-            pushFixtures()
+            val seq = transitionSeq.incrementAndGet()
+            runBlocking {
+                val fixtures = safelyFetch()
+                if (fixtures != null) {
+                    val signal = changeSignal(fixtures)
+                    transitionMutex.withLock {
+                        if (transitionSeq.get() == seq) {
+                            applyPush(fixtures, signal)
+                        }
+                    }
+                }
+            }
         }
         startRefreshLoop()
     }
