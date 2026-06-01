@@ -34,13 +34,24 @@ function resolveAllowedOrigin(requestOrigin: string | undefined): string {
   return allowed[0] ?? '*';
 }
 
-/** CORS response headers (lowercased keys) for a forwarded OPTIONS preflight. */
-export function corsPreflightHeaders(requestOrigin?: string): Record<string, string> {
-  return {
-    'access-control-allow-origin': resolveAllowedOrigin(requestOrigin),
+/**
+ * CORS response headers (lowercased keys) for a forwarded OPTIONS preflight.
+ *
+ * When the request carries credentials (cookie or Authorization), browsers
+ * require a specific reflected Origin (not '*') and Allow-Credentials: true.
+ * The `credentialed` flag mirrors the gateway's isCredentialedRequest check.
+ */
+export function corsPreflightHeaders(requestOrigin?: string, credentialed = false): Record<string, string> {
+  const origin = (credentialed && requestOrigin) ? requestOrigin : resolveAllowedOrigin(requestOrigin);
+  const headers: Record<string, string> = {
+    'access-control-allow-origin': origin,
     'access-control-allow-methods': CORS_ALLOW_METHODS,
     'access-control-allow-headers': CORS_ALLOW_HEADERS,
   };
+  if (credentialed && requestOrigin) {
+    headers['access-control-allow-credentials'] = 'true';
+  }
+  return headers;
 }
 
 // ---------------------------------------------------------------------------

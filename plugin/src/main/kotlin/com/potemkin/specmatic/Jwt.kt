@@ -1,11 +1,16 @@
 package com.potemkin.specmatic
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.fasterxml.jackson.module.kotlin.readValue
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import java.math.BigInteger
 import java.security.KeyFactory
 import java.security.Signature
 import java.security.spec.RSAPublicKeySpec
 import java.util.Base64
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
@@ -91,6 +96,68 @@ fun interface JwksProvider {
     fun keys(): List<Jwk>
 }
 
+/**
+ * [JwksProvider] that fetches a JWKS document from [url] via HTTP and caches the
+ * parsed keyset for [cacheTtlMs] milliseconds. A stale or failed fetch returns the
+ * last successfully-fetched keyset, so transient network errors do not invalidate
+ * an already-healthy token flow. First-fetch failures return an empty list (all
+ * RS256 tokens will be rejected until the endpoint becomes reachable).
+ *
+ * Built on OkHttp, which is already a plugin dependency. Thread-safe via
+ * [AtomicReference] on the cached state.
+ */
+class HttpJwksProvider(
+    private val url: String,
+    private val cacheTtlMs: Long = 300_000L,
+    private val httpClient: OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(5, TimeUnit.SECONDS)
+        .readTimeout(5, TimeUnit.SECONDS)
+        .build(),
+    private val clock: () -> Long = { System.currentTimeMillis() },
+) : JwksProvider {
+
+    private val mapper = jacksonObjectMapper()
+
+    private data class CachedKeys(val keys: List<Jwk>, val expiresAt: Long)
+
+    private val cache = AtomicReference<CachedKeys?>(null)
+
+    override fun keys(): List<Jwk> {
+        val cached = cache.get()
+        if (cached != null && clock() < cached.expiresAt) return cached.keys
+        return fetch() ?: cached?.keys ?: emptyList()
+    }
+
+    private fun fetch(): List<Jwk>? {
+        val request = Request.Builder().url(url).get().build()
+        return try {
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return null
+                val body = response.body?.string() ?: return null
+                val raw = mapper.readValue<Map<String, Any?>>(body)
+                @Suppress("UNCHECKED_CAST")
+                val jwksRaw = raw["keys"] as? List<*> ?: return null
+                val keys = jwksRaw.mapNotNull { entry ->
+                    if (entry !is Map<*, *>) return@mapNotNull null
+                    val jwk = entry as Map<String, Any?>
+                    val n = jwk["n"] as? String ?: return@mapNotNull null
+                    val e = jwk["e"] as? String ?: return@mapNotNull null
+                    Jwk(
+                        kty = jwk["kty"] as? String ?: "RSA",
+                        kid = jwk["kid"] as? String,
+                        n = n,
+                        e = e,
+                    )
+                }
+                cache.set(CachedKeys(keys = keys, expiresAt = clock() + cacheTtlMs))
+                keys
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+}
+
 /** Result of verifying a token: either the decoded claims, or a failure reason. */
 sealed class JwtResult {
     data class Valid(val claims: Map<String, Any?>) : JwtResult()
@@ -140,12 +207,15 @@ class JwtVerifier(
             return JwtResult.Invalid("signature is not valid base64url")
         }
 
-        val signatureOk = when (alg.uppercase()) {
-            "HS256" -> verifyHs256(signingInput, signature)
-            "RS256" -> verifyRs256(signingInput, signature, header["kid"] as? String)
+        val sigFailReason: String? = when (alg.uppercase()) {
+            "HS256" -> if (verifyHs256(signingInput, signature)) null else "signature verification failed"
+            "RS256" -> {
+                val rs256Result = verifyRs256(signingInput, signature, header["kid"] as? String)
+                if (rs256Result is JwtResult.Invalid) return rs256Result else null
+            }
             else -> return JwtResult.Invalid("unsupported alg '$alg'")
         }
-        if (!signatureOk) return JwtResult.Invalid("signature verification failed")
+        if (sigFailReason != null) return JwtResult.Invalid(sigFailReason)
 
         val now = clockSeconds()
         (claims["exp"] as? Number)?.let {
@@ -166,9 +236,15 @@ class JwtVerifier(
         return constantTimeEquals(expected, signature)
     }
 
-    private fun verifyRs256(signingInput: ByteArray, signature: ByteArray, kid: String?): Boolean {
+    private fun verifyRs256(signingInput: ByteArray, signature: ByteArray, kid: String?): JwtResult {
         val keys = jwksProvider.keys()
-        val candidates = if (kid != null) keys.filter { it.kid == kid }.ifEmpty { keys } else keys
+        val candidates = if (kid != null) {
+            val matched = keys.filter { it.kid == kid }
+            if (matched.isEmpty()) return JwtResult.Invalid("no JWK matches kid '$kid'")
+            matched
+        } else {
+            keys
+        }
         val factory = KeyFactory.getInstance("RSA")
         for (jwk in candidates) {
             try {
@@ -178,12 +254,12 @@ class JwtVerifier(
                 val sig = Signature.getInstance("SHA256withRSA")
                 sig.initVerify(pub)
                 sig.update(signingInput)
-                if (sig.verify(signature)) return true
+                if (sig.verify(signature)) return JwtResult.Valid(emptyMap())
             } catch (e: Exception) {
                 // try next key
             }
         }
-        return false
+        return JwtResult.Invalid("signature verification failed")
     }
 
     @Suppress("UNCHECKED_CAST")

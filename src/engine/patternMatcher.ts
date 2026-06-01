@@ -209,7 +209,6 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
 
     // REQ-61: evaluate requires[] FIRST (before match.condition)
     if (behavior.match.requires && behavior.match.requires.length > 0) {
-      let requiresFailed = false;
       for (const req of behavior.match.requires) {
         let condResult: unknown;
         try {
@@ -236,7 +235,6 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
           );
         }
       }
-      if (requiresFailed) continue; // unreachable but kept for safety
     }
 
     log?.debug({ behaviorName: behavior.name }, 'Evaluating behavior condition');

@@ -5,10 +5,11 @@
  * webhook dispatch — trigger matching, CEL payload templating, canonical body
  * serialisation, and HMAC-SHA256 signing — as pure, unit-testable functions.
  * The actual network send is performed by `deliverWebhook`, which is injectable
- * (the `fetchImpl` parameter) so callers and tests control transport. The engine
- * does not yet invoke this from the synchronous request path; wiring an at-least-
- * once delivery queue with retry/backoff is tracked as follow-up work. Parsing
- * the `webhooks:` block (dsl/schema.ts) ensures the config is never dropped.
+ * (the `fetchImpl` parameter) so callers and tests control transport. Delivery
+ * IS wired: the UoW post-commit side-effects path (uow.ts) calls
+ * `prepareWebhookDelivery` + `deliverWebhook` for each matched webhook, and
+ * boot.ts wires a `createFetchWebhookTransport()`-backed transport by default,
+ * giving at-least-once delivery with bounded retry/backoff on every commit.
  */
 
 import { createHmac } from 'node:crypto';

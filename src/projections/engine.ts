@@ -19,6 +19,8 @@ import type { DerivedStateMap, DerivedProjectionRegistry } from './types.js';
 import { CelPhase } from '../cel/phases.js';
 import { deepClone } from '../stategraph/graph.js';
 import { setByDotPath, getByDotPath } from '../engine/projection.js';
+import { applyPatches } from '../dsl/patches.js';
+import { resolveReducerPatch } from '../engine/reducerPatches.js';
 
 /**
  * Create a new empty derived projection registry.
@@ -195,90 +197,32 @@ function applyDerivedProjectionPatch(
   projName: string,
   eventType: string,
 ): void {
-  const dotPath = patch.path.startsWith('/') ? patch.path.slice(1).replace(/\//g, '.') : patch.path;
+  // Resolve the DSL patch into a canonical Patch, evaluating CEL value expressions.
+  // If CEL evaluation throws, skip the patch and leave prior derived state intact
+  // (EVAL_FAILED sentinel behavior: a genuine eval failure must not overwrite state
+  // with null/undefined).
+  let resolved: ReturnType<typeof resolveReducerPatch>;
+  try {
+    resolved = resolveReducerPatch(patch, cel, celCtx);
+  } catch (err) {
+    logger?.warn(
+      { projName, eventType, path: patch.path, op: patch.op, err },
+      'Derived projection patch CEL failed — skipping patch, leaving prior value intact',
+    );
+    return;
+  }
 
-  // Sentinel distinguishing a genuine CEL eval failure from a legitimate
-  // null/undefined result. On failure we skip the write so prior derived
-  // state is left intact rather than silently overwritten with null.
-  const EVAL_FAILED = Symbol('evalFailed');
-  const evaluate = (raw: unknown): JsonValue | typeof EVAL_FAILED => {
-    if (typeof raw !== 'string') return raw as JsonValue;
-    try {
-      return cel.evaluateDslValue(raw, celCtx, CelPhase.Reducer) as JsonValue;
-    } catch (err) {
-      logger?.warn(
-        { projName, eventType, dotPath, expr: raw, op: patch.op, err },
-        'Derived projection patch CEL failed — skipping patch, leaving prior value intact',
-      );
-      return EVAL_FAILED;
-    }
-  };
-  switch (patch.op) {
-    case 'add':
-    case 'replace': {
-      const v = evaluate(patch.value);
-      if (v === EVAL_FAILED) return;
-      setByDotPath(buf, dotPath, v);
-      return;
-    }
-    case 'remove': {
-      const segs = dotPath.split('.');
-      let cur: JsonObject = buf;
-      for (let i = 0; i < segs.length - 1; i++) {
-        const seg = segs[i];
-        if (typeof cur[seg] !== 'object' || cur[seg] === null) return;
-        cur = cur[seg] as JsonObject;
-      }
-      delete cur[segs[segs.length - 1]];
-      return;
-    }
-    case 'append': {
-      const v = evaluate(patch.value);
-      if (v === EVAL_FAILED) return;
-      const existing = getByDotPath(buf, dotPath);
-      const arr: JsonValue[] = Array.isArray(existing) ? [...existing] : [];
-      arr.push(v);
-      setByDotPath(buf, dotPath, arr);
-      return;
-    }
-    case 'prepend': {
-      const v = evaluate(patch.value);
-      if (v === EVAL_FAILED) return;
-      const existing = getByDotPath(buf, dotPath);
-      const arr: JsonValue[] = Array.isArray(existing) ? [...existing] : [];
-      arr.unshift(v);
-      setByDotPath(buf, dotPath, arr);
-      return;
-    }
-    case 'increment': {
-      const existing = getByDotPath(buf, dotPath);
-      const current = typeof existing === 'number' ? existing : 0;
-      setByDotPath(buf, dotPath, current + (patch.by ?? 0));
-      return;
-    }
-    case 'merge': {
-      const v = evaluate(patch.value);
-      if (v === EVAL_FAILED) return;
-      const existing = getByDotPath(buf, dotPath);
-      const base: JsonObject = existing && typeof existing === 'object' && !Array.isArray(existing)
-        ? { ...(existing as JsonObject) }
-        : {};
-      setByDotPath(buf, dotPath, { ...base, ...(v as JsonObject) });
-      return;
-    }
-    case 'upsert': {
-      const v = evaluate(patch.value);
-      if (v === EVAL_FAILED) return;
-      const vObj = v as JsonObject;
-      const existing = getByDotPath(buf, dotPath);
-      const arr: JsonObject[] = Array.isArray(existing) ? [...(existing as JsonObject[])] : [];
-      const keyField = patch.key ?? 'id';
-      const idx = arr.findIndex((item) => item && typeof item === 'object' && item[keyField] === vObj[keyField]);
-      if (idx >= 0) arr[idx] = vObj;
-      else arr.push(vObj);
-      setByDotPath(buf, dotPath, arr as unknown as JsonValue);
-      return;
-    }
+  // Apply through the single canonical applier with autoVivify (reducer semantics).
+  try {
+    const result = applyPatches(buf, [resolved], 'reducer', { autoVivify: true });
+    const next = result.newState as JsonObject;
+    for (const key of Object.keys(buf)) delete buf[key];
+    for (const [k, v] of Object.entries(next)) buf[k] = v;
+  } catch (err) {
+    logger?.warn(
+      { projName, eventType, path: patch.path, op: patch.op, err },
+      'Derived projection patch apply failed — skipping patch, leaving prior value intact',
+    );
   }
 }
 

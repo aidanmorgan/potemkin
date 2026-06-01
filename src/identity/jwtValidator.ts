@@ -24,6 +24,7 @@ import type { JwtAuthConfig } from '../dsl/types.js';
 
 export type JwtErrorCode =
   | 'JWT_MALFORMED'
+  | 'JWT_BLANK_SECRET'
   | 'JWT_UNSUPPORTED_ALG'
   | 'JWT_INVALID_SIGNATURE'
   | 'JWT_EXPIRED'
@@ -115,6 +116,15 @@ function asObject(v: JsonValue | undefined): JsonObject | undefined {
  * @throws {JwtValidationError} with a structured `code` on any failure.
  */
 export function validateJwt(token: string, config: JwtAuthConfig): Actor {
+  // Fail fast on a blank secret — an empty/whitespace secret produces a
+  // deterministic, forgeable HMAC and must never be used for validation.
+  if (typeof config.secret !== 'string' || config.secret.trim() === '') {
+    throw new JwtValidationError(
+      'JWT shared secret must not be empty or whitespace',
+      'JWT_BLANK_SECRET',
+    );
+  }
+
   if (typeof token !== 'string' || token.trim() === '') {
     throw new JwtValidationError('JWT is empty', 'JWT_MALFORMED');
   }

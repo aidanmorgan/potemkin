@@ -1,6 +1,23 @@
 import type { JsonValue, JsonObject } from '../types.js';
 import type { ObjectGraphSchema, SchemaTypeKind } from './types.js';
 import { getTracer, withSpan } from '../observability/tracing.js';
+import { detectCatastrophicRegexShape } from '../cel/evaluator.js';
+
+// ── pattern validation (ReDoS-safe) ───────────────────────────────────────────
+
+/**
+ * Compile a pattern string to a RegExp after checking for catastrophic-backtracking
+ * shapes. Throws a descriptive error rather than running an unsafe pattern.
+ */
+function compilePatternSafe(pattern: string): RegExp {
+  const reason = detectCatastrophicRegexShape(pattern);
+  if (reason !== null) {
+    throw new Error(
+      `SCHEMA_PATTERN_REJECTED: pattern /${pattern}/ has a ${reason} known to backtrack catastrophically`,
+    );
+  }
+  return new RegExp(pattern);
+}
 
 // ── format validation ─────────────────────────────────────────────────────────
 
@@ -48,7 +65,12 @@ export function isAssignable(value: JsonValue, target: ObjectGraphSchema): boole
   const kind = typeOfJson(value);
 
   if (target.kind === 'union') {
-    return (target.union ?? []).some((member) => isAssignable(value, member));
+    const members = target.union ?? [];
+    if (target.unionVariant === 'oneOf') {
+      const matchCount = members.filter((m) => isAssignable(value, m)).length;
+      return matchCount === 1;
+    }
+    return members.some((member) => isAssignable(value, member));
   }
 
   if (target.kind === 'null') return value === null;
@@ -85,7 +107,7 @@ export function isAssignable(value: JsonValue, target: ObjectGraphSchema): boole
     const s = value as string;
     if (target.minLength !== undefined && s.length < target.minLength) return false;
     if (target.maxLength !== undefined && s.length > target.maxLength) return false;
-    if (target.pattern !== undefined && !new RegExp(target.pattern).test(s)) return false;
+    if (target.pattern !== undefined && !compilePatternSafe(target.pattern).test(s)) return false;
     if (target.format !== undefined && !validateFormat(s, target.format)) return false;
     return true;
   }
@@ -153,12 +175,27 @@ function validateNode(
   }
 
   if (schema.kind === 'union') {
-    const ok = (schema.union ?? []).some((m) => isAssignable(value, m));
-    if (!ok) {
-      errors.push({
-        path,
-        reason: `value does not match any union member`,
-      });
+    const members = schema.union ?? [];
+    let ok: boolean;
+    if (schema.unionVariant === 'oneOf') {
+      const matchCount = members.filter((m) => isAssignable(value, m)).length;
+      ok = matchCount === 1;
+      if (!ok) {
+        errors.push({
+          path,
+          reason: matchCount === 0
+            ? `value does not match any oneOf member`
+            : `value matches ${matchCount} oneOf members (exactly one required)`,
+        });
+      }
+    } else {
+      ok = members.some((m) => isAssignable(value, m));
+      if (!ok) {
+        errors.push({
+          path,
+          reason: `value does not match any union member`,
+        });
+      }
     }
     return;
   }
@@ -225,8 +262,11 @@ function validateNode(
       errors.push({ path, reason: `string length ${s.length} is less than minLength ${schema.minLength}` });
     if (schema.maxLength !== undefined && s.length > schema.maxLength)
       errors.push({ path, reason: `string length ${s.length} is greater than maxLength ${schema.maxLength}` });
-    if (schema.pattern !== undefined && !new RegExp(schema.pattern).test(s))
-      errors.push({ path, reason: `string '${s}' does not match pattern ${schema.pattern}` });
+    if (schema.pattern !== undefined) {
+      const compiled = compilePatternSafe(schema.pattern);
+      if (!compiled.test(s))
+        errors.push({ path, reason: `string '${s}' does not match pattern ${schema.pattern}` });
+    }
     if (schema.format !== undefined && !validateFormat(s, schema.format))
       errors.push({ path, reason: `string '${s}' does not match format '${schema.format}'` });
     return;

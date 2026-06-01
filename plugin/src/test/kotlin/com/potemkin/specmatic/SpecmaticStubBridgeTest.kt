@@ -220,6 +220,48 @@ class SpecmaticStubBridgeTest {
         assertEquals("/items/{id}", req.path)
     }
 
+    // ---- buildSpecmaticRequest: query parameters (potemkin-502f) -----------------------
+
+    @Test
+    fun `buildSpecmaticRequest maps query parameters into the Specmatic request`() {
+        val bridge = CapturingBridge()
+        val req = bridge.buildSpecmaticRequest(
+            FixtureHttpRequest("GET", "/loans", queryParameters = mapOf("status" to "active", "page" to 2)),
+        )
+        val qp = req.queryParams.asMap()
+        assertEquals("active", qp["status"])
+        assertEquals("2", qp["page"])
+    }
+
+    @Test
+    fun `buildSpecmaticRequest with null queryParameters produces empty query params`() {
+        val bridge = CapturingBridge()
+        val req = bridge.buildSpecmaticRequest(FixtureHttpRequest("GET", "/loans", queryParameters = null))
+        assertTrue(req.queryParams.asMap().isEmpty())
+    }
+
+    @Test
+    fun `buildSpecmaticRequest with empty queryParameters produces empty query params`() {
+        val bridge = CapturingBridge()
+        val req = bridge.buildSpecmaticRequest(FixtureHttpRequest("GET", "/loans", queryParameters = emptyMap()))
+        assertTrue(req.queryParams.asMap().isEmpty())
+    }
+
+    @Test
+    fun `registerStub passes query parameters through to captured ScenarioStub`() {
+        val bridge = CapturingBridge()
+        val fixture = FixtureStub(
+            httpRequest = FixtureHttpRequest("GET", "/items", queryParameters = mapOf("filter" to "open")),
+            httpResponse = FixtureHttpResponse(status = 200, body = null),
+            source = FixtureSource("boundary", "agg", "/contract.yaml"),
+        )
+        bridge.registerStub(fixture)
+
+        assertEquals(1, bridge.captured.size)
+        val qp = bridge.captured[0].request.queryParams.asMap()
+        assertEquals("open", qp["filter"])
+    }
+
     // ---- buildSpecmaticResponse (internal) ----------------------------------------------
 
     @Test

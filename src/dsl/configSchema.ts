@@ -225,17 +225,261 @@ export function validatePotemkinConfig(raw: unknown, ctx: ValidationContext): Po
     );
   }
 
+  const typescript = assertTypescriptBlock(raw['typescript'], ctx.source);
+  const plugin = assertPluginBlock(raw['plugin'], ctx.source);
+  const seeds = assertSeedsBlock(raw['seeds'], ctx.source);
+  const workflow = assertWorkflowBlock(raw['workflow'], ctx.source);
+  const overlay = assertOverlayBlock(raw['overlay'], ctx.source);
+  const governance = assertGovernanceBlock(raw['governance'], ctx.source);
+
   return {
     version: raw['version'] as number,
     specmatic: raw['specmatic'] as string,
     modules: modules as readonly string[],
-    typescript: raw['typescript'] as PotemkinConfigTypescript | undefined,
-    plugin: raw['plugin'] as PotemkinConfigPlugin | undefined,
-    seeds: raw['seeds'] as readonly PotemkinConfigSeed[] | undefined,
-    workflow: raw['workflow'] as PotemkinConfigWorkflow | undefined,
-    overlay: raw['overlay'] as PotemkinConfigOverlay | undefined,
-    governance: raw['governance'] as PotemkinConfigGovernance | undefined,
+    typescript,
+    plugin,
+    seeds,
+    workflow,
+    overlay,
+    governance,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Optional-block validators for potemkin.yaml
+// ---------------------------------------------------------------------------
+
+function assertTypescriptBlock(
+  raw: unknown,
+  source: string,
+): PotemkinConfigTypescript | undefined {
+  if (raw === undefined) return undefined;
+  if (!isObject(raw)) {
+    throw new BootError(
+      'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+      `${source}: "typescript" must be a mapping`,
+      { source },
+    );
+  }
+  if (!Array.isArray(raw['scan']) || (raw['scan'] as unknown[]).length === 0) {
+    throw new BootError(
+      'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+      `${source}: "typescript.scan" must be a non-empty array of { include } entries`,
+      { source },
+    );
+  }
+  for (let i = 0; i < (raw['scan'] as unknown[]).length; i++) {
+    const entry = (raw['scan'] as unknown[])[i];
+    const include = isObject(entry) ? entry['include'] : undefined;
+    if (!isObject(entry) || !Array.isArray(include) || (include as unknown[]).length === 0 || (include as unknown[]).some((g) => typeof g !== 'string')) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+        `${source}: "typescript.scan[${i}].include" must be a non-empty array of glob strings`,
+        { source },
+      );
+    }
+  }
+  assertOptionalBoolean(raw['watch'], 'typescript.watch', source);
+  return raw as unknown as PotemkinConfigTypescript;
+}
+
+function assertPluginBlock(
+  raw: unknown,
+  source: string,
+): PotemkinConfigPlugin | undefined {
+  if (raw === undefined) return undefined;
+  if (!isObject(raw)) {
+    throw new BootError(
+      'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+      `${source}: "plugin" must be an object`,
+      { source },
+    );
+  }
+  if (raw['controlPort'] !== undefined && typeof raw['controlPort'] !== 'number') {
+    throw new BootError(
+      'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+      `${source}: "plugin.controlPort" must be a number`,
+      { source },
+    );
+  }
+  if (raw['engine'] !== undefined && !isObject(raw['engine'])) {
+    throw new BootError(
+      'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+      `${source}: "plugin.engine" must be an object`,
+      { source },
+    );
+  }
+  return raw as PotemkinConfigPlugin;
+}
+
+function assertSeedsBlock(
+  raw: unknown,
+  source: string,
+): readonly PotemkinConfigSeed[] | undefined {
+  if (raw === undefined) return undefined;
+  if (!Array.isArray(raw)) {
+    throw new BootError(
+      'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+      `${source}: "seeds" must be an array`,
+      { source },
+    );
+  }
+  for (let i = 0; i < raw.length; i++) {
+    const entry = raw[i];
+    if (!isObject(entry)) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+        `${source}: "seeds[${i}]" must be an object`,
+        { source },
+      );
+    }
+    // base: required, must be 'contract' | 'empty'
+    if (entry['base'] !== 'contract' && entry['base'] !== 'empty') {
+      throw new BootError(
+        'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+        `${source}: "seeds[${i}].base" must be "contract" or "empty"`,
+        { source },
+      );
+    }
+    // request: required object with method (string) and path (string)
+    if (!isObject(entry['request'])) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+        `${source}: "seeds[${i}].request" must be an object with "method" and "path"`,
+        { source },
+      );
+    }
+    const req = entry['request'] as Record<string, unknown>;
+    if (typeof req['method'] !== 'string' || req['method'].length === 0) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+        `${source}: "seeds[${i}].request.method" must be a non-empty string`,
+        { source },
+      );
+    }
+    if (typeof req['path'] !== 'string' || req['path'].length === 0) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+        `${source}: "seeds[${i}].request.path" must be a non-empty string`,
+        { source },
+      );
+    }
+    // patches: optional array
+    if (entry['patches'] !== undefined && !Array.isArray(entry['patches'])) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+        `${source}: "seeds[${i}].patches" must be an array`,
+        { source },
+      );
+    }
+    // description: optional string
+    if (entry['description'] !== undefined && typeof entry['description'] !== 'string') {
+      throw new BootError(
+        'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+        `${source}: "seeds[${i}].description" must be a string`,
+        { source },
+      );
+    }
+  }
+  return raw as readonly PotemkinConfigSeed[];
+}
+
+function assertWorkflowBlock(
+  raw: unknown,
+  source: string,
+): PotemkinConfigWorkflow | undefined {
+  if (raw === undefined) return undefined;
+  if (!isObject(raw)) {
+    throw new BootError(
+      'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+      `${source}: "workflow" must be an object`,
+      { source },
+    );
+  }
+  if (raw['ids'] !== undefined) {
+    if (!isObject(raw['ids'])) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+        `${source}: "workflow.ids" must be an object`,
+        { source },
+      );
+    }
+    for (const [k, v] of Object.entries(raw['ids'] as Record<string, unknown>)) {
+      if (!isObject(v)) {
+        throw new BootError(
+          'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+          `${source}: "workflow.ids.${k}" must be an object with "extract" and "use"`,
+          { source },
+        );
+      }
+      if (typeof v['extract'] !== 'string') {
+        throw new BootError(
+          'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+          `${source}: "workflow.ids.${k}.extract" must be a string`,
+          { source },
+        );
+      }
+      if (typeof v['use'] !== 'string') {
+        throw new BootError(
+          'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+          `${source}: "workflow.ids.${k}.use" must be a string`,
+          { source },
+        );
+      }
+    }
+  }
+  return raw as PotemkinConfigWorkflow;
+}
+
+function assertOverlayBlock(
+  raw: unknown,
+  source: string,
+): PotemkinConfigOverlay | undefined {
+  if (raw === undefined) return undefined;
+  if (!isObject(raw)) {
+    throw new BootError(
+      'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+      `${source}: "overlay" must be an object`,
+      { source },
+    );
+  }
+  if (raw['patches'] !== undefined && !Array.isArray(raw['patches'])) {
+    throw new BootError(
+      'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+      `${source}: "overlay.patches" must be an array`,
+      { source },
+    );
+  }
+  return raw as unknown as PotemkinConfigOverlay;
+}
+
+function assertGovernanceBlock(
+  raw: unknown,
+  source: string,
+): PotemkinConfigGovernance | undefined {
+  if (raw === undefined) return undefined;
+  if (!isObject(raw)) {
+    throw new BootError(
+      'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+      `${source}: "governance" must be an object`,
+      { source },
+    );
+  }
+  if (raw['report'] !== undefined && !isObject(raw['report'])) {
+    throw new BootError(
+      'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+      `${source}: "governance.report" must be an object`,
+      { source },
+    );
+  }
+  if (raw['successCriterion'] !== undefined && typeof raw['successCriterion'] !== 'string') {
+    throw new BootError(
+      'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+      `${source}: "governance.successCriterion" must be a string`,
+      { source },
+    );
+  }
+  return raw as PotemkinConfigGovernance;
 }
 
 export function validateBoundaryModule(raw: unknown, ctx: ValidationContext): BoundaryModule {

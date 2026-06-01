@@ -89,6 +89,16 @@ function getAllowedOrigin(requestOrigin: string | undefined): string {
   return allowed[0] ?? '*';
 }
 
+/**
+ * Returns true when the request carries credentials: a Cookie header (session
+ * auth) or an Authorization header (JWT/Bearer). Browsers that send credentialed
+ * requests reject a wildcard `Access-Control-Allow-Origin: *` response, so we
+ * must reflect the specific Origin instead and set Allow-Credentials: true.
+ */
+function isCredentialedRequest(req: Request): boolean {
+  return Boolean(req.headers['cookie']) || Boolean(req.headers['authorization']);
+}
+
 const CORS_ALLOW_METHODS = 'GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS';
 const CORS_ALLOW_HEADERS = 'Content-Type, If-Match, x-specmatic-fault';
 
@@ -119,11 +129,20 @@ export function createGateway(sys: BootedSystem): Express {
   app.use(express.json({ strict: false, limit: '5mb', type: ['application/json', 'text/json', 'application/*+json'] }));
 
   // CORS middleware — add Access-Control-* headers to every response (H-2).
+  // When the request carries credentials (Cookie or Authorization), browsers
+  // require a specific reflected Origin (not '*') and Allow-Credentials: true.
   app.use((req: Request, res: Response, next: NextFunction) => {
-    const origin = getAllowedOrigin(req.headers['origin']);
+    const requestOrigin = req.headers['origin'] as string | undefined;
+    const credentialed = isCredentialedRequest(req);
+    const origin = (credentialed && requestOrigin)
+      ? requestOrigin
+      : getAllowedOrigin(requestOrigin);
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Methods', CORS_ALLOW_METHODS);
     res.setHeader('Access-Control-Allow-Headers', CORS_ALLOW_HEADERS);
+    if (credentialed && requestOrigin) {
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+    }
     next();
   });
 
@@ -141,10 +160,17 @@ export function createGateway(sys: BootedSystem): Express {
 
   // OPTIONS preflight handler — respond 204 immediately before any route matching (H-2).
   app.options('*', (req: Request, res: Response) => {
-    const origin = getAllowedOrigin(req.headers['origin']);
+    const requestOrigin = req.headers['origin'] as string | undefined;
+    const credentialed = isCredentialedRequest(req);
+    const origin = (credentialed && requestOrigin)
+      ? requestOrigin
+      : getAllowedOrigin(requestOrigin);
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Methods', CORS_ALLOW_METHODS);
     res.setHeader('Access-Control-Allow-Headers', CORS_ALLOW_HEADERS);
+    if (credentialed && requestOrigin) {
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+    }
     res.status(204).end();
   });
 

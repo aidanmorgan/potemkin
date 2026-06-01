@@ -74,12 +74,26 @@ function convertNode(raw: JsonObject, name: string): ObjectGraphSchema {
     return { name, kind: 'union', union: members, nullable, unionVariant: 'anyOf' };
   }
 
-  // Handle allOf → merge into object (best-effort: merge properties)
+  // Handle allOf → merge into object (merge properties, required, and constraints from
+  // both the parent node and every sub-schema; additionalProperties:false is preserved).
   if (raw['allOf']) {
     const merged: JsonObject = {};
     const allProps: Record<string, JsonObject> = {};
     const allRequired: string[] = [];
     let typeOnlyKind: string | undefined;
+
+    // Inherit parent-level keywords (e.g. additionalProperties, nullable, description)
+    // that sit alongside the allOf keyword itself.
+    const parentKeywords = [
+      'additionalProperties', 'nullable', 'description',
+      'format', 'pattern', 'minLength', 'maxLength',
+      'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum',
+      'enum',
+    ];
+    for (const key of parentKeywords) {
+      if (raw[key] !== undefined) merged[key] = raw[key] as JsonObject;
+    }
+
     for (const sub of raw['allOf'] as JsonObject[]) {
       const s = sub as JsonObject;
       if (s['properties']) {
@@ -88,17 +102,28 @@ function convertNode(raw: JsonObject, name: string): ObjectGraphSchema {
       if (Array.isArray(s['required'])) {
         allRequired.push(...(s['required'] as string[]));
       }
-      // Track type from members that have no properties (type-only members)
-      if (s['type'] && !s['properties']) {
+      // Merge sub-schema keywords (last write wins for scalars; additionalProperties:false wins)
+      for (const key of parentKeywords) {
+        if (s[key] !== undefined) {
+          // additionalProperties: false must win over true/absent
+          if (key === 'additionalProperties' && s[key] === false) {
+            merged[key] = false as unknown as JsonObject;
+          } else if (merged[key] === undefined || merged[key] !== false) {
+            merged[key] = s[key] as JsonObject;
+          }
+        }
+      }
+      // Track type from members that have a type (with or without properties)
+      if (s['type']) {
         typeOnlyKind = s['type'] as string;
       }
     }
+
     if (Object.keys(allProps).length > 0) {
       merged['type'] = 'object';
       merged['properties'] = allProps;
       if (allRequired.length > 0) merged['required'] = allRequired;
     } else if (typeOnlyKind) {
-      // All members are type-only — preserve the type
       merged['type'] = typeOnlyKind;
     }
     return convertNode(Object.keys(merged).length > 0 ? merged : { type: 'any' }, name);

@@ -11,14 +11,17 @@
 import type { FetchLike } from './dispatcher.js';
 
 /**
- * Build a `FetchLike` backed by the global `fetch`. Falls back to a transport
- * that reports failure (never throws) when no global fetch is available, so the
- * engine boots in environments without fetch and dispatch degrades gracefully.
+ * Build a `FetchLike` backed by the global `fetch`. Throws at construction time
+ * when no global fetch is available so the missing dependency is surfaced loudly
+ * rather than silently manufacturing permanent delivery failures.
  */
 export function createFetchWebhookTransport(): FetchLike {
   const globalFetch = (globalThis as { fetch?: typeof fetch }).fetch;
   if (typeof globalFetch !== 'function') {
-    return async () => ({ ok: false, status: 0 });
+    throw new Error(
+      'createFetchWebhookTransport: globalThis.fetch is not available. ' +
+        'Upgrade to Node 18+ or supply a custom webhookTransport to bootEngine().',
+    );
   }
   return async (url, init) => {
     const res = await globalFetch(url, {

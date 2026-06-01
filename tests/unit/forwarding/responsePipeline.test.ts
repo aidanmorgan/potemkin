@@ -111,6 +111,24 @@ describe('responsePipeline helpers', () => {
       expect(h['access-control-allow-methods']).toBeDefined();
       expect(h['access-control-allow-headers']).toBeDefined();
     });
+
+    it('non-credentialed call returns wildcard origin and no Allow-Credentials', () => {
+      const h = corsPreflightHeaders('https://example.com', false);
+      expect(h['access-control-allow-origin']).toBe('*');
+      expect(h['access-control-allow-credentials']).toBeUndefined();
+    });
+
+    it('credentialed call with origin reflects the origin and sets Allow-Credentials', () => {
+      const h = corsPreflightHeaders('https://app.example.com', true);
+      expect(h['access-control-allow-origin']).toBe('https://app.example.com');
+      expect(h['access-control-allow-credentials']).toBe('true');
+    });
+
+    it('credentialed call without origin falls back to resolveAllowedOrigin (no Allow-Credentials)', () => {
+      const h = corsPreflightHeaders(undefined, true);
+      // No origin provided — cannot reflect; Allow-Credentials must not be set.
+      expect(h['access-control-allow-credentials']).toBeUndefined();
+    });
   });
 
   describe('splitBoundaryFaults', () => {

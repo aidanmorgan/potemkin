@@ -200,13 +200,15 @@ export function registerAdminRoutes(app: Express, sys: BootedSystem): void {
   );
 
   // POST /_admin/faults — register a dynamic fault rule. Body is a FaultRule
-  // ({ name, match, response, delay_ms? }). Returns 201 with { id, name }.
+  // ({ name, match, response, delay_ms?, ttlMs?, expiresAt? }).
+  // Optional TTL: ttlMs (milliseconds) or expiresAt (epoch ms). Returns 201 with { id, name }.
   app.post(
     '/_admin/faults',
     adminAuthMiddleware,
     (req: Request, res: Response, next: NextFunction) => {
       withSpan(sys.tracer, 'http.admin.faults.add', async () => {
-        const rule = (req.body ?? {}) as FaultRule;
+        const body = (req.body ?? {}) as Record<string, unknown>;
+        const rule = body as unknown as FaultRule;
         if (
           typeof rule !== 'object' ||
           rule === null ||
@@ -221,9 +223,16 @@ export function registerAdminRoutes(app: Express, sys: BootedSystem): void {
           });
           return;
         }
-        const id = sys.faultStore.add(rule);
-        sys.logger.info({ faultId: id, name: rule.name }, 'Admin: dynamic fault rule registered');
-        res.status(201).json({ id, name: rule.name });
+        // Optional TTL: ttlMs (duration) takes precedence over expiresAt (epoch).
+        let ttlSeconds: number | undefined;
+        if (typeof body['ttlMs'] === 'number' && body['ttlMs'] > 0) {
+          ttlSeconds = body['ttlMs'] / 1000;
+        } else if (typeof body['expiresAt'] === 'number' && body['expiresAt'] > Date.now()) {
+          ttlSeconds = (body['expiresAt'] - Date.now()) / 1000;
+        }
+        const id = sys.faultStore.add(rule, ttlSeconds);
+        sys.logger.info({ faultId: id, name: rule.name, ttlSeconds }, 'Admin: dynamic fault rule registered');
+        res.status(201).json({ id, name: rule.name, ...(ttlSeconds !== undefined ? { ttlSeconds } : {}) });
       }).catch(next);
     },
   );

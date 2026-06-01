@@ -1,5 +1,6 @@
 import pino from 'pino';
 import type { Logger, LoggerOptions } from 'pino';
+import { randomUUID } from 'node:crypto';
 import { nextUuidv7 } from '../ids/uuidv7.js';
 
 export type { Logger };
@@ -52,7 +53,7 @@ export function createLogger(opts?: CreateLoggerOptions): Logger {
   try {
     instanceId = nextUuidv7();
   } catch {
-    instanceId = 'not-implemented';
+    instanceId = randomUUID();
   }
 
   const baseBindings: Record<string, unknown> = {

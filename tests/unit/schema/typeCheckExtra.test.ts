@@ -388,4 +388,174 @@ describe('schema/typeCheck — additional branch coverage', () => {
       expect(result.ok).toBe(true);
     });
   });
+
+  // ── oneOf semantics (potemkin-6dqk) ──────────────────────────────────────────
+
+  describe('isAssignable – oneOf: exactly one member must match', () => {
+    const strSchema: ObjectGraphSchema = { name: 's', kind: 'string' };
+    const intSchema: ObjectGraphSchema = { name: 'i', kind: 'integer' };
+    const numSchema: ObjectGraphSchema = { name: 'n', kind: 'number' };
+
+    it('value matching exactly one oneOf member → assignable', () => {
+      const schema: ObjectGraphSchema = {
+        name: 'u',
+        kind: 'union',
+        unionVariant: 'oneOf',
+        union: [strSchema, intSchema],
+      };
+      expect(isAssignable('hello', schema)).toBe(true);
+    });
+
+    it('value matching two oneOf members → not assignable (integer satisfies both integer and number)', () => {
+      const schema: ObjectGraphSchema = {
+        name: 'u',
+        kind: 'union',
+        unionVariant: 'oneOf',
+        union: [intSchema, numSchema],
+      };
+      expect(isAssignable(5, schema)).toBe(false);
+    });
+
+    it('value matching no oneOf member → not assignable', () => {
+      const schema: ObjectGraphSchema = {
+        name: 'u',
+        kind: 'union',
+        unionVariant: 'oneOf',
+        union: [strSchema, intSchema],
+      };
+      expect(isAssignable(true, schema)).toBe(false);
+    });
+
+    it('anyOf: value matching two members → assignable (>=1 semantics)', () => {
+      const schema: ObjectGraphSchema = {
+        name: 'u',
+        kind: 'union',
+        unionVariant: 'anyOf',
+        union: [intSchema, numSchema],
+      };
+      expect(isAssignable(5, schema)).toBe(true);
+    });
+  });
+
+  describe('validateEntityAgainstSchema – oneOf semantics', () => {
+    const strSchema: ObjectGraphSchema = { name: 's', kind: 'string' };
+    const intSchema: ObjectGraphSchema = { name: 'i', kind: 'integer' };
+    const numSchema: ObjectGraphSchema = { name: 'n', kind: 'number' };
+
+    it('value matching exactly one oneOf member → ok', async () => {
+      const schema: ObjectGraphSchema = {
+        name: 'root',
+        kind: 'object',
+        properties: {
+          val: { name: 'val', kind: 'union', unionVariant: 'oneOf', union: [strSchema, intSchema] },
+        },
+      };
+      const result = await validateEntityAgainstSchema({ val: 'hello' }, schema);
+      expect(result.ok).toBe(true);
+    });
+
+    it('value matching two oneOf members → error mentions count', async () => {
+      const schema: ObjectGraphSchema = {
+        name: 'root',
+        kind: 'object',
+        properties: {
+          val: { name: 'val', kind: 'union', unionVariant: 'oneOf', union: [intSchema, numSchema] },
+        },
+      };
+      const result = await validateEntityAgainstSchema({ val: 5 }, schema);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.errors[0]?.reason).toMatch(/oneOf member/);
+      }
+    });
+
+    it('value matching zero oneOf members → error', async () => {
+      const schema: ObjectGraphSchema = {
+        name: 'root',
+        kind: 'object',
+        properties: {
+          val: { name: 'val', kind: 'union', unionVariant: 'oneOf', union: [strSchema, intSchema] },
+        },
+      };
+      const result = await validateEntityAgainstSchema({ val: true }, schema);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.errors[0]?.reason).toMatch(/oneOf member/);
+      }
+    });
+  });
+
+  // ── pattern ReDoS guard (potemkin-tgta) ──────────────────────────────────────
+
+  describe('isAssignable – pattern ReDoS guard', () => {
+    it('safe pattern passes through and matches correctly', () => {
+      const schema: ObjectGraphSchema = {
+        name: 's',
+        kind: 'string',
+        pattern: '^[a-z]+$',
+      };
+      expect(isAssignable('abc', schema)).toBe(true);
+      expect(isAssignable('ABC', schema)).toBe(false);
+    });
+
+    it('adversarial nested-quantifier pattern is rejected with SCHEMA_PATTERN_REJECTED', () => {
+      const schema: ObjectGraphSchema = {
+        name: 's',
+        kind: 'string',
+        pattern: '(a+)+',
+      };
+      expect(() => isAssignable('aaa', schema)).toThrow(/SCHEMA_PATTERN_REJECTED/);
+    });
+
+    it('adversarial overlapping-alternation pattern is rejected', () => {
+      const schema: ObjectGraphSchema = {
+        name: 's',
+        kind: 'string',
+        pattern: '(a|a)+',
+      };
+      expect(() => isAssignable('aaa', schema)).toThrow(/SCHEMA_PATTERN_REJECTED/);
+    });
+  });
+
+  describe('validateEntityAgainstSchema – pattern ReDoS guard', () => {
+    it('adversarial pattern in schema property throws before running the regex', async () => {
+      const schema: ObjectGraphSchema = {
+        name: 'root',
+        kind: 'object',
+        properties: {
+          code: { name: 'code', kind: 'string', pattern: '(a+)+' },
+        },
+      };
+      await expect(validateEntityAgainstSchema({ code: 'aaa' }, schema)).rejects.toThrow(
+        /SCHEMA_PATTERN_REJECTED/,
+      );
+    });
+
+    it('safe pattern on validateEntityAgainstSchema → ok when matching', async () => {
+      const schema: ObjectGraphSchema = {
+        name: 'root',
+        kind: 'object',
+        properties: {
+          code: { name: 'code', kind: 'string', pattern: '^[A-Z]{3}$' },
+        },
+      };
+      const result = await validateEntityAgainstSchema({ code: 'ABC' }, schema);
+      expect(result.ok).toBe(true);
+    });
+
+    it('safe pattern on validateEntityAgainstSchema → error when not matching', async () => {
+      const schema: ObjectGraphSchema = {
+        name: 'root',
+        kind: 'object',
+        properties: {
+          code: { name: 'code', kind: 'string', pattern: '^[A-Z]{3}$' },
+        },
+      };
+      const result = await validateEntityAgainstSchema({ code: 'abc' }, schema);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.errors[0]?.reason).toMatch(/does not match pattern/);
+      }
+    });
+  });
 });

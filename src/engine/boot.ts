@@ -604,6 +604,38 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       'Boot: system boot complete',
     );
 
+    // ── Security warnings (informational — do not block boot) ─────────────────
+
+    // ADMIN_TOKEN unset: admin endpoints are open without authentication.
+    if (!process.env['ADMIN_TOKEN']) {
+      bootLog.warn(
+        { step: 'security_check', setting: 'ADMIN_TOKEN' },
+        'Boot: ADMIN_TOKEN is not set — /_admin/* endpoints are unauthenticated. Set ADMIN_TOKEN to require Bearer auth.',
+      );
+    }
+
+    // Scoped behaviors (requiredScopes) exist but auth.mode is not jwt: scope
+    // checks are bypassable because simple/session/no-auth modes trust the
+    // client-declared id:scopes token (Bearer alice:admin).
+    const authMode = dsl.auth?.mode;
+    if (authMode !== 'jwt') {
+      const hasScopedBehavior = dsl.boundaries.some((b) =>
+        b.behaviors.some((beh) => beh.match.requiredScopes && beh.match.requiredScopes.length > 0),
+      );
+      const hasScopedFault = dsl.boundaries.some((b) =>
+        (b.faults ?? []).some((f) => f.match.requiredScopes && f.match.requiredScopes.length > 0),
+      );
+      const globalScopedFault = (dsl.faults ?? []).some(
+        (f) => f.match.requiredScopes && f.match.requiredScopes.length > 0,
+      );
+      if (hasScopedBehavior || hasScopedFault || globalScopedFault) {
+        bootLog.warn(
+          { step: 'security_check', authMode: authMode ?? 'none', setting: 'auth.mode' },
+          `Boot: auth.mode is "${authMode ?? 'none'}" but scoped behaviors/faults are configured — scope checks are bypassable via client-declared Bearer tokens. Set auth.mode: jwt to enforce real scope validation.`,
+        );
+      }
+    }
+
     // ── Step 8: Build requiresPrecondition callback (REQ-29) ─────────────────
     // Walk OpenAPI paths to discover operations that declare If-Match as a
     // required header parameter; encode as a (boundary, method) → boolean map.

@@ -238,6 +238,84 @@ describe('schema/fromOpenApi — additional branch coverage', () => {
     );
   });
 
+  // ── allOf keyword merge (potemkin-7v2k) ────────────────────────────────────
+
+  it('allOf: additionalProperties:false from sub-schema is preserved → extra props rejected', () => {
+    const doc = makeDoc({
+      Thing: {
+        allOf: [
+          {
+            type: 'object',
+            properties: { id: { type: 'string' } },
+            required: ['id'],
+            additionalProperties: false,
+          },
+        ],
+      },
+    });
+    const reg = deriveSchemasFromOpenApi(doc, [baseBoundary]);
+    const entity = reg.get('Thing')!.entity;
+    expect(entity.kind).toBe('object');
+    expect(entity.additionalProperties).toBe(false);
+  });
+
+  it('allOf: additionalProperties:false from parent node is preserved', () => {
+    const doc = makeDoc({
+      Thing: {
+        additionalProperties: false,
+        allOf: [
+          { type: 'object', properties: { id: { type: 'string' } } },
+        ],
+      },
+    });
+    const reg = deriveSchemasFromOpenApi(doc, [baseBoundary]);
+    const entity = reg.get('Thing')!.entity;
+    expect(entity.additionalProperties).toBe(false);
+  });
+
+  it('allOf: nullable:true from parent node is forwarded to merged schema', () => {
+    const doc = makeDoc({
+      Thing: {
+        nullable: true,
+        allOf: [
+          { type: 'object', properties: { id: { type: 'string' } } },
+        ],
+      },
+    });
+    const reg = deriveSchemasFromOpenApi(doc, [baseBoundary]);
+    const entity = reg.get('Thing')!.entity;
+    expect(entity.nullable).toBe(true);
+  });
+
+  it('allOf: sub-schema with both type and properties — type is not dropped', () => {
+    const doc = makeDoc({
+      Thing: {
+        allOf: [
+          { type: 'object', properties: { id: { type: 'string' } } },
+        ],
+      },
+    });
+    const reg = deriveSchemasFromOpenApi(doc, [baseBoundary]);
+    const entity = reg.get('Thing')!.entity;
+    expect(entity.kind).toBe('object');
+    expect(entity.properties?.['id']?.kind).toBe('string');
+  });
+
+  it('allOf: required union across sub-schemas contains all fields', () => {
+    const doc = makeDoc({
+      Thing: {
+        allOf: [
+          { type: 'object', properties: { a: { type: 'string' } }, required: ['a'] },
+          { type: 'object', properties: { b: { type: 'string' } }, required: ['b'] },
+        ],
+      },
+    });
+    const reg = deriveSchemasFromOpenApi(doc, [baseBoundary]);
+    const entity = reg.get('Thing')!.entity;
+    expect(entity.required).toContain('a');
+    expect(entity.required).toContain('b');
+  });
+
   // ── multiple boundaries ─────────────────────────────────────────────────────
 
   it('registers multiple boundaries and get() returns each', () => {

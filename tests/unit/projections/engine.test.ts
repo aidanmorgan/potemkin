@@ -140,4 +140,83 @@ describe('projections/engine - derived projections', () => {
     applyEventToDerivedProjections(makeEvent(), [proj], registry, cel);
     expect(getDerivedProjection(registry, 'SimpleSummary')).not.toBeNull();
   });
+
+  // ── patches: path via applyPatches (potemkin-4j46) ────────────────────────
+
+  it('applies patches: add/replace through the canonical applyPatches path (potemkin-4j46)', () => {
+    const registry = createDerivedProjectionRegistry();
+    const proj: DerivedProjectionConfig = {
+      name: 'PatchTest',
+      key: 'event.aggregateId',
+      subscribe: ['Lead:LeadCreated'],
+      reduce: [
+        {
+          on: 'LeadCreated',
+          patches: [
+            { op: 'add', path: '/status', value: '${event.payload.name}' },
+            { op: 'replace', path: '/status', value: '"active"' },
+          ],
+        },
+      ],
+    };
+    applyEventToDerivedProjections(makeEvent(), [proj], registry, cel);
+    const result = getDerivedProjection(registry, 'PatchTest');
+    expect(result!['cust-1']).toMatchObject({ status: 'active' });
+  });
+
+  it('patches: increment auto-vivifies at 0 when path is absent (potemkin-4j46)', () => {
+    const registry = createDerivedProjectionRegistry();
+    const proj: DerivedProjectionConfig = {
+      name: 'IncrTest',
+      key: 'event.aggregateId',
+      subscribe: ['Lead:LeadCreated'],
+      reduce: [
+        { on: 'LeadCreated', patches: [{ op: 'increment', path: '/count', by: 3 }] },
+      ],
+    };
+    applyEventToDerivedProjections(makeEvent(), [proj], registry, cel);
+    const result = getDerivedProjection(registry, 'IncrTest');
+    expect(result!['cust-1']).toMatchObject({ count: 3 });
+  });
+
+  it('patches: append creates an array when path is absent (potemkin-4j46)', () => {
+    const registry = createDerivedProjectionRegistry();
+    const proj: DerivedProjectionConfig = {
+      name: 'AppendTest',
+      key: 'event.aggregateId',
+      subscribe: ['Lead:LeadCreated'],
+      reduce: [
+        { on: 'LeadCreated', patches: [{ op: 'append', path: '/tags', value: '"vip"' }] },
+      ],
+    };
+    applyEventToDerivedProjections(makeEvent(), [proj], registry, cel);
+    const result = getDerivedProjection(registry, 'AppendTest');
+    expect(result!['cust-1']).toMatchObject({ tags: ['vip'] });
+  });
+
+  it('patches: EVAL_FAILED sentinel — CEL error skips write and leaves prior state intact (potemkin-4j46)', () => {
+    const registry = createDerivedProjectionRegistry();
+    const proj: DerivedProjectionConfig = {
+      name: 'EvalFail',
+      key: 'event.aggregateId',
+      subscribe: ['Lead:LeadCreated'],
+      reduce: [
+        {
+          on: 'LeadCreated',
+          patches: [
+            // First patch sets a known value
+            { op: 'add', path: '/safe', value: '"ok"' },
+            // Second patch references a function that does not exist in CEL — will throw
+            { op: 'add', path: '/broken', value: '${this_function_does_not_exist_xyz()}' },
+          ],
+        },
+      ],
+    };
+    applyEventToDerivedProjections(makeEvent(), [proj], registry, cel);
+    const result = getDerivedProjection(registry, 'EvalFail');
+    // The safe patch applied; the broken patch was skipped
+    expect(result!['cust-1']).toMatchObject({ safe: 'ok' });
+    // broken key was never written — prior state (absent) is intact
+    expect((result!['cust-1'] as Record<string, unknown>)['broken']).toBeUndefined();
+  });
 });

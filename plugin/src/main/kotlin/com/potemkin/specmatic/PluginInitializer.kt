@@ -105,8 +105,13 @@ class PluginInitializer : StubInitializer {
             discovery, backendClient, fixturesClient, resilient, workflowPropagator,
         )
         httpStub.registerHandler(handler)
+        val jwksProvider: JwksProvider = when {
+            config.auth.jwks.isNotEmpty() -> JwksProvider { config.auth.jwks }
+            config.auth.jwksUrl != null -> HttpJwksProvider(config.auth.jwksUrl)
+            else -> JwksProvider { config.auth.jwks }
+        }
         httpStub.registerRequestInterceptor(
-            PotemkinRequestInterceptor(config.auth, JwtVerifier(config.auth)),
+            PotemkinRequestInterceptor(config.auth, JwtVerifier(config.auth, jwksProvider)),
         )
         httpStub.registerResponseInterceptor(PotemkinResponseInterceptor(deprecationPolicy))
 

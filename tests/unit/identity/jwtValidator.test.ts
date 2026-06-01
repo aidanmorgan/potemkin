@@ -169,4 +169,36 @@ describe('identity/jwtValidator', () => {
       expect((err as JwtValidationError).code).toBe('JWT_MISSING_CLAIM');
     }
   });
+
+  describe('blank shared secret guard', () => {
+    const blankSecrets = ['', ' ', '\t', '   \n'];
+
+    it.each(blankSecrets)('rejects token when secret is %j', (blankSecret) => {
+      const token = signJwtHs256(
+        { sub: 'alice', scopes: 'manager', iss: 'tester', aud: 'api', exp: nowSec() + 60 },
+        blankSecret,
+      );
+      try {
+        validateJwt(token, baseConfig({ secret: blankSecret }));
+        fail('expected JwtValidationError');
+      } catch (err) {
+        expect(err).toBeInstanceOf(JwtValidationError);
+        expect((err as JwtValidationError).code).toBe('JWT_BLANK_SECRET');
+      }
+    });
+
+    it('rejects a token signed with a real secret when config secret is blank', () => {
+      const token = signJwtHs256(
+        { sub: 'alice', scopes: 'manager', iss: 'tester', aud: 'api', exp: nowSec() + 60 },
+        SECRET,
+      );
+      try {
+        validateJwt(token, baseConfig({ secret: '' }));
+        fail('expected JwtValidationError');
+      } catch (err) {
+        expect(err).toBeInstanceOf(JwtValidationError);
+        expect((err as JwtValidationError).code).toBe('JWT_BLANK_SECRET');
+      }
+    });
+  });
 });

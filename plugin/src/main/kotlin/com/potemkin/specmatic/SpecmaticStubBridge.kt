@@ -153,13 +153,17 @@ open class SpecmaticStubBridge(private val httpStub: HttpStub?) {
     // ---- internal helpers (internal for test inspection) --------------------------------
 
     internal fun buildSpecmaticRequest(req: FixtureHttpRequest): HttpRequest {
-        return HttpRequest(
+        val base = HttpRequest(
             method = req.method.uppercase(),
             path = req.path,
             headers = req.headers ?: emptyMap(),
-            // QueryParameters constructor is internal in some Specmatic builds; omit for now
-            // and rely on path-only matching which is the primary fixture use-case.
         )
+        val qp = req.queryParameters
+        if (qp.isNullOrEmpty()) return base
+        // Coerce each value to String; fixture query params are typically scalar strings
+        // or numbers (from the DSL JSON schema), so toString() is the correct normalisation.
+        val stringMap: Map<String, String> = qp.mapValues { (_, v) -> v.toString() }
+        return base.updateQueryParams(stringMap)
     }
 
     internal fun buildSpecmaticResponse(resp: FixtureHttpResponse): HttpResponse {

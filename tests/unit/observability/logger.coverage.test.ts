@@ -124,3 +124,46 @@ describe('observability/logger.ts — lines 19 and 39 coverage', () => {
     });
   });
 });
+
+// ── potemkin-3vsq: logger instanceId fallback is a valid UUID ─────────────────
+
+describe('potemkin-3vsq: logger instanceId fallback uses crypto.randomUUID()', () => {
+  afterEach(() => {
+    jest.resetModules();
+    jest.restoreAllMocks();
+  });
+
+  it('instanceId is a valid UUID (not "not-implemented") when nextUuidv7 throws', async () => {
+    jest.resetModules();
+
+    // Capture bindings passed to pino's .child() to observe the instanceId
+    const capturedBindings: Record<string, unknown>[] = [];
+    jest.mock('pino', () => {
+      const actual = jest.requireActual('pino');
+      const mockedRoot = actual({ level: 'silent' });
+      const originalChild = mockedRoot.child.bind(mockedRoot);
+      mockedRoot.child = (bindings: Record<string, unknown>) => {
+        capturedBindings.push(bindings);
+        return originalChild(bindings);
+      };
+      return Object.assign(() => mockedRoot, actual);
+    });
+
+    jest.mock('../../../src/ids/uuidv7', () => ({
+      nextUuidv7: () => { throw new Error('uuid-unavailable'); },
+      epochAnchoredUuidv7: () => { throw new Error('uuid-unavailable'); },
+    }));
+
+    const { createLogger } = await import('../../../src/observability/logger');
+    createLogger({ name: 'uuid-fallback-logger-test', level: 'silent' });
+
+    const instanceId = capturedBindings[0]?.['instanceId'] as string | undefined;
+    expect(typeof instanceId).toBe('string');
+    // Must be a syntactically valid UUID
+    expect(instanceId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    );
+    // Must NOT be the old static placeholder
+    expect(instanceId).not.toBe('not-implemented');
+  });
+});

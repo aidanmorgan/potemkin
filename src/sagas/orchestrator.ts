@@ -89,6 +89,13 @@ function makeSagaEvent(
 }
 
 /**
+ * Extended intent that includes 'deletion' for saga steps/compensations.
+ * The base Intent union covers creation/mutation/query; saga steps may also
+ * carry 'deletion' to produce a DELETE-method command (potemkin-v2pu).
+ */
+type SagaIntent = import('../types.js').Intent | 'deletion';
+
+/**
  * Evaluate CEL expressions in a step's payload/targetId against the trigger context.
  */
 function evalStepContext(
@@ -100,8 +107,28 @@ function evalStepContext(
   return result as JsonValue;
 }
 
+/** Map a saga step intent to the appropriate HTTP method. */
+function intentToHttpMethod(intent: SagaIntent): string {
+  switch (intent) {
+    case 'creation':
+      return 'POST';
+    case 'deletion':
+      return 'DELETE';
+    default:
+      return 'PUT';
+  }
+}
+
+type StepSpec = {
+  intent: SagaIntent;
+  operationId: string;
+  targetId?: string;
+  payload?: Record<string, string>;
+  boundary?: string;
+};
+
 function buildStepCommand(
-  step: SagaStep | { intent: SagaStep['intent']; operationId: string; targetId?: string; payload?: Record<string, string>; boundary?: string },
+  step: StepSpec,
   boundary: string,
   cel: CelEvaluator,
   celCtx: Record<string, unknown>,
@@ -123,12 +150,12 @@ function buildStepCommand(
   return {
     commandId: nextUuidv7(),
     boundary,
-    intent: step.intent,
+    intent: step.intent as import('../types.js').Intent,
     operationId: step.operationId,
     targetId,
     payload,
     queryParams: {},
-    httpMethod: step.intent === 'creation' ? 'POST' : 'PUT',
+    httpMethod: intentToHttpMethod(step.intent),
     path: '',
     origin: 'secondary',
     depth: parentCommand.depth + 1,
@@ -162,12 +189,18 @@ export async function runSaga(input: SagaRunInput): Promise<void> {
   const log = logger?.child({ component: 'saga', sagaName: saga.name, sagaInstanceId });
   const now = (): string => new Date(Date.now() + cel.getClockOffset()).toISOString();
 
-  // Build CEL context from trigger
+  // Build CEL context from trigger.
+  // `steps` is populated after each step completes so subsequent steps can
+  // reference prior results via `steps.<name>.body`, `steps.<name>.status`,
+  // etc.  `prevStep` always points to the most-recently-completed step result.
+  const stepsAccumulator: Record<string, unknown> = {};
   const celCtx: Record<string, unknown> = {
     command: triggerCommand as unknown as Record<string, unknown>,
     event: triggerEvent as unknown as Record<string, unknown>,
     payload: triggerCommand.payload,
     state: triggerCommand.targetId ? graph.get(triggerCommand.targetId) ?? {} : {},
+    steps: stepsAccumulator,
+    prevStep: null,
   };
 
   makeSagaEvent(sagaInstanceId, 'SagaStarted', {
@@ -187,7 +220,7 @@ export async function runSaga(input: SagaRunInput): Promise<void> {
     try {
       const stepCommand = buildStepCommand(step, step.boundary, cel, celCtx, triggerCommand);
 
-      await executeUnitOfWork({
+      const stepResult = await executeUnitOfWork({
         command: stepCommand,
         dsl,
         graph,
@@ -200,6 +233,11 @@ export async function runSaga(input: SagaRunInput): Promise<void> {
         ...(tsReducerRegistry ? { tsReducerRegistry } : {}),
         ...(inferredSchemas ? { inferredSchemas } : {}),
       });
+
+      // Accumulate step result so subsequent steps can reference it via CEL.
+      const stepSummary = { status: stepResult.status, body: stepResult.body };
+      stepsAccumulator[step.name] = stepSummary;
+      celCtx.prevStep = stepSummary;
 
       completedSteps.push(i);
       makeSagaEvent(sagaInstanceId, 'SagaStepCompleted', {

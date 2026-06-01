@@ -14,7 +14,9 @@ import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 import { metrics as sdkMetrics } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
+import { randomUUID } from 'node:crypto';
 import { nextUuidv7 } from '../ids/uuidv7.js';
+import { rootLogger } from './logger.js';
 
 // Pull version from package.json at module load time (best-effort).
 let _serviceVersion = 'unknown';
@@ -51,12 +53,21 @@ export async function initTracing(
   try {
     instanceId = nextUuidv7();
   } catch {
-    instanceId = 'not-implemented';
+    instanceId = randomUUID();
   }
 
   const serviceName = opts?.serviceName ?? process.env['OTEL_SERVICE_NAME'] ?? 'specmatic-stateful-sim';
   const otlpEndpoint =
     opts?.otlpEndpoint ?? process.env['OTEL_EXPORTER_OTLP_ENDPOINT'];
+
+  if (!otlpEndpoint) {
+    rootLogger().warn(
+      { serviceName },
+      'OTEL tracing is best-effort / disabled: no OTLP endpoint configured. ' +
+      'Set OTEL_EXPORTER_OTLP_ENDPOINT or pass opts.otlpEndpoint to enable export.',
+    );
+    return { shutdown: async () => undefined };
+  }
 
   const resource = new Resource({
     [ATTR_SERVICE_NAME]: serviceName,
@@ -64,19 +75,21 @@ export async function initTracing(
     [ATTR_SERVICE_INSTANCE_ID]: instanceId,
   });
 
-  const traceExporterOpts = otlpEndpoint ? { url: `${otlpEndpoint}/v1/traces` } : {};
-  const metricsExporterOpts = otlpEndpoint ? { url: `${otlpEndpoint}/v1/metrics` } : {};
-
   const sdk = new NodeSDK({
     resource,
-    traceExporter: new OTLPTraceExporter(traceExporterOpts),
+    traceExporter: new OTLPTraceExporter({ url: `${otlpEndpoint}/v1/traces` }),
     metricReader: new sdkMetrics.PeriodicExportingMetricReader({
-      exporter: new OTLPMetricExporter(metricsExporterOpts),
+      exporter: new OTLPMetricExporter({ url: `${otlpEndpoint}/v1/metrics` }),
     }),
     instrumentations: [getNodeAutoInstrumentations()],
   });
 
-  sdk.start();
+  try {
+    sdk.start();
+  } catch (err) {
+    rootLogger().warn({ err, serviceName }, 'OTEL SDK start failed; tracing is best-effort / disabled.');
+    return { shutdown: async () => undefined };
+  }
 
   return {
     shutdown: async () => {
