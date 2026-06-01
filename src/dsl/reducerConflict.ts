@@ -73,6 +73,13 @@ export function validateReducerConflictsFromDsl(input: DslReducerConflictInput):
           },
         );
       }
+      if (yamlR.implementation === 'typescript' && !tsR) {
+        throw new BootError(
+          'BOOT_ERR_REDUCER_MISSING',
+          `Reducer (${b.boundary}:${yamlR.on}) is marked implementation: typescript but no TS reducer is registered`,
+          { boundary: b.boundary, event: yamlR.on, yamlSource },
+        );
+      }
     }
   }
 }

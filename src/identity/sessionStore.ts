@@ -146,7 +146,9 @@ export function createSessionStore(opts: SessionStoreOptions = {}): SessionStore
 
     reset(): void {
       sessions.clear();
-      stopSweep();
+      // Leave the sweep timer running — the store is reused across /_admin/reset
+      // calls for the full process lifetime, so the sweep must remain active.
+      // Only dispose() permanently stops the timer.
     },
 
     dispose(): void {

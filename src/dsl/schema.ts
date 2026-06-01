@@ -533,9 +533,20 @@ function validateReducerRule(raw: unknown, index: number): ReducerRule {
 
   const patches = optionalPatchList(raw, ctx);
 
+  const implRaw = raw['implementation'];
+  if (implRaw !== undefined && implRaw !== 'typescript') {
+    throw new BootError(
+      'BOOT_ERR_DSL_SYNTAX',
+      `${ctx}.implementation: unsupported value "${implRaw as string}" — only "typescript" is allowed`,
+      { context: ctx },
+    );
+  }
+  const implementation = implRaw === 'typescript' ? 'typescript' : undefined;
+
   return {
     on,
     ...(patches !== undefined ? { patches } : {}),
+    ...(implementation !== undefined ? { implementation } : {}),
   };
 }
 

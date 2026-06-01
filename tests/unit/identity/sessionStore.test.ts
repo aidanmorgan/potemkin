@@ -247,7 +247,37 @@ describe('identity/sessionStore', () => {
       expect(pendingTimers).toBe(0);
     });
 
-    it('reset() stops the sweep timer so no callback fires after reset', () => {
+    it('after reset(), a session that is created and never get()-d is still evicted by the sweep once it expires (regression: potemkin-wbhg)', () => {
+      let now = 1_700_000_000_000;
+      const store = createSessionStore({
+        nowMs: () => now,
+        sweepIntervalMs: 30_000,
+      });
+
+      // Simulate what /_admin/reset does: reset the store between requests.
+      store.reset();
+
+      // Create a session after reset, never call get() on it.
+      store.create(ACTOR_ALICE, TTL_MS);
+      expect(store.size()).toBe(1);
+
+      // Advance injected clock past TTL so the session is expired.
+      now += TTL_MS + 1;
+      expect(store.size()).toBe(0); // clock-based: expired
+
+      // Advance fake timers to trigger the sweep — must still fire after reset().
+      jest.advanceTimersByTime(30_000);
+
+      // The sweep ran and removed the expired map entry. size() stays 0 and
+      // the timer is still active (store still usable for the process lifetime).
+      expect(store.size()).toBe(0);
+      // At least one timer still pending — sweep is still running.
+      expect(jest.getTimerCount()).toBeGreaterThan(0);
+
+      store.dispose();
+    });
+
+    it('reset() clears sessions but leaves the sweep timer running', () => {
       let now = 1_700_000_000_000;
       const store = createSessionStore({
         nowMs: () => now,
@@ -259,12 +289,10 @@ describe('identity/sessionStore', () => {
 
       store.reset();
 
-      // Advance fake timers well past the sweep interval.
-      jest.advanceTimersByTime(120_000);
+      // After reset the sweep timer must still be registered.
+      expect(jest.getTimerCount()).toBeGreaterThan(0);
 
-      // No pending timers remain — reset() cleared the interval.
-      const pendingTimers = jest.getTimerCount();
-      expect(pendingTimers).toBe(0);
+      store.dispose();
     });
   });
 

@@ -7,6 +7,7 @@ import type { Express, Request, Response } from 'express';
 import express from 'express';
 
 import type { BootedSystem } from '../engine/boot.js';
+import type { CompiledDsl } from '../dsl/types.js';
 import type { DomainEvent } from '../types.js';
 import { compileDsl } from '../dsl/parser.js';
 import { computeSpecVersion } from '../dsl/specVersion.js';
@@ -23,6 +24,75 @@ import {
   type StateAccessor,
   type StateBundle,
 } from './engineDslHandler.js';
+
+/**
+ * Merge boundary-derived fields from freshDsl with global-config fields
+ * carried over from existingDsl when the push did not supply them.
+ *
+ * Boundary-scoped fields (boundaries, byContractPath, byBoundaryName,
+ * scriptRegistry) always come from freshDsl — these are what the push
+ * legitimately replaces.
+ *
+ * Global fields (sagas, auth, webhooks, faults, hateoas, versioning,
+ * securityHeaders, idempotency, derivedProjections) are taken from
+ * freshDsl when present, otherwise fall back to existingDsl so that
+ * a boundary-only push does not erase config loaded from potemkin.yaml.
+ */
+export function mergeGlobalConfig(freshDsl: CompiledDsl, existingDsl: CompiledDsl): CompiledDsl {
+  return {
+    // ── boundary-scoped: always from the fresh compile ───────────────────
+    boundaries: freshDsl.boundaries,
+    byContractPath: freshDsl.byContractPath,
+    byBoundaryName: freshDsl.byBoundaryName,
+    scriptRegistry: freshDsl.scriptRegistry,
+    // ── global fields: fresh wins; fall back to existing ─────────────────
+    ...(freshDsl.sagas !== undefined
+      ? { sagas: freshDsl.sagas }
+      : existingDsl.sagas !== undefined
+        ? { sagas: existingDsl.sagas }
+        : {}),
+    ...(freshDsl.auth !== undefined
+      ? { auth: freshDsl.auth }
+      : existingDsl.auth !== undefined
+        ? { auth: existingDsl.auth }
+        : {}),
+    ...(freshDsl.webhooks !== undefined
+      ? { webhooks: freshDsl.webhooks }
+      : existingDsl.webhooks !== undefined
+        ? { webhooks: existingDsl.webhooks }
+        : {}),
+    ...(freshDsl.faults !== undefined
+      ? { faults: freshDsl.faults }
+      : existingDsl.faults !== undefined
+        ? { faults: existingDsl.faults }
+        : {}),
+    ...(freshDsl.hateoas !== undefined
+      ? { hateoas: freshDsl.hateoas }
+      : existingDsl.hateoas !== undefined
+        ? { hateoas: existingDsl.hateoas }
+        : {}),
+    ...(freshDsl.versioning !== undefined
+      ? { versioning: freshDsl.versioning }
+      : existingDsl.versioning !== undefined
+        ? { versioning: existingDsl.versioning }
+        : {}),
+    ...(freshDsl.securityHeaders !== undefined
+      ? { securityHeaders: freshDsl.securityHeaders }
+      : existingDsl.securityHeaders !== undefined
+        ? { securityHeaders: existingDsl.securityHeaders }
+        : {}),
+    ...(freshDsl.idempotency !== undefined
+      ? { idempotency: freshDsl.idempotency }
+      : existingDsl.idempotency !== undefined
+        ? { idempotency: existingDsl.idempotency }
+        : {}),
+    ...(freshDsl.derivedProjections !== undefined
+      ? { derivedProjections: freshDsl.derivedProjections }
+      : existingDsl.derivedProjections !== undefined
+        ? { derivedProjections: existingDsl.derivedProjections }
+        : {}),
+  };
+}
 
 // In-memory installed-bundle holder. Survives across requests.
 class InMemoryInstallStore implements DslInstallStore {
@@ -41,7 +111,11 @@ function makeInstallProducer(sys: BootedSystem): InstallProducer {
       // Compile the bundle's YAML modules into a CompiledDsl and swap it
       // onto the BootedSystem so subsequent requests see the new DSL.
       const modules = payload.modules.map((m) => ({ name: m.path, yaml: m.yaml }));
-      const dsl = await compileDsl(modules);
+      const freshDsl = await compileDsl(modules);
+      // Preserve global-config fields (sagas, auth, webhooks, faults, etc.)
+      // from the current sys.dsl so a boundary-only push does not erase
+      // config loaded from potemkin.yaml at boot time.
+      const dsl = mergeGlobalConfig(freshDsl, sys.dsl);
       // Atomic swap: replace the BootedSystem.dsl reference. The graph is
       // left untouched so projected state survives the swap.
       (sys as { dsl: typeof dsl }).dsl = dsl;

@@ -48,6 +48,9 @@ export async function startTypescriptWatcher(opts: WatcherOptions): Promise<Watc
   });
 
   let timer: NodeJS.Timeout | null = null;
+  let scanInFlight = false;
+  let scanPending = false;
+
   const scheduleRescan = (): void => {
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {
@@ -57,11 +60,26 @@ export async function startTypescriptWatcher(opts: WatcherOptions): Promise<Watc
   };
 
   const rescan = async (): Promise<void> => {
+    if (scanInFlight) {
+      // Coalesce: mark that another rescan is needed once the current one
+      // completes; do not start a second concurrent scan.
+      scanPending = true;
+      return;
+    }
+    scanInFlight = true;
+    scanPending = false;
     try {
       const result = await scanTypescriptReducers(opts.config, { cwd: opts.cwd });
       await opts.onSwap(result);
     } catch (e) {
       opts.onError?.(e as Error);
+    } finally {
+      scanInFlight = false;
+      if (scanPending) {
+        // A change arrived while this scan was running — run exactly one
+        // follow-up scan to reflect the latest on-disk state.
+        void rescan();
+      }
     }
   };
 

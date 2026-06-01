@@ -8,8 +8,15 @@
  * (the `fetchImpl` parameter) so callers and tests control transport. Delivery
  * IS wired: the UoW post-commit side-effects path (uow.ts) calls
  * `prepareWebhookDelivery` + `deliverWebhook` for each matched webhook, and
- * boot.ts wires a `createFetchWebhookTransport()`-backed transport by default,
- * giving at-least-once delivery with bounded retry/backoff on every commit.
+ * boot.ts wires a `createFetchWebhookTransport()`-backed transport by default.
+ *
+ * Default retry behaviour (when no per-webhook `retry` block is configured):
+ *   - maxAttempts: 3 (at-least-once on transient failures)
+ *   - delay:       exponential backoff with full-jitter —
+ *                  `base * 2^(attempt-1) * (0.5 + jitter)`, capped at 30 s,
+ *                  where `base` defaults to 1000 ms and `jitter` is injectable
+ *                  (defaults to Math.random) to keep tests deterministic.
+ * Per-webhook `retry.maxAttempts` / `retry.delayMs` override the defaults.
  */
 
 import { createHmac } from 'node:crypto';
@@ -151,18 +158,52 @@ export type FetchLike = (
   init: { method: string; headers: Record<string, string>; body: string },
 ) => Promise<{ ok: boolean; status: number }>;
 
+/** Maximum backoff cap in milliseconds (30 seconds). */
+const MAX_BACKOFF_MS = 30_000;
+
+/** Default number of delivery attempts when no per-webhook retry block is set. */
+const DEFAULT_MAX_ATTEMPTS = 3;
+
+/** Default base delay in milliseconds for exponential backoff. */
+const DEFAULT_BASE_DELAY_MS = 1_000;
+
 /**
- * Deliver a prepared webhook with bounded retry. Returns the number of attempts
- * made and whether delivery ultimately succeeded. Never throws — transport
- * failures are surfaced via the result so the caller can log/ignore them.
+ * Compute the backoff delay for a given attempt using full-jitter exponential
+ * backoff: `base * 2^(attempt-1) * (0.5 + jitter)`, capped at MAX_BACKOFF_MS.
+ * `attempt` is 1-based; jitter is a function returning a value in [0, 0.5).
+ */
+export function computeBackoffMs(
+  attempt: number,
+  baseMs: number,
+  jitterFn: () => number,
+): number {
+  const exponential = baseMs * Math.pow(2, attempt - 1);
+  const capped = Math.min(exponential, MAX_BACKOFF_MS);
+  return Math.round(capped * (0.5 + jitterFn()));
+}
+
+/**
+ * Deliver a prepared webhook with bounded retry and exponential backoff + jitter.
+ * Returns the number of attempts made and whether delivery ultimately succeeded.
+ * Never throws — transport failures are surfaced via the result so the caller
+ * can log/ignore them.
+ *
+ * @param jitterFn  Injectable source of randomness in [0, 0.5) — defaults to
+ *                  `() => Math.random() / 2`. Pass a deterministic function in
+ *                  tests to avoid flakiness.
+ * @param sleepFn   Injectable sleep — defaults to a real `setTimeout`-backed
+ *                  promise. Pass `() => Promise.resolve()` in tests to skip
+ *                  actual delays.
  */
 export async function deliverWebhook(
   delivery: WebhookDelivery,
   fetchImpl: FetchLike,
   retry?: { maxAttempts?: number; delayMs?: number },
+  jitterFn: () => number = () => Math.random() / 2,
+  sleepFn: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
 ): Promise<{ attempts: number; delivered: boolean; lastStatus?: number }> {
-  const maxAttempts = Math.max(1, retry?.maxAttempts ?? 1);
-  const delayMs = retry?.delayMs;
+  const maxAttempts = Math.max(1, retry?.maxAttempts ?? DEFAULT_MAX_ATTEMPTS);
+  const baseDelayMs = retry?.delayMs ?? DEFAULT_BASE_DELAY_MS;
   let lastStatus: number | undefined;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -182,8 +223,8 @@ export async function deliverWebhook(
       );
     }
     // Back off between attempts only — no delay after the final attempt.
-    if (delayMs !== undefined && delayMs > 0 && attempt < maxAttempts) {
-      await new Promise((r) => setTimeout(r, delayMs));
+    if (attempt < maxAttempts) {
+      await sleepFn(computeBackoffMs(attempt, baseDelayMs, jitterFn));
     }
   }
 

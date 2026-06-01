@@ -137,10 +137,6 @@ describe('instantiateScript / invokeScript', () => {
 
 describe('sandbox security — vm escape prevention', () => {
   it('Object.constructor("return process")() does not yield host process', () => {
-    // Injecting the host-realm Object allowed: Object.constructor === Function (host),
-    // so Object.constructor("return process")() returned the host process object.
-    // After the fix (no host-realm Object injected), the vm-realm Object.constructor
-    // is the vm-realm Function, which cannot access identifiers outside the context.
     const code = `
       export default () => {
         try {
@@ -158,10 +154,6 @@ describe('sandbox security — vm escape prevention', () => {
   });
 
   it('this.constructor.constructor("return process")() does not yield host process', () => {
-    // Without strict mode in the wrapper IIFE, 'this' inside the function refers to
-    // the vm context object (a host-realm plain object), whose .constructor is the
-    // host Object, and .constructor.constructor is the host Function.
-    // With 'use strict', 'this' in the IIFE is undefined, blocking this escape path.
     const code = `
       export default () => {
         try {
@@ -176,6 +168,155 @@ describe('sandbox security — vm escape prevention', () => {
     const result = invokeScript(handle, makeCtx()) as string;
     expect(result).not.toBe('ESCAPED');
     expect(result).toMatch(/^blocked/);
+  });
+
+  it('Date.constructor("return process")() does not yield host process', () => {
+    const code = `
+      export default () => {
+        try {
+          const result = Date.constructor("return process")();
+          return result != null ? 'ESCAPED' : 'blocked';
+        } catch(e) {
+          return 'blocked:' + e.message;
+        }
+      };
+    `;
+    const handle = compileAndInstantiate(code);
+    const result = invokeScript(handle, makeCtx()) as string;
+    expect(result).not.toBe('ESCAPED');
+    expect(result).toMatch(/^blocked/);
+  });
+
+  it('URL.constructor("return process")() does not yield host process', () => {
+    const code = `
+      export default () => {
+        try {
+          if (typeof URL === 'undefined') return 'blocked:URL-not-available';
+          const result = URL.constructor("return process")();
+          return result != null ? 'ESCAPED' : 'blocked';
+        } catch(e) {
+          return 'blocked:' + e.message;
+        }
+      };
+    `;
+    const handle = compileAndInstantiate(code);
+    const result = invokeScript(handle, makeCtx()) as string;
+    expect(result).not.toBe('ESCAPED');
+    expect(result).toMatch(/^blocked/);
+  });
+
+  it('JSON.stringify.constructor("return process")() does not yield host process', () => {
+    const code = `
+      export default () => {
+        try {
+          const result = JSON.stringify.constructor("return process")();
+          return result != null ? 'ESCAPED' : 'blocked';
+        } catch(e) {
+          return 'blocked:' + e.message;
+        }
+      };
+    `;
+    const handle = compileAndInstantiate(code);
+    const result = invokeScript(handle, makeCtx()) as string;
+    expect(result).not.toBe('ESCAPED');
+    expect(result).toMatch(/^blocked/);
+  });
+
+  it('Math.max.constructor("return process")() does not yield host process', () => {
+    const code = `
+      export default () => {
+        try {
+          const result = Math.max.constructor("return process")();
+          return result != null ? 'ESCAPED' : 'blocked';
+        } catch(e) {
+          return 'blocked:' + e.message;
+        }
+      };
+    `;
+    const handle = compileAndInstantiate(code);
+    const result = invokeScript(handle, makeCtx()) as string;
+    expect(result).not.toBe('ESCAPED');
+    expect(result).toMatch(/^blocked/);
+  });
+
+  it('console.log.constructor("return process")() does not yield host process', () => {
+    const code = `
+      export default () => {
+        try {
+          if (typeof console === 'undefined' || typeof console.log === 'undefined') return 'blocked:no-console';
+          const result = console.log.constructor("return process")();
+          return result != null ? 'ESCAPED' : 'blocked';
+        } catch(e) {
+          return 'blocked:' + e.message;
+        }
+      };
+    `;
+    const handle = compileAndInstantiate(code);
+    const result = invokeScript(handle, makeCtx()) as string;
+    expect(result).not.toBe('ESCAPED');
+    expect(result).toMatch(/^blocked/);
+  });
+
+  it('__ctx__.constructor.constructor("return process")() does not yield host process', () => {
+    const code = `
+      export default (ctx) => {
+        try {
+          const result = ctx.constructor.constructor("return process")();
+          return result != null ? 'ESCAPED' : 'blocked';
+        } catch(e) {
+          return 'blocked:' + e.message;
+        }
+      };
+    `;
+    const handle = compileAndInstantiate(code);
+    const result = invokeScript(handle, makeCtx()) as string;
+    expect(result).not.toBe('ESCAPED');
+    expect(result).toMatch(/^blocked/);
+  });
+
+  it('real RCE attempt via Date.constructor chain is blocked', () => {
+    const code = `
+      export default () => {
+        try {
+          const proc = Date.constructor("return process")();
+          const cp = proc.mainModule.require("child_process");
+          const out = cp.execSync("echo PWNED").toString();
+          return 'ESCAPED:' + out;
+        } catch(e) {
+          return 'blocked:' + e.message;
+        }
+      };
+    `;
+    const handle = compileAndInstantiate(code);
+    const result = invokeScript(handle, makeCtx()) as string;
+    expect(result).not.toContain('PWNED');
+    expect(result).toMatch(/^blocked/);
+  });
+
+  it('transpiled reducer using JSON/Math/Date/new Date/helpers works end-to-end', () => {
+    const code = `
+      export default function reducer(ctx: { state: { balance: number }; helpers: { uuid: () => string; now: () => string } }) {
+        const jsonRound = JSON.parse(JSON.stringify({ x: 42 }));
+        const mathVal = Math.round(ctx.state.balance * 1.5);
+        const dateStr = new Date(0).toISOString();
+        const uuidVal = ctx.helpers.uuid();
+        const nowVal = ctx.helpers.now();
+        return {
+          jsonOk: jsonRound.x === 42,
+          mathOk: mathVal === 150,
+          dateOk: typeof dateStr === 'string' && dateStr.length > 0,
+          uuidOk: typeof uuidVal === 'string' && uuidVal.length > 0,
+          nowOk: typeof nowVal === 'string' && nowVal.length > 0,
+        };
+      }
+    `;
+    const handle = compileAndInstantiate(code);
+    const result = invokeScript(handle, makeCtx()) as Record<string, unknown>;
+    expect(result.jsonOk).toBe(true);
+    expect(result.mathOk).toBe(true);
+    expect(result.dateOk).toBe(true);
+    expect(result.uuidOk).toBe(true);
+    expect(result.nowOk).toBe(true);
   });
 
   it('rejects a reducer that returns a Promise with SCRIPT_ASYNC_RESULT', () => {

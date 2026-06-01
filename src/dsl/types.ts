@@ -66,6 +66,8 @@ export interface ReducerRule {
   readonly on: string;                                // event catalog key
   /** Patch list: { op, path, value }[]. Values are CEL expressions. */
   readonly patches?: readonly ReducerPatchOp[];
+  /** When 'typescript', the reducer logic lives in a registered TS file — no patches expected. */
+  readonly implementation?: 'typescript';
 }
 
 export interface ReducerPatchOp {

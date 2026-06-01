@@ -11,12 +11,16 @@ import {
   signWebhookBody,
   prepareWebhookDelivery,
   deliverWebhook,
+  computeBackoffMs,
   WEBHOOK_SIGNATURE_HEADER,
   type FetchLike,
 } from '../../../src/webhooks/dispatcher';
 import { createCelEvaluator } from '../../../src/cel/evaluator';
 import type { WebhookConfig } from '../../../src/dsl/types';
 import type { DomainEvent } from '../../../src/types';
+
+/** No-op sleep injected into delivery tests so they don't incur real backoff delays. */
+const noSleep = (): Promise<void> => Promise.resolve();
 
 const cel = createCelEvaluator();
 
@@ -93,20 +97,20 @@ describe('webhooks/dispatcher — delivery', () => {
       return { ok: true, status: 200 };
     };
     const delivery = prepareWebhookDelivery(WEBHOOK, makeEvent(), 'LeadConvert', 'mutation', cel)!;
-    const result = await deliverWebhook(delivery, fetchImpl);
+    const result = await deliverWebhook(delivery, fetchImpl, undefined, undefined, noSleep);
     expect(result).toMatchObject({ attempts: 1, delivered: true, lastStatus: 200 });
     expect(calls).toHaveLength(1);
     expect(calls[0]!.url).toBe('http://example.test/webhook');
   });
 
-  it('retries up to maxAttempts on transport failure and reports failure', async () => {
+  it('retries up to explicit maxAttempts override on transport failure and reports failure', async () => {
     let attempts = 0;
     const fetchImpl: FetchLike = async () => {
       attempts += 1;
       return { ok: false, status: 503 };
     };
     const delivery = prepareWebhookDelivery(WEBHOOK, makeEvent(), 'LeadConvert', 'mutation', cel)!;
-    const result = await deliverWebhook(delivery, fetchImpl, { maxAttempts: 3 });
+    const result = await deliverWebhook(delivery, fetchImpl, { maxAttempts: 3 }, undefined, noSleep);
     expect(attempts).toBe(3);
     expect(result).toMatchObject({ attempts: 3, delivered: false, lastStatus: 503 });
   });
@@ -114,8 +118,57 @@ describe('webhooks/dispatcher — delivery', () => {
   it('never throws when the transport throws', async () => {
     const fetchImpl: FetchLike = async () => { throw new Error('network down'); };
     const delivery = prepareWebhookDelivery(WEBHOOK, makeEvent(), 'LeadConvert', 'mutation', cel)!;
-    const result = await deliverWebhook(delivery, fetchImpl, { maxAttempts: 2 });
+    const result = await deliverWebhook(delivery, fetchImpl, { maxAttempts: 2 }, undefined, noSleep);
     expect(result.delivered).toBe(false);
     expect(result.attempts).toBe(2);
+  });
+
+  it('retries by default (no retry config) and delivers on the second attempt after a 503', async () => {
+    let callCount = 0;
+    const fetchImpl: FetchLike = async () => {
+      callCount += 1;
+      return callCount === 1
+        ? { ok: false, status: 503 }
+        : { ok: true, status: 200 };
+    };
+    const delivery = prepareWebhookDelivery(WEBHOOK, makeEvent(), 'LeadConvert', 'mutation', cel)!;
+    // No retry config — relies on the default maxAttempts of 3.
+    const result = await deliverWebhook(delivery, fetchImpl, undefined, undefined, noSleep);
+    expect(result.delivered).toBe(true);
+    expect(result.attempts).toBeGreaterThan(1);
+    expect(result.lastStatus).toBe(200);
+  });
+
+  it('applies jitter via the injected deterministic function to compute the backoff delay', () => {
+    // jitter fixed at 0.25 → delay = base * 2^(attempt-1) * (0.5 + 0.25) = base * 0.75
+    const fixedJitter = () => 0.25;
+    expect(computeBackoffMs(1, 1000, fixedJitter)).toBe(Math.round(1000 * 1 * 0.75));
+    expect(computeBackoffMs(2, 1000, fixedJitter)).toBe(Math.round(1000 * 2 * 0.75));
+    expect(computeBackoffMs(3, 1000, fixedJitter)).toBe(Math.round(1000 * 4 * 0.75));
+  });
+
+  it('honors an explicit retry override for both maxAttempts and delayMs', async () => {
+    const sleepCalls: number[] = [];
+    const sleepSpy = (ms: number): Promise<void> => {
+      sleepCalls.push(ms);
+      return Promise.resolve();
+    };
+    // Fixed jitter at 0.0 → delay = base * 2^(attempt-1) * 0.5
+    const fixedJitter = () => 0.0;
+    const fetchImpl: FetchLike = async () => ({ ok: false, status: 503 });
+    const delivery = prepareWebhookDelivery(WEBHOOK, makeEvent(), 'LeadConvert', 'mutation', cel)!;
+    const result = await deliverWebhook(
+      delivery,
+      fetchImpl,
+      { maxAttempts: 2, delayMs: 500 },
+      fixedJitter,
+      sleepSpy,
+    );
+    // Explicit maxAttempts honored.
+    expect(result.attempts).toBe(2);
+    expect(result.delivered).toBe(false);
+    // One sleep between the two attempts, computed from base=500 jitter=0 → 500 * 1 * 0.5 = 250.
+    expect(sleepCalls).toHaveLength(1);
+    expect(sleepCalls[0]).toBe(Math.round(500 * 1 * 0.5));
   });
 });
