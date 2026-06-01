@@ -126,6 +126,49 @@ describe('validateGlobalConfig — fault_rules', () => {
   });
 });
 
+describe('validateGlobalConfig — auth.jwt.required_claims', () => {
+  it('parses required_claims as a Record<string,string>', () => {
+    const cfg = validateGlobalConfig({
+      auth: {
+        mode: 'jwt',
+        jwt: {
+          secret: 'shhh',
+          required_claims: { tenant: 'acme', role: '*' },
+        },
+      },
+    });
+    expect(cfg.auth?.jwt?.requiredClaims).toEqual({ tenant: 'acme', role: '*' });
+  });
+
+  it('omits requiredClaims when required_claims is absent', () => {
+    const cfg = validateGlobalConfig({
+      auth: {
+        mode: 'jwt',
+        jwt: { secret: 'shhh' },
+      },
+    });
+    expect(cfg.auth?.jwt?.requiredClaims).toBeUndefined();
+  });
+
+  it('rejects required_claims when the value is not an object', () => {
+    expect(() => validateGlobalConfig({
+      auth: {
+        mode: 'jwt',
+        jwt: { secret: 'shhh', required_claims: 'not-an-object' },
+      },
+    })).toThrow(BootError);
+  });
+
+  it('rejects required_claims when a value is not a string', () => {
+    expect(() => validateGlobalConfig({
+      auth: {
+        mode: 'jwt',
+        jwt: { secret: 'shhh', required_claims: { tenant: 42 } },
+      },
+    })).toThrow(BootError);
+  });
+});
+
 describe('validateGlobalConfig — webhooks', () => {
   it('parses a webhook declaration with trigger, secret, payload and retry', () => {
     const cfg = validateGlobalConfig({

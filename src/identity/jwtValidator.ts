@@ -31,7 +31,8 @@ export type JwtErrorCode =
   | 'JWT_NOT_YET_VALID'
   | 'JWT_INVALID_ISSUER'
   | 'JWT_INVALID_AUDIENCE'
-  | 'JWT_MISSING_CLAIM';
+  | 'JWT_MISSING_CLAIM'
+  | 'JWT_CLAIM_MISMATCH';
 
 export class JwtValidationError extends Error {
   readonly code: JwtErrorCode;
@@ -214,7 +215,23 @@ export function validateJwt(token: string, config: JwtAuthConfig): Actor {
     }
   }
 
-  // 4. Extract actor identity from configured claims.
+  // 4. Enforce requiredClaims: each [claim, expected] must be present and match.
+  for (const [claim, expected] of Object.entries(config.requiredClaims ?? {})) {
+    if (!(claim in payload)) {
+      throw new JwtValidationError(
+        `JWT missing required claim: ${claim}`,
+        'JWT_MISSING_CLAIM',
+      );
+    }
+    if (expected !== '*' && String(payload[claim]) !== expected) {
+      throw new JwtValidationError(
+        `JWT claim ${claim} mismatch`,
+        'JWT_CLAIM_MISMATCH',
+      );
+    }
+  }
+
+  // 5. Extract actor identity from configured claims.
   const subjectClaim = config.subjectClaim ?? 'sub';
   const scopesClaim = config.scopesClaim ?? 'scopes';
 

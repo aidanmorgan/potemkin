@@ -87,6 +87,13 @@ class PluginInitializer : StubInitializer {
             log.warn("ControlServer failed to start on port {}: {} — continuing without control server", config.controlPort, e.message)
         }
 
+        Runtime.getRuntime().addShutdownHook(Thread {
+            try { health.stop() } catch (e: Exception) { log.warn("Shutdown hook: HealthMonitor.stop() failed: {}", e.message) }
+            try { lifecycle.stop() } catch (e: Exception) { log.warn("Shutdown hook: FixtureLifecycleManager.stop() failed: {}", e.message) }
+            try { control.stop() } catch (e: Exception) { log.warn("Shutdown hook: ControlServer.stop() failed: {}", e.message) }
+            try { discovery.shutdown() } catch (e: Exception) { log.warn("Shutdown hook: RoutesDiscoveryClient.shutdown() failed: {}", e.message) }
+        })
+
         // Forward-blocks → live components. The overlay is NOT applied by this
         // plugin at runtime: it is written to a file by the test launcher, which
         // points Specmatic's `overlayFilePath` env var at it so Specmatic applies

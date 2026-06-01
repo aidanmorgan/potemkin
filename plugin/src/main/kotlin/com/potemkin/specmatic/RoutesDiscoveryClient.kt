@@ -113,6 +113,14 @@ open class RoutesDiscoveryClient(
     fun routes(): List<String> = lock.read { cache.paths }
 
     /**
+     * Shuts down the background-refresh executor. Any in-flight refresh task is
+     * cancelled immediately. Idempotent — safe to call more than once.
+     */
+    fun shutdown() {
+        executor.shutdownNow()
+    }
+
+    /**
      * Forces an immediate synchronous refresh of the route cache.
      * Returns true if the cache was updated (i.e. the server returned new data).
      */

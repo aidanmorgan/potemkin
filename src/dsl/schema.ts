@@ -1330,6 +1330,7 @@ function validateAuthConfig(raw: unknown): AuthConfig {
     if (typeof secret !== 'string' || secret.length === 0) {
       throw new BootError('BOOT_ERR_DSL_SYNTAX', 'auth.jwt.secret is required');
     }
+    const requiredClaims = requireStringStringMap(jwtRaw, 'required_claims', 'auth.jwt');
     jwt = {
       secret,
       ...(typeof jwtRaw['algorithm'] === 'string' ? { algorithm: jwtRaw['algorithm'] as 'HS256' } : {}),
@@ -1337,6 +1338,7 @@ function validateAuthConfig(raw: unknown): AuthConfig {
       ...(typeof jwtRaw['audience'] === 'string' ? { audience: jwtRaw['audience'] } : {}),
       ...(typeof jwtRaw['subject_claim'] === 'string' ? { subjectClaim: jwtRaw['subject_claim'] } : {}),
       ...(typeof jwtRaw['scopes_claim'] === 'string' ? { scopesClaim: jwtRaw['scopes_claim'] } : {}),
+      ...(requiredClaims !== undefined ? { requiredClaims } : {}),
     };
   }
   const sessionRaw = raw['session'];

@@ -201,4 +201,95 @@ describe('identity/jwtValidator', () => {
       }
     });
   });
+
+  describe('requiredClaims enforcement', () => {
+    it('is a no-op when requiredClaims is not configured', () => {
+      const token = signJwtHs256(
+        { sub: 'alice', scopes: 'manager', iss: 'tester', aud: 'api', exp: nowSec() + 60 },
+        SECRET,
+      );
+      const actor = validateJwt(token, baseConfig());
+      expect(actor.id).toBe('alice');
+    });
+
+    it('is a no-op when requiredClaims is an empty object', () => {
+      const token = signJwtHs256(
+        { sub: 'alice', scopes: 'manager', iss: 'tester', aud: 'api', exp: nowSec() + 60 },
+        SECRET,
+      );
+      const actor = validateJwt(token, baseConfig({ requiredClaims: {} }));
+      expect(actor.id).toBe('alice');
+    });
+
+    it('accepts a token that has all required claims with matching values', () => {
+      const token = signJwtHs256(
+        { sub: 'alice', scopes: 'manager', iss: 'tester', aud: 'api', exp: nowSec() + 60, tenant: 'acme', role: 'admin' },
+        SECRET,
+      );
+      const actor = validateJwt(token, baseConfig({ requiredClaims: { tenant: 'acme', role: 'admin' } }));
+      expect(actor.id).toBe('alice');
+    });
+
+    it('accepts a token when expected is * and claim is present with any value', () => {
+      const token = signJwtHs256(
+        { sub: 'alice', scopes: 'manager', iss: 'tester', aud: 'api', exp: nowSec() + 60, tenant: 'anything' },
+        SECRET,
+      );
+      const actor = validateJwt(token, baseConfig({ requiredClaims: { tenant: '*' } }));
+      expect(actor.id).toBe('alice');
+    });
+
+    it('rejects a token that is missing a required claim', () => {
+      const token = signJwtHs256(
+        { sub: 'alice', scopes: 'manager', iss: 'tester', aud: 'api', exp: nowSec() + 60 },
+        SECRET,
+      );
+      try {
+        validateJwt(token, baseConfig({ requiredClaims: { tenant: 'acme' } }));
+        fail('expected JwtValidationError');
+      } catch (err) {
+        expect(err).toBeInstanceOf(JwtValidationError);
+        expect((err as JwtValidationError).code).toBe('JWT_MISSING_CLAIM');
+        expect((err as JwtValidationError).message).toContain('tenant');
+      }
+    });
+
+    it('rejects a token with a required claim present but wrong value', () => {
+      const token = signJwtHs256(
+        { sub: 'alice', scopes: 'manager', iss: 'tester', aud: 'api', exp: nowSec() + 60, tenant: 'wrong' },
+        SECRET,
+      );
+      try {
+        validateJwt(token, baseConfig({ requiredClaims: { tenant: 'acme' } }));
+        fail('expected JwtValidationError');
+      } catch (err) {
+        expect(err).toBeInstanceOf(JwtValidationError);
+        expect((err as JwtValidationError).code).toBe('JWT_CLAIM_MISMATCH');
+        expect((err as JwtValidationError).message).toContain('tenant');
+      }
+    });
+
+    it('rejects when expected is * but claim is absent', () => {
+      const token = signJwtHs256(
+        { sub: 'alice', scopes: 'manager', iss: 'tester', aud: 'api', exp: nowSec() + 60 },
+        SECRET,
+      );
+      try {
+        validateJwt(token, baseConfig({ requiredClaims: { tenant: '*' } }));
+        fail('expected JwtValidationError');
+      } catch (err) {
+        expect(err).toBeInstanceOf(JwtValidationError);
+        expect((err as JwtValidationError).code).toBe('JWT_MISSING_CLAIM');
+      }
+    });
+
+    it('coerces non-string claim values to string for comparison', () => {
+      const token = signJwtHs256(
+        { sub: 'alice', scopes: 'manager', iss: 'tester', aud: 'api', exp: nowSec() + 60, level: 5 },
+        SECRET,
+      );
+      const actor = validateJwt(token, baseConfig({ requiredClaims: { level: '5' } }));
+      expect(actor.id).toBe('alice');
+    });
+  });
 });

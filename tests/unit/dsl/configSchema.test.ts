@@ -188,6 +188,65 @@ describe('validatePotemkinConfig — malformed plugin block', () => {
     expect(err.code).toBe('BOOT_ERR_DSL_SCHEMA_VIOLATION');
     expect(err.message).toMatch(/plugin\.engine/);
   });
+
+  it('rejects an unknown plugin sub-key (typo: ressilience)', () => {
+    const err = catchBoot(() => valid({ plugin: { ressilience: { maxRetries: 3 } } }));
+    expect(err.code).toBe('BOOT_ERR_UNKNOWN_KEY');
+    expect(err.message).toMatch(/ressilience/);
+  });
+
+  it('suggests the correct key for a close typo (healtProbe)', () => {
+    const err = catchBoot(() => valid({ plugin: { healtProbe: {} } }));
+    expect(err.code).toBe('BOOT_ERR_UNKNOWN_KEY');
+    expect(err.message).toMatch(/healtProbe/);
+    expect(err.message).toMatch(/healthProbe/);
+  });
+
+  it('rejects an unknown plugin sub-key with no close match', () => {
+    const err = catchBoot(() => valid({ plugin: { completelywrong: {} } }));
+    expect(err.code).toBe('BOOT_ERR_UNKNOWN_KEY');
+    expect(err.message).toMatch(/completelywrong/);
+  });
+
+  it('accepts all known plugin sub-keys together', () => {
+    const cfg = valid({
+      plugin: {
+        engine: { url: 'http://localhost:3000', timeoutMs: 5000 },
+        controlPort: 9090,
+        resilience: { maxRetries: 3, backoffMs: 50 },
+        healthProbe: { initialMs: 250, stableMs: 30000 },
+        discovery: { refreshOnFailureMs: 5000 },
+        circuitBreaker: { failureRate: 50, waitMs: 10000 },
+        auth: { jwks: [] },
+      },
+    });
+    expect(cfg.plugin?.controlPort).toBe(9090);
+  });
+
+  it('accepts plugin with only resilience', () => {
+    const cfg = valid({ plugin: { resilience: { maxRetries: 5, backoffMs: 100 } } });
+    expect(cfg.plugin).toBeDefined();
+  });
+
+  it('accepts plugin with only healthProbe', () => {
+    const cfg = valid({ plugin: { healthProbe: { initialMs: 500, stableMs: 60000 } } });
+    expect(cfg.plugin).toBeDefined();
+  });
+
+  it('accepts plugin with only discovery', () => {
+    const cfg = valid({ plugin: { discovery: { refreshOnFailureMs: 3000 } } });
+    expect(cfg.plugin).toBeDefined();
+  });
+
+  it('accepts plugin with only circuitBreaker', () => {
+    const cfg = valid({ plugin: { circuitBreaker: { failureRate: 75, waitMs: 5000 } } });
+    expect(cfg.plugin).toBeDefined();
+  });
+
+  it('accepts plugin with only auth', () => {
+    const cfg = valid({ plugin: { auth: { jwksUrl: 'https://example.com/.well-known/jwks.json' } } });
+    expect(cfg.plugin).toBeDefined();
+  });
 });
 
 // ---------------------------------------------------------------------------

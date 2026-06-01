@@ -28,7 +28,11 @@ export interface PotemkinConfigTypescript {
 export interface PotemkinConfigPlugin {
   readonly engine?: { readonly url?: string; readonly timeoutMs?: number };
   readonly controlPort?: number;
+  readonly resilience?: Record<string, unknown>;
+  readonly healthProbe?: Record<string, unknown>;
+  readonly discovery?: Record<string, unknown>;
   readonly circuitBreaker?: Record<string, unknown>;
+  readonly auth?: Record<string, unknown>;
 }
 
 export interface PotemkinConfigSeed {
@@ -115,6 +119,16 @@ export interface GlobalModule {
   readonly hateoas?: Record<string, unknown>;
 }
 
+
+export const PLUGIN_SUB_KEYS = [
+  'engine',
+  'controlPort',
+  'resilience',
+  'healthProbe',
+  'discovery',
+  'circuitBreaker',
+  'auth',
+] as const;
 
 export const POTEMKIN_TOP_LEVEL_KEYS = [
   'version',
@@ -277,6 +291,18 @@ function assertPluginBlock(
       `${source}: "plugin" must be an object`,
       { source },
     );
+  }
+  for (const k of Object.keys(raw)) {
+    if (!(PLUGIN_SUB_KEYS as readonly string[]).includes(k)) {
+      const suggestion = closestKey(k, PLUGIN_SUB_KEYS);
+      throw new BootError(
+        'BOOT_ERR_UNKNOWN_KEY',
+        `${source}: unknown plugin key "${k}"${
+          suggestion ? ` — did you mean "${suggestion}"?` : ''
+        }`,
+        { source, key: k, ...(suggestion ? { suggestion } : {}) },
+      );
+    }
   }
   if (raw['controlPort'] !== undefined && typeof raw['controlPort'] !== 'number') {
     throw new BootError(

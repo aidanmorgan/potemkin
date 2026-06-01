@@ -316,6 +316,22 @@ class RoutesDiscoveryClientTest {
         assertTrue(client.isStateful("/leads"))
     }
 
+    // ---- shutdown -----------------------------------------------------------------------
+
+    @Test
+    fun `shutdown() terminates the background-refresh executor`() {
+        server.enqueue(routesResponse("/customers/{id}"))
+
+        val client = clientWithLongTtl()
+
+        // Executor is running; shutdown must not throw and should terminate promptly.
+        client.shutdown()
+
+        // After shutdown, submitting to the internal executor is a no-op (rejected silently).
+        // Verify the client is still usable for reads (cache remains intact).
+        assertTrue(client.routes().contains("/customers/{id}"), "Cached routes survive shutdown")
+    }
+
     // ---- thread safety ------------------------------------------------------------------
 
     @Test

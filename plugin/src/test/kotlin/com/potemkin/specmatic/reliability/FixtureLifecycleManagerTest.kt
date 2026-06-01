@@ -523,6 +523,59 @@ class FixtureLifecycleManagerTest {
         // Clear must have happened exactly once
         assertEquals(1, bridge.clearCount, "DOWN clear must have run exactly once")
     }
+
+    // ---- stop() cancels the scope -------------------------------------------------------
+
+    /**
+     * stop() must cancel the owned CoroutineScope so that any in-flight transition
+     * coroutines are cancelled in addition to the refresh loop job.
+     *
+     * Strategy: dispatch a slow UP coroutine (fetchFixtures sleeps 500 ms), then call
+     * stop() immediately. After stop() the scope is cancelled; the transition coroutine
+     * must not complete its work, so no fixtures should be registered.
+     */
+    @Test
+    fun `stop() cancels the scope so in-flight transition coroutines are cancelled`() {
+        val fetchStarted = java.util.concurrent.CountDownLatch(1)
+
+        val blockingClient = object : FixturesClient(
+            backendUrl = "http://unused",
+            httpClient = noOpHttpClient(),
+        ) {
+            override fun fetchFixtures(): List<FixtureStub> {
+                fetchStarted.countDown()
+                Thread.sleep(500)
+                return listOf(makeFixture("GET", "/should-be-cancelled"))
+            }
+
+            override fun lastEtag(): String? = null
+            override fun recordPushedPaths(paths: Set<Pair<String, String>>) {}
+            override fun excludedPaths(): Set<Pair<String, String>> = emptySet()
+        }
+
+        monitor.markDownExternal()
+        val manager = FixtureLifecycleManager(monitor, blockingClient, bridge)
+        manager.start()
+
+        // Dispatch a slow UP transition coroutine.
+        manager.onTransition(HealthState.Down, HealthState.Up)
+
+        // Wait until the fetch has started so the coroutine is genuinely in-flight.
+        assertTrue(fetchStarted.await(2, java.util.concurrent.TimeUnit.SECONDS), "Fetch should start within 2s")
+
+        // stop() must cancel the scope, which cancels the in-flight coroutine.
+        manager.stop()
+
+        // Give the coroutine scheduler time to propagate cancellation.
+        Thread.sleep(200)
+
+        // The cancelled coroutine must not have registered any fixtures.
+        assertEquals(
+            0,
+            bridge.registered.size,
+            "stop() must cancel in-flight coroutines; no fixtures should be registered",
+        )
+    }
 }
 
 private fun noOpHttpClient(): OkHttpClient = OkHttpClient.Builder()
