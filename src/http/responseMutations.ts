@@ -96,9 +96,10 @@ function mutateEntities(
 /** Map the boundary deprecation envelope to the response-DSL deprecation shape. */
 function toResponseDeprecation(
   dep: BoundaryDeprecation | undefined,
-): { sunset?: string; replacement?: string } | undefined {
+): { date?: string; sunset?: string; replacement?: string } | undefined {
   if (!dep) return undefined;
   return {
+    ...(dep.date !== undefined ? { date: dep.date } : {}),
     ...(dep.sunset !== undefined ? { sunset: dep.sunset } : {}),
     ...(dep.replacement !== undefined ? { replacement: dep.replacement } : {}),
   };

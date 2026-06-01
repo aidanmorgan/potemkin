@@ -32,7 +32,7 @@ export interface BehaviorRule {
     readonly requires?: readonly RequiresGuard[];
     /** RBAC scopes required to execute this behavior */
     readonly requiredScopes?: readonly string[];
-    /** Optional HTTP method filter (e.g. 'GET', 'POST'). */
+    /** HTTP method for the generated HATEOAS link (e.g. 'GET', 'POST'). Not a request filter — operationId already pins the method. */
     readonly method?: string;
     /** Header matching: each header name → either expected value or "present". AND semantics. */
     readonly headers?: Record<string, string>;

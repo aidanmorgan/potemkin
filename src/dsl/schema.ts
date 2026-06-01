@@ -450,6 +450,9 @@ function validateBehaviorRule(raw: unknown, index: number): BehaviorRule {
     method = methodRaw.trim().toUpperCase();
   }
 
+  // Header matching: name → expected value or "present". AND semantics.
+  const matchHeaders = requireStringStringMap(matchRaw, 'headers', `${ctx}.match`);
+
   // HATEOAS: optional link_name + link_condition advertised by this behavior.
   let linkName: string | undefined;
   const linkNameRaw = raw['link_name'];
@@ -501,6 +504,7 @@ function validateBehaviorRule(raw: unknown, index: number): BehaviorRule {
       ...(method !== undefined ? { method } : {}),
       ...(requires !== undefined ? { requires } : {}),
       ...(requiredScopes !== undefined ? { requiredScopes } : {}),
+      ...(matchHeaders !== undefined && Object.keys(matchHeaders).length > 0 ? { headers: matchHeaders } : {}),
     },
     ...(emit !== undefined ? { emit } : {}),
     ...(emitWhen !== undefined ? { emitWhen } : {}),

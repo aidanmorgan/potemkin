@@ -58,9 +58,10 @@ describe('applyResponseMutations — Deprecation/Sunset', () => {
   });
 
   it('emits Sunset and successor Link from boundary.deprecated', () => {
+    const epochIso = new Date(0).toISOString();
     const r = applyResponseMutations({
       body: { id: 'x' },
-      boundary: boundary({ deprecated: { date: '2026-01-01', sunset: '2026-12-31', replacement: '/v2/leads' } }),
+      boundary: boundary({ deprecated: { date: epochIso, sunset: '2026-12-31', replacement: '/v2/leads' } }),
       operation: undefined,
       statusCode: 200,
       operationLookup: noLookup,
@@ -68,6 +69,29 @@ describe('applyResponseMutations — Deprecation/Sunset', () => {
     expect(r.headers['Deprecation']).toBe('true');
     expect(r.headers['Sunset']).toBe('2026-12-31');
     expect(r.headers['Link']).toContain('rel="successor-version"');
+  });
+
+  it('emits Deprecation: <HTTP-date> when boundary.deprecated.date is a real date', () => {
+    const r = applyResponseMutations({
+      body: { id: 'x' },
+      boundary: boundary({ deprecated: { date: '2025-01-01T00:00:00.000Z' } }),
+      operation: undefined,
+      statusCode: 200,
+      operationLookup: noLookup,
+    });
+    expect(r.headers['Deprecation']).toBe(new Date('2025-01-01T00:00:00.000Z').toUTCString());
+  });
+
+  it('emits Deprecation: true when boundary.deprecated has no date (epoch sentinel)', () => {
+    const epochIso = new Date(0).toISOString();
+    const r = applyResponseMutations({
+      body: { id: 'x' },
+      boundary: boundary({ deprecated: { date: epochIso } }),
+      operation: undefined,
+      statusCode: 200,
+      operationLookup: noLookup,
+    });
+    expect(r.headers['Deprecation']).toBe('true');
   });
 
   it('emits no deprecation header when neither source declares it', () => {

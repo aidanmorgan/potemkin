@@ -85,7 +85,7 @@ describe('D4: /_engine/forward _patches envelope', () => {
     expect(reproduced.secret).toBeUndefined();
 
     // Deprecation headers are in the envelope headers, not _patches.
-    expect(res.body.headers['deprecation']).toBe('true');
+    expect(res.body.headers['deprecation']).toBe(new Date('2026-01-01').toUTCString());
     expect(res.body.headers['sunset']).toBe('2026-12-31');
   });
 

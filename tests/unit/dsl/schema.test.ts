@@ -365,5 +365,64 @@ describe('dsl/schema', () => {
         expect(config.behaviors[0]?.linkCondition).toBeUndefined();
       });
     });
+
+    describe('behavior match.headers parsing', () => {
+      const withBehavior = (behavior: Record<string, unknown>) => ({
+        ...minimalValid,
+        behaviors: [behavior],
+      });
+
+      it('parses match.headers as a string-string map', () => {
+        const config = validateBoundaryConfig(withBehavior({
+          name: 'headerGated',
+          match: { operationId: 'createThing', condition: 'true', headers: { 'x-my-header': 'yes' } },
+          emit: 'Created',
+        }));
+        expect(config.behaviors[0]?.match.headers).toEqual({ 'x-my-header': 'yes' });
+      });
+
+      it('parses match.headers with "present" sentinel', () => {
+        const config = validateBoundaryConfig(withBehavior({
+          name: 'headerGated',
+          match: { operationId: 'createThing', condition: 'true', headers: { 'x-my-header': 'present' } },
+          emit: 'Created',
+        }));
+        expect(config.behaviors[0]?.match.headers?.['x-my-header']).toBe('present');
+      });
+
+      it('parses multiple headers in match.headers', () => {
+        const config = validateBoundaryConfig(withBehavior({
+          name: 'headerGated',
+          match: {
+            operationId: 'createThing',
+            condition: 'true',
+            headers: { 'x-header-a': 'alpha', 'x-header-b': 'beta' },
+          },
+          emit: 'Created',
+        }));
+        expect(config.behaviors[0]?.match.headers).toEqual({ 'x-header-a': 'alpha', 'x-header-b': 'beta' });
+      });
+
+      it('leaves match.headers undefined when absent', () => {
+        const config = validateBoundaryConfig(minimalValid);
+        expect(config.behaviors[0]?.match.headers).toBeUndefined();
+      });
+
+      it('throws BootError when match.headers is not an object', () => {
+        expect(() => validateBoundaryConfig(withBehavior({
+          name: 'headerGated',
+          match: { operationId: 'createThing', condition: 'true', headers: 'bad' },
+          emit: 'Created',
+        }))).toThrow(BootError);
+      });
+
+      it('throws BootError when a match.headers value is not a string', () => {
+        expect(() => validateBoundaryConfig(withBehavior({
+          name: 'headerGated',
+          match: { operationId: 'createThing', condition: 'true', headers: { 'x-my-header': 123 } },
+          emit: 'Created',
+        }))).toThrow(BootError);
+      });
+    });
   });
 });

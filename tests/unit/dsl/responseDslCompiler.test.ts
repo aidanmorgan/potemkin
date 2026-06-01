@@ -69,6 +69,36 @@ describe('compileResponseDeprecation (REQ-RESP-002)', () => {
   it('emits no patches when input is undefined', () => {
     expect(compileResponseDeprecation(undefined)).toEqual([]);
   });
+
+  it('emits Deprecation: <HTTP-date> when a real date is configured', () => {
+    const patches = compileResponseDeprecation({ date: '2025-01-01T00:00:00.000Z' });
+    const dep = patches.find((p) => p.path === '/headers/Deprecation') as any;
+    expect(dep).toBeDefined();
+    expect(dep.value).toBe(new Date('2025-01-01T00:00:00.000Z').toUTCString());
+    expect(dep.value).not.toBe('true');
+  });
+
+  it('still emits Deprecation: true when date is the epoch sentinel', () => {
+    const epochIso = new Date(0).toISOString();
+    const patches = compileResponseDeprecation({ date: epochIso });
+    const dep = patches.find((p) => p.path === '/headers/Deprecation') as any;
+    expect(dep).toBeDefined();
+    expect(dep.value).toBe('true');
+  });
+
+  it('emits HTTP-date Deprecation alongside sunset and successor Link', () => {
+    const patches = compileResponseDeprecation({
+      date: '2025-06-01T00:00:00.000Z',
+      sunset: '2025-12-31',
+      replacement: '/v2/leads',
+    });
+    const dep = patches.find((p) => p.path === '/headers/Deprecation') as any;
+    const sunset = patches.find((p) => p.path === '/headers/Sunset') as any;
+    const link = patches.find((p) => p.path === '/headers/Link') as any;
+    expect(dep.value).toBe(new Date('2025-06-01T00:00:00.000Z').toUTCString());
+    expect(sunset.value).toBe('2025-12-31');
+    expect(String(link.value)).toContain('rel="successor-version"');
+  });
 });
 
 describe('compileResponseMask', () => {

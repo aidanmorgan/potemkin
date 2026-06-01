@@ -334,4 +334,142 @@ describe('engine/patternMatcher', () => {
       expect(result.events[0]?.type).toBe('Ev1');
     });
   });
+
+  describe('match.headers — behavior header filtering', () => {
+    function makeBoundaryWithHeaderBehavior(headers: Record<string, string>) {
+      return makeBoundary({
+        behaviors: [
+          {
+            name: 'header-gated',
+            match: { operationId: 'createTest', condition: 'true', headers },
+            emit: 'HeaderMatched',
+          },
+        ],
+        eventCatalog: [{ type: 'HeaderMatched', payloadTemplate: {} }],
+      });
+    }
+
+    it('fires when all declared headers are present with matching values', () => {
+      const boundary = makeBoundaryWithHeaderBehavior({ 'x-my-header': 'yes' });
+      const result = runPatternMatch(makeInput({
+        boundary,
+        command: makeCreateCommand({ headers: { 'x-my-header': 'yes' } }),
+      }));
+      expect(result.events[0]?.type).toBe('HeaderMatched');
+    });
+
+    it('does not match when a declared header is absent', () => {
+      const boundary = makeBoundaryWithHeaderBehavior({ 'x-my-header': 'yes' });
+      expect(() =>
+        runPatternMatch(makeInput({
+          boundary,
+          command: makeCreateCommand({ headers: {} }),
+        })),
+      ).toThrow(UnhandledOperationError);
+    });
+
+    it('does not match when a declared header has a different value', () => {
+      const boundary = makeBoundaryWithHeaderBehavior({ 'x-my-header': 'yes' });
+      expect(() =>
+        runPatternMatch(makeInput({
+          boundary,
+          command: makeCreateCommand({ headers: { 'x-my-header': 'no' } }),
+        })),
+      ).toThrow(UnhandledOperationError);
+    });
+
+    it('"present" sentinel matches any header value', () => {
+      const boundary = makeBoundaryWithHeaderBehavior({ 'x-my-header': 'present' });
+      const result = runPatternMatch(makeInput({
+        boundary,
+        command: makeCreateCommand({ headers: { 'x-my-header': 'anything-at-all' } }),
+      }));
+      expect(result.events[0]?.type).toBe('HeaderMatched');
+    });
+
+    it('"present" sentinel does not match when header is absent', () => {
+      const boundary = makeBoundaryWithHeaderBehavior({ 'x-my-header': 'present' });
+      expect(() =>
+        runPatternMatch(makeInput({
+          boundary,
+          command: makeCreateCommand({ headers: {} }),
+        })),
+      ).toThrow(UnhandledOperationError);
+    });
+
+    it('AND semantics: all headers must match — fails when only first matches', () => {
+      const boundary = makeBoundaryWithHeaderBehavior({
+        'x-header-a': 'alpha',
+        'x-header-b': 'beta',
+      });
+      expect(() =>
+        runPatternMatch(makeInput({
+          boundary,
+          command: makeCreateCommand({ headers: { 'x-header-a': 'alpha' } }),
+        })),
+      ).toThrow(UnhandledOperationError);
+    });
+
+    it('AND semantics: fires when all headers match', () => {
+      const boundary = makeBoundaryWithHeaderBehavior({
+        'x-header-a': 'alpha',
+        'x-header-b': 'beta',
+      });
+      const result = runPatternMatch(makeInput({
+        boundary,
+        command: makeCreateCommand({ headers: { 'x-header-a': 'alpha', 'x-header-b': 'beta' } }),
+      }));
+      expect(result.events[0]?.type).toBe('HeaderMatched');
+    });
+
+    it('header matching is case-insensitive on the name', () => {
+      const boundary = makeBoundaryWithHeaderBehavior({ 'x-my-header': 'yes' });
+      // command.headers keys are lowercased; match is done with name.toLowerCase()
+      const result = runPatternMatch(makeInput({
+        boundary,
+        command: makeCreateCommand({ headers: { 'x-my-header': 'yes' } }),
+      }));
+      expect(result.events[0]?.type).toBe('HeaderMatched');
+    });
+
+    it('behavior without match.headers fires regardless of request headers', () => {
+      const boundary = makeBoundary({
+        behaviors: [
+          { name: 'unconditional', match: { operationId: 'createTest', condition: 'true' }, emit: 'UnconditionalEv' },
+        ],
+        eventCatalog: [{ type: 'UnconditionalEv', payloadTemplate: {} }],
+      });
+      const result = runPatternMatch(makeInput({
+        boundary,
+        command: makeCreateCommand({ headers: {} }),
+      }));
+      expect(result.events[0]?.type).toBe('UnconditionalEv');
+    });
+
+    it('falls through to second behavior when first fails header match', () => {
+      const boundary = makeBoundary({
+        behaviors: [
+          {
+            name: 'header-gated',
+            match: { operationId: 'createTest', condition: 'true', headers: { 'x-my-header': 'required' } },
+            emit: 'HeaderEv',
+          },
+          {
+            name: 'fallback-behavior',
+            match: { operationId: 'createTest', condition: 'true' },
+            emit: 'FallbackEv',
+          },
+        ],
+        eventCatalog: [
+          { type: 'HeaderEv', payloadTemplate: {} },
+          { type: 'FallbackEv', payloadTemplate: {} },
+        ],
+      });
+      const result = runPatternMatch(makeInput({
+        boundary,
+        command: makeCreateCommand({ headers: {} }),
+      }));
+      expect(result.events[0]?.type).toBe('FallbackEv');
+    });
+  });
 });

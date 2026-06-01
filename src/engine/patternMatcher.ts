@@ -179,6 +179,23 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
       continue;
     }
 
+    // Header matching: all declared headers must be present; if expected !== 'present',
+    // value must also match exactly. Header names are compared case-insensitively by
+    // lowercasing both sides (command.headers keys are already lowercased).
+    if (behavior.match.headers && Object.keys(behavior.match.headers).length > 0) {
+      const reqHeaders = command.headers ?? {};
+      let headersMatch = true;
+      for (const [name, expected] of Object.entries(behavior.match.headers)) {
+        const actual = reqHeaders[name.toLowerCase()];
+        if (actual === undefined) { headersMatch = false; break; }
+        if (expected !== 'present' && actual !== expected) { headersMatch = false; break; }
+      }
+      if (!headersMatch) {
+        log?.debug({ behaviorName: behavior.name }, 'Skipping behavior — header match failed');
+        continue;
+      }
+    }
+
     const celCtx = {
       command: command as unknown as Record<string, unknown>,
       state: existingState ?? {},

@@ -12,6 +12,10 @@ export interface HateoasEntry {
 }
 
 export interface DeprecationConfig {
+  // ISO-8601 deprecation date. Epoch sentinel (new Date(0).toISOString()) means
+  // no explicit date was configured; any other value becomes an HTTP-date in the
+  // Deprecation header per RFC 8594.
+  readonly date?: string;
   // When sunset is present a Sunset header is emitted alongside Deprecation.
   readonly sunset?: string;
   // Replacement path; emits Link: <replacement>; rel="successor-version".
@@ -38,10 +42,17 @@ export function compileResponseHateoas(entries: readonly HateoasEntry[]): Patch[
   return out;
 }
 
+const EPOCH_SENTINEL = new Date(0).toISOString();
+
+function deprecationHeaderValue(date: string | undefined): string {
+  if (!date || date === EPOCH_SENTINEL) return 'true';
+  return new Date(date).toUTCString();
+}
+
 export function compileResponseDeprecation(config: DeprecationConfig | undefined): Patch[] {
   if (!config) return [];
   const out: Patch[] = [
-    { op: 'add', path: '/headers/Deprecation', value: 'true' },
+    { op: 'add', path: '/headers/Deprecation', value: deprecationHeaderValue(config.date) },
   ];
   if (config.sunset) {
     out.push({ op: 'add', path: '/headers/Sunset', value: config.sunset });
