@@ -1,5 +1,5 @@
 // Resolve the request Actor from the Authorization header according to the
-// configured auth mode (REQ — F1).
+// configured auth mode.
 //
 //  - auth.mode === 'jwt'  → the bearer token is verified via validateJwt; the
 //    legacy `Bearer <id>:<scopes>` shortcut is NOT accepted (validateJwt throws

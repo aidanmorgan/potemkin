@@ -14,10 +14,6 @@ import type { Intent, JsonObject, JsonValue } from '../types.js';
 import { applyHateoasLinks } from '../engine/hateoas.js';
 import { POTEMKIN_REQUEST_HEADERS } from '../http/potemkinHeaders.js';
 
-// ---------------------------------------------------------------------------
-// CORS (OPTIONS preflight) — mirrors gateway.ts constants.
-// ---------------------------------------------------------------------------
-
 const CORS_ALLOW_METHODS = 'GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS';
 const CORS_ALLOW_HEADERS = [
   'Content-Type',
@@ -79,10 +75,6 @@ export function corsPreflightHeaders(requestOrigin?: string, credentialed = fals
   return headers;
 }
 
-// ---------------------------------------------------------------------------
-// Boundary latency
-// ---------------------------------------------------------------------------
-
 /**
  * Resolve the pre-response delay (ms) implied by a boundary's `latency:` block.
  * fixed_ms is additive; a [min_ms, max_ms] range contributes a uniform-random
@@ -109,10 +101,6 @@ export function delay(ms: number): Promise<void> {
   if (ms <= 0) return Promise.resolve();
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
-
-// ---------------------------------------------------------------------------
-// Conditional requests (RFC 7232) for single-entity GETs
-// ---------------------------------------------------------------------------
 
 export interface ConditionalInput {
   /** The current quoted ETag (e.g. `"5"`), if any. */
@@ -175,10 +163,6 @@ export function isSingleEntityBody(body: JsonValue | null | undefined): boolean 
   return body !== null && body !== undefined && typeof body === 'object' && !Array.isArray(body);
 }
 
-// ---------------------------------------------------------------------------
-// HATEOAS
-// ---------------------------------------------------------------------------
-
 /**
  * Apply HATEOAS `_links` to a query response body (global `hateoas:` block).
  * No-op when HATEOAS is disabled or the body is not entity-shaped.
@@ -194,10 +178,6 @@ export function applyHateoasToQueryBody(
   if (!dsl.hateoas?.enabled) return body;
   return applyHateoasLinks({ body, boundary, dsl, cel, queryParams });
 }
-
-// ---------------------------------------------------------------------------
-// Debug envelope (include-events / echo) — mirrors gateway.ts
-// ---------------------------------------------------------------------------
 
 export interface DebugEnvelopeInput {
   readonly body: JsonValue | null | undefined;
@@ -257,20 +237,12 @@ export function applyDebugEnvelope(input: DebugEnvelopeInput): JsonValue | null 
   return base as JsonValue;
 }
 
-// ---------------------------------------------------------------------------
-// Command headers
-// ---------------------------------------------------------------------------
-
 /** Lowercase every key in a forwarded-headers map (values preserved as strings). */
 export function lowercaseHeaders(headers: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(headers)) out[k.toLowerCase()] = v;
   return out;
 }
-
-// ---------------------------------------------------------------------------
-// Fault-rule evaluation inputs
-// ---------------------------------------------------------------------------
 
 /**
  * Collect the boundary-scoped fault rules from the global rule set. A global

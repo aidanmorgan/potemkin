@@ -2,7 +2,6 @@ import type { Patch } from './patches.js';
 import { parsePointer } from './patches.js';
 
 // Pure data transformations for the forward-blocks the plugin merges into Specmatic.
-// The engine does not execute these; they are consumed by the downstream Kotlin plugin.
 
 export interface WorkflowIdEntry {
   readonly extract: string;
@@ -71,10 +70,8 @@ export function validateGovernanceForward(raw: unknown): GovernanceConfig {
 
 // Translate RFC 6902 patches into the `actions[]` shape Specmatic's Overlay consumes:
 // each patch becomes { target: <JSONPath>, update | remove: <value> }.
-//
-// `move`/`copy` are rejected here because the source node's value is not available
-// on the engine's translate path, and emitting `update: null` would silently corrupt
-// the spec. The Kotlin OverlayApplier resolves `move`/`copy` against the parsed spec.
+// `move`/`copy` are rejected here because the source value is unavailable on this
+// path; the Kotlin OverlayApplier resolves them against the parsed spec.
 
 export interface OverlayAction {
   readonly target: string;
@@ -113,8 +110,7 @@ function pointerToJsonPath(pointer: string): string {
   return '$.' + segs.join('.');
 }
 
-// Merge forward-block configs: potemkin scalars override specmatic's, lists
-// concatenate after specmatic's entries, objects merge recursively per key.
+// Merge forward-block configs: scalars override, lists concatenate, objects merge recursively.
 
 export function mergeForwardBlock<T extends Record<string, unknown>>(
   specmatic: T | undefined,

@@ -237,7 +237,7 @@ describe('schema/fromOpenApi — additional branch coverage', () => {
     );
   });
 
-  // ── allOf keyword merge (potemkin-7v2k) ────────────────────────────────────
+  // ── allOf keyword merge ────────────────────────────────────────────────────
 
   it('allOf: additionalProperties:false from sub-schema is preserved → extra props rejected', () => {
     const doc = makeDoc({

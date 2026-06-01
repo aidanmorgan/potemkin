@@ -247,7 +247,7 @@ describe('identity/sessionStore', () => {
       expect(pendingTimers).toBe(0);
     });
 
-    it('after reset(), a session that is created and never get()-d is still evicted by the sweep once it expires (regression: potemkin-wbhg)', () => {
+    it('after reset(), a session that is created and never get()-d is still evicted by the sweep once it expires', () => {
       let now = 1_700_000_000_000;
       const store = createSessionStore({
         nowMs: () => now,

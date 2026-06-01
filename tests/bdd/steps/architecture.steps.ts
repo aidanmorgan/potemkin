@@ -3,7 +3,7 @@ import assert from 'assert';
 import type { SimWorld } from '../support/world.js';
 
 // ---------------------------------------------------------------------------
-// REQ-6 cross-boundary fixture: Opportunity boundary cascades to Lead.opportunityIds
+// Cross-boundary fixture: Opportunity boundary cascades to Lead.opportunityIds
 // ---------------------------------------------------------------------------
 
 const CROSS_BOUNDARY_OPENAPI_YAML = `
@@ -131,7 +131,6 @@ initialization:
     opportunityIds: []
 `;
 
-// REQ-1: Interface Contract used as strict schema for validation and routing
 Then('requests with invalid payload are rejected with 400', async function (this: SimWorld) {
   // Posting a completely wrong content type / shape to /leads
   await this.sendHttp('POST', `/leads/lead-${Date.now()}`, null);
@@ -139,7 +138,6 @@ Then('requests with invalid payload are rejected with 400', async function (this
   assert.ok(this.lastResponse, 'No response received');
 });
 
-// REQ-2: Write Model and Read Model are independent
 Then('the event store and state graph are separate stores', function (this: SimWorld) {
   assert.ok(this.sys, 'System not booted');
   // They are distinct object references
@@ -149,7 +147,6 @@ Then('the event store and state graph are separate stores', function (this: SimW
   assert.ok(typeof this.sys.graph.get === 'function', 'StateGraph has get');
 });
 
-// REQ-3: Events are immutable once appended
 Then('events in the event log should be frozen', function (this: SimWorld) {
   const events = this.getEvents();
   for (const ev of events) {
@@ -157,7 +154,6 @@ Then('events in the event log should be frozen', function (this: SimWorld) {
   }
 });
 
-// REQ-4: State mutations only via domain events
 Then('the state graph entity count should match committed events', function (this: SimWorld) {
   // After boot, state graph entity count should be >= frozen baseline events
   const evCount = this.getEventCount();
@@ -166,7 +162,6 @@ Then('the state graph entity count should match committed events', function (thi
   assert.ok(evCount >= entityCount, `Events (${evCount}) should be >= entities (${entityCount})`);
 });
 
-// REQ-5: Behavioral logic encapsulated
 Then('DSL rules emit events rather than directly mutating state', async function (this: SimWorld) {
   const evBefore = this.getEventCount();
   await this.sendHttp('POST', `/leads/lead-${Date.now()}`, { companyName: 'Bob Corp', contactName: 'Bob', email: 'bob@example.com' });
@@ -175,7 +170,7 @@ Then('DSL rules emit events rather than directly mutating state', async function
   assert.ok(evAfter > evBefore, 'A domain event should have been appended');
 });
 
-// REQ-6: Cross-boundary communication via secondary commands
+
 
 Given('a cross-boundary DSL is booted with Opportunity cascading to Lead opportunityIds', async function (this: SimWorld) {
   await this.bootWithCustomDsl(CROSS_BOUNDARY_OPENAPI_YAML, [
@@ -234,14 +229,12 @@ Then('the event log includes one event per affected boundary', function (this: S
   );
 });
 
-// Legacy step kept for backward compatibility
 When('I store the created resource id from the response', function (this: SimWorld) {
   assert.ok(this.lastResponse, 'No response');
   const body = this.lastResponse.body as Record<string, unknown>;
   this.ctx['createdId'] = body['id'] as string;
 });
 
-// REQ-7: Atomic Unit of Work
 Then('all events from the request are committed atomically', async function (this: SimWorld) {
   // Create a lead, confirm event log grows by exactly 1
   const before = this.getEventCount();
@@ -255,14 +248,13 @@ Then('all events from the request are committed atomically', async function (thi
   assert.ok(newest, 'There should be a newest event');
 });
 
-// Step used in architecture.feature background / shared Given
 Given('a freshly booted system with CRM fixtures', async function (this: SimWorld) {
   await this.ensureBooted();
   await this.resetState();
 });
 
 // ---------------------------------------------------------------------------
-// REQ-7 atomicity: failed cascade rollback scenario
+// Failed cascade rollback scenario
 // ---------------------------------------------------------------------------
 
 // Custom fixture where the secondary command's CEL condition references an undefined

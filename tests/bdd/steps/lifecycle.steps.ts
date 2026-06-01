@@ -2,8 +2,6 @@ import { Given, When, Then } from '@cucumber/cucumber';
 import assert from 'assert';
 import type { SimWorld } from '../support/world.js';
 
-// REQ-37, 38, 39: Reset purges event log, state graph, then re-ingests baseline
-
 When('I trigger a system reset', async function (this: SimWorld) {
   await this.sendHttp('POST', '/_admin/reset');
 });
@@ -54,7 +52,6 @@ Then('the baseline entities should be restored', function (this: SimWorld) {
   assert.ok(opportunity !== null, 'Seed opportunity should be restored after reset');
 });
 
-// REQ-40: All state in volatile memory — no disk IO
 Then('the state graph does not use disk storage', function (this: SimWorld) {
   assert.ok(this.sys, 'System not booted');
   // The state graph is backed by a plain Map — verify it's in memory

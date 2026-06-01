@@ -171,10 +171,9 @@ it('CONTRACT: individual frozenBaseline events are Object.frozen (immutable)', a
 
 // ── AUDIT GAP: reset immutability — baseline payload must not be mutated in memory ─
 
-it('FIX I1: frozenBaseline payloads are deeply frozen — mutation attempt throws TypeError', async () => {
-  // I1 fix: boot.ts now applies deepFreeze instead of Object.freeze, making the payload
-  // recursively immutable. In strict mode (TypeScript output), attempting to assign to a
-  // frozen property throws TypeError, preventing silent corruption between boot and reset.
+it('frozenBaseline payloads are deeply frozen — mutation attempt throws TypeError', async () => {
+  // deepFreeze is applied so payloads are recursively immutable. In strict mode (TypeScript
+  // output), assigning to a frozen property throws TypeError, preventing silent corruption.
   const openapi = await loadOpenApi(MINIMAL_OPENAPI);
   const sys = await bootSystem({
     openapi,
@@ -258,8 +257,8 @@ it('CONTRACT: frozenBaseline array is frozen (cannot push/pop)', async () => {
   expect(Object.isFrozen(sys.frozenBaseline)).toBe(true);
 });
 
-it('FIX I1: frozenBaseline event payloads ARE deeply frozen — Object.freeze is deep via deepFreeze', () => {
-  // boot.ts I1 fix: deepFreeze replaces Object.freeze so payload is recursively frozen.
+it('frozenBaseline event payloads ARE deeply frozen — Object.freeze is deep via deepFreeze', () => {
+  // deepFreeze replaces Object.freeze so the payload is recursively frozen.
   async function run() {
     const openapi = await loadOpenApi(MINIMAL_OPENAPI);
     const sys = await bootSystem({

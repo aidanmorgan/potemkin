@@ -16,8 +16,8 @@ function boundary(overrides: Partial<BoundaryConfig> = {}): BoundaryConfig {
 
 const noLookup = { resolveOperationPath: () => undefined };
 
-describe('applyResponseMutations — D1 HATEOAS', () => {
-  it('injects boundary.hateoas entries into _links (D1.2 override)', () => {
+describe('applyResponseMutations — HATEOAS', () => {
+  it('injects boundary.hateoas entries into _links', () => {
     const r = applyResponseMutations({
       body: { id: 'lead-1' },
       boundary: boundary({ hateoas: [{ rel: 'self', href: '/leads/lead-1' }] }),
@@ -29,7 +29,7 @@ describe('applyResponseMutations — D1 HATEOAS', () => {
     expect(r.journal.some((e) => e.source === 'hateoas')).toBe(true);
   });
 
-  it('falls back to OpenAPI links: defaults when boundary declares none (D1.1)', () => {
+  it('falls back to OpenAPI links: defaults when boundary declares none', () => {
     const op: OpenApiOperation = {
       responses: { '200': { links: { self: { operationId: 'getLead' } } } },
     } as unknown as OpenApiOperation;
@@ -50,14 +50,14 @@ describe('applyResponseMutations — D1 HATEOAS', () => {
   });
 });
 
-describe('applyResponseMutations — D2 Deprecation/Sunset', () => {
-  it('emits Deprecation:true when the OpenAPI operation is deprecated (D2.1)', () => {
+describe('applyResponseMutations — Deprecation/Sunset', () => {
+  it('emits Deprecation:true when the OpenAPI operation is deprecated', () => {
     const op = { deprecated: true } as unknown as OpenApiOperation;
     const r = applyResponseMutations({ body: { id: 'x' }, boundary: boundary(), operation: op, statusCode: 200, operationLookup: noLookup });
     expect(r.headers['Deprecation']).toBe('true');
   });
 
-  it('emits Sunset and successor Link from boundary.deprecated (D2.2)', () => {
+  it('emits Sunset and successor Link from boundary.deprecated', () => {
     const r = applyResponseMutations({
       body: { id: 'x' },
       boundary: boundary({ deprecated: { date: '2026-01-01', sunset: '2026-12-31', replacement: '/v2/leads' } }),
@@ -70,14 +70,14 @@ describe('applyResponseMutations — D2 Deprecation/Sunset', () => {
     expect(r.headers['Link']).toContain('rel="successor-version"');
   });
 
-  it('emits no deprecation header when neither source declares it (D2.3)', () => {
+  it('emits no deprecation header when neither source declares it', () => {
     const r = applyResponseMutations({ body: { id: 'x' }, boundary: boundary(), operation: {} as OpenApiOperation, statusCode: 200, operationLookup: noLookup });
     expect(r.headers['Deprecation']).toBeUndefined();
   });
 });
 
-describe('applyResponseMutations — D3 Mask', () => {
-  it('removes boundary.mask fields from the body (D3.1)', () => {
+describe('applyResponseMutations — Mask', () => {
+  it('removes boundary.mask fields from the body', () => {
     const r = applyResponseMutations({
       body: { id: 'x', ssn: '123-45-6789', name: 'Acme' },
       boundary: boundary({ mask: ['ssn'] }),
@@ -90,7 +90,7 @@ describe('applyResponseMutations — D3 Mask', () => {
     expect(r.journal.some((e) => e.source === 'mask')).toBe(true);
   });
 
-  it('masks every item in a collection (D3.2)', () => {
+  it('masks every item in a collection', () => {
     const r = applyResponseMutations({
       body: [{ id: 'a', ssn: '1' }, { id: 'b', ssn: '2' }],
       boundary: boundary({ mask: ['ssn'] }),

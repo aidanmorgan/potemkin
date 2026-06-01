@@ -4,10 +4,6 @@ import type { ScriptHandle, ScriptRegistry } from './types.js';
 import { transpileScript } from './transpile.js';
 import { instantiateScript } from './sandbox.js';
 
-/**
- * Build the script registry from all compiled DSL boundaries.
- * Transpiles and instantiates every declared script at boot time.
- */
 export function buildScriptRegistry(dsl: CompiledDsl, logger: Logger): ScriptRegistry {
   const handles = new Map<string, ScriptHandle>();
 

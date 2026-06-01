@@ -54,7 +54,7 @@ export function createShadowGraph(global: StateGraph): ShadowGraph {
     },
 
     has(targetId: string): boolean {
-      // S-3: Read the global graph directly without triggering the cache-populating
+      // Read the global graph directly without triggering the cache-populating
       // side-effect of this.get(). global.get() is a pure read; staged.has() checks
       // local state only. No clone is created here.
       return staged.has(targetId) || global.get(targetId) !== null;

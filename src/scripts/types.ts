@@ -2,8 +2,8 @@ import type { Command, DomainEvent, JsonObject } from '../types.js';
 import type { Logger } from '../observability/logger.js';
 
 export interface ScriptHelpers {
-  readonly uuid: () => string;       // nextUuidv7
-  readonly now: () => string;        // ISO-8601
+  readonly uuid: () => string;
+  readonly now: () => string;
   readonly deepClone: <T>(v: T) => T;
   readonly deepMerge: (a: JsonObject, b: JsonObject) => JsonObject;
 }

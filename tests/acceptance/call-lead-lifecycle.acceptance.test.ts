@@ -1,15 +1,10 @@
 /**
- * call-lead-lifecycle.acceptance.test.ts (migrated from loan-lifecycle)
+ * call-lead-lifecycle.acceptance.test.ts
  *
  * Acceptance test (HTTP-driven):
  *  - POST /calls → 201 (verifies cross-boundary cascade: callId appended to Lead)
  *  - POST /leads/{id}/contact → 200, status updated to CONTACTED
  *  - POST /leads/{id}/qualify → 200, status updated to QUALIFIED (requires CONTACTED + call)
- *
- * This replaces the old banking lifecycle tests with the CRM equivalent:
- *  - Loan creation + cascade → Call logging + cascade (callId on lead)
- *  - Loan disburse (state transition) → Lead contact (state transition)
- *  - Loan repay (state transition + balance) → Lead qualify (state transition)
  */
 
 import { createTestApp, type TestApp } from './_helpers/test-app.js';

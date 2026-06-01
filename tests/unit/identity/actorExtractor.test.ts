@@ -1,5 +1,5 @@
 /**
- * REQ-84: Actor extraction from Authorization header
+ * Actor extraction from Authorization header
  */
 import { extractActor } from '../../../src/identity/actorExtractor';
 

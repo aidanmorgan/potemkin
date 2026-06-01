@@ -142,7 +142,7 @@ function sagaEventCount(sys: BootedSystem): number {
   return sys.events.all().filter((e) => e.boundary === '__saga__').length;
 }
 
-describe('Tier-2 webhook dispatch (potemkin-422)', () => {
+describe('Tier-2 webhook dispatch', () => {
   let sys: BootedSystem;
   let agent: PersistentAgent;
   let persistent: PersistentServer;
@@ -198,7 +198,7 @@ describe('Tier-2 webhook dispatch (potemkin-422)', () => {
   });
 });
 
-describe('Tier-2 bulk-transactional side-effect deferral (potemkin-1t0)', () => {
+describe('Tier-2 bulk-transactional side-effect deferral', () => {
   let sys: BootedSystem;
   let agent: PersistentAgent;
   let persistent: PersistentServer;
@@ -263,7 +263,7 @@ describe('Tier-2 bulk-transactional side-effect deferral (potemkin-1t0)', () => 
   });
 });
 
-describe('Tier-6 observability controls (potemkin-1eg)', () => {
+describe('Tier-6 observability controls', () => {
   it('X-Potemkin-Metric-Tag attaches the tag to recorded engine metrics', async () => {
     // Capture metric attribute sets by wrapping a real EngineMetrics counter.
     const base = createEngineMetrics();

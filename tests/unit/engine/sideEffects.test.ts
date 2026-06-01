@@ -1,7 +1,7 @@
 /**
  * Unit tests for the deferred-side-effect queue used by bulk-transactional
- * batches (potemkin-1t0). The queue must hold thunks until an explicit flush,
- * discard them on abort, and never reject the flush when a thunk fails.
+ * batches. The queue must hold thunks until an explicit flush, discard them on
+ * abort, and never reject the flush when a thunk fails.
  */
 
 import { createSideEffectQueue } from '../../../src/engine/sideEffects.js';

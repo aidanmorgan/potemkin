@@ -3,7 +3,6 @@ import assert from 'assert';
 import type { SimWorld } from '../support/world.js';
 import type { JsonObject } from '../../../src/types.js';
 
-// REQ-12: Invalid request payload rejected with contract-violation
 When('I send a POST to {string} with an invalid body', async function (this: SimWorld, path: string) {
   // Send a wrong type for 'companyName' (schema says string, we send a number) — this triggers AJV validation
   await this.sendHttp('POST', path, { companyName: 12345, email: 'test@example.com' } as unknown as JsonObject);
@@ -22,7 +21,6 @@ Then('the response should be a contract violation error', function (this: SimWor
   );
 });
 
-// REQ-13: Identity resolution - creation vs mutation intent
 Then('a POST with identity.creation configured should produce a creation command', async function (this: SimWorld) {
   const before = this.getEventCount();
   const newId = `lead-${Date.now()}`;
@@ -40,7 +38,6 @@ Then('the created resource should have a generated id', function (this: SimWorld
   assert.ok(id.length > 0, 'Generated id should not be empty');
 });
 
-// REQ-14: Request translated into standardised Command
 Then('a PATCH to an existing resource should be treated as mutation', async function (this: SimWorld) {
   // First create
   const newId = `lead-eve-${Date.now()}`;
@@ -53,7 +50,6 @@ Then('a PATCH to an existing resource should be treated as mutation', async func
   assert.strictEqual(this.lastResponse?.status, 200, 'PATCH should return 200 for mutation');
 });
 
-// REQ-15: Command routed to specific boundary
 Then('the command should reach the correct boundary', async function (this: SimWorld) {
   // POST to /leads/{id} → Lead boundary
   const newId = `lead-frank-${Date.now()}`;

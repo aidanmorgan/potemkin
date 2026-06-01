@@ -236,9 +236,9 @@ describe('observability/tracing.ts — coverage backfill', () => {
   });
 });
 
-// ── potemkin-3vsq: fallback instanceId is a valid UUID, not 'not-implemented' ─
+// ── fallback instanceId is a valid UUID, not 'not-implemented' ───────────────
 
-describe('potemkin-3vsq: instanceId fallback uses crypto.randomUUID()', () => {
+describe('instanceId fallback uses crypto.randomUUID()', () => {
   it('fallback instanceId is a valid UUID when nextUuidv7 throws', async () => {
     jest.resetModules();
 
@@ -277,9 +277,9 @@ describe('potemkin-3vsq: instanceId fallback uses crypto.randomUUID()', () => {
   }, 15000);
 });
 
-// ── potemkin-kkrs: no endpoint → no localhost exporter, warning emitted ───────
+// ── no endpoint → no localhost exporter, warning emitted ────────────────────
 
-describe('potemkin-kkrs: no OTLP endpoint configured → no localhost exporter started', () => {
+describe('no OTLP endpoint configured → no localhost exporter started', () => {
   it('emits a warning and returns a no-op shutdown when no endpoint is configured', async () => {
     jest.resetModules();
 

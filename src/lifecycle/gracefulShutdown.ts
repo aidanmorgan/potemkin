@@ -17,7 +17,6 @@ import type { Logger } from '../observability/logger.js';
 import type { PluginControlClient, ShutdownNotification } from './types.js';
 
 export interface GracefulShutdownConfig {
-  /** The http.Server to wrap. */
   readonly server: Server;
   /** Optional plugin control client; when set, notifyShutdown is called on signal. */
   readonly pluginControl?: PluginControlClient;
@@ -32,7 +31,6 @@ export interface GracefulShutdownConfig {
   readonly signals?: readonly NodeJS.Signals[];
   /** Optional health-check routes to register with terminus. */
   readonly healthChecks?: { readonly [path: string]: () => Promise<unknown> };
-  /** Logger for lifecycle events. */
   readonly logger?: Logger;
   /**
    * Optional hook invoked after connections have drained (inside onShutdown,

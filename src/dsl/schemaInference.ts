@@ -1,7 +1,7 @@
 // Boundary state schema is derived from event templates + reducer patches.
 // Declared computed/internal fields merge in. The fixed-point loop iterates
-// until types stabilise or the cap (4) trips. Reducer patches cannot write
-// to a declared computed-field path (or any prefix-extension of one).
+// until types stabilise (cap: 4). Reducer patches may not write to a declared
+// computed-field path or any prefix-extension of one.
 
 import { BootError } from '../errors.js';
 import type { Patch } from './patches.js';
@@ -169,8 +169,7 @@ const RE_LENGTH_SIZE = /^\s*(length|size)\s*\(/;
 const RE_SUM = /^\s*sum\s*\(/;
 const RE_TERNARY = /^([^?]+)\?([^:]+):(.+)$/;
 
-// Infers FieldType from a CEL expression. Anything that doesn't match a
-// known pattern returns `unknown` — callers tolerate that.
+// Infers FieldType from a CEL expression. Returns `unknown` for unrecognised patterns.
 export function inferTypeFromCel(
   expr: string,
   eventSchema: Record<string, FieldType> | undefined,
@@ -185,7 +184,6 @@ export function inferTypeFromCel(
   if (RE_LENGTH_SIZE.test(trimmed)) return ftKnown('integer');
   if (RE_SUM.test(trimmed)) return ftKnown('number');
 
-  // event.payload.X.Y... — walk into event schema
   const evMatch = trimmed.match(/^event\.payload((?:\.[A-Za-z_$][\w$]*)+)\s*$/);
   if (evMatch && eventSchema) {
     const path = evMatch[1].slice(1).split('.');
@@ -197,7 +195,6 @@ export function inferTypeFromCel(
     return cur ?? ftUnknown();
   }
 
-  // state.X.Y... — walk into state schema
   const stMatch = trimmed.match(/^state((?:\.[A-Za-z_$][\w$]*)+)\s*$/);
   if (stMatch) {
     const path = stMatch[1].slice(1).split('.');
@@ -218,7 +215,7 @@ export function inferTypeFromCel(
     return ftUnknown();
   }
 
-  // ternary: cond ? a : b  →  LUB(a, b)
+  // ternary → LUB(a, b)
   const tern = trimmed.match(RE_TERNARY);
   if (tern) {
     const aType = inferTypeFromCel(tern[2], eventSchema, stateSchema);
@@ -226,7 +223,7 @@ export function inferTypeFromCel(
     return lub(aType, bType);
   }
 
-  // a + b  →  numeric if both numeric; string concat if either side is string.
+  // a + b: numeric if both numeric; string-concat if either side is a string.
   if (trimmed.includes('+') && !trimmed.startsWith('-')) {
     const parts = splitTopLevel(trimmed, '+');
     if (parts && parts.length === 2) {
@@ -244,14 +241,12 @@ export function inferTypeFromCel(
     }
   }
 
-  // {} or { k: v, ... }
   if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
     const inner = trimmed.slice(1, -1).trim();
     if (inner === '') return ftObject({}, 'known');
-    return ftObject({}, 'narrowed'); // shallow — full inference of literal objects deferred
+    return ftObject({}, 'narrowed'); // shallow: full literal-object inference deferred
   }
 
-  // [] or [...]
   if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
     return ftArray(ftUnknown(), 'narrowed');
   }
@@ -328,15 +323,7 @@ function dedup<T>(xs: T[]): T[] {
 function inferEventPayloadSchema(ev: EventDecl): Record<string, FieldType> {
   const out: Record<string, FieldType> = {};
   if (ev.template) {
-    // Templates often reference event.payload.X — for the EVENT schema itself
-    // we treat each declared field as `narrowed unknown` (its actual type
-    // comes from incoming HTTP payloads).
     for (const k of Object.keys(ev.template)) {
-      // For a payload literal field, look at the CEL expression — if it's
-      // `event.payload.foo` we cannot resolve recursively here, so leave it
-      // `unknown`. The CALLER (a reducer reading `event.payload.foo`) gets a
-      // typed answer when the source event's template names that field, and
-      // we settle into a fixed point.
       const expr = ev.template[k];
       out[k] = inferTypeFromCel(expr, undefined, new Map());
     }
@@ -421,8 +408,6 @@ function walkReducerPatches(
         case 'remove':
         case 'move':
         case 'copy':
-          // Movement ops do not introduce a new type. The target inherits
-          // the source — we leave that alone; LUB will sort it out.
           break;
       }
     }
@@ -456,13 +441,9 @@ function iterateInference(opts: IterateOptions): {
     prevHash = h;
   }
 
-  // Determine divergence: re-run once more; if hash changes again, those
-  // fields are non-converged. We computed this lazily via the cap: if we
-  // exited via the cap with prevHash still changing, then the last delta
-  // names the diverged fields.
+  // Detect divergence: run one extra speculative pass and compare hashes.
   const divergedFields: string[] = [];
   if (iterations === MAX_INFERENCE_ITERATIONS) {
-    // run one extra speculative pass to detect any new diff
     const after: MutableSchema = { fields: new Map(cur.fields) };
     walkReducerPatches(opts.reducers, opts.events, freeze(after), after);
     const hAfter = hashSchema(after);
@@ -569,7 +550,6 @@ function topoSortComputed(fields: readonly DeclaredComputedField[]): TopoResult 
 export function buildInferredSchema(input: BoundaryInferenceInput): BoundaryInferenceResult {
   const strict = input.strict !== false;
 
-  // Step 1: fixed-point inference over events + reducer patches.
   const { schema: inferred, iterations, divergedFields } = iterateInference({
     events: input.events,
     reducers: input.reducers,
@@ -583,14 +563,11 @@ export function buildInferredSchema(input: BoundaryInferenceInput): BoundaryInfe
     );
   }
 
-  // Step 2: declared computed and internal fields merge in.
   const declaredComputed = input.state?.computed ?? [];
   const declaredInternal = input.state?.internal ?? [];
 
-  // Shadow check: computed name MUST NOT collide
-  // with a field inferred from EVENT templates. Reducer-patch contributions
-  // are intentionally excluded — a reducer that writes a computed path
-  // surfaces as a computed-field-write error (below) instead.
+  // Computed name must not collide with an event-template-derived field.
+  // Reducer-patch collisions are caught separately below.
   const eventDerivedNames = new Set<string>();
   for (const ev of input.events) {
     if (ev.template) for (const k of Object.keys(ev.template)) eventDerivedNames.add(k);
@@ -612,7 +589,6 @@ export function buildInferredSchema(input: BoundaryInferenceInput): BoundaryInfe
     }
   }
 
-  // Reducer patches must not write computed-field paths.
   const computedPaths = new Set<string>(declaredComputed.map((c) => '/' + c.name));
   for (const r of input.reducers) {
     if (!r.patches) continue;
@@ -629,20 +605,16 @@ export function buildInferredSchema(input: BoundaryInferenceInput): BoundaryInfe
     }
   }
 
-  // Internal fields: declared types take precedence over any inference for
-  // the same name.
+  // Declared internal types take precedence over inferred types for the same name.
   const finalSchema = new Map<string, InferredField>(inferred);
   for (const inf of declaredInternal) {
     finalSchema.set('/' + inf.name, { type: inf.type, sources: ['declared:internal'] });
   }
   for (const cf of declaredComputed) {
-    // Type comes from formula inference against the (so-far) known schema.
-    // Build a partial event-context-free schema for the formula.
     const ft = inferTypeFromCel(cf.formula, undefined, finalSchema);
     finalSchema.set('/' + cf.name, { type: ft, sources: ['declared:computed'] });
   }
 
-  // Step 3: topo sort + cycle detection.
   const topo = topoSortComputed(declaredComputed);
   if (topo.cycle) {
     throw new BootError(
@@ -652,7 +624,7 @@ export function buildInferredSchema(input: BoundaryInferenceInput): BoundaryInfe
     );
   }
 
-  // Step 4: free-variable check.
+  // Free-variable check: each computed field's formula references must be listed in dependsOn.
   const warnings: string[] = [];
   for (const cf of declaredComputed) {
     const refs = extractStateRefs(cf.formula);
@@ -693,15 +665,9 @@ function targetsComputed(path: string, computedPaths: ReadonlySet<string>): bool
 // ---------------------------------------------------------------------------
 
 /**
- * Map a compiled snake_case BoundaryConfig onto the inference input shape:
- *   eventCatalog[].{type,payloadTemplate} → events[].{name,template}
- *   reducers[].{on,patches}               → reducers[].{on,patches}
- *   state (computed/internal)             → state
- *   strictSchema                          → strict
- *
- * Reducer patch values use the ${...} template form; inference treats string
- * values textually (RE_* matchers strip the wrapper via inferTypeFromCel), so
- * the ReducerPatchOp list is passed straight through as Patch[].
+ * Map a compiled BoundaryConfig onto the inference input shape.
+ * Reducer patch values are passed through as Patch[]; inferTypeFromCel handles
+ * the ${...} template form textually.
  */
 export function boundaryConfigToInferenceInput(
   boundary: BoundaryConfig,

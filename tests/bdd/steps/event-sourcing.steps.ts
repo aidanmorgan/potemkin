@@ -7,7 +7,6 @@ function uniqueId(prefix: string): string {
   return `${prefix}-${Date.now()}-${++_stepIdCounter}`;
 }
 
-// REQ-20: Staged events appended atomically on UoW success
 Then('all events from the unit of work should be appended atomically', async function (this: SimWorld) {
   const before = this.getEvents().length;
   await this.sendHttp('POST', `/leads/${uniqueId('lead')}`, { companyName: 'Atomic Corp', contactName: 'Atomic', email: 'atomic@example.com' });
@@ -26,7 +25,6 @@ Then('no events should be appended if the command fails', async function (this: 
   assert.strictEqual(after, before, 'No events should have been appended on failure');
 });
 
-// REQ-21: Sequence version incremented after event append
 Then('the sequence version for the entity should increment after each event', async function (this: SimWorld) {
   // Create entity
   await this.sendHttp('POST', `/leads/lead-${Date.now()}`, { companyName: 'SeqTest Corp', contactName: 'SeqTest', email: 'seq@example.com' });
@@ -55,7 +53,6 @@ Then('the event should carry the incremented sequence version', async function (
   assert.strictEqual(events[0]?.sequenceVersion, 1, 'First event should have sequenceVersion=1');
 });
 
-// REQ-22: State graph updated immediately after event projection
 Then('the state graph should reflect the committed event immediately', async function (this: SimWorld) {
   await this.sendHttp('POST', `/leads/${uniqueId('lead')}`, { companyName: 'Immediate Corp', contactName: 'Immediate', email: 'imm@example.com' });
   assert.strictEqual(this.lastResponse?.status, 201);

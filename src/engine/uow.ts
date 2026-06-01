@@ -7,12 +7,12 @@
  *  2. Open an OTEL span wrapping the entire execution.
  *  3. Acquire a per-aggregateId serialization mutex so concurrent requests targeting
  *     the same aggregate are queued rather than interleaved.
- *  4. Check optimistic-concurrency preconditions (req 28, 29).
+ *  4. Check optimistic-concurrency preconditions.
  *  5. Initialize a ShadowGraph to stage all writes transiently.
  *  6. Run the PatternMatcher for the primary command; cascade any secondary commands
- *     up to maxDepth levels deep; abort with InfiniteLoopError on overflow (req 32).
- *  7. Commit phase: block-append all staged events to EventStore (req 20), then
- *     flush the ShadowGraph into the global StateGraph (req 22).
+ *     up to maxDepth levels deep; abort with InfiniteLoopError on overflow.
+ *  7. Commit phase: block-append all staged events to EventStore, then
+ *     flush the ShadowGraph into the global StateGraph.
  *  8. Build and validate the HTTP response; return ExecutionResult.
  *
  * Mutex strategy: a module-level Map<string, Promise<void>> chains UoWs for the same
@@ -98,8 +98,8 @@ export interface UowInput {
   /**
    * Optional callback, wired by boot, that returns true when the OpenAPI operation for
    * (boundary, method) declares If-Match as a required header parameter.
-   * When absent the engine skips the "required but missing" check (req 29); it still
-   * validates a supplied sequenceVersion against the current store value (req 28).
+   * When absent the engine skips the "required but missing" check; it still
+   * validates a supplied sequenceVersion against the current store value.
    */
   readonly requiresPrecondition?: (boundary: string, method: string) => boolean;
   /**
@@ -149,10 +149,10 @@ export interface UowInput {
 // Constants
 // ---------------------------------------------------------------------------
 
-/** Default maximum cascade depth for secondary commands (req 32). */
+/** Default maximum cascade depth for secondary commands. */
 const MAX_UOW_DEPTH = 5;
 
-/** Header name used for optimistic-concurrency precondition checks (REQ-29). */
+/** Header name used for optimistic-concurrency precondition checks. */
 const IF_MATCH_HEADER = 'If-Match';
 
 // ---------------------------------------------------------------------------
@@ -304,7 +304,7 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
   const metricTag = input.controls?.observability.metricTag;
   const tagAttrs: Record<string, string> = metricTag ? { [metricTag.key]: metricTag.value } : {};
 
-  // O-1 fix: increment commandsTotal for EVERY command entering executeUnitOfWork,
+  // Increment commandsTotal for EVERY command entering executeUnitOfWork,
   // including the fault-sim short-circuit path that bypasses the outer span.
   metrics?.commandsTotal.add(1, {
     boundary: command.boundary,
@@ -313,7 +313,7 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
   });
 
   // -------------------------------------------------------------------------
-  // Step 1 — Fault-sim short-circuit (req 31)
+  // Step 1 — Fault-sim short-circuit
   // -------------------------------------------------------------------------
   if (command.faultSignal !== undefined && command.faultSignal !== '') {
     let signal: { status: number; body: JsonValue; headers?: Record<string, string> };
@@ -380,7 +380,7 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
 
       try {
         // -----------------------------------------------------------------------
-        // Step 4 — Precondition / optimistic-concurrency checks (req 28, 29)
+        // Step 4 — Precondition / optimistic-concurrency checks
         // -----------------------------------------------------------------------
         if (command.intent !== 'query' && command.targetId !== null) {
           const preconditionRequired =
@@ -418,7 +418,7 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
         const shadow = createShadowGraph(graph);
 
         // -----------------------------------------------------------------------
-        // Step 6 — Primary execution + cascading (req 19, 32)
+        // Step 6 — Primary execution + cascading
         // -----------------------------------------------------------------------
         const stagedEvents: DomainEvent[] = [];
         /** Count of events staged per aggregateId within this UoW, used for monotonic sequence-version assignment. */
@@ -429,7 +429,7 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
         while (pendingCommands.length > 0) {
           const cmd = pendingCommands.shift()!;
 
-          // I3 fix: use >= so that depth === maxDepth is the last rejected level.
+          // Use >= so that depth === maxDepth is the last rejected level.
           // With MAX_UOW_DEPTH=5, depth 5 throws (depth 4 is the last allowed).
           if (cmd.depth >= maxDepth) {
             throw new InfiniteLoopError(
@@ -509,7 +509,6 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
               // (called inside runPatternMatch), so we do NOT update it again here.
               for (const evt of outcome.events) {
                 stagedEvents.push(evt);
-                // O-7 fix: log event staging with eventId and aggregateId bindings per REQ-42.
                 const evtLog = logger.child({ eventId: evt.eventId, aggregateId: evt.aggregateId });
                 evtLog.debug({ eventType: evt.type }, 'UoW staged event');
               }
@@ -527,7 +526,7 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
         }
 
         // -----------------------------------------------------------------------
-        // Step 7 — Commit phase (req 20, 22)
+        // Step 7 — Commit phase
         // -----------------------------------------------------------------------
         const dryRun = input.controls?.transparency.dryRun === true;
         const skipProjections = input.controls?.sideEffects.skipProjections === true;
@@ -553,7 +552,6 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
           shadow.commitInto(graph);
         }
 
-        // REQ-88: Apply derived projections for committed events
         if (!dryRun && !skipProjections && input.derivedProjections && dsl.derivedProjections && dsl.derivedProjections.length > 0) {
           for (const evt of stagedEvents) {
             applyEventToDerivedProjections(
@@ -575,7 +573,7 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
         if (!dryRun && stagedEvents.length > 0) {
           const sideEffects: SideEffectThunk[] = [];
 
-          // REQ-73/79: sagas — run after commit so compensation events are truly
+          // Sagas run after commit so compensation events are truly
           // compensating, not pre-staged alongside the primary event.
           if (!skipSagas && dsl.sagas && dsl.sagas.length > 0) {
             for (const evt of stagedEvents) {
@@ -710,10 +708,10 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
           events: stagedEvents,
         } satisfies ExecutionResult;
       } catch (err) {
-        // O-3 fix: increment uowAbortsTotal for ANY exception that aborts the UoW,
+        // Increment uowAbortsTotal for ANY exception that aborts the UoW,
         // not just PatternMatch failures (covers ConcurrencyConflictError,
         // MissingPreconditionError, etc.). The inner catch inside the cascade span
-        // still handles pattern-match-specific logging; this outer catch ensures
+        // handles pattern-match-specific logging; this outer catch ensures
         // the metric is always incremented on abort.
         metrics?.uowAbortsTotal.add(1, { boundary: command.boundary, ...tagAttrs });
         if (outcome === 'error') {

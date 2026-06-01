@@ -198,11 +198,6 @@ export interface CelEvaluator {
 }
 
 // ---------------------------------------------------------------------------
-// Parsing is provided by the table-driven LALR(1) parser in ./grammar.
-// `Expr` is the typed AST it produces (imported above); `parse()` is its entry.
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
 // Scope — chained variable bindings for comprehensions
 // ---------------------------------------------------------------------------
 
@@ -270,7 +265,7 @@ function evalExpr(expr: Expr, ctx: CelContext, builtinCtx: BuiltinContext, scope
     }
 
     case 'call': {
-      // has(x.field) is a special macro: checks field presence without evaluation
+      // has(x.field) is a special macro — checks field presence without evaluation
       if (expr.fn === 'has' && expr.args.length === 1) {
         const arg = expr.args[0];
         if (!arg) throw new Error(`CEL_EVAL: has() requires exactly one argument`);
@@ -307,7 +302,7 @@ function evalExpr(expr: Expr, ctx: CelContext, builtinCtx: BuiltinContext, scope
         if (typeof v === 'number') return -v;
         throw new Error(`CEL_EVAL: unary '-' requires a number, got ${typeof v}`);
       }
-      /* istanbul ignore next — parser only emits '!' and '-' unary ops */
+      /* istanbul ignore next — parser only emits '!' and '-' */
       throw new Error(`CEL_EVAL: unknown unary operator '${expr.op}'`);
     }
 
@@ -359,7 +354,7 @@ function evalExpr(expr: Expr, ctx: CelContext, builtinCtx: BuiltinContext, scope
           if (isRecord(right)) return (left as string) in right;
           throw new Error(`CEL_EVAL: 'in' requires an array or object on the right`);
         }
-        /* istanbul ignore next — parser only emits known binary operators; defensive guard */
+        /* istanbul ignore next — parser only emits known binary operators */
         default:
           throw new Error(`CEL_EVAL: unknown binary operator '${op}'`);
       }
@@ -439,7 +434,6 @@ function evalStringMethod(s: string, method: string, args: unknown[]): unknown {
     }
     case 'matches': {
       if (typeof args[0] !== 'string') throw new Error(`CEL_TYPE_ERROR: matches requires a string (regex) argument`);
-      // Synchronous, shape-based ReDoS guard (no Worker threads). See evalMatchesSafe().
       return evalMatchesSafe(args[0], s);
     }
     case 'size':
@@ -590,8 +584,8 @@ function evalComprehension(
 ): unknown {
   const collection = evalExpr(expr.receiver, ctx, builtinCtx, scopes);
 
-  // REQ-49 / null-safe comprehension fix: if the receiver is null/undefined and the
-  // macro was invoked with ?. (nullSafe flag), short-circuit to null instead of throwing.
+  // Null-safe comprehension: if the receiver is null/undefined and the macro was
+  // invoked with ?. (nullSafe flag), short-circuit to null instead of throwing.
   if ((collection === null || collection === undefined) && expr.nullSafe) {
     return null;
   }
@@ -600,8 +594,7 @@ function evalComprehension(
   if (Array.isArray(collection)) {
     items = collection;
   } else if (isRecord(collection)) {
-    // For maps, iterate over keys
-    items = Object.keys(collection);
+    items = Object.keys(collection); // for maps, iterate over keys
   } else {
     throw new Error(`CEL_EVAL: comprehension receiver must be a list or map, got ${typeof collection}`);
   }
@@ -749,7 +742,7 @@ function buildEvaluator(args: {
     setClockOffset(ms: number): void { setAdminOffset(ms); },
 
     withRequestContext(reqCtx: CelRequestContext): CelEvaluator {
-      // Always layer onto the originating root's admin clock, so chaining
+      // Always layer onto the originating root's admin clock so chaining
       // withRequestContext never compounds one request's offset onto another's.
       const root = args.parentRoot ?? evaluator;
       const reqOffset = Number.isFinite(reqCtx.clockOffsetMs ?? NaN) ? (reqCtx.clockOffsetMs as number) : 0;
@@ -757,9 +750,8 @@ function buildEvaluator(args: {
       const hasSeed = reqCtx.seed !== undefined;
       if (!hasOffset && !hasSeed) return root;
 
-      // Per-request RNG: a fresh, independently-seeded stream when a seed is
-      // supplied; otherwise the parent's (unseeded → Math.random) rng so $fake*
-      // behaviour is byte-identical to a request that set no seed.
+      // Fresh, independently-seeded RNG when a seed is supplied; otherwise
+      // fall through to the parent's unseeded rng so $fake* output is identical.
       let reqRng: FakeRng = rng;
       if (hasSeed) {
         reqRng = createFakeRng();
@@ -768,8 +760,7 @@ function buildEvaluator(args: {
       return buildEvaluator({
         offsetOf: () => root.getClockOffset() + reqOffset,
         rng: reqRng,
-        // A sub-evaluator's admin-clock setter delegates to the root so the
-        // single server-wide clock is never forked per request.
+        // Delegate to root so the server-wide clock is never forked per request.
         setAdminOffset: (ms: number) => root.setClockOffset(ms),
         parentRoot: root,
       });
@@ -779,11 +770,9 @@ function buildEvaluator(args: {
 }
 
 export function createCelEvaluator(): CelEvaluator {
-  // Server-wide admin clock offset (ms) and an unseeded fallback faker RNG.
-  // Instance state — NOT module globals — so concurrent booted systems stay
-  // isolated. Per-request clock offset and faker seed do NOT mutate these; they
-  // live in a per-request sub-evaluator (see withRequestContext), so concurrent
-  // requests cannot read or clobber each other's offset/seed.
+  // adminClockOffsetMs and fakeRng are instance state, not module globals, so
+  // concurrent booted systems stay isolated. Per-request overrides (clock
+  // offset, faker seed) live in a per-request sub-evaluator; see withRequestContext.
   let adminClockOffsetMs = 0;
   const fakeRng: FakeRng = createFakeRng();
   return buildEvaluator({

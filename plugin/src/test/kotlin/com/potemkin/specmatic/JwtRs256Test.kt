@@ -86,7 +86,7 @@ class JwtRs256Test {
         assertTrue(called, "JwksProvider should be consulted during RS256 verification")
     }
 
-    // ---- potemkin-r9cb: kid mismatch must not fall back to full keyset ----------------------
+    // ---- kid mismatch must not fall back to full keyset ----------------------
 
     @Test
     fun `RS256 token with kid that matches no configured JWK returns Invalid without trying other keys`() {
@@ -131,7 +131,7 @@ class JwtRs256Test {
         assertTrue(result is JwtResult.Valid, "token without kid should verify against any matching key, got $result")
     }
 
-    // ---- potemkin-lpdc: HttpJwksProvider fetches and caches JWKS from URL -----------------
+    // ---- HttpJwksProvider fetches and caches JWKS from URL -----------------
 
     @Test
     fun `HttpJwksProvider fetches JWKS document and parses keys`() {

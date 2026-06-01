@@ -54,7 +54,7 @@ class SpecmaticConfigMergerTest {
         assertEquals(mapOf("a" to 1, "b" to 2), report) // objects merge
     }
 
-    // ---- mergeForwardBlock precedence (AC-E6.3 / AC-E6.4) -------------------
+    // ---- mergeForwardBlock precedence -------------------
 
     @Test
     fun `scalars override`() {

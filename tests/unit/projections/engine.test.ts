@@ -1,5 +1,5 @@
 /**
- * REQ-88/89/90: Derived projection engine
+ * Derived projection engine
  */
 import {
   createDerivedProjectionRegistry,
@@ -50,7 +50,7 @@ const customerSummaryProjection: DerivedProjectionConfig = {
 };
 
 describe('projections/engine - derived projections', () => {
-  it('evaluates a ${...} interpolated counter reduce to a real number (potemkin-a0w)', () => {
+  it('evaluates a ${...} interpolated counter reduce to a real number', () => {
     const registry = createDerivedProjectionRegistry();
     const proj: DerivedProjectionConfig = {
       name: 'Counter',
@@ -141,9 +141,7 @@ describe('projections/engine - derived projections', () => {
     expect(getDerivedProjection(registry, 'SimpleSummary')).not.toBeNull();
   });
 
-  // ── patches: path via applyPatches (potemkin-4j46) ────────────────────────
-
-  it('applies patches: add/replace through the canonical applyPatches path (potemkin-4j46)', () => {
+  it('applies patches: add/replace through the canonical applyPatches path', () => {
     const registry = createDerivedProjectionRegistry();
     const proj: DerivedProjectionConfig = {
       name: 'PatchTest',
@@ -164,7 +162,7 @@ describe('projections/engine - derived projections', () => {
     expect(result!['cust-1']).toMatchObject({ status: 'active' });
   });
 
-  it('patches: increment auto-vivifies at 0 when path is absent (potemkin-4j46)', () => {
+  it('patches: increment auto-vivifies at 0 when path is absent', () => {
     const registry = createDerivedProjectionRegistry();
     const proj: DerivedProjectionConfig = {
       name: 'IncrTest',
@@ -179,7 +177,7 @@ describe('projections/engine - derived projections', () => {
     expect(result!['cust-1']).toMatchObject({ count: 3 });
   });
 
-  it('patches: append creates an array when path is absent (potemkin-4j46)', () => {
+  it('patches: append creates an array when path is absent', () => {
     const registry = createDerivedProjectionRegistry();
     const proj: DerivedProjectionConfig = {
       name: 'AppendTest',
@@ -194,7 +192,7 @@ describe('projections/engine - derived projections', () => {
     expect(result!['cust-1']).toMatchObject({ tags: ['vip'] });
   });
 
-  it('patches: EVAL_FAILED sentinel — CEL error skips write and leaves prior state intact (potemkin-4j46)', () => {
+  it('patches: EVAL_FAILED sentinel — CEL error skips write and leaves prior state intact', () => {
     const registry = createDerivedProjectionRegistry();
     const proj: DerivedProjectionConfig = {
       name: 'EvalFail',

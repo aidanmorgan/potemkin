@@ -160,7 +160,6 @@ export async function compileDsl(
       ...(webhooks !== undefined ? { webhooks } : {}),
     };
 
-    // Build the script registry only when at least one boundary declares scripts.
     const hasScripts = boundaries.some(b => b.scripts && b.scripts.length > 0);
     if (hasScripts) {
       const scriptRegistry = buildScriptRegistry(partialDsl as CompiledDsl, log);

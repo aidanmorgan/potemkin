@@ -1,5 +1,5 @@
 /**
- * REQ-73 through REQ-80: Sagas integration test
+ * Sagas integration test
  *
  * Validates:
  * - Saga global config parses correctly

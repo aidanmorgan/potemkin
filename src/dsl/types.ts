@@ -5,19 +5,19 @@ import type { ScriptRegistry } from '../scripts/types.js';
 export interface EventCatalogEntry {
   readonly type: string;                              // event type key
   readonly payloadTemplate: Record<string, string>;   // map fieldName → CEL expression
-  /** REQ-65: optional OpenAPI $ref path for runtime payload schema validation */
+  /** Optional OpenAPI $ref path for runtime payload schema validation */
   readonly schemaRef?: string;
 }
 
-/** REQ-61: named guard evaluated before match.condition; failure → 422 */
+/** Named guard evaluated before match.condition; failure → 422 */
 export interface RequiresGuard {
   readonly name: string;
-  readonly condition: string;     // CEL boolean (was "expression" in design.md — using "condition" per task spec)
+  readonly condition: string;     // CEL boolean
   readonly errorCode: string;
   readonly errorMessage: string;
 }
 
-/** REQ-64: conditional event emission entry */
+/** Conditional event emission entry */
 export interface EmitWhenEntry {
   readonly when: string;   // CEL boolean
   readonly emit: string;   // event catalog key
@@ -29,21 +29,20 @@ export interface BehaviorRule {
     /** Canonical matcher: the OpenAPI operationId this behavior handles. */
     readonly operationId: string;
     readonly condition: string;
-    /** REQ-61 */
     readonly requires?: readonly RequiresGuard[];
-    /** REQ-84: RBAC scopes required to execute this behavior */
+    /** RBAC scopes required to execute this behavior */
     readonly requiredScopes?: readonly string[];
     /** Optional HTTP method filter (e.g. 'GET', 'POST'). */
     readonly method?: string;
     /** Header matching: each header name → either expected value or "present". AND semantics. */
     readonly headers?: Record<string, string>;
   };
-  /** Primary event to emit (optional when emitWhen is present). REQ-64 mutual exclusion with emitWhen. */
+  /** Primary event to emit (optional when emitWhen is present). Mutually exclusive with emitWhen. */
   readonly emit?: string;
-  /** REQ-64: conditional multi-event emission */
+  /** Conditional multi-event emission */
   readonly emitWhen?: readonly EmitWhenEntry[];
   readonly dispatchCommands?: readonly SecondaryCommandSpec[];
-  /** REQ-62: CEL expression evaluated post-projection; false → abort UoW */
+  /** CEL expression evaluated post-projection; false → abort UoW */
   readonly postcondition?: string;
   /** HATEOAS link name this behavior advertises (e.g. "convert"). */
   readonly linkName?: string;
@@ -58,7 +57,7 @@ export interface SecondaryCommandSpec {
   readonly operationId: string;
   readonly targetId: string;                          // CEL expression resolving to a string
   readonly payload?: Record<string, string>;          // CEL expressions
-  /** REQ-63: optional gate — false means skip this secondary command */
+  /** Optional gate — false means skip this secondary command */
   readonly condition?: string;
 }
 
@@ -66,7 +65,7 @@ export interface ReducerRule {
   readonly on: string;                                // event catalog key
   /** Patch list: { op, path, value }[]. Values are CEL expressions. */
   readonly patches?: readonly ReducerPatchOp[];
-  /** When 'typescript', the reducer logic lives in a registered TS file — no patches expected. */
+  /** When 'typescript', the reducer logic lives in a registered TS file — no patches needed. */
   readonly implementation?: 'typescript';
 }
 
@@ -95,14 +94,14 @@ export interface IdentityKeyConfig {
 
 export interface IdentityConfig {
   readonly creation?: { readonly generate?: string }; // e.g. '$uuidv7()'
-  /** REQ — DSL-driven key extraction (path/query/header/payload + optional CEL). */
+  /** DSL-driven key extraction (path/query/header/payload + optional CEL). */
   readonly key?: IdentityKeyConfig;
 }
 
-/** REQ-66: named TypeScript module declared in a boundary config */
+/** Named TypeScript module declared in a boundary config */
 export interface ScriptDeclaration {
   readonly name: string;
-  readonly code: string;   // TypeScript source (field is "code" in YAML; design uses "source" but task says "code")
+  readonly code: string;   // TypeScript source
 }
 
 /** A HATEOAS link entry: a relation name and its (templated) href. */
@@ -139,13 +138,13 @@ export interface BoundaryConfig {
   readonly reducers: readonly ReducerRule[];
   readonly eventCatalog: readonly EventCatalogEntry[];
   readonly initialization?: readonly JsonObject[];
-  /** REQ-66: optional inline TypeScript scripts */
+  /** Optional inline TypeScript scripts */
   readonly scripts?: readonly ScriptDeclaration[];
   /** Per-boundary deprecation envelope. */
   readonly deprecated?: DeprecationConfig;
-  /** Per-boundary HATEOAS link entries injected into the response `_links` (D1). */
+  /** Per-boundary HATEOAS link entries injected into the response `_links`. */
   readonly hateoas?: readonly HateoasLinkEntry[];
-  /** Per-boundary response field mask: these fields are removed from responses (D3). */
+  /** Per-boundary response field mask: these fields are removed from responses. */
   readonly mask?: readonly string[];
   /** Per-boundary uniform-random response latency. */
   readonly latency?: LatencyConfig;
@@ -155,8 +154,7 @@ export interface BoundaryConfig {
   readonly faults?: readonly FaultRule[];
   /**
    * Declared state schema: computed (formula-derived, recomputed after patches)
-   * and internal (typed) fields. Feeds buildInferredSchema at boot and
-   * recomputeComputedFields at projection time.
+   * and internal (typed) fields.
    */
   readonly state?: DeclaredState;
   /** When false, downgrades the computed-field INCOMPLETE_DEPS check to a WARN. */
@@ -165,7 +163,7 @@ export interface BoundaryConfig {
 
 // ── Tier-2 DSL additions ──────────────────────────────────────────────────────
 
-/** REQ-73: Compensation handler for a saga step — runs in reverse order on failure */
+/** Compensation handler for a saga step — runs in reverse order on failure */
 export interface SagaCompensation {
   readonly intent: Intent;
   /** OpenAPI operationId of the target boundary behavior this compensation invokes. */
@@ -175,7 +173,7 @@ export interface SagaCompensation {
   readonly payload?: Record<string, string>;  // CEL expressions
 }
 
-/** REQ-73: A single step in a saga */
+/** A single step in a saga */
 export interface SagaStep {
   readonly name: string;
   readonly boundary: string;
@@ -188,36 +186,36 @@ export interface SagaStep {
   readonly compensation?: SagaCompensation;
 }
 
-/** REQ-73: Trigger condition for a saga */
+/** Trigger condition for a saga */
 export interface SagaTrigger {
   readonly boundary: string;
   readonly intent: Intent;
   readonly condition: string;  // CEL boolean
 }
 
-/** REQ-73: Saga definition */
+/** Saga definition */
 export interface SagaConfig {
   readonly name: string;
   readonly trigger: SagaTrigger;
   readonly steps: readonly SagaStep[];
 }
 
-/** REQ-81: Top-level idempotency configuration */
+/** Top-level idempotency configuration */
 export interface IdempotencyConfig {
   readonly enabled: boolean;
   readonly ttlSeconds: number;
   readonly hashIncludesBody: boolean;
 }
 
-/** REQ-88: Key expression (CEL) for derived projection — which entity gets updated */
+/** Key expression (CEL) for derived projection — which entity gets updated */
 export interface DerivedProjectionReduceEntry {
   readonly on: string;                            // event type (e.g. "Lead:LeadCreated" or just "LeadCreated")
   readonly assign?: Record<string, string>;        // dot-path → CEL
   readonly append?: Record<string, string>;        // array path → CEL
-  readonly patches?: readonly ReducerPatchOp[];    // new-format patches list
+  readonly patches?: readonly ReducerPatchOp[];
 }
 
-/** REQ-88: Derived projection declaration */
+/** Derived projection declaration */
 export interface DerivedProjectionConfig {
   readonly name: string;
   /** CEL expression that returns the derived entity key from the event context */
@@ -227,7 +225,7 @@ export interface DerivedProjectionConfig {
   readonly reduce: readonly DerivedProjectionReduceEntry[];
 }
 
-// ── Tier-3 DSL additions: header-driven faults, auth modes, hateoas, versioning ──
+// ── Tier-3 DSL additions ──────────────────────────────────────────────────────
 
 /** A canned fault rule response shape — what the engine returns when the rule fires. */
 export interface FaultResponse {
@@ -395,13 +393,10 @@ export interface CompiledDsl {
   readonly boundaries: readonly BoundaryConfig[];
   readonly byContractPath: Record<string, BoundaryConfig>;
   readonly byBoundaryName: Record<string, BoundaryConfig>;
-  /** REQ-68: script registry built at boot time, attached to CompiledDsl */
+  /** Script registry built at boot time */
   readonly scriptRegistry?: ScriptRegistry;
-  /** REQ-73: saga declarations */
   readonly sagas?: readonly SagaConfig[];
-  /** REQ-81: idempotency configuration */
   readonly idempotency?: IdempotencyConfig;
-  /** REQ-88: derived projection declarations */
   readonly derivedProjections?: readonly DerivedProjectionConfig[];
   /** Header-driven fault / chaos rules. */
   readonly faults?: readonly FaultRule[];
@@ -417,5 +412,5 @@ export interface CompiledDsl {
   readonly webhooks?: readonly WebhookConfig[];
 }
 
-// suppress unused import lint warning — JsonValue used by SagaStep indirectly
+// JsonValue is used transitively by SagaStep consumers
 export type { JsonValue };

@@ -162,8 +162,6 @@ export class InfiniteLoopError extends SimError {
   }
 }
 
-// ── Tier-2 errors ─────────────────────────────────────────────────────────────
-
 /**
  * Actor is required for a scoped behavior but was not present in the request (HTTP 401).
  * code: 'AUTH_MISSING'

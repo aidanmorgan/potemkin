@@ -1,5 +1,5 @@
 /**
- * Idempotency Store — REQ-81, REQ-82, REQ-83
+ * Idempotency Store
  *
  * Deduplicates commands within a configurable TTL window using a client-supplied
  * Idempotency-Key header (RFC 7240-style).

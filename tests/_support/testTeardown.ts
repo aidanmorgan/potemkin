@@ -1,6 +1,6 @@
 // Shared per-test teardown registry. Tests (or helpers they call) register a
 // cleanup callback here; setupAfterEnv.ts drains the queue in afterEach. Used
-// to close TypeScript watchers (C6) so a watch handle never outlives a test.
+// to close TypeScript watchers so a watch handle never outlives a test.
 
 type TeardownFn = () => void | Promise<void>;
 

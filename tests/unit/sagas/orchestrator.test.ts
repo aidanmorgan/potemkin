@@ -1,5 +1,5 @@
 /**
- * REQ-73 through REQ-80: Saga orchestrator
+ * Saga orchestrator
  */
 import { findTriggeredSagas, runSaga } from '../../../src/sagas/orchestrator';
 import { createCelEvaluator } from '../../../src/cel/evaluator';
@@ -124,7 +124,7 @@ describe('sagas/orchestrator - findTriggeredSagas', () => {
 });
 
 // ---------------------------------------------------------------------------
-// runSaga — CEL context accumulation (potemkin-u2hb)
+// runSaga — CEL context accumulation
 // ---------------------------------------------------------------------------
 
 function makeRunSagaInput(saga: SagaConfig, cmdOverrides: Partial<Command> = {}) {
@@ -144,7 +144,7 @@ function makeRunSagaInput(saga: SagaConfig, cmdOverrides: Partial<Command> = {})
   };
 }
 
-describe('sagas/orchestrator - runSaga CEL context accumulation (potemkin-u2hb)', () => {
+describe('sagas/orchestrator - runSaga CEL context accumulation', () => {
   beforeEach(() => {
     executeUnitOfWork.mockReset();
   });
@@ -280,10 +280,10 @@ describe('sagas/orchestrator - runSaga CEL context accumulation (potemkin-u2hb)'
 });
 
 // ---------------------------------------------------------------------------
-// buildStepCommand httpMethod mapping (potemkin-v2pu)
+// buildStepCommand httpMethod mapping
 // ---------------------------------------------------------------------------
 
-describe('sagas/orchestrator - runSaga httpMethod mapping (potemkin-v2pu)', () => {
+describe('sagas/orchestrator - runSaga httpMethod mapping', () => {
   beforeEach(() => {
     executeUnitOfWork.mockReset();
     executeUnitOfWork.mockResolvedValue({ status: 200, body: {}, events: [] });
@@ -405,10 +405,10 @@ describe('sagas/orchestrator - runSaga httpMethod mapping (potemkin-v2pu)', () =
 });
 
 // ---------------------------------------------------------------------------
-// potemkin-i1xd: aggregateLocks threading
+// aggregateLocks threading
 // ---------------------------------------------------------------------------
 
-describe('sagas/orchestrator - aggregateLocks forwarded to executeUnitOfWork (potemkin-i1xd)', () => {
+describe('sagas/orchestrator - aggregateLocks forwarded to executeUnitOfWork', () => {
   beforeEach(() => {
     executeUnitOfWork.mockReset();
     executeUnitOfWork.mockResolvedValue({ status: 200, body: {}, events: [] });

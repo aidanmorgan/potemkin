@@ -162,7 +162,7 @@ describe('eventstore/store — completeness probes', () => {
 
   describe('EventStore metrics wiring (by design: UoW responsibility)', () => {
     it(
-      'EventStore.append signature takes only events param — metric emission is UoW responsibility (O-2/S-2 by design)',
+      'EventStore.append signature takes only events param — metric emission is UoW responsibility (by design)',
       () => {
         // eventsAppendedTotal is incremented in uow.ts after a successful commit.
         // The store itself has no metrics wiring by design (separation of concerns).
@@ -323,7 +323,7 @@ describe('stategraph/shadow — completeness probes', () => {
       expect(global.get('id1')).toEqual({ v: 99 });
     });
 
-    it('[CURRENT] after commitInto, shadow.get() causes a re-cache from the target graph', () => {
+    it('after commitInto, shadow.get() causes a re-cache from the target graph', () => {
       const global = createStateGraph();
       const shadow = createShadowGraph(global);
 

@@ -117,9 +117,6 @@ export interface ContractValidatorCacheOptions {
   readonly maxKeyedValidators?: number;
 }
 
-/**
- * Create a ContractValidator backed by the given OpenAPI document and boundary configs.
- */
 export function createContractValidator(
   doc: OpenApiDoc,
   _boundaries: readonly BoundaryConfig[],

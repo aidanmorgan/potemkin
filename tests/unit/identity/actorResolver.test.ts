@@ -9,7 +9,7 @@ function validToken(): string {
   return signJwtHs256({ sub: 'alice', scopes: ['trader', 'admin'] }, SECRET);
 }
 
-describe('resolveActor — auth-mode-aware actor resolution (F1)', () => {
+describe('resolveActor — auth-mode-aware actor resolution', () => {
   describe('simple mode / no auth config — legacy bearer shortcut', () => {
     it('parses the legacy "Bearer <id>:<scopes>" shortcut when mode is simple', () => {
       const actor = resolveActor('Bearer mgr1:manager,admin', { mode: 'simple' });
@@ -23,13 +23,13 @@ describe('resolveActor — auth-mode-aware actor resolution (F1)', () => {
   });
 
   describe('jwt mode', () => {
-    it('returns the actor from a valid signed JWT (F1.1)', () => {
+    it('returns the actor from a valid signed JWT', () => {
       const actor = resolveActor(`Bearer ${validToken()}`, JWT_AUTH);
       expect(actor?.id).toBe('alice');
       expect(actor?.scopes).toEqual(expect.arrayContaining(['trader', 'admin']));
     });
 
-    it('rejects the legacy "Bearer <id>:<scopes>" shortcut with a JwtValidationError (F1.2)', () => {
+    it('rejects the legacy "Bearer <id>:<scopes>" shortcut with a JwtValidationError', () => {
       expect(() => resolveActor('Bearer mgr1:manager', JWT_AUTH)).toThrow(JwtValidationError);
     });
 

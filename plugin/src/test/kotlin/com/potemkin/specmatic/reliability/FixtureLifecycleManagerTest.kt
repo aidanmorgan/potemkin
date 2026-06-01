@@ -135,8 +135,8 @@ class FixtureLifecycleManagerTest {
 
     @Test
     fun `start() initial push goes through the seq+mutex scheme and is ordered before a following clear`() {
-        // potemkin-2ld8: start()'s initial push now participates in the transitionSeq +
-        // transitionMutex scheme (it no longer bypasses it via a synchronous pushFixtures).
+        // start()'s initial push participates in the transitionSeq + transitionMutex
+        // scheme (it no longer bypasses it via a synchronous pushFixtures).
         // The initial push registers exactly once (no double-register), and a DOWN
         // transition dispatched afterwards correctly clears the booted fixtures —
         // proving the boot push and the async clear are serialized through the mutex.
@@ -455,7 +455,7 @@ class FixtureLifecycleManagerTest {
         assertEquals(clearsBefore, bridge.clearCount, "Should not clear when fixture set is unchanged")
     }
 
-    // ---- stale-push guard (potemkin-mp9i) -----------------------------------------------
+    // ---- stale-push guard -----------------------------------------------
 
     /**
      * Simulates Up(seq1) → Down(seq2) where the Up push is slow and the Down clear is fast.

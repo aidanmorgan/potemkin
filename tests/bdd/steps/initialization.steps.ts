@@ -7,7 +7,6 @@ import { compileDsl } from '../../../src/dsl/parser.js';
 import { BootError } from '../../../src/errors.js';
 import { CRM_OPENAPI_YAML } from '../support/world.js';
 
-// REQ-8: Boot compiles all DSL modules
 Then('the compiled DSL should have at least {int} boundaries', function (this: SimWorld, min: number) {
   assert.ok(this.sys, 'System not booted');
   assert.ok(
@@ -26,7 +25,6 @@ Then('each boundary should have behaviors compiled', function (this: SimWorld) {
   }
 });
 
-// REQ-9: DSL mapped to OpenAPI contract paths
 Then('each boundary should reference a valid OpenAPI path', function (this: SimWorld) {
   assert.ok(this.sys, 'System not booted');
   for (const boundary of this.sys.dsl.boundaries) {
@@ -44,7 +42,6 @@ Then('the DSL byContractPath index should be populated', function (this: SimWorl
   assert.ok(contractPaths.length > 0, 'byContractPath should be non-empty');
 });
 
-// REQ-10: Initialization data ingested as baseline domain events
 Then('the event log should contain baseline events after boot', function (this: SimWorld) {
   assert.ok(this.sys, 'System not booted');
   const events = this.getEvents();
@@ -58,7 +55,6 @@ Then('the frozen baseline should be preserved', function (this: SimWorld) {
   assert.ok(Object.isFrozen(this.sys.frozenBaseline), 'frozenBaseline array should be frozen');
 });
 
-// REQ-11: State Graph reflects baseline after boot
 Then('the state graph should be non-empty after boot', function (this: SimWorld) {
   assert.ok(this.sys, 'System not booted');
   assert.ok(this.sys.graph.size() > 0, 'State graph should be non-empty after baseline hydration');
@@ -84,7 +80,6 @@ Then('the seeded opportunity should be in the state graph', function (this: SimW
   assert.ok(opportunity !== null, 'opportunity-seed-001 should exist in state graph');
 });
 
-// Boot error checks (for REQ-23)
 When('I attempt to boot with DSL {string}', async function (this: SimWorld, dslYaml: string) {
   try {
     const openapi = await loadOpenApi(CRM_OPENAPI_YAML);

@@ -37,38 +37,24 @@ import type { DeclaredComputedField, DeclaredInternalField, DeclaredState, Field
 import { createCelEvaluator } from '../cel/evaluator.js';
 import { createLogger } from '../observability/logger.js';
 
-// F-04: Module-level CEL evaluator used to pre-check dispatch_commands payload
-// values for syntactic validity at boot/compile time. This surfaces CEL parse
+// Module-level CEL evaluator used to pre-check dispatch_commands payload
+// values for syntactic validity at boot time. This surfaces CEL parse
 // errors as BOOT_ERR_DSL_SYNTAX rather than deferring them to runtime.
 const celEvaluator = createCelEvaluator();
 
 const dslLogger = createLogger({ name: 'dsl' });
 
 // ---------------------------------------------------------------------------
-// Canonical DSL field names and their legacy aliases
-//
-// Three fields have historically accepted two names.  The canonical names
-// match the TypeScript types in src/dsl/types.ts.  Legacy names are still
-// accepted for backward compatibility but emit a DEBUG log at parse time.
-//
-// | Concept                 | Canonical    | Legacy       |
-// |-------------------------|--------------|--------------|
-// | Inline script body      | code         | source       |
-// | Requires guard CEL      | condition    | expression   |
-// | Behavior postcondition  | string value | {expression} |
-//
-// Rationale:
-//   - scripts[].code : matches the ScriptDeclaration TypeScript type and is
-//     more idiomatic for inline source (cf. <script> content vs script src).
-//   - requires[].condition : matches the RequiresGuard TypeScript type and
-//     mirrors match.condition (consistent naming within the same block).
-//   - postcondition string : simpler, shorter, and consistent with condition
-//     fields throughout the DSL.  Object form {expression:...} is legacy.
+// Legacy field aliases accepted at parse time (canonical → legacy):
+//   scripts[].code  (was: source)
+//   requires[].condition  (was: expression)
+//   postcondition: "<string>"  (was: { expression: "..." })
+// All emit a DEBUG log; prefer the canonical names in new YAML.
 // ---------------------------------------------------------------------------
 
-// REQ-67: sentinel prefix for inline TypeScript references
+// Sentinel prefix for inline TypeScript references
 const TS_SENTINEL = 'ts:';
-// REQ-67: valid script name pattern after the ts: prefix
+// Valid script name pattern after the ts: prefix
 const TS_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 // ---------------------------------------------------------------------------
@@ -133,7 +119,7 @@ function requireStringStringMap(
 
 /**
  * Validate a CEL expression or ts: sentinel for non-reducer phases.
- * ts: sentinels in REDUCER positions are rejected at boot (REQ-71).
+ * ts: sentinels in reducer positions are rejected at boot.
  */
 function validateCelOrScript(
   value: string,
@@ -144,7 +130,7 @@ function validateCelOrScript(
     if (phase === 'reducer') {
       throw new BootError(
         'BOOT_ERR_SCRIPT_IN_REDUCER',
-        `${fieldCtx}: ts: sentinel is not allowed in Reducer-phase fields (REQ-71). Value: "${value}"`,
+        `${fieldCtx}: ts: sentinel is not allowed in reducer-phase fields. Value: "${value}"`,
         { field: fieldCtx, value },
       );
     }
@@ -185,7 +171,7 @@ function validateRequiresGuard(raw: unknown, ctx: string): RequiresGuard {
     );
   }
   const name = requireString(raw, 'name', ctx);
-  // Canonical field: "condition".  Legacy alias: "expression" (deprecated).
+  // Canonical field: "condition".  Legacy alias: "expression".
   // Both are accepted for backward compatibility; prefer "condition".
   const conditionRaw = raw['condition'] ?? raw['expression'];
   if (raw['condition'] === undefined && raw['expression'] !== undefined) {
@@ -250,14 +236,13 @@ function validateSecondaryCommandSpec(raw: unknown, ctx: string): SecondaryComma
   const targetId = requireString(raw, 'target_id', ctx);
   const payload = requireStringStringMap(raw, 'payload', ctx);
 
-  // REQ-63: optional condition for dispatch gating
+  // Optional condition for dispatch gating
   const condition = optionalString(raw, 'condition', ctx);
   if (condition !== undefined) {
     validateCelOrScript(condition, `${ctx}.condition`, 'behavior');
   }
 
-  // F-04: Pre-compile each CEL expression in payload values to catch syntax errors
-  // at boot time rather than deferring them to runtime evaluation.
+  // Pre-compile each CEL expression in payload values to catch syntax errors at boot time.
   if (payload !== undefined) {
     for (const [fieldKey, celExpr] of Object.entries(payload)) {
       // Skip ts: sentinels (they're validated separately)
@@ -299,7 +284,7 @@ function validateBehaviorRule(raw: unknown, index: number): BehaviorRule {
       { field: 'match', context: ctx },
     );
   }
-  // `intent` is removed from behavior match — it is replaced by operationId.
+  // `intent` was removed from behavior match in favour of operationId.
   if (matchRaw['intent'] !== undefined) {
     throw new BootError(
       'BOOT_ERR_REMOVED_SYNTAX',
@@ -318,7 +303,7 @@ function validateBehaviorRule(raw: unknown, index: number): BehaviorRule {
   const condition = requireString(matchRaw, 'condition', `${ctx}.match`);
   validateCelOrScript(condition, `${ctx}.match.condition`, 'behavior');
 
-  // REQ-84: parse required_scopes[] array
+  // Parse required_scopes[] array
   let requiredScopes: readonly string[] | undefined;
   const requiredScopesRaw = matchRaw['required_scopes'];
   if (requiredScopesRaw !== undefined && requiredScopesRaw !== null) {
@@ -341,7 +326,7 @@ function validateBehaviorRule(raw: unknown, index: number): BehaviorRule {
     });
   }
 
-  // REQ-61: parse requires[] array
+  // Parse requires[] array
   let requires: readonly RequiresGuard[] | undefined;
   const requiresRaw = matchRaw['requires'];
   if (requiresRaw !== undefined && requiresRaw !== null) {
@@ -357,11 +342,10 @@ function validateBehaviorRule(raw: unknown, index: number): BehaviorRule {
     );
   }
 
-  // REQ-64: emit (optional) vs emit_when (conditional multi-emit)
+  // emit (optional) vs emit_when (conditional multi-emit); they are mutually exclusive
   const emitRaw = raw['emit'];
   const emitWhenRaw = raw['emit_when'];
 
-  // REQ-64 mutual exclusion: emit and emit_when cannot coexist
   if (emitRaw !== undefined && emitRaw !== null &&
       emitWhenRaw !== undefined && emitWhenRaw !== null) {
     throw new BootError(
@@ -376,7 +360,7 @@ function validateBehaviorRule(raw: unknown, index: number): BehaviorRule {
       (emitWhenRaw === undefined || emitWhenRaw === null)) {
     throw new BootError(
       'BOOT_ERR_DSL_EMIT_REQUIRED',
-      `${ctx}: behavior must have "emit" or "emit_when" (per §7.2/REQ-64)`,
+      `${ctx}: behavior must have "emit" or "emit_when"`,
       { field: 'emit', context: ctx },
     );
   }
@@ -414,10 +398,8 @@ function validateBehaviorRule(raw: unknown, index: number): BehaviorRule {
     );
   }
 
-  // REQ-62: postcondition (optional CEL or ts: expression)
-  // Canonical form: a plain string (e.g. postcondition: "state.balance >= 0").
-  // Legacy form: an object { expression: "..." } — still accepted for backward
-  // compatibility but emits a DEBUG deprecation log.
+  // postcondition: canonical form is a plain string; legacy object { expression: "..." }
+  // is still accepted for backward compatibility.
   const postconditionRaw = raw['postcondition'];
   let postcondition: string | undefined;
   if (postconditionRaw !== undefined && postconditionRaw !== null) {
@@ -527,8 +509,8 @@ function validateReducerRule(raw: unknown, index: number): ReducerRule {
   }
   const on = requireString(raw, 'on', ctx);
 
-  // Reducers express state mutation exclusively via `patches:` — the single
-  // removed-key policy rejects the legacy assign:/append:/assignAll: keys.
+  // Reducers express state mutation exclusively via `patches:`.
+  // Legacy assign:/append:/assignAll: keys are rejected at boot.
   assertNoRemovedReducerKeys(raw, ctx);
 
   const patches = optionalPatchList(raw, ctx);
@@ -569,18 +551,18 @@ function optionalPatchList(raw: Record<string, unknown>, ctx: string): readonly 
     if (typeof path !== 'string') {
       throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.patches[${i}].path: must be a string`, { context: ctx });
     }
-    // REQ-71: reducer-phase values are CEL only — reject ts: script sentinels.
+    // Reducer-phase values are CEL only — reject ts: script sentinels.
     const patchValue = p['value'];
     if (typeof patchValue === 'string' && patchValue.startsWith(TS_SENTINEL)) {
       throw new BootError(
         'BOOT_ERR_SCRIPT_IN_REDUCER',
-        `${ctx}.patches[${i}].value: ts: sentinel is not allowed in Reducer-phase fields (REQ-71). Value: "${patchValue}"`,
+        `${ctx}.patches[${i}].value: ts: sentinel is not allowed in reducer-phase fields. Value: "${patchValue}"`,
         { field: `${ctx}.patches[${i}].value`, value: patchValue },
       );
     }
-    // A4: a CEL context reference (state./event./command./$builtin) must be
+    // A CEL context reference (state./event./command./$builtin) must be
     // wrapped in ${...}. A bare reference is almost certainly an un-interpolated
-    // mistake — reject it with the canonical replacement.
+    // mistake — reject it with a clear message.
     if (typeof patchValue === 'string') {
       const bare = firstBareCelReference(patchValue);
       if (bare !== null) {
@@ -591,8 +573,8 @@ function optionalPatchList(raw: Record<string, unknown>, ctx: string): readonly 
         );
       }
     }
-    // Guard numeric value: Infinity/NaN would round-trip through JSON.stringify to null,
-    // silently corrupting the field on every subsequent read.
+    // Guard: Infinity/NaN would round-trip through JSON.stringify to null,
+    // silently corrupting the field.
     if (typeof patchValue === 'number' && !Number.isFinite(patchValue)) {
       throw new BootError(
         'BOOT_ERR_DSL_SYNTAX',
@@ -600,8 +582,7 @@ function optionalPatchList(raw: Record<string, unknown>, ctx: string): readonly 
         { field: `${ctx}.patches[${i}].value`, path },
       );
     }
-    // Guard increment `by`: Infinity/NaN writes non-finite directly into state,
-    // which JSON.stringify converts to null and corrupts the field.
+    // Same guard for increment `by`: non-finite becomes null via JSON.stringify.
     const patchBy = p['by'];
     if (typeof patchBy === 'number' && !Number.isFinite(patchBy)) {
       throw new BootError(
@@ -630,12 +611,10 @@ function validateEventCatalogEntry(raw: unknown, index: number): EventCatalogEnt
   const type = requireString(raw, 'type', ctx);
   const payloadTemplate = requireStringStringMap(raw, 'payload_template', ctx) ?? {};
 
-  // Validate payload template values as CEL or ts: references
   for (const [field, expr] of Object.entries(payloadTemplate)) {
     validateCelOrScript(expr, `${ctx}.payload_template.${field}`, 'eventHydration');
   }
 
-  // REQ-65: optional schema_ref
   const schemaRef = optionalString(raw, 'schema_ref', ctx);
 
   return {
@@ -695,7 +674,7 @@ function validateScriptDeclaration(raw: unknown, index: number, boundaryCtx: str
   }
   const name = requireString(raw, 'name', ctx);
 
-  // Canonical field: "code".  Legacy alias: "source" (deprecated).
+  // Canonical field: "code".  Legacy alias: "source".
   // Both are accepted for backward compatibility; prefer "code".
   const codeRaw = raw['code'] ?? raw['source'];
   if (raw['code'] === undefined && raw['source'] !== undefined) {
@@ -843,13 +822,6 @@ function crossValidate(config: {
 // ---------------------------------------------------------------------------
 
 /**
- * Validate a raw (unknown) object against the BoundaryConfig schema.
- * Converts snake_case YAML keys to camelCase TypeScript fields.
- * @throws {BootError} with code `BOOT_ERR_DSL_SYNTAX` if the shape is invalid.
- * @throws {BootError} with code `BOOT_ERR_DSL_REFERENCE` if cross-references are broken.
- * @throws {BootError} with code `BOOT_ERR_SCRIPT_IN_REDUCER` if ts: in reducer phase.
- */
-/**
  * Every valid top-level key in a boundary DSL module — used for fail-fast
  * rejection of typos, symmetric with KNOWN_GLOBAL_KEYS for the global config.
  */
@@ -858,7 +830,7 @@ const KNOWN_BOUNDARY_KEYS: ReadonlySet<string> = new Set([
   'behaviors', 'reducers', 'event_catalog', 'initialization', 'scripts',
   'deprecated', 'hateoas', 'mask', 'state', 'strict_schema', 'latency',
   'audit_fields', 'fault_rules',
-  // Spec-endpoint cross-check keys consumed by configLoader (camelCase + snake).
+  // Spec-endpoint cross-check keys consumed by configLoader (camelCase + snake_case).
   'specId', 'spec_id', 'outOfContract', 'out_of_contract', 'method', 'methods',
 ]);
 
@@ -871,9 +843,8 @@ export function validateBoundaryConfig(raw: unknown): BoundaryConfig {
     );
   }
 
-  // Fail-fast on unknown top-level keys so a boundary-DSL typo (e.g.
-  // `reducerss:`) is rejected at boot rather than silently dropped — symmetric
-  // with validateGlobalConfig's unknown-key guard.
+  // Fail-fast on unknown top-level keys so typos (e.g. `reducerss:`) are
+  // rejected at boot rather than silently dropped.
   for (const key of Object.keys(raw)) {
     if (!KNOWN_BOUNDARY_KEYS.has(key)) {
       throw new BootError(
@@ -909,7 +880,6 @@ export function validateBoundaryConfig(raw: unknown): BoundaryConfig {
 
   const queryMapping = requireStringStringMap(raw, 'query_mapping', 'root');
 
-  // Arrays — default to empty
   const behaviorsRaw = raw['behaviors'];
   let behaviors: readonly BehaviorRule[] = [];
   if (behaviorsRaw !== undefined && behaviorsRaw !== null) {
@@ -954,7 +924,6 @@ export function validateBoundaryConfig(raw: unknown): BoundaryConfig {
     initialization = validateInitialization(raw['initialization'], 'root');
   }
 
-  // REQ-66: parse scripts[] block
   let scripts: readonly ScriptDeclaration[] | undefined;
   const scriptsRaw = raw['scripts'];
   if (scriptsRaw !== undefined && scriptsRaw !== null) {
@@ -968,19 +937,11 @@ export function validateBoundaryConfig(raw: unknown): BoundaryConfig {
     scripts = scriptsRaw.map((item, i) => validateScriptDeclaration(item, i, boundary));
   }
 
-  // D2: optional per-boundary deprecation envelope.
   const deprecated = validateDeprecationConfig(raw['deprecated'], 'root');
-
-  // D1: optional per-boundary HATEOAS link entries.
   const hateoas = validateHateoasEntries(raw['hateoas'], 'root');
-
-  // D3: optional per-boundary response field mask.
   const mask = validateMaskFields(raw['mask'], 'root');
-
-  // C4: optional declared state schema (computed + internal fields).
   const state = validateDeclaredState(raw['state'], 'root');
 
-  // C5: opt-out of the strict computed-field dependency check.
   let strictSchema: boolean | undefined;
   if (raw['strict_schema'] !== undefined || raw['strictSchema'] !== undefined) {
     const v = raw['strict_schema'] ?? raw['strictSchema'];
@@ -990,7 +951,6 @@ export function validateBoundaryConfig(raw: unknown): BoundaryConfig {
     strictSchema = v;
   }
 
-  // When true, projection auto-stamps updatedAt/updatedBy on each non-baseline event.
   let auditFields: boolean | undefined;
   const auditFieldsRaw = raw['audit_fields'];
   if (auditFieldsRaw !== undefined && auditFieldsRaw !== null) {
@@ -1004,7 +964,6 @@ export function validateBoundaryConfig(raw: unknown): BoundaryConfig {
     auditFields = auditFieldsRaw;
   }
 
-  // Boundary-scoped fault rules — reuse the same parser as global fault_rules.
   let faults: readonly FaultRule[] | undefined;
   const faultRulesRaw = raw['fault_rules'];
   if (faultRulesRaw !== undefined && faultRulesRaw !== null) {
@@ -1018,7 +977,6 @@ export function validateBoundaryConfig(raw: unknown): BoundaryConfig {
     faults = faultRulesRaw.map((item, i) => validateFaultRule(item, i));
   }
 
-  // Cross-reference validation
   crossValidate({ behaviors, reducers, eventCatalog, boundary, scripts });
 
   return {
@@ -1043,11 +1001,10 @@ export function validateBoundaryConfig(raw: unknown): BoundaryConfig {
 }
 
 /**
- * C4: parse an optional `state:` block of declared computed and internal
- * fields. computed entries are { name, formula, depends_on } — the formula is
- * a CEL expression (compiled at parse time so syntax errors fail fast).
- * internal entries are { name, type } where type names a scalar/array/object
- * field kind. Both feed buildInferredSchema at boot.
+ * Parse an optional `state:` block of declared computed and internal fields.
+ * computed entries are { name, formula, depends_on } — the formula is a CEL
+ * expression compiled at parse time. internal entries are { name, type }
+ * where type names a scalar/array/object field kind.
  */
 function validateDeclaredState(
   raw: unknown,
@@ -1136,7 +1093,7 @@ function fieldTypeFromName(
   return { kind: typeName as FieldKind, confidence: 'known' };
 }
 
-/** D2: parse an optional `deprecated:` envelope { date?, sunset?, replacement? }. */
+/** Parse an optional `deprecated:` envelope { date?, sunset?, replacement? }. */
 function validateDeprecationConfig(raw: unknown, ctx: string): DeprecationConfig | undefined {
   if (raw === undefined || raw === null) return undefined;
   if (!isRecord(raw)) {
@@ -1152,7 +1109,7 @@ function validateDeprecationConfig(raw: unknown, ctx: string): DeprecationConfig
   };
 }
 
-/** D1: parse an optional `hateoas:` list of { rel, href } entries. */
+/** Parse an optional `hateoas:` list of { rel, href } entries. */
 function validateHateoasEntries(raw: unknown, ctx: string): readonly HateoasLinkEntry[] | undefined {
   if (raw === undefined || raw === null) return undefined;
   if (!Array.isArray(raw)) {
@@ -1168,7 +1125,7 @@ function validateHateoasEntries(raw: unknown, ctx: string): readonly HateoasLink
   });
 }
 
-/** D3: parse an optional `mask:` list of field names (RFC 6901 pointers or bare names). */
+/** Parse an optional `mask:` list of field names (RFC 6901 pointers or bare names). */
 function validateMaskFields(raw: unknown, ctx: string): readonly string[] | undefined {
   if (raw === undefined || raw === null) return undefined;
   if (!Array.isArray(raw)) {
@@ -1183,7 +1140,7 @@ function validateMaskFields(raw: unknown, ctx: string): readonly string[] | unde
 }
 
 // ---------------------------------------------------------------------------
-// Tier-2: Global config validation (sagas, idempotency, derived_projections)
+// Global config validation (sagas, idempotency, derived_projections)
 // ---------------------------------------------------------------------------
 
 function validateSagaCompensation(raw: unknown, ctx: string): SagaCompensation {
@@ -1342,8 +1299,8 @@ export interface GlobalConfig {
 
 /**
  * Top-level keys that validateGlobalConfig knows how to parse. Any other
- * top-level key in a global module is a BOOT_ERR — global config is fail-fast so
- * a misspelled or unsupported block is never silently dropped.
+ * top-level key is a BOOT_ERR so misspelled or unsupported blocks are never
+ * silently dropped.
  */
 const KNOWN_GLOBAL_KEYS: ReadonlySet<string> = new Set([
   'sagas',
@@ -1482,8 +1439,8 @@ function validateFaultRule(raw: unknown, i: number): FaultRule {
   const headers = requireStringStringMap(matchRaw, 'headers', `${ctx}.match`);
   const potemkin = requireStringStringMap(matchRaw, 'potemkin', `${ctx}.match`);
 
-  // Expand the `potemkin:` convenience aliases (e.g. rate_limit) into concrete
-  // X-Potemkin-* header matchers so the evaluator's header-match path fires.
+  // Expand `potemkin:` convenience aliases (e.g. rate_limit) into concrete
+  // X-Potemkin-* header matchers.
   const expandedHeaders: Record<string, string> = { ...(headers ?? {}) };
   if (potemkin) {
     for (const [alias, value] of Object.entries(potemkin)) {
@@ -1503,7 +1460,7 @@ function validateFaultRule(raw: unknown, i: number): FaultRule {
     throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.response.status must be a number`, { context: ctx });
   }
   const responseHeaders = requireStringStringMap(responseRaw, 'headers', `${ctx}.response`);
-  // delay_ms may sit under response (fixture style) or at the top level (type style).
+  // delay_ms may sit under `response:` or at the top level.
   const delayMs = typeof responseRaw['delay_ms'] === 'number'
     ? responseRaw['delay_ms']
     : (typeof raw['delay_ms'] === 'number' ? raw['delay_ms'] : undefined);
@@ -1573,12 +1530,8 @@ function validateWebhookConfig(raw: unknown, i: number): WebhookConfig {
 }
 
 /**
- * Validate a raw global config object (top-level global fields).
- * This is parsed from an optional globalYaml string in compileDsl.
- *
- * Fail-fast: every top-level key MUST be one the engine knows how to handle.
- * An unknown/unsupported key is a BOOT_ERR so a misspelled or new block is never
- * silently dropped.
+ * Validate a raw global config object parsed from an optional globalYaml string
+ * in compileDsl. Unknown top-level keys are a BOOT_ERR.
  */
 export function validateGlobalConfig(raw: unknown): GlobalConfig {
   if (!isRecord(raw)) {

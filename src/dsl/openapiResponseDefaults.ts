@@ -2,8 +2,7 @@ import type { HateoasEntry, DeprecationConfig } from './responseDslCompiler.js';
 import { parsePointer } from './patches.js';
 
 // Extracts HATEOAS and deprecation defaults from an OpenAPI operation.
-// Used when a boundary does not supply a `hateoas:` or `deprecation:` block;
-// the response interceptor composes per-boundary overrides on top.
+// Used when a boundary does not supply a `hateoas:` or `deprecation:` block.
 
 export interface OpenApiOperation {
   readonly deprecated?: boolean;
@@ -50,17 +49,14 @@ function resolveLinkHref(link: OpenApiLinkObject, lookup: OperationLookup): stri
     return applyLinkParameters(path, link.parameters);
   }
   if (link.operationRef) {
-    // `#/paths/<escaped-path>/<method>` — the path segment is the URL template.
-    // External refs (`<uri>#/paths/...`) cannot be resolved here; returning the
-    // raw JSON Pointer as an href would surface an internal pointer to clients,
-    // so we return null rather than a non-URL string.
+    // External refs cannot be resolved here; we return null rather than
+    // surfacing an internal JSON Pointer to clients.
     return extractPathFromOperationRef(link.operationRef);
   }
   return null;
 }
 
 // Extract the URL path from an internal `#/paths/<path>/<method>` operationRef.
-// Returns null for external refs or malformed pointers.
 function extractPathFromOperationRef(operationRef: string): string | null {
   if (!operationRef.startsWith('#/paths/')) return null;
   const segs = parsePointer(operationRef.slice(1));
@@ -81,7 +77,7 @@ function applyLinkParameters(
   return out;
 }
 
-// OpenAPI only carries the deprecation flag; Sunset/Link emission is per-boundary.
+// OpenAPI only carries the deprecation flag; Sunset/Link headers are per-boundary.
 
 export function extractDefaultDeprecation(
   op: OpenApiOperation | undefined,

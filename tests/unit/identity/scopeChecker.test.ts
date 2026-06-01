@@ -1,5 +1,5 @@
 /**
- * REQ-85/86: Scope checking — AuthenticationRequiredError and AuthorizationDeniedError
+ * Scope checking — AuthenticationRequiredError and AuthorizationDeniedError
  */
 import { checkScopes } from '../../../src/identity/scopeChecker';
 import { AuthenticationRequiredError, AuthorizationDeniedError } from '../../../src/errors';

@@ -1,12 +1,7 @@
 import * as esbuild from 'esbuild';
 import { BootError } from '../errors.js';
 
-/**
- * Transpile TypeScript source to CommonJS JavaScript using esbuild.
- * This is transpile-only — no type checking is performed.
- *
- * @throws {BootError} BOOT_ERR_SCRIPT_SYNTAX on transpile failure.
- */
+/** Transpile-only (no type checking) — throws BOOT_ERR_SCRIPT_SYNTAX on failure. */
 export function transpileScript(scriptName: string, boundary: string, code: string): string {
   try {
     const result = esbuild.transformSync(code, {

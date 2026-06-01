@@ -1,5 +1,5 @@
 /**
- * REQ-81/82/83: Idempotency integration test
+ * Idempotency integration test
  *
  * Validates that:
  * - Second request with same Idempotency-Key returns cached response + X-Idempotency-Replay: true

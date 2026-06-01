@@ -1,5 +1,5 @@
 /**
- * REQ-84/85/86: RBAC scopes integration test
+ * RBAC scopes integration test
  *
  * Validates that behaviors with required_scopes:
  *  - Allow requests with sufficient scopes

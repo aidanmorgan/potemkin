@@ -1,6 +1,5 @@
 /**
- * Tests for the makeInstallProducer global-config preservation fix in
- * src/http/engineDslRoutes.ts (potemkin-dcgb).
+ * Tests for global-config preservation in src/http/engineDslRoutes.ts.
  *
  * Problem: POST /_engine/dsl (boundary-only push) replaces sys.dsl with a
  * freshly compiled CompiledDsl that has NO globalYaml, so sagas / auth /

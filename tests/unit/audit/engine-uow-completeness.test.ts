@@ -320,10 +320,9 @@ it('CONTRACT: command at depth equal to maxDepth IS rejected (depth > maxDepth m
   expect(sys.graph.get(id)).not.toBeNull();
 });
 
-it('FIX I3: depth === maxDepth now throws (>= check) — off-by-one boundary is fixed', async () => {
-  // uow.ts I3 fix: changed `>` to `>=`. Now depth=maxDepth (5) throws InfiniteLoopError.
+it('depth === maxDepth throws (>= check) — off-by-one boundary is correctly handled', async () => {
+  // The `>` check was changed to `>=` so depth=maxDepth (5) throws InfiniteLoopError.
   // A command at depth=maxDepth is rejected; depth=maxDepth-1 is the last allowed slot.
-  // We test this by running a command at depth=MAX_UOW_DEPTH (5) directly.
   await expect(
     executeUnitOfWork({
       command: {

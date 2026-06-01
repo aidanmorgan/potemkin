@@ -55,7 +55,6 @@ When(
           scanDir(fullPath);
         } else if (entry.name.endsWith('.feature')) {
           const text = fs.readFileSync(fullPath, 'utf8');
-          // Find all REQ-N patterns in scenario titles
           const reqRe = /REQ-(\d+)/g;
           let m: RegExpExecArray | null;
           while ((m = reqRe.exec(text)) !== null) {

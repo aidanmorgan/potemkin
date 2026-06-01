@@ -32,7 +32,7 @@ function project(reducers: readonly ReducerRule[]) {
   return projectEvent({ graph, boundary, event, cel, logger: log });
 }
 
-describe('projection — reducer patch journal (AC-A1.4)', () => {
+describe('projection — reducer patch journal', () => {
   it('returns one journal entry per applied patch', () => {
     const { journal } = project([
       {

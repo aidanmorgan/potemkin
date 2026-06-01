@@ -146,7 +146,7 @@ describe('createRoutesHandler — GET /_engine/routes', () => {
     expect(res.headers['cache-control']).toBe('max-age=30, public');
   });
 
-  it('includes ETag header wrapped in double-quotes (potemkin-2x2c)', async () => {
+  it('includes ETag header wrapped in double-quotes', async () => {
     const res = await agent.get('/_engine/routes').expect(200);
     const { checksum } = res.body as RoutesDiscoveryResponse;
     expect(res.headers['etag']).toBe(`"${checksum}"`);
@@ -154,7 +154,7 @@ describe('createRoutesHandler — GET /_engine/routes', () => {
 
   // ── Conditional requests (If-None-Match) ──────────────────────────────────
 
-  it('responds 304 when If-None-Match is the quoted ETag echoed from a prior 200 (potemkin-2x2c)', async () => {
+  it('responds 304 when If-None-Match is the quoted ETag echoed from a prior 200', async () => {
     const first = await agent.get('/_engine/routes').expect(200);
     const etag = first.headers['etag'] as string; // e.g. '"<hex>"'
 

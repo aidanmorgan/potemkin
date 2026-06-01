@@ -47,10 +47,6 @@ async function postJson(url: string, payload: unknown, timeoutMs: number): Promi
   }
 }
 
-/**
- * Create a `PluginControlClient` that POSTs lifecycle notifications to the
- * configured plugin control server URL.
- */
 export function createPluginControlClient(
   config: PluginControlConfig & { readonly logger?: Logger },
 ): PluginControlClient {

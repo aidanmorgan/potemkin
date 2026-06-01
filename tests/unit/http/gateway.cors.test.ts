@@ -1,5 +1,5 @@
 /**
- * CORS credentialed-request tests (potemkin-yq1l)
+ * CORS credentialed-request tests
  *
  * Verifies:
  *  1. Non-credentialed requests get '*' (default behaviour, unbroken).
@@ -59,7 +59,7 @@ behaviors: []
 reducers: []
 `;
 
-describe('gateway — CORS credentialed requests (potemkin-yq1l)', () => {
+describe('gateway — CORS credentialed requests', () => {
   let sys: BootedSystem;
   let agent: PersistentAgent;
   let persistent: PersistentServer;
@@ -211,7 +211,7 @@ describe('gateway — CORS credentialed requests (potemkin-yq1l)', () => {
     expect(res.headers['access-control-allow-credentials']).toBeUndefined();
   });
 
-  // ── Access-Control-Allow-Headers includes browser-sent custom headers (potemkin-svq2) ──
+  // ── Access-Control-Allow-Headers includes browser-sent custom headers ────────
 
   it('OPTIONS preflight includes Authorization in Access-Control-Allow-Headers', async () => {
     const res = await agent

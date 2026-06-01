@@ -1,8 +1,6 @@
 /**
  * Inline CRM fixture that provides a minimal equivalent of the canonical
  * `tests/fixtures/index.ts` for integration and acceptance tests.
- *
- * Migrated from the banking inline fixture to the CRM domain (Nuisance Bureau).
  * Delegates to `loadFixture` from the canonical fixtures index.
  *
  * Seeded CRM IDs (from tests/fixtures/crm/dsl/):

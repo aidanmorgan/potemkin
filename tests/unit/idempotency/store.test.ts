@@ -1,5 +1,5 @@
 /**
- * REQ-81/82/83: Idempotency store
+ * Idempotency store
  */
 import { createIdempotencyStore } from '../../../src/idempotency/store';
 import { IdempotencyConflictError } from '../../../src/errors';

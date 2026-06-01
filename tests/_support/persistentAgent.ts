@@ -10,8 +10,6 @@
 // drives it through a supertest agent pinned to a shared keep-alive http.Agent,
 // so connections are pooled across calls rather than spinning up a new server
 // per request. The returned close() tears the server + agent down in afterAll.
-//
-// Modelled on tests/integration/parallel-requests.integration.test.ts.
 
 import http from 'node:http';
 import request from 'supertest';

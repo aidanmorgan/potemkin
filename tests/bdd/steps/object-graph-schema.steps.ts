@@ -118,7 +118,6 @@ initialization:
     count: 42
 `;
 
-// REQ-44: Object-Graph Schema Registry derived from OpenAPI at boot
 Then('the schema registry should contain an entry for each boundary', function (this: SimWorld) {
   assert.ok(this.sys, 'System not booted');
   const registry = this.sys.schemaRegistry;
@@ -150,7 +149,6 @@ Then('the Opportunity schema should have the expected properties', function (thi
   assert.ok(oppSchemas.entity, 'Schema should have entity definition');
 });
 
-// REQ-45: Static DSL validation at boot — unknown paths halt with BOOT_ERR_DSL_SCHEMA_VIOLATION
 When('I attempt to boot with a DSL referencing an unknown state path', async function (this: SimWorld) {
   // Use a strict schema (additionalProperties: false) so unknown paths are detectable
   const badDslYaml = `
@@ -226,8 +224,6 @@ reducers:
     this.ctx['bootError'] = err;
   }
 });
-
-// REQ-46: Runtime type-check of assignments — mismatch aborts UoW with SCHEMA_TYPE_MISMATCH
 
 // Boot a separate system with a strict-schema (additionalProperties:false) Widget boundary
 // that has an integer field. Assigning a string to `count` will trigger SCHEMA_TYPE_MISMATCH.

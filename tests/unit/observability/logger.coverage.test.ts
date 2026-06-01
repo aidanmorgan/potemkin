@@ -126,9 +126,9 @@ describe('observability/logger.ts — lines 19 and 39 coverage', () => {
   });
 });
 
-// ── potemkin-3vsq: logger instanceId fallback is a valid UUID ─────────────────
+// ── logger instanceId fallback is a valid UUID ────────────────────────────────
 
-describe('potemkin-3vsq: logger instanceId fallback uses crypto.randomUUID()', () => {
+describe('logger instanceId fallback uses crypto.randomUUID()', () => {
   afterEach(() => {
     jest.resetModules();
     jest.restoreAllMocks();

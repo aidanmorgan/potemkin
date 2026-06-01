@@ -8,7 +8,7 @@ import kotlin.test.assertTrue
 /**
  * Parity tests for [PatchApplier] against the TS `applyPatches` fixtures in
  * `tests/unit/dsl/patches.test.ts`. Each test mirrors a TS case: same input
- * state, same patch list, same expected output (E1.4).
+ * state, same patch list, same expected output.
  */
 class PatchApplierTest {
 

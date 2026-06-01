@@ -3,7 +3,7 @@ import assert from 'assert';
 import type { SimWorld } from '../support/world.js';
 
 // ---------------------------------------------------------------------------
-// REQ-34: Strict fallback test fixture — a boundary with fallback_override:true and
+// Strict fallback test fixture — a boundary with fallback_override:true and
 // NO mutation behaviors. Any mutation must be handled via System.GenericUpdateEvent.
 // ---------------------------------------------------------------------------
 
@@ -58,7 +58,6 @@ initialization:
     label: "original-label"
 `;
 
-// REQ-33: Read fallback returns entity from state graph when no rule matches
 When('I GET an entity with no specific query rule and fallback enabled', async function (this: SimWorld) {
   // Lead boundary has fallback_override: true
   // GET /leads/lead-seed-001 — Lead DSL has no 'query' behavior rule
@@ -73,8 +72,6 @@ Then('the response should return the entity from the state graph', function (thi
   const body = this.lastResponse.body as Record<string, unknown>;
   assert.ok(body['id'] || body['companyName'], 'Response body should contain entity data');
 });
-
-// REQ-34: Strict fallback test — uses a dedicated boundary with no mutation behaviors.
 
 Given('a boundary with fallback_override true and no mutation behaviors is booted', async function (this: SimWorld) {
   await this.bootWithCustomDsl(FALLBACK_ONLY_OPENAPI_YAML, [

@@ -17,9 +17,8 @@ export interface BuiltinContext {
 
 // ── Seeded PRNG (Mulberry32) — one instance per CelEvaluator ──────────────────
 //
-// The seed and RNG state live inside a FakeRng instance (created in
-// createCelEvaluator), NOT in module-level variables. This keeps concurrent
-// evaluators isolated: seeding one does not perturb another's stream.
+// The seed and RNG state live inside a FakeRng instance, not in module-level
+// variables, so concurrent evaluators are isolated.
 
 /** Per-instance seeded PRNG for the $fake* builtins. */
 export interface FakeRng {
@@ -104,7 +103,7 @@ const FAKE_DATA: Record<string, Record<string, (rng: FakeRng) => string>> = {
 };
 
 function fakeUuid(rng: FakeRng): string {
-  // Random UUIDv4 — deterministic when the rng is seeded.
+  // UUIDv4 — deterministic when the rng is seeded.
   const hex = (n: number): string => {
     let s = '';
     for (let i = 0; i < n; i++) s += Math.floor(rng.next() * 16).toString(16);
@@ -113,7 +112,7 @@ function fakeUuid(rng: FakeRng): string {
   return `${hex(8)}-${hex(4)}-4${hex(3)}-${pick(rng, ['8', '9', 'a', 'b'])}${hex(3)}-${hex(12)}`;
 }
 
-// ── $fake* implementations (take a per-instance FakeRng) ──────────────────────
+// ── $fake* implementations ────────────────────────────────────────────────────
 
 function fake(rng: FakeRng, ...args: unknown[]): unknown {
   const [spec] = args;
@@ -142,9 +141,7 @@ function fakeSeed(rng: FakeRng, ...args: unknown[]): unknown {
   return n;
 }
 
-// Bounded window for the deterministic faker dates: 2000-01-01 to 2050-01-01.
-// A seeded rng draw maps to an epoch-ms offset inside this window so the output
-// is a plausible ISO date AND fully determined by the seed.
+// Bounded window for deterministic faker dates: 2000-01-01 to 2050-01-01.
 const FAKE_DATE_EPOCH_START = Date.UTC(2000, 0, 1);
 const FAKE_DATE_EPOCH_END = Date.UTC(2050, 0, 1);
 
@@ -241,28 +238,22 @@ function parseDuration(s: string): number {
 // Builtin implementations
 // ---------------------------------------------------------------------------
 
-// The clock offset and faker seed/RNG are per-CelEvaluator-instance state (see
-// createCelEvaluator), NOT module globals, so concurrent systems/requests stay
-// isolated. The $now builtin receives the offset-aware clock via
-// BuiltinContext.now; the $fake* builtins receive the per-instance FakeRng via
-// BuiltinContext.fake.
-
 /**
  * Registry of built-in CEL functions available to expression evaluators.
- * Keys: `$uuidv7`, `$now`, `$concat`, plus extended set.
+ * $now and $fake* receive per-instance state via BuiltinContext; all others
+ * are stateless.
  */
 export const BUILTINS: Record<string, (...args: unknown[]) => unknown> = {
-  // ── Original builtins ──────────────────────────────────────────────────
   $uuidv7: (..._args: unknown[]): unknown => nextUuidv7(),
 
-  // Offset-aware time is supplied via BuiltinContext.now (callBuiltin routes $now
-  // through it); this bare fallback is real time when no context clock is given.
+  // Fallback: real time. callBuiltin routes $now through BuiltinContext.now
+  // (offset-aware clock) when a context is provided.
   $now: (..._args: unknown[]): unknown => new Date().toISOString(),
 
   $concat: (...args: unknown[]): unknown =>
     args.map(a => (a === null || a === undefined ? '' : String(a))).join(''),
 
-  // ── Type conversions ────────────────────────────────────────────────────
+  // ── Type conversions ──────────────────────────────────────────────────────
   int: (...args: unknown[]): unknown => {
     const [x] = args;
     if (typeof x === 'number') return Math.trunc(x);
@@ -381,8 +372,7 @@ export const BUILTINS: Record<string, (...args: unknown[]) => unknown> = {
     throw new Error(`CEL_TYPE_ERROR: size() requires string, list, or map`);
   },
 
-  // length() — alias of size() for strings/lists/maps. Mirrors the type
-  // inference in schemaInference (RE_LENGTH_SIZE) and lets computed-field
+  // length() — alias of size() for strings/lists/maps. Lets computed-field
   // formulas read naturally (e.g. length(lineItems)).
   length: (...args: unknown[]): unknown => {
     const [x] = args;
@@ -392,9 +382,8 @@ export const BUILTINS: Record<string, (...args: unknown[]) => unknown> = {
     throw new Error(`CEL_TYPE_ERROR: length() requires string, list, or map`);
   },
 
-  // sum() — total of a numeric list. Accepts either sum(list) or a spread of
-  // numbers. null/undefined elements are treated as 0 so an empty or
-  // partially-populated array sums cleanly.
+  // sum() — total of a numeric list (sum(list) or spread). null/undefined
+  // elements are treated as 0.
   sum: (...args: unknown[]): unknown => {
     let flat: unknown[];
     if (args.length === 1 && Array.isArray(args[0])) flat = args[0];
@@ -480,7 +469,6 @@ export const BUILTINS: Record<string, (...args: unknown[]) => unknown> = {
   timestamp: (...args: unknown[]): unknown => {
     const [s] = args;
     if (typeof s !== 'string') throw new Error(`CEL_TYPE_ERROR: timestamp() requires a string`);
-    // Validate it's a parseable date
     const d = new Date(s);
     if (isNaN(d.getTime())) throw new Error(`CEL_RUNTIME_ERROR: timestamp() invalid date: ${JSON.stringify(s)}`);
     return d.toISOString();
@@ -496,11 +484,9 @@ export const BUILTINS: Record<string, (...args: unknown[]) => unknown> = {
 };
 
 // ── Faker builtin names ───────────────────────────────────────────────────────
-// The $fake* builtins are NOT entries in BUILTINS because they require a
-// per-instance FakeRng (supplied via BuiltinContext.fake). callBuiltin routes
-// them to the rng-aware implementations below. Listing the names here lets
-// callBuiltin recognise them (and the Reducer phase ban) without a module-level
-// RNG global.
+// $fake* are not entries in BUILTINS because they require a per-instance FakeRng
+// (supplied via BuiltinContext.fake). Listing the names here lets callBuiltin
+// recognise them and enforce the reducer-phase ban.
 const FAKE_BUILTINS = new Set(['$fake', '$fakeSeed', '$fakeFromFormat']);
 
 /** Functions banned in the Reducer phase (non-deterministic side-effects). */
@@ -509,13 +495,12 @@ const REDUCER_BANNED = new Set(['$uuidv7', '$now', 'now', 'timestamp', '$fake', 
 // Export deepEqual for use in evaluator
 export { deepEqual, naturalCompare };
 
-// A shared unseeded RNG for the fallback path when no BuiltinContext.fake is
-// supplied (e.g. direct callBuiltin without an evaluator). It is never seeded,
-// so it carries no cross-request determinism state — every call is Math.random().
+// Shared unseeded RNG for the fallback path when no BuiltinContext.fake is
+// supplied. Never seeded — every call is Math.random().
 const UNSEEDED_FAKE_RNG: FakeRng = {
   next: () => Math.random(),
-  /* istanbul ignore next — the unseeded fallback never seeds; seeding flows through a per-instance rng */
-  seedNumber: () => { /* no-op: fallback rng is intentionally never seeded */ },
+  /* istanbul ignore next — unseeded fallback is never seeded; seeding flows through a per-instance rng */
+  seedNumber: () => { /* no-op */ },
   /* istanbul ignore next */
   seedString: () => { /* no-op */ },
 };
@@ -540,7 +525,7 @@ export function callBuiltin(
     );
   }
 
-  // Dispatch with context-provided overrides for $uuidv7, $now, and $fake*.
+  // Dispatch with context-provided overrides for clock/RNG-sensitive builtins.
   switch (name) {
     case '$uuidv7':
       return ctx.uuid ? ctx.uuid() : nextUuidv7();

@@ -1,9 +1,9 @@
 /**
- * Unit tests for engine/timeTravel.ts (potemkin-5d39)
+ * Unit tests for engine/timeTravel.ts
  *
  * Verifies that rebuildEntityAtVersion produces identical state to the live
  * projectEvent path, including for boundaries with:
- *   - a TypeScript reducer (C3)
+ *   - a TypeScript reducer
  *   - auditFields:true
  *   - YAML reducer patches (regression baseline)
  */
@@ -84,9 +84,9 @@ describe('rebuildEntityAtVersion — YAML reducer', () => {
   });
 });
 
-// ── TypeScript reducer (C3) — potemkin-5d39 core ─────────────────────────────
+// ── TypeScript reducer ────────────────────────────────────────────────────────
 
-describe('rebuildEntityAtVersion — TS reducer (potemkin-5d39)', () => {
+describe('rebuildEntityAtVersion — TS reducer', () => {
   it('replays to the same state the live projection produces when a TS reducer is registered', () => {
     const boundary = makeBoundary();
 
@@ -124,9 +124,9 @@ describe('rebuildEntityAtVersion — TS reducer (potemkin-5d39)', () => {
   });
 });
 
-// ── computed fields — potemkin-e2oh ──────────────────────────────────────────
+// ── computed fields ───────────────────────────────────────────────────────────
 
-describe('rebuildEntityAtVersion — computed fields (potemkin-e2oh)', () => {
+describe('rebuildEntityAtVersion — computed fields', () => {
   it('replays to the same state as live projection when computed fields are present', () => {
     const boundary = makeBoundary({
       reducers: [
@@ -167,7 +167,7 @@ describe('rebuildEntityAtVersion — computed fields (potemkin-e2oh)', () => {
   });
 });
 
-// ── auditFields injection — potemkin-5d39 ────────────────────────────────────
+// ── auditFields injection ─────────────────────────────────────────────────────
 
 describe('rebuildEntityAtVersion — auditFields', () => {
   it('injects updatedAt / updatedBy when boundary has auditFields:true', () => {

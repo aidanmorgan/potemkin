@@ -220,12 +220,12 @@ it('CONTRACT: derived properties are applied to single-entity query result', () 
   expect(result.tripled).toBe(45);
 });
 
-// ── FIX I2: derived property CEL error is now logged at warn and returns null ──
+// ── derived property CEL error is logged at warn and returns null ─────────────
 
-it('FIX I2: derived property CEL evaluation failure logs warn and sets property to null (not silently absent)', () => {
-  // I2 fix: catch block now logs at warn and sets the derived property to null.
-  // This makes misconfigured x-derived expressions detectable via logs and null sentinel.
-  // Should NOT throw — partial responses are returned with null for failed derived props.
+it('derived property CEL evaluation failure logs warn and sets property to null (not silently absent)', () => {
+  // The catch block logs at warn and sets the derived property to null, making
+  // misconfigured x-derived expressions detectable. Should NOT throw — partial
+  // responses are returned with null for failed derived props.
 
   const alwaysThrowCel = {
     compile: (e: string) => ({ source: e }),
@@ -292,11 +292,11 @@ it('CONTRACT: single entity query throws EntityAbsenceError for absent targetId'
   ).toThrow(EntityAbsenceError);
 });
 
-// ── FIX: collection query now filters by boundary using event store ───────────
+// ── collection query filters by boundary using event store ───────────────────
 
-it('FIX C1: collection query scopes results to the requested boundary via event store', () => {
-  // query.ts C1 fix: events store is used to filter entities to those originating
-  // from the requested boundary. Without this, graph.values() leaks all boundaries.
+it('collection query scopes results to the requested boundary via event store', () => {
+  // The events store is used to filter entities to those originating from the
+  // requested boundary; without this, graph.values() leaks across boundaries.
   const graph = createStateGraph();
   const events = createEventStore();
 

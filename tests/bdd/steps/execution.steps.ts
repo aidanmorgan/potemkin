@@ -2,7 +2,6 @@ import { Given, Then } from '@cucumber/cucumber';
 import assert from 'assert';
 import type { SimWorld } from '../support/world.js';
 
-// REQ-16: Pattern Matcher evaluates command against behavior rules
 Then('the pattern matcher should evaluate the command and produce an event', async function (this: SimWorld) {
   const before = this.getEventCount();
   await this.sendHttp('POST', `/leads/lead-${Date.now()}`, { companyName: 'Tester Corp', contactName: 'Tester', email: 'test@example.com' });
@@ -11,7 +10,6 @@ Then('the pattern matcher should evaluate the command and produce an event', asy
   assert.ok(after > before, 'Pattern matcher should have produced and appended an event');
 });
 
-// REQ-17: Only first matching rule fires
 Then('when multiple rules could match, only the first fires', async function (this: SimWorld) {
   // Create a lead
   await this.sendHttp('POST', `/leads/lead-${Date.now()}`, { companyName: 'MultiRule Corp', contactName: 'MultiRule', email: 'multi@example.com' });
@@ -34,7 +32,6 @@ Then('when multiple rules could match, only the first fires', async function (th
   assert.strictEqual(newEvents[0]?.type, 'OpportunityNegotiating', 'First matching rule should produce OpportunityNegotiating');
 });
 
-// REQ-18: Matched rule produces domain event, not direct mutation
 Then('the state transition should be traceable to a domain event', async function (this: SimWorld) {
   await this.sendHttp('POST', `/leads/lead-${Date.now()}`, { companyName: 'Traceable Corp', contactName: 'Traceable', email: 'trace@example.com' });
   assert.strictEqual(this.lastResponse?.status, 201);
@@ -49,8 +46,6 @@ Then('the state transition should be traceable to a domain event', async functio
   assert.ok(relatedEvent.type, 'Event should have a type');
 });
 
-// REQ-19: Secondary commands staged in UoW
-// DSL with dispatch_commands to test staging
 const CROSS_BOUNDARY_OPENAPI = `
 openapi: "3.0.3"
 info:

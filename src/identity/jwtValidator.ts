@@ -42,10 +42,6 @@ export class JwtValidationError extends Error {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Base64url helpers
-// ---------------------------------------------------------------------------
-
 /** Decode a base64url-encoded string to a UTF-8 string. */
 function base64urlToString(s: string): string {
   return Buffer.from(base64urlToBuffer(s)).toString('utf8');
@@ -68,10 +64,6 @@ export function bufferToBase64url(buf: Buffer): string {
     .replace(/\//g, '_');
 }
 
-// ---------------------------------------------------------------------------
-// HMAC-SHA256 signing helper (also used by tests to mint valid JWTs)
-// ---------------------------------------------------------------------------
-
 /**
  * Sign a JWT header+payload using HS256.
  * Returns the full compact token: `<header>.<payload>.<signature>`.
@@ -92,10 +84,6 @@ export function signJwtHs256(
   const signature = createHmac('sha256', secret).update(signingInput).digest();
   return `${signingInput}.${bufferToBase64url(signature)}`;
 }
-
-// ---------------------------------------------------------------------------
-// Validation
-// ---------------------------------------------------------------------------
 
 function safeParseJson(s: string): JsonValue | undefined {
   try {

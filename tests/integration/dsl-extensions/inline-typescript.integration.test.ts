@@ -1,5 +1,5 @@
 /**
- * REQ 66-72: Inline TypeScript escape hatch — end-to-end integration permutation tests.
+ * Inline TypeScript escape hatch — end-to-end integration permutation tests.
  *
  * Covers: ts: boolean in condition, ts: string in payload_template,
  * helpers usage, script throws, script timeout, blocked globals (fs/process),
@@ -15,7 +15,7 @@ import { nextUuidv7 } from '../../../src/ids/uuidv7.js';
 // Test A: script returning boolean used in behaviors[].match.condition
 // ---------------------------------------------------------------------------
 
-describe('REQ-67: ts: script in match.condition', () => {
+describe('ts: script in match.condition', () => {
   it('behavior fires when condition script returns true', async () => {
     const entityId = nextUuidv7();
     const { result, events } = await bootAndRun({
@@ -95,7 +95,7 @@ reducers:
 // Test B: script returning a string used in payload_template
 // ---------------------------------------------------------------------------
 
-describe('REQ-67: ts: script in payload_template', () => {
+describe('ts: script in payload_template', () => {
   it('event payload field is set by script return value', async () => {
     const entityId = nextUuidv7();
     const { result, events } = await bootAndRun({
@@ -140,7 +140,7 @@ reducers:
 // Test C: script using ctx.helpers.uuid and ctx.helpers.now
 // ---------------------------------------------------------------------------
 
-describe('REQ-72: ctx.helpers — uuid and now', () => {
+describe('ctx.helpers — uuid and now', () => {
   it('script can call ctx.helpers.uuid and return a UUID string', async () => {
     const entityId = nextUuidv7();
     const { result, events } = await bootAndRun({
@@ -226,7 +226,7 @@ reducers:
 // Test D: script that THROWS → SCRIPT_EXECUTION_FAILED
 // ---------------------------------------------------------------------------
 
-describe('REQ-70: script execution failure', () => {
+describe('script execution failure', () => {
   it('aborts UoW with SCRIPT_EXECUTION_FAILED when script throws in payload_template', async () => {
     // A script that throws in payload_template position propagates as SCRIPT_EXECUTION_FAILED.
     // (Scripts that throw in condition position are treated as no-match, not as a hard error.)
@@ -275,7 +275,7 @@ reducers:
 // Test E: script that times out → SCRIPT_TIMEOUT
 // ---------------------------------------------------------------------------
 
-describe('REQ-69: script timeout', () => {
+describe('script timeout', () => {
   it('aborts UoW with SCRIPT_TIMEOUT when script exceeds execution limit', async () => {
     // Infinite-loop script in payload_template position causes a hard SCRIPT_TIMEOUT abort.
     // (Scripts timing out in condition position are treated as no-match, not a hard error.)
@@ -324,7 +324,7 @@ reducers:
 // Test F: script attempting to require fs or access process → blocked
 // ---------------------------------------------------------------------------
 
-describe('REQ-69: sandbox — fs and process blocked', () => {
+describe('sandbox — fs and process blocked', () => {
   it('script cannot require fs — returns controlled failure', async () => {
     const entityId = nextUuidv7();
     const { result } = await bootAndRun({
@@ -413,7 +413,7 @@ reducers:
 // Test G: TypeScript syntax error → BOOT_ERR_SCRIPT_SYNTAX at boot
 // ---------------------------------------------------------------------------
 
-describe('REQ-68: script syntax error → boot error', () => {
+describe('script syntax error → boot error', () => {
   it('halts boot with BOOT_ERR_SCRIPT_SYNTAX when script has invalid TypeScript', async () => {
     const bootError = await expectBootError({
       boundaryName: 'Widget',
@@ -454,7 +454,7 @@ reducers:
 // Test H: ts: reference to non-existent script → boot error
 // ---------------------------------------------------------------------------
 
-describe('REQ-67: ts: reference to missing script → boot error', () => {
+describe('ts: reference to missing script → boot error', () => {
   it('halts boot with BootError when ts: reference has no matching script', async () => {
     const bootError = await expectBootError({
       boundaryName: 'Widget',
@@ -485,11 +485,10 @@ reducers:
 });
 
 // ---------------------------------------------------------------------------
-// Test I: ts: in a reducer patch value → boot error (REQ-71)
 // Reducer-phase values are CEL only; a ts: script sentinel is rejected at boot.
 // ---------------------------------------------------------------------------
 
-describe('REQ-71: ts: script in a reducer patch value → boot error', () => {
+describe('ts: script in a reducer patch value → boot error', () => {
   it('halts boot with BOOT_ERR_SCRIPT_IN_REDUCER when a reducer patch value uses a ts: sentinel', async () => {
     const bootError = await expectBootError({
       boundaryName: 'Widget',
@@ -527,7 +526,7 @@ reducers:
 // Test J: ts: in postcondition
 // ---------------------------------------------------------------------------
 
-describe('REQ-62+67: ts: script in postcondition', () => {
+describe('ts: script in postcondition', () => {
   it('postcondition script runs after projection and aborts when it returns false', async () => {
     const entityId = nextUuidv7();
     const { result } = await bootAndRun({
@@ -612,7 +611,7 @@ reducers:
 // Test K: concurrent script invocations — no shared mutable state
 // ---------------------------------------------------------------------------
 
-describe('REQ-69: concurrent script invocations — isolation', () => {
+describe('concurrent script invocations — isolation', () => {
   it('two concurrent commands do not share mutable state in scripts', async () => {
     // Each command should get its own invocation context; closure variable in
     // module top-level would leak if not re-created per invocation.
@@ -675,7 +674,7 @@ reducers:
 // Test L: script using closures over module-level variables
 // ---------------------------------------------------------------------------
 
-describe('REQ-69: script module scope — closures', () => {
+describe('script module scope — closures', () => {
   it('script can use a module-level helper function defined in its code block', async () => {
     const entityId = nextUuidv7();
     const { result, events } = await bootAndRun({

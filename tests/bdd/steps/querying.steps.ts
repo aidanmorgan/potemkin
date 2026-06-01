@@ -3,7 +3,6 @@ import assert from 'assert';
 import type { SimWorld } from '../support/world.js';
 import { runQuery } from '../../../src/engine/query.js';
 
-// REQ-35: Query parameters filter and paginate State Graph results
 // We test filtering/pagination via direct runQuery calls since our HTTP
 // test fixtures don't include a collection endpoint.
 
@@ -122,7 +121,6 @@ Then('the query result should contain at most {int} items', function (this: SimW
   assert.ok(items.length <= max, `Expected at most ${max} items, got ${items.length}`);
 });
 
-// REQ-35b via HTTP — use admin state endpoint for collection verification
 When('I GET the admin state endpoint', async function (this: SimWorld) {
   await this.sendHttp('GET', '/_admin/state');
 });
@@ -136,7 +134,6 @@ Then('the admin state should contain opportunity entities', function (this: SimW
   assert.ok(oppIds.length > 0, 'Admin state should contain opportunity entities');
 });
 
-// REQ-36: Derived Properties dynamically computed and appended
 When('I GET lead {string}', async function (this: SimWorld, id: string) {
   await this.sendHttp('GET', `/leads/${id}`);
 });
@@ -161,7 +158,6 @@ Then('the derived property {string} should equal the lead contactName', function
   );
 });
 
-// REQ-36b: Direct runQuery test for derived properties
 Then('running a direct query for lead should include derived properties', function (this: SimWorld) {
   assert.ok(this.sys, 'System not booted');
   const boundary = this.sys.dsl.byBoundaryName['Lead'];

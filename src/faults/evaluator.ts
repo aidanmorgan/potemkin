@@ -64,15 +64,13 @@ function matchesFaultRule(
   state: JsonObject | null | undefined,
   logger: Logger | undefined,
 ): boolean {
-  // 1. Boundary filter (for global rules)
   if (rule.match.boundary !== undefined && rule.match.boundary !== '*') {
     if (rule.match.boundary !== command.boundary) return false;
   }
 
-  // 2. Intent filter
   if (rule.match.intent !== undefined && rule.match.intent !== command.intent) return false;
 
-  // 2b. Header matching: all specified headers must be present on the command.
+  // Header matching: all specified headers must be present on the command.
   // For value "*", only presence is required; otherwise exact value match.
   if (rule.match.headers && Object.keys(rule.match.headers).length > 0) {
     const reqHeaders = command.headers ?? {};
@@ -83,7 +81,6 @@ function matchesFaultRule(
     }
   }
 
-  // 3. RBAC scope check
   if (rule.match.requiredScopes && rule.match.requiredScopes.length > 0) {
     try {
       checkScopes(command.actor, rule.match.requiredScopes as string[], rule.name);
@@ -96,7 +93,6 @@ function matchesFaultRule(
     }
   }
 
-  // 4. Requires guards
   if (rule.match.requires && rule.match.requires.length > 0) {
     const celCtx: Record<string, unknown> = {
       command: command as unknown as Record<string, unknown>,
@@ -117,7 +113,6 @@ function matchesFaultRule(
     }
   }
 
-  // 5. Main condition
   const celCtx: Record<string, unknown> = {
     command: command as unknown as Record<string, unknown>,
     payload: command.payload,
@@ -131,7 +126,6 @@ function matchesFaultRule(
     return false;
   }
 
-  // 6. Probability gate
   if (rule.match.probability !== undefined) {
     if (Math.random() >= rule.match.probability) return false;
   }

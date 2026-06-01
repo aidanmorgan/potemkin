@@ -151,7 +151,6 @@ function normalisePaths(rawDoc: OpenAPI.Document): Record<string, OpenApiPathIte
   return paths;
 }
 
-/** Build the "<METHOD> <path>" → operationId reverse index from normalised paths. */
 function buildOperationIdIndex(paths: Record<string, OpenApiPathItem>): Map<string, string> {
   const index = new Map<string, string>();
   for (const [pathTemplate, pathItem] of Object.entries(paths)) {
@@ -182,11 +181,6 @@ export function lookupOperationId(
   return doc.paths[path]?.[method.toLowerCase()]?.operationId;
 }
 
-/**
- * Load and normalise an OpenAPI document from a file path string, a pre-parsed object,
- * or a Buffer containing UTF-8 JSON/YAML.
- * Uses @apidevtools/swagger-parser under the hood to dereference $refs.
- */
 export async function loadOpenApi(source: string | object): Promise<OpenApiDoc> {
   return withSpan(getTracer('contract'), 'contract.load', async () => {
     let parseTarget: string | OpenAPI.Document;

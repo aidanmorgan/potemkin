@@ -1,5 +1,5 @@
 /**
- * Derived Projection Engine — REQ-88 through REQ-90
+ * Derived Projection Engine
  *
  * After every domain event is projected to its boundary's state graph, the
  * projection engine routes the event to every subscribed derived projection.

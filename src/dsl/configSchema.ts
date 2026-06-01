@@ -1,8 +1,6 @@
-// YAML schema validators for potemkin.yaml and boundary modules. All keys
-// are camelCase; snake_case and the removed `assign:`/`append:` reducer
-// shapes throw BOOT_ERR_REMOVED_SYNTAX with the canonical replacement.
+// YAML schema validators for potemkin.yaml and boundary modules.
 // Unknown top-level keys in potemkin.yaml are rejected with a Levenshtein
-// "did you mean?" suggestion.
+// "did you mean?" suggestion; removed snake_case keys throw BOOT_ERR_REMOVED_SYNTAX.
 
 import { BootError } from '../errors.js';
 import { assertNoRemovedReducerKeys } from './removedSyntax.js';
@@ -146,7 +144,7 @@ export const BOUNDARY_TOP_LEVEL_KEYS = [
   'strict',
 ] as const;
 
-// snake_case keys that were renamed; each produces BOOT_ERR_REMOVED_SYNTAX at parse time.
+// Renamed snake_case keys; each produces BOOT_ERR_REMOVED_SYNTAX at parse time.
 export const REMOVED_KEY_MAP: Record<string, string> = {
   event_catalog: 'events',
   payload_template: 'template',
@@ -522,7 +520,6 @@ export function validateBoundaryModule(raw: unknown, ctx: ValidationContext): Bo
     }
   }
 
-  // Primitive-shape checks ensure hot-swap cannot accept structurally-wrong YAML silently.
   assertOptionalStringArray(raw['methods'], 'methods', ctx.source);
   assertOptionalStringArray(raw['mask'], 'mask', ctx.source);
   assertOptionalBoolean(raw['outOfContract'], 'outOfContract', ctx.source);
@@ -549,7 +546,6 @@ export function validateBoundaryModule(raw: unknown, ctx: ValidationContext): Bo
     );
   }
 
-  // Unknown keys at boundary level are tolerated for forward-compatibility.
   return raw as unknown as BoundaryModule;
 }
 
@@ -624,5 +620,4 @@ function levenshtein(a: string, b: string): number {
   return prev[n];
 }
 
-// Re-export for callers that pair validation with schema inference.
 export type { Patch, FieldType };

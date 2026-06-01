@@ -1,5 +1,5 @@
 /**
- * Probing tests for observability completeness gaps (REQ-42, REQ-43).
+ * Probing tests for observability completeness.
  *
  * Gaps under test:
  *  1. Metrics — commandsTotal incremented per command via UoW.
@@ -10,7 +10,7 @@
  *  6. Spans   — engine.uow span exists for a command execution.
  *  7. Spans   — http.request span exists per inbound HTTP request (via withSpan).
  *  8. Spans   — http.admin.* spans exist for admin route calls.
- *  9. Logger  — child logger carries commandId, boundary bindings (REQ-42).
+ *  9. Logger  — child logger carries commandId, boundary bindings.
  * 10. Logger  — eventId and aggregateId appear in logger bindings during projection.
  *
  * OTel testing strategy:
@@ -82,10 +82,10 @@ function buildInMemoryOtel() {
 }
 
 // ---------------------------------------------------------------------------
-// Metrics tests (REQ-43)
+// Metrics tests
 // ---------------------------------------------------------------------------
 
-describe('observability/metrics — emission completeness (REQ-43)', () => {
+describe('observability/metrics — emission completeness', () => {
   describe('commandsTotal', () => {
     it('commandsTotal is incremented when executeUnitOfWork processes a command', async () => {
       const otel = buildInMemoryOtel();
@@ -407,10 +407,9 @@ describe('observability/metrics — emission completeness (REQ-43)', () => {
       await otel.teardown();
     });
 
-    it('[CURRENT] faultsSimulatedTotal in gateway is incremented via x-specmatic-fault header', async () => {
-      // The gateway also calls sys.metrics.faultsSimulatedTotal.add(1) in the fault path
-      // This is a separate call from the UoW one — both paths can increment the counter.
-      // This test verifies the gateway-level path is also exercised.
+    it('faultsSimulatedTotal in gateway is incremented via x-specmatic-fault header', async () => {
+      // Both the gateway fault path and UoW path can increment the counter.
+      // This test exercises the gateway-level path.
       const app = await createTestApp();
       const faultPayload = JSON.stringify({ status: 503, body: { error: 'gateway-fault' } });
 
@@ -424,10 +423,10 @@ describe('observability/metrics — emission completeness (REQ-43)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Span tests (REQ-43)
+// Span tests
 // ---------------------------------------------------------------------------
 
-describe('observability/tracing — span completeness (REQ-43)', () => {
+describe('observability/tracing — span completeness', () => {
   describe('engine.uow span', () => {
     it('engine.uow span is created for each executeUnitOfWork call', async () => {
       const otel = buildInMemoryOtel();
@@ -613,13 +612,12 @@ describe('observability/tracing — span completeness (REQ-43)', () => {
     });
   });
 
-  describe('missing span names (REQ-43 gaps)', () => {
+  describe('missing span names', () => {
     it(
-      '[DOCUMENTED] engine.boot span IS emitted — bootSystem wraps everything in withSpan(engine.boot)',
+      'engine.boot span IS emitted — bootSystem wraps everything in withSpan(engine.boot)',
       async () => {
         // bootSystem wraps the entire boot sequence in withSpan(tracer, 'engine.boot', ...)
-        // so the span IS emitted when a tracer is injected via BootInput.
-        // This test confirms the span exists (no gap here).
+        // so the span is emitted when a tracer is injected via BootInput.
         const otel = buildInMemoryOtel();
 
         const { loadInlineCrmFixture } = await import(
@@ -640,7 +638,7 @@ describe('observability/tracing — span completeness (REQ-43)', () => {
     );
 
     it(
-      '[FIX O-4] engine.patternMatch span exists within UoW execution',
+      'engine.patternMatch span exists within UoW execution',
       async () => {
         // engine.patternMatch is emitted by patternMatcher.ts via withSpanSync (getTracer fallback).
         // The span appears in the UoW exporter since patternMatcher uses the global tracer.
@@ -693,11 +691,10 @@ describe('observability/tracing — span completeness (REQ-43)', () => {
     );
 
     it(
-      '[FIX O-5] engine.project span exists within UoW execution',
+      'engine.project span exists within UoW execution',
       async () => {
-        // O-5 fix: projection.ts now accepts an optional tracer parameter.
-        // UoW threads the injected tracer through to projectEvent, so the
-        // engine.project span appears in the test exporter.
+        // projection.ts accepts an optional tracer parameter; UoW threads it through to
+        // projectEvent so the engine.project span appears in the test exporter.
         const otel = buildInMemoryOtel();
         const metrics = createEngineMetrics(otel.meter);
 
@@ -746,11 +743,10 @@ describe('observability/tracing — span completeness (REQ-43)', () => {
     );
 
     it(
-      '[FIX O-6] engine.query span exists for query intent',
+      'engine.query span exists for query intent',
       async () => {
-        // O-6 fix: query.ts now accepts an optional tracer parameter.
-        // UoW threads the injected tracer through to runQuery, so the
-        // engine.query span appears in the test exporter.
+        // query.ts accepts an optional tracer parameter; UoW threads it through to
+        // runQuery so the engine.query span appears in the test exporter.
         const otel = buildInMemoryOtel();
         const metrics = createEngineMetrics(otel.meter);
 
@@ -801,10 +797,10 @@ describe('observability/tracing — span completeness (REQ-43)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Structured log bindings (REQ-42)
+// Structured log bindings
 // ---------------------------------------------------------------------------
 
-describe('observability/logger — structured log bindings (REQ-42)', () => {
+describe('observability/logger — structured log bindings', () => {
   /**
    * Pino does not expose bindings via a public API. We test by creating a
    * child logger and verifying the bindings indirectly via a writable stream
@@ -842,9 +838,9 @@ describe('observability/logger — structured log bindings (REQ-42)', () => {
     });
   });
 
-  it('[CURRENT] UoW logger child carries commandId and boundary bindings', async () => {
-    // The UoW creates logger.child({ name: 'uow', commandId, boundary, intent })
-    // We verify that the child() call receives these keys.
+  it('UoW logger child carries commandId and boundary bindings', async () => {
+    // The UoW creates logger.child({ name: 'uow', commandId, boundary, intent });
+    // verify that the child() call receives these keys.
     const capturedBindings: Record<string, unknown>[] = [];
 
     const { createLogger: cl } = await import('../../../src/observability/logger.js');
@@ -897,12 +893,11 @@ describe('observability/logger — structured log bindings (REQ-42)', () => {
   });
 
   it(
-    '[DOCUMENTED] eventId IS carried via projection child logger (REQ-42: projection.ts satisfies this binding)',
+    'eventId IS carried via projection child logger',
     async () => {
-      // REQ-42 requires eventId in child logger context during event processing.
-      // projection.ts calls logger.child({ eventId, aggregateId, eventType, boundary })
-      // per event — so the requirement IS met at the projection level.
-      // The gap is that the UoW primary child does NOT include eventId in its own binding.
+      // projection.ts calls logger.child({ eventId, aggregateId, eventType, boundary }) per event,
+      // so eventId is present in child logger context during event processing.
+      // The UoW primary child does not include eventId in its own binding.
       const capturedBindings: Record<string, unknown>[] = [];
 
       const { createLogger: cl } = await import('../../../src/observability/logger.js');
@@ -948,16 +943,15 @@ describe('observability/logger — structured log bindings (REQ-42)', () => {
         metrics: sys.metrics,
       });
 
-      // projection.ts calls logger.child({ eventId, ... }) — binding IS present
+      // projection.ts calls logger.child({ eventId, ... }) — binding is present
       const hasEventIdBinding = capturedBindings.some((b) => 'eventId' in b);
       expect(hasEventIdBinding).toBe(true);
     },
   );
 
   it(
-    '[DOCUMENTED] aggregateId IS carried via projection child logger (REQ-42: projection.ts satisfies this binding)',
+    'aggregateId IS carried via projection child logger',
     async () => {
-      // REQ-42 requires aggregateId in child logger context.
       // projection.ts includes aggregateId in its logger.child() call.
       const capturedBindings: Record<string, unknown>[] = [];
 
@@ -1005,17 +999,16 @@ describe('observability/logger — structured log bindings (REQ-42)', () => {
         metrics: sys.metrics,
       });
 
-      // projection.ts calls logger.child({ aggregateId, ... }) — binding IS present
+      // projection.ts calls logger.child({ aggregateId, ... }) — binding is present
       const hasAggregateIdBinding = capturedBindings.some((b) => 'aggregateId' in b);
       expect(hasAggregateIdBinding).toBe(true);
     },
   );
 
   it(
-    'UoW staged-event loop creates sub-child logger with eventId + aggregateId bindings (REQ-42)',
+    'UoW staged-event loop creates sub-child logger with eventId + aggregateId bindings',
     async () => {
-      // uow.ts line 405: for each staged event, a sub-child logger is created:
-      //   logger.child({ eventId: evt.eventId, aggregateId: evt.aggregateId })
+      // For each staged event, uow.ts creates a sub-child logger with eventId + aggregateId.
       // This test verifies those bindings appear among the captured child calls.
       const capturedBindings: Record<string, unknown>[] = [];
 
@@ -1076,7 +1069,7 @@ describe('observability/logger — structured log bindings (REQ-42)', () => {
       );
       expect(uowPrimaryBinding).toBeDefined();
 
-      // A sub-child binding for each staged event must carry eventId + aggregateId (REQ-42)
+      // A sub-child binding for each staged event must carry eventId + aggregateId
       const eventBinding = capturedBindings.find(
         (b) => 'eventId' in b && 'aggregateId' in b,
       );

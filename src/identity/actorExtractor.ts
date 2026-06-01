@@ -1,6 +1,4 @@
 /**
- * Actor Extractor — REQ-84
- *
  * Parses the `Authorization: Bearer <token>` header where the token has the
  * simulation shortcut format:  `<actorId>:<scope1>,<scope2>,...`
  *

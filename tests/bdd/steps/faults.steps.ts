@@ -7,7 +7,6 @@ import { compileDsl } from '../../../src/dsl/parser.js';
 import { BootError } from '../../../src/errors.js';
 import { CRM_OPENAPI_YAML } from '../support/world.js';
 
-// REQ-23: Boot halts on DSL syntax error
 When('I attempt to boot the simulator with DSL {string}', async function (this: SimWorld, dslYaml: string) {
   try {
     const openapi = await loadOpenApi(CRM_OPENAPI_YAML);
@@ -30,7 +29,6 @@ Then('boot should fail with code {string}', function (this: SimWorld, expectedCo
   );
 });
 
-// REQ-24: Contract validation failure returns 400
 Then('the response status should be 400 with code {string}', function (this: SimWorld, code: string) {
   assert.ok(this.lastResponse, 'No response captured');
   assert.strictEqual(this.lastResponse.status, 400, `Expected 400 but got ${this.lastResponse.status}`);
@@ -39,7 +37,6 @@ Then('the response status should be 400 with code {string}', function (this: Sim
   assert.strictEqual(String(actual), code, `Expected code '${code}' got '${String(actual)}'`);
 });
 
-// REQ-25: Entity absence on mutation of missing resource
 When('I PATCH a non-existent opportunity', async function (this: SimWorld) {
   await this.sendHttp('PATCH', '/opportunities/00000000-0000-7000-8000-999999999999', { stage: 'negotiating' });
 });
@@ -52,7 +49,6 @@ Then('the response should be 404 ENTITY_ABSENCE', function (this: SimWorld) {
   assert.strictEqual(String(code), 'ENTITY_ABSENCE');
 });
 
-// REQ-26: Entity conflict on creation of already-present resource
 When('I POST to create an opportunity that already exists with id {string}', async function (this: SimWorld, id: string) {
   // First make sure it exists
   await this.sendHttp('PATCH', `/opportunities/${id}`, { value: 1 });
@@ -87,7 +83,6 @@ Then('the response should be 409 ENTITY_CONFLICT', function (this: SimWorld) {
   assert.strictEqual(String(code), 'ENTITY_CONFLICT');
 });
 
-// REQ-27: No rule match and no fallback → 422 UNHANDLED_OPERATION
 When('I send a mutation that has no matching behavior and no fallback', async function (this: SimWorld) {
   // opportunity-seed-001 exists (stage: proposed), send a PATCH that won't match any rule
   // Opportunity DSL has no fallback_override and requires stage:'negotiating'|'won' or value!=null
@@ -103,7 +98,6 @@ Then('the response should be 422 UNHANDLED_OPERATION', function (this: SimWorld)
   assert.strictEqual(String(code), 'UNHANDLED_OPERATION');
 });
 
-// REQ-28: Concurrency conflict on sequence version mismatch
 When('I send a mutation with a wrong sequence version', async function (this: SimWorld) {
   // Create a lead
   await this.sendHttp('POST', `/leads/lead-${Date.now()}`, { companyName: 'ConcTest Corp', contactName: 'ConcTest', email: 'conc@example.com' });
@@ -123,9 +117,8 @@ Then('the response should be 412 CONCURRENCY_CONFLICT', function (this: SimWorld
   assert.strictEqual(String(code), 'CONCURRENCY_CONFLICT');
 });
 
-// REQ-29: Missing precondition on required If-Match
-// The system returns MISSING_PRECONDITION only when If-Match is REQUIRED by the OpenAPI spec
-// Since our test spec doesn't mark it as required, we test this via direct UoW
+// MISSING_PRECONDITION is only returned when If-Match is required by the OpenAPI spec;
+// since our test spec doesn't mark it as required, we test this via direct UoW
 When('I test missing precondition via direct UoW', async function (this: SimWorld) {
   assert.ok(this.sys, 'System not booted');
   const { executeUnitOfWork } = await import('../../../src/engine/uow.js');
@@ -168,7 +161,6 @@ Then('the UoW should abort with MISSING_PRECONDITION', function (this: SimWorld)
   );
 });
 
-// REQ-30: UoW aborts on unhandled exception — discards staged events
 When('I trigger a UoW that throws an internal execution error', async function (this: SimWorld) {
   assert.ok(this.sys, 'System not booted');
   const { executeUnitOfWork } = await import('../../../src/engine/uow.js');
@@ -209,7 +201,6 @@ Then('no events should have been appended', function (this: SimWorld) {
   assert.strictEqual(after, before, `Expected event count to stay at ${before} but got ${after}`);
 });
 
-// REQ-31: Fault simulation signal
 When('I send a request with fault signal header returning 503', async function (this: SimWorld) {
   const faultHeader = JSON.stringify({ status: 503, body: { error: 'SIMULATED_SERVICE_UNAVAILABLE' } });
   await this.sendHttp('GET', '/opportunities/opportunity-seed-001', undefined, { 'x-specmatic-fault': faultHeader });
@@ -220,7 +211,6 @@ Then('the response should be the simulated fault', function (this: SimWorld) {
   assert.strictEqual(this.lastResponse.status, 503, `Expected 503 but got ${this.lastResponse.status}`);
 });
 
-// REQ-32: Infinite loop termination
 When('I trigger a self-referential cascade that exceeds max depth', async function (this: SimWorld) {
   assert.ok(this.sys, 'System not booted');
   const { executeUnitOfWork } = await import('../../../src/engine/uow.js');

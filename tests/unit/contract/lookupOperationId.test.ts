@@ -80,7 +80,7 @@ describe('contract/lookupOperationId', () => {
     expect(lookupOperationId(literal, '/leads', 'GET')).toBeUndefined();
   });
 
-  describe('AC-B1.5: all CRM operationIds resolvable', () => {
+  describe('all CRM operationIds resolvable', () => {
     it('resolves every operationId declared in the CRM contract', async () => {
       const specPath = path.join(
         __dirname,

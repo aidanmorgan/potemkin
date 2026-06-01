@@ -40,7 +40,6 @@ try {
 function adminAuthMiddleware(req: Request, res: Response, next: NextFunction): void {
   const token = process.env['ADMIN_TOKEN'];
   if (!token) {
-    // Open access — ADMIN_TOKEN not configured
     next();
     return;
   }
@@ -53,17 +52,8 @@ function adminAuthMiddleware(req: Request, res: Response, next: NextFunction): v
   next();
 }
 
-/**
- * Register out-of-band admin/control endpoints on the Express app.
- *
- * Endpoints:
- *  - POST /_admin/reset  — trigger resetSystem; returns 204 No Content.
- *  - GET  /_admin/state  — return all state-graph entries as JSON object.
- *  - GET  /_admin/events — return all events from the EventStore as JSON array.
- *  - GET  /_admin/health — liveness probe with uptime and size metrics.
- */
 export function registerAdminRoutes(app: Express, sys: BootedSystem): void {
-  // POST /_admin/reset — revert state and events to frozen baseline (req 37).
+  // POST /_admin/reset — revert state and events to frozen baseline.
   app.post(
     '/_admin/reset',
     adminAuthMiddleware,
@@ -108,7 +98,7 @@ export function registerAdminRoutes(app: Express, sys: BootedSystem): void {
     },
   );
 
-  // GET /_admin/state — diagnostic dump of the full entity state graph (req 38).
+  // GET /_admin/state — diagnostic dump of the full entity state graph.
   // ?boundary=X filter: restrict the dump to entities originating in that boundary.
   // An entity's boundary is inferred from its first event (same strategy as the
   // collection-query engine), so 404 if no entity belongs to the requested boundary.
@@ -142,10 +132,10 @@ export function registerAdminRoutes(app: Express, sys: BootedSystem): void {
     },
   );
 
-  // GET /_admin/events — list all events; optional ?aggregateId=X filter (req 39).
+  // GET /_admin/events — list all events; optional ?aggregateId=X filter.
   // ?type=<eventType> filters to events of that type (combinable with ?aggregateId).
   // ?count=true returns { count: N } instead of the event array.
-  // Supports ?limit=N and ?offset=M for pagination (H-6).
+  // Supports ?limit=N and ?offset=M for pagination.
   app.get(
     '/_admin/events',
     adminAuthMiddleware,
@@ -168,7 +158,7 @@ export function registerAdminRoutes(app: Express, sys: BootedSystem): void {
           return;
         }
 
-        // Pagination: ?offset=M&limit=N (H-6)
+        // Pagination: ?offset=M&limit=N
         const offsetRaw = req.query['offset'];
         const limitRaw = req.query['limit'];
         const offset = typeof offsetRaw === 'string' ? Math.max(0, parseInt(offsetRaw, 10) || 0) : 0;
@@ -180,7 +170,7 @@ export function registerAdminRoutes(app: Express, sys: BootedSystem): void {
     },
   );
 
-  // GET /_admin/derived/:name — derived projection state (REQ-90).
+  // GET /_admin/derived/:name — derived projection state.
   app.get(
     '/_admin/derived/:name',
     adminAuthMiddleware,
@@ -265,8 +255,7 @@ export function registerAdminRoutes(app: Express, sys: BootedSystem): void {
     },
   );
 
-  // GET /_admin/health — liveness probe (req 40).
-  // Includes version (from package.json) and checks array (H-7).
+  // GET /_admin/health — liveness probe; includes version and checks array.
   app.get(
     '/_admin/health',
     adminAuthMiddleware,

@@ -1,5 +1,5 @@
 /**
- * Derived Projection types — REQ-88 through REQ-90
+ * Derived Projection types
  */
 
 import type { JsonObject } from '../types.js';

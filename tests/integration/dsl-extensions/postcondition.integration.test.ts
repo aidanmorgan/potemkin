@@ -1,5 +1,5 @@
 /**
- * REQ-62: behaviors[].postcondition — end-to-end integration permutation tests.
+ * behaviors[].postcondition — end-to-end integration permutation tests.
  *
  * Covers: passing postcondition, failing with POSTCONDITION_VIOLATED,
  * reference to emitted event + post-projection state, comprehension in postcondition,
@@ -13,7 +13,7 @@ import { nextUuidv7 } from '../../../src/ids/uuidv7.js';
 // Test: postcondition passes → event committed
 // ---------------------------------------------------------------------------
 
-describe('REQ-62: postcondition — passes, event committed', () => {
+describe('postcondition — passes, event committed', () => {
   it('commits event when postcondition evaluates to true', async () => {
     const entityId = nextUuidv7();
     const { result, events, state } = await bootAndRun({
@@ -54,7 +54,7 @@ reducers:
 // Test: postcondition fails → UoW aborts with POSTCONDITION_VIOLATED
 // ---------------------------------------------------------------------------
 
-describe('REQ-62: postcondition — fails, UoW aborts', () => {
+describe('postcondition — fails, UoW aborts', () => {
   it('aborts UoW with POSTCONDITION_VIOLATED when postcondition is false', async () => {
     const entityId = nextUuidv7();
     const { result, state, thrownError } = await bootAndRun({
@@ -143,7 +143,7 @@ reducers:
 // Test: postcondition references the just-emitted event AND post-projection state
 // ---------------------------------------------------------------------------
 
-describe('REQ-62: postcondition — references emitted event and post-projection state', () => {
+describe('postcondition — references emitted event and post-projection state', () => {
   it('postcondition can reference event payload fields', async () => {
     const entityId = nextUuidv7();
     const { result, events } = await bootAndRun({
@@ -215,7 +215,7 @@ reducers:
 // Test: postcondition using comprehension over a list field
 // ---------------------------------------------------------------------------
 
-describe('REQ-62: postcondition — comprehension over list field', () => {
+describe('postcondition — comprehension over list field', () => {
   it('passes postcondition when comprehension over projected list is satisfied', async () => {
     const entityId = nextUuidv7();
     const { result, events, state } = await bootAndRun({

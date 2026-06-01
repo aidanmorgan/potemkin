@@ -1,5 +1,5 @@
 /**
- * REQ-65: event_catalog[].schema_ref — end-to-end integration permutation tests.
+ * event_catalog[].schema_ref — end-to-end integration permutation tests.
  *
  * Covers: passing schema validation, failing schema validation,
  * nested/allOf schema, missing schema_ref component → BootError,
@@ -14,7 +14,7 @@ import { BootError } from '../../../src/errors.js';
 // Test: payload matches schema → projected normally
 // ---------------------------------------------------------------------------
 
-describe('REQ-65: schema_ref — payload matches schema', () => {
+describe('schema_ref — payload matches schema', () => {
   it('projects event normally when payload satisfies schema_ref', async () => {
     const entityId = nextUuidv7();
     const { result, events, state } = await bootAndRun({
@@ -64,7 +64,7 @@ reducers:
 // Test: payload violates schema → InternalExecutionError(SCHEMA_TYPE_MISMATCH)
 // ---------------------------------------------------------------------------
 
-describe('REQ-65: schema_ref — payload violates schema', () => {
+describe('schema_ref — payload violates schema', () => {
   it('aborts UoW when event payload fails schema validation', async () => {
     const entityId = nextUuidv7();
     const { result } = await bootAndRun({
@@ -160,7 +160,7 @@ reducers:
 // Test: schema_ref pointing at a missing component → BootError
 // ---------------------------------------------------------------------------
 
-describe('REQ-65: schema_ref — missing component → BootError at boot', () => {
+describe('schema_ref — missing component → BootError at boot', () => {
   it('halts boot with BootError when schema_ref references a non-existent schema', async () => {
     const bootError = await expectBootError({
       boundaryName: 'Widget',
@@ -196,7 +196,7 @@ reducers:
 // Test: schema_ref absent → no payload validation performed
 // ---------------------------------------------------------------------------
 
-describe('REQ-65: schema_ref — absent, no validation', () => {
+describe('schema_ref — absent, no validation', () => {
   it('projects event without validation when schema_ref is not specified', async () => {
     const entityId = nextUuidv7();
     const { result, events, state } = await bootAndRun({
@@ -236,7 +236,7 @@ reducers:
 // Test: schema_ref pointing at a nested schema (allOf merge)
 // ---------------------------------------------------------------------------
 
-describe('REQ-65: schema_ref — allOf merged schema', () => {
+describe('schema_ref — allOf merged schema', () => {
   it('validates event payload against an allOf-merged schema', async () => {
     const entityId = nextUuidv7();
     const { result, events } = await bootAndRun({

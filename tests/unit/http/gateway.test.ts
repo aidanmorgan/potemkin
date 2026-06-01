@@ -9,7 +9,7 @@
  *    InternalExecutionError, FaultSimulatedError, and generic Error)
  *  - Fault simulation (x-specmatic-fault header with headers field set)
  *  - ETag header for mutating commands
- *  - Idempotency replay serves the post-pipeline body+headers (potemkin-3r96)
+ *  - Idempotency replay serves the post-pipeline body+headers
  */
 
 import { createGateway } from '../../../src/http/gateway.js';
@@ -182,9 +182,9 @@ describe('http/gateway — branch coverage', () => {
     expect(res.body).toBeDefined();
   });
 
-  // ── Weak ETag If-Match does not produce NaN (potemkin-yvoh) ──────────────────
+  // ── Weak ETag If-Match does not produce NaN ───────────────────────────────────
 
-  it('weak ETag If-Match W/"5" returns 400 not a 412 with NaN (potemkin-yvoh)', async () => {
+  it('weak ETag If-Match W/"5" returns 400 not a 412 with NaN', async () => {
     const createRes = await app.agent
       .post('/leads')
       .send({ ...LEAD_PAYLOAD, companyName: 'Weak ETag Test' })
@@ -215,7 +215,7 @@ describe('http/gateway — branch coverage', () => {
 
 });
 
-// ── Idempotency replay serves post-pipeline body+headers (potemkin-3r96) ──────
+// ── Idempotency replay serves post-pipeline body+headers ─────────────────────
 //
 // Uses a self-contained minimal system with idempotency enabled so the test
 // does not depend on the createTestApp fixture loading the global YAML.
@@ -285,7 +285,7 @@ idempotency:
   hash_includes_body: true
 `;
 
-describe('http/gateway — idempotency replay serves post-pipeline response (potemkin-3r96)', () => {
+describe('http/gateway — idempotency replay serves post-pipeline response', () => {
   let agent: PersistentAgent;
 
   beforeAll(async () => {
@@ -350,7 +350,7 @@ describe('http/gateway — idempotency replay serves post-pipeline response (pot
   });
 });
 
-// ── Time-travel (X-Potemkin-Read-At-Version) with computed fields (potemkin-e2oh) ─
+// ── Time-travel (X-Potemkin-Read-At-Version) with computed fields ─────────────
 
 const TT_COMPUTED_OPENAPI = `
 openapi: "3.0.3"
@@ -434,7 +434,7 @@ state:
       depends_on: [value]
 `;
 
-describe('http/gateway — time-travel with computed fields (potemkin-e2oh)', () => {
+describe('http/gateway — time-travel with computed fields', () => {
   let agent: PersistentAgent;
 
   beforeAll(async () => {
@@ -447,7 +447,7 @@ describe('http/gateway — time-travel with computed fields (potemkin-e2oh)', ()
     registerFileTeardown(close);
   });
 
-  it('X-Potemkin-Read-At-Version replayed entity includes computed fields (potemkin-e2oh)', async () => {
+  it('X-Potemkin-Read-At-Version replayed entity includes computed fields', async () => {
     const scoreId = nextUuidv7();
     const createRes = await agent
       .post(`/scores/${scoreId}`)

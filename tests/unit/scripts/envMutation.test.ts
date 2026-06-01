@@ -6,10 +6,10 @@ import { scanTypescriptReducers } from '../../../src/dsl/typescriptScanner';
 import { registry } from '../../../src/sdk/index';
 import { BootError } from '../../../src/errors';
 
-// AC-G1.5: a scanned TS reducer that mutates process.env is rejected at scan
-// time with the specific SANDBOX_ERR_ENV_MUTATION error (assertNoEnvMutation
-// runs on the transpiled source before sandbox execution). `process` is also
-// absent from the sandbox, so the host environment is never mutated regardless.
+// A scanned TS reducer that mutates process.env is rejected at scan time with
+// SANDBOX_ERR_ENV_MUTATION (assertNoEnvMutation runs on the transpiled source
+// before sandbox execution). `process` is also absent from the sandbox, so the
+// host environment is never mutated regardless.
 
 async function makeTree(files: Record<string, string>): Promise<string> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'potemkin-env-mutation-'));
@@ -35,7 +35,7 @@ beforeEach(async () => {
   await registry.reset();
 });
 
-describe('typescriptScanner sandbox — process.env mutation (AC-G1.5)', () => {
+describe('typescriptScanner sandbox — process.env mutation', () => {
   it.each([
     ["process.env.SECRET = 'leaked';", 'member assignment'],
     ["process.env['SECRET'] = 'leaked';", 'computed assignment'],

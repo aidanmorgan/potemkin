@@ -1,5 +1,5 @@
 /**
- * REQ-64: behaviors[].emit_when[] — end-to-end integration permutation tests.
+ * behaviors[].emit_when[] — end-to-end integration permutation tests.
  *
  * Covers: single matching entry, two matching entries, no matching entries,
  * emit + emit_when combined, and shadow-state accumulation between entries.
@@ -12,7 +12,7 @@ import { nextUuidv7 } from '../../../src/ids/uuidv7.js';
 // Test: emit_when only, single matching entry → one event
 // ---------------------------------------------------------------------------
 
-describe('REQ-64: emit_when — single matching entry', () => {
+describe('emit_when — single matching entry', () => {
   it('emits exactly one event when one emit_when entry matches', async () => {
     const entityId = nextUuidv7();
     const { result, events, state } = await bootAndRun({
@@ -106,7 +106,7 @@ reducers:
 // Test: emit_when with 2 matching entries → both events emitted in order
 // ---------------------------------------------------------------------------
 
-describe('REQ-64: emit_when — two matching entries, both emitted', () => {
+describe('emit_when — two matching entries, both emitted', () => {
   it('emits both events when two emit_when conditions are both true', async () => {
     const entityId = nextUuidv7();
     const { result, events } = await bootAndRun({
@@ -156,7 +156,7 @@ reducers:
 // Test: emit_when with no matching entries → zero events emitted, UoW commits
 // ---------------------------------------------------------------------------
 
-describe('REQ-64: emit_when — no matching entries', () => {
+describe('emit_when — no matching entries', () => {
   it('UoW commits with zero events when no emit_when entry matches', async () => {
     const entityId = nextUuidv7();
     const { result, events } = await bootAndRun({
@@ -197,9 +197,9 @@ reducers:
 // Test: emit_when PLUS top-level emit → both fire
 // ---------------------------------------------------------------------------
 
-describe('REQ-64: emit (unconditional) + emit_when together', () => {
+describe('emit (unconditional) + emit_when together', () => {
   it('unconditional emit fires first, then matching emit_when stacks on top', async () => {
-    // Note: emit and emit_when are mutually exclusive in a single behavior entry per REQ-64.
+    // Note: emit and emit_when are mutually exclusive in a single behavior entry.
     // This test verifies that two separate behaviors can cooperate (one with emit, one with emit_when).
     // Within a single behavior we must use only emit OR emit_when, not both.
     const entityId = nextUuidv7();
@@ -261,7 +261,7 @@ reducers:
 // Test: emit_when[].when references post-staged shadow state
 // ---------------------------------------------------------------------------
 
-describe('REQ-64: emit_when — later entries see shadow state from earlier emits', () => {
+describe('emit_when — later entries see shadow state from earlier emits', () => {
   it('second emit_when entry sees state updated by first emit', async () => {
     const entityId = nextUuidv7();
     const { result, events, state } = await bootAndRun({

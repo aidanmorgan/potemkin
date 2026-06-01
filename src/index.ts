@@ -140,18 +140,18 @@ export { staticCheckDsl } from './schema/dslStaticChecker.js';
 export type { DslCheckError } from './schema/dslStaticChecker.js';
 export { guardAssignPath, guardAssignedValue } from './schema/runtimeGuard.js';
 
-// ── Identity (REQ-84) ─────────────────────────────────────────────────────────
+// ── Identity ──────────────────────────────────────────────────────────────────
 export { extractActor } from './identity/actorExtractor.js';
 export { checkScopes } from './identity/scopeChecker.js';
 
-// ── Idempotency (REQ-81) ──────────────────────────────────────────────────────
+// ── Idempotency ───────────────────────────────────────────────────────────────
 export type { IdempotencyStore, IdempotencyEntry, CachedResponse } from './idempotency/store.js';
 export { createIdempotencyStore } from './idempotency/store.js';
 
-// ── Sagas (REQ-73) ────────────────────────────────────────────────────────────
+// ── Sagas ─────────────────────────────────────────────────────────────────────
 export { runSaga, findTriggeredSagas } from './sagas/orchestrator.js';
 
-// ── Derived Projections (REQ-88) ──────────────────────────────────────────────
+// ── Derived Projections ───────────────────────────────────────────────────────
 export type { DerivedStateMap, DerivedProjectionRegistry } from './projections/types.js';
 export {
   createDerivedProjectionRegistry,

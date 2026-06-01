@@ -298,7 +298,7 @@ describe('sandbox security — vm escape prevention', () => {
   });
 
   // The context global is host-created; globalThis.constructor.constructor was a
-  // live RCE escape (potemkin-mm7g) until the bootstrap neutralized it.
+  // live RCE escape until the bootstrap neutralized it.
   it.each([
     ['globalThis.constructor.constructor', `globalThis.constructor.constructor("return process")()`],
     ['(0,eval)("globalThis") chain', `(0,eval)("globalThis").constructor.constructor("return process")()`],
@@ -409,7 +409,7 @@ describe('sandbox security — vm escape prevention', () => {
   });
 
   // -------------------------------------------------------------------------
-  // potemkin-0guf: uuid() — unbounded distinct UUIDs from realm-native PRNG
+  // uuid() — unbounded distinct UUIDs from realm-native PRNG
   // -------------------------------------------------------------------------
   it('uuid() produces 1000 distinct UUID-v4-format strings', () => {
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -430,9 +430,8 @@ describe('sandbox security — vm escape prevention', () => {
     expect(new Set(ids).size).toBe(1000);
   });
 
-  // potemkin-nm1p: each invocation of the same script must get a DISTINCT uuid
-  // sequence — the per-invocation counter ensures seeds never collide even when
-  // two calls happen within the same millisecond.
+  // Each invocation of the same script must get a DISTINCT uuid sequence — the
+  // per-invocation counter ensures seeds never collide even within the same millisecond.
   it('uuid() sequences are distinct across two separate invocations of the same script', () => {
     const code = `
       export default (ctx) => {
@@ -453,7 +452,7 @@ describe('sandbox security — vm escape prevention', () => {
   });
 
   // -------------------------------------------------------------------------
-  // potemkin-rwwr: console/logger forwarding to host logger
+  // console/logger forwarding to host logger
   // -------------------------------------------------------------------------
 
   function makeMockLoggerCapture(): { logger: Logger; lines: string[] } {
@@ -514,8 +513,8 @@ describe('sandbox security — vm escape prevention', () => {
     expect(() => invokeScript(handle, makeCtx())).not.toThrow();
   });
 
-  // potemkin-nyff (1): a reducer whose __logBuffer__ contains a throwing getter
-  // must still return its correct result, not throw SCRIPT_EXECUTION_FAILED.
+  // A reducer whose __logBuffer__ contains a throwing getter must still return
+  // its correct result, not throw SCRIPT_EXECUTION_FAILED.
   it('throwing log buffer getter does not turn a successful result into SCRIPT_EXECUTION_FAILED', () => {
     const { logger } = makeMockLoggerCapture();
     // The reducer poisons __logBuffer__[0] with a throwing getter, but returns a
@@ -535,7 +534,7 @@ describe('sandbox security — vm escape prevention', () => {
     expect(result).toBe(42);
   });
 
-  // potemkin-nyff (2): an oversized log entry is truncated to the byte cap.
+  // An oversized log entry is truncated to the byte cap.
   it('oversized log entry is truncated with a [truncated] marker', async () => {
     const { logger, lines } = makeMockLoggerCapture();
     // Push a 5 000-character string — well above the 4 096-byte cap.
@@ -555,9 +554,8 @@ describe('sandbox security — vm escape prevention', () => {
     expect(combined).not.toContain('A'.repeat(5000));
   });
 
-  // potemkin-z2hm: a reducer can write to __logBuffer__ directly, bypassing
-  // _pushLog's cap. The host-side drain must still be bounded so it cannot be
-  // made to iterate (and call the host logger) an unbounded number of times.
+  // A reducer can write to __logBuffer__ directly, bypassing _pushLog's cap.
+  // The host-side drain must still be bounded to prevent unbounded host logger calls.
   it('host log drain is bounded even when __logBuffer__ is overfilled directly', async () => {
     const { logger, lines } = makeMockLoggerCapture();
     const code = `

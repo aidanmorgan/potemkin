@@ -10,7 +10,7 @@ import {
 } from '@opentelemetry/sdk-trace-base';
 
 // ---------------------------------------------------------------------------
-// REQ-43: In-memory span exporter for BDD span content assertions.
+// In-memory span exporter for BDD span content assertions.
 // Each scenario that needs span verification gets its own provider + exporter.
 // ---------------------------------------------------------------------------
 
@@ -35,7 +35,6 @@ After({ tags: '@otel-spans' }, async function () {
   trace.disable();
 });
 
-// REQ-41: System uses well-known community libraries (pino, ajv, swagger-parser, uuidv7)
 Then('the system logger should be a pino logger', function (this: SimWorld) {
   assert.ok(this.sys, 'System not booted');
   const logger = this.sys.logger;
@@ -71,7 +70,6 @@ Then('the schema registry should be derived from OpenAPI using swagger-parser', 
   assert.ok(opportunitySchema, 'Opportunity schema should be derived from OpenAPI');
 });
 
-// REQ-42: Structured pino logs emitted at major lifecycle events
 Then('a child logger with boundary context should be usable', function (this: SimWorld) {
   assert.ok(this.sys, 'System not booted');
   const childLog = childLogger(this.sys.logger, {
@@ -96,7 +94,6 @@ Then('pino logs should include structured fields', function (this: SimWorld) {
   assert.ok(typeof childLog.info === 'function', 'Child logger is functional');
 });
 
-// REQ-43: OpenTelemetry tracing and metrics
 Then('the system metrics should include commandsTotal counter', function (this: SimWorld) {
   assert.ok(this.sys, 'System not booted');
   const m = this.sys.metrics;

@@ -65,10 +65,6 @@ import {
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const PKG_VERSION: string = (require('../../package.json') as { version: string }).version;
 
-// ---------------------------------------------------------------------------
-// Header helpers
-// ---------------------------------------------------------------------------
-
 /**
  * Case-insensitively read a header from a forwarded headers map.
  *
@@ -88,10 +84,6 @@ export function readForwardedHeader(
   return undefined;
 }
 
-// ---------------------------------------------------------------------------
-// Validation helpers
-// ---------------------------------------------------------------------------
-
 /**
  * Return true if the value looks like a valid ForwardedRequest.
  * We only check the structural contract — not the full type — to keep this simple.
@@ -107,10 +99,6 @@ function isForwardedRequest(val: unknown): val is ForwardedRequest {
   if (!('body' in obj)) return false;
   return true;
 }
-
-// ---------------------------------------------------------------------------
-// Error → HTTP status mapping (mirrors gateway.ts)
-// ---------------------------------------------------------------------------
 
 type ErrorMapped = { status: number; body: JsonValue; headers?: Record<string, string> };
 
@@ -160,17 +148,12 @@ function mapErrorToStatus(err: unknown): ErrorMapped {
   return { status: 500, body: { error: 'INTERNAL', message } };
 }
 
-// ---------------------------------------------------------------------------
-// Core forwarding handler
-// ---------------------------------------------------------------------------
-
 /**
  * Create an Express request handler that implements the forwarding endpoint.
  * The handler reads a ForwardedRequest from req.body and returns a ForwardedResponse.
  */
 export function createForwardingHandler(sys: BootedSystem): RequestHandler {
   return async function forwardingHandler(req: Request, res: Response): Promise<void> {
-    // 1. Validate the forwarded request body.
     if (!isForwardedRequest(req.body)) {
       res.status(400).json({
         error: 'MALFORMED_FORWARDED_REQUEST',
@@ -205,7 +188,7 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
     // Normalise to lowercase once; original casing must never mis-route.
     const lc = lowercaseHeaders(fwd.headers);
 
-    // 2. Fault-sim: honour x-specmatic-fault.
+    // Fault-sim: honour x-specmatic-fault.
     try {
       const fault = extractFaultSignal(fwd.headers as Record<string, string | string[] | undefined>);
       if (fault !== null) {
@@ -219,21 +202,18 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       return;
     }
 
-    // 3. Match route against OpenAPI.
     const route = matchRoute(sys.openapi, method, path);
     if (route === null) {
       send({ status: 404, headers: {}, body: { error: 'NO_ROUTE', path } });
       return;
     }
 
-    // 4. Resolve boundary from route.
     const boundary = sys.dsl.byContractPath[route.contractPath];
     if (boundary === undefined) {
       send({ status: 404, headers: {}, body: { error: 'NO_BOUNDARY', contractPath: route.contractPath } });
       return;
     }
 
-    // 5. Parse X-Potemkin-* control headers from the lowercased map.
     const controls = parseControlHeaders(lc);
 
     // Per-request CEL sub-evaluator: layers clock offset + faker seed on top of
@@ -267,7 +247,6 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       }
     }
 
-    // 6. Translate intent.
     let intent: Intent;
     try {
       intent = translateIntent({ method, boundary });
@@ -279,7 +258,7 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
 
     const logger = sys.logger.child({ forwardedPath: path, forwardedMethod: rawMethod });
 
-    // 7. Resolve actor — forwarding path is Bearer/JWT only (no session cookie).
+    // Forwarding path is Bearer/JWT only (no session cookie).
     let actor: Actor | undefined;
     try {
       actor = resolveActor(readForwardedHeader(fwd.headers, 'authorization'), sys.dsl.auth) ?? undefined;
@@ -297,8 +276,8 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       actor = { id: id ?? 'unknown', scopes: (scopesStr ?? '').split(',').filter(Boolean) };
     }
 
-    // 8. Tier 4: time-travel intercepts for GET requests (read-at-version /
-    //    replay-event). Projects transient state from the event log; never runs the UoW.
+    // Tier 4: time-travel intercepts for GET requests — projects transient state
+    // from the event log; never runs the UoW.
     if (method === 'GET') {
       const ttTargetId = route.pathParams['id'] ?? null;
       if (controls.timeTravel.readAtVersion !== undefined && ttTargetId !== null) {
@@ -348,8 +327,6 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
     const faultRules = sys.dsl.faults ?? [];
     const chaos = resolveChaosHeaders(lc, faultRules);
 
-    // 9. Request-body validation (unless admin-gated skip, or a bulk array body
-    //    validated per-item below).
     const isBulkArrayBody =
       controls.sideEffects.bulkTransactional === true && Array.isArray(fwd.body);
     const isCreationArrayBody = intent === 'creation' && Array.isArray(fwd.body);
@@ -375,13 +352,11 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       }
     }
 
-    // 10. Bulk array body — execute each item through its own UoW and return the results array.
     if (Array.isArray(fwd.body) && (isBulkArrayBody || isCreationArrayBody)) {
       await runBulkCreate({ sys, fwd, route, boundary, intent, method, path, actor, controls, logger, send, reqCel });
       return;
     }
 
-    // 11. Build Command.
     // If-Match: strip quotes before parsing to integer. Weak validators (W/"5")
     // produce NaN — return a 400 rather than passing NaN into the UoW.
     const ifMatchValue = readForwardedHeader(fwd.headers, 'if-match');
@@ -419,8 +394,8 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       ...(actor !== undefined ? { actor } : {}),
     };
 
-    // 12. DSL fault rules — evaluate before the UoW so a match mutates no state.
-    //     Skipped when Skip-Dispatch is set.
+    // DSL fault rules — evaluate before the UoW so a match mutates no state.
+    // Skipped when Skip-Dispatch is set.
     const dynamicFaults = sys.faultStore.all();
     if (
       chaos.response === undefined &&
@@ -447,7 +422,6 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       }
     }
 
-    // 13. Apply chaos-header override before the UoW.
     const boundaryLatencyMs = resolveBoundaryLatencyMs(boundary.latency);
     if (chaos.response !== undefined || chaos.dropConnection === true) {
       await delay(chaos.extraLatencyMs + boundaryLatencyMs);
@@ -466,7 +440,6 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       return;
     }
 
-    // 14. Idempotency check.
     const idempotencyKey = readForwardedHeader(fwd.headers, 'idempotency-key');
     const idempotencyCfg = sys.dsl.idempotency;
     const idempotencyEnabled = idempotencyCfg?.enabled ?? false;
@@ -491,10 +464,8 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       }
     }
 
-    // 15. Apply boundary latency before the UoW.
     await delay(boundaryLatencyMs + chaos.extraLatencyMs);
 
-    // 16. Execute Unit of Work.
     const deferred = controls.sideEffects.bulkTransactional === true
       ? createSideEffectQueue()
       : undefined;
@@ -536,7 +507,6 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       return;
     }
 
-    // 17. Build response headers.
     const responseHeaders: Record<string, string> = { ...(result.headers ?? {}) };
 
     const isMutating = intent === 'mutation' || intent === 'creation';
@@ -564,7 +534,6 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       if (lastModified !== undefined) responseHeaders['last-modified'] = lastModified;
     }
 
-    // 18. Conditional requests — short-circuit to 304 when client is up to date.
     if (isSingleEntityGet) {
       const notModified = shouldReturnNotModified({
         ...(responseHeaders['etag'] !== undefined ? { etag: responseHeaders['etag'] } : {}),
@@ -585,8 +554,8 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
 
     let outBody: JsonValue | null | undefined = result.body;
 
-    // 20. Response mutations — HATEOAS/_links, mask, deprecation headers.
-    //     Body patches are reported in `_patches` for the plugin's response interceptor.
+    // Response mutations — HATEOAS/_links, mask, deprecation headers.
+    // Body patches are reported in `_patches` for the plugin's response interceptor.
     let patches: readonly JournalEntry[] | undefined;
     if (result.status >= 200 && result.status < 300 && outBody !== null && outBody !== undefined) {
       const pathItem = sys.openapi.paths[route.contractPath] as
@@ -604,13 +573,11 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       if (bodyPatches.length > 0) patches = bodyPatches;
     }
 
-    // 21. HATEOAS — embed state-dependent `_links` into query response bodies.
-    //     Applied to the live body so plugin-less callers also see the links.
+    // HATEOAS — applied to the live body so plugin-less callers also see the links.
     if (intent === 'query' && result.status >= 200 && result.status < 300) {
       outBody = applyHateoasToQueryBody(outBody, boundary, sys.dsl, reqCel, fwd.query);
     }
 
-    // 22. Tier 5: field mask.
     if (controls.format.maskFields && controls.format.maskFields.length > 0) {
       outBody = applyMask(outBody, controls.format.maskFields) as JsonValue | null | undefined;
     }
@@ -666,7 +633,7 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       outBody = truncateBody(outBody, chaos.bodyTruncateBytes);
     }
 
-    // 19. Record idempotency entry after the full pipeline so the cached response
+    // Record idempotency entry after the full pipeline so the cached response
     // matches exactly what the caller received (HATEOAS, mask, format, trace headers applied).
     if (idempotencyEnabled && idempotencyKey && intent !== 'query') {
       const store = sys.idempotencyStore;
@@ -841,10 +808,6 @@ async function runBulkCreate(args: {
   send({ status: 201, headers: bulkHeaders, body: bulkBody });
 }
 
-// ---------------------------------------------------------------------------
-// Health-check handler
-// ---------------------------------------------------------------------------
-
 /**
  * Lightweight health-check endpoint handler for GET /_engine/health.
  */
@@ -855,10 +818,6 @@ export function healthHandler(_req: Request, res: Response): void {
     version: PKG_VERSION,
   });
 }
-
-// ---------------------------------------------------------------------------
-// Routes discovery handler
-// ---------------------------------------------------------------------------
 
 /** Default TTL in seconds for the routes discovery response. */
 const DEFAULT_ROUTES_TTL = 30;
@@ -925,10 +884,6 @@ export function createRoutesHandler(sys: BootedSystem): RequestHandler {
     res.status(200).json(body);
   };
 }
-
-// ---------------------------------------------------------------------------
-// Fixtures handler
-// ---------------------------------------------------------------------------
 
 /**
  * Compute a SHA-256 hex checksum over the serialised FixtureStub list.

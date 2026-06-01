@@ -7,7 +7,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /**
- * Tests for [OverlayApplier] (E5):
+ * Tests for [OverlayApplier]:
  *  - add/replace/remove patches translate to Specmatic Overlay actions
  *  - move/copy resolve their source value from the spec (a null update would
  *    null the destination leaf, not copy the source — see the class doc)

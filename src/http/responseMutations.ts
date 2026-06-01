@@ -1,4 +1,4 @@
-// Response-mutation pipeline (D1 HATEOAS, D2 Deprecation/Sunset, D3 Mask).
+// Response-mutation pipeline (HATEOAS, Deprecation/Sunset, field masking).
 //
 // Given a successful contract-path response body, this computes:
 //   - HATEOAS `_links` (from boundary.hateoas, else the OpenAPI `links:` defaults),
@@ -7,7 +7,7 @@
 //     `deprecated: true`),
 // applies the body mutations via the single canonical applier (src/dsl/patches.ts)
 // tagged by source, and returns the mutated body, the headers to set, and the
-// full patch journal (used for the /_engine/forward `_patches` envelope, D4).
+// full patch journal (used for the /_engine/forward `_patches` envelope).
 
 import type { JsonValue, JsonObject } from '../types.js';
 import type { BoundaryConfig, DeprecationConfig as BoundaryDeprecation } from '../dsl/types.js';
@@ -112,21 +112,21 @@ export function applyResponseMutations(input: ResponseMutationInput): ResponseMu
   const { body, boundary, operation, statusCode, operationLookup } = input;
   const journal: JournalEntry[] = [];
 
-  // ── D1: HATEOAS — boundary entries override the OpenAPI links: defaults. ──
+  // ── HATEOAS — boundary entries override the OpenAPI links: defaults. ──
   const hateoasEntries =
     boundary.hateoas && boundary.hateoas.length > 0
       ? [...boundary.hateoas]
       : extractDefaultHateoas(operation, statusCode, operationLookup);
   const hateoasPatches = compileResponseHateoas(hateoasEntries);
 
-  // ── D3: Mask — the DSL boundary.mask removes the named fields. (The runtime
+  // ── Mask — the DSL boundary.mask removes the named fields. (The runtime
   // X-Potemkin-Mask control header is applied separately by the gateway as a
   // "[MASKED]" REPLACEMENT, distinct from this removal.) ──
   const maskPatches = compileResponseMask(boundary.mask ?? []);
 
   const mutatedBody = mutateEntities(body, hateoasPatches, maskPatches, journal);
 
-  // ── D2: Deprecation/Sunset/Link headers — boundary overrides OpenAPI default. ──
+  // ── Deprecation/Sunset/Link headers — boundary overrides OpenAPI default. ──
   const headers: Record<string, string> = {};
   const deprecation =
     toResponseDeprecation(boundary.deprecated) ??

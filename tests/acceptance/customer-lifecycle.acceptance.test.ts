@@ -1,5 +1,5 @@
 /**
- * lead-lifecycle.acceptance.test.ts (migrated from customer-lifecycle)
+ * lead-lifecycle.acceptance.test.ts
  *
  * Acceptance test (HTTP-driven):
  *  - POST /leads → 201

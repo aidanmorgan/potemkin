@@ -107,10 +107,10 @@ it('CONTRACT: fault signal headers field with non-object value (array) is exclud
   expect(signal?.headers).toBeUndefined();
 });
 
-// ── FAULT SIM: AUDIT GAP — headers with null value ───────────────────────────
+// ── fault signal: headers with null value ────────────────────────────────────
 
-it('FIX N1: fault signal with headers: null — null is now explicitly excluded and headers is undefined', () => {
-  // faultSim.ts N1 fix: explicit null check before typeof check prevents null passing through.
+it('fault signal with headers: null — null is explicitly excluded and headers is undefined', () => {
+  // An explicit null check before typeof prevents null from passing through.
   const signal = extractFaultSignal({
     'x-specmatic-fault': JSON.stringify({
       status: 503,
@@ -165,10 +165,10 @@ it('CONTRACT: parsed JSON that is null throws ContractViolationError', () => {
   ).toThrow(ContractViolationError);
 });
 
-// ── FAULT SIM: AUDIT GAP — status must be a valid HTTP status code ─────────────
+// ── fault signal: status must be a valid HTTP status code ────────────────────
 
-it('FIX N2: fault signal with status=-1 throws ContractViolationError (status range validation)', () => {
-  // faultSim.ts N2 fix: added range validation — status must be 100–599.
+it('fault signal with status=-1 throws ContractViolationError (status range validation)', () => {
+  // Range validation ensures status must be 100–599.
   expect(() => {
     extractFaultSignal({
       'x-specmatic-fault': JSON.stringify({ status: -1, body: {} }),

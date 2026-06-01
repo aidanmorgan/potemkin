@@ -1,5 +1,5 @@
 /**
- * REQ-63: dispatch_commands[].condition — end-to-end integration permutation tests.
+ * dispatch_commands[].condition — end-to-end integration permutation tests.
  *
  * Covers: single dispatch fires/skips, multiple dispatches (partial), condition
  * references command.payload AND state, cascade depth, no condition (unconditional).
@@ -78,7 +78,7 @@ reducers:
 // Test: dispatch with condition=true → secondary fires
 // ---------------------------------------------------------------------------
 
-describe('REQ-63: dispatch_commands condition — condition true, secondary fires', () => {
+describe('dispatch_commands condition — condition true, secondary fires', () => {
   it('secondary command fires when dispatch condition evaluates to true', async () => {
     const entityId = nextUuidv7();
     const secondaryId = nextUuidv7();
@@ -130,7 +130,7 @@ reducers:
 // Test: dispatch with condition=false → secondary silently skipped
 // ---------------------------------------------------------------------------
 
-describe('REQ-63: dispatch_commands condition — condition false, secondary skipped', () => {
+describe('dispatch_commands condition — condition false, secondary skipped', () => {
   it('primary commits but secondary is skipped when dispatch condition is false', async () => {
     const entityId = nextUuidv7();
     const secondaryId = nextUuidv7();
@@ -182,7 +182,7 @@ reducers:
 // Test: multiple dispatch_commands — some fire, others don't
 // ---------------------------------------------------------------------------
 
-describe('REQ-63: dispatch_commands — multiple dispatches, partial firing', () => {
+describe('dispatch_commands — multiple dispatches, partial firing', () => {
   it('fires unconditional dispatch but not conditional when condition is false', async () => {
     const entityId = nextUuidv7();
     const auditId = nextUuidv7();
@@ -241,7 +241,7 @@ reducers:
 // Test: condition references state
 // ---------------------------------------------------------------------------
 
-describe('REQ-63: dispatch_commands — condition references state', () => {
+describe('dispatch_commands — condition references state', () => {
   it('fires secondary when state.balance > 0 and condition checks it', async () => {
     // NOTE: dispatch_commands[].condition is evaluated against POST-projection state.
     // The reducer assigns status: 'UPDATED', so we check a field NOT modified by the reducer.
@@ -340,7 +340,7 @@ reducers:
 // Test: unconditional dispatch (no condition field)
 // ---------------------------------------------------------------------------
 
-describe('REQ-63: dispatch_commands — unconditional dispatch', () => {
+describe('dispatch_commands — unconditional dispatch', () => {
   it('always fires secondary when no condition is specified', async () => {
     const entityId = nextUuidv7();
     const secondaryId = nextUuidv7();

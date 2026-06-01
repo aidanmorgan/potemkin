@@ -388,7 +388,7 @@ describe('schema/typeCheck — additional branch coverage', () => {
     });
   });
 
-  // ── oneOf semantics (potemkin-6dqk) ──────────────────────────────────────────
+  // ── oneOf semantics ───────────────────────────────────────────────────────────
 
   describe('isAssignable – oneOf: exactly one member must match', () => {
     const strSchema: ObjectGraphSchema = { name: 's', kind: 'string' };
@@ -484,7 +484,7 @@ describe('schema/typeCheck — additional branch coverage', () => {
     });
   });
 
-  // ── pattern ReDoS guard (potemkin-tgta) ──────────────────────────────────────
+  // ── pattern ReDoS guard ───────────────────────────────────────────────────────
 
   describe('isAssignable – pattern ReDoS guard', () => {
     it('safe pattern passes through and matches correctly', () => {

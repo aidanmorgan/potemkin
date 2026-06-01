@@ -9,7 +9,7 @@ import kotlin.test.assertTrue
  * Unit tests for [PluginConfig.parsePotemkinYaml] — the sole config parser.
  *
  * Covers the `plugin:` block and the four forward-blocks (seeds / workflow /
- * overlay / governance) parsed into typed [ForwardBlocks] (E3).
+ * overlay / governance) parsed into typed [ForwardBlocks].
  */
 class PluginConfigTest {
 
@@ -251,7 +251,7 @@ class PluginConfigTest {
         assertEquals(12_000L, config.discoveryRefreshOnFailureMs)
     }
 
-    // ---- E3: malformed YAML throws BOOT_ERR_INVALID_YAML (AC-E3.3) ----------
+    // ---- malformed YAML throws BOOT_ERR_INVALID_YAML ----------
 
     @Test
     fun `malformed YAML throws BOOT_ERR_INVALID_YAML with file and line`() {

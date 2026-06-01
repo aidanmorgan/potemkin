@@ -248,7 +248,7 @@ describe('http/gateway — completeness probes', () => {
 
   // ── Admin routes — no auth protection ────────────────────────────────────────
 
-  it('[CURRENT] admin routes are open — POST /_admin/reset has no auth check', async () => {
+  it('admin routes are open — POST /_admin/reset has no auth check', async () => {
     // By design the admin routes are unprotected (this documents the fact)
     const res = await app.agent.post('/_admin/reset').expect(204);
     expect(res.status).toBe(204);

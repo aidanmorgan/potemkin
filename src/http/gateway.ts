@@ -153,10 +153,10 @@ export function createGateway(sys: BootedSystem): Express {
   const app = express();
 
   // Parse JSON bodies — strict:false allows non-object/array top-level values; 5 MB limit.
-  // type option extended to handle 'text/json' and 'application/*+json' variants (H-3).
+  // type option extended to handle 'text/json' and 'application/*+json' variants.
   app.use(express.json({ strict: false, limit: '5mb', type: ['application/json', 'text/json', 'application/*+json'] }));
 
-  // CORS middleware — add Access-Control-* headers to every response (H-2).
+  // CORS middleware — add Access-Control-* headers to every response.
   // When the request carries credentials (Cookie or Authorization), browsers
   // require a specific reflected Origin (not '*') and Allow-Credentials: true.
   // We only reflect the origin and set Allow-Credentials when the requestOrigin
@@ -188,7 +188,7 @@ export function createGateway(sys: BootedSystem): Express {
     });
   }
 
-  // OPTIONS preflight handler — respond 204 immediately before any route matching (H-2).
+  // OPTIONS preflight handler — respond 204 immediately before any route matching.
   app.options('*', (req: Request, res: Response) => {
     const requestOrigin = req.headers['origin'] as string | undefined;
     const credentialed = isCredentialedRequest(req);
@@ -308,7 +308,6 @@ async function handleContractRequest(
   contractPath: string,
   sys: BootedSystem,
 ): Promise<void> {
-  // 1. Per-request Pino child logger with tracing bindings.
   const requestId = nextUuidv7();
   // HEAD requests are handled as GET (RFC 7231 §4.3.2) — normalise the effective method.
   const isHead = req.method === 'HEAD';
@@ -316,7 +315,7 @@ async function handleContractRequest(
   const logger = sys.logger.child({ requestId, method: req.method, path: req.path });
 
   await withSpan(sys.tracer, 'http.request', async (_span) => {
-    // 2. Fault simulation (req 31): check for x-specmatic-fault header first.
+    // Fault simulation: check for x-specmatic-fault header first.
     const fault = extractFaultSignal(req.headers as Record<string, string | string[] | undefined>);
     if (fault !== null) {
       sys.metrics.faultsSimulatedTotal.add(1);
@@ -331,7 +330,6 @@ async function handleContractRequest(
       return;
     }
 
-    // 3. Lookup matching contract route (method + path).
     // HEAD is looked up as GET per RFC 7231 §4.3.2.
     const route = matchRoute(sys.openapi, effectiveMethod, req.path);
     if (route === null) {
@@ -370,8 +368,7 @@ async function handleContractRequest(
       }
     }
 
-    // 4. Contract validation (req 12, 24).
-    // Use effectiveMethod so HEAD requests are validated as GET.
+    // Contract validation: use effectiveMethod so HEAD requests are validated as GET.
     // Tier 7: admin-gated skip.
     // Tier 2: a bulk-transactional array body is validated per-item inside the
     // bulk block below (the contract schema describes a single item, not the
@@ -546,7 +543,7 @@ async function handleContractRequest(
         deferredSideEffects.flush(logger);
         // Route the created-array through the same mask → pagination → format
         // pipeline single responses use, so X-Potemkin-Mask / -Pagination-Style /
-        // -Response-Format are honoured for bulk results too (potemkin-ldy).
+        // -Response-Format are honoured for bulk results too.
         let bulkBody: JsonValue = results;
         const bulkHeaders: Record<string, string> = {};
         if (controls.format.maskFields && controls.format.maskFields.length > 0) {
@@ -573,7 +570,6 @@ async function handleContractRequest(
       return;
     }
 
-    // 5. Identity resolution & intent translation (reqs 13-14, design §4.1).
     const boundary = sys.dsl.byContractPath[route.contractPath];
     // Use effectiveMethod so HEAD commands are translated the same as GET.
     const intent: Intent = translateIntent({ method: effectiveMethod, boundary });
@@ -627,7 +623,7 @@ async function handleContractRequest(
       }
     }
 
-    // REQ-84 / F1: Resolve actor per auth mode.
+    // Resolve actor per auth mode.
     //  - session mode: the session middleware already resolved the actor from
     //    the cookie (when present) onto the request; we use that and do NOT fall
     //    back to the Authorization header.
@@ -662,7 +658,6 @@ async function handleContractRequest(
       else if (Array.isArray(v)) requestHeaders[k.toLowerCase()] = v[0] ?? '';
     }
 
-    // 6. Build Command (req 14).
     // If-Match may carry a quoted ETag value ("1") or an unquoted integer (1).
     // Strip optional surrounding double-quotes before parsing to an integer (RFC 7232).
     // Weak validators (W/"5") produce NaN — reject with 400 rather than passing NaN.
@@ -728,7 +723,7 @@ async function handleContractRequest(
       }
     }
 
-    // 6b. REQ-81/82/83: Idempotency check
+    // 6b. Idempotency check.
     const idempotencyKey = req.headers['idempotency-key'] as string | undefined;
     const idempotencyCfg = sys.dsl.idempotency;
     const idempotencyEnabled = idempotencyCfg?.enabled ?? false;
@@ -770,7 +765,6 @@ async function handleContractRequest(
       }
     }
 
-    // 7. Execute Unit of Work (reqs 15, 7, 20-22).
     let result;
     try {
       result = await Promise.resolve(
@@ -804,7 +798,7 @@ async function handleContractRequest(
       logger.error({ err }, 'UoW execution error');
       // X-Specmatic-Result: every UoW error path is a contract-test failure.
       res.setHeader('X-Specmatic-Result', 'failure');
-      // 8. Error → HTTP mapping (reqs 25-32, REQ-84/85/86).
+      // Error → HTTP mapping.
       if (err instanceof AuthenticationRequiredError) {
         res.status(401).json(err.toJSON());
       } else if (err instanceof AuthorizationDeniedError) {
@@ -837,7 +831,6 @@ async function handleContractRequest(
       return;
     }
 
-    // 9. Response: status + headers + body + ETag for mutations/creations that produced events.
     const responseHeaders: Record<string, string> = { ...(result.headers ?? {}) };
 
     const isMutating = intent === 'mutation' || intent === 'creation';
@@ -851,7 +844,7 @@ async function handleContractRequest(
         ? primaryEvents.at(-1)?.sequenceVersion
         : result.events.at(-1)?.sequenceVersion;
       if (seqForEtag !== undefined) {
-        // RFC 7232 §2.3: ETag must be a quoted string (H-4).
+        // RFC 7232 §2.3: ETag must be a quoted string.
         responseHeaders['ETag'] = '"' + String(seqForEtag) + '"';
       }
     }
@@ -867,7 +860,7 @@ async function handleContractRequest(
     // Tier 1/5/6: post-process response per X-Potemkin-* controls.
     let outBody: JsonValue | null | undefined = result.body;
 
-    // D1/D2/D3: response mutations — HATEOAS _links injection, field masking
+    // Response mutations — HATEOAS _links injection, field masking
     // (DSL boundary.mask + the X-Potemkin-Mask-Fields control header), and
     // Deprecation/Sunset/Link headers — applied to successful contract responses.
     if (result.status >= 200 && result.status < 300 && outBody !== null && outBody !== undefined) {
@@ -888,7 +881,7 @@ async function handleContractRequest(
 
     // Tier 5: the X-Potemkin-Mask control header REPLACES named fields with the
     // "[MASKED]" sentinel (distinct from the DSL boundary `mask:` block above,
-    // which REMOVES fields). Preserved as established runtime behaviour (D3.3).
+    // which REMOVES fields).
     if (controls.format.maskFields && controls.format.maskFields.length > 0) {
       outBody = applyMask(outBody, controls.format.maskFields) as JsonValue | null | undefined;
     }
@@ -966,13 +959,13 @@ async function handleContractRequest(
     // X-Potemkin-Trace-Id / X-Potemkin-Span-Name are reflected back in the response
     // headers for caller correlation but are NOT wired into the OTel trace context
     // (the active span is created by withSpan('http.request') above; the caller does
-    // not control its trace/span identifiers). See potemkin-0la.
+    // not control its trace/span identifiers).
     if (controls.observability.traceId) responseHeaders['X-Potemkin-Trace-Id'] = controls.observability.traceId;
     if (controls.observability.spanName) responseHeaders['X-Potemkin-Span-Name'] = controls.observability.spanName;
 
-    // 6c. REQ-81/83: Record idempotency entry after the full pipeline (HATEOAS,
-    // mask, format, trace headers) so the cached body+headers match what the
-    // caller actually received, and replays are identical to the original response.
+    // 6c. Record idempotency entry after the full pipeline (HATEOAS, mask, format,
+    // trace headers) so the cached body+headers match what the caller actually
+    // received, and replays are identical to the original response.
     if (idempotencyEnabled && idempotencyKey && intent !== 'query') {
       const store = sys.idempotencyStore;
       const requestBody: JsonValue = (req.body as JsonValue | null | undefined) ?? {};

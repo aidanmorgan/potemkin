@@ -1,6 +1,4 @@
 /**
- * Scope Checker — REQ-84, REQ-85
- *
  * Validates that a command actor's scopes are a superset of the required scopes
  * declared on a behavior's `match.required_scopes` field.
  */

@@ -9,7 +9,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * Unit tests for [WorkflowPropagator] (E6 / AC-G6.2): an id extracted from a create
+ * Unit tests for [WorkflowPropagator]: an id extracted from a create
  * response is substituted into a later request's path placeholder, mirroring
  * Specmatic's BODY/PATH workflow vocabulary.
  */

@@ -10,8 +10,8 @@
  *  - Fault simulation passes through (the forwarded x-specmatic-fault header)
  *  - ETag header is set for mutating commands that produce events
  *  - Health endpoint returns correct shape
- *  - Idempotency replay serves post-pipeline body+headers (potemkin-3r96)
- *  - CORS preflight reflects Origin + Authorization/Idempotency-Key (potemkin-svq2)
+ *  - Idempotency replay serves post-pipeline body+headers
+ *  - CORS preflight reflects Origin + Authorization/Idempotency-Key
  */
 
 import { createGateway } from '../../../src/http/gateway.js';
@@ -223,7 +223,7 @@ describe('forwarding/handler — createForwardingHandler', () => {
     expect(res.body.status).toBe(412);
   });
 
-  it('weak ETag W/"5" in forwarded If-Match returns 400 envelope not NaN (potemkin-yvoh)', async () => {
+  it('weak ETag W/"5" in forwarded If-Match returns 400 envelope not NaN', async () => {
     const createRes = await app.agent
       .post('/_engine/forward')
       .send({ method: 'POST', path: '/leads', headers: {}, query: {}, body: LEAD_PAYLOAD })
@@ -349,7 +349,7 @@ describe('forwarding/handler — createForwardingHandler', () => {
     expect('body' in res.body).toBe(true);
   });
 
-  // ── CORS preflight (OPTIONS) via forwarding path (potemkin-svq2) ─────────────
+  // ── CORS preflight (OPTIONS) via forwarding path ─────────────────────────────
 
   it('forwarded OPTIONS includes Authorization and Idempotency-Key in access-control-allow-headers', async () => {
     const res = await app.agent
@@ -429,7 +429,7 @@ describe('forwarding/handler — healthHandler', () => {
   });
 });
 
-// ── Idempotency replay serves post-pipeline body+headers via forwarding (potemkin-3r96) ──
+// ── Idempotency replay serves post-pipeline body+headers via forwarding ───────
 //
 // Uses a self-contained minimal system with idempotency enabled so the test
 // does not depend on the createTestApp fixture loading the global YAML.
@@ -499,7 +499,7 @@ idempotency:
   hash_includes_body: true
 `;
 
-describe('forwarding/handler — idempotency replay serves post-pipeline response (potemkin-3r96)', () => {
+describe('forwarding/handler — idempotency replay serves post-pipeline response', () => {
   let agent: PersistentAgent;
 
   beforeAll(async () => {

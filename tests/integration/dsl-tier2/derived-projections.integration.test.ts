@@ -1,5 +1,5 @@
 /**
- * REQ-88/89/90: Derived projections integration test
+ * Derived projections integration test
  *
  * Validates that:
  * - Derived projection state is updated after domain events

@@ -220,7 +220,7 @@ class SpecmaticStubBridgeTest {
         assertEquals("/items/{id}", req.path)
     }
 
-    // ---- buildSpecmaticRequest: query parameters (potemkin-502f) -----------------------
+    // ---- buildSpecmaticRequest: query parameters -----------------------
 
     @Test
     fun `buildSpecmaticRequest maps query parameters into the Specmatic request`() {

@@ -9,7 +9,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Unit tests for [JwtVerifier] — HS256 round-trip and expiry (AC-E2.3).
+ * Unit tests for [JwtVerifier] — HS256 round-trip and expiry.
  */
 class JwtVerifierTest {
 

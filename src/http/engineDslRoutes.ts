@@ -129,7 +129,7 @@ function makeInstallProducer(sys: BootedSystem): InstallProducer {
       // so the whole BootedSystem stays consistent after the swap — not just
       // sys.dsl. Leaving any of these stale silently degrades the write path for
       // boundaries newly bound (via push) onto existing OpenAPI paths:
-      //   - inferredSchemas: computed-field order / internal fields (C5 recompute)
+      //   - inferredSchemas: computed-field order / internal fields
       //   - schemaRegistry:  runtime type guard (SCHEMA_TYPE_MISMATCH protection)
       //   - requiresPrecondition: If-Match optimistic-concurrency enforcement
       // All are pure functions of (sys.openapi, dsl.boundaries); we compute them
@@ -195,7 +195,7 @@ function makeStateAccessor(sys: BootedSystem): StateAccessor {
       if (entity === null || entity === undefined) return null;
       const events = sys.events.byAggregate(id);
       const last = events[events.length - 1];
-      // C4: surface the boundary's declared computed-field names in topological
+      // Surface the boundary's declared computed-field names in topological
       // (computed) order so clients can see which keys are formula-derived.
       const inferred = sys.inferredSchemas[boundary];
       const computedFields = inferred ? [...inferred.computedOrder] : [];

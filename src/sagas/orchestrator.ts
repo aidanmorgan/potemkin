@@ -1,5 +1,5 @@
 /**
- * Saga Orchestrator — REQ-73 through REQ-80
+ * Saga Orchestrator
  *
  * ## Atomicity choice: post-commit compensation
  *
@@ -62,9 +62,9 @@ export interface SagaRunInput {
   readonly logger?: Logger;
   readonly schemaRegistry?: ObjectGraphSchemaRegistry;
   readonly openapi?: OpenApiDoc;
-  /** C3: TS-reducer registry threaded into saga-step units of work. */
+  /** TS-reducer registry threaded into saga-step units of work. */
   readonly tsReducerRegistry?: TsReducerRegistry;
-  /** C5: per-boundary inferred schemas threaded into saga-step units of work. */
+  /** Per-boundary inferred schemas threaded into saga-step units of work. */
   readonly inferredSchemas?: Readonly<Record<string, BoundaryInferenceResult>>;
   /**
    * Per-BootedSystem aggregate lock map. When supplied, every saga-step
@@ -101,7 +101,7 @@ function makeSagaEvent(
 /**
  * Extended intent that includes 'deletion' for saga steps/compensations.
  * The base Intent union covers creation/mutation/query; saga steps may also
- * carry 'deletion' to produce a DELETE-method command (potemkin-v2pu).
+ * carry 'deletion' to produce a DELETE-method command.
  */
 type SagaIntent = Intent | 'deletion';
 
@@ -320,7 +320,8 @@ export async function runSaga(input: SagaRunInput): Promise<void> {
           const compErrMsg = compErr instanceof Error ? compErr.message : String(compErr);
           log?.error({ compensatedStep: completedIdx, err: compErr }, 'Compensation handler failed');
 
-          // REQ-80: do not abort compensation chain on compensation failure
+          // Do not abort the compensation chain on a compensation failure —
+          // each step's compensation still runs regardless of prior compensation errors.
           makeSagaEvent(sagaInstanceId, 'SagaCompensationFailed', {
             sagaName: saga.name,
             compensatedStepIndex: completedIdx,

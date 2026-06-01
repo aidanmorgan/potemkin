@@ -1,5 +1,5 @@
 /**
- * Admin routes — dynamic fault TTL tests (potemkin-16q3)
+ * Admin routes — dynamic fault TTL tests
  *
  * Verifies:
  *  1. POST /_admin/faults with ttlMs registers a fault that disappears after expiry.
@@ -62,7 +62,7 @@ const VALID_FAULT_RULE = {
   response: { status: 503, body: { error: 'DOWN' } },
 };
 
-describe('adminRoutes — fault TTL via POST /_admin/faults (potemkin-16q3)', () => {
+describe('adminRoutes — fault TTL via POST /_admin/faults', () => {
   let sys: BootedSystem;
   let agent: PersistentAgent;
   let persistent: PersistentServer;

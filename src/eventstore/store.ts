@@ -57,7 +57,7 @@ export function createEventStore(): EventStore {
   const events: DomainEvent[] = [];
   const byAggMap = new Map<string, DomainEvent[]>();
   const seqByAgg = new Map<string, number>();
-  // S-1: Global set of all seen eventIds; ensures uniqueness across separate append() calls.
+  // Global set of all seen eventIds; ensures uniqueness across separate append() calls.
   const eventIdSet = new Set<string>();
 
   function validate(incoming: readonly DomainEvent[]): void {
@@ -74,7 +74,7 @@ export function createEventStore(): EventStore {
         throw new InternalExecutionError('Event missing aggregateId', { aggregateId: event.aggregateId ?? null });
       }
 
-      // S-1: Reject duplicate eventId across separate append() calls or within a batch.
+      // Reject duplicate eventId across separate append() calls or within a batch.
       if (localSeen.has(event.eventId)) {
         throw new InternalExecutionError('Duplicate eventId', {
           code: 'EVENT_DUPLICATE_ID',
@@ -122,7 +122,6 @@ export function createEventStore(): EventStore {
 
         seqByAgg.set(frozen.aggregateId, frozen.sequenceVersion);
         aggregatesTouched.add(frozen.aggregateId);
-        // S-1: Record the eventId as seen so future appends can detect duplicates.
         eventIdSet.add(frozen.eventId);
       }
 
@@ -149,7 +148,6 @@ export function createEventStore(): EventStore {
       events.length = 0;
       byAggMap.clear();
       seqByAgg.clear();
-      // S-1: Clear the duplicate-detection set on purge so reset is clean.
       eventIdSet.clear();
       logger.info('Event store purged');
     },
