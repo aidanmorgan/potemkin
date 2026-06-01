@@ -15,6 +15,9 @@ import {
   boundaryConfigToInferenceInput,
   type BoundaryInferenceResult,
 } from '../dsl/schemaInference.js';
+import { deriveSchemasFromOpenApi } from '../schema/fromOpenApi.js';
+import type { ObjectGraphSchemaRegistry, BoundarySchemas } from '../schema/types.js';
+import { buildPreconditionMap } from '../engine/boot.js';
 import { computeSpecVersion } from '../dsl/specVersion.js';
 import { createCelEvaluator } from '../cel/evaluator.js';
 import { createStateGraph } from '../stategraph/graph.js';
@@ -121,20 +124,57 @@ function makeInstallProducer(sys: BootedSystem): InstallProducer {
       // from the current sys.dsl so a boundary-only push does not erase
       // config loaded from potemkin.yaml at boot time.
       const dsl = mergeGlobalConfig(freshDsl, sys.dsl);
-      // Atomic swap: replace the BootedSystem.dsl reference. The graph is
-      // left untouched so projected state survives the swap.
-      (sys as { dsl: typeof dsl }).dsl = dsl;
-      // Rebuild inferred schemas (computed-field order, internal fields, wire
-      // schemas) from the merged DSL — mirrors the boot-time loop. Without this,
-      // a push that adds/changes `state.computed` fields would leave the C5
-      // recompute path reading a stale computedOrder from boot.
+
+      // Rebuild EVERY boundary-derived structure boot derives from dsl.boundaries
+      // so the whole BootedSystem stays consistent after the swap — not just
+      // sys.dsl. Leaving any of these stale silently degrades the write path for
+      // boundaries newly bound (via push) onto existing OpenAPI paths:
+      //   - inferredSchemas: computed-field order / internal fields (C5 recompute)
+      //   - schemaRegistry:  runtime type guard (SCHEMA_TYPE_MISMATCH protection)
+      //   - requiresPrecondition: If-Match optimistic-concurrency enforcement
+      // All are pure functions of (sys.openapi, dsl.boundaries); we compute them
+      // into locals first, then assign together so the swap is coherent.
       const inferredSchemas: Record<string, BoundaryInferenceResult> = {};
       for (const boundary of dsl.boundaries) {
         inferredSchemas[boundary.boundary] = buildInferredSchema(
           boundaryConfigToInferenceInput(boundary),
         );
       }
+      // Tolerant schema rebuild: boot REJECTS a boundary with no OpenAPI schema,
+      // but a hot push legitimately carries boundaries that may not be
+      // OpenAPI-bound (Specmatic pushes what it discovered). Build the registry
+      // per-boundary, skipping boundaries that have no schema — so the runtime
+      // type guard is applied wherever a schema EXISTS (fixing the staleness for
+      // boundaries bound to existing paths) without rejecting the push where it
+      // doesn't (preserving the pre-fix accept-behavior for unbound boundaries).
+      const byBoundary: Record<string, BoundarySchemas> = {};
+      for (const boundary of dsl.boundaries) {
+        try {
+          const schema = deriveSchemasFromOpenApi(sys.openapi, [boundary]).get(boundary.boundary);
+          if (schema) byBoundary[boundary.boundary] = schema;
+        } catch {
+          // Boundary not bound to an OpenAPI schema — no type guard for it.
+        }
+      }
+      const schemaRegistry: ObjectGraphSchemaRegistry = {
+        byBoundary,
+        get(boundary: string): BoundarySchemas | undefined {
+          return byBoundary[boundary];
+        },
+      };
+      const requiresPrecondition = buildPreconditionMap(sys.openapi, dsl.boundaries);
+
+      // Coherent swap: the graph is left untouched so projected state survives.
+      (sys as {
+        dsl: typeof dsl;
+        inferredSchemas: typeof inferredSchemas;
+        schemaRegistry: ObjectGraphSchemaRegistry;
+        requiresPrecondition: typeof requiresPrecondition;
+      }).dsl = dsl;
       (sys as { inferredSchemas: typeof inferredSchemas }).inferredSchemas = inferredSchemas;
+      (sys as { schemaRegistry: ObjectGraphSchemaRegistry }).schemaRegistry = schemaRegistry;
+      (sys as { requiresPrecondition: typeof requiresPrecondition }).requiresPrecondition =
+        requiresPrecondition;
       // The stored bundle's specVersion must equal what handleEngineDsl derives
       // from the same payload.modules — otherwise the replay (304) check never
       // matches and every install recompiles.

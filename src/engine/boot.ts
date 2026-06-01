@@ -218,7 +218,12 @@ function assertTypescriptConfig(raw: unknown): TypescriptConfig {
   return raw as TypescriptConfig;
 }
 
-function buildPreconditionMap(
+/**
+ * Build the If-Match precondition lookup for a boundary set. Exported so the hot
+ * DSL-push path (engineDslRoutes) can rebuild it from the merged DSL, keeping it
+ * consistent with `sys.dsl` after a push (mirrors the boot-time derivation).
+ */
+export function buildPreconditionMap(
   openapi: OpenApiDoc,
   boundaries: readonly BoundaryConfig[],
 ): (boundary: string, method: string) => boolean {

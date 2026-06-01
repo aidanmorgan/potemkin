@@ -145,6 +145,8 @@ describe('POST /_engine/dsl: install then replay (potemkin-q5d)', () => {
     // recomputed. Push a boundary that declares a computed field and assert the
     // inferred schema is rebuilt to include it.
     const before = sys.inferredSchemas;
+    const beforeRegistry = sys.schemaRegistry;
+    const beforePrecondition = sys.requiresPrecondition;
     const computedModule = {
       path: 'computed-push.yaml',
       yaml:
@@ -170,6 +172,12 @@ describe('POST /_engine/dsl: install then replay (potemkin-q5d)', () => {
     const inferred = sys.inferredSchemas['ComputedPush'];
     expect(inferred).toBeDefined();
     expect([...inferred.computedOrder]).toContain('itemCount');
+
+    // The sibling boundary-derived structures must ALSO be rebuilt so the write
+    // path (type guard + If-Match enforcement) stays consistent with the swapped
+    // DSL — not just inferredSchemas (potemkin-2g9 follow-up to potemkin-xch2).
+    expect(sys.schemaRegistry).not.toBe(beforeRegistry);
+    expect(sys.requiresPrecondition).not.toBe(beforePrecondition);
   });
 });
 
