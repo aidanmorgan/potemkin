@@ -72,6 +72,9 @@ async function main(): Promise<void> {
       reason: 'SIGTERM',
       stoppedAt: new Date().toISOString(),
     }),
+    // Close the TypeScript reducer file-watcher (when typescript.watch is on) so
+    // chokidar's inotify/kqueue descriptors are released before process.exit(0).
+    afterDrain: () => sys.tsWatcher?.stop(),
     logger: log,
   });
 }

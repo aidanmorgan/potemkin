@@ -374,7 +374,10 @@ describe('sandbox security — vm escape prevention', () => {
     expect(new Set(ids).size).toBe(1000);
   });
 
-  it('uuid() produces the same sequence for the same seed across two invocations', () => {
+  // potemkin-nm1p: each invocation of the same script must get a DISTINCT uuid
+  // sequence — the per-invocation counter ensures seeds never collide even when
+  // two calls happen within the same millisecond.
+  it('uuid() sequences are distinct across two separate invocations of the same script', () => {
     const code = `
       export default (ctx) => {
         var ids = [];
@@ -386,7 +389,11 @@ describe('sandbox security — vm escape prevention', () => {
     const ctx = makeCtx();
     const run1 = JSON.parse(invokeScript(handle, ctx) as string) as string[];
     const run2 = JSON.parse(invokeScript(handle, ctx) as string) as string[];
-    expect(run1).toEqual(run2);
+    // The two sequences must be entirely disjoint (no shared uuid values).
+    const set1 = new Set(run1);
+    for (const id of run2) {
+      expect(set1.has(id)).toBe(false);
+    }
   });
 
   // -------------------------------------------------------------------------
@@ -449,6 +456,47 @@ describe('sandbox security — vm escape prevention', () => {
     const handle = compileAndInstantiateWithLogger(code, logger);
     // Should not throw — just silently caps
     expect(() => invokeScript(handle, makeCtx())).not.toThrow();
+  });
+
+  // potemkin-nyff (1): a reducer whose __logBuffer__ contains a throwing getter
+  // must still return its correct result, not throw SCRIPT_EXECUTION_FAILED.
+  it('throwing log buffer getter does not turn a successful result into SCRIPT_EXECUTION_FAILED', () => {
+    const { logger } = makeMockLoggerCapture();
+    // The reducer poisons __logBuffer__[0] with a throwing getter, but returns a
+    // valid result. The host drain must be isolated so this does not surface as an error.
+    const code = `
+      export default (ctx) => {
+        Object.defineProperty(__logBuffer__, 0, {
+          get: function() { throw new Error('hostile getter'); },
+          configurable: true,
+        });
+        return 42;
+      };
+    `;
+    const handle = compileAndInstantiateWithLogger(code, logger);
+    // Must return 42, not throw.
+    const result = invokeScript(handle, makeCtx());
+    expect(result).toBe(42);
+  });
+
+  // potemkin-nyff (2): an oversized log entry is truncated to the byte cap.
+  it('oversized log entry is truncated with a [truncated] marker', async () => {
+    const { logger, lines } = makeMockLoggerCapture();
+    // Push a 5 000-character string — well above the 4 096-byte cap.
+    const code = `
+      export default (ctx) => {
+        console.log('A'.repeat(5000));
+        return 'done';
+      };
+    `;
+    const handle = compileAndInstantiateWithLogger(code, logger);
+    invokeScript(handle, makeCtx());
+    await new Promise((r) => setImmediate(r));
+    const combined = lines.join('');
+    // The entry must be present but truncated.
+    expect(combined).toContain('[truncated]');
+    // The full 5 000-character string must NOT appear verbatim.
+    expect(combined).not.toContain('A'.repeat(5000));
   });
 
   it('transpiled TypeScript reducer using Object/Array/Map/Set/Error works end-to-end', () => {

@@ -39,6 +39,15 @@ export interface GracefulShutdownConfig {
   readonly healthChecks?: { readonly [path: string]: () => Promise<unknown> };
   /** Logger for lifecycle events. */
   readonly logger?: Logger;
+  /**
+   * Optional hook invoked after connections have drained (inside onShutdown,
+   * after the 'engine drained' log).  Use this to close any resources that
+   * must outlive HTTP traffic — e.g. `await sys.tsWatcher?.stop()`.
+   *
+   * Errors thrown or rejected by this hook are caught, logged as warnings,
+   * and do NOT abort the shutdown sequence.
+   */
+  readonly afterDrain?: () => void | Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -115,6 +124,14 @@ export function installGracefulShutdown(config: GracefulShutdownConfig): void {
      */
     async onShutdown(): Promise<void> {
       log?.info('lifecycle.shutdown: engine drained — process exiting');
+
+      if (config.afterDrain) {
+        try {
+          await config.afterDrain();
+        } catch (err) {
+          log?.warn({ err }, 'lifecycle.shutdown: afterDrain hook failed (non-fatal)');
+        }
+      }
     },
   });
 }

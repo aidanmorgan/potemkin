@@ -92,6 +92,9 @@ export function resetSystem(sys: BootedSystem): void {
       // reset returns the system to its post-boot fault-free state.
       sys.faultStore?.clear();
 
+      // ── Step 8: Reset session store ────────────────────────────────────────
+      sys.sessionStore.reset();
+
       const durationMs = Date.now() - start;
       const entityCount = sys.graph.size();
 

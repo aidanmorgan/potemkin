@@ -250,6 +250,67 @@ export const POTEMKIN_SIGNAL_ALIASES: Record<string, string> = {
 };
 
 /**
+ * All X-Potemkin-* headers that a client (browser or test tool) may send on an
+ * inbound request. This list is the canonical source used to populate the
+ * Access-Control-Allow-Headers CORS response header so that browser preflight
+ * checks admit every simulation-control header without a wildcard (which the
+ * spec disallows).
+ *
+ * Intentionally excludes POTEMKIN_WEBHOOK_SIGNATURE — that header is emitted
+ * by the engine on outbound webhook deliveries, never sent by a client.
+ */
+export const POTEMKIN_REQUEST_HEADERS: readonly string[] = [
+  POTEMKIN_SIGNAL,
+  POTEMKIN_FORCE_RESPONSE,
+  POTEMKIN_RATE_LIMIT,
+  POTEMKIN_FEATURE_FLAG,
+  POTEMKIN_FORCE_STATUS,
+  POTEMKIN_SCENARIO,
+  POTEMKIN_FORCE_LATENCY,
+  POTEMKIN_USE_FAULT,
+  POTEMKIN_JITTER,
+  POTEMKIN_SLOW_RESPONSE,
+  POTEMKIN_DROP_CONNECTION,
+  POTEMKIN_SUCCESS_RATE,
+  POTEMKIN_ERROR_CLASS,
+  POTEMKIN_RETRY_AFTER,
+  POTEMKIN_BODY_TRUNCATE,
+  // Tier 1
+  POTEMKIN_DRY_RUN,
+  POTEMKIN_INCLUDE_EVENTS,
+  POTEMKIN_ECHO,
+  POTEMKIN_SEED,
+  POTEMKIN_CLOCK_OFFSET,
+  // Tier 2
+  POTEMKIN_SKIP_SAGAS,
+  POTEMKIN_SKIP_WEBHOOKS,
+  POTEMKIN_SKIP_PROJECTIONS,
+  POTEMKIN_SKIP_DISPATCH,
+  POTEMKIN_MAX_CASCADE_DEPTH,
+  POTEMKIN_BULK_TRANSACTIONAL,
+  // Tier 3
+  POTEMKIN_ACTOR_OVERRIDE,
+  POTEMKIN_CAUSED_BY,
+  POTEMKIN_IMPERSONATE,
+  // Tier 4
+  POTEMKIN_READ_AT_VERSION,
+  POTEMKIN_REPLAY_EVENT,
+  // Tier 5
+  POTEMKIN_RESPONSE_FORMAT,
+  POTEMKIN_PAGINATION_STYLE,
+  POTEMKIN_MASK,
+  // Tier 6
+  POTEMKIN_TRACE_ID,
+  POTEMKIN_SPAN_NAME,
+  POTEMKIN_LOG_LEVEL,
+  POTEMKIN_METRIC_TAG,
+  // Tier 7
+  POTEMKIN_SKIP_REQUEST_VALIDATION,
+  POTEMKIN_SKIP_RESPONSE_VALIDATION,
+  POTEMKIN_ALLOW_ADDITIONAL_PROPERTIES,
+];
+
+/**
  * Expand a convenience `potemkin:` block in a DSL match into raw header entries.
  *
  * Example input:  `{ rate_limit: "*", scenario: "slow_db" }`

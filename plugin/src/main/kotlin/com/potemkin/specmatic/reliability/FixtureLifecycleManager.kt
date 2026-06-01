@@ -10,6 +10,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.slf4j.LoggerFactory
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
@@ -44,10 +46,18 @@ class FixtureLifecycleManager(
     /**
      * Monotonically increasing sequence number. Incremented on every onTransition() call.
      * Each dispatched coroutine captures the sequence number at launch time and checks it
-     * before performing I/O — if a newer transition has been dispatched, the stale
-     * coroutine exits without acting, preventing a stale push from clobbering a newer clear.
+     * BOTH before performing I/O (fast bail-out) AND after the I/O completes (the
+     * load-bearing guard) — preventing a stale push from clobbering a newer clear even
+     * when the newer transition completes while the older one is blocked in fetchFixtures.
      */
     private val transitionSeq = AtomicLong(0L)
+
+    /**
+     * Serialises the apply/commit step of push and clear operations so they execute in
+     * strictly the order their coroutines acquire the lock. Combined with the post-I/O
+     * seq re-check, this guarantees the final state always reflects the latest transition.
+     */
+    private val transitionMutex = Mutex()
 
     /**
      * Last change signal seen from the fixtures endpoint, used to detect hot-reload changes.
@@ -78,15 +88,34 @@ class FixtureLifecycleManager(
             HealthState.Up -> {
                 log.info("FixtureLifecycleManager: engine UP — dispatching fixture push (seq={})", seq)
                 scope.launch {
+                    // Fast bail-out: skip I/O entirely if already superseded.
                     if (transitionSeq.get() != seq) return@launch
-                    pushFixtures()
+                    // Perform the blocking fetch OUTSIDE the mutex so the Down coroutine
+                    // can acquire the mutex and clear without waiting for the slow fetch.
+                    val fixtures = safelyFetch() ?: return@launch
+                    val signal = changeSignal(fixtures)
+                    // Acquire the mutex to serialize the apply step, then re-check seq
+                    // to discard results from a fetch that was superseded during I/O.
+                    transitionMutex.withLock {
+                        if (transitionSeq.get() != seq) {
+                            log.debug(
+                                "FixtureLifecycleManager: UP push (seq={}) superseded after fetch — discarding",
+                                seq,
+                            )
+                            return@withLock
+                        }
+                        applyPush(fixtures, signal)
+                    }
                 }
             }
             HealthState.Down -> {
                 log.info("FixtureLifecycleManager: engine DOWN — dispatching fixture clear (seq={})", seq)
                 scope.launch {
                     if (transitionSeq.get() != seq) return@launch
-                    clearFixtures()
+                    transitionMutex.withLock {
+                        if (transitionSeq.get() != seq) return@withLock
+                        clearFixtures()
+                    }
                 }
             }
             HealthState.Degraded -> {
@@ -124,11 +153,23 @@ class FixtureLifecycleManager(
         return "hash:${fixtures.toHashSet().hashCode()}"
     }
 
-    internal fun pushFixtures() {
+    /** Fetch fixtures and return them, or null on error. Used by the coroutine UP path. */
+    private fun safelyFetch(): List<FixtureStub>? {
+        return try {
+            fixturesClient.fetchFixtures()
+        } catch (e: Exception) {
+            log.warn("FixtureLifecycleManager: failed to fetch fixtures: {}", e.message, e)
+            null
+        }
+    }
+
+    /**
+     * Apply a freshly fetched [fixtures] list with its pre-computed [signal].
+     * Must be called while [transitionMutex] is held and the seq re-check has passed.
+     */
+    private fun applyPush(fixtures: List<FixtureStub>, signal: String) {
         try {
-            val fixtures = fixturesClient.fetchFixtures()
-            // Record the current change signal so hotReloadIfChanged can detect subsequent changes.
-            lastSignal.set(changeSignal(fixtures))
+            lastSignal.set(signal)
             val pushed = mutableSetOf<Pair<String, String>>()
             var count = 0
             for (fixture in fixtures) {
@@ -139,6 +180,17 @@ class FixtureLifecycleManager(
             }
             fixturesClient.recordPushedPaths(pushed)
             log.info("FixtureLifecycleManager: registered {} fixture(s)", count)
+        } catch (e: Exception) {
+            log.warn("FixtureLifecycleManager: failed to apply fixture push: {}", e.message, e)
+        }
+    }
+
+    internal fun pushFixtures() {
+        try {
+            val fixtures = fixturesClient.fetchFixtures()
+            // Record the current change signal so hotReloadIfChanged can detect subsequent changes.
+            val signal = changeSignal(fixtures)
+            applyPush(fixtures, signal)
         } catch (e: Exception) {
             log.warn("FixtureLifecycleManager: failed to push fixtures: {}", e.message, e)
         }

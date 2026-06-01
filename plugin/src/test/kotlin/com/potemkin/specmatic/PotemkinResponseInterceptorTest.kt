@@ -148,4 +148,56 @@ class PotemkinResponseInterceptorTest {
         val detail = warning.removePrefix("199 potemkin \"").removeSuffix("\"")
         assertFalse(detail.contains('"'), "Unescaped double-quote must not appear in detail: $detail")
     }
+
+    @Test
+    fun `Warning header backslash in detail is escaped so quoted-string is well-formed`() {
+        // A path ending in a backslash: without proper escaping the backslash would
+        // escape the closing quote and corrupt the RFC-7234 quoted-string.
+        // A backslash immediately before a quote is the worst case: \\" must become \\\\\"
+        // so the parser sees one escaped backslash followed by an escaped quote.
+        val malformedPatch = """{"x":1,"_patches":[{"op":"replace","path":"/missing\\"}]}"""
+        val resp = response(malformedPatch)
+
+        val result = interceptor.interceptResponse(req, resp)
+
+        val warning = result.headers["Warning"]
+        assertTrue(warning != null, "Warning header must be present")
+        assertFalse(warning!!.contains('\r'), "Warning header must not contain CR: $warning")
+        assertFalse(warning.contains('\n'), "Warning header must not contain LF: $warning")
+        assertTrue(warning.startsWith("199 potemkin \""), "Warning must start with '199 potemkin \"': $warning")
+        assertTrue(warning.endsWith("\""), "Warning must end with closing quote: $warning")
+        // Parse the detail between the outer quotes; it must have no raw unescaped double-quote.
+        val detail = warning.removePrefix("199 potemkin \"").removeSuffix("\"")
+        assertFalse(detail.contains('"'), "Unescaped double-quote must not appear in detail: $detail")
+        // The backslash must have been escaped to \\ in the output.
+        assertTrue(detail.contains("\\\\"), "Backslash must be escaped to \\\\ in detail: $detail")
+    }
+
+    @Test
+    fun `Warning header backslash-before-quote in detail is escaped correctly`() {
+        // Path is /foo\" — the backslash is immediately before a double-quote.
+        // Without correct ordering (escape \ first, then "), the \" pair at the end of the
+        // header value would escape the closing quote and corrupt the RFC-7234 quoted-string.
+        val malformedPatch = """{"x":1,"_patches":[{"op":"replace","path":"/foo\\\""}]}"""
+        val resp = response(malformedPatch)
+
+        val result = interceptor.interceptResponse(req, resp)
+
+        val warning = result.headers["Warning"]
+        assertTrue(warning != null, "Warning header must be present")
+        assertTrue(warning!!.startsWith("199 potemkin \""), "Warning must start with '199 potemkin \"': $warning")
+        assertFalse(warning.contains('\r') || warning.contains('\n'), "Warning must be a single line: $warning")
+        // The closing quote must NOT be preceded by an odd number of backslashes (which would
+        // escape it and corrupt the quoted-string). With correct escaping the trailing backslash
+        // is doubled so the closing quote is a genuine terminator.
+        assertTrue(warning.endsWith("\""), "Warning must end with a quote: $warning")
+        // Count backslashes immediately before the final quote.
+        val beforeLastQuote = warning.dropLast(1)
+        val trailingBackslashes = beforeLastQuote.reversed().takeWhile { it == '\\' }.length
+        assertEquals(
+            0,
+            trailingBackslashes % 2,
+            "Closing quote must not be escaped (backslash count before it must be even): $warning",
+        )
+    }
 }

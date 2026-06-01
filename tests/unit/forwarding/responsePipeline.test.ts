@@ -147,6 +147,20 @@ describe('responsePipeline helpers', () => {
       expect(h['access-control-allow-origin']).not.toBe('https://evil.com');
       expect(h['access-control-allow-credentials']).toBeUndefined();
     });
+
+    it('includes representative X-Potemkin-* request headers in access-control-allow-headers (potemkin-hqgo)', () => {
+      const h = corsPreflightHeaders('https://browser.example.com');
+      const allowHeaders = h['access-control-allow-headers'];
+      expect(allowHeaders).toContain('x-potemkin-dry-run');
+      expect(allowHeaders).toContain('x-potemkin-seed');
+      expect(allowHeaders).toContain('x-potemkin-actor');
+      expect(allowHeaders).toContain('x-potemkin-read-at-version');
+    });
+
+    it('does not include x-potemkin-signature (outbound-only header) in access-control-allow-headers (potemkin-hqgo)', () => {
+      const h = corsPreflightHeaders('https://browser.example.com');
+      expect(h['access-control-allow-headers']).not.toContain('x-potemkin-signature');
+    });
   });
 
   describe('splitBoundaryFaults', () => {

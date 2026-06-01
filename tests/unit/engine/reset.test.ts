@@ -2,6 +2,7 @@ import { resetSystem } from '../../../src/engine/reset';
 import { createEventStore } from '../../../src/eventstore/store';
 import { createStateGraph } from '../../../src/stategraph/graph';
 import { createIdempotencyStore } from '../../../src/idempotency/store';
+import { createSessionStore } from '../../../src/identity/sessionStore';
 import { createCelEvaluator } from '../../../src/cel/evaluator';
 import { createLogger } from '../../../src/observability/logger';
 import type { BootedSystem } from '../../../src/engine/boot';
@@ -38,6 +39,7 @@ function makeBootedSystem(
     tracer,
     schemaRegistry: undefined as any,
     idempotencyStore: createIdempotencyStore(),
+    sessionStore: createSessionStore({ sweepIntervalMs: 0 }),
   } as unknown as BootedSystem;
 }
 
@@ -136,5 +138,14 @@ describe('engine/reset', () => {
     }];
     const sys = makeBootedSystem(baseline, []); // no boundaries
     expect(() => resetSystem(sys)).toThrow();
+  });
+
+  it('clears sessions from the session store on reset', () => {
+    const sys = makeBootedSystem();
+    const session = sys.sessionStore.create({ id: 'user-1', scopes: [] }, 60_000);
+    expect(sys.sessionStore.get(session.id)).not.toBeNull();
+    resetSystem(sys);
+    expect(sys.sessionStore.get(session.id)).toBeNull();
+    expect(sys.sessionStore.size()).toBe(0);
   });
 });

@@ -240,4 +240,41 @@ describe('gateway — CORS credentialed requests (potemkin-yq1l)', () => {
     expect(res.headers['access-control-allow-headers']).toContain('Authorization');
     expect(res.headers['access-control-allow-headers']).toContain('Idempotency-Key');
   });
+
+  // ── X-Potemkin-* simulation-control headers in OPTIONS preflight (potemkin-hqgo) ──
+
+  it('OPTIONS preflight includes representative X-Potemkin-* request headers in Access-Control-Allow-Headers', async () => {
+    const res = await agent
+      .options('/items')
+      .set('Origin', 'https://browser.example.com')
+      .expect(204);
+
+    const allowHeaders = res.headers['access-control-allow-headers'] as string;
+    expect(allowHeaders).toContain('x-potemkin-dry-run');
+    expect(allowHeaders).toContain('x-potemkin-seed');
+    expect(allowHeaders).toContain('x-potemkin-actor');
+    expect(allowHeaders).toContain('x-potemkin-read-at-version');
+  });
+
+  it('GET response includes representative X-Potemkin-* request headers in Access-Control-Allow-Headers', async () => {
+    const res = await agent
+      .get('/items')
+      .set('Origin', 'https://browser.example.com')
+      .expect(200);
+
+    const allowHeaders = res.headers['access-control-allow-headers'] as string;
+    expect(allowHeaders).toContain('x-potemkin-dry-run');
+    expect(allowHeaders).toContain('x-potemkin-seed');
+    expect(allowHeaders).toContain('x-potemkin-actor');
+    expect(allowHeaders).toContain('x-potemkin-read-at-version');
+  });
+
+  it('OPTIONS preflight does not include x-potemkin-signature (outbound-only, not a client header)', async () => {
+    const res = await agent
+      .options('/items')
+      .set('Origin', 'https://browser.example.com')
+      .expect(204);
+
+    expect(res.headers['access-control-allow-headers']).not.toContain('x-potemkin-signature');
+  });
 });

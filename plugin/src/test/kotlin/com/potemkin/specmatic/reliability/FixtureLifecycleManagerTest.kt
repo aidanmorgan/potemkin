@@ -432,6 +432,75 @@ class FixtureLifecycleManagerTest {
 
         assertEquals(clearsBefore, bridge.clearCount, "Should not clear when fixture set is unchanged")
     }
+
+    // ---- stale-push guard (potemkin-mp9i) -----------------------------------------------
+
+    /**
+     * Simulates Up(seq1) → Down(seq2) where the Up push is slow and the Down clear is fast.
+     *
+     * Timeline:
+     *  1. onTransition(Down→Up) dispatched: seq1 job starts a slow fetch (300 ms)
+     *  2. onTransition(Up→Down) dispatched: seq2 job runs quickly and clears
+     *  3. seq1's slow fetch completes — the re-check must detect seq is stale and NOT push
+     *
+     * Expected final state: CLEARED (fixtures NOT seated).
+     */
+    @Test
+    fun `stale UP push does not clobber a subsequent DOWN clear`() {
+        val fetchStarted = java.util.concurrent.CountDownLatch(1)
+        val allowFetchComplete = java.util.concurrent.CountDownLatch(1)
+
+        // A slow fixtures client: signals when the fetch begins, then blocks until released.
+        val slowClient = object : FixturesClient(
+            backendUrl = "http://unused",
+            httpClient = noOpHttpClient(),
+        ) {
+            override fun fetchFixtures(): List<FixtureStub> {
+                fetchStarted.countDown()
+                allowFetchComplete.await()
+                return listOf(makeFixture("GET", "/should-not-be-seated"))
+            }
+
+            override fun lastEtag(): String? = null
+
+            override fun recordPushedPaths(paths: Set<Pair<String, String>>) {
+                // track in bridge indirectly — bridge.registered size tells us what happened
+            }
+
+            override fun excludedPaths(): Set<Pair<String, String>> = emptySet()
+        }
+
+        monitor.markDownExternal()
+        val manager = FixtureLifecycleManager(monitor, slowClient, bridge)
+        manager.start()
+
+        // seq1: dispatch the slow UP push
+        manager.onTransition(HealthState.Down, HealthState.Up)
+
+        // Wait until the fetch has started (seq1 is now blocked inside fetchFixtures)
+        assertTrue(fetchStarted.await(2, java.util.concurrent.TimeUnit.SECONDS), "Fetch should start within 2s")
+
+        // seq2: dispatch a fast DOWN clear (seq is now newer than seq1)
+        manager.onTransition(HealthState.Up, HealthState.Down)
+
+        // Wait for the clear to complete before unblocking the slow fetch
+        awaitCondition(2_000) { bridge.clearCount >= 1 }
+
+        // Now let the slow fetch complete — it should detect the stale seq and NOT push
+        allowFetchComplete.countDown()
+
+        // Give enough time for the now-unblocked seq1 coroutine to finish (if it were to push)
+        Thread.sleep(200)
+
+        // The stale UP push must NOT have registered any fixtures
+        assertEquals(
+            0,
+            bridge.registered.size,
+            "Stale UP push must not seat fixtures after a newer DOWN clear; registered=${bridge.registered.map { it.httpRequest.path }}",
+        )
+        // Clear must have happened exactly once
+        assertEquals(1, bridge.clearCount, "DOWN clear must have run exactly once")
+    }
 }
 
 private fun noOpHttpClient(): OkHttpClient = OkHttpClient.Builder()

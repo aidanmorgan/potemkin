@@ -13,6 +13,19 @@ const SCRIPT_TIMEOUT_MS = 50;
 const LOG_BUFFER_CAP = 100;
 
 /**
+ * Maximum byte length of a single log entry string. Entries longer than this
+ * are truncated to prevent a reducer from OOM-ing the host with 100×1 MB strings.
+ */
+const LOG_ENTRY_MAX_BYTES = 4096;
+
+/**
+ * Strictly-monotonic per-process invocation counter. Incremented once per
+ * invokeWithCode call and mixed into the uuid PRNG seed so that two invocations
+ * of the same script within the same millisecond always get distinct seeds.
+ */
+let invocationCounter = 0;
+
+/**
  * Derive a 32-bit unsigned integer seed from a string using a simple djb2-style
  * hash. The result is a primitive number, safe to inject into the vm context.
  */
@@ -104,10 +117,11 @@ function invokeWithCode(
   // Function, enabling: injectedObj.constructor.constructor("return process")().
   //
   // Safe injections (primitives only):
-  //   __ctxDataJson__ — JSON-serialised plain-data portions of ScriptContext
-  //   __uuidSeed__    — primitive number seed for the realm-native PRNG
-  //   __nowVal__      — pre-evaluated ISO timestamp string
-  //   __logBufCap__   — primitive number cap for the log buffer
+  //   __ctxDataJson__  — JSON-serialised plain-data portions of ScriptContext
+  //   __uuidSeed__     — primitive number seed for the realm-native PRNG
+  //   __nowVal__       — pre-evaluated ISO timestamp string
+  //   __logBufCap__    — primitive number cap for the log buffer (entry count)
+  //   __logEntryCap__  — primitive number cap for individual log entry bytes
   //
   // Everything else (JSON, Math, Date) is already realm-native.
   // URL is not available in vm realm and is not injected.
@@ -115,6 +129,9 @@ function invokeWithCode(
   // ---------------------------------------------------------------------------
 
   const nowVal = ctx.helpers.now();
+  // Increment the monotonic counter BEFORE deriving the seed so every call
+  // gets a unique value even when name/boundary/nowVal are all identical.
+  const thisInvocation = ++invocationCounter;
 
   const ctxData = {
     command: ctx.command,
@@ -123,16 +140,17 @@ function invokeWithCode(
     event: ctx.event ?? null,
   };
 
-  // Derive a deterministic numeric seed from the script name + current timestamp.
-  // Both inputs are already primitives; deriveNumericSeed runs on the host side
-  // and the result is injected as a plain number.
-  const uuidSeed: number = deriveNumericSeed(`${name}:${boundary}:${nowVal}`);
+  // Derive a deterministic numeric seed from script name, boundary, timestamp,
+  // AND the strictly-monotonic invocation counter. All inputs are primitives;
+  // deriveNumericSeed runs host-side and the result is injected as a plain number.
+  const uuidSeed: number = deriveNumericSeed(`${name}:${boundary}:${nowVal}:${thisInvocation}`);
 
   const safeContext = vm.createContext({
     __ctxDataJson__: JSON.stringify(ctxData),
     __uuidSeed__: uuidSeed,
     __nowVal__: nowVal,
     __logBufCap__: LOG_BUFFER_CAP,
+    __logEntryCap__: LOG_ENTRY_MAX_BYTES,
   });
 
   // Bootstrap: reconstruct __ctx__ from primitives using only realm-native
@@ -227,7 +245,11 @@ function _pushLog(level, msg) {
     }
     return;
   }
-  var entry = '{"level":' + JSON.stringify(level) + ',"msg":' + JSON.stringify(String(msg)) + '}';
+  var msgStr = String(msg);
+  if (msgStr.length > __logEntryCap__) {
+    msgStr = msgStr.slice(0, __logEntryCap__) + '…[truncated]';
+  }
+  var entry = '{"level":' + JSON.stringify(level) + ',"msg":' + JSON.stringify(msgStr) + '}';
   __logBuffer__.push(entry);
 }
 
@@ -270,49 +292,14 @@ var __ctx__ = {
 
   const script = new vm.Script(wrappedCode, { filename: `<script:${boundary}:${name}>` });
 
+  let scriptResult: unknown;
+
   try {
     bootstrapVmScript.runInContext(safeContext);
-    const result = script.runInContext(safeContext, {
+    scriptResult = script.runInContext(safeContext, {
       timeout: SCRIPT_TIMEOUT_MS,
       breakOnSigint: true,
     });
-
-    // Drain the realm log buffer into the host logger.
-    // We read __logBuffer__ from the context as an array reference; each element
-    // is guaranteed to be a primitive string because _pushLog only pushes
-    // JSON.stringify results. We do NOT call any realm function here.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const rawBuffer = (safeContext as any).__logBuffer__;
-    if (Array.isArray(rawBuffer)) {
-      const len = rawBuffer.length;
-      for (let i = 0; i < len; i++) {
-        const raw = rawBuffer[i];
-        if (typeof raw !== 'string') continue;
-        try {
-          const entry = JSON.parse(raw) as { level?: string; msg?: string };
-          const level = typeof entry.level === 'string' ? entry.level : 'info';
-          const msg = typeof entry.msg === 'string' ? entry.msg : raw;
-          if (level === 'warn') _log.warn({ source: 'reducer' }, msg);
-          else if (level === 'error') _log.error({ source: 'reducer' }, msg);
-          else if (level === 'debug') _log.debug({ source: 'reducer' }, msg);
-          else _log.info({ source: 'reducer' }, msg);
-        } catch {
-          _log.info({ source: 'reducer' }, raw);
-        }
-      }
-    }
-
-    // Reducers must be synchronous. A thenable return value means the script used
-    // async/Promise — the vm timeout does not cover microtask continuations, so an
-    // async reducer could hang the host event loop after runInContext returns.
-    if (result !== null && result !== undefined && typeof (result as { then?: unknown }).then === 'function') {
-      throw new InternalExecutionError(
-        `Script "${name}" returned a Promise or thenable — reducer scripts must be synchronous`,
-        { code: 'SCRIPT_ASYNC_RESULT', scriptName: name },
-      );
-    }
-
-    return result;
   } catch (err) {
     if (err instanceof InternalExecutionError) throw err;
 
@@ -341,6 +328,62 @@ var __ctx__ = {
       { code: 'SCRIPT_EXECUTION_FAILED', scriptName: name, originalMessage: errMessage },
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Drain the realm log buffer into the host logger.
+  //
+  // This runs in its OWN try/catch, isolated from the script execution try above.
+  // A hostile reducer can set a throwing getter on __logBuffer__[i]; if that
+  // error were allowed to propagate through the outer catch it would be wrapped
+  // as SCRIPT_EXECUTION_FAILED even though the reducer itself succeeded.
+  //
+  // On any drain error we emit a host warning and return the already-computed
+  // result — a malformed log buffer must never fail an otherwise-successful reduce.
+  //
+  // We read entries as plain strings only; we do NOT call any realm function.
+  // ---------------------------------------------------------------------------
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rawBuffer = (safeContext as any).__logBuffer__;
+    if (Array.isArray(rawBuffer)) {
+      const len = rawBuffer.length;
+      for (let i = 0; i < len; i++) {
+        // Reading rawBuffer[i] may throw if the reducer planted a hostile getter.
+        let raw: unknown;
+        try {
+          raw = rawBuffer[i];
+        } catch {
+          continue;
+        }
+        if (typeof raw !== 'string') continue;
+        try {
+          const entry = JSON.parse(raw) as { level?: string; msg?: string };
+          const level = typeof entry.level === 'string' ? entry.level : 'info';
+          const msg = typeof entry.msg === 'string' ? entry.msg : raw;
+          if (level === 'warn') _log.warn({ source: 'reducer' }, msg);
+          else if (level === 'error') _log.error({ source: 'reducer' }, msg);
+          else if (level === 'debug') _log.debug({ source: 'reducer' }, msg);
+          else _log.info({ source: 'reducer' }, msg);
+        } catch {
+          _log.info({ source: 'reducer' }, String(raw));
+        }
+      }
+    }
+  } catch (drainErr) {
+    _log.warn({ source: 'sandbox', drainErr: String(drainErr) }, 'log drain failed; ignoring');
+  }
+
+  // Reducers must be synchronous. A thenable return value means the script used
+  // async/Promise — the vm timeout does not cover microtask continuations, so an
+  // async reducer could hang the host event loop after runInContext returns.
+  if (scriptResult !== null && scriptResult !== undefined && typeof (scriptResult as { then?: unknown }).then === 'function') {
+    throw new InternalExecutionError(
+      `Script "${name}" returned a Promise or thenable — reducer scripts must be synchronous`,
+      { code: 'SCRIPT_ASYNC_RESULT', scriptName: name },
+    );
+  }
+
+  return scriptResult;
 }
 
 /**

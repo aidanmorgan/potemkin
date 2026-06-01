@@ -12,13 +12,21 @@ import type { BoundaryConfig, CompiledDsl, FaultRule, LatencyConfig } from '../d
 import type { CelEvaluator } from '../cel/evaluator.js';
 import type { Intent, JsonObject, JsonValue } from '../types.js';
 import { applyHateoasLinks } from '../engine/hateoas.js';
+import { POTEMKIN_REQUEST_HEADERS } from '../http/potemkinHeaders.js';
 
 // ---------------------------------------------------------------------------
 // CORS (OPTIONS preflight) — mirrors gateway.ts constants.
 // ---------------------------------------------------------------------------
 
 const CORS_ALLOW_METHODS = 'GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS';
-const CORS_ALLOW_HEADERS = 'Content-Type, Authorization, If-Match, Idempotency-Key, x-specmatic-fault';
+const CORS_ALLOW_HEADERS = [
+  'Content-Type',
+  'Authorization',
+  'If-Match',
+  'Idempotency-Key',
+  'x-specmatic-fault',
+  ...POTEMKIN_REQUEST_HEADERS,
+].join(', ');
 
 /**
  * Resolve the CORS allowed-origin value for a request. Replicates

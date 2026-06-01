@@ -111,14 +111,16 @@ class PotemkinResponseInterceptor(
      * in the body because we made no change — Specmatic clients tolerate the
      * extra field, and preserving the original is the documented failure mode.
      *
-     * The [detail] string is embedded inside an RFC 7234 quoted-string. Any
-     * double-quote characters are escaped as `\"` and any CR or LF characters
-     * are stripped so the header remains a single well-formed line.
+     * The [detail] string is embedded inside an RFC 7234 quoted-string. CR/LF
+     * characters are stripped, then backslashes are escaped as `\\`, and finally
+     * double-quotes are escaped as `\"` — order matters because escaping quotes
+     * first would corrupt the backslashes introduced by the escape step.
      */
     private fun withWarning(original: HttpResponse, detail: String): HttpResponse {
         val sanitised = detail
             .replace("\r", "")
             .replace("\n", "")
+            .replace("\\", "\\\\")
             .replace("\"", "\\\"")
         val warning = "199 potemkin \"$sanitised\""
         return original.copy(headers = original.headers + ("Warning" to warning))

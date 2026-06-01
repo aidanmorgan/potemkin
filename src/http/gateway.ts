@@ -61,6 +61,7 @@ import { createSessionAuthMiddleware, SESSION_ACTOR_KEY, SESSION_HANDLED_KEY } f
 import type { Actor } from '../types.js';
 import { createForwardingHandler, healthHandler, createRoutesHandler, createFixturesHandler } from '../forwarding/handler.js';
 import { parseControlHeaders, applyMask } from './controlHeaders.js';
+import { POTEMKIN_REQUEST_HEADERS } from './potemkinHeaders.js';
 import { applyPaginationStyle, applyResponseFormat } from './responseFormat.js';
 import { buildSecurityHeaders } from './securityHeaders.js';
 import { evaluateFaultRules } from '../faults/index.js';
@@ -120,7 +121,14 @@ function isCredentialedRequest(req: Request): boolean {
 }
 
 const CORS_ALLOW_METHODS = 'GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS';
-const CORS_ALLOW_HEADERS = 'Content-Type, Authorization, If-Match, Idempotency-Key, x-specmatic-fault';
+const CORS_ALLOW_HEADERS = [
+  'Content-Type',
+  'Authorization',
+  'If-Match',
+  'Idempotency-Key',
+  'x-specmatic-fault',
+  ...POTEMKIN_REQUEST_HEADERS,
+].join(', ');
 
 /**
  * Convert an OpenAPI path template (/loans/{id}) to an Express route pattern (/loans/:id).
