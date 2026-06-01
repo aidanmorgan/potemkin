@@ -62,6 +62,106 @@ const VALID_FAULT_RULE = {
   response: { status: 503, body: { error: 'DOWN' } },
 };
 
+// ── Helper to create some events ─────────────────────────────────────────────
+
+const ITEM_PAYLOAD = { name: 'Test Item' };
+
+// ── /_admin/events pagination ─────────────────────────────────────────────────
+
+describe('adminRoutes — GET /_admin/events pagination', () => {
+  let sys: BootedSystem;
+  let agent: PersistentAgent;
+  let persistent: PersistentServer;
+
+  beforeAll(async () => {
+    const openapi = await loadOpenApi(`
+openapi: "3.0.3"
+info:
+  title: Events Pagination Test
+  version: "1.0.0"
+paths:
+  /items:
+    post:
+      operationId: createItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Item"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+components:
+  schemas:
+    Item:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+`);
+    sys = await bootSystem({
+      openapi,
+      compiledDsl: await compileDsl([{
+        name: 'item',
+        yaml: `
+boundary: Item
+contract_path: /items
+fallback_override: true
+event_catalog: []
+behaviors: []
+reducers: []
+`,
+      }]),
+    });
+    persistent = await withPersistentServer(createGateway(sys));
+    agent = persistent.agent;
+    // Create 3 events so pagination can be meaningfully tested.
+    await agent.post('/items').send({ ...ITEM_PAYLOAD, name: 'E1' });
+    await agent.post('/items').send({ ...ITEM_PAYLOAD, name: 'E2' });
+    await agent.post('/items').send({ ...ITEM_PAYLOAD, name: 'E3' });
+  });
+
+  afterAll(async () => {
+    await persistent.close();
+  });
+
+  it('?limit=0 returns 0 events', async () => {
+    const res = await agent.get('/_admin/events?limit=0').expect(200);
+    expect(res.body.events).toHaveLength(0);
+  });
+
+  it('?limit=2 returns at most 2 events', async () => {
+    const res = await agent.get('/_admin/events?limit=2').expect(200);
+    expect(res.body.events).toHaveLength(2);
+  });
+
+  it('no limit returns all events', async () => {
+    const all = await agent.get('/_admin/events').expect(200);
+    const limited = await agent.get('/_admin/events?limit=0').expect(200);
+    expect(all.body.events.length).toBeGreaterThan(limited.body.events.length);
+  });
+
+  it('?limit=-5 returns 0 events (negative clamped to 0)', async () => {
+    const res = await agent.get('/_admin/events?limit=-5').expect(200);
+    expect(res.body.events).toHaveLength(0);
+  });
+
+  it('non-numeric limit defaults to all events', async () => {
+    const all = await agent.get('/_admin/events').expect(200);
+    const nonNumeric = await agent.get('/_admin/events?limit=abc').expect(200);
+    expect(nonNumeric.body.events.length).toBe(all.body.events.length);
+  });
+});
+
+// ── Fault TTL tests ───────────────────────────────────────────────────────────
+
 describe('adminRoutes — fault TTL via POST /_admin/faults', () => {
   let sys: BootedSystem;
   let agent: PersistentAgent;

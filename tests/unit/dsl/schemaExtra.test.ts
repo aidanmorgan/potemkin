@@ -13,6 +13,7 @@
  */
 
 import { validateBoundaryConfig } from '../../../src/dsl/schema';
+import { validateGlobalConfig } from '../../../src/dsl/schema';
 import { BootError } from '../../../src/errors';
 
 const minimalBase = {
@@ -208,6 +209,145 @@ describe('dsl/schema — additional branch coverage', () => {
       };
       const config = validateBoundaryConfig(raw);
       expect(config.behaviors[0]?.dispatchCommands).toHaveLength(1);
+    });
+
+    it('throws BOOT_ERR_DSL_SYNTAX when dispatch_commands[i].target_id is invalid CEL', () => {
+      const raw = {
+        ...minimalBase,
+        behaviors: [
+          {
+            name: 'b',
+            match: { operationId: 'createThing', condition: 'true' },
+            emit: 'Ev',
+            dispatch_commands: [
+              { boundary: 'Other', intent: 'mutation', operationId: 'op', target_id: '!!bad cel!!' },
+            ],
+          },
+        ],
+        event_catalog: [{ type: 'Ev', payload_template: {} }],
+      };
+      expect(() => validateBoundaryConfig(raw)).toThrow(BootError);
+      try {
+        validateBoundaryConfig(raw);
+      } catch (e) {
+        expect((e as BootError).code).toBe('BOOT_ERR_DSL_SYNTAX');
+      }
+    });
+
+    it('accepts a valid CEL expression as dispatch_commands[i].target_id', () => {
+      const raw = {
+        ...minimalBase,
+        behaviors: [
+          {
+            name: 'b',
+            match: { operationId: 'createThing', condition: 'true' },
+            emit: 'Ev',
+            dispatch_commands: [
+              { boundary: 'Other', intent: 'mutation', operationId: 'op', target_id: 'command.payload.leadId' },
+            ],
+          },
+        ],
+        event_catalog: [{ type: 'Ev', payload_template: {} }],
+      };
+      const config = validateBoundaryConfig(raw);
+      expect(config.behaviors[0]?.dispatchCommands?.[0]?.targetId).toBe('command.payload.leadId');
+    });
+  });
+
+  // ── saga step / compensation target_id CEL validation ──────────────────────
+
+  describe('saga target_id CEL validation', () => {
+    const minimalSagaStep = (targetId: string) => ({
+      sagas: [
+        {
+          name: 'TestSaga',
+          trigger: { boundary: 'Lead', intent: 'creation', condition: 'true' },
+          steps: [
+            {
+              name: 'step1',
+              boundary: 'Other',
+              intent: 'mutation',
+              operationId: 'op',
+              target_id: targetId,
+              payload: { id: '"x"' },
+            },
+          ],
+        },
+      ],
+    });
+
+    it('throws BOOT_ERR_DSL_SYNTAX when saga step target_id is invalid CEL', () => {
+      expect(() => validateGlobalConfig(minimalSagaStep('!!bad cel!!'))).toThrow(BootError);
+      try {
+        validateGlobalConfig(minimalSagaStep('!!bad cel!!'));
+      } catch (e) {
+        expect((e as BootError).code).toBe('BOOT_ERR_DSL_SYNTAX');
+      }
+    });
+
+    it('accepts a valid CEL expression as saga step target_id', () => {
+      const cfg = validateGlobalConfig(minimalSagaStep('command.payload.leadId'));
+      expect(cfg.sagas?.[0]?.steps?.[0]?.targetId).toBe('command.payload.leadId');
+    });
+
+    it('throws BOOT_ERR_DSL_SYNTAX when saga compensation target_id is invalid CEL', () => {
+      const rawWithCompensation = {
+        sagas: [
+          {
+            name: 'TestSaga',
+            trigger: { boundary: 'Lead', intent: 'creation', condition: 'true' },
+            steps: [
+              {
+                name: 'step1',
+                boundary: 'Other',
+                intent: 'mutation',
+                operationId: 'op',
+                payload: { id: '"x"' },
+                compensation: {
+                  intent: 'mutation',
+                  operationId: 'compensateOp',
+                  target_id: '!!bad cel!!',
+                  payload: { id: '"x"' },
+                },
+              },
+            ],
+          },
+        ],
+      };
+      expect(() => validateGlobalConfig(rawWithCompensation)).toThrow(BootError);
+      try {
+        validateGlobalConfig(rawWithCompensation);
+      } catch (e) {
+        expect((e as BootError).code).toBe('BOOT_ERR_DSL_SYNTAX');
+      }
+    });
+
+    it('accepts a valid CEL expression as saga compensation target_id', () => {
+      const rawWithCompensation = {
+        sagas: [
+          {
+            name: 'TestSaga',
+            trigger: { boundary: 'Lead', intent: 'creation', condition: 'true' },
+            steps: [
+              {
+                name: 'step1',
+                boundary: 'Other',
+                intent: 'mutation',
+                operationId: 'op',
+                payload: { id: '"x"' },
+                compensation: {
+                  intent: 'mutation',
+                  operationId: 'compensateOp',
+                  target_id: 'command.payload.leadId',
+                  payload: { id: '"x"' },
+                },
+              },
+            ],
+          },
+        ],
+      };
+      const cfg = validateGlobalConfig(rawWithCompensation);
+      expect(cfg.sagas?.[0]?.steps?.[0]?.compensation?.targetId).toBe('command.payload.leadId');
     });
   });
 

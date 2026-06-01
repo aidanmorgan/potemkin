@@ -234,6 +234,15 @@ function validateSecondaryCommandSpec(raw: unknown, ctx: string): SecondaryComma
   }
   const operationId = requireString(raw, 'operationId', ctx);
   const targetId = requireString(raw, 'target_id', ctx);
+  try {
+    celEvaluator.compile(targetId);
+  } catch (err) {
+    throw new BootError(
+      'BOOT_ERR_DSL_SYNTAX',
+      `${ctx}: target_id is not a valid CEL expression: ${err instanceof Error ? err.message : String(err)}`,
+      { field: 'target_id', context: ctx, expression: targetId },
+    );
+  }
   const payload = requireStringStringMap(raw, 'payload', ctx);
 
   // Optional condition for dispatch gating
@@ -1153,6 +1162,17 @@ function validateSagaCompensation(raw: unknown, ctx: string): SagaCompensation {
   }
   const operationId = requireString(raw, 'operationId', ctx);
   const targetId = optionalString(raw, 'target_id', ctx);
+  if (targetId !== undefined) {
+    try {
+      celEvaluator.compile(targetId);
+    } catch (err) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `${ctx}: target_id is not a valid CEL expression: ${err instanceof Error ? err.message : String(err)}`,
+        { field: 'target_id', context: ctx, expression: targetId },
+      );
+    }
+  }
   const payload = requireStringStringMap(raw, 'payload', ctx);
   return {
     intent: intentRaw,
@@ -1175,6 +1195,17 @@ function validateSagaStep(raw: unknown, idx: number): SagaStep {
   }
   const operationId = requireString(raw, 'operationId', ctx);
   const targetId = optionalString(raw, 'target_id', ctx);
+  if (targetId !== undefined) {
+    try {
+      celEvaluator.compile(targetId);
+    } catch (err) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `${ctx}: target_id is not a valid CEL expression: ${err instanceof Error ? err.message : String(err)}`,
+        { field: 'target_id', context: ctx, expression: targetId },
+      );
+    }
+  }
   const payload = requireStringStringMap(raw, 'payload', ctx);
   let compensation: SagaCompensation | undefined;
   if (raw['compensation'] !== undefined && raw['compensation'] !== null) {

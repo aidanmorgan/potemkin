@@ -162,7 +162,8 @@ export function registerAdminRoutes(app: Express, sys: BootedSystem): void {
         const offsetRaw = req.query['offset'];
         const limitRaw = req.query['limit'];
         const offset = typeof offsetRaw === 'string' ? Math.max(0, parseInt(offsetRaw, 10) || 0) : 0;
-        const limit = typeof limitRaw === 'string' ? Math.max(1, parseInt(limitRaw, 10) || events.length) : events.length;
+        const parsedLimit = typeof limitRaw === 'string' ? parseInt(limitRaw, 10) : NaN;
+        const limit = isNaN(parsedLimit) ? events.length : Math.max(0, parsedLimit);
         events = events.slice(offset, offset + limit);
 
         res.status(200).json({ events });
