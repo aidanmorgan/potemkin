@@ -58,7 +58,7 @@ import type { FaultResponse, FaultRule } from '../dsl/types.js';
 import type { JsonValue } from '../types.js';
 import {
   POTEMKIN_FORCE_LATENCY,
-  POTEMKIN_FORCE_STATUS_CHAOS,
+  POTEMKIN_FORCE_STATUS,
   POTEMKIN_USE_FAULT,
   POTEMKIN_JITTER,
   POTEMKIN_SLOW_RESPONSE,
@@ -183,9 +183,9 @@ export function resolveChaosHeaders(
 
   // 2. X-Potemkin-Force-Status — YAML matcher first; generic fallback otherwise.
   if (response === undefined) {
-    const forceStatus = readHeader(headers, POTEMKIN_FORCE_STATUS_CHAOS);
+    const forceStatus = readHeader(headers, POTEMKIN_FORCE_STATUS);
     if (forceStatus !== undefined && forceStatus.trim() !== '') {
-      const matched = findRuleByHeader(faultRules, POTEMKIN_FORCE_STATUS_CHAOS, forceStatus);
+      const matched = findRuleByHeader(faultRules, POTEMKIN_FORCE_STATUS, forceStatus);
       if (matched) {
         response = matched.response;
         matchedRuleName = matched.name;
@@ -196,7 +196,7 @@ export function resolveChaosHeaders(
             status,
             body: {
               error: 'FORCED_STATUS',
-              message: `Status ${status} forced via ${POTEMKIN_FORCE_STATUS_CHAOS} header`,
+              message: `Status ${status} forced via ${POTEMKIN_FORCE_STATUS} header`,
               status,
             },
           };

@@ -6,7 +6,7 @@ identity:
     generate: "$uuidv7()"
 scripts:
   - name: computeScore
-    source: |
+    code: |
       export default function(ctx) {
         const source = ctx.command.payload.source ?? 'COLD_LIST';
         const baseScore = { REFERRAL: 80, PARTNER: 70, WEBSITE: 50, COLD_LIST: 20 };
@@ -14,7 +14,7 @@ scripts:
         return Math.round((baseScore[source] ?? 30) * multiplier);
       }
   - name: buildAuditTrail
-    source: |
+    code: |
       export default function(ctx) {
         return {
           actor: ctx.command.actor?.id ?? 'system',
@@ -38,22 +38,32 @@ event_catalog:
 behaviors:
   - name: createScore
     match:
-      intent: creation
+      operationId: createLeadScore
       condition: "command.payload.leadId != null"
     emit: LeadScoreCreated
   - name: updateScore
     match:
-      intent: mutation
+      operationId: updateLeadScore
       condition: "command.payload.scoreMultiplier != null"
     emit: LeadScoreUpdated
 reducers:
   - on: LeadScoreCreated
-    assign:
-      id: "event.payload.id"
-      leadId: "event.payload.leadId"
-      score: "event.payload.score"
-      createdAt: "event.payload.createdAt"
+    patches:
+      - op: replace
+        path: /id
+        value: "${event.payload.id}"
+      - op: replace
+        path: /leadId
+        value: "${event.payload.leadId}"
+      - op: replace
+        path: /score
+        value: "${event.payload.score}"
+      - op: replace
+        path: /createdAt
+        value: "${event.payload.createdAt}"
   - on: LeadScoreUpdated
-    assign:
-      score: "event.payload.score"
+    patches:
+      - op: replace
+        path: /score
+        value: "${event.payload.score}"
 initialization: []

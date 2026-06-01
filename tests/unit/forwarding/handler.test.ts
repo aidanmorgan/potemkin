@@ -223,6 +223,28 @@ describe('forwarding/handler — createForwardingHandler', () => {
     expect(res.body.status).toBe(412);
   });
 
+  it('weak ETag W/"5" in forwarded If-Match returns 400 envelope not NaN (potemkin-yvoh)', async () => {
+    const createRes = await app.agent
+      .post('/_engine/forward')
+      .send({ method: 'POST', path: '/leads', headers: {}, query: {}, body: LEAD_PAYLOAD })
+      .expect(200);
+    expect(createRes.body.status).toBe(201);
+    const leadId = createRes.body.body.id as string;
+
+    const res = await app.agent
+      .post('/_engine/forward')
+      .send({
+        method: 'POST',
+        path: `/leads/${leadId}/contact`,
+        headers: { 'if-match': 'W/"5"' },
+        query: {},
+        body: { notes: 'test' },
+      })
+      .expect(200);
+    expect(res.body.status).toBe(400);
+    expect(res.body.body.error).toBe('INVALID_IF_MATCH');
+  });
+
   it('maps original-cased If-Match with a stale sequenceVersion to a 412 envelope', async () => {
     // Regression: the handler must read forwarded headers case-insensitively, so
     // an `If-Match` sent with original casing (not the documented lowercase key)

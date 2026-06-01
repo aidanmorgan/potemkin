@@ -139,6 +139,7 @@ export function shouldReturnNotModified(input: ConditionalInput): boolean {
   const { etag, lastModified, ifNoneMatch, ifModifiedSince } = input;
 
   if (ifNoneMatch !== undefined && etag !== undefined) {
+    if (ifNoneMatch.trim() === '*') return true;
     const strip = (s: string): string => s.trim().replace(/^"|"$/g, '');
     if (strip(ifNoneMatch) === strip(etag)) return true;
   }

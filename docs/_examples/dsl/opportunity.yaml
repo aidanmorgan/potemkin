@@ -26,19 +26,20 @@ event_catalog:
 behaviors:
   - name: createOpportunity
     match:
-      intent: creation
+      operationId: createOpportunity
       condition: "command.payload.leadId != null && command.payload.value > 0"
     emit: OpportunityCreated
     dispatch_commands:
       - boundary: Lead
         intent: mutation
+        operationId: patchLead
         target_id: "command.payload.leadId"
         payload:
           opportunityId: "command.targetId"
         condition: "command.payload.leadId != null"
   - name: progressStage
     match:
-      intent: mutation
+      operationId: progressOpportunity
       condition: >-
         command.path == $concat('/opportunities/', command.targetId, '/progress')
         && command.payload.stage != null
@@ -47,7 +48,7 @@ behaviors:
     emit: OpportunityProgressed
   - name: closeWon
     match:
-      intent: mutation
+      operationId: closeOpportunityWon
       condition: >-
         command.path == $concat('/opportunities/', command.targetId, '/close-won')
         && state.stage != 'won'
@@ -57,7 +58,7 @@ behaviors:
         emit: OpportunityWon
   - name: closeLost
     match:
-      intent: mutation
+      operationId: closeOpportunityLost
       condition: >-
         command.path == $concat('/opportunities/', command.targetId, '/close-lost')
         && state.stage != 'won'
@@ -65,20 +66,38 @@ behaviors:
     emit: OpportunityLost
 reducers:
   - on: OpportunityCreated
-    assign:
-      id: "event.payload.id"
-      leadId: "event.payload.leadId"
-      value: "event.payload.value"
-      stage: "event.payload.stage"
-      createdAt: "event.payload.createdAt"
+    patches:
+      - op: replace
+        path: /id
+        value: "${event.payload.id}"
+      - op: replace
+        path: /leadId
+        value: "${event.payload.leadId}"
+      - op: replace
+        path: /value
+        value: "${event.payload.value}"
+      - op: replace
+        path: /stage
+        value: "${event.payload.stage}"
+      - op: replace
+        path: /createdAt
+        value: "${event.payload.createdAt}"
   - on: OpportunityProgressed
-    assign:
-      stage: "event.payload.stage"
+    patches:
+      - op: replace
+        path: /stage
+        value: "${event.payload.stage}"
   - on: OpportunityWon
-    assign:
-      stage: "'won'"
+    patches:
+      - op: replace
+        path: /stage
+        value: "${'won'}"
   - on: OpportunityLost
-    assign:
-      stage: "'lost'"
-      lostReason: "event.payload.reason"
+    patches:
+      - op: replace
+        path: /stage
+        value: "${'lost'}"
+      - op: replace
+        path: /lostReason
+        value: "${event.payload.reason}"
 initialization: []

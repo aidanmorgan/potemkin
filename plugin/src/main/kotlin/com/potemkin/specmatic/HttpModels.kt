@@ -13,7 +13,9 @@ data class ForwardedRequest(
     // The Node engine's POST /_engine/forward contract names this field `query`
     // (src/forwarding/types.ts ForwardedRequest). Serialise to that name so the
     // engine accepts the request instead of rejecting it as malformed.
-    @JsonProperty("query") val query: Map<String, String> = emptyMap(),
+    // The TS type is Record<string, string | string[]>: a single value serialises as
+    // a plain JSON string; multiple values for the same key serialise as a JSON array.
+    @JsonProperty("query") val query: Map<String, Any> = emptyMap(),
 )
 
 /**

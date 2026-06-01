@@ -13,18 +13,20 @@ sagas:
       - name: createOpportunity
         boundary: Opportunity
         intent: creation
+        operationId: createOpportunity
         target_id: "$uuidv7()"
         payload:
           leadId: "command.targetId"
           value: "command.payload.value"
         compensation:
           intent: mutation
-          target_id: "command.payload.opportunityId"
+          operationId: closeOpportunity
           payload:
             stage: "'withdrawn'"
       - name: notifySalesTeam
         boundary: Notification
         intent: creation
+        operationId: createNotification
         payload:
           subject: "'New opportunity created'"
           leadId: "command.targetId"
@@ -38,10 +40,18 @@ derived_projections:
       - Opportunity:OpportunityCreated
     reduce:
       - on: LeadCreated
-        assign:
-          lead_id: "event.aggregateId"
-          companyName: "event.payload.companyName"
-          total_opportunities: "0"
+        patches:
+          - op: replace
+            path: /lead_id
+            value: "${event.aggregateId}"
+          - op: replace
+            path: /companyName
+            value: "${event.payload.companyName}"
+          - op: replace
+            path: /total_opportunities
+            value: "${0}"
       - on: OpportunityCreated
-        assign:
-          total_opportunities: "coalesce(state.total_opportunities, 0) + 1"
+        patches:
+          - op: replace
+            path: /total_opportunities
+            value: "${coalesce(state.total_opportunities, 0) + 1}"

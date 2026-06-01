@@ -83,7 +83,8 @@ describe('GET /_engine/routes — integration', () => {
 
     expect(etag).toBeTruthy();
     expect(etag.length).toBeGreaterThan(0);
-    expect(etag).toBe(body.checksum);
+    // ETag is an RFC 7232 quoted-string wrapping the body checksum.
+    expect(etag).toBe(`"${body.checksum}"`);
   });
 
   // ── 4. Two successive calls → same ETag ──────────────────────────────────────

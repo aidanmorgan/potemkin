@@ -124,6 +124,49 @@ describe('rebuildEntityAtVersion — TS reducer (potemkin-5d39)', () => {
   });
 });
 
+// ── computed fields — potemkin-e2oh ──────────────────────────────────────────
+
+describe('rebuildEntityAtVersion — computed fields (potemkin-e2oh)', () => {
+  it('replays to the same state as live projection when computed fields are present', () => {
+    const boundary = makeBoundary({
+      reducers: [
+        {
+          on: 'WidgetUpdated',
+          patches: [
+            { op: 'replace', path: '/score', value: '${event.payload.score}' },
+          ],
+        },
+      ],
+      state: {
+        computed: [
+          { name: 'displayScore', formula: 'state.score * 10', dependsOn: ['score'] },
+        ],
+      },
+    });
+
+    const computed = [{ name: 'displayScore', formula: 'state.score * 10', dependsOn: ['score'] }];
+    const computedOrder = ['displayScore'];
+
+    const evt = makeEvt({ sequenceVersion: 1, payload: { score: 7 } });
+
+    // Live path — projectEvent with computed fields
+    const liveGraph = createStateGraph();
+    liveGraph.set('agg-1', { id: 'agg-1' });
+    projectEvent({ event: evt, boundary, graph: liveGraph, cel, computed, computedOrder });
+    const liveState = liveGraph.get('agg-1');
+
+    // Replay path — must pass computed+computedOrder to get identical result
+    const events = createEventStore();
+    events.append([evt]);
+    const replayState = rebuildEntityAtVersion(
+      'agg-1', 1, boundary, events, cel, undefined, undefined, computed, computedOrder,
+    );
+
+    expect(replayState).toEqual(liveState);
+    expect((replayState as { displayScore?: number })?.displayScore).toBe(70);
+  });
+});
+
 // ── auditFields injection — potemkin-5d39 ────────────────────────────────────
 
 describe('rebuildEntityAtVersion — auditFields', () => {

@@ -134,12 +134,21 @@ open class CqrsBackendClient(
             null
         }
 
+        // Build query map preserving multi-value params. paramPairs holds all (key, value)
+        // pairs including repeated keys. A key with a single value becomes a bare String
+        // (matching the common case), while a key with multiple values becomes a List<String>
+        // so Jackson serialises it as a JSON array. This aligns with the TS engine type
+        // Record<string, string | string[]>.
+        val query: Map<String, Any> = req.queryParams.paramPairs
+            .groupBy({ it.first }, { it.second })
+            .mapValues { (_, values) -> if (values.size == 1) values[0] else values }
+
         return ForwardedRequest(
             method = req.method ?: "GET",
             path = req.path ?: "/",
             headers = req.headers,
             body = bodyValue,
-            query = req.queryParams.asMap(),
+            query = query,
         )
     }
 

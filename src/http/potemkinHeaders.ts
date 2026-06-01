@@ -49,12 +49,6 @@ export const POTEMKIN_SCENARIO = 'x-potemkin-scenario';
  */
 export const POTEMKIN_FORCE_LATENCY = 'x-potemkin-force-latency';
 
-/**
- * Force a specific HTTP status (integer, e.g. "503"). Engine returns the
- * configured status with a generic body unless a YAML fault rule also matches
- * via `headers:` — in that case the YAML response takes precedence.
- */
-export const POTEMKIN_FORCE_STATUS_CHAOS = 'x-potemkin-force-status';
 
 /**
  * Invoke a named YAML fault rule by name (e.g. "rate-limit-via-header").

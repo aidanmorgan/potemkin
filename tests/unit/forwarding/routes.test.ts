@@ -146,15 +146,27 @@ describe('createRoutesHandler — GET /_engine/routes', () => {
     expect(res.headers['cache-control']).toBe('max-age=30, public');
   });
 
-  it('includes ETag header equal to the checksum', async () => {
+  it('includes ETag header wrapped in double-quotes (potemkin-2x2c)', async () => {
     const res = await agent.get('/_engine/routes').expect(200);
     const { checksum } = res.body as RoutesDiscoveryResponse;
-    expect(res.headers['etag']).toBe(checksum);
+    expect(res.headers['etag']).toBe(`"${checksum}"`);
   });
 
   // ── Conditional requests (If-None-Match) ──────────────────────────────────
 
-  it('responds 304 when If-None-Match matches the current checksum', async () => {
+  it('responds 304 when If-None-Match is the quoted ETag echoed from a prior 200 (potemkin-2x2c)', async () => {
+    const first = await agent.get('/_engine/routes').expect(200);
+    const etag = first.headers['etag'] as string; // e.g. '"<hex>"'
+
+    const res = await agent
+      .get('/_engine/routes')
+      .set('If-None-Match', etag)
+      .expect(304);
+
+    expect(res.text).toBe('');
+  });
+
+  it('responds 304 when If-None-Match is the bare checksum (quote-tolerant compare)', async () => {
     const first = await agent.get('/_engine/routes').expect(200);
     const checksum = (first.body as RoutesDiscoveryResponse).checksum;
 

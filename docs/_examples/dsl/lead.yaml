@@ -27,12 +27,12 @@ event_catalog:
 behaviors:
   - name: createLead
     match:
-      intent: creation
+      operationId: createLead
       condition: "command.payload.companyName != null && command.payload.email != null"
     emit: LeadCreated
   - name: updateStatus
     match:
-      intent: mutation
+      operationId: updateLeadStatus
       requires:
         - name: validStatus
           condition: "command.payload.status == 'new' || command.payload.status == 'qualified' || command.payload.status == 'converted' || command.payload.status == 'lost'"
@@ -43,19 +43,39 @@ behaviors:
     postcondition: "state.status != null"
 reducers:
   - on: LeadCreated
-    assign:
-      id: "event.payload.id"
-      companyName: "event.payload.companyName"
-      contactName: "event.payload.contactName"
-      email: "event.payload.email"
-      status: "event.payload.status"
-      score: "event.payload.score"
-      createdAt: "event.payload.createdAt"
-      opportunityIds: "event.payload.opportunityIds"
-      callIds: "event.payload.callIds"
+    patches:
+      - op: replace
+        path: /id
+        value: "${event.payload.id}"
+      - op: replace
+        path: /companyName
+        value: "${event.payload.companyName}"
+      - op: replace
+        path: /contactName
+        value: "${event.payload.contactName}"
+      - op: replace
+        path: /email
+        value: "${event.payload.email}"
+      - op: replace
+        path: /status
+        value: "${event.payload.status}"
+      - op: replace
+        path: /score
+        value: "${event.payload.score}"
+      - op: replace
+        path: /createdAt
+        value: "${event.payload.createdAt}"
+      - op: replace
+        path: /opportunityIds
+        value: "${event.payload.opportunityIds}"
+      - op: replace
+        path: /callIds
+        value: "${event.payload.callIds}"
   - on: LeadStatusUpdated
-    assign:
-      status: "event.payload.status"
+    patches:
+      - op: replace
+        path: /status
+        value: "${event.payload.status}"
 initialization:
   - id: "00000000-0000-7000-8000-000000000001"
     companyName: "Apex Solutions Ltd"

@@ -2,6 +2,7 @@ package com.potemkin.specmatic
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.specmatic.core.HttpRequest
+import io.specmatic.core.QueryParameters
 import io.specmatic.core.value.StringValue
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -11,6 +12,7 @@ import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class CqrsBackendClientTest {
 
@@ -170,5 +172,56 @@ class CqrsBackendClientTest {
         val result = fastClient.forward(simpleRequest())
 
         assertNull(result)
+    }
+
+    // ---- query parameter serialisation --------------------------------------------------
+
+    @Test
+    fun `single-valued query param serialises as a plain JSON string`() {
+        server.enqueue(MockResponse().setResponseCode(200).setBody(cannedForwardedResponse()))
+
+        val request = HttpRequest(
+            method = "GET",
+            path = "/items",
+            headers = emptyMap(),
+            body = StringValue(""),
+            queryParams = QueryParameters(listOf("status" to "active")),
+        )
+        client.forward(request)
+
+        val recorded = server.takeRequest()
+        val body = mapper.readTree(recorded.body.readUtf8())
+        val queryNode = body["query"]
+        assertNotNull(queryNode)
+        assertTrue(queryNode.isObject, "query should be a JSON object")
+        val statusNode = queryNode["status"]
+        assertNotNull(statusNode)
+        assertTrue(statusNode.isTextual, "single-valued query param should serialise as a plain JSON string")
+        assertEquals("active", statusNode.asText())
+    }
+
+    @Test
+    fun `repeated query key serialises as a JSON array in the forwarded payload`() {
+        server.enqueue(MockResponse().setResponseCode(200).setBody(cannedForwardedResponse()))
+
+        val request = HttpRequest(
+            method = "GET",
+            path = "/items",
+            headers = emptyMap(),
+            body = StringValue(""),
+            queryParams = QueryParameters(listOf("status" to "active", "status" to "inactive")),
+        )
+        client.forward(request)
+
+        val recorded = server.takeRequest()
+        val body = mapper.readTree(recorded.body.readUtf8())
+        val queryNode = body["query"]
+        assertNotNull(queryNode)
+        assertTrue(queryNode.isObject, "query should be a JSON object")
+        val statusNode = queryNode["status"]
+        assertNotNull(statusNode)
+        assertTrue(statusNode.isArray, "repeated query key should serialise as a JSON array")
+        val values = statusNode.map { it.asText() }
+        assertEquals(listOf("active", "inactive"), values)
     }
 }

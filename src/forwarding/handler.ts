@@ -317,8 +317,15 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
     if (method === 'GET') {
       const ttTargetId = route.pathParams['id'] ?? null;
       if (controls.timeTravel.readAtVersion !== undefined && ttTargetId !== null) {
+        const ttInferred = sys.inferredSchemas?.[boundary.boundary];
+        const ttComputedArgs = ttInferred && ttInferred.computedOrder.length > 0
+          ? { computed: sys.dsl.byBoundaryName[boundary.boundary]?.state?.computed ?? [], computedOrder: ttInferred.computedOrder }
+          : {};
         const rebuilt = rebuildEntityAtVersion(
           ttTargetId, controls.timeTravel.readAtVersion, boundary, sys.events, reqCel, logger,
+          sys.tsReducerRegistry,
+          ttComputedArgs.computed,
+          ttComputedArgs.computedOrder,
         );
         const headers = { 'x-potemkin-read-at-version': String(controls.timeTravel.readAtVersion) };
         if (rebuilt === null) {
@@ -393,10 +400,18 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
     }
 
     // 11. Build Command (lowercased headers carried for fault matching + chaining).
+    // If-Match: strip quotes before parsing to integer. Weak validators (W/"5")
+    // produce NaN — return a 400 envelope rather than passing NaN into the UoW.
     const ifMatchValue = readForwardedHeader(fwd.headers, 'if-match');
-    const sequenceVersion = ifMatchValue !== undefined
-      ? Number(String(ifMatchValue).replace(/^"|"$/g, ''))
-      : undefined;
+    let sequenceVersion: number | undefined;
+    if (ifMatchValue !== undefined) {
+      const parsed = Number(String(ifMatchValue).replace(/^"|"$/g, ''));
+      if (Number.isNaN(parsed)) {
+        send({ status: 400, headers: {}, body: { error: 'INVALID_IF_MATCH', message: 'If-Match value is not a valid integer (weak validators are not supported)' } });
+        return;
+      }
+      sequenceVersion = parsed;
+    }
     const faultHeaderRaw = readForwardedHeader(fwd.headers, 'x-specmatic-fault');
 
     let targetId: string | null = route.pathParams['id'] ?? null;
@@ -918,8 +933,11 @@ export function createRoutesHandler(sys: BootedSystem): RequestHandler {
     const ttlSeconds = resolveRoutesTtl();
 
     // Conditional request: respond 304 when the client's ETag matches.
+    // Strip surrounding quotes to accept both the quoted ETag we emit and the bare
+    // checksum — the Kotlin client echoes whatever it received (potemkin-2x2c).
     const ifNoneMatch = req.headers['if-none-match'];
-    if (ifNoneMatch === checksum) {
+    const stripQuotes = (s: string): string => s.trim().replace(/^"|"$/g, '');
+    if (ifNoneMatch !== undefined && stripQuotes(ifNoneMatch) === checksum) {
       res.status(304).end();
       return;
     }
@@ -934,7 +952,7 @@ export function createRoutesHandler(sys: BootedSystem): RequestHandler {
     };
 
     res.setHeader('Cache-Control', `max-age=${ttlSeconds}, public`);
-    res.setHeader('ETag', checksum);
+    res.setHeader('ETag', `"${checksum}"`);
     res.status(200).json(body);
   };
 }
@@ -983,8 +1001,11 @@ export function createFixturesHandler(sys: BootedSystem): RequestHandler {
     const ttlSeconds = resolveRoutesTtl();
 
     // Conditional request: respond 304 when the client's ETag matches.
+    // Strip surrounding quotes to accept both the quoted ETag we emit and the bare
+    // checksum — the Kotlin client echoes whatever it received (potemkin-2x2c).
     const ifNoneMatch = req.headers['if-none-match'];
-    if (ifNoneMatch === checksum) {
+    const stripQuotes = (s: string): string => s.trim().replace(/^"|"$/g, '');
+    if (ifNoneMatch !== undefined && stripQuotes(ifNoneMatch) === checksum) {
       res.status(304).end();
       return;
     }
@@ -998,7 +1019,7 @@ export function createFixturesHandler(sys: BootedSystem): RequestHandler {
     };
 
     res.setHeader('Cache-Control', `max-age=${ttlSeconds}, public`);
-    res.setHeader('ETag', checksum);
+    res.setHeader('ETag', `"${checksum}"`);
     res.status(200).json(body);
   };
 }

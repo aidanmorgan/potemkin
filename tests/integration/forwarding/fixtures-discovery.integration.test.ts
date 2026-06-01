@@ -125,7 +125,8 @@ describe('GET /_engine/fixtures — integration', () => {
     const etag = res.headers['etag'] as string;
 
     expect(etag).toBeTruthy();
-    expect(etag).toBe(body.checksum);
+    // ETag is an RFC 7232 quoted-string wrapping the body checksum.
+    expect(etag).toBe(`"${body.checksum}"`);
   });
 
   // ── 8. Two successive calls → same ETag ──────────────────────────────────────

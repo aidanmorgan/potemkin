@@ -589,7 +589,16 @@ async function handleContractRequest(
     // Tier 4: time-travel intercepts for GET requests (read-at-version / replay-event).
     if (effectiveMethod === 'GET') {
       if (controls.timeTravel.readAtVersion !== undefined && targetId !== null) {
-        const rebuilt = rebuildEntityAtVersion(targetId, controls.timeTravel.readAtVersion, boundary, sys.events, reqCel, logger);
+        const ttInferred = sys.inferredSchemas?.[boundary.boundary];
+        const ttComputedArgs = ttInferred && ttInferred.computedOrder.length > 0
+          ? { computed: sys.dsl.byBoundaryName[boundary.boundary]?.state?.computed ?? [], computedOrder: ttInferred.computedOrder }
+          : {};
+        const rebuilt = rebuildEntityAtVersion(
+          targetId, controls.timeTravel.readAtVersion, boundary, sys.events, reqCel, logger,
+          sys.tsReducerRegistry,
+          ttComputedArgs.computed,
+          ttComputedArgs.computedOrder,
+        );
         const headers = { 'X-Potemkin-Read-At-Version': String(controls.timeTravel.readAtVersion) };
         if (rebuilt === null) {
           res.status(404).set(headers).json({ error: 'ENTITY_ABSENCE', message: `entity ${targetId} not found at version ${controls.timeTravel.readAtVersion}` });
@@ -654,6 +663,19 @@ async function handleContractRequest(
     }
 
     // 6. Build Command (req 14).
+    // If-Match may carry a quoted ETag value ("1") or an unquoted integer (1).
+    // Strip optional surrounding double-quotes before parsing to an integer (RFC 7232).
+    // Weak validators (W/"5") produce NaN — reject with 400 rather than passing NaN.
+    const ifMatchRaw = req.headers[IF_MATCH_HEADER_LC];
+    let sequenceVersion: number | undefined;
+    if (ifMatchRaw !== undefined) {
+      const parsed = Number(String(ifMatchRaw).replace(/^"|"$/g, ''));
+      if (Number.isNaN(parsed)) {
+        res.status(400).json({ error: 'INVALID_IF_MATCH', message: 'If-Match value is not a valid integer (weak validators are not supported)' });
+        return;
+      }
+      sequenceVersion = parsed;
+    }
     const command: Command = {
       commandId: nextUuidv7(),
       boundary: boundary.boundary,
@@ -663,11 +685,7 @@ async function handleContractRequest(
       queryParams: req.query as Record<string, string | string[]>,
       httpMethod: effectiveMethod,
       path: req.path,
-      // If-Match may carry a quoted ETag value ("1") or an unquoted integer (1).
-      // Strip optional surrounding double-quotes before parsing to an integer (RFC 7232).
-      sequenceVersion: req.headers[IF_MATCH_HEADER_LC] !== undefined
-        ? Number(String(req.headers[IF_MATCH_HEADER_LC]).replace(/^"|"$/g, ''))
-        : undefined,
+      sequenceVersion,
       origin: 'inbound',
       depth: 0,
       headers: requestHeaders,

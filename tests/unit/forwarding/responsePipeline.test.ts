@@ -51,6 +51,11 @@ describe('responsePipeline helpers', () => {
     it('returns false when no conditional headers are present', () => {
       expect(shouldReturnNotModified({ etag: '"5"' })).toBe(false);
     });
+    it('If-None-Match: * matches any existing ETag (potemkin-qxy4)', () => {
+      expect(shouldReturnNotModified({ etag: '"5"', ifNoneMatch: '*' })).toBe(true);
+      expect(shouldReturnNotModified({ etag: '42', ifNoneMatch: '*' })).toBe(true);
+      expect(shouldReturnNotModified({ etag: undefined, ifNoneMatch: '*' })).toBe(false);
+    });
   });
 
   describe('lastModifiedFromBody', () => {

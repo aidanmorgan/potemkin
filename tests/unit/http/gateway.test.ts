@@ -182,6 +182,23 @@ describe('http/gateway — branch coverage', () => {
     expect(res.body).toBeDefined();
   });
 
+  // ── Weak ETag If-Match does not produce NaN (potemkin-yvoh) ──────────────────
+
+  it('weak ETag If-Match W/"5" returns 400 not a 412 with NaN (potemkin-yvoh)', async () => {
+    const createRes = await app.agent
+      .post('/leads')
+      .send({ ...LEAD_PAYLOAD, companyName: 'Weak ETag Test' })
+      .expect(201);
+    const leadId = createRes.body.id;
+
+    const res = await app.agent
+      .post(`/leads/${leadId}/contact`)
+      .set('If-Match', 'W/"5"')
+      .send({})
+      .expect(400);
+    expect(res.body.error).toBe('INVALID_IF_MATCH');
+  });
+
   // ── targetId from path + intent creation with generate ────────────────────────
 
   it('creation with no id in path generates a UUID targetId', async () => {
@@ -330,5 +347,122 @@ describe('http/gateway — idempotency replay serves post-pipeline response (pot
     expect(replay.headers['x-idempotency-replay']).toBe('true');
     expect(replay.headers['etag']).toBe(original.headers['etag']);
     expect(replay.headers['x-specmatic-result']).toBe('success');
+  });
+});
+
+// ── Time-travel (X-Potemkin-Read-At-Version) with computed fields (potemkin-e2oh) ─
+
+const TT_COMPUTED_OPENAPI = `
+openapi: "3.0.3"
+info:
+  title: Time-Travel Computed Test
+  version: "1.0.0"
+paths:
+  /scores/{id}:
+    get:
+      operationId: getScore
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Score"
+    post:
+      operationId: createScore
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Score"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Score"
+components:
+  schemas:
+    Score:
+      type: object
+      properties:
+        id: { type: string }
+        value: { type: integer }
+        doubled: { type: integer }
+      additionalProperties: true
+`;
+
+const TT_COMPUTED_DSL = `
+boundary: Score
+contract_path: /scores/{id}
+identity:
+  creation: {}
+behaviors:
+  - name: createScore
+    match:
+      operationId: createScore
+      condition: 'true'
+    emit: ScoreCreated
+event_catalog:
+  - type: ScoreCreated
+    payload_template:
+      id: command.targetId
+      value: command.payload.value
+reducers:
+  - on: ScoreCreated
+    patches:
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
+      - { op: replace, path: /value, value: "\${event.payload.value}" }
+state:
+  computed:
+    - name: doubled
+      formula: "state.value * 2"
+      depends_on: [value]
+`;
+
+describe('http/gateway — time-travel with computed fields (potemkin-e2oh)', () => {
+  let agent: PersistentAgent;
+
+  beforeAll(async () => {
+    const openapi = await loadOpenApi(TT_COMPUTED_OPENAPI);
+    const compiledDsl = await compileDsl([{ name: 'score', yaml: TT_COMPUTED_DSL }]);
+    const sys = await bootSystem({ openapi, compiledDsl });
+    const app = createGateway(sys);
+    const { agent: a, close } = await withPersistentServer(app);
+    agent = a;
+    registerFileTeardown(close);
+  });
+
+  it('X-Potemkin-Read-At-Version replayed entity includes computed fields (potemkin-e2oh)', async () => {
+    const scoreId = nextUuidv7();
+    const createRes = await agent
+      .post(`/scores/${scoreId}`)
+      .send({ value: 5 })
+      .expect(201);
+
+    expect(createRes.body.doubled).toBe(10);
+
+    const readAtVersion = await agent
+      .get(`/scores/${scoreId}`)
+      .set('X-Potemkin-Read-At-Version', '1')
+      .expect(200);
+
+    expect(readAtVersion.body.value).toBe(5);
+    expect(readAtVersion.body.doubled).toBe(10);
+    expect(readAtVersion.body.doubled).toBe(createRes.body.doubled);
   });
 });
