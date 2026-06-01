@@ -40,6 +40,7 @@ function makeBootedSystem(
     schemaRegistry: undefined as any,
     idempotencyStore: createIdempotencyStore(),
     sessionStore: createSessionStore({ sweepIntervalMs: 0 }),
+    aggregateLocks: new Map<string, Promise<void>>(),
   } as unknown as BootedSystem;
 }
 

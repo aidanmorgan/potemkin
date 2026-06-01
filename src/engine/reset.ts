@@ -95,6 +95,12 @@ export function resetSystem(sys: BootedSystem): void {
       // ── Step 8: Reset session store ────────────────────────────────────────
       sys.sessionStore.reset();
 
+      // ── Step 9: Drop aggregate serialization locks ─────────────────────────
+      // Reset is expected to be called quiescently (no in-flight UoW). The lock
+      // map is self-cleaning per-key during normal operation, but clearing here
+      // guarantees it does not retain entries across a reset.
+      sys.aggregateLocks.clear();
+
       const durationMs = Date.now() - start;
       const entityCount = sys.graph.size();
 

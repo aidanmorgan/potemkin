@@ -178,14 +178,27 @@ function acquireLock(
   locks: Map<string, Promise<void>>,
   key: string,
 ): { release: () => void; acquired: Promise<void> } {
-  let release!: () => void;
+  let releaseSlot!: () => void;
   const slot = new Promise<void>((resolve) => {
-    release = resolve;
+    releaseSlot = resolve;
   });
 
   const previous = locks.get(key) ?? Promise.resolve();
   const acquired = previous.then(() => undefined);
-  locks.set(key, previous.then(() => slot));
+  const chained = previous.then(() => slot);
+  locks.set(key, chained);
+
+  // Self-clean so the per-system map stays bounded by in-flight concurrency
+  // rather than growing one entry per distinct aggregate id forever: once our
+  // slot is released, drop the key IF no later acquirer has chained off us
+  // (i.e. the tail is still our promise). Single-threaded, so this get+delete
+  // cannot interleave with another acquire.
+  const release = (): void => {
+    releaseSlot();
+    if (locks.get(key) === chained) {
+      locks.delete(key);
+    }
+  };
 
   return { release, acquired };
 }

@@ -384,7 +384,10 @@ var __ctx__ = {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rawBuffer = (safeContext as any).__logBuffer__;
     if (Array.isArray(rawBuffer)) {
-      const len = rawBuffer.length;
+      // Bound the drain even if a reducer wrote to __logBuffer__ directly,
+      // bypassing _pushLog's cap (a direct write can't escape the realm, but an
+      // unbounded buffer would make this drain loop run arbitrarily long).
+      const len = Math.min(rawBuffer.length, LOG_BUFFER_CAP + 1);
       for (let i = 0; i < len; i++) {
         // Reading rawBuffer[i] may throw if the reducer planted a hostile getter.
         let raw: unknown;

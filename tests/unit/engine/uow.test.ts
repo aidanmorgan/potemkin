@@ -246,14 +246,14 @@ describe('engine/uow — additional branch coverage', () => {
 
   // ── global lock path (targetId null) ─────────────────────────────────────────
 
-  it('creation with targetId null registers the global lock sentinel key in the locks map', async () => {
+  it('creation with targetId null self-cleans the global lock sentinel key after completion', async () => {
     // A creation with targetId null resolves the lock key to GLOBAL_LOCK_KEY
-    // ('__global__') in acquireLock. We pass an explicit locks map so the
-    // sentinel key registration is directly observable: acquireLock stores the
-    // serialized slot under the resolved key, so after execution the map must
-    // contain '__global__'. The execution itself may fail (a null targetId
-    // produces a non-conforming entity id during projection), but the lock is
-    // acquired before projection, so the sentinel key is registered regardless.
+    // ('__global__') in acquireLock. The slot is acquired before projection, then
+    // released in a finally block; release self-cleans the key when no later
+    // acquirer queued behind it. So after a single (awaited) execution the map
+    // must NOT retain '__global__' — keeping the per-system lock map bounded.
+    // (Serialization while the lock is held is covered by the saga concurrency
+    // tests that drive two concurrent UoWs through a shared aggregateLocks map.)
     const aggregateLocks = new Map<string, Promise<void>>();
 
     try {
@@ -283,7 +283,7 @@ describe('engine/uow — additional branch coverage', () => {
       // Projection may reject the null-derived id; the lock is acquired earlier.
     }
 
-    expect(aggregateLocks.has('__global__')).toBe(true);
+    expect(aggregateLocks.has('__global__')).toBe(false);
   });
 
   // ── requiresPrecondition → 428 ────────────────────────────────────────────────

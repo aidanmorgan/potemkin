@@ -555,6 +555,26 @@ describe('sandbox security — vm escape prevention', () => {
     expect(combined).not.toContain('A'.repeat(5000));
   });
 
+  // potemkin-z2hm: a reducer can write to __logBuffer__ directly, bypassing
+  // _pushLog's cap. The host-side drain must still be bounded so it cannot be
+  // made to iterate (and call the host logger) an unbounded number of times.
+  it('host log drain is bounded even when __logBuffer__ is overfilled directly', async () => {
+    const { logger, lines } = makeMockLoggerCapture();
+    const code = `
+      export default (ctx) => {
+        // Bypass _pushLog and push 100000 entries straight into the buffer.
+        for (var i = 0; i < 100000; i++) __logBuffer__.push('{"level":"info","msg":"x' + i + '"}');
+        return 'done';
+      };
+    `;
+    const handle = compileAndInstantiateWithLogger(code, logger);
+    const result = invokeScript(handle, makeCtx());
+    expect(result).toBe('done');
+    await new Promise((r) => setImmediate(r));
+    // The drain forwards at most LOG_BUFFER_CAP + 1 (101) entries, not 100000.
+    expect(lines.length).toBeLessThanOrEqual(101);
+  });
+
   it('transpiled TypeScript reducer using Object/Array/Map/Set/Error works end-to-end', () => {
     // Verifies that removing host-realm constructor injections does not break
     // legitimate reducers. The esbuild CJS preamble uses Object.defineProperty,
