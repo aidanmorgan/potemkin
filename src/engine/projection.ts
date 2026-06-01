@@ -52,7 +52,7 @@ function compileSchemaValidator(schema: object): (data: unknown) => boolean {
 }
 
 /**
- * REQ-65: Validate an event payload against an OpenAPI component schema_ref.
+ * Validate an event payload against an OpenAPI component schema_ref.
  * Resolves `#/components/schemas/X` style refs from the OpenAPI doc.
  */
 function validatePayloadAgainstSchemaRef(
@@ -113,21 +113,20 @@ export interface ProjectionInput {
    * getTracer('engine') when absent.
    */
   readonly tracer?: Tracer;
-  /** REQ-65: Optional OpenAPI document for schema_ref payload validation. */
+  /** Optional OpenAPI document for schema_ref payload validation. */
   readonly openapi?: OpenApiDoc;
   /**
-   * TypeScript-reducer registry (C3). When a (boundary, event) is registered
+   * TypeScript-reducer registry. When a (boundary, event) is registered
    * here it OVERRIDES the YAML reducer: the TS reducer runs and its returned
    * Patch[] flows through the same applyPatches path. YAML patches are used
    * only on a registry miss.
    */
   readonly tsReducerRegistry?: TsReducerRegistry;
   /**
-   * C5: declared computed fields + their topological recompute order for this
-   * boundary. When supplied, after the reducer patches apply the computed
-   * fields whose dependsOn intersects the touched paths are recomputed in
-   * order against post-patch state. A formula error aborts projection (500),
-   * discarding the candidate — preserving atomicity.
+   * Declared computed fields + their topological recompute order for this
+   * boundary. When supplied, after reducer patches apply, computed fields whose
+   * dependsOn intersects the touched paths are recomputed in order against
+   * post-patch state. A formula error aborts projection (500), preserving atomicity.
    */
   readonly computed?: readonly DeclaredComputedField[];
   readonly computedOrder?: readonly string[];
@@ -157,8 +156,6 @@ export interface ProjectionResult {
  * @throws {InternalExecutionError} (500) if CEL evaluation or validation fails.
  */
 export function projectEvent(input: ProjectionInput): ProjectionResult {
-  // O-5 fix: use injected tracer when provided (enables span capture in tests).
-  // Falls back to getTracer('engine') for production/boot/reset paths.
   const tracer = input.tracer ?? getTracer('engine');
   let result: ProjectionResult = { journal: [] };
   tracer.startActiveSpan('engine.project', (span) => {
@@ -203,11 +200,9 @@ function _projectEvent(input: ProjectionInput): ProjectionResult {
       replaceInPlace(buf, event.payload);
       log?.debug({}, 'Applied BaselineEntityCreatedEvent — replaced state with payload');
     } else {
-      // C3: a TypeScript reducer registered for this (boundary, event) WINS.
-      // It runs in place of the YAML reducer; its returned Patch[] flows
-      // through the same applyPatches path so the journal records source
-      // 'reducer' just like YAML patches. YAML patches are consulted ONLY on a
-      // registry miss.
+      // A registered TypeScript reducer for this (boundary, event) runs in place
+      // of the YAML reducer; its returned Patch[] flows through the same
+      // applyPatches path. YAML patches are consulted only on a registry miss.
       const tsReducer = tsReducerRegistry?.get(boundary.boundary, event.type);
       if (tsReducer) {
         const patches = runTsReducer(tsReducer, buf, event, cel);
@@ -261,12 +256,10 @@ function _projectEvent(input: ProjectionInput): ProjectionResult {
         }
       }
 
-      // C5: recompute declared computed fields against POST-patch state, in
-      // topological order, but only those whose dependsOn intersects the paths
-      // the reducer just touched. The recompute mutates `buf` in place; a
-      // formula error propagates out of projectEvent (the candidate buffer is
-      // never swapped into the graph), so the event is rejected with 500 and
-      // state stays atomic.
+      // Recompute declared computed fields against post-patch state, in topological
+      // order, but only those whose dependsOn intersects the paths the reducer
+      // just touched. A formula error propagates out of projectEvent (the candidate
+      // buffer is never swapped into the graph), so the event is rejected with 500.
       if (input.computed && input.computed.length > 0 && input.computedOrder) {
         const touchedPaths = new Set<string>(reducerJournal.map((j) => j.path));
         recomputeComputedFields(
@@ -279,8 +272,7 @@ function _projectEvent(input: ProjectionInput): ProjectionResult {
       }
     }
 
-    // Step 3: REQ-65 Event payload schema_ref validation
-    // Only for non-system events that have a catalog entry with schema_ref
+    // Step 3: Event payload schema_ref validation (non-system events only)
     if (event.type !== 'System.GenericUpdateEvent' && event.type !== 'BaselineEntityCreatedEvent') {
       const catalogEntry = boundary.eventCatalog.find(e => e.type === event.type);
       if (catalogEntry?.schemaRef) {
@@ -315,7 +307,7 @@ function _projectEvent(input: ProjectionInput): ProjectionResult {
 }
 
 // ---------------------------------------------------------------------------
-// TypeScript reducer invocation (C3)
+// TypeScript reducer invocation
 // ---------------------------------------------------------------------------
 
 /**

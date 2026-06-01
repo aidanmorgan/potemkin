@@ -86,11 +86,8 @@ export function instantiateScript(
 ): ScriptHandle {
   const childLog = logger.child({ scriptName: name, boundary });
 
-  // Build a wrapper that sets up CJS module/exports and runs the code,
-  // then calls the default export with __ctx__ (injected at call time).
-  // We wrap in a strict-mode IIFE so:
-  //   1. 'this' is undefined inside the function body (blocks this.constructor.constructor escape)
-  //   2. Variables don't pollute the outer context.
+  // Strict-mode IIFE: 'this' is undefined (blocks this.constructor.constructor escape)
+  // and variables don't pollute the outer context.
   const wrappedForExecution = `
 'use strict';
 (function() {
@@ -144,8 +141,6 @@ function invokeWithCode(
   // ---------------------------------------------------------------------------
 
   const nowVal = ctx.helpers.now();
-  // Increment the monotonic counter BEFORE deriving the seed so every call
-  // gets a unique value even when name/boundary/nowVal are all identical.
   const thisInvocation = ++invocationCounter;
 
   const ctxData = {
@@ -155,9 +150,6 @@ function invokeWithCode(
     event: ctx.event ?? null,
   };
 
-  // Derive a deterministic numeric seed from script name, boundary, timestamp,
-  // AND the strictly-monotonic invocation counter. All inputs are primitives;
-  // deriveNumericSeed runs host-side and the result is injected as a plain number.
   const uuidSeed: number = deriveNumericSeed(`${name}:${boundary}:${nowVal}:${thisInvocation}`);
 
   const safeContext = vm.createContext({
@@ -168,17 +160,8 @@ function invokeWithCode(
     __logEntryCap__: LOG_ENTRY_MAX_BYTES,
   });
 
-  // Bootstrap: reconstruct __ctx__ from primitives using only realm-native
-  // objects and functions. No host-realm value is referenced here.
   // Run as a top-level (non-IIFE) script so __ctx__ is visible in the vm
   // context's global scope and accessible to the reducer script that runs next.
-  //
-  // uuid() uses a mulberry32 PRNG seeded from __uuidSeed__ (a primitive number).
-  // It generates UUID-v4-format strings on demand — unbounded and always distinct
-  // for a given seed because the internal state counter increments on every call.
-  //
-  // Log entries are pushed into __logBuffer__ (bounded by __logBufCap__).
-  // After script.runInContext, the host reads this array as primitive strings.
   const bootstrapScriptTopLevel = `
 'use strict';
 

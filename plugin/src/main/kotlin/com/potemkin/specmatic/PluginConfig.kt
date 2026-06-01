@@ -89,7 +89,7 @@ data class PluginConfig(
          *
          * Throws [PluginBootException] with code `BOOT_ERR_INVALID_YAML` and a
          * `file:line` locator when the document is not valid YAML or a block is
-         * structurally malformed (AC-E3.3).
+         * structurally malformed.
          */
         @Suppress("UNCHECKED_CAST")
         internal fun parsePotemkinYaml(text: String, source: String = "potemkin.yaml"): PluginConfig {

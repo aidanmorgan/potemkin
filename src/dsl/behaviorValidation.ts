@@ -34,7 +34,6 @@ export function validateBehaviorOperationIds(dsl: CompiledDsl, openapi: OpenApiD
           { boundary: boundary.boundary, behavior: behavior.name, operationId },
         );
       }
-      // Cascade (dispatch_commands) target operationIds must also be real operations.
       for (const spec of behavior.dispatchCommands ?? []) {
         if (!known.has(spec.operationId)) {
           throw new BootError(

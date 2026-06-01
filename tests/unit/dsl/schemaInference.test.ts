@@ -1,7 +1,5 @@
 /**
  * Tests for src/dsl/schemaInference.ts.
- *
- * Covers REQ-STATE-001..007 and REQ-PATCH-005.
  */
 
 import {
@@ -18,7 +16,7 @@ import {
 } from '../../../src/dsl/schemaInference.js';
 import { BootError } from '../../../src/errors.js';
 
-describe('CEL textual type inference (REQ-STATE-001 AC-001.1)', () => {
+describe('CEL textual type inference', () => {
   const empty = new Map();
   it("'literal' → known string", () => {
     expect(inferTypeFromCel("'hi'", undefined, empty)).toEqual(ftKnown('string'));
@@ -77,7 +75,7 @@ describe('LUB', () => {
   });
 });
 
-describe('extractStateRefs (REQ-STATE-005 AC-005.1)', () => {
+describe('extractStateRefs', () => {
   it('extracts top-level state references', () => {
     expect(extractStateRefs("state.totalValue + state.itemCount")).toEqual(
       expect.arrayContaining(['totalValue', 'itemCount']),
@@ -164,7 +162,7 @@ function expectBootCode(fn: () => unknown, code: string): void {
   expect(caught?.code).toBe(code);
 }
 
-describe('Schema-inference fixed-point cap (REQ-STATE-003, AC-G1.1)', () => {
+describe('Schema-inference fixed-point cap', () => {
   // The inference loop is a monotone fixed-point computation: every write LUBs
   // its contribution into the accumulated schema, so each field type only ever
   // moves up the (shallow, finite-height) lattice toward `unknown`. A `state.X`
@@ -239,7 +237,7 @@ describe('Computed field cycles (REQ-STATE-004)', () => {
     );
   });
 
-  it('A → B → C → A cycle is detected and reported in cycle-order (AC-G1.2)', () => {
+  it('A → B → C → A cycle is detected and reported in cycle-order', () => {
     let caught: BootError | null = null;
     try {
       buildInferredSchema({
@@ -372,7 +370,7 @@ describe('Reducer cannot write computed paths (REQ-PATCH-005)', () => {
   });
 });
 
-describe('Computed shadows inferred (REQ-STATE-002 AC-002.3)', () => {
+describe('Computed shadows inferred', () => {
   it('computed name colliding with an inferred event-derived field throws', () => {
     expectBootCode(
       () =>

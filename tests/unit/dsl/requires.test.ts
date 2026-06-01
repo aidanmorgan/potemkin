@@ -1,5 +1,5 @@
 /**
- * REQ-61: match.requires[] — named precondition guards
+ * match.requires[] — named precondition guards
  * Tests both the DSL schema parsing and the runtime behavior.
  */
 import { validateBoundaryConfig } from '../../../src/dsl/schema';
@@ -42,7 +42,7 @@ function makeInput(overrides: Partial<PatternMatchInput> = {}): PatternMatchInpu
 
 // ── Schema parsing tests ───────────────────────────────────────────────────────
 
-describe('REQ-61: match.requires[] DSL parsing', () => {
+describe('match.requires[] DSL parsing', () => {
   it('parses a requires array with expression/message style (design.md)', () => {
     const config = validateBoundaryConfig({
       boundary: 'Loan',
@@ -141,7 +141,7 @@ describe('REQ-61: match.requires[] DSL parsing', () => {
 
 // ── Runtime tests ──────────────────────────────────────────────────────────────
 
-describe('REQ-61: match.requires[] runtime behavior', () => {
+describe('match.requires[] runtime behavior', () => {
   it('allows behavior to match when all requires pass', () => {
     const input = makeInput({
       boundary: makeBoundary({

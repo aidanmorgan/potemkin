@@ -1,5 +1,5 @@
 /**
- * C1 — booting tests/fixtures/crm via BootInput.potemkinConfigPath produces a
+ * Booting tests/fixtures/crm via BootInput.potemkinConfigPath produces a
  * CompiledDsl (and post-boot state graph) IDENTICAL to the inline compileDsl
  * path used by loadFixtureWithGlobal.
  *
@@ -42,7 +42,7 @@ function graphSnapshot(sys: BootedSystem): Array<readonly [string, unknown]> {
     .sort((a, b) => a[0].localeCompare(b[0]));
 }
 
-describe('C1: potemkinConfigPath boot equals inline compileDsl boot', () => {
+describe('potemkinConfigPath boot equals inline compileDsl boot', () => {
   it('boots the CRM fixture from potemkin.yaml on disk', async () => {
     const inline = await loadFixtureWithGlobal();
     const sys = await bootSystem({

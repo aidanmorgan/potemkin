@@ -49,10 +49,8 @@ export function parseDslYaml(text: string): BoundaryConfig {
 
 /**
  * Compile multiple named YAML modules into a unified, indexed CompiledDsl.
- * REQ-68: Also builds the script registry from all declared scripts.
- *
- * Accepts an optional `globalYaml` string that can declare top-level Tier-2 fields:
- *   sagas, idempotency, derived_projections.  When absent these are omitted.
+ * Accepts an optional `globalYaml` string that can declare top-level fields
+ * (sagas, idempotency, derived_projections). When absent these are omitted.
  *
  * @throws {BootError} with code `BOOT_ERR_DSL_SYNTAX` on any parse or validation failure.
  * @throws {BootError} with code `BOOT_ERR_DSL_DUPLICATE_BOUNDARY` on duplicate boundary names
@@ -73,8 +71,7 @@ export async function compileDsl(
     for (const mod of modules) {
       const config = parseDslYaml(mod.yaml);
 
-      // Detect duplicate boundary names
-      if (Object.prototype.hasOwnProperty.call(byBoundaryName, config.boundary)) {
+        if (Object.prototype.hasOwnProperty.call(byBoundaryName, config.boundary)) {
         throw new BootError(
           'BOOT_ERR_DSL_DUPLICATE_BOUNDARY',
           `Duplicate boundary name "${config.boundary}" found in module "${mod.name}"`,
@@ -82,7 +79,6 @@ export async function compileDsl(
         );
       }
 
-      // Detect duplicate contractPath mappings
       if (Object.prototype.hasOwnProperty.call(byContractPath, config.contractPath)) {
         throw new BootError(
           'BOOT_ERR_DSL_DUPLICATE_BOUNDARY',
@@ -115,7 +111,6 @@ export async function compileDsl(
       'DSL compilation complete',
     );
 
-    // ── Tier-2: parse optional global config ───────────────────────────────────
     let sagas: readonly SagaConfig[] | undefined;
     let idempotency: IdempotencyConfig | undefined;
     let derivedProjections: readonly DerivedProjectionConfig[] | undefined;
@@ -165,8 +160,7 @@ export async function compileDsl(
       ...(webhooks !== undefined ? { webhooks } : {}),
     };
 
-    // REQ-68: Build script registry — transpiles all TS scripts at compile time.
-    // Only build if any boundary has scripts.
+    // Build the script registry only when at least one boundary declares scripts.
     const hasScripts = boundaries.some(b => b.scripts && b.scripts.length > 0);
     if (hasScripts) {
       const scriptRegistry = buildScriptRegistry(partialDsl as CompiledDsl, log);

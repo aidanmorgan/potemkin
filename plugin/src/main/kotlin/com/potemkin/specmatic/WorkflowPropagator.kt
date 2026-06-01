@@ -10,7 +10,7 @@ import java.util.LinkedHashMap
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Workflow id-propagation across a request sequence (E6 / AC-G6.2).
+ * Workflow id-propagation across a request sequence.
  *
  * Specmatic's `workflow` is a TEST-mode-only construct: `io.specmatic.core.Workflow`
  * is referenced only by `Feature.scenarioAsTest` / `generateContractTests` (verified

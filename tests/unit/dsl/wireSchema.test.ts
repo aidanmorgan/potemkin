@@ -1,5 +1,5 @@
 /**
- * Tests for src/dsl/wireSchema.ts (REQ-WIRE-001).
+ * Tests for src/dsl/wireSchema.ts
  */
 
 import { validateDslWirePayload } from '../../../src/dsl/wireSchema.js';
@@ -26,18 +26,18 @@ describe('validateDslWirePayload — well-formed inputs', () => {
     expect(p.specEndpoints[0].method).toBe('POST'); // uppercased
   });
 
-  it('AC-001.2: zero modules is valid (empty DSL)', () => {
+  it('zero modules is valid (empty DSL)', () => {
     expect(() =>
       validateDslWirePayload({ modules: [], typescript: null, specEndpoints: [] }),
     ).not.toThrow();
   });
 
-  it('AC-001.3: typescript: null skips the TS pipeline', () => {
+  it('typescript: null skips the TS pipeline', () => {
     const p = validateDslWirePayload({ modules: [], typescript: null, specEndpoints: [] });
     expect(p.typescript).toBeNull();
   });
 
-  it('AC-001.3: typescript object is preserved verbatim', () => {
+  it('typescript object is preserved verbatim', () => {
     const p = validateDslWirePayload({
       modules: [],
       typescript: { scan: [{ include: ['x'] }] },
@@ -56,7 +56,7 @@ describe('validateDslWirePayload — well-formed inputs', () => {
   });
 });
 
-describe('validateDslWirePayload — malformed inputs (REQ-WIRE-001 AC-001.1)', () => {
+describe('validateDslWirePayload — malformed inputs', () => {
   it('throws BOOT_ERR_MALFORMED_BUNDLE on a non-object payload', () => {
     expectBootCode(
       () => validateDslWirePayload('not an object'),

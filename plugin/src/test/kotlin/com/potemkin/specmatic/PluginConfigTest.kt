@@ -46,7 +46,7 @@ class PluginConfigTest {
         assertEquals(5_000L, config.discoveryRefreshOnFailureMs)
     }
 
-    // ---- E3: missing blocks default to empty (AC-E3.2) ----------------------
+    // ---- missing blocks default to empty --------------------------------------------------
 
     @Test
     fun `missing forward blocks default to empty`() {
@@ -65,7 +65,7 @@ class PluginConfigTest {
         assertEquals(GovernanceBlock(), blocks.governance)
     }
 
-    // ---- E3: seeds block (AC-E3.1, AC-E3.4) ---------------------------------
+    // ---- seeds block -----------------------------------------------------------------------
 
     @Test
     fun `seeds block parses request matcher base and patches`() {
@@ -111,7 +111,7 @@ class PluginConfigTest {
         assertEquals(SeedBase.EMPTY, seed.base)
     }
 
-    // ---- E3: workflow block (AC-E3.1) ---------------------------------------
+    // ---- workflow block --------------------------------------------------------------------
 
     @Test
     fun `workflow block parses id operations`() {
@@ -129,7 +129,7 @@ class PluginConfigTest {
         assertEquals(WorkflowIdEntry("\$.id", "\$.leadId"), workflow.ids["leadId"])
     }
 
-    // ---- E3: overlay block (AC-E3.1) ----------------------------------------
+    // ---- overlay block ---------------------------------------------------------------------
 
     @Test
     fun `overlay block parses patches`() {
@@ -149,7 +149,7 @@ class PluginConfigTest {
         assertEquals(true, patch.value)
     }
 
-    // ---- E3: governance block (AC-E3.1) -------------------------------------
+    // ---- governance block ------------------------------------------------------------------
 
     @Test
     fun `governance block parses report and successCriterion`() {

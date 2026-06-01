@@ -2,16 +2,16 @@
  * Forwarding/gateway feature-parity integration tests for the adversarial-audit
  * fixes. Each block FAILS if its feature were gutted (parse-and-discard):
  *
- *  1. potemkin-933 — the /_engine/forward handler fires outbound webhooks via the
+ *  1. The /_engine/forward handler fires outbound webhooks via the
  *     injected transport (and X-Potemkin-Skip-Webhooks suppresses them), matching
  *     the gateway. A handler that omits webhookTransport never delivers.
  *
- *  2. potemkin-mev — X-Potemkin-Skip-Response-Validation and
+ *  2. X-Potemkin-Skip-Response-Validation and
  *     X-Potemkin-Allow-Additional-Properties reach the validator: a response that
  *     violates strict (additionalProperties:false) validation fails without the
  *     header (500) and passes with it.
  *
- *  3. potemkin-wam — X-Specmatic-Result: success is set on 2xx responses and
+ *  3. X-Specmatic-Result: success is set on 2xx responses and
  *     failure on error responses, on BOTH the gateway and forwarding paths.
  */
 
@@ -183,9 +183,9 @@ describe('forwarding/gateway feature parity (adversarial audit)', () => {
     deliveries.length = 0;
   });
 
-  // --- Item 1: potemkin-933 — forwarding handler fires webhooks ---------------
+  // --- Item 1: forwarding handler fires webhooks ---------------
 
-  describe('potemkin-933: /_engine/forward fires outbound webhooks', () => {
+  describe('/_engine/forward fires outbound webhooks', () => {
     it('a forwarded creation whose boundary declares a webhook invokes the injected transport', async () => {
       const id = nextUuidv7();
       const res = await agent
@@ -222,9 +222,9 @@ describe('forwarding/gateway feature parity (adversarial audit)', () => {
     });
   });
 
-  // --- Item 2: potemkin-mev — validation controls reach the validator ---------
+  // --- Item 2: validation controls reach the validator ---------
 
-  describe('potemkin-mev: response-validation controls reach the validator', () => {
+  describe('response-validation controls reach the validator', () => {
     it('an undeclared response field fails strict validation by default (500)', async () => {
       const id = nextUuidv7();
       const res = await agent
@@ -275,9 +275,9 @@ describe('forwarding/gateway feature parity (adversarial audit)', () => {
     });
   });
 
-  // --- Item 3: potemkin-wam — X-Specmatic-Result on both paths ----------------
+  // --- Item 3: X-Specmatic-Result on both paths ----------------
 
-  describe('potemkin-wam: X-Specmatic-Result is set on success and failure', () => {
+  describe('X-Specmatic-Result is set on success and failure', () => {
     it('gateway tags success on a 2xx response', async () => {
       const id = nextUuidv7();
       const res = await agent.post(`/widgets/${id}`).send({ id }).expect(201);

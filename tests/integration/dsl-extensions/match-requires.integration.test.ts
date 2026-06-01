@@ -1,5 +1,5 @@
 /**
- * REQ-61: match.requires[] — end-to-end integration permutation tests.
+ * match.requires[] — end-to-end integration permutation tests.
  *
  * Tests cover: guard passing/failing, first-fail wins, ordering vs condition,
  * state/command references, empty array, CEL comprehension in guard,
@@ -15,7 +15,7 @@ import { nextUuidv7 } from '../../../src/ids/uuidv7.js';
 // Test: single requires guard, passing → behavior fires
 // ---------------------------------------------------------------------------
 
-describe('REQ-61: match.requires — single guard, passing', () => {
+describe('match.requires — single guard, passing', () => {
   it('fires behavior when the single requires condition is true', async () => {
     const entityId = nextUuidv7();
     const { result, events, state } = await bootAndRun({
@@ -59,7 +59,7 @@ reducers:
 // Test: single requires guard, failing → 422 with error_code/message/requirement
 // ---------------------------------------------------------------------------
 
-describe('REQ-61: match.requires — single guard, failing', () => {
+describe('match.requires — single guard, failing', () => {
   it('returns 422 with error_code, error_message, and requirement name when guard fails', async () => {
     const entityId = nextUuidv7();
     const { result } = await bootAndRun({
@@ -104,7 +104,7 @@ reducers:
 // Test: multiple requires; FIRST failure reported (not later ones)
 // ---------------------------------------------------------------------------
 
-describe('REQ-61: match.requires — multiple guards, first failure wins', () => {
+describe('match.requires — multiple guards, first failure wins', () => {
   it('reports first failed guard when multiple guards are present', async () => {
     const entityId = nextUuidv7();
     const { result } = await bootAndRun({
@@ -198,7 +198,7 @@ reducers:
 // Test: requires evaluated BEFORE match.condition
 // ---------------------------------------------------------------------------
 
-describe('REQ-61: match.requires — evaluated before match.condition', () => {
+describe('match.requires — evaluated before match.condition', () => {
   it('throws from requires even when match.condition would also fail', async () => {
     // If requires fails, match.condition is never evaluated (behavior doesn't continue)
     const entityId = nextUuidv7();
@@ -281,7 +281,7 @@ reducers:
 // Test: requires referencing state.X and command.X
 // ---------------------------------------------------------------------------
 
-describe('REQ-61: match.requires — references state and command', () => {
+describe('match.requires — references state and command', () => {
   it('references state fields in requires condition', async () => {
     const entityId = nextUuidv7();
     const { result, events } = await bootAndRun({
@@ -358,7 +358,7 @@ reducers:
 // Test: empty requires array → no guards, behavior fires normally
 // ---------------------------------------------------------------------------
 
-describe('REQ-61: match.requires — empty array', () => {
+describe('match.requires — empty array', () => {
   it('fires behavior when requires is an empty array', async () => {
     const entityId = nextUuidv7();
     const { result, events } = await bootAndRun({
@@ -395,7 +395,7 @@ reducers:
 // Test: requires using CEL comprehension
 // ---------------------------------------------------------------------------
 
-describe('REQ-61: match.requires — using CEL comprehension', () => {
+describe('match.requires — using CEL comprehension', () => {
   it('passes requires when comprehension over state list matches', async () => {
     const entityId = nextUuidv7();
     const { result, events } = await bootAndRun({

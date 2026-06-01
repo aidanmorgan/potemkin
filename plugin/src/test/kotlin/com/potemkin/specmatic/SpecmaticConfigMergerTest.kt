@@ -5,10 +5,10 @@ import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 
 /**
- * Unit tests for [SpecmaticConfigMerger] (E6):
- *  - workflow ids reach a WorkflowConfiguration (AC-E6.1)
- *  - governance values are merged (AC-E6.2)
- *  - precedence: scalars override, lists concat, objects merge (AC-E6.3, AC-E6.4)
+ * Unit tests for [SpecmaticConfigMerger]:
+ *  - workflow ids reach a WorkflowConfiguration
+ *  - governance values are merged
+ *  - precedence: scalars override, lists concat, objects merge
  */
 class SpecmaticConfigMergerTest {
 

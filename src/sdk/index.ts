@@ -1,13 +1,7 @@
-// In-tree SDK that TypeScript reducer files import as `@potemkin/sdk`. The
-// sandbox require-hook resolves that specifier here. Exposes the decorator
-// and helper registration styles, patch helpers, and the RW-locked process
-// registry.
+// In-tree SDK imported as `@potemkin/sdk` by TypeScript reducer files.
+// The sandbox require-hook resolves that specifier here.
 
 import type { Patch } from '../dsl/patches.js';
-
-// ---------------------------------------------------------------------------
-// Public types
-// ---------------------------------------------------------------------------
 
 export type { Patch };
 
@@ -36,11 +30,6 @@ export interface RegisteredReducer {
   /** Source descriptor (file path, line, registration style). */
   readonly source: string;
 }
-
-// ---------------------------------------------------------------------------
-// RW-locked registry — write lock for registration/swap/reset, read lock
-// for dispatch snapshots.
-// ---------------------------------------------------------------------------
 
 /**
  * Tiny async RW lock. Implements the single-writer / multi-reader pattern
@@ -191,10 +180,6 @@ function keyOf(key: ReducerKey): string {
 /** Process-wide singleton. The sandbox surfaces this to every loaded TS file. */
 export const registry = new Registry();
 
-// ---------------------------------------------------------------------------
-// Public registration surface
-// ---------------------------------------------------------------------------
-
 /**
  * Function-style registration helper.
  *
@@ -238,10 +223,6 @@ export function Reducer(
     return target;
   };
 }
-
-// ---------------------------------------------------------------------------
-// Patch helpers
-// ---------------------------------------------------------------------------
 
 import type { JsonValue } from '../types.js';
 

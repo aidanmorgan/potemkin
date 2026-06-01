@@ -12,7 +12,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * Unit tests for [PotemkinRequestInterceptor] (E2 AC-E2.1 / AC-E2.2):
+ * Unit tests for [PotemkinRequestInterceptor]:
  *  - valid JWT verified, claims attached to the request (X-Potemkin-Jwt-Claims)
  *  - invalid / missing token marked with X-Potemkin-Auth-Error carrying the challenge
  *  - auth disabled leaves the request unchanged

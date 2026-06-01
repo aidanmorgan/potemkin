@@ -14,18 +14,17 @@ import org.slf4j.LoggerFactory
  * When `/_engine/forward` returns a response whose JSON body carries a top-level
  * `_patches: Patch[]` array, this interceptor applies those patches to the body
  * via the Kotlin [PatchApplier] (a faithful port of the TS `applyPatches`), then
- * strips the `_patches` field so it never leaks to the client (E1).
+ * strips the `_patches` field so it never leaks to the client.
  *
- * Atomicity (AC-E1.3): patches are applied to a clone of the parsed body. If any
- * op fails, the ORIGINAL response is preserved unchanged and a `Warning` header
- * is attached describing the failure. A successful application replaces the body
- * with the patched JSON.
+ * Atomicity: patches are applied to a clone of the parsed body. If any op fails,
+ * the ORIGINAL response is preserved unchanged and a `Warning` header is attached
+ * describing the failure. A successful application replaces the body with the
+ * patched JSON.
  *
- * Deprecation (E5 / AC-G6.3): when the request's operation is one the
- * `overlay.patches` flipped to `deprecated:true` (per the injected
- * [DeprecationPolicy]), a `Deprecation: true` header is attached. Specmatic
- * applies the overlay to its served spec but emits no such header, so the plugin
- * surfaces the deprecation signal here.
+ * Deprecation: when the request's operation is one the `overlay.patches` flipped
+ * to `deprecated:true` (per the injected [DeprecationPolicy]), a `Deprecation: true`
+ * header is attached. Specmatic applies the overlay to its served spec but emits no
+ * such header, so the plugin surfaces the deprecation signal here.
  *
  * The [mapper] is injected so the interceptor holds no static mutable state.
  */

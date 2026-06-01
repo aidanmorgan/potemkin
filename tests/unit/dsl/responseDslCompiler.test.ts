@@ -48,7 +48,7 @@ describe('compileResponseDeprecation (REQ-RESP-002)', () => {
     });
   });
 
-  it('emits Sunset header when sunset is provided (AC-002.1)', () => {
+  it('emits Sunset header when sunset is provided', () => {
     const patches = compileResponseDeprecation({ sunset: '2026-12-31' });
     expect(patches).toContainEqual({
       op: 'add',
@@ -66,12 +66,12 @@ describe('compileResponseDeprecation (REQ-RESP-002)', () => {
     });
   });
 
-  it('emits no patches when input is undefined (AC-002.3)', () => {
+  it('emits no patches when input is undefined', () => {
     expect(compileResponseDeprecation(undefined)).toEqual([]);
   });
 });
 
-describe('compileResponseMask (REQ-RESP-003)', () => {
+describe('compileResponseMask', () => {
   it('emits a remove patch per field', () => {
     expect(compileResponseMask(['ssn', 'dob'])).toEqual([
       { op: 'remove', path: '/ssn' },

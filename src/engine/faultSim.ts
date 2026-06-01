@@ -8,7 +8,7 @@ export interface FaultSignal {
 }
 
 /**
- * Inspect request headers for a fault-simulation directive (design §31, req 31).
+ * Inspect request headers for a fault-simulation directive.
  *
  * Convention: the header `x-specmatic-fault` (case-insensitive) carries a JSON-encoded
  * object with shape `{ status: number, body: JsonValue, headers?: Record<string,string> }`.
@@ -60,7 +60,7 @@ export function extractFaultSignal(
     throw new ContractViolationError('Malformed x-specmatic-fault header', { raw });
   }
 
-  // Validate status is a valid HTTP status code (100–599)
+  // Valid HTTP status codes are in the range 100–599.
   const statusVal = obj['status'] as number;
   if (statusVal < 100 || statusVal > 599) {
     throw new ContractViolationError('Malformed x-specmatic-fault header', {
@@ -69,8 +69,7 @@ export function extractFaultSignal(
     });
   }
 
-  // `body` is required and must be a JsonValue (any non-undefined value qualifies at
-  // parse time; deep structural validation is not required here).
+  // `body` is required; any non-undefined JSON value qualifies at parse time.
   if (!('body' in obj)) {
     throw new ContractViolationError('Malformed x-specmatic-fault header', { raw });
   }
@@ -78,7 +77,7 @@ export function extractFaultSignal(
   const signal: FaultSignal = {
     status: obj['status'] as number,
     body: obj['body'] as JsonValue,
-    // Explicitly reject null: typeof null === 'object' passes the naive check.
+    // typeof null === 'object', so null must be rejected explicitly.
     headers:
       obj['headers'] !== null &&
       obj['headers'] !== undefined &&

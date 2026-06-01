@@ -6,9 +6,9 @@ import org.slf4j.LoggerFactory
 
 /**
  * Merges the `workflow` and `governance` forward-blocks into the running
- * SpecmaticConfig representation (E6).
+ * SpecmaticConfig representation.
  *
- * Precedence (AC-E6.3), mirroring the engine's `mergeForwardBlock`
+ * Precedence, mirroring the engine's `mergeForwardBlock`
  * (`src/dsl/forwardBlocks.ts`):
  *  - scalars: the potemkin value overrides the specmatic value;
  *  - lists: concatenate (specmatic entries first, then potemkin);
@@ -19,9 +19,9 @@ import org.slf4j.LoggerFactory
  * it has no public setter or `copy`. This merger therefore produces the merged
  * [WorkflowConfiguration] (the concrete `WorkflowDetails` type Specmatic
  * instantiates) and the merged governance/report map; the parent wires these
- * into the SpecmaticConfig at the point Specmatic constructs it (the e2e seam,
- * AC-E6.4). The merge precedence — the load-bearing logic — is fully
- * implemented and unit-tested here (AC-E6.4).
+ * into the SpecmaticConfig at the point Specmatic constructs it. The merge
+ * precedence — the load-bearing logic — is fully implemented and unit-tested
+ * here.
  */
 class SpecmaticConfigMerger {
     private val log = LoggerFactory.getLogger(SpecmaticConfigMerger::class.java)
@@ -61,7 +61,7 @@ class SpecmaticConfigMerger {
         /**
          * Precedence merge of two generic maps. Scalars from [potemkin] override
          * those in [specmatic]; lists concatenate (specmatic first); nested maps
-         * merge recursively. Pure function — the testable core of AC-E6.3.
+         * merge recursively.
          */
         @Suppress("UNCHECKED_CAST")
         fun mergeForwardBlock(

@@ -1,10 +1,7 @@
 /**
- * Lifecycle types — shared interfaces for plugin control notifications.
- *
- * The Node engine notifies the Specmatic-side plugin via outbound HTTP POSTs
- * when it becomes ready (after successful boot) and when it is about to stop
- * (on SIGTERM/SIGINT).  This lets the plugin react immediately rather than
- * waiting for a health-probe cycle.
+ * The engine notifies the Specmatic plugin via outbound HTTP POSTs when it becomes
+ * ready and when it is about to stop, so the plugin can react immediately rather
+ * than waiting for a health-probe cycle.
  */
 
 export interface PluginControlConfig {

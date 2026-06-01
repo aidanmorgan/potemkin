@@ -6,7 +6,7 @@ package com.potemkin.specmatic
  *
  * Shapes mirror the TS definitions in `src/dsl/configSchema.ts` and
  * `src/dsl/forwardBlocks.ts` exactly, so the plugin and engine agree on the
- * wire contract. Missing blocks default to empty per AC-E3.2.
+ * wire contract. Missing blocks default to empty.
  */
 
 /** A seed request matcher: `{ method, path }`. */
@@ -65,7 +65,7 @@ data class GovernanceBlock(
 
 /**
  * The four forward-blocks parsed out of potemkin.yaml, exposed to
- * [PluginInitializer]. Each block defaults to empty when absent (AC-E3.2).
+ * [PluginInitializer]. Each block defaults to empty when absent.
  */
 data class ForwardBlocks(
     val seeds: List<SeedDeclaration> = emptyList(),

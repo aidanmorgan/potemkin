@@ -1,5 +1,5 @@
 /**
- * Boot-time security warning tests (potemkin-16q3, potemkin-rbbs)
+ * Boot-time security warning tests
  *
  * Verifies:
  *  1. A single WARN is emitted at boot when ADMIN_TOKEN is unset.
@@ -119,9 +119,9 @@ function capturingLogger(): { logger: pino.Logger; warnings: string[] } {
   return { logger: pino({ level: 'trace' }, stream), warnings };
 }
 
-// ── BEAD potemkin-16q3: ADMIN_TOKEN unset warning ────────────────────────────
+// ── ADMIN_TOKEN unset warning ─────────────────────────────────────────────────
 
-describe('boot security warning — ADMIN_TOKEN unset (potemkin-16q3)', () => {
+describe('boot security warning — ADMIN_TOKEN unset', () => {
   const savedAdminToken = process.env['ADMIN_TOKEN'];
 
   afterEach(() => {
@@ -164,9 +164,9 @@ describe('boot security warning — ADMIN_TOKEN unset (potemkin-16q3)', () => {
   });
 });
 
-// ── BEAD potemkin-rbbs: scoped behaviors with non-jwt auth ───────────────────
+// ── scoped behaviors with non-jwt auth ───────────────────────────────────────
 
-describe('boot security warning — scoped behaviors with non-jwt auth (potemkin-rbbs)', () => {
+describe('boot security warning — scoped behaviors with non-jwt auth', () => {
   it('emits a WARN when scoped behaviors exist and auth.mode is not jwt', async () => {
     const openapi = await loadOpenApi(MINIMAL_OPENAPI);
     const { logger, warnings } = capturingLogger();

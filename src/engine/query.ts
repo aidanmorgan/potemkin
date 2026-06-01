@@ -49,8 +49,6 @@ export interface QueryRequest {
  * @throws {EntityAbsenceError} (404) if a single-entity lookup finds no match.
  */
 export function runQuery(req: QueryRequest): JsonValue {
-  // O-6 fix: use injected tracer when provided (enables span capture in tests).
-  // Falls back to getTracer('engine') for production paths.
   const tracer = req.tracer ?? getTracer('engine');
   let result: JsonValue = null;
   let threw = false;
@@ -183,9 +181,9 @@ function _runQuery(req: QueryRequest): JsonValue {
   }
 
   // Collection query — scope to this boundary when event store is available.
-  // C1 fix: without boundary scoping, graph.values() returns ALL entities across ALL boundaries
+  // Without boundary scoping, graph.values() returns ALL entities across ALL boundaries
   // sharing the same StateGraph, causing cross-boundary data leakage.
-  // Strategy: inspect the first event for each entity's targetId to find its originating boundary.
+  // Inspect the first event for each entity's targetId to find its originating boundary.
   let graphKeys = graph.keys() as readonly string[];
   if (events !== undefined) {
     const boundaryName = boundary.boundary;
@@ -455,10 +453,8 @@ function applyDerivedProperties(
       result[propName] = value as JsonValue;
       log?.debug({ propName, boundary: boundary.boundary }, 'Derived property computed');
     } catch (err) {
-      // I2 fix: log at warn (not debug) so misconfigured x-derived expressions are visible.
-      // Set the derived property to null as a sentinel for partial responses rather than
-      // throwing, which would abort the entire query for a single bad expression. Callers
-      // can detect misconfiguration via the null value and logs. (Documented in-code trade-off.)
+      // Set to null rather than throwing: a bad x-derived expression should not abort
+      // the entire query for a single field. Null is a detectable sentinel for callers.
       log?.warn({ propName, expr, err }, 'Derived property CEL evaluation failed — setting to null');
       result[propName] = null;
     }

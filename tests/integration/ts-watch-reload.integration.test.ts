@@ -1,5 +1,5 @@
 /**
- * C6 — TypeScript watch-mode hot reload.
+ * TypeScript watch-mode hot reload.
  *
  * When typescript.watch is true (and NODE_ENV !== 'production'), boot starts a
  * watcher whose onSwap atomic-replaces the SDK reducer registry on the
@@ -149,7 +149,7 @@ function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-describe('C6: watch:true hot-reloads the reducer registry; StateGraph survives', () => {
+describe('watch:true hot-reloads the reducer registry; StateGraph survives', () => {
   it('a reducer file added at runtime starts mutating state after the rescan', async () => {
     const root = await makeFixture();
     const openapi = await loadOpenApi(OPENAPI as object);
@@ -200,7 +200,7 @@ describe('C6: watch:true hot-reloads the reducer registry; StateGraph survives',
   }, 20000);
 });
 
-describe('C6: watch:true + NODE_ENV=production fails fast', () => {
+describe('watch:true + NODE_ENV=production fails fast', () => {
   const prev = process.env['NODE_ENV'];
   afterEach(() => {
     if (prev === undefined) delete process.env['NODE_ENV'];

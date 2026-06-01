@@ -1,10 +1,9 @@
 import type { HateoasEntry, DeprecationConfig } from './responseDslCompiler.js';
 import { parsePointer } from './patches.js';
 
-// Walks an OpenAPI document to extract HATEOAS and deprecation defaults
-// for a matched operation. These defaults are used when a boundary does
-// NOT supply a `hateoas:` or `deprecation:` override block — the response
-// interceptor then composes the per-boundary overrides on top.
+// Extracts HATEOAS and deprecation defaults from an OpenAPI operation.
+// Used when a boundary does not supply a `hateoas:` or `deprecation:` block;
+// the response interceptor composes per-boundary overrides on top.
 
 export interface OpenApiOperation {
   readonly deprecated?: boolean;
@@ -23,8 +22,6 @@ export interface OpenApiLinkObject {
 }
 
 export interface OperationLookup {
-  // Path-template + method → operation. Operation may carry a templated
-  // href produced by translating operationId or operationRef.
   resolveOperationPath(operationId: string): string | undefined;
 }
 
@@ -53,25 +50,20 @@ function resolveLinkHref(link: OpenApiLinkObject, lookup: OperationLookup): stri
     return applyLinkParameters(path, link.parameters);
   }
   if (link.operationRef) {
-    // operationRef is a JSON Pointer into the OpenAPI doc of the form
-    // `#/paths/<escaped-path>/<method>`. The path segment IS the templated
-    // URL path, so we can extract it locally without the full spec doc.
-    // External refs (`<uri>#/paths/...`) point at a different document and
-    // cannot be resolved here. Returning the raw `#/paths/...` pointer as an
-    // href would surface an internal JSON Pointer as a client-facing URL, so
-    // we return null when extraction isn't possible rather than ship a
-    // non-URL string.
+    // `#/paths/<escaped-path>/<method>` — the path segment is the URL template.
+    // External refs (`<uri>#/paths/...`) cannot be resolved here; returning the
+    // raw JSON Pointer as an href would surface an internal pointer to clients,
+    // so we return null rather than a non-URL string.
     return extractPathFromOperationRef(link.operationRef);
   }
   return null;
 }
 
-// Pull the templated URL path out of an internal `#/paths/<path>/<method>`
-// operationRef pointer. Returns null for external refs or malformed pointers.
+// Extract the URL path from an internal `#/paths/<path>/<method>` operationRef.
+// Returns null for external refs or malformed pointers.
 function extractPathFromOperationRef(operationRef: string): string | null {
   if (!operationRef.startsWith('#/paths/')) return null;
   const segs = parsePointer(operationRef.slice(1));
-  // Expect ['paths', '<path>', '<method>']; the path is the unescaped middle.
   if (segs.length !== 3 || segs[0] !== 'paths') return null;
   const path = segs[1];
   return path && path.startsWith('/') ? path : null;
@@ -89,9 +81,7 @@ function applyLinkParameters(
   return out;
 }
 
-// Read OpenAPI deprecated:true on the matched operation. Sunset/Link
-// emission is per-boundary — OpenAPI alone only carries the deprecation
-// flag (no Sunset date semantic).
+// OpenAPI only carries the deprecation flag; Sunset/Link emission is per-boundary.
 
 export function extractDefaultDeprecation(
   op: OpenApiOperation | undefined,

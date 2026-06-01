@@ -8,8 +8,8 @@
  *  - global lock path (targetId null)
  *  - faultSignal short-circuit (with and without metrics)
  *  - unparseable faultSignal → InternalExecutionError
- *  - missing openapi fails pre-flight BEFORE lock acquisition (potemkin-owc3)
- *  - shared aggregateLocks serializes concurrent direct + saga-step UoWs (potemkin-i1xd)
+ *  - missing openapi fails pre-flight BEFORE lock acquisition
+ *  - shared aggregateLocks serializes concurrent direct + saga-step UoWs
  */
 
 import { executeUnitOfWork } from '../../../src/engine/uow';
@@ -542,9 +542,9 @@ describe('engine/uow — additional branch coverage', () => {
   });
 });
 
-// ── potemkin-owc3: openapi pre-flight check ───────────────────────────────────
+// ── openapi pre-flight check ──────────────────────────────────────────────────
 
-describe('engine/uow — pre-flight openapi check (potemkin-owc3)', () => {
+describe('engine/uow — pre-flight openapi check', () => {
   it('throws InternalExecutionError before acquiring the lock when openapi is omitted', async () => {
     const aggregateLocks = new Map<string, Promise<void>>();
     const widgetId = nextUuidv7();
@@ -741,9 +741,9 @@ reducers:
       - { op: replace, path: /value, value: "\${state.value != null ? state.value + 1 : 1}" }
 `;
 
-// ── potemkin-i1xd: concurrent direct + saga-step UoWs serialize ──────────────
+// ── concurrent direct + saga-step UoWs serialize ──────────────────────────────
 
-describe('engine/uow — shared aggregateLocks serializes concurrent UoWs on same aggregate (potemkin-i1xd)', () => {
+describe('engine/uow — shared aggregateLocks serializes concurrent UoWs on same aggregate', () => {
   let counterSys: BootedSystem;
 
   beforeEach(async () => {

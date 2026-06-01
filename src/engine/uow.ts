@@ -108,21 +108,21 @@ export interface UowInput {
    */
   readonly openapi?: OpenApiDoc;
   /**
-   * REQ-88: Optional derived projection registry. When supplied, committed events are
+   * Optional derived projection registry. When supplied, committed events are
    * also routed to subscribed derived projections.
    */
   readonly derivedProjections?: DerivedProjectionRegistry;
   /** Parsed X-Potemkin-* control headers (dry-run, skip-sagas, etc.). */
   readonly controls?: ControlHeaders;
   /**
-   * C3: TypeScript-reducer registry. When supplied, projection consults it
+   * TypeScript-reducer registry. When supplied, projection consults it
    * FIRST for each (boundary, event) and runs the TS reducer in place of the
    * YAML reducer on a hit. Threaded from sys.tsReducerRegistry by the gateway,
    * forwarding handler, and saga orchestrator.
    */
   readonly tsReducerRegistry?: TsReducerRegistry;
   /**
-   * C5: per-boundary inferred schemas (keyed by boundary). When supplied, the
+   * Per-boundary inferred schemas (keyed by boundary). When supplied, the
    * computed fields + topological order for the projecting boundary are passed
    * to projectEvent so computed fields recompute after reducer patches apply.
    */

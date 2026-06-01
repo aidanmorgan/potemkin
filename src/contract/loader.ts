@@ -10,7 +10,6 @@ export interface OpenApiParameter {
   readonly in: 'path' | 'query' | 'header';
   readonly required?: boolean;
   readonly schema?: JsonObject;
-  // F-07: Preserve vendor extension fields (x-*) from the original OpenAPI parameter.
   readonly [key: `x-${string}`]: unknown;
 }
 
@@ -19,7 +18,6 @@ export interface OpenApiOperation {
   readonly requestBodySchema?: JsonObject;
   readonly responseSchemas?: Record<string, JsonObject>;
   readonly parameters?: readonly OpenApiParameter[];
-  // F-07: Preserve vendor extension fields (x-*) from the original OpenAPI operation.
   readonly [key: `x-${string}`]: unknown;
 }
 
@@ -58,7 +56,6 @@ function extractParameters(rawParams: unknown): readonly OpenApiParameter[] {
     if (typeof param['name'] !== 'string') continue;
     const inVal = param['in'];
     if (inVal !== 'path' && inVal !== 'query' && inVal !== 'header') continue;
-    // F-07: Carry through vendor extension keys (x-*).
     const extensions: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(param)) {
       if (k.startsWith('x-')) extensions[k] = v;
@@ -81,7 +78,6 @@ function extractOperation(rawOp: unknown): OpenApiOperation | undefined {
   const operationId =
     typeof op['operationId'] === 'string' ? op['operationId'] : undefined;
 
-  // requestBodySchema from requestBody.content['application/json'].schema
   let requestBodySchema: JsonObject | undefined;
   const rb = op['requestBody'];
   if (rb !== null && typeof rb === 'object' && !Array.isArray(rb)) {
@@ -97,7 +93,6 @@ function extractOperation(rawOp: unknown): OpenApiOperation | undefined {
     }
   }
 
-  // responseSchemas: map status string → schema from responses[status].content['application/json'].schema
   const responseSchemas: Record<string, JsonObject> = {};
   const responses = op['responses'];
   if (responses !== null && typeof responses === 'object' && !Array.isArray(responses)) {
@@ -115,7 +110,6 @@ function extractOperation(rawOp: unknown): OpenApiOperation | undefined {
     }
   }
 
-  // F-07: Carry through vendor extension keys (x-*) from the raw operation.
   const operationExtensions: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(op)) {
     if (k.startsWith('x-')) operationExtensions[k] = v;
@@ -197,7 +191,6 @@ export async function loadOpenApi(source: string | object): Promise<OpenApiDoc> 
   return withSpan(getTracer('contract'), 'contract.load', async () => {
     let parseTarget: string | OpenAPI.Document;
 
-    // F-05: Detect Buffer and convert to UTF-8 string before further processing.
     const normalizedSource: string | object = Buffer.isBuffer(source)
       ? (source as Buffer).toString('utf8')
       : source;
@@ -205,7 +198,6 @@ export async function loadOpenApi(source: string | object): Promise<OpenApiDoc> 
     if (typeof normalizedSource === 'string') {
       const trimmed = normalizedSource.trimStart();
       if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
-        // Inline JSON string — parse first, then pass as object
         parseTarget = JSON.parse(normalizedSource) as OpenAPI.Document;
       } else if (
         !normalizedSource.startsWith('http://') &&
@@ -217,7 +209,6 @@ export async function loadOpenApi(source: string | object): Promise<OpenApiDoc> 
         // Likely inline YAML
         parseTarget = yaml.load(normalizedSource) as OpenAPI.Document;
       } else {
-        // File path or URL — swagger-parser handles it directly
         parseTarget = normalizedSource;
       }
     } else {

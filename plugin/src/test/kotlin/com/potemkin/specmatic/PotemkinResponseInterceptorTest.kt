@@ -11,10 +11,10 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * Unit tests for [PotemkinResponseInterceptor] (E1):
- *  - reads `_patches` and applies them to the response body (AC-E1.1)
- *  - covers all 10 ops via [PatchApplier] (parity verified in [PatchApplierTest], AC-E1.2)
- *  - patch failure preserves the original response and adds a `Warning` header (AC-E1.3)
+ * Unit tests for [PotemkinResponseInterceptor]:
+ *  - reads `_patches` and applies them to the response body
+ *  - covers all 10 ops via [PatchApplier] (parity verified in [PatchApplierTest])
+ *  - patch failure preserves the original response and adds a `Warning` header
  */
 class PotemkinResponseInterceptorTest {
 

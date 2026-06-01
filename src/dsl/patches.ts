@@ -1,6 +1,5 @@
-// RFC 6902 (add/remove/replace/move/copy) + Potemkin extensions
-// (append/prepend/increment/merge/upsert). Paths are RFC 6901 JSON Pointers;
-// `/items/-` is the array-end sentinel (only valid for add/append).
+// RFC 6902 patch operations plus Potemkin extensions (append/prepend/increment/merge/upsert).
+// Paths are RFC 6901 JSON Pointers; `/items/-` is the array-end sentinel for add/append.
 
 import type { JsonValue } from '../types.js';
 
@@ -103,7 +102,7 @@ interface NavResult {
   readonly exists: boolean;
 }
 
-/** True iff a path segment addresses an array position (integer index or the `-` end sentinel). */
+/** True when a path segment is an array index or the `-` end sentinel. */
 function segmentIsArrayIndex(seg: string | undefined): boolean {
   if (seg === undefined) return false;
   if (seg === '-') return true;
@@ -112,13 +111,10 @@ function segmentIsArrayIndex(seg: string | undefined): boolean {
 }
 
 /**
- * Walk `state` to the parent of the leaf identified by `segments`. Returns
- * the parent container and the final key. Intermediate missing objects are
- * NOT auto-created in strict mode — that is op-specific (handled by callers).
- *
- * When `autoVivify` is set (reducer source, which builds entity state from an
- * empty buffer), missing intermediate containers ARE created: a numeric next
- * segment yields an array, anything else an object.
+ * Walk `state` to the parent of the leaf identified by `segments`.
+ * In strict mode intermediate missing keys are not created (ops handle that).
+ * When `autoVivify` is set, missing intermediate containers are created:
+ * a numeric next-segment yields an array, anything else an object.
  */
 function navigate(
   state: JsonValue,
@@ -233,11 +229,7 @@ function applyOne(
     case 'replace': {
       const segments = parsePointer(patch.path);
       if (segments.length === 0) {
-        // Replacing the root is a structural op — callers should handle by
-        // assigning the new value. We can't replace `state` in-place; signal
-        // via a thrown sentinel that callers cannot use root-replace. The
-        // patch applier docs say root '/' is forbidden for these ops.
-        throw new PatchApplyError(
+          throw new PatchApplyError(
           `'${patch.op}' on root '/' is not supported`,
           patchIndex,
           '/',
@@ -245,8 +237,7 @@ function applyOne(
         );
       }
       const { parent, key, exists } = navigate(state, segments, patch.op, patchIndex, autoVivify);
-      // In autoVivify mode (reducer source) `replace` upserts — a missing
-      // target is created rather than rejected.
+      // In autoVivify mode, `replace` upserts — a missing target is created.
       if (patch.op === 'replace' && !exists && !autoVivify) {
         throw new PatchApplyError(
           `'replace' target does not exist: ${patch.path}`,
@@ -256,8 +247,6 @@ function applyOne(
         );
       }
       if (Array.isArray(parent)) {
-        // strict `add` inserts; `replace` (and autoVivify `replace` on a
-        // missing slot, i.e. index === length) overwrites/extends.
         if (patch.op === 'add' && exists) {
           (parent as JsonValue[]).splice(key as number, 0, cloneJson(patch.value));
         } else {
@@ -272,8 +261,8 @@ function applyOne(
       const segments = parsePointer(patch.path);
       const { parent, key, exists } = navigate(state, segments, patch.op, patchIndex, autoVivify);
       if (!exists) {
-        // Removing a non-existent target is a no-op under autoVivify (reducer),
-        // a hard error under strict RFC 6902.
+        // Under autoVivify (reducer) removing a non-existent path is a no-op;
+        // under strict RFC 6902 it is an error.
         if (autoVivify) return;
         throw new PatchApplyError(
           `'remove' target does not exist: ${patch.path}`,
@@ -335,8 +324,7 @@ function applyOne(
             patch.op,
           );
         }
-        // autoVivify (reducer): a missing or non-array target becomes a fresh array.
-        target = [];
+        target = []; // autoVivify: missing/non-array becomes a fresh array
         writeAt(parent, key, target);
       }
       const cloned = cloneJson(patch.value);
@@ -359,8 +347,7 @@ function applyOne(
             patch.op,
           );
         }
-        // autoVivify (reducer): a missing or non-numeric target starts at 0.
-        writeAt(parent, key, patch.by);
+        writeAt(parent, key, patch.by); // autoVivify: missing/non-numeric target starts at 0
         return;
       }
       writeAt(parent, key, current + patch.by);
@@ -381,8 +368,7 @@ function applyOne(
             patch.op,
           );
         }
-        // autoVivify (reducer): a missing or non-object target becomes a fresh object.
-        target = {};
+        target = {}; // autoVivify: missing/non-object target becomes a fresh object
         writeAt(parent, key, target);
       }
       const obj = target as Record<string, JsonValue>;
@@ -409,8 +395,7 @@ function applyOne(
             patch.op,
           );
         }
-        // autoVivify (reducer): a missing or non-array target becomes a fresh array.
-        target = [];
+        target = []; // autoVivify: missing/non-array target becomes a fresh array
         writeAt(parent, key, target);
       }
       const arr = target as JsonValue[];
@@ -473,9 +458,8 @@ export interface ApplyPatchesOptions {
   readonly autoVivify?: boolean;
 }
 
-// Returns a fresh state derived from `state + patches`; never mutates the
-// input. Throws PatchApplyError on the first failed op, discarding the
-// candidate so callers safely retain the original pointer.
+// Returns a fresh state with patches applied; never mutates the input.
+// Throws PatchApplyError on the first failed op so callers retain the original.
 export function applyPatches(
   state: JsonValue,
   patches: readonly Patch[],

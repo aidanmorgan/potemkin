@@ -3,9 +3,7 @@
  *
  * POST /_engine/forward
  *   Accepts a ForwardedRequest in the JSON body, runs it through the same
- *   CQRS/ES pipeline that the regular HTTP gateway uses (matchRoute →
- *   translateIntent → targetId resolution → executeUnitOfWork), and returns
- *   a ForwardedResponse.
+ *   CQRS/ES pipeline that the regular HTTP gateway uses, and returns a ForwardedResponse.
  *
  * GET /_engine/health
  *   Returns a lightweight health-check payload.
@@ -63,9 +61,7 @@ import {
   IdempotencyConflictError,
 } from '../errors.js';
 
-// Package version is baked in at load time from package.json.
-// We use a dynamic require here because this is CJS/ts-jest territory and
-// the JSON import is the most portable cross-compile approach.
+// Dynamic require is the most portable cross-compile approach for JSON imports.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const PKG_VERSION: string = (require('../../package.json') as { version: string }).version;
 
@@ -76,11 +72,9 @@ const PKG_VERSION: string = (require('../../package.json') as { version: string 
 /**
  * Case-insensitively read a header from a forwarded headers map.
  *
- * The forwarding contract (forwarding/types.ts) documents lowercase keys, but
- * the engine must not 500 / silently mis-route when a caller forwards original
- * casing (e.g. `If-Match`, `Authorization`, `Idempotency-Key`). We first try the
- * exact lowercase key (the documented fast path) and fall back to a
- * case-insensitive scan only when that misses.
+ * The forwarding contract documents lowercase keys, but callers may forward
+ * original casing (e.g. `If-Match`, `Authorization`). We try the lowercase key
+ * first and fall back to a case-insensitive scan only when that misses.
  */
 export function readForwardedHeader(
   headers: Record<string, string>,
@@ -187,15 +181,14 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
 
     const fwd: ForwardedRequest = req.body as ForwardedRequest;
 
-    // Send a ForwardedResponse envelope (always HTTP 200 on the wire; the real
-    // status travels in the envelope's `status` field for the plugin to apply).
+    // Always HTTP 200 on the wire; the real status travels in the envelope's `status` field.
     const send = (r: ForwardedResponse): void => { res.status(200).json(r); };
 
     const rawMethod = fwd.method.toUpperCase();
     const path = fwd.path;
 
-    // HEAD is routed/processed as GET (RFC 7231 §4.3.2); the body is emptied on
-    // the way out. OPTIONS is answered as a CORS preflight before any routing.
+    // HEAD is processed as GET (RFC 7231 §4.3.2); body is emptied on the way out.
+    // OPTIONS is answered as a CORS preflight before any routing.
     const isHead = rawMethod === 'HEAD';
     const method = isHead ? 'GET' : rawMethod;
 
@@ -209,11 +202,10 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       return;
     }
 
-    // Normalise the forwarded headers to lowercase keys once (the plugin already
-    // lowercases on the wire, but original casing must never mis-route).
+    // Normalise to lowercase once; original casing must never mis-route.
     const lc = lowercaseHeaders(fwd.headers);
 
-    // 2. Fault-sim: honour x-specmatic-fault forwarded in the fwd.headers.
+    // 2. Fault-sim: honour x-specmatic-fault.
     try {
       const fault = extractFaultSignal(fwd.headers as Record<string, string | string[] | undefined>);
       if (fault !== null) {
@@ -227,14 +219,14 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       return;
     }
 
-    // 3. Match route against OpenAPI (HEAD looked up as GET).
+    // 3. Match route against OpenAPI.
     const route = matchRoute(sys.openapi, method, path);
     if (route === null) {
       send({ status: 404, headers: {}, body: { error: 'NO_ROUTE', path } });
       return;
     }
 
-    // 4. Resolve boundary.
+    // 4. Resolve boundary from route.
     const boundary = sys.dsl.byContractPath[route.contractPath];
     if (boundary === undefined) {
       send({ status: 404, headers: {}, body: { error: 'NO_BOUNDARY', contractPath: route.contractPath } });
@@ -244,20 +236,15 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
     // 5. Parse X-Potemkin-* control headers from the lowercased map.
     const controls = parseControlHeaders(lc);
 
-    // Tier 1: clock offset + faker seed — per-request, immutable. A lightweight
-    // sub-evaluator layers this request's X-Potemkin-Clock-Offset / -Seed on top
-    // of the shared evaluator WITHOUT mutating it, so concurrent forwarded
-    // requests each observe their own offset/seed with no cross-request leak.
+    // Per-request CEL sub-evaluator: layers clock offset + faker seed on top of
+    // the shared evaluator WITHOUT mutating it, so concurrent requests each
+    // observe their own offset/seed with no cross-request leak.
     const reqCel = sys.cel.withRequestContext({
       ...(controls.transparency.clockOffsetMs !== undefined ? { clockOffsetMs: controls.transparency.clockOffsetMs } : {}),
       ...(controls.transparency.seed !== undefined ? { seed: controls.transparency.seed } : {}),
     });
 
-    // 5a. Admin gating for Tier 3 actor-override / impersonate and the Tier 7
-    //     request-validation skip — these require an `admin`-scoped caller.
-    //     (Response-validation / additional-properties skips are NOT gated on the
-    //     forwarding path: they only relax how the engine validates its OWN
-    //     output, never the caller's request, so they carry no privilege.)
+    // 5a. Admin gating for actor-override / impersonate and request-validation skip.
     const usesAdminGated =
       Boolean(controls.identity.actorOverride) ||
       Boolean(controls.identity.impersonate) ||
@@ -292,8 +279,7 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
 
     const logger = sys.logger.child({ forwardedPath: path, forwardedMethod: rawMethod });
 
-    // 7. Resolve actor (jwt → validateJwt; else legacy bearer shortcut). The
-    //    forwarding path is Bearer/JWT-only — there is no session cookie here.
+    // 7. Resolve actor — forwarding path is Bearer/JWT only (no session cookie).
     let actor: Actor | undefined;
     try {
       actor = resolveActor(readForwardedHeader(fwd.headers, 'authorization'), sys.dsl.auth) ?? undefined;
@@ -304,7 +290,7 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       }
       throw e;
     }
-    // Tier 3: actor override / impersonate (admin-gated above) — `<id>:<scopes>`.
+    // Tier 3: actor override / impersonate (admin-gated above).
     const adminOverride = controls.identity.actorOverride ?? controls.identity.impersonate;
     if (adminOverride) {
       const [id, scopesStr] = adminOverride.split(':', 2);
@@ -312,8 +298,7 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
     }
 
     // 8. Tier 4: time-travel intercepts for GET requests (read-at-version /
-    //    replay-event). These project transient state from the immutable event
-    //    log and never run the UoW — mirroring gateway.ts semantics exactly.
+    //    replay-event). Projects transient state from the event log; never runs the UoW.
     if (method === 'GET') {
       const ttTargetId = route.pathParams['id'] ?? null;
       if (controls.timeTravel.readAtVersion !== undefined && ttTargetId !== null) {
@@ -359,13 +344,12 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       }
     }
 
-    // 8b. Chaos headers — resolve direct X-Potemkin-* chaos primitives. Latency
-    //    accrues here; an override response short-circuits BEFORE the UoW.
+    // 8b. Chaos headers — resolve X-Potemkin-* chaos primitives.
     const faultRules = sys.dsl.faults ?? [];
     const chaos = resolveChaosHeaders(lc, faultRules);
 
     // 9. Request-body validation (unless admin-gated skip, or a bulk array body
-    //    which is validated per-item below). A ContractViolationError maps to 400.
+    //    validated per-item below).
     const isBulkArrayBody =
       controls.sideEffects.bulkTransactional === true && Array.isArray(fwd.body);
     const isCreationArrayBody = intent === 'creation' && Array.isArray(fwd.body);
@@ -391,17 +375,15 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       }
     }
 
-    // 10. Bulk array body on a creation boundary — execute each item through its
-    //     own UoW (validate per-item) and return the results array. Mirrors the
-    //     gateway bulk pattern; non-transactional arrays still loop (best-effort).
+    // 10. Bulk array body — execute each item through its own UoW and return the results array.
     if (Array.isArray(fwd.body) && (isBulkArrayBody || isCreationArrayBody)) {
       await runBulkCreate({ sys, fwd, route, boundary, intent, method, path, actor, controls, logger, send, reqCel });
       return;
     }
 
-    // 11. Build Command (lowercased headers carried for fault matching + chaining).
+    // 11. Build Command.
     // If-Match: strip quotes before parsing to integer. Weak validators (W/"5")
-    // produce NaN — return a 400 envelope rather than passing NaN into the UoW.
+    // produce NaN — return a 400 rather than passing NaN into the UoW.
     const ifMatchValue = readForwardedHeader(fwd.headers, 'if-match');
     let sequenceVersion: number | undefined;
     if (ifMatchValue !== undefined) {
@@ -437,9 +419,8 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       ...(actor !== undefined ? { actor } : {}),
     };
 
-    // 12. DSL fault rules — evaluate global + boundary-scoped rules against the
-    //     command (header / boundary / intent / CEL / probability matchers)
-    //     BEFORE the UoW so a match mutates no state. Skipped under Skip-Dispatch.
+    // 12. DSL fault rules — evaluate before the UoW so a match mutates no state.
+    //     Skipped when Skip-Dispatch is set.
     const dynamicFaults = sys.faultStore.all();
     if (
       chaos.response === undefined &&
@@ -458,8 +439,7 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       });
       if (faultResponse !== null) {
         sys.metrics.faultsSimulatedTotal.add(1);
-        // Apply the rule's own pre-response delay (delay_ms) on top of any
-        // configured boundary latency before surfacing the canned fault.
+        // Apply the rule's pre-response delay on top of any boundary latency.
         await delay(resolveBoundaryLatencyMs(boundary.latency) + (faultResponse.delay_ms ?? 0));
         const headers = lowercaseHeaderMap(faultResponse.headers);
         send({ status: faultResponse.status, headers, body: isHead ? null : (faultResponse.body ?? null) });
@@ -467,15 +447,13 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       }
     }
 
-    // 13. Apply chaos-header override (force-status / error-class / use-fault /
-    //     success-rate / drop-connection) BEFORE the UoW. Latency from chaos +
-    //     boundary config is applied first.
+    // 13. Apply chaos-header override before the UoW.
     const boundaryLatencyMs = resolveBoundaryLatencyMs(boundary.latency);
     if (chaos.response !== undefined || chaos.dropConnection === true) {
       await delay(chaos.extraLatencyMs + boundaryLatencyMs);
       if (chaos.dropConnection === true) {
         // The forwarding layer cannot destroy the upstream socket, so it surfaces
-        // a synthetic 504 + marker for the plugin to honour as a dropped connection.
+        // a synthetic 504 + marker for the Kotlin plugin to treat as a dropped connection.
         send({ status: 504, headers: { 'x-potemkin-dropped': 'true' }, body: null });
         return;
       }
@@ -488,7 +466,7 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       return;
     }
 
-    // 14. Idempotency check (mirrors gateway.ts logic).
+    // 14. Idempotency check.
     const idempotencyKey = readForwardedHeader(fwd.headers, 'idempotency-key');
     const idempotencyCfg = sys.dsl.idempotency;
     const idempotencyEnabled = idempotencyCfg?.enabled ?? false;
@@ -513,7 +491,7 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       }
     }
 
-    // 15. Apply boundary latency for the normal (non-chaos) path before responding.
+    // 15. Apply boundary latency before the UoW.
     await delay(boundaryLatencyMs + chaos.extraLatencyMs);
 
     // 16. Execute Unit of Work.
@@ -558,7 +536,7 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       return;
     }
 
-    // 17. Build response headers including ETag.
+    // 17. Build response headers.
     const responseHeaders: Record<string, string> = { ...(result.headers ?? {}) };
 
     const isMutating = intent === 'mutation' || intent === 'creation';
@@ -573,8 +551,7 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       if (seqForEtag !== undefined) responseHeaders['etag'] = '"' + String(seqForEtag) + '"';
     }
 
-    // Single-entity GET (RFC 7232): emit ETag (from the entity's current
-    // sequenceVersion) + Last-Modified (from the body's updatedAt audit field).
+    // Single-entity GET (RFC 7232): emit ETag + Last-Modified.
     const isSingleEntityGet =
       intent === 'query' && command.targetId !== null &&
       result.status >= 200 && result.status < 300 &&
@@ -587,9 +564,7 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       if (lastModified !== undefined) responseHeaders['last-modified'] = lastModified;
     }
 
-    // 18. Conditional requests — short-circuit a single-entity GET to 304 when
-    //     If-None-Match / If-Modified-Since indicate the client is up to date.
-    //     The ETag is retained on the 304 for cache revalidation.
+    // 18. Conditional requests — short-circuit to 304 when client is up to date.
     if (isSingleEntityGet) {
       const notModified = shouldReturnNotModified({
         ...(responseHeaders['etag'] !== undefined ? { etag: responseHeaders['etag'] } : {}),
@@ -610,9 +585,8 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
 
     let outBody: JsonValue | null | undefined = result.body;
 
-    // 20. Response mutations (per-boundary HATEOAS/mask via _patches) + deprecation
-    //     headers. Body patches are reported in `_patches` for the plugin's
-    //     response interceptor (the base body stays unchanged here).
+    // 20. Response mutations — HATEOAS/_links, mask, deprecation headers.
+    //     Body patches are reported in `_patches` for the plugin's response interceptor.
     let patches: readonly JournalEntry[] | undefined;
     if (result.status >= 200 && result.status < 300 && outBody !== null && outBody !== undefined) {
       const pathItem = sys.openapi.paths[route.contractPath] as
@@ -630,19 +604,18 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       if (bodyPatches.length > 0) patches = bodyPatches;
     }
 
-    // 21. HATEOAS — embed state-dependent `_links` into query response bodies
-    //     (global `hateoas:` block). Applied to the live body (in addition to the
-    //     per-boundary `_patches` above) so plugin-less callers see the links.
+    // 21. HATEOAS — embed state-dependent `_links` into query response bodies.
+    //     Applied to the live body so plugin-less callers also see the links.
     if (intent === 'query' && result.status >= 200 && result.status < 300) {
       outBody = applyHateoasToQueryBody(outBody, boundary, sys.dsl, reqCel, fwd.query);
     }
 
-    // 22. Tier 5: field mask (X-Potemkin-Mask replaces named fields with [MASKED]).
+    // 22. Tier 5: field mask.
     if (controls.format.maskFields && controls.format.maskFields.length > 0) {
       outBody = applyMask(outBody, controls.format.maskFields) as JsonValue | null | undefined;
     }
 
-    // Tier 5: pagination style then response format (mirror gateway ordering).
+    // Tier 5: pagination style then response format.
     if (
       controls.format.paginationStyle !== undefined &&
       result.status >= 200 && result.status < 300 &&
@@ -679,24 +652,22 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       path,
     });
 
-    // Tier 1: signal that dry-run executed.
     if (controls.transparency.dryRun === true) responseHeaders['x-potemkin-dry-run'] = 'true';
 
-    // Tier 6: echo trace id / span name back to the caller for correlation.
+    // Tier 6: echo trace id / span name back for correlation.
     if (controls.observability.traceId) responseHeaders['x-potemkin-trace-id'] = controls.observability.traceId;
     if (controls.observability.spanName) responseHeaders['x-potemkin-span-name'] = controls.observability.spanName;
 
     // X-Specmatic-Result: success on 2xx, failure otherwise.
     responseHeaders['x-specmatic-result'] = result.status >= 200 && result.status < 300 ? 'success' : 'failure';
 
-    // X-Potemkin-Body-Truncate — slice the serialised body to N bytes.
+    // X-Potemkin-Body-Truncate — slice the serialised body to N bytes if set.
     if (chaos.bodyTruncateBytes !== undefined && outBody !== null && outBody !== undefined) {
       outBody = truncateBody(outBody, chaos.bodyTruncateBytes);
     }
 
-    // 19. Record idempotency entry after the full pipeline (HATEOAS, mask, format,
-    // trace headers) so the cached body+headers match what the caller received, and
-    // replays are identical to the original mutated response.
+    // 19. Record idempotency entry after the full pipeline so the cached response
+    // matches exactly what the caller received (HATEOAS, mask, format, trace headers applied).
     if (idempotencyEnabled && idempotencyKey && intent !== 'query') {
       const store = sys.idempotencyStore;
       const requestBody: JsonValue = fwd.body ?? {};
@@ -716,7 +687,7 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
     send({
       status: result.status,
       headers: responseHeaders,
-      // HEAD responses carry no entity body (RFC 7231 §4.3.2).
+      // HEAD responses carry no body (RFC 7231 §4.3.2).
       body: isHead ? null : (outBody ?? null),
       ...(patches !== undefined && !isHead ? { _patches: patches } : {}),
     });
@@ -836,8 +807,7 @@ async function runBulkCreate(args: {
     }
   }
 
-  // A bulk-transactional batch is all-or-nothing; a best-effort (non-transactional)
-  // array also aborts on first failure here, matching the gateway's behaviour.
+  // Both bulk-transactional and best-effort arrays abort on first failure.
   if (abortIndex !== null) {
     deferred.discard();
     sys.events.restore(eventSnapshot);
@@ -851,9 +821,8 @@ async function runBulkCreate(args: {
   }
 
   deferred.flush(logger);
-  // Route the created-array through mask → pagination → format like single
-  // responses, so X-Potemkin-Mask/-Pagination-Style/-Response-Format apply to
-  // bulk results too (potemkin-ldy), consistent with the gateway.
+  // Route the created-array through mask → pagination → format so the same
+  // X-Potemkin-* controls apply to bulk results as to single responses.
   let bulkBody: JsonValue = results;
   const bulkHeaders: Record<string, string> = { 'x-specmatic-result': 'success' };
   if (controls.format.maskFields && controls.format.maskFields.length > 0) {
@@ -933,8 +902,8 @@ export function createRoutesHandler(sys: BootedSystem): RequestHandler {
     const ttlSeconds = resolveRoutesTtl();
 
     // Conditional request: respond 304 when the client's ETag matches.
-    // Strip surrounding quotes to accept both the quoted ETag we emit and the bare
-    // checksum — the Kotlin client echoes whatever it received (potemkin-2x2c).
+    // Strip surrounding quotes to accept both the quoted ETag we emit and the
+    // bare checksum (the Kotlin client echoes whatever it received).
     const ifNoneMatch = req.headers['if-none-match'];
     const stripQuotes = (s: string): string => s.trim().replace(/^"|"$/g, '');
     if (ifNoneMatch !== undefined && stripQuotes(ifNoneMatch) === checksum) {
@@ -985,13 +954,12 @@ function computeFixturesChecksum(
  * Cache-Control and ETag use the same TTL env var as GET /_engine/routes.
  */
 export function createFixturesHandler(sys: BootedSystem): RequestHandler {
-  // Lazily cached fixture list — derived once at first request and reused.
-  // The checksum doubles as the ETag for conditional requests.
+  // Lazily cached — derived once at first request and reused (boot-time snapshot).
   let cachedStubs: readonly FixtureStub[] | null = null;
   let cachedChecksum: string | null = null;
 
   return function fixturesHandler(req: Request, res: Response): void {
-    // Derive fixtures on first call and cache (they are a boot-time snapshot).
+    // Derive fixtures on first call and cache.
     if (cachedStubs === null) {
       cachedStubs = deriveFixtures(sys);
       cachedChecksum = computeFixturesChecksum(cachedStubs);
@@ -1001,8 +969,6 @@ export function createFixturesHandler(sys: BootedSystem): RequestHandler {
     const ttlSeconds = resolveRoutesTtl();
 
     // Conditional request: respond 304 when the client's ETag matches.
-    // Strip surrounding quotes to accept both the quoted ETag we emit and the bare
-    // checksum — the Kotlin client echoes whatever it received (potemkin-2x2c).
     const ifNoneMatch = req.headers['if-none-match'];
     const stripQuotes = (s: string): string => s.trim().replace(/^"|"$/g, '');
     if (ifNoneMatch !== undefined && stripQuotes(ifNoneMatch) === checksum) {

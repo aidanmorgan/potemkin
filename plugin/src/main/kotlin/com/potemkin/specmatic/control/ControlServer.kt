@@ -63,8 +63,6 @@ class ControlServer(
     }
 }
 
-// ---- Module function (extracted so it can be used in tests with a random port) -----------
-
 internal fun Application.configure(
     healthMonitor: HealthMonitor,
     routes: RoutesDiscoveryClient?,

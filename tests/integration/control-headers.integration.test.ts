@@ -129,7 +129,7 @@ describe('X-Potemkin-* control headers — full integration', () => {
       expect([200, 201]).toContain(res1.status);
     });
 
-    // Concurrency isolation (potemkin-03t): two requests fired together through
+    // Concurrency isolation: two requests fired together through
     // the gateway — one with a large X-Potemkin-Clock-Offset, one with NONE —
     // each must observe its OWN clock. The awaited UoW inside the gateway lets
     // the two requests interleave between "apply offset" and "respond"; under the
@@ -183,7 +183,7 @@ describe('X-Potemkin-* control headers — full integration', () => {
       expect(sys.cel.getClockOffset()).toBe(0);
     });
 
-    // Concurrency isolation (potemkin-03t), burst variant: fire a BURST of
+    // Concurrency isolation, burst variant: fire a BURST of
     // simultaneous requests, each carrying a DISTINCT X-Potemkin-Clock-Offset,
     // and assert every response's event timestamp matches ITS OWN offset. Under
     // the previous shared-instance design the offset was set on the shared
@@ -383,7 +383,7 @@ describe('X-Potemkin-* control headers — full integration', () => {
       }
     });
 
-    it('X-Potemkin-Bulk-Transactional + X-Potemkin-Mask masks the field in EVERY created item (potemkin-ldy)', async () => {
+    it('X-Potemkin-Bulk-Transactional + X-Potemkin-Mask masks the field in EVERY created item', async () => {
       const res = await agent
         .post('/leads')
         .set('X-Potemkin-Bulk-Transactional', 'true')
@@ -396,8 +396,7 @@ describe('X-Potemkin-* control headers — full integration', () => {
       expect(res.status).toBe(201);
       expect(Array.isArray(res.body)).toBe(true);
       expect(res.body).toHaveLength(2);
-      // Before potemkin-ldy the bulk array was returned raw, bypassing the mask
-      // pipeline. Now every item must be masked.
+      // The bulk array must be processed through the mask pipeline — every item must be masked.
       for (const item of res.body as { companyName?: string }[]) {
         expect(item.companyName).toBe('[MASKED]');
       }
@@ -753,7 +752,7 @@ describe('X-Potemkin-* control headers — full integration', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Per-request clock-offset isolation across an EARLY RETURN (potemkin-03t).
+// Per-request clock-offset isolation across an EARLY RETURN.
 //
 // The previous shared-instance design set the clock offset on the shared CEL
 // evaluator at the top of the handler and restored it at the end. Several early

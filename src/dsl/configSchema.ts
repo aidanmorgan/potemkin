@@ -15,9 +15,6 @@ import type {
   FieldType,
 } from './schemaInference.js';
 
-// ---------------------------------------------------------------------------
-// Top-level potemkin.yaml shape
-// ---------------------------------------------------------------------------
 
 export interface PotemkinConfigTypescriptScanEntry {
   readonly include: readonly string[];
@@ -68,9 +65,6 @@ export interface PotemkinConfig {
   readonly governance?: PotemkinConfigGovernance;
 }
 
-// ---------------------------------------------------------------------------
-// Boundary module shape (new format)
-// ---------------------------------------------------------------------------
 
 export interface BoundaryBehavior {
   readonly operationId: string;
@@ -123,9 +117,6 @@ export interface GlobalModule {
   readonly hateoas?: Record<string, unknown>;
 }
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
 
 export const POTEMKIN_TOP_LEVEL_KEYS = [
   'version',
@@ -155,8 +146,7 @@ export const BOUNDARY_TOP_LEVEL_KEYS = [
   'strict',
 ] as const;
 
-// snake_case → camelCase replacement table. Any of these keys at parse
-// time produces BOOT_ERR_REMOVED_SYNTAX naming the replacement.
+// snake_case keys that were renamed; each produces BOOT_ERR_REMOVED_SYNTAX at parse time.
 export const REMOVED_KEY_MAP: Record<string, string> = {
   event_catalog: 'events',
   payload_template: 'template',
@@ -170,9 +160,6 @@ export const REMOVED_KEY_MAP: Record<string, string> = {
   derived_projections: 'derivedProjections',
 };
 
-// ---------------------------------------------------------------------------
-// Validation entrypoints
-// ---------------------------------------------------------------------------
 
 export interface ValidationContext {
   /** Source description for error messages (file path, "potemkin.yaml", etc.). */
@@ -246,9 +233,6 @@ export function validatePotemkinConfig(raw: unknown, ctx: ValidationContext): Po
   };
 }
 
-// ---------------------------------------------------------------------------
-// Optional-block validators for potemkin.yaml
-// ---------------------------------------------------------------------------
 
 function assertTypescriptBlock(
   raw: unknown,
@@ -334,7 +318,6 @@ function assertSeedsBlock(
         { source },
       );
     }
-    // base: required, must be 'contract' | 'empty'
     if (entry['base'] !== 'contract' && entry['base'] !== 'empty') {
       throw new BootError(
         'BOOT_ERR_DSL_SCHEMA_VIOLATION',
@@ -342,7 +325,6 @@ function assertSeedsBlock(
         { source },
       );
     }
-    // request: required object with method (string) and path (string)
     if (!isObject(entry['request'])) {
       throw new BootError(
         'BOOT_ERR_DSL_SCHEMA_VIOLATION',
@@ -365,7 +347,6 @@ function assertSeedsBlock(
         { source },
       );
     }
-    // patches: optional array
     if (entry['patches'] !== undefined && !Array.isArray(entry['patches'])) {
       throw new BootError(
         'BOOT_ERR_DSL_SCHEMA_VIOLATION',
@@ -373,7 +354,6 @@ function assertSeedsBlock(
         { source },
       );
     }
-    // description: optional string
     if (entry['description'] !== undefined && typeof entry['description'] !== 'string') {
       throw new BootError(
         'BOOT_ERR_DSL_SCHEMA_VIOLATION',
@@ -538,13 +518,11 @@ export function validateBoundaryModule(raw: unknown, ctx: ValidationContext): Bo
   if (Array.isArray(reducers)) {
     for (const r of reducers) {
       if (!isObject(r)) continue;
-      // Single removed-key policy shared with the in-memory validator.
-      assertNoRemovedReducerKeys(r, ctx.source);
+          assertNoRemovedReducerKeys(r, ctx.source);
     }
   }
 
-  // Optional fields with a fixed primitive shape are checked so the hot-swap
-  // path can't accept structurally-wrong YAML and pass it through the cast.
+  // Primitive-shape checks ensure hot-swap cannot accept structurally-wrong YAML silently.
   assertOptionalStringArray(raw['methods'], 'methods', ctx.source);
   assertOptionalStringArray(raw['mask'], 'mask', ctx.source);
   assertOptionalBoolean(raw['outOfContract'], 'outOfContract', ctx.source);
@@ -571,8 +549,7 @@ export function validateBoundaryModule(raw: unknown, ctx: ValidationContext): Bo
     );
   }
 
-  // Unknown keys at boundary level are tolerated for forward-compat —
-  // callers log INFO when they see fields outside the canonical set.
+  // Unknown keys at boundary level are tolerated for forward-compatibility.
   return raw as unknown as BoundaryModule;
 }
 
@@ -598,9 +575,6 @@ function assertOptionalBoolean(value: unknown, field: string, source: string): v
   }
 }
 
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
 
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);

@@ -96,8 +96,7 @@ export function matchRoute(
 ): MatchedRoute | null {
   const lowerMethod = method.toLowerCase();
 
-  // F-01: Strip query string from path before matching so that callers passing
-  // raw req.url (e.g. /items?limit=10) still match the /items template.
+  // Strip query string before matching so callers passing raw req.url still match.
   const normalizedPath = path.split('?')[0]!;
 
   // Count the number of parameter (wildcard) segments in a path template.
@@ -106,9 +105,7 @@ export function matchRoute(
     return pathTemplate.split('/').filter((seg) => seg.startsWith('{')).length;
   }
 
-  // F-03: Sort by descending static-prefix length for deterministic specificity.
-  // Tie-break: fewer param segments wins. Final tie-break: lexicographic order
-  // for full determinism regardless of insertion order.
+  // Sort by descending static-prefix length; fewer param segments wins ties; lexicographic for full determinism.
   const sortedPaths = Object.keys(doc.paths).sort((a, b) => {
     const staticDiff = staticPrefixLength(b) - staticPrefixLength(a);
     if (staticDiff !== 0) return staticDiff;

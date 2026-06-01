@@ -16,7 +16,7 @@ import { applyEventToDerivedProjections } from '../projections/engine.js';
  * The resulting state is mathematically identical to the post-boot state
  * because the frozen UUIDv7s are deterministic (epoch-anchored).
  *
- * Volatile only — no disk I/O at any point (req 40).
+ * Volatile only — no disk I/O at any point.
  */
 export function resetSystem(sys: BootedSystem): void {
   const resetLog = childLogger(sys.logger, { phase: 'reset' });
@@ -27,11 +27,11 @@ export function resetSystem(sys: BootedSystem): void {
     resetLog.info({ step: 'reset_start' }, 'Reset: starting ephemeral reset');
 
     try {
-      // ── Step 1: Purge Event Log (req 37) ───────────────────────────────────
+      // ── Step 1: Purge Event Log ────────────────────────────────────────────
       sys.events.purge();
       resetLog.info({ step: 'events_purged' }, 'Reset: event store purged');
 
-      // ── Step 2: Purge State Graph (req 38) ─────────────────────────────────
+      // ── Step 2: Purge State Graph ──────────────────────────────────────────
       sys.graph.purge();
       resetLog.info({ step: 'graph_purged' }, 'Reset: state graph purged');
 
@@ -48,7 +48,7 @@ export function resetSystem(sys: BootedSystem): void {
         'Reset: baseline events restored to event store',
       );
 
-      // ── Step 4: Re-project each baseline event (req 39) ────────────────────
+      // ── Step 4: Re-project each baseline event ────────────────────────────
       for (const event of rehydratedEvents) {
         const boundaryConfig = sys.dsl.byBoundaryName[event.boundary];
         if (!boundaryConfig) {
@@ -88,7 +88,7 @@ export function resetSystem(sys: BootedSystem): void {
       sys.idempotencyStore.clear();
 
       // ── Step 7: Clear dynamic fault rules ──────────────────────────────────
-      // Runtime faults registered via POST /_admin/faults are ephemeral; a
+      // Runtime faults registered via POST /_admin/faults are ephemeral;
       // reset returns the system to its post-boot fault-free state.
       sys.faultStore?.clear();
 
@@ -97,8 +97,8 @@ export function resetSystem(sys: BootedSystem): void {
 
       // ── Step 9: Drop aggregate serialization locks ─────────────────────────
       // Reset is expected to be called quiescently (no in-flight UoW). The lock
-      // map is self-cleaning per-key during normal operation, but clearing here
-      // guarantees it does not retain entries across a reset.
+      // map self-cleans per-key during normal operation, but clearing here
+      // guarantees no entries are retained across a reset.
       sys.aggregateLocks.clear();
 
       const durationMs = Date.now() - start;

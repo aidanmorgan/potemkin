@@ -1,6 +1,6 @@
 // Per-BootedSystem holder for TypeScript-registered reducers. The projection
 // path (projection.ts) consults this FIRST for a (boundary, event) before
-// falling back to YAML patches. The watcher (C6) atomic-swaps the backing map
+// falling back to YAML patches. The watcher atomic-swaps the backing map
 // via `swap()` so a hot reload never tears a read.
 
 import type { RegisteredReducer } from '../sdk/index.js';
@@ -36,8 +36,8 @@ export function createTsReducerRegistry(
       return [...entries.values()];
     },
     swap(reducers) {
-      // Build the replacement fully, then swap the reference in one assignment
-      // so concurrent reads see either the old or the new map, never a partial.
+      // Build the replacement map fully before swapping the reference so
+      // concurrent reads see either the old or the new map, never a partial.
       entries = indexBy(reducers);
     },
   };

@@ -1,5 +1,5 @@
 /**
- * REQ-63: dispatch_commands[].condition — per-secondary-command gating
+ * dispatch_commands[].condition — per-secondary-command gating
  */
 import { validateBoundaryConfig } from '../../../src/dsl/schema';
 import { runPatternMatch } from '../../../src/engine/patternMatcher';
@@ -38,7 +38,7 @@ function makeInput(overrides: Partial<PatternMatchInput> = {}): PatternMatchInpu
 
 // ── Schema parsing ─────────────────────────────────────────────────────────────
 
-describe('REQ-63: dispatch_commands[].condition DSL parsing', () => {
+describe('dispatch_commands[].condition DSL parsing', () => {
   it('parses condition on dispatch_commands entry', () => {
     const config = validateBoundaryConfig({
       boundary: 'Loan',
@@ -97,7 +97,7 @@ describe('REQ-63: dispatch_commands[].condition DSL parsing', () => {
 
 // ── Runtime tests ──────────────────────────────────────────────────────────────
 
-describe('REQ-63: dispatch_commands[].condition runtime gating', () => {
+describe('dispatch_commands[].condition runtime gating', () => {
   it('queues secondary command when condition is true', () => {
     const input = makeInput({
       command: makeCommand({ intent: 'mutation', targetId: 'agg-1', payload: { amount: 60000 } }),

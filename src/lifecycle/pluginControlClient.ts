@@ -20,29 +20,19 @@ import type {
   NotifyResult,
 } from './types.js';
 
-// ---------------------------------------------------------------------------
-// Defaults
-// ---------------------------------------------------------------------------
-
 const DEFAULT_TIMEOUT_MS = 2000;
 const DEFAULT_RETRIES = 3;
 const DEFAULT_MIN_BACKOFF_MS = 50;
 const DEFAULT_MAX_BACKOFF_MS = 800;
 const DEFAULT_FACTOR = 4;
 
-// For shutdown notifications we use a much tighter overall budget since the
-// process is racing towards exit.  One attempt with a short timeout is fine.
+// Shutdown notifications use a tight budget — process is racing towards exit.
 const SHUTDOWN_TIMEOUT_MS = 500;
 const SHUTDOWN_RETRIES = 1;
 
-// ---------------------------------------------------------------------------
-// Internal helper
-// ---------------------------------------------------------------------------
-
 /**
  * POST a JSON payload to the given URL.
- * - Uses AbortSignal.timeout for a per-request hard deadline.
- * - Throws on non-2xx responses so async-retry will retry them.
+ * Throws on non-2xx responses so async-retry will retry them.
  */
 async function postJson(url: string, payload: unknown, timeoutMs: number): Promise<void> {
   const res = await fetch(url, {
@@ -56,10 +46,6 @@ async function postJson(url: string, payload: unknown, timeoutMs: number): Promi
     throw new Error(`HTTP ${res.status} ${res.statusText} from ${url}`);
   }
 }
-
-// ---------------------------------------------------------------------------
-// Factory
-// ---------------------------------------------------------------------------
 
 /**
  * Create a `PluginControlClient` that POSTs lifecycle notifications to the
@@ -127,7 +113,6 @@ export function createPluginControlClient(
     },
 
     notifyShutdown(payload: ShutdownNotification): Promise<NotifyResult> {
-      // Shutdown has a fixed tight budget — we cannot afford to wait long.
       return notify('/shutdown', payload, SHUTDOWN_TIMEOUT_MS, SHUTDOWN_RETRIES);
     },
   };

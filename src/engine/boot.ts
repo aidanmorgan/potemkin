@@ -102,11 +102,11 @@ export interface BootedSystem {
   readonly schemaRegistry: ObjectGraphSchemaRegistry;
   /**
    * Returns true when the OpenAPI operation for (boundary, method) declares If-Match
-   * as a required header parameter (REQ-29). Used by the UoW precondition check.
+   * as a required header parameter. Used by the UoW precondition check.
    */
   readonly requiresPrecondition: (boundary: string, method: string) => boolean;
   /**
-   * REQ-88/90: Derived projection registry — keyed by projection name.
+   * Derived projection registry — keyed by projection name.
    * Populated by applyEventToDerivedProjections after each committed event.
    */
   readonly derivedProjections: DerivedProjectionRegistry;
@@ -134,14 +134,14 @@ export interface BootedSystem {
   readonly pluginControl?: PluginControlClient;
   /**
    * TypeScript-reducer registry. Projection consults this FIRST for a
-   * (boundary, event) before falling back to YAML patches (C3). Empty when no
-   * typescript: block was configured. Atomic-swapped by the watcher (C6).
+   * (boundary, event) before falling back to YAML patches. Empty when no
+   * typescript: block was configured. Atomic-swapped by the watcher on hot reload.
    */
   readonly tsReducerRegistry: TsReducerRegistry;
   /**
-   * C4: per-boundary inferred state schema (keyed by boundary name). Carries
+   * Per-boundary inferred state schema (keyed by boundary name). Carries
    * the computed-field topological order + paths used by recomputeComputedFields
-   * (C5) and the computedFields surfaced on GET /_engine/state.
+   * and the computedFields surfaced on GET /_engine/state.
    */
   readonly inferredSchemas: Readonly<Record<string, BoundaryInferenceResult>>;
   /**
@@ -152,7 +152,7 @@ export interface BootedSystem {
    */
   readonly webhookTransport: FetchLike;
   /**
-   * C6: active TypeScript watcher when typescript.watch was enabled (and
+   * Active TypeScript watcher when typescript.watch was enabled (and
    * NODE_ENV !== 'production'). Its onSwap atomic-replaces tsReducerRegistry on
    * a hot reload; the StateGraph survives. Callers (and tests) must stop() it
    * during teardown. Absent when watch is off.
@@ -163,13 +163,6 @@ export interface BootedSystem {
 /** Header names that indicate an optimistic-concurrency precondition. */
 const IF_MATCH_HEADER_NAMES = new Set(['if-match', 'If-Match']);
 
-/**
- * Walk the OpenAPI paths for each boundary's contractPath and record which
- * (boundary, HTTP-method-uppercase) pairs declare If-Match as a required
- * header parameter (REQ-29).
- *
- * Returns a callback suitable for `BootedSystem.requiresPrecondition`.
- */
 /**
  * Validate the shape of a `typescript:` config block loaded from potemkin.yaml
  * before trusting it as a TypescriptConfig. YAML is untyped, so a malformed
@@ -227,7 +220,6 @@ export function buildPreconditionMap(
   openapi: OpenApiDoc,
   boundaries: readonly BoundaryConfig[],
 ): (boundary: string, method: string) => boolean {
-  // key: `${boundary}:${METHOD_UPPERCASE}` → true
   const required = new Set<string>();
 
   for (const bc of boundaries) {
@@ -357,7 +349,7 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       'Boot: DSL compilation complete',
     );
 
-    // ── Step 2b: TypeScript reducer scan + conflict check (C2) ───────────────
+    // ── Step 2b: TypeScript reducer scan + conflict check ────────────────────
     // When potemkin.yaml declares a typescript: block, scan + transpile every
     // reducer file into the SDK registry, then cross-check the registered
     // reducers against the compiled YAML BEFORE binding any routes. A YAML
@@ -368,7 +360,7 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       ? assertTypescriptConfig(loadedConfig.typescript)
       : input.typescript;
     const tsScanCwd = configDir ?? input.typescriptCwd;
-    // C6: watch mode is a development-only feature. Fail fast at boot if it is
+    // Watch mode is a development-only feature. Fail fast at boot if it is
     // requested in production rather than silently ignoring it.
     if (tsConfig?.watch === true && process.env['NODE_ENV'] === 'production') {
       throw new BootError(
@@ -393,7 +385,7 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       );
     }
 
-    // ── Step 2c: Per-boundary schema inference + computed-field lint (C4/C5) ──
+    // ── Step 2c: Per-boundary schema inference + computed-field lint ──────────
     // For every boundary, run the fixed-point inference over event templates +
     // reducer patches and merge declared computed/internal fields. Divergence
     // past the 4-iteration cap surfaces BOOT_ERR_SCHEMA_INFERENCE_DIVERGENT.
@@ -406,9 +398,9 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       for (const w of result.warnings) {
         bootLog.warn({ step: 'schema_inference', boundary: boundary.boundary }, `Boot: ${w}`);
       }
-      // C5: WARN on computed fields that are declared but never read on the
-      // documented state surface. The state surface is every property name the
-      // boundary's reducers/events touch plus the computed names themselves.
+      // Warn on computed fields declared but never read on the documented state
+      // surface. The state surface is every property name the boundary's
+      // reducers/events touch plus the computed names themselves.
       const declaredComputed = boundary.state?.computed ?? [];
       if (declaredComputed.length > 0) {
         const surfaceNames = collectStateSurfaceNames(boundary, input.openapi);
@@ -438,7 +430,7 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
         );
       }
 
-      // REQ-65: Boot-time resolution of schema_ref fields in event_catalog
+      // Boot-time resolution of schema_ref fields in event_catalog
       const rawDoc = input.openapi.raw as Record<string, unknown>;
       const components = rawDoc['components'] as Record<string, unknown> | undefined;
       const schemas = components?.['schemas'] as Record<string, unknown> | undefined;
@@ -642,12 +634,12 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       }
     }
 
-    // ── Step 8: Build requiresPrecondition callback (REQ-29) ─────────────────
+    // ── Step 8: Build requiresPrecondition callback ───────────────────────────
     // Walk OpenAPI paths to discover operations that declare If-Match as a
     // required header parameter; encode as a (boundary, method) → boolean map.
     const preconditionRequired = buildPreconditionMap(input.openapi, dsl.boundaries);
 
-    // ── Step 9: Derived projection registry (REQ-88) ─────────────────────────
+    // ── Step 9: Derived projection registry ───────────────────────────────────
     const derivedProjections = createDerivedProjectionRegistry();
 
     // Hydrate derived projections from baseline
@@ -675,7 +667,7 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       });
     }
 
-    // ── Step 11: TypeScript watcher (C6) ──────────────────────────────────────
+    // ── Step 11: TypeScript watcher ───────────────────────────────────────────
     // When typescript.watch is enabled (and NODE_ENV !== 'production'; the
     // production case already failed fast above), start a watcher whose onSwap
     // atomic-replaces the SDK reducer registry on the BootedSystem. The
@@ -732,11 +724,9 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       const { createHash } = await import('node:crypto');
       const routesChecksum = createHash('sha256').update(sortedPaths.join('\n')).digest('hex');
       // Must match the ETag of GET /_engine/fixtures so the plugin's conditional
-      // refresh sees an unchanged fixture set. Source of truth for this formula is
-      // computeFixturesChecksum in src/forwarding/handler.ts: derive the stubs, sort
-      // by bound path, sha256 over the JSON serialisation. That helper is private to
-      // handler.ts; inline here to avoid editing a third file (follow-up: export and
-      // share a single computeFixturesChecksum).
+      // refresh sees an unchanged fixture set. Formula mirrors computeFixturesChecksum
+      // in src/forwarding/handler.ts: derive the stubs, sort by bound path, sha256
+      // over the JSON serialisation.
       const fixtureStubs = deriveFixtures(bootedSystem);
       const sortedStubs = [...fixtureStubs].sort((a, b) =>
         a.httpRequest.path.localeCompare(b.httpRequest.path),

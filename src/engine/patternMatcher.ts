@@ -23,7 +23,6 @@ import { invokeScript } from '../scripts/sandbox.js';
 import { nextUuidv7 } from '../ids/uuidv7.js';
 import { deepClone, deepMerge } from '../stategraph/graph.js';
 
-// REQ-67: sentinel prefix for inline TypeScript references
 const TS_SENTINEL = 'ts:';
 
 export interface PatternMatchInput {
@@ -38,7 +37,7 @@ export interface PatternMatchInput {
   /** Optional schema registry for validating state paths in pattern conditions. */
   readonly schemaRegistry?: ObjectGraphSchemaRegistry;
   /**
-   * [ADDITIVE] Callback to obtain the next monotonic sequence version for an aggregate.
+   * Callback to obtain the next monotonic sequence version for an aggregate.
    * The UoW supplies this, accounting for already-staged events in this UoW.
    */
   readonly nextSequenceVersion: (aggregateId: string) => number;
@@ -48,7 +47,7 @@ export interface PatternMatchInput {
    */
   readonly openapi: OpenApiDoc;
   /**
-   * [ADDITIVE] Callback to project a domain event into the shadow graph immediately after
+   * Callback to project a domain event into the shadow graph immediately after
    * staging, ensuring causal consistency for subsequent rule evaluations within the same UoW.
    * The UoW supplies this so the pattern matcher doesn't need a direct reference to the
    * projection engine (avoids a circular import path).
@@ -60,7 +59,7 @@ export interface PatternMatchInput {
    * getTracer('engine') when absent.
    */
   readonly tracer?: Tracer;
-  /** REQ-67/68: Optional script registry for ts: sentinel resolution */
+  /** Optional script registry for ts: sentinel resolution. */
   readonly scriptRegistry?: ScriptRegistry;
 }
 
@@ -87,8 +86,6 @@ export interface PatternMatchOutcome {
  * @throws {UnhandledOperationError} (422) no match and no fallback.
  */
 export function runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
-  // O-4 fix: use injected tracer when provided (enables span capture in tests).
-  // Falls back to getTracer('engine') for production paths.
   return withSpanSync('engine.patternMatch', () => _runPatternMatch(input), input.tracer);
 }
 
@@ -106,10 +103,10 @@ function evaluateExpr(
   scriptCtxBuilder: () => ScriptContext,
 ): unknown {
   if (expr.startsWith(TS_SENTINEL)) {
-    // REQ-71 defense-in-depth: if a ts: ref reaches reducer phase at runtime
+    // Defense-in-depth: ts: refs are forbidden in the Reducer phase.
     if (phase === CelPhase.Reducer) {
       throw new InternalExecutionError(
-        `ts: sentinel "${expr}" reached Reducer phase — this is forbidden (REQ-71)`,
+        `ts: sentinel "${expr}" reached Reducer phase — this is forbidden`,
         { code: 'SCRIPT_IN_REDUCER_PHASE', expr },
       );
     }
@@ -201,13 +198,13 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
       logger: log ?? logger ?? ({ child: () => ({} as Logger), info: () => {}, debug: () => {}, warn: () => {}, error: () => {} } as unknown as Logger),
     });
 
-    // REQ-84: RBAC scope check — before requires and condition
+    // RBAC scope check runs before requires[] and match.condition.
     if (behavior.match.requiredScopes && behavior.match.requiredScopes.length > 0) {
       // throws AuthenticationRequiredError (401) or AuthorizationDeniedError (403)
       checkScopes(command.actor, behavior.match.requiredScopes, behavior.name);
     }
 
-    // REQ-61: evaluate requires[] FIRST (before match.condition)
+    // Evaluate requires[] FIRST (before match.condition)
     if (behavior.match.requires && behavior.match.requires.length > 0) {
       for (const req of behavior.match.requires) {
         let condResult: unknown;
@@ -224,7 +221,6 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
 
         if (condResult !== true) {
           log?.info({ behaviorName: behavior.name, requiresName: req.name }, 'Requires guard failed — returning 422');
-          // REQ-61: throw UnhandledOperationError with 422 and details
           throw new UnhandledOperationError(
             req.errorMessage || `Precondition "${req.name}" failed`,
             {
@@ -280,7 +276,7 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
     // -----------------------------------------------------------------------
     // Emit resolution: emit (single) or emit_when (conditional multi-emit)
     // -----------------------------------------------------------------------
-    // REQ-64: if emit is present, fire it unconditionally. Then process emit_when entries.
+    // If emit is present, fire it unconditionally. Then process emit_when entries.
     const allStagedEvents: DomainEvent[] = [];
 
     // Helper to emit a single event by catalog type
@@ -363,7 +359,7 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
       allStagedEvents.push(evt);
     }
 
-    // REQ-64: Process emit_when entries (after shadow is updated by unconditional emit)
+    // Process emit_when entries (after shadow is updated by unconditional emit)
     if (behavior.emitWhen && behavior.emitWhen.length > 0) {
       log?.info({ behaviorName: behavior.name }, 'Behavior matched — processing emit_when');
       for (const ewEntry of behavior.emitWhen) {
@@ -405,7 +401,7 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
       }
     }
 
-    // REQ-62: Evaluate postcondition AFTER projection
+    // Evaluate postcondition AFTER projection
     if (behavior.postcondition !== undefined) {
       const postState = shadow.get(aggregateId);
       const postCtx = {
@@ -479,7 +475,7 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
       });
 
       for (const spec of behavior.dispatchCommands) {
-        // REQ-63: evaluate condition if present; skip on false
+        // Evaluate condition if present; skip on false
         if (spec.condition !== undefined) {
           let condResult: unknown;
           try {
@@ -545,7 +541,7 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
   // Step 3: Fallback Evaluation
   if (boundary.fallbackOverride) {
     if (command.intent === 'query') {
-      // Per req 33: query with fallback_override returns the current State Graph node directly
+      // Query with fallback_override returns the current State Graph node directly.
       const aggregateId = command.targetId;
       if (aggregateId === null) {
         // Collection-level query with no behaviors matched — return empty
@@ -576,7 +572,7 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
     const eventId = nextEventId();
     const sequenceVersion = nextSequenceVersion(aggregateId);
 
-    // Soft-delete: on DELETE, attach _deleted + _deletedAt to the merge payload.
+    // On DELETE, attach soft-delete markers to the merge payload.
     const isDelete = command.httpMethod === 'DELETE';
     const eventPayload: JsonObject = isDelete
       ? { ...command.payload, _deleted: true, _deletedAt: now() }

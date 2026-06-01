@@ -22,7 +22,7 @@ import javax.crypto.spec.SecretKeySpec
  *  - `secret:` supplies the HS256 shared secret.
  *  - `jwks:` supplies an inline JWK set (list of `{ kty, kid, n, e }`) for RS256.
  *  - `jwksUrl:` names a JWKS endpoint; the actual fetch is supplied by an injected
- *    [JwksProvider], leaving a clean, functional extension point (AC-E2.4).
+ *    [JwksProvider], leaving a clean, functional extension point.
  *  - `realm:` is echoed in the `WWW-Authenticate: Bearer realm=...` challenge.
  */
 data class AuthConfig(

@@ -1,11 +1,7 @@
-// Reads a potemkin.yaml from disk, resolves modules: globs via tinyglobby,
-// then compiles the resolved DSL modules through the SINGLE canonical
-// snake_case compiler (compileDsl → validateBoundaryConfig / validateGlobalConfig)
-// to produce a fully-populated CompiledDsl. The potemkin.yaml TOP-LEVEL
-// (version/specmatic/modules/typescript/plugin/seeds/workflow/overlay/governance)
-// is validated by configSchema.validatePotemkinConfig; the boundary/global DSL
-// bodies are validated by the snake_case schema validators so the on-disk boot
-// path and the inline compileDsl path converge on one dialect.
+// Reads potemkin.yaml from disk, resolves module globs, and compiles them through
+// compileDsl / validateGlobalConfig to produce a CompiledDsl. The top-level
+// potemkin.yaml fields are validated by validatePotemkinConfig; boundary and global
+// bodies by the snake_case schema validators. On-disk and inline paths share one dialect.
 
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
@@ -42,7 +38,6 @@ export interface ForwardBlocks {
 export interface LoadedConfig {
   readonly potemkinConfigPath: string;
   readonly specmaticConfigPath: string;
-  /** Fully-populated CompiledDsl, identical to the inline compileDsl path. */
   readonly compiledDsl: CompiledDsl;
   /** Absolute paths of the boundary module files that fed the compiler. */
   readonly boundaryModulePaths: readonly string[];
@@ -56,9 +51,8 @@ export interface LoadedConfig {
 }
 
 export interface LoadOptions {
-  // Spec endpoints (from httpStub.allEndpoints in the plugin). When omitted,
-  // contract-path cross-check is skipped; standalone test callers must either
-  // pass this or mark every boundary outOfContract:true.
+  // When omitted, contract-path cross-check is skipped; standalone callers
+  // must either supply this or mark every boundary outOfContract:true.
   readonly specEndpoints?: readonly SpecEndpoint[];
 }
 
@@ -100,10 +94,8 @@ export async function loadPotemkinConfig(
 
   const resolvedFiles = await resolveModuleGlobs(config.modules, configDir);
 
-  // Parse every module file, partitioning into boundary modules (carry a
-  // `boundary:` key) and global modules (sagas/idempotency/derived_projections/
-  // auth — top-level Tier-2 fields, no `boundary:`). Anything that isn't a
-  // mapping is skipped silently (e.g. a stray list file).
+  // Partition into boundary modules (have a `boundary:` key) and global modules
+  // (sagas/idempotency/auth etc.). Non-mapping files are skipped silently.
   const boundaryModules: ResolvedModule[] = [];
   const globalModules: ResolvedModule[] = [];
   for (const filePath of resolvedFiles) {
@@ -137,25 +129,16 @@ export async function loadPotemkinConfig(
     }
   }
 
-  // Optional contract-path cross-check (REQ-LOAD-006). Runs against the raw
-  // snake_case boundary fields before the compiler validates the bodies, so
-  // bad specId/contractPath references fail with their dedicated codes.
+  // Cross-check runs against raw fields before the compiler validates bodies,
+  // so bad specId/contractPath references fail with their dedicated error codes.
   if (opts.specEndpoints) {
     runContractPathCrossCheck(boundaryModules, opts.specEndpoints, absConfigPath);
   }
 
-  // Merge every global module into a single YAML document so compileDsl's
-  // single globalYaml parameter sees all top-level Tier-2 blocks.
   const globalYaml = mergeGlobalModules(globalModules);
-
-  // Compile through the one snake_case compiler — this is the SAME call the
-  // inline loadFixture path makes, so the produced CompiledDsl is identical.
   const compileModules = boundaryModules.map((m) => ({ name: m.path, yaml: m.text }));
   const compiledDsl = await compileDsl(compileModules, globalYaml);
 
-  // Map each compiled boundary back to the file that declared it (for
-  // reducer-conflict source locations). compileDsl preserves the order of
-  // compileModules in compiledDsl.boundaries.
   const boundarySourcePaths: Record<string, string> = {};
   for (const m of boundaryModules) {
     const rec = m.parsed as Record<string, unknown>;
@@ -182,9 +165,6 @@ export async function loadPotemkinConfig(
   };
 }
 
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
 
 async function resolveModuleGlobs(
   patterns: readonly string[],
@@ -203,7 +183,6 @@ async function resolveModuleGlobs(
       { patterns: [...patterns], cwd },
     );
   }
-  // De-duplicate by absolute path.
   return [...new Set(matches.map((m) => path.resolve(cwd, m)))].sort();
 }
 
@@ -239,7 +218,6 @@ function runContractPathCrossCheck(
   specEndpoints: readonly SpecEndpoint[],
   source: string,
 ): void {
-  // Build the deduped (specId, path, method) set.
   const bySpecPath = new Map<string, Set<string>>(); // specId|path → set(method)
   const availableSpecIds = new Set<string>();
   for (const e of specEndpoints) {

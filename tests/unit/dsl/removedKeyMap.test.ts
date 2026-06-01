@@ -5,7 +5,7 @@ import {
 } from '../../../src/dsl/configSchema';
 import { BootError } from '../../../src/errors';
 
-// AC-G1.3: every legacy snake_case key in REMOVED_KEY_MAP is rejected with
+// Every legacy snake_case key in REMOVED_KEY_MAP is rejected with
 // BOOT_ERR_REMOVED_SYNTAX, and the error names the camelCase replacement. The
 // rejection runs in rejectSnakeCaseKeys, shared by both top-level validators
 // (potemkin.yaml and boundary modules), so a key placed at the root of either
@@ -23,7 +23,7 @@ function catchBoot(fn: () => unknown): BootError {
   throw new Error('expected a BootError to be thrown');
 }
 
-describe('REMOVED_KEY_MAP — legacy snake_case rejection (AC-G1.3)', () => {
+describe('REMOVED_KEY_MAP — legacy snake_case rejection', () => {
   it('contains exactly the 10 documented legacy keys', () => {
     expect(ENTRIES).toHaveLength(10);
     expect(Object.keys(REMOVED_KEY_MAP).sort()).toEqual(

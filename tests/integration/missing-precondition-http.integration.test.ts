@@ -1,5 +1,5 @@
 /**
- * missing-precondition-http.integration.test.ts  (REQ-29)
+ * missing-precondition-http.integration.test.ts
  *
  * Verifies that when an OpenAPI operation declares `If-Match` as a required header
  * and `requiresPrecondition` is wired through the gateway, the engine enforces it:
@@ -128,7 +128,7 @@ async function buildSystem(): Promise<BootedSystem> {
 // Suite A: Direct UoW-level tests (works today, refactor-agent-independent)
 // ---------------------------------------------------------------------------
 
-describe('REQ-29 — missing-precondition (UoW layer)', () => {
+describe('missing-precondition (UoW layer)', () => {
   let sys: BootedSystem;
   const SEED_ID = 'pw-seed-001';
 
@@ -232,7 +232,7 @@ describe('REQ-29 — missing-precondition (UoW layer)', () => {
 // Suite B: HTTP gateway-level tests (validates full stack once refactor lands)
 // ---------------------------------------------------------------------------
 
-describe('REQ-29 — missing-precondition (HTTP gateway layer)', () => {
+describe('missing-precondition (HTTP gateway layer)', () => {
   let sys: BootedSystem;
   let agent: PersistentAgent;
   const SEED_ID = 'pw-seed-001';

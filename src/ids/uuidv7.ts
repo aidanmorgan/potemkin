@@ -1,13 +1,6 @@
-/**
- * UUIDv7 utilities.
- * Uses the `uuidv7` npm package for real-time generation.
- * Deterministic epoch-anchored IDs are hand-rolled via crypto.createHash.
- */
-
 import { uuidv7 } from 'uuidv7';
 import { createHash } from 'crypto';
 
-/** Generate a real-time UUIDv7. */
 export function nextUuidv7(): string {
   return uuidv7();
 }
@@ -29,7 +22,6 @@ export function epochAnchoredUuidv7(seedIndex: number): string {
 
   const b = new Uint8Array(16);
 
-  // bytes 0–5: timestamp = 0 (epoch)
   b[0] = 0;
   b[1] = 0;
   b[2] = 0;
@@ -46,7 +38,6 @@ export function epochAnchoredUuidv7(seedIndex: number): string {
   // byte 8: variant bits 10xxxxxx
   b[8] = 0x80 | (hash[2]! & 0x3f);
 
-  // bytes 9–15: remaining random bits from hash
   b[9]  = hash[3]!;
   b[10] = hash[4]!;
   b[11] = hash[5]!;
@@ -55,7 +46,6 @@ export function epochAnchoredUuidv7(seedIndex: number): string {
   b[14] = hash[8]!;
   b[15] = hash[9]!;
 
-  // Format as 8-4-4-4-12 UUID string
   const hex = Array.from(b).map(x => x.toString(16).padStart(2, '0')).join('');
   return (
     hex.slice(0, 8) + '-' +
@@ -67,11 +57,9 @@ export function epochAnchoredUuidv7(seedIndex: number): string {
 }
 
 /**
- * Return true if `s` is a syntactically valid UUIDv7 string.
- * Checks: 8-4-4-4-12 hex format, version nibble = 7, variant bits = 10xx.
+ * Return true if `s` is a syntactically valid UUIDv7 string
+ * (8-4-4-4-12 hex, version nibble = 7, variant bits = 10xx).
  */
 export function isUuidv7(s: string): boolean {
-  // Version nibble is the 13th hex digit (index 14 with hyphens), must be '7'.
-  // Variant nibble is the 17th hex digit (index 19 with hyphens), must be 8, 9, a, or b.
   return /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
 }

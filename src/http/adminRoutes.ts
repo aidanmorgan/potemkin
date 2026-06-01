@@ -1,5 +1,5 @@
 /**
- * Admin Routes — out-of-band control and diagnostic endpoints (design §3.2, reqs 37-39)
+ * Out-of-band admin/control endpoints.
  *
  * Endpoints:
  *  POST /_admin/reset  — deterministic system reset to post-boot baseline state; 204 No Content.
@@ -10,10 +10,9 @@
  *                        ?limit=N and ?offset=M pagination.
  *  GET  /_admin/health — liveness/readiness probe; includes version and checks array.
  *
- * Authentication (H-8):
- *  If ADMIN_TOKEN env var is set, all admin routes require an
+ * If ADMIN_TOKEN env var is set, all admin routes require an
  *  "Authorization: Bearer <token>" header — returns 401 if missing or wrong.
- *  If ADMIN_TOKEN is not set, open access (current default behaviour).
+ * If ADMIN_TOKEN is not set, open access.
  *
  * Each route is wrapped in withSpan for distributed-trace visibility.
  */
@@ -26,7 +25,6 @@ import { getDerivedProjection } from '../projections/engine.js';
 import type { FaultRule } from '../dsl/types.js';
 import type { DomainEvent } from '../types.js';
 
-// Read package.json version at module load time.
 let _pkgVersion = 'unknown';
 try {
   // eslint-disable-next-line @typescript-eslint/no-require-imports

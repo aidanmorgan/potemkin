@@ -128,9 +128,7 @@ export function createContractValidator(
   const ajv = new Ajv({ allErrors: true, strict: false, useDefaults: true });
   addFormats(ajv);
 
-  // F-02: Build a case-insensitive lookup map for components.schemas at construction time.
-  // Keys are lowercased; values are the original schema objects. This allows boundary names
-  // that differ in casing (e.g. "opportunity" vs "Opportunity") to still resolve correctly.
+  // Case-insensitive schema map: boundary names that differ only in casing (e.g. "opportunity" vs "Opportunity") still resolve.
   const caseInsensitiveSchemaMap = new Map<string, unknown>();
   const rawDocForInit = doc.raw as Record<string, unknown>;
   const componentsForInit = rawDocForInit['components'];
@@ -145,20 +143,15 @@ export function createContractValidator(
 
   const maxKeyedValidators = cacheOptions?.maxKeyedValidators ?? 512;
 
-  // Cache compiled validators by schema object reference (using WeakMap) and
-  // by a serialized JSON key (using Map) for primitive-keyed lookups.
-  // The WeakMap is the fast, identity-keyed primary cache (GC'd automatically).
-  // The Map is bounded to maxKeyedValidators entries; the oldest entry is evicted
-  // when the cap is reached (Map iteration order is insertion order).
+  // WeakMap: fast identity-keyed primary cache (GC'd automatically).
+  // Map: bounded to maxKeyedValidators; oldest entry evicted on cap (insertion order).
   const validatorCache = new WeakMap<object, ValidateFunction>();
   const validatorCacheByKey = new Map<string, ValidateFunction>();
 
   function getValidator(schema: JsonObject): ValidateFunction {
-    // Use WeakMap first (identity-based, zero-cost for repeated calls)
     const cached = validatorCache.get(schema);
     if (cached) return cached;
 
-    // Fall back to JSON serialization key for structurally identical schemas
     const key = JSON.stringify(schema);
     const keyCached = validatorCacheByKey.get(key);
     if (keyCached) {
@@ -169,7 +162,6 @@ export function createContractValidator(
     const compiled = ajv.compile(schema);
     validatorCache.set(schema, compiled);
 
-    // Evict the oldest entry before inserting to keep the map within the cap
     if (validatorCacheByKey.size >= maxKeyedValidators) {
       const oldestKey = validatorCacheByKey.keys().next().value;
       if (oldestKey !== undefined) {
@@ -208,7 +200,6 @@ export function createContractValidator(
 
     const { operation } = matched;
 
-    // Validate parameters (path + query)
     if (operation.parameters) {
       for (const param of operation.parameters) {
         if (param.in === 'path') {
@@ -248,8 +239,6 @@ export function createContractValidator(
           if (param.schema) {
             const valueToValidate = Array.isArray(rawValue) ? rawValue[0] : rawValue;
             const coerced = coerceParamValue(valueToValidate, param.schema);
-            // Pagination/range query params (offset, limit, …) carry value-range
-            // bounds the query engine clamps at runtime; validate the type only.
             const validate = getValidator(stripValueRanges(param.schema));
             if (!validate(coerced)) {
               logger.debug(
@@ -266,11 +255,9 @@ export function createContractValidator(
       }
     }
 
-    // Validate request body — shape only. Numeric value-range bounds are stripped
-    // so a right-typed but out-of-range value (e.g. dailyCallQuota: 0 against
-    // minimum: 1) reaches the engine and trips the DSL `requires` guard (422)
-    // instead of being pre-empted by a 400. Type/required/enum/format/length
-    // constraints remain, so genuinely malformed bodies still 400.
+    // Validate request body shape only — value-range bounds are stripped so a right-typed
+    // but out-of-range value reaches the engine and trips the DSL `requires` guard (422)
+    // rather than being pre-empted by a 400.
     if (operation.requestBodySchema) {
       const validate = getValidator(stripValueRanges(operation.requestBodySchema));
       if (!validate(payload)) {
@@ -301,17 +288,12 @@ export function createContractValidator(
     const responseSchemas = operation.responseSchemas;
     if (!responseSchemas) return;
 
-    // Look up by exact status, then fall back to 'default'
     const schema =
       responseSchemas[String(status)] ??
       responseSchemas['default'];
 
     if (!schema) return;
 
-    // X-Potemkin-Allow-Additional-Properties (admin-gated): relax the schema so a
-    // response carrying undeclared properties still validates. We strip every
-    // `additionalProperties: false` (and `unevaluatedProperties: false`) recursively
-    // from a deep copy so the cached strict validator is never mutated.
     const effectiveSchema = options?.allowAdditionalProperties === true
       ? relaxAdditionalProperties(schema)
       : schema;
@@ -348,7 +330,7 @@ export function createContractValidator(
             errors: `No components.schemas section in OpenAPI document` as unknown as JsonValue,
           });
         }
-        // F-02: Try exact-case lookup first; fall back to case-insensitive map.
+        // Exact-case lookup first; fall back to case-insensitive map.
         const schema =
           (schemas as Record<string, unknown>)[boundary] ??
           caseInsensitiveSchemaMap.get(boundary.toLowerCase());

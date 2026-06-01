@@ -1,8 +1,6 @@
 // Cross-checks YAML boundary modules against TS-registered reducers.
-// Errors: BOOT_ERR_REDUCER_CONFLICT (both YAML+TS define the same key),
-// BOOT_ERR_UNKNOWN_BOUNDARY/_EVENT (TS reducer points at nothing real),
-// BOOT_ERR_REDUCER_MISSING (yaml flagged implementation:typescript but no
-// TS handler is registered).
+// Emits BOOT_ERR_REDUCER_CONFLICT, BOOT_ERR_UNKNOWN_BOUNDARY/EVENT,
+// and BOOT_ERR_REDUCER_MISSING as appropriate.
 
 import { BootError } from '../errors.js';
 import type { BoundaryModule } from './configSchema.js';
@@ -88,7 +86,6 @@ export function validateReducerConflicts(input: ReducerConflictInput): void {
   const boundaryByName = new Map<string, { path: string; boundary: BoundaryModule }>();
   for (const m of input.modules) boundaryByName.set(m.boundary.boundary, m);
 
-  // ── Cross-reference validation ──
   for (const tsR of input.tsReducers) {
     const target = boundaryByName.get(tsR.boundary);
     if (!target) {
@@ -108,7 +105,6 @@ export function validateReducerConflicts(input: ReducerConflictInput): void {
     }
   }
 
-  // ── Conflict detection: YAML vs TS for the same (boundary, event) ──
   for (const m of input.modules) {
     const yamlReducers = m.boundary.reducers ?? [];
     for (const yamlR of yamlReducers) {
@@ -128,7 +124,6 @@ export function validateReducerConflicts(input: ReducerConflictInput): void {
           },
         );
       }
-      // YAML `implementation: typescript` requires a matching TS reducer.
       if (yamlR.implementation === 'typescript' && !tsR) {
         throw new BootError(
           'BOOT_ERR_REDUCER_MISSING',

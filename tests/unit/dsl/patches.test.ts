@@ -22,7 +22,7 @@ describe('patches.applyPatches — RFC 6902 ops', () => {
       { op: 'add', path: '/b', value: 2 },
     ]);
     expect(newState).toEqual({ a: 1, b: 2 });
-    expect(state).toEqual({ a: 1 }); // input never mutated (REQ-PATCH-002 AC-002.4)
+    expect(state).toEqual({ a: 1 }); // input never mutated
     expect(journal[0]).toMatchObject({ source: 'reducer', op: 'add', path: '/b', value: 2 });
     expect(touchedPaths.has('/b')).toBe(true);
   });

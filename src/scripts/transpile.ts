@@ -2,7 +2,7 @@ import * as esbuild from 'esbuild';
 import { BootError } from '../errors.js';
 
 /**
- * REQ-68: Transpile TypeScript source to CommonJS JavaScript using esbuild.
+ * Transpile TypeScript source to CommonJS JavaScript using esbuild.
  * This is transpile-only — no type checking is performed.
  *
  * @throws {BootError} BOOT_ERR_SCRIPT_SYNTAX on transpile failure.

@@ -43,9 +43,9 @@ class StatefulRequestHandler(
 
     override fun handleRequest(rawRequest: HttpRequest): HttpStubResponse? {
         return try {
-            // Workflow id-propagation (E6): substitute captured ids into the path
-            // BEFORE statefulness/forwarding decisions so the resolved path is used
-            // throughout. No-op when no workflow ids are configured.
+            // Substitute captured workflow ids into the path BEFORE statefulness/forwarding
+            // decisions so the resolved path is used throughout. No-op when no workflow
+            // ids are configured.
             val httpRequest = workflow?.applyToRequest(rawRequest) ?: rawRequest
             val method = (httpRequest.method ?: "").uppercase()
             val path = httpRequest.path ?: ""
@@ -119,8 +119,8 @@ class StatefulRequestHandler(
     }
 
     /**
-     * Build a 401 response with a `WWW-Authenticate: Bearer realm=...` challenge,
-     * as required when JWT verification fails (AC-E2.2).
+     * Build a 401 response with a `WWW-Authenticate: Bearer realm=...` challenge
+     * when JWT verification fails.
      */
     private fun unauthorized(challenge: String): HttpStubResponse {
         val body = """{"error":"unauthorized"}"""

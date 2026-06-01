@@ -1,5 +1,5 @@
 /**
- * REQ-64: behaviors[].emit_when[] — conditional multi-event emission
+ * behaviors[].emit_when[] — conditional multi-event emission
  */
 import { validateBoundaryConfig } from '../../../src/dsl/schema';
 import { runPatternMatch } from '../../../src/engine/patternMatcher';
@@ -39,7 +39,7 @@ function makeInput(overrides: Partial<PatternMatchInput> = {}): PatternMatchInpu
 
 // ── Schema parsing ─────────────────────────────────────────────────────────────
 
-describe('REQ-64: emit_when DSL parsing', () => {
+describe('emit_when DSL parsing', () => {
   it('parses emit_when array correctly', () => {
     const config = validateBoundaryConfig({
       boundary: 'Loan',
@@ -132,7 +132,7 @@ describe('REQ-64: emit_when DSL parsing', () => {
 
 // ── Runtime tests ──────────────────────────────────────────────────────────────
 
-describe('REQ-64: emit_when runtime multi-emit', () => {
+describe('emit_when runtime multi-emit', () => {
   it('emits partial repayment event when amount < balance', () => {
     const input = makeInput({
       command: makeCommand({ intent: 'mutation', targetId: 'agg-1', payload: { amount: 50 } }),

@@ -1,15 +1,15 @@
 /**
- * C2 + C3 — TypeScript reducers.
+ * TypeScript reducers.
  *
- * C2: when potemkin.yaml has a typescript: block, boot scans + registers TS
- *     reducers and cross-checks them against the YAML BEFORE binding routes.
- *     A YAML reducer and a TS reducer for the same (boundary, event) →
- *     BOOT_ERR_REDUCER_CONFLICT. A booted TS reducer dispatches at projection.
+ * When potemkin.yaml has a typescript: block, boot scans + registers TS
+ * reducers and cross-checks them against the YAML BEFORE binding routes.
+ * A YAML reducer and a TS reducer for the same (boundary, event) →
+ * BOOT_ERR_REDUCER_CONFLICT. A booted TS reducer dispatches at projection.
  *
- * C3: the registry is consulted FIRST; YAML patches are used only on a miss.
- *     A TS reducer's returned Patch[] flows through the same applyPatches path
- *     so YAML-only and TS-only projection of the same event produce identical
- *     state. A non-array return → RUNTIME_ERR_REDUCER_NON_ARRAY.
+ * The registry is consulted FIRST; YAML patches are used only on a miss.
+ * A TS reducer's returned Patch[] flows through the same applyPatches path
+ * so YAML-only and TS-only projection of the same event produce identical
+ * state. A non-array return → RUNTIME_ERR_REDUCER_NON_ARRAY.
  */
 
 import * as path from 'node:path';
@@ -61,7 +61,7 @@ function widgetCreatedEvent(id: string, name: string): DomainEvent {
   };
 }
 
-describe('C2: TypeScript reducer scan + dispatch via potemkinConfigPath', () => {
+describe('TypeScript reducer scan + dispatch via potemkinConfigPath', () => {
   it('registers the TS reducer at boot', async () => {
     const openapi = await loadOpenApi(OPENAPI);
     const sys = await bootSystem({ openapi, potemkinConfigPath: CONFIG });
@@ -97,7 +97,7 @@ describe('C2: TypeScript reducer scan + dispatch via potemkinConfigPath', () => 
   });
 });
 
-describe('C2: BOOT_ERR_REDUCER_CONFLICT when YAML patches and TS collide', () => {
+describe('BOOT_ERR_REDUCER_CONFLICT when YAML patches and TS collide', () => {
   afterEach(async () => {
     await sdkRegistry.reset();
   });
@@ -149,7 +149,7 @@ reducers:
   });
 });
 
-describe('C3: registry-first lookup; YAML-only equals TS-only state', () => {
+describe('registry-first lookup; YAML-only equals TS-only state', () => {
   function projectWith(dsl: CompiledDsl, tsRegistry: ReturnType<typeof createTsReducerRegistry> | undefined) {
     const graph = createStateGraph();
     const cel = createCelEvaluator();

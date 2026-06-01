@@ -1,9 +1,8 @@
 import type { Patch } from './patches.js';
 import { parsePointer } from './patches.js';
 
-// Translators for the forward-blocks the plugin merges into Specmatic.
-// The functions are pure data transformations that downstream Kotlin code
-// (or a TS-side embed) consumes; the engine itself never executes them.
+// Pure data transformations for the forward-blocks the plugin merges into Specmatic.
+// The engine does not execute these; they are consumed by the downstream Kotlin plugin.
 
 export interface WorkflowIdEntry {
   readonly extract: string;
@@ -14,8 +13,6 @@ export interface WorkflowConfig {
   readonly ids: Record<string, WorkflowIdEntry>;
 }
 
-// Validate the shape of `workflow: { ids: { name: { extract, use } } }`.
-// Returns the validated config; throws on shape mismatch.
 export function validateWorkflowForward(raw: unknown): WorkflowConfig {
   if (raw === null || typeof raw !== 'object') {
     throw new Error('workflow: must be an object');
@@ -72,17 +69,12 @@ export function validateGovernanceForward(raw: unknown): GovernanceConfig {
   return out;
 }
 
-// Translate RFC 6902 patches against the OpenAPI spec document into the
-// `actions[]` shape Specmatic's Overlay consumes: each patch becomes a
-// { target: <JSONPath>, update | remove: <value> } action.
+// Translate RFC 6902 patches into the `actions[]` shape Specmatic's Overlay consumes:
+// each patch becomes { target: <JSONPath>, update | remove: <value> }.
 //
-// `move`/`copy` need the source node's value to emit a faithful `update`,
-// and the source value is not available on the engine's translate path
-// (only the patch list is). Rather than emit `update: null` — which the
-// Specmatic OverlayMerger would write as a literal null at the destination
-// leaf, silently corrupting the spec — we reject them here. The Kotlin
-// OverlayApplier.applyTo resolves the source value against the parsed spec
-// and is the path that supports move/copy.
+// `move`/`copy` are rejected here because the source node's value is not available
+// on the engine's translate path, and emitting `update: null` would silently corrupt
+// the spec. The Kotlin OverlayApplier resolves `move`/`copy` against the parsed spec.
 
 export interface OverlayAction {
   readonly target: string;
@@ -109,7 +101,6 @@ export function translateOverlayPatches(patches: readonly Patch[]): OverlayActio
             `on this path. Apply move/copy via the spec-aware OverlayApplier instead.`,
         );
       default:
-        // Potemkin extensions don't apply to spec-doc overlays.
         throw new Error(`Overlay translation only supports RFC 6902 ops; got '${p.op}'`);
     }
   }
@@ -122,9 +113,8 @@ function pointerToJsonPath(pointer: string): string {
   return '$.' + segs.join('.');
 }
 
-// Forward-block precedence merger. Scalars from `potemkin` override the
-// matching scalar from `specmatic`; lists concatenate AFTER specmatic's
-// entries; objects merge per key recursively.
+// Merge forward-block configs: potemkin scalars override specmatic's, lists
+// concatenate after specmatic's entries, objects merge recursively per key.
 
 export function mergeForwardBlock<T extends Record<string, unknown>>(
   specmatic: T | undefined,

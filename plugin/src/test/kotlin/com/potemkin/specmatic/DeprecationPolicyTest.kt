@@ -5,9 +5,9 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * Unit tests for [DeprecationPolicy] (E5 / AC-G6.3): overlay patches that flip an
- * operation to `deprecated:true` make the matching `(method, path)` deprecated;
- * path templates match concrete request paths.
+ * Unit tests for [DeprecationPolicy]: overlay patches that flip an operation to
+ * `deprecated:true` make the matching `(method, path)` deprecated; path templates
+ * match concrete request paths.
  */
 class DeprecationPolicyTest {
 

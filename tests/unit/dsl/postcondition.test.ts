@@ -1,5 +1,5 @@
 /**
- * REQ-62: behaviors[].postcondition — evaluated after projection
+ * behaviors[].postcondition — evaluated after projection
  */
 import { validateBoundaryConfig } from '../../../src/dsl/schema';
 import { runPatternMatch } from '../../../src/engine/patternMatcher';
@@ -42,7 +42,7 @@ function makeInput(overrides: Partial<PatternMatchInput> = {}): PatternMatchInpu
 
 // ── Schema parsing ─────────────────────────────────────────────────────────────
 
-describe('REQ-62: postcondition DSL parsing', () => {
+describe('postcondition DSL parsing', () => {
   it('parses postcondition as a plain string', () => {
     const config = validateBoundaryConfig({
       boundary: 'Loan',
@@ -99,7 +99,7 @@ describe('REQ-62: postcondition DSL parsing', () => {
 
 // ── Runtime tests ──────────────────────────────────────────────────────────────
 
-describe('REQ-62: postcondition runtime behavior', () => {
+describe('postcondition runtime behavior', () => {
   it('succeeds when postcondition evaluates to true', () => {
     // Set up shadow so that after projectToShadow is called, get() returns a valid state
     const shadow = makeNoopShadow({ balance: 100 });

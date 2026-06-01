@@ -9,9 +9,9 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /**
- * Integration tests for [SeedApplier] (E4):
+ * Integration tests for [SeedApplier]:
  *  - seeds compiled (base + patches via [PatchApplier]) and pushed to
- *    httpStub.setExpectation (AC-E4.1, AC-E4.3)
+ *    httpStub.setExpectation
  *  - the registered ScenarioStub carries the compiled seed body.
  */
 class SeedApplierTest {
@@ -91,8 +91,8 @@ class SeedApplierTest {
     @Test
     fun `a contract-base seed with no wired resolver fails loudly`() {
         val bridge = CapturingBridge()
-        // Default resolver: production wires SpecmaticContractBaseResolver; an
-        // unwired contract seed must throw rather than ship an empty body.
+        // Production wires SpecmaticContractBaseResolver; an unwired contract seed
+        // must throw rather than ship an empty body.
         val ex = assertFailsWith<IllegalStateException> {
             SeedApplier(bridge).compile(
                 seed(base = SeedBase.CONTRACT, patches = listOf(Patch.Add("/x", 1))),

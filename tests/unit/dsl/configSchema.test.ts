@@ -1,9 +1,9 @@
 import { validatePotemkinConfig } from '../../../src/dsl/configSchema.js';
 import { BootError } from '../../../src/errors.js';
 
-// Tests for the optional-block validators added to validatePotemkinConfig
-// (potemkin-sddz): typescript, plugin, seeds[], workflow, overlay, governance
-// must all be structure-checked rather than passed through as raw casts.
+// Tests for the optional-block validators added to validatePotemkinConfig:
+// typescript, plugin, seeds[], workflow, overlay, governance must all be
+// structure-checked rather than passed through as raw casts.
 
 const REQUIRED = {
   version: 1,

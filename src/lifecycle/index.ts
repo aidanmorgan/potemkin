@@ -1,7 +1,3 @@
-/**
- * Lifecycle barrel — re-exports public lifecycle API.
- */
-
 export type {
   PluginControlConfig,
   PluginControlClient,

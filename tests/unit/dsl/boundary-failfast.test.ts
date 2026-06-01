@@ -1,7 +1,7 @@
 import { validateBoundaryConfig } from '../../../src/dsl/schema';
 import { BootError } from '../../../src/errors';
 
-// potemkin-2l8: validateBoundaryConfig must fail-fast on unknown top-level keys
+// validateBoundaryConfig must fail-fast on unknown top-level keys
 // (symmetric with validateGlobalConfig), so a boundary-DSL typo is rejected at
 // boot instead of being silently dropped.
 
@@ -13,7 +13,7 @@ const VALID = {
   event_catalog: [],
 };
 
-describe('validateBoundaryConfig unknown-key fail-fast (potemkin-2l8)', () => {
+describe('validateBoundaryConfig unknown-key fail-fast', () => {
   it('parses a valid boundary with only known keys', () => {
     const cfg = validateBoundaryConfig(VALID);
     expect(cfg.boundary).toBe('Widget');

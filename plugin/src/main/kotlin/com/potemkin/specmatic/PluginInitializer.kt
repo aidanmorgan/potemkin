@@ -93,9 +93,9 @@ class PluginInitializer : StubInitializer {
         // it at HttpStub construction (before this `initialize` runs). Here the
         // plugin only derives the runtime behaviours that ride on top of the
         // already-overlaid spec:
-        //  - E5: a [DeprecationPolicy] so deprecated operations carry `Deprecation:true`
+        //  - A [DeprecationPolicy] so deprecated operations carry `Deprecation:true`
         //    (Specmatic emits no Deprecation header for `deprecated:true` operations).
-        //  - E6: a [WorkflowPropagator] that chains ids across the forward path
+        //  - A [WorkflowPropagator] that chains ids across the forward path
         //    (Specmatic's workflow is contract-test-mode-only; see applyForwardBlocks).
         val blocks = config.forwardBlocks
         val deprecationPolicy = DeprecationPolicy.fromOverlayPatches(blocks.overlay.patches)
@@ -141,10 +141,10 @@ class PluginInitializer : StubInitializer {
      * ## Specmatic 2.46.2 limitations that force the file-based design
      * (verified against specmatic-2.46.2.jar by decompilation + a boot experiment)
      *
-     * E4 (seeds): `HttpStub.setExpectation(ScenarioStub)` IS a public runtime API,
+     * Seeds: `HttpStub.setExpectation(ScenarioStub)` IS a public runtime API,
      * so seeds are applied directly here.
      *
-     * E5 (overlay): `SpecmaticConfig` exposes NO runtime overlay setter. The overlay
+     * Overlay: `SpecmaticConfig` exposes NO runtime overlay setter. The overlay
      * is read once at HttpStub CONSTRUCTION via `SpecmaticConfig.getStubOverlayFilePath`,
      * which reads `System.getenv("overlayFilePath")` (system-property fallback) —
      * confirmed by booting `stub` with that env var and observing the overlay applied
@@ -155,7 +155,7 @@ class PluginInitializer : StubInitializer {
      * Specmatic emits no `Deprecation` header for `deprecated:true` operations, so
      * [DeprecationPolicy] + [PotemkinResponseInterceptor] add it on the response path.
      *
-     * E6 (workflow): `SpecmaticConfig` exposes no runtime workflow setter either, and
+     * Workflow: `SpecmaticConfig` exposes no runtime workflow setter either, and
      * `io.specmatic.core.Workflow` is referenced ONLY by `Feature.scenarioAsTest` /
      * `generateContractTests` (TEST-mode contract-test chaining); `getWorkflowDetails()`
      * resolves from the *test* service config and stub mode never consults it. Workflow
@@ -170,7 +170,7 @@ class PluginInitializer : StubInitializer {
     ) {
         val blocks = config.forwardBlocks
 
-        // E6 — workflow + governance merged for diagnostics only. The live
+        // Workflow + governance merged for diagnostics only. The live
         // id-propagation runs in WorkflowPropagator (stub mode never reads
         // Specmatic's test-mode workflow); governance is not enforced by Specmatic
         // in stub mode, so we only record what was requested.
@@ -185,11 +185,11 @@ class PluginInitializer : StubInitializer {
             log.info("Forward-blocks: merged governance keys {} for diagnostics", mergedGovernance.keys)
         }
 
-        // E5 — overlay is applied by Specmatic from the launcher-written file
+        // Overlay is applied by Specmatic from the launcher-written file
         // (overlayFilePath); nothing to do here. Translation/merge is exercised by
         // OverlayApplier's tests, not at boot.
 
-        // E4 — seeds are applied directly via the public setExpectation API.
+        // Seeds are applied directly via the public setExpectation API.
         // `base: contract` seeds need the contract-generated body for their target,
         // so we wire a resolver backed by the loaded Specmatic features.
         if (blocks.seeds.isNotEmpty()) {

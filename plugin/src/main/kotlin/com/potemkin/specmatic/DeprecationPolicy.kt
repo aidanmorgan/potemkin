@@ -8,7 +8,7 @@ package com.potemkin.specmatic
  * `overlayFilePath` env var loads the overlay at `HttpStub` construction), but it
  * does NOT emit a `Deprecation` header for deprecated operations. The plugin's
  * [PotemkinResponseInterceptor] consults this policy to attach `Deprecation: true`
- * to responses for deprecated operations (E5 / AC-G6.3).
+ * to responses for deprecated operations.
  *
  * An overlay patch deprecates an operation when its RFC 6901 pointer addresses an
  * operation's `deprecated` flag with a truthy value, e.g.

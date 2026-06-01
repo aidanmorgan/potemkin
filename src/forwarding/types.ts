@@ -1,10 +1,9 @@
 /**
- * Payload shapes for the /_engine/forward endpoint (design §5).
+ * Payload shapes for the /_engine/forward endpoint.
  *
  * The Kotlin Specmatic plugin POSTs a ForwardedRequest to the Node engine and
- * receives a ForwardedResponse. The engine maps the forwarded request to the
- * existing CQRS/ES pipeline identically to how the HTTP gateway handles an
- * inbound HTTP request.
+ * receives a ForwardedResponse. The engine maps the forwarded request through
+ * the same CQRS/ES pipeline as the HTTP gateway.
  */
 
 import type { JsonValue } from '../types.js';
@@ -39,7 +38,7 @@ export interface ForwardedResponse {
   /** Response body (the BASE body; response-mutation patches are reported in `_patches`). */
   readonly body: JsonValue;
   /**
-   * D4: response-mutation patches (HATEOAS / mask, tagged by source) that the
+   * Response-mutation patches (HATEOAS / mask, tagged by source) that the
    * plugin re-applies to the body to produce the client-visible response.
    * Applying these to `body` reproduces the engine's mutated body. Empty when
    * no mutations applied. Deprecation/Sunset/Link are conveyed via `headers`.
@@ -53,7 +52,7 @@ export interface ForwardedResponse {
  */
 export interface FixtureStub {
   readonly httpRequest: {
-    /** Always 'GET' — fixtures are deterministic reads (REQ-10/11/39). */
+    /** Always 'GET' — fixtures are deterministic reads of baseline-seeded entities. */
     readonly method: 'GET';
     /** Bound path with the seeded id substituted, e.g. '/customers/00000000-0000-7000-8000-000000000001'. */
     readonly path: string;

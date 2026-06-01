@@ -1,5 +1,5 @@
 /**
- * REQ-65: event_catalog[].schema_ref — pin event payload to OpenAPI $ref
+ * event_catalog[].schema_ref — pin event payload to OpenAPI $ref
  */
 import { validateBoundaryConfig } from '../../../src/dsl/schema';
 import { projectEvent } from '../../../src/engine/projection';
@@ -25,7 +25,7 @@ const makeOpenApiDoc = (schemas: Record<string, unknown> = {}): OpenApiDoc => ({
 
 // ── Schema parsing ─────────────────────────────────────────────────────────────
 
-describe('REQ-65: event_catalog schema_ref DSL parsing', () => {
+describe('event_catalog schema_ref DSL parsing', () => {
   it('parses schema_ref field on event_catalog entry', () => {
     const config = validateBoundaryConfig({
       boundary: 'Loan',
@@ -59,7 +59,7 @@ describe('REQ-65: event_catalog schema_ref DSL parsing', () => {
 
 // ── Runtime validation ─────────────────────────────────────────────────────────
 
-describe('REQ-65: schema_ref runtime validation', () => {
+describe('schema_ref runtime validation', () => {
   it('allows event payload that matches the schema_ref', () => {
     const openapi = makeOpenApiDoc({
       LoanOpenedEvent: {

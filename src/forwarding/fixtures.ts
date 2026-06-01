@@ -1,9 +1,9 @@
 /**
  * Derives the list of FixtureStubs from a BootedSystem.
  *
- * A fixture stub represents a deterministic GET-by-id snapshot of a seeded
- * (baseline) entity at boot time.  Only entities seeded via BaselineEntityCreatedEvent
- * are included — post-boot mutations are excluded by design (REQ-10/11/39).
+ * A fixture stub is a deterministic GET-by-id snapshot of a seeded (baseline)
+ * entity at boot time. Only entities from BaselineEntityCreatedEvent are included;
+ * post-boot mutations are excluded by design so the fixture set is stable.
  *
  * For each boundary that has baseline events the helper:
  *  1. Identifies the GET-by-id OpenAPI path template (e.g. /customers/{id}).
@@ -148,15 +148,11 @@ function applyDerivedProperties(
 
 /**
  * Derive the list of FixtureStubs from a booted system.
- *
- * Sources seeded IDs exclusively from frozenBaseline events with
- * type === 'BaselineEntityCreatedEvent' so that post-boot mutations
- * never leak into the fixture list.
  */
 export function deriveFixtures(sys: BootedSystem): readonly FixtureStub[] {
   const stubs: FixtureStub[] = [];
 
-  // Group baseline events by boundary name for efficient lookup
+  // Group baseline events by boundary for efficient lookup.
   const baselineByBoundary = new Map<string, string[]>();
   for (const event of sys.frozenBaseline) {
     if (event.type !== 'BaselineEntityCreatedEvent') continue;
@@ -172,7 +168,7 @@ export function deriveFixtures(sys: BootedSystem): readonly FixtureStub[] {
     const seededIds = baselineByBoundary.get(boundary.boundary);
     if (!seededIds || seededIds.length === 0) continue;
 
-    // Find the GET-by-id path template for this boundary's collection path
+    // Find the GET-by-id path template for this boundary's collection path.
     const getByIdTemplate = findGetByIdPathTemplate(sys.openapi, boundary.contractPath);
     if (getByIdTemplate === null) {
       logger.debug(
@@ -185,7 +181,6 @@ export function deriveFixtures(sys: BootedSystem): readonly FixtureStub[] {
     const paramName = extractIdParamName(getByIdTemplate);
 
     for (const aggregateId of seededIds) {
-      // Retrieve current entity from state graph (post-baseline hydration state)
       const rawEntity = sys.graph.get(aggregateId);
       if (rawEntity === null) {
         logger.warn(
@@ -195,10 +190,9 @@ export function deriveFixtures(sys: BootedSystem): readonly FixtureStub[] {
         continue;
       }
 
-      // Apply derived properties to match what a live GET would return
+      // Apply derived properties to match what a live GET would return.
       const entity = applyDerivedProperties(rawEntity, boundary.boundary, sys.openapi, sys);
 
-      // Build the concrete bound path, e.g. /customers/00000000-...
       const boundPath = getByIdTemplate.replace(`{${paramName}}`, aggregateId);
 
       // Validate against OpenAPI response schema

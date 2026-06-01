@@ -1,5 +1,5 @@
 /**
- * C4 — per-boundary schema inference at boot.
+ * Per-boundary schema inference at boot.
  *
  * boot runs buildInferredSchema for every boundary and attaches the results as
  * BootedSystem.inferredSchemas (keyed by boundary). The CRM Opportunity
@@ -25,7 +25,7 @@ import { registerFileTeardown } from '../_support/testTeardown.js';
 
 const CRM_CONFIG = path.join(__dirname, '..', 'fixtures', 'crm', 'potemkin.yaml');
 
-describe('C4: boot attaches per-boundary inferred schemas', () => {
+describe('boot attaches per-boundary inferred schemas', () => {
   let sys: BootedSystem;
   let agent: PersistentAgent;
 
@@ -72,7 +72,7 @@ describe('C4: boot attaches per-boundary inferred schemas', () => {
     expect([...computed].sort()).toEqual(['itemCount', 'totalValue']);
   });
 
-  it('surfaces the real reducer patch journal on GET /_engine/state/:boundary/:id (potemkin-q5d)', async () => {
+  it('surfaces the real reducer patch journal on GET /_engine/state/:boundary/:id', async () => {
     const created = await agent
       .post('/opportunities')
       .send({ leadId: '00000000-0000-7000-8000-000000000011', value: 100 })
@@ -98,7 +98,7 @@ describe('C4: boot attaches per-boundary inferred schemas', () => {
   });
 });
 
-describe('POST /_engine/dsl: install then replay (potemkin-q5d)', () => {
+describe('POST /_engine/dsl: install then replay', () => {
   // Boots its own system because a successful install swaps sys.dsl; isolating
   // it here keeps the swap from leaking into the C4 suite above.
   let sys: BootedSystem;
@@ -139,7 +139,7 @@ describe('POST /_engine/dsl: install then replay (potemkin-q5d)', () => {
     expect(res.headers['x-potemkin-spec-version']).toBeTruthy();
   });
 
-  it('rebuilds sys.inferredSchemas on install so computed fields from a pushed boundary recompute (potemkin-xch2)', async () => {
+  it('rebuilds sys.inferredSchemas on install so computed fields from a pushed boundary recompute', async () => {
     // Before the fix, the install swapped sys.dsl but left sys.inferredSchemas
     // (and its computedOrder) stale, so computed fields added via a push never
     // recomputed. Push a boundary that declares a computed field and assert the
@@ -175,13 +175,13 @@ describe('POST /_engine/dsl: install then replay (potemkin-q5d)', () => {
 
     // The sibling boundary-derived structures must ALSO be rebuilt so the write
     // path (type guard + If-Match enforcement) stays consistent with the swapped
-    // DSL — not just inferredSchemas (potemkin-2g9 follow-up to potemkin-xch2).
+    // DSL — not just inferredSchemas.
     expect(sys.schemaRegistry).not.toBe(beforeRegistry);
     expect(sys.requiresPrecondition).not.toBe(beforePrecondition);
   });
 });
 
-describe('C4: schema inference converges and is guarded by the iteration cap', () => {
+describe('schema inference converges and is guarded by the iteration cap', () => {
   it('converges the CRM line-item boundary without raising the divergence cap', () => {
     // The line-item boundary's event templates + reducer patches reach a fixed
     // point well within the 4-iteration cap, so buildInferredSchema returns

@@ -1,7 +1,7 @@
 // Shared reducer patch application. Both the live projection (projection.ts)
 // and the time-travel replay (timeTravel.ts) reduce events by running a
 // reducer's `patches:` list through the single canonical applier in
-// src/dsl/patches.ts, so there is exactly one reducer-patch code path.
+// src/dsl/patches.ts.
 
 import type { JsonObject, JsonValue } from '../types.js';
 import type { ReducerPatchOp } from '../dsl/types.js';
@@ -23,7 +23,7 @@ export function resolveReducerPatch(
   cel: CelEvaluator,
   celCtx: Record<string, unknown>,
 ): Patch {
-  // Reducer patch values use the ${expr} template form (A4): CEL references must
+  // Reducer patch values use the ${expr} template form: CEL references must
   // be wrapped in ${...}; bare text is a literal. evaluateDslValue evaluates a
   // whole-string ${expr} with type preserved, interpolates mixed text, and
   // returns bare strings as-is. Non-string values pass through unchanged.

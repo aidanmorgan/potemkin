@@ -11,7 +11,7 @@ import org.yaml.snakeyaml.Yaml
 /**
  * Translates `overlay.patches` (RFC 6902 patches against the OpenAPI spec
  * document) into Specmatic's Overlay vocabulary and applies them to a spec via
- * Specmatic's [OverlayMerger] (E5).
+ * Specmatic's [OverlayMerger].
  *
  * Translation mirrors the engine's `translateOverlayPatches`
  * (`src/dsl/forwardBlocks.ts`): each patch becomes an `{ target, update }` or

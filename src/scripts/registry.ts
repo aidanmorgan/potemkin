@@ -5,7 +5,7 @@ import { transpileScript } from './transpile.js';
 import { instantiateScript } from './sandbox.js';
 
 /**
- * REQ-68: Build the script registry from all compiled DSL boundaries.
+ * Build the script registry from all compiled DSL boundaries.
  * Transpiles and instantiates every declared script at boot time.
  */
 export function buildScriptRegistry(dsl: CompiledDsl, logger: Logger): ScriptRegistry {
@@ -19,10 +19,7 @@ export function buildScriptRegistry(dsl: CompiledDsl, logger: Logger): ScriptReg
     for (const decl of boundary.scripts) {
       const key = `${boundary.boundary}::${decl.name}`;
 
-      // Step 1: Transpile TypeScript → CJS JavaScript (throws BootError on syntax error)
       const transpiledCode = transpileScript(decl.name, boundary.boundary, decl.code);
-
-      // Step 2: Instantiate into a ScriptHandle
       const handle = instantiateScript(decl.name, boundary.boundary, transpiledCode, logger);
 
       handles.set(key, handle);
