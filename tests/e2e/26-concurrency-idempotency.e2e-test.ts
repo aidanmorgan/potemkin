@@ -5,9 +5,6 @@
  * Verifies the DSL handles concurrent and repeated operations correctly.
  * Tests optimistic concurrency via ETag/If-Match, idempotency key lifecycle,
  * and concurrent mutation serialization.
- *
- * Research basis: Stripe idempotency keys, RFC 9110 ETag/If-Match, Google SWE
- * hermetic testing, property-based concurrent command testing (POES)
  */
 
 import { startEngineOnlyApp } from './_harness/engine-only-app';

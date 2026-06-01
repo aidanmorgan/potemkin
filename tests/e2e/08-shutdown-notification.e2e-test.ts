@@ -62,7 +62,6 @@ describeWithJava('08 — Shutdown notification: /ready and /shutdown lifecycle',
     await app.shutdown().catch(() => { /* may already be shut down */ });
   }, 30_000);
 
-  // StubInitializer SPI is loaded by Specmatic ≥ 2.46.2.
   it('plugin health state is Up after engine boot (engine sent /ready)', async () => {
     const state = await getPluginHealthState(app.pluginControlUrl);
     expect(['UP', 'DEGRADED']).toContain(state);

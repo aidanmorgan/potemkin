@@ -5,13 +5,6 @@
  * Verifies temporal ordering of timestamps across mutations and enforces
  * boundary-value constraints from the DSL schema.
  *
- * Tests:
- *   1-3:  Lead timestamp ordering (createdAt, lastContactedAt progression)
- *   4:    Sequential notes have increasing createdAt
- *   5:    Sequential line items have increasing addedAt
- *   6:    Sequential transcript entries have increasing sequenceNum
- *   7-11: Boundary value acceptance/rejection (quotas, dates, amounts, lengths)
- *
  * DSL files under test:
  *   tests/fixtures/crm/dsl/lead.yaml
  *   tests/fixtures/crm/dsl/lead-contact.yaml
@@ -336,11 +329,10 @@ describeWithJava('23 — Temporal Data Quality (full Specmatic stack)', () => {
   // --- 11. Opportunity with value:0 -> rejected ---
 
   it('converting a lead with value:0 is rejected by the opportunity positive-value guard', async () => {
-    // Opportunities are created only via the LeadConversionSaga (no POST
-    // /opportunities in the contract). The saga forwards command.payload.value
-    // into createOpportunity, whose positive-value guard requires value > 0.
-    // Converting a qualified lead with value:0 must therefore fail the saga step
-    // so that no Opportunity is created for that lead.
+    // Opportunities are created only via the LeadConversionSaga. The saga
+    // forwards value into createOpportunity, whose positive-value guard requires
+    // value > 0. Converting a qualified lead with value:0 fails the saga step so
+    // that no Opportunity is created for that lead.
     const createRes = await fwd(app.engineUrl, 'POST', '/leads', {
       companyName: 'ZeroValue Corp',
       contactName: 'ZV User',

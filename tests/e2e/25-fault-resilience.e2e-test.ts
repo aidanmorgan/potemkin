@@ -5,9 +5,6 @@
  * Verifies the simulator handles faults gracefully without corrupting state.
  * Tests fault injection via x-specmatic-fault header, cascade fault tolerance
  * when secondary targets are absent, and max cascade depth enforcement.
- *
- * Research basis: WireMock fault types, MockServer error actions, Hoverfly
- * error injection, Google chaos engineering (DiRT/Catzilla), Netflix Chaos Monkey
  */
 
 import { startE2eApp } from './_harness/e2e-test-app';

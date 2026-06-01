@@ -1,5 +1,5 @@
 /**
- * 55 — G4: operationId-based behaviour dispatch through the Specmatic stub.
+ * 55 — operationId-based behaviour dispatch through the Specmatic stub.
  *
  * Proves that 7 representative CRM operationIds, when their HTTP request is sent
  * to the Specmatic stub URL, each dispatch to the behaviour bound to that
@@ -60,7 +60,7 @@ async function stub(
   return { status: res.status, body: parsed };
 }
 
-describeWithJava('55 — G4: operationId dispatch via Specmatic stub', () => {
+describeWithJava('55 — operationId dispatch via Specmatic stub', () => {
   let app: E2eApp;
 
   beforeAll(async () => {

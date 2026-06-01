@@ -1,20 +1,20 @@
 /**
- * 57 — G6: forward blocks (seeds / workflow / overlay) + JWT through the stub.
+ * 57 — Forward blocks (seeds / workflow / overlay) + JWT through the stub.
  *
  * Everything here is driven through `app.stubUrl` (the real Specmatic stub with
  * the Potemkin plugin on the classpath), proving the forward blocks reach the
- * client via Specmatic rather than only the engine (AC-G6.5):
+ * client via Specmatic rather than only the engine:
  *
- *   AC-G6.1 — two seeds (one `base: contract`, one `base: empty`) registered as
+ *   Seeds — two seed variants (`base: contract` and `base: empty`) registered as
  *             Specmatic expectations; GET each through the stub returns the
  *             patched body.
- *   AC-G6.2 — `workflow.ids` propagate across a create→get sequence: the lead id
+ *   Workflow — `workflow.ids` propagate across a create→get sequence: the lead id
  *             created via the stub is captured and substituted into a later
  *             `/leads/{leadId}` request automatically.
- *   AC-G6.3 — the overlay flips GET /leads/{id} to `deprecated: true` in the
+ *   Overlay — the overlay flips GET /leads/{id} to `deprecated: true` in the
  *             served spec; the plugin surfaces that as a `Deprecation: true`
  *             response header.
- *   AC-G6.4 — JWT valid / expired / missing → 200 / 401 / 401 with a
+ *   JWT — valid / expired / missing → 200 / 401 / 401 with a
  *             `WWW-Authenticate` challenge, all through the stub.
  *
  * The `crm-forward` fixture carries the auth block (via its dsl/global.yaml,
@@ -84,7 +84,7 @@ function defaultClaims(overrides: Partial<JwtClaims> = {}): JwtClaims {
 
 // ---------------------------------------------------------------------------
 
-describeWithJava('57 — G6 forward blocks + JWT through the stub', () => {
+describeWithJava('57 — Forward blocks + JWT through the stub', () => {
   let app: E2eApp;
 
   beforeAll(async () => {
@@ -100,9 +100,9 @@ describeWithJava('57 — G6 forward blocks + JWT through the stub', () => {
     if (app) await app.shutdown();
   }, 30_000);
 
-  // ---- AC-G6.1: seeds -----------------------------------------------------
+  // ---- Seeds ---------------------------------------------------------------
 
-  it('AC-G6.1 seed with base:contract serves the patched body through the stub', async () => {
+  it('seed with base:contract serves the patched body through the stub', async () => {
     const res = await fetch(`${app.stubUrl}/seed-contract/contract-1`, {
       headers: { Accept: 'application/json', authorization: `Bearer ${signHs256(defaultClaims())}` },
     });
@@ -112,7 +112,7 @@ describeWithJava('57 — G6 forward blocks + JWT through the stub', () => {
     expect(body['label']).toBe('from-contract');
   }, 60_000);
 
-  it('AC-G6.1 seed with base:empty serves the patched body through the stub', async () => {
+  it('seed with base:empty serves the patched body through the stub', async () => {
     const res = await fetch(`${app.stubUrl}/seed-empty/empty-1`, {
       headers: { Accept: 'application/json', authorization: `Bearer ${signHs256(defaultClaims())}` },
     });
@@ -122,9 +122,9 @@ describeWithJava('57 — G6 forward blocks + JWT through the stub', () => {
     expect(body['label']).toBe('from-empty');
   }, 60_000);
 
-  // ---- AC-G6.2: workflow id-propagation -----------------------------------
+  // ---- Workflow id-propagation --------------------------------------------
 
-  it('AC-G6.2 workflow.ids propagate the created lead id into a later request', async () => {
+  it('workflow.ids propagate the created lead id into a later request', async () => {
     const auth = { authorization: `Bearer ${signHs256(defaultClaims())}` };
 
     // 1. Create a lead through the stub; the plugin captures its id under leadId.
@@ -155,9 +155,9 @@ describeWithJava('57 — G6 forward blocks + JWT through the stub', () => {
     expect(fetched['companyName']).toBe('Workflow Corp');
   }, 60_000);
 
-  // ---- AC-G6.3: overlay deprecation ---------------------------------------
+  // ---- Overlay deprecation ------------------------------------------------
 
-  it('AC-G6.3 overlay deprecates GET /leads/{id}; the served response carries Deprecation: true', async () => {
+  it('overlay deprecates GET /leads/{id}; the served response carries Deprecation: true', async () => {
     const auth = { authorization: `Bearer ${signHs256(defaultClaims())}` };
 
     // Create a lead so the GET has a real target.
@@ -182,16 +182,16 @@ describeWithJava('57 — G6 forward blocks + JWT through the stub', () => {
     expect(getRes.headers.get('deprecation')).toBe('true');
   }, 60_000);
 
-  // ---- AC-G6.4: JWT through the stub --------------------------------------
+  // ---- JWT through the stub -----------------------------------------------
 
-  it('AC-G6.4 valid JWT → 200 through the stub', async () => {
+  it('valid JWT → 200 through the stub', async () => {
     const res = await fetch(`${app.stubUrl}/leads`, {
       headers: { Accept: 'application/json', authorization: `Bearer ${signHs256(defaultClaims())}` },
     });
     expect(res.status).toBe(200);
   }, 60_000);
 
-  it('AC-G6.4 expired JWT → 401 with WWW-Authenticate through the stub', async () => {
+  it('expired JWT → 401 with WWW-Authenticate through the stub', async () => {
     const past = Math.floor(Date.now() / 1000) - 60;
     const token = signHs256(defaultClaims({ exp: past, iat: past - 3600 }));
     const res = await fetch(`${app.stubUrl}/leads`, {
@@ -201,7 +201,7 @@ describeWithJava('57 — G6 forward blocks + JWT through the stub', () => {
     expect(res.headers.get('www-authenticate')).toMatch(/Bearer/i);
   }, 60_000);
 
-  it('AC-G6.4 missing JWT → 401 with WWW-Authenticate through the stub', async () => {
+  it('missing JWT → 401 with WWW-Authenticate through the stub', async () => {
     const res = await fetch(`${app.stubUrl}/leads`, {
       headers: { Accept: 'application/json' },
     });

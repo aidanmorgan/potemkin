@@ -68,7 +68,6 @@ describeWithJava('07 — Reliability: plugin health monitoring', () => {
     expect(body.status).toBe('UP');
   }, 60_000);
 
-  // StubInitializer SPI is loaded by Specmatic ≥ 2.46.2.
   it('plugin control health reports Up when engine is running', async () => {
     const res = await fetch(`${app.pluginControlUrl}/health`);
     expect(res.status).toBe(200);

@@ -1,5 +1,5 @@
 /**
- * 54 — G3: Opportunity computed fields (totalValue = sum(lineItems.*.lineTotal),
+ * 54 — Opportunity computed fields (totalValue = sum(lineItems.*.lineTotal),
  * itemCount = length(lineItems)) recompute end-to-end through the Specmatic
  * stub as line items are added.
  *
@@ -7,7 +7,7 @@
  *  - GET /opportunities/{id} (served by Specmatic) reports the correct
  *    totalValue + itemCount after each addition;
  *  - GET /_engine/state/Opportunity/{id} reports the same totals AND lists the
- *    computed fields in _meta.computedFields (C4 surface).
+ *    computed fields in _meta.computedFields.
  *
  * The computed-field formulas + the addLineItem behaviour live entirely in the
  * CRM fixtures (tests/fixtures/crm/dsl/opportunity-add-line-item.yaml).
@@ -74,7 +74,7 @@ async function getOpportunityViaStub(stubUrl: string, oppId: string): Promise<Op
   return (await res.json()) as OpportunityState;
 }
 
-describeWithJava('54 — G3: Opportunity computed totalValue + itemCount via Specmatic', () => {
+describeWithJava('54 — Opportunity computed totalValue + itemCount via Specmatic', () => {
   let app: E2eApp;
 
   beforeAll(async () => {
@@ -135,7 +135,7 @@ describeWithJava('54 — G3: Opportunity computed totalValue + itemCount via Spe
     expect(body.itemCount).toBe(3);
     expect(body.totalValue).toBe(220);
 
-    // The C4 computed-field surface is present (array of declared computed names
+    // The computed-field surface is present (array of declared computed names
     // for the boundary, in topological order).
     expect(Array.isArray(body._meta.computedFields)).toBe(true);
     expect(typeof body._meta.version).toBe('number');

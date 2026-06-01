@@ -1,5 +1,5 @@
 /**
- * 53 — G2: TypeScript reducers fire end-to-end through Specmatic + plugin +
+ * 53 — TypeScript reducers fire end-to-end through Specmatic + plugin +
  * engine, via the Specmatic stub URL (NOT /_engine/forward).
  *
  * Proves through the Specmatic-served response that:
@@ -57,7 +57,7 @@ function target(app: E2eApp): string {
   return app.stubUrl;
 }
 
-describeWithJava('53 — G2: TypeScript reducers fire end-to-end via Specmatic', () => {
+describeWithJava('53 — TypeScript reducers fire end-to-end via Specmatic', () => {
   describe('function-style reducer() helper (ts-reducer fixture)', () => {
     let app: E2eApp;
 

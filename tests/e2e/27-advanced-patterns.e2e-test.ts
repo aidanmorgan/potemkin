@@ -4,9 +4,6 @@
  *
  * Verifies advanced DSL features work correctly end-to-end by inspecting
  * graph state and events via admin endpoints.
- *
- * Research basis: Verraes Given-Events/Then-Command, saga compensation chains,
- * Pact provider states, RBAC simulation (WireMock/MockServer), Google audit trail
  */
 
 import { startE2eApp } from './_harness/e2e-test-app';

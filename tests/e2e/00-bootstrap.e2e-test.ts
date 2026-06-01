@@ -40,7 +40,6 @@ describeWithJava('00 — Bootstrap: Specmatic + plugin SPI load', () => {
     expect([200, 400, 404]).toContain(res.status);
   }, 60_000);
 
-  // StubInitializer SPI is loaded by Specmatic ≥ 2.46.2 (the project upgrade target).
   it('plugin control server responds to GET /health', async () => {
     const res = await fetch(`${app.pluginControlUrl}/health`);
     expect(res.status).toBe(200);

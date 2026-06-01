@@ -1,19 +1,19 @@
 /**
- * 56 — G5: response mutations reach the Specmatic-served response AND are
+ * 56 — Response mutations reach the Specmatic-served response AND are
  * reproduced by the /_engine/forward _patches replay.
  *
  * Boots the `governance` fixture (Document boundary declares static hateoas:,
  * mask:, and deprecated: blocks; the OpenAPI permits _links and makes
  * internalNotes optional so the mutated body still validates against the
  * contract). Proves through the Specmatic stub URL that:
- *   - HATEOAS _links.self is injected into the served body (D1);
- *   - the masked field (internalNotes) is REMOVED from the served body (D3);
+ *   - HATEOAS _links.self is injected into the served body;
+ *   - the masked field (internalNotes) is REMOVED from the served body;
  *   - Deprecation + Sunset + successor-version Link headers are set on the
- *     deprecated getDocument response (D2).
+ *     deprecated getDocument response.
  *
  * Then proves the SAME effect via /_engine/forward: the response carries a
  * `_patches` envelope (hateoas + mask body patches) and the deprecation
- * headers, which the Kotlin PotemkinResponseInterceptor replays (E1/D4).
+ * headers, which the Kotlin PotemkinResponseInterceptor replays.
  */
 
 import { execSync } from 'node:child_process';
@@ -55,7 +55,7 @@ async function createDocViaStub(base: string, title: string): Promise<string> {
   return body.id;
 }
 
-describeWithJava('56 — G5: response mutations via Specmatic + _patches replay', () => {
+describeWithJava('56 — response mutations via Specmatic + _patches replay', () => {
   let app: E2eApp;
 
   beforeAll(async () => {
@@ -75,9 +75,9 @@ describeWithJava('56 — G5: response mutations via Specmatic + _patches replay'
       expect([200, 201]).toContain(res.status);
       const body = (await res.json()) as DocumentState;
 
-      // D1: HATEOAS self link present in the served body.
+      // HATEOAS self link present in the served body.
       expect(body._links?.self?.href).toBe('/documents');
-      // D3: the masked field has been REMOVED from the served body.
+      // The masked field has been REMOVED from the served body.
       expect(body.internalNotes).toBeUndefined();
       expect(body.title).toBe('Quarterly Report');
     }, 60_000);
@@ -91,7 +91,7 @@ describeWithJava('56 — G5: response mutations via Specmatic + _patches replay'
       });
       expect(res.status).toBe(200);
 
-      // D2: deprecation headers on the served response.
+      // Deprecation headers on the served response.
       expect(res.headers.get('deprecation')).toBe('true');
       expect(res.headers.get('sunset')).toBe('2027-01-01T00:00:00Z');
       const link = res.headers.get('link');
@@ -124,7 +124,7 @@ describeWithJava('56 — G5: response mutations via Specmatic + _patches replay'
 
       // The forward response returns the RAW body plus a `_patches` envelope:
       // the plugin's PotemkinResponseInterceptor re-applies those patches to the
-      // Specmatic-served body to reach the same mutated shape (E1/D4). So the
+      // Specmatic-served body to reach the same mutated shape. So the
       // un-patched body still carries internalNotes and has no _links yet.
       expect(fwd.body.internalNotes).toBeDefined();
       expect(fwd.body._links).toBeUndefined();

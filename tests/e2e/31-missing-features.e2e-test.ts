@@ -1,17 +1,11 @@
 /**
- * 31 — Missing Features: Competitor gap documentation exercised via the full
- * Specmatic+plugin+Node stack.
+ * 31 — Missing Features: exercised via the full Specmatic+plugin+Node stack.
  *
  * Verifies query sophistication, bulk operations, soft delete, audit fields,
  * request verification, temporal simulation, HTTP protocol compliance,
  * outbound dispatch (webhooks), data generation, and advanced query operators --
  * all exercised through the full Specmatic stack with state verified via
  * /_admin/ endpoints.
- *
- * Research basis: json-server (sorting, pagination metadata, full-text search,
- * relationship embedding), WireMock (latency injection, webhook simulation),
- * MockServer (probabilistic faults, request verification), MSW Data (soft delete,
- * array operations), Stripe (test clocks), RFC 7231 (HEAD), CORS spec (OPTIONS)
  */
 
 import { startE2eApp } from './_harness/e2e-test-app';
