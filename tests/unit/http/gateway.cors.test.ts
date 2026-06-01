@@ -155,4 +155,59 @@ describe('gateway — CORS credentialed requests (potemkin-yq1l)', () => {
     expect(res.headers['access-control-allow-origin']).toBe('*');
     expect(res.headers['access-control-allow-credentials']).toBeUndefined();
   });
+
+  // ── Restricted ALLOWED_ORIGINS allowlist — credentialed requests ──────────
+
+  it('credentialed request from an admitted origin is reflected with Allow-Credentials when allowlist is restricted', async () => {
+    process.env['ALLOWED_ORIGINS'] = 'https://app.com';
+
+    const res = await agent
+      .get('/items')
+      .set('Origin', 'https://app.com')
+      .set('Authorization', 'Bearer alice:reader')
+      .expect(200);
+
+    expect(res.headers['access-control-allow-origin']).toBe('https://app.com');
+    expect(res.headers['access-control-allow-credentials']).toBe('true');
+  });
+
+  it('credentialed request from a non-admitted origin is NOT reflected and gets NO Allow-Credentials when allowlist is restricted', async () => {
+    process.env['ALLOWED_ORIGINS'] = 'https://app.com';
+
+    const res = await agent
+      .get('/items')
+      .set('Origin', 'https://evil.com')
+      .set('Authorization', 'Bearer alice:reader')
+      .expect(200);
+
+    // The non-admitted origin must not be reflected; fallback to configured first entry.
+    expect(res.headers['access-control-allow-origin']).not.toBe('https://evil.com');
+    expect(res.headers['access-control-allow-credentials']).toBeUndefined();
+  });
+
+  it('credentialed OPTIONS preflight from an admitted origin is reflected with Allow-Credentials when allowlist is restricted', async () => {
+    process.env['ALLOWED_ORIGINS'] = 'https://app.com';
+
+    const res = await agent
+      .options('/items')
+      .set('Origin', 'https://app.com')
+      .set('Authorization', 'Bearer alice:reader')
+      .expect(204);
+
+    expect(res.headers['access-control-allow-origin']).toBe('https://app.com');
+    expect(res.headers['access-control-allow-credentials']).toBe('true');
+  });
+
+  it('credentialed OPTIONS preflight from a non-admitted origin is NOT reflected and gets NO Allow-Credentials when allowlist is restricted', async () => {
+    process.env['ALLOWED_ORIGINS'] = 'https://app.com';
+
+    const res = await agent
+      .options('/items')
+      .set('Origin', 'https://evil.com')
+      .set('Authorization', 'Bearer alice:reader')
+      .expect(204);
+
+    expect(res.headers['access-control-allow-origin']).not.toBe('https://evil.com');
+    expect(res.headers['access-control-allow-credentials']).toBeUndefined();
+  });
 });

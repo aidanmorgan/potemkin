@@ -283,19 +283,14 @@ reducers:
       - { op: replace, path: /label, value: "\${event.payload.label}" }
 `;
 
+    // bootSystem succeeds — the bad dispatch target is only detected at runtime
     const badSys = await bootSystem({
       openapi,
       compiledDsl: await compileDsl([
         { name: 'item', yaml: dslWithBadDispatch },
         { name: 'itemById', yaml: ITEM_BY_ID_DSL },
       ]),
-    }).catch(() => null);
-
-    // If boot fails (schema binding might catch it), skip this test variant
-    if (!badSys) {
-      expect(true).toBe(true); // boot guards prevented this scenario
-      return;
-    }
+    });
 
     const itemId = nextUuidv7();
     await expect(

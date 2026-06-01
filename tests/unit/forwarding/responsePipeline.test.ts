@@ -105,6 +105,10 @@ describe('responsePipeline helpers', () => {
   });
 
   describe('corsPreflightHeaders', () => {
+    afterEach(() => {
+      delete process.env['ALLOWED_ORIGINS'];
+    });
+
     it('includes the three CORS headers', () => {
       const h = corsPreflightHeaders();
       expect(h['access-control-allow-origin']).toBeDefined();
@@ -127,6 +131,20 @@ describe('responsePipeline helpers', () => {
     it('credentialed call without origin falls back to resolveAllowedOrigin (no Allow-Credentials)', () => {
       const h = corsPreflightHeaders(undefined, true);
       // No origin provided — cannot reflect; Allow-Credentials must not be set.
+      expect(h['access-control-allow-credentials']).toBeUndefined();
+    });
+
+    it('credentialed call from an admitted origin is reflected with Allow-Credentials when allowlist is restricted', () => {
+      process.env['ALLOWED_ORIGINS'] = 'https://app.com';
+      const h = corsPreflightHeaders('https://app.com', true);
+      expect(h['access-control-allow-origin']).toBe('https://app.com');
+      expect(h['access-control-allow-credentials']).toBe('true');
+    });
+
+    it('credentialed call from a non-admitted origin is NOT reflected and gets NO Allow-Credentials when allowlist is restricted', () => {
+      process.env['ALLOWED_ORIGINS'] = 'https://app.com';
+      const h = corsPreflightHeaders('https://evil.com', true);
+      expect(h['access-control-allow-origin']).not.toBe('https://evil.com');
       expect(h['access-control-allow-credentials']).toBeUndefined();
     });
   });

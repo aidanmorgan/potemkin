@@ -40,19 +40,20 @@ it('CONTRACT: validator.validateEntity is called after successful reducer execut
 });
 
 it('CONTRACT: validator.validateEntity is NOT called when no validator is provided', () => {
-  // When validator is omitted, projection still completes successfully (it's optional).
+  // When validator is omitted, projection still completes successfully and mutates state.
   const graph = createStateGraph();
   graph.set('agg-1', {});
 
-  expect(() =>
-    projectEvent({
-      event: makeDomainEvent({ type: 'System.GenericUpdateEvent', payload: { x: 1 } }),
-      boundary: makeBoundary(),
-      graph,
-      cel,
-      // No validator supplied
-    }),
-  ).not.toThrow();
+  projectEvent({
+    event: makeDomainEvent({ type: 'System.GenericUpdateEvent', payload: { x: 1 } }),
+    boundary: makeBoundary(),
+    graph,
+    cel,
+    // No validator supplied
+  });
+
+  // GenericUpdateEvent deep-merges the payload — state must reflect the change.
+  expect(graph.get('agg-1')).toMatchObject({ x: 1 });
 });
 
 // ── AUDIT GAP: validator.validateEntity called BEFORE the atomic swap ─────────

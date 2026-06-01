@@ -1,21 +1,21 @@
 /**
- * Probing tests for HTTP gateway + admin route completeness gaps.
+ * HTTP gateway + admin route completeness assertions.
  *
- * Gaps under test:
- *  1. CORS / preflight (OPTIONS) handling — gateway does NOT set CORS headers or
- *     respond to OPTIONS; browsers / test clients will silently fail.
- *  2. 5xx error body — gateway uses res.status(500).json(…) so HTML leakage from
- *     Express default handler should NOT occur, but we pin this.
- *  3. Content-Type charset variant — express.json() with default type accepts
- *     "application/json; charset=utf-8" but NOT "text/json".
- *  4. HEAD request on a contract path — Express auto-strips body for HEAD;
- *     we verify it responds 200 (not 404/405) with empty body.
+ * Asserted behaviours:
+ *  1. CORS / preflight — OPTIONS requests return 204 with Access-Control-Allow-Origin
+ *     set; all responses carry CORS headers.
+ *  2. 5xx error body — gateway uses res.status(500).json(…); HTML leakage from
+ *     Express default handler does not occur.
+ *  3. Content-Type variants — express.json() is configured to accept both
+ *     "application/json; charset=utf-8" and "text/json" (H-3).
+ *  4. HEAD request on a contract path — responds 200 with same status as GET,
+ *     empty body (RFC 7231 §4.3.2).
  *  5. Admin /_admin/state — ?boundary= filter returns that boundary (404 if unknown).
- *  6. Admin /_admin/events — no pagination support (missing feature).
- *  7. Admin /_admin/health — shape expected by most monitoring systems.
- *  8. Admin routes — no auth protection (open by design but worth asserting).
+ *  6. Admin /_admin/events — ?limit= and ?offset= pagination is supported (H-6);
+ *     omitting them returns all events.
+ *  7. Admin /_admin/health — shape expected by monitoring systems.
+ *  8. Admin routes — open by design (no auth required); asserting this is stable.
  *  9. Response Content-Type header is application/json on all JSON routes.
- * 10. OPTIONS on contract path does NOT return 200/204 with CORS headers (gap).
  */
 
 import { createTestApp, type TestApp } from '../../acceptance/_helpers/test-app.js';
@@ -48,8 +48,8 @@ describe('http/gateway — completeness probes', () => {
         .options('/leads')
         .set('Origin', 'https://example.com')
         .set('Access-Control-Request-Method', 'POST');
-      // CORS-aware server should respond 200/204 with Access-Control-Allow-Origin
-      expect([200, 204]).toContain(res.status);
+      // OPTIONS preflight handler returns 204 (gateway.ts line 195)
+      expect(res.status).toBe(204);
       expect(res.headers['access-control-allow-origin']).toBeDefined();
     },
   );
@@ -180,7 +180,7 @@ describe('http/gateway — completeness probes', () => {
     expect(res.body.entities).toBeDefined();
   });
 
-  // ── Admin /_admin/events — no pagination ────────────────────────────────────
+  // ── Admin /_admin/events — pagination ───────────────────────────────────────
 
   it(
     'GET /_admin/events supports ?limit= and ?offset= pagination (H-6)',

@@ -41,8 +41,9 @@ export interface InMemoryOtel {
 export function createInMemoryOtel(): InMemoryOtel {
   // ── Tracing ──────────────────────────────────────────────────────────────
   const spanExporter = new InMemorySpanExporter();
-  const tracerProvider = new BasicTracerProvider();
-  tracerProvider.addSpanProcessor(new SimpleSpanProcessor(spanExporter));
+  const tracerProvider = new BasicTracerProvider({
+    spanProcessors: [new SimpleSpanProcessor(spanExporter)],
+  });
 
   // ── Metrics ──────────────────────────────────────────────────────────────
   const metricExporter = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);

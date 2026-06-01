@@ -46,8 +46,9 @@ import pino from 'pino';
 
 function buildInMemoryOtel() {
   const spanExporter = new InMemorySpanExporter();
-  const tracerProvider = new BasicTracerProvider();
-  tracerProvider.addSpanProcessor(new SimpleSpanProcessor(spanExporter));
+  const tracerProvider = new BasicTracerProvider({
+    spanProcessors: [new SimpleSpanProcessor(spanExporter)],
+  });
 
   const metricExporter = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);
   const meterProvider = new MeterProvider({

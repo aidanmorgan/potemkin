@@ -35,20 +35,37 @@ function resolveAllowedOrigin(requestOrigin: string | undefined): string {
 }
 
 /**
+ * Returns true when the given requestOrigin is admitted by the ALLOWED_ORIGINS
+ * allowlist for purposes of credentialed-request reflection. Mirrors
+ * isOriginAdmitted in gateway.ts.
+ */
+function isOriginAdmitted(requestOrigin: string | undefined): boolean {
+  if (!requestOrigin) return false;
+  const raw = process.env['ALLOWED_ORIGINS'] ?? '*';
+  if (raw === '*') return true;
+  const allowed = raw.split(',').map((s) => s.trim());
+  return allowed.includes(requestOrigin);
+}
+
+/**
  * CORS response headers (lowercased keys) for a forwarded OPTIONS preflight.
  *
  * When the request carries credentials (cookie or Authorization), browsers
  * require a specific reflected Origin (not '*') and Allow-Credentials: true.
+ * We only reflect the origin and set Allow-Credentials when the requestOrigin
+ * is admitted by the ALLOWED_ORIGINS allowlist — bypassing the allowlist for
+ * credentialed requests would defeat its purpose.
  * The `credentialed` flag mirrors the gateway's isCredentialedRequest check.
  */
 export function corsPreflightHeaders(requestOrigin?: string, credentialed = false): Record<string, string> {
-  const origin = (credentialed && requestOrigin) ? requestOrigin : resolveAllowedOrigin(requestOrigin);
+  const admitted = credentialed && isOriginAdmitted(requestOrigin);
+  const origin = admitted ? requestOrigin! : resolveAllowedOrigin(requestOrigin);
   const headers: Record<string, string> = {
     'access-control-allow-origin': origin,
     'access-control-allow-methods': CORS_ALLOW_METHODS,
     'access-control-allow-headers': CORS_ALLOW_HEADERS,
   };
-  if (credentialed && requestOrigin) {
+  if (admitted) {
     headers['access-control-allow-credentials'] = 'true';
   }
   return headers;

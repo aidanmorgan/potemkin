@@ -32,14 +32,16 @@ describe('observability/logger', () => {
       expect(() => createLogger({ pretty: true, level: QUIET })).not.toThrow();
     });
 
-    it('logger info does not throw', () => {
+    it('logger.info returns undefined (call completes synchronously)', () => {
       const logger = createLogger({ level: QUIET });
-      expect(() => logger.info('test message')).not.toThrow();
+      const result = logger.info('test message');
+      expect(result).toBeUndefined();
     });
 
-    it('logger error does not throw', () => {
+    it('logger.error returns undefined (call completes synchronously)', () => {
       const logger = createLogger({ level: QUIET });
-      expect(() => logger.error({ err: new Error('test') }, 'error message')).not.toThrow();
+      const result = logger.error({ err: new Error('test') }, 'error message');
+      expect(result).toBeUndefined();
     });
 
     it('accepts bindings in options', () => {
@@ -69,10 +71,11 @@ describe('observability/logger', () => {
       expect(typeof child.info).toBe('function');
     });
 
-    it('child logger does not throw on info call', () => {
+    it('child logger.info returns undefined (call completes synchronously)', () => {
       const parent = createLogger({ level: QUIET });
       const child = childLogger(parent, { context: 'test' });
-      expect(() => child.info('child message')).not.toThrow();
+      const result = child.info('child message');
+      expect(result).toBeUndefined();
     });
 
     it('child is distinct from parent', () => {

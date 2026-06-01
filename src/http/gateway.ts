@@ -90,6 +90,26 @@ function getAllowedOrigin(requestOrigin: string | undefined): string {
 }
 
 /**
+ * Returns true when the given requestOrigin is admitted by the ALLOWED_ORIGINS
+ * allowlist for purposes of credentialed-request reflection.
+ *
+ * Two cases are admitted:
+ *  - ALLOWED_ORIGINS is '*' (the sim default): any specific origin is allowed.
+ *    Browsers reject `Access-Control-Allow-Origin: *` with credentials, so we
+ *    must reflect the specific origin in this case.
+ *  - ALLOWED_ORIGINS is a restricted list and requestOrigin is in it.
+ *
+ * When requestOrigin is undefined, there is no origin to reflect regardless.
+ */
+function isOriginAdmitted(requestOrigin: string | undefined): boolean {
+  if (!requestOrigin) return false;
+  const raw = process.env['ALLOWED_ORIGINS'] ?? '*';
+  if (raw === '*') return true;
+  const allowed = raw.split(',').map((s) => s.trim());
+  return allowed.includes(requestOrigin);
+}
+
+/**
  * Returns true when the request carries credentials: a Cookie header (session
  * auth) or an Authorization header (JWT/Bearer). Browsers that send credentialed
  * requests reject a wildcard `Access-Control-Allow-Origin: *` response, so we
@@ -131,16 +151,18 @@ export function createGateway(sys: BootedSystem): Express {
   // CORS middleware — add Access-Control-* headers to every response (H-2).
   // When the request carries credentials (Cookie or Authorization), browsers
   // require a specific reflected Origin (not '*') and Allow-Credentials: true.
+  // We only reflect the origin and set Allow-Credentials when the requestOrigin
+  // is admitted by the ALLOWED_ORIGINS allowlist — otherwise the allowlist would
+  // be bypassed exactly for the cookie/JWT requests where it matters most.
   app.use((req: Request, res: Response, next: NextFunction) => {
     const requestOrigin = req.headers['origin'] as string | undefined;
     const credentialed = isCredentialedRequest(req);
-    const origin = (credentialed && requestOrigin)
-      ? requestOrigin
-      : getAllowedOrigin(requestOrigin);
+    const admitted = credentialed && isOriginAdmitted(requestOrigin);
+    const origin = admitted ? requestOrigin! : getAllowedOrigin(requestOrigin);
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Methods', CORS_ALLOW_METHODS);
     res.setHeader('Access-Control-Allow-Headers', CORS_ALLOW_HEADERS);
-    if (credentialed && requestOrigin) {
+    if (admitted) {
       res.setHeader('Access-Control-Allow-Credentials', 'true');
     }
     next();
@@ -162,13 +184,12 @@ export function createGateway(sys: BootedSystem): Express {
   app.options('*', (req: Request, res: Response) => {
     const requestOrigin = req.headers['origin'] as string | undefined;
     const credentialed = isCredentialedRequest(req);
-    const origin = (credentialed && requestOrigin)
-      ? requestOrigin
-      : getAllowedOrigin(requestOrigin);
+    const admitted = credentialed && isOriginAdmitted(requestOrigin);
+    const origin = admitted ? requestOrigin! : getAllowedOrigin(requestOrigin);
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Methods', CORS_ALLOW_METHODS);
     res.setHeader('Access-Control-Allow-Headers', CORS_ALLOW_HEADERS);
-    if (credentialed && requestOrigin) {
+    if (admitted) {
       res.setHeader('Access-Control-Allow-Credentials', 'true');
     }
     res.status(204).end();

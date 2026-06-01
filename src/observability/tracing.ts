@@ -4,7 +4,7 @@ import {
 } from '@opentelemetry/api';
 import type { Tracer, Span } from '@opentelemetry/api';
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import {
   ATTR_SERVICE_NAME,
   ATTR_SERVICE_INSTANCE_ID,
@@ -68,7 +68,7 @@ export async function initTracing(
     return { shutdown: async () => undefined };
   }
 
-  const resource = new Resource({
+  const resource = resourceFromAttributes({
     [ATTR_SERVICE_NAME]: serviceName,
     'service.version': _serviceVersion,
     [ATTR_SERVICE_INSTANCE_ID]: instanceId,

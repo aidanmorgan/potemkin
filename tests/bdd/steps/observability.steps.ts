@@ -19,9 +19,10 @@ let _inMemoryProvider: BasicTracerProvider | null = null;
 
 Before({ tags: '@otel-spans' }, function () {
   _inMemoryExporter = new InMemorySpanExporter();
-  _inMemoryProvider = new BasicTracerProvider();
-  _inMemoryProvider.addSpanProcessor(new SimpleSpanProcessor(_inMemoryExporter));
-  _inMemoryProvider.register();
+  _inMemoryProvider = new BasicTracerProvider({
+    spanProcessors: [new SimpleSpanProcessor(_inMemoryExporter)],
+  });
+  trace.setGlobalTracerProvider(_inMemoryProvider);
 });
 
 After({ tags: '@otel-spans' }, async function () {

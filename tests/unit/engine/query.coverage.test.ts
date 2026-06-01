@@ -44,7 +44,7 @@ describe('engine/query.ts additional coverage', () => {
       expect(result).toHaveLength(0);
     });
 
-    it('CEL filter catch returns false — does not throw (graceful exclusion)', () => {
+    it('CEL filter catch returns false — entity is excluded on CEL error (graceful exclusion)', () => {
       const graph = createStateGraph();
       graph.set('a', { id: 'a' });
 
@@ -52,16 +52,17 @@ describe('engine/query.ts additional coverage', () => {
         queryMapping: { foo: 'undefined_ident_filter_throws' },
       });
 
-      expect(() =>
-        runQuery({
-          boundary,
-          targetId: null,
-          queryParams: { foo: 'bar' },
-          graph,
-          cel,
-          openapi: { raw: {}, paths: {} },
-        }),
-      ).not.toThrow();
+      const result = runQuery({
+        boundary,
+        targetId: null,
+        queryParams: { foo: 'bar' },
+        graph,
+        cel,
+        openapi: { raw: {}, paths: {} },
+      }) as any[];
+
+      // CEL throw in filter catch block returns false → entity excluded → empty result
+      expect(result).toHaveLength(0);
     });
   });
 

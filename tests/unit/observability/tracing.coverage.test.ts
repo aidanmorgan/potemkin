@@ -7,10 +7,9 @@
  *  - 67-68: `{}` branch in traceExporterOpts/metricsExporterOpts when otlpEndpoint is undefined
  */
 
-// The Resource constructor receives the resolved service.version attribute, so
-// we observe what tracing.ts puts there by subclassing the real Resource and
-// recording the attributes it is constructed with. The subclass delegates to
-// the real implementation, so SDK behaviour is unchanged.
+// resourceFromAttributes receives the resolved service attributes, so we
+// intercept it to capture what tracing.ts passes. The real implementation is
+// still called so SDK behaviour is unchanged.
 const capturedResourceAttrs: { value: Record<string, unknown> | undefined } = {
   value: undefined,
 };
@@ -18,11 +17,9 @@ jest.mock('@opentelemetry/resources', () => {
   const actual = jest.requireActual('@opentelemetry/resources');
   return {
     ...actual,
-    Resource: class extends actual.Resource {
-      constructor(attrs: Record<string, unknown>) {
-        capturedResourceAttrs.value = attrs;
-        super(attrs);
-      }
+    resourceFromAttributes: (attrs: Record<string, unknown>) => {
+      capturedResourceAttrs.value = attrs;
+      return actual.resourceFromAttributes(attrs);
     },
   };
 });
