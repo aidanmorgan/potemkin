@@ -132,14 +132,18 @@ function operatorMatch(fieldValue: unknown, op: string, expected: string): boole
   if (fieldValue === null || fieldValue === undefined) {
     return op === 'ne';
   }
-  // Numeric ops try numeric compare when expected parses as number.
-  const numExpected = Number(expected);
+  // Numeric ops try numeric compare when expected parses as a non-empty number.
+  // Number('') === 0, which is not NaN, so guard against empty expected explicitly.
+  // `emptyExpected` drives range operators (gt/gte/lt/lte) to pass-through rather than
+  // comparing against an empty string, while still allowing string fallback for date fields.
+  const emptyExpected = expected.trim() === '';
+  const numExpected = emptyExpected ? NaN : Number(expected);
   const numField = typeof fieldValue === 'number' ? fieldValue : Number(fieldValue);
   switch (op) {
-    case 'gt':  return !isNaN(numField) && !isNaN(numExpected) ? numField > numExpected : String(fieldValue) > expected;
-    case 'gte': return !isNaN(numField) && !isNaN(numExpected) ? numField >= numExpected : String(fieldValue) >= expected;
-    case 'lt':  return !isNaN(numField) && !isNaN(numExpected) ? numField < numExpected : String(fieldValue) < expected;
-    case 'lte': return !isNaN(numField) && !isNaN(numExpected) ? numField <= numExpected : String(fieldValue) <= expected;
+    case 'gt':  if (emptyExpected) return true; return !isNaN(numField) && !isNaN(numExpected) ? numField > numExpected : String(fieldValue) > expected;
+    case 'gte': if (emptyExpected) return true; return !isNaN(numField) && !isNaN(numExpected) ? numField >= numExpected : String(fieldValue) >= expected;
+    case 'lt':  if (emptyExpected) return true; return !isNaN(numField) && !isNaN(numExpected) ? numField < numExpected : String(fieldValue) < expected;
+    case 'lte': if (emptyExpected) return true; return !isNaN(numField) && !isNaN(numExpected) ? numField <= numExpected : String(fieldValue) <= expected;
     case 'ne':  return String(fieldValue) !== expected && (isNaN(numField) || isNaN(numExpected) || numField !== numExpected);
     case 'in': {
       const set = expected.split(',').map(s => s.trim());

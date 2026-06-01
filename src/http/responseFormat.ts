@@ -55,6 +55,28 @@ function firstQuery(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
+/**
+ * Build a query string from `query`, overriding `offset` and `limit`, and dropping `cursor`.
+ * Array-valued params emit one key=value pair per element. Keys and values are percent-encoded.
+ */
+function buildQueryString(
+  query: Record<string, string | string[]>,
+  offset: number,
+  limit: number,
+): string {
+  const parts: string[] = [];
+  for (const [key, value] of Object.entries(query)) {
+    if (key === 'offset' || key === 'limit' || key === 'cursor') continue;
+    const values = Array.isArray(value) ? value : [value];
+    for (const v of values) {
+      parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(v)}`);
+    }
+  }
+  parts.push(`offset=${offset}`);
+  parts.push(`limit=${limit}`);
+  return parts.join('&');
+}
+
 export interface PaginationTransformResult {
   readonly body: JsonValue;
   readonly headers: Record<string, string>;
@@ -110,11 +132,11 @@ export function applyPaginationStyle(
     if (limit > 0) {
       if (hasMore) {
         const nextOffset = offset + items.length;
-        links.push(`<${basePath}?offset=${nextOffset}&limit=${limit}>; rel="next"`);
+        links.push(`<${basePath}?${buildQueryString(query, nextOffset, limit)}>; rel="next"`);
       }
       if (offset > 0) {
         const prevOffset = Math.max(0, offset - limit);
-        links.push(`<${basePath}?offset=${prevOffset}&limit=${limit}>; rel="prev"`);
+        links.push(`<${basePath}?${buildQueryString(query, prevOffset, limit)}>; rel="prev"`);
       }
     }
     if (links.length > 0) headers['Link'] = links.join(', ');

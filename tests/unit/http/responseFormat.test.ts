@@ -111,4 +111,60 @@ describe('responseFormat — applyPaginationStyle', () => {
     const out = applyPaginationStyle(body, 'envelope', {}, '/leads/x');
     expect(out.body).toBe(body);
   });
+
+  describe('link-header preserves extra query params in next/prev URLs', () => {
+    it('includes status and sort params alongside updated offset in next link', () => {
+      const env = { items: [{ id: 'a' }, { id: 'b' }], totalCount: 10, offset: 0, limit: 2, hasMore: true } as unknown as JsonValue;
+      const out = applyPaginationStyle(env, 'link-header', { status: 'active', sort: 'name', offset: '0', limit: '2' }, '/leads');
+      const link = out.headers['Link']!;
+      expect(link).toContain('status=active');
+      expect(link).toContain('sort=name');
+      expect(link).toContain('offset=2');
+      expect(link).toContain('limit=2');
+      expect(link).toContain('rel="next"');
+    });
+
+    it('includes status and sort params in prev link with updated offset', () => {
+      const env = { items: [{ id: 'c' }], totalCount: 10, offset: 4, limit: 2, hasMore: true } as unknown as JsonValue;
+      const out = applyPaginationStyle(env, 'link-header', { status: 'active', sort: 'name', offset: '4', limit: '2' }, '/leads');
+      const link = out.headers['Link']!;
+      expect(link).toContain('status=active');
+      expect(link).toContain('sort=name');
+      // prev offset = max(0, 4 - 2) = 2
+      expect(link).toContain('offset=2');
+      expect(link).toContain('rel="prev"');
+      expect(link).toContain('rel="next"');
+    });
+
+    it('drops cursor param from next/prev link URLs', () => {
+      const env = { items: [{ id: 'a' }, { id: 'b' }], totalCount: 10, offset: 2, limit: 2, hasMore: true } as unknown as JsonValue;
+      const out = applyPaginationStyle(env, 'link-header', { status: 'active', cursor: 'abc123', offset: '2', limit: '2' }, '/leads');
+      const link = out.headers['Link']!;
+      expect(link).not.toContain('cursor=');
+      expect(link).toContain('status=active');
+    });
+
+    it('handles array-valued query params by emitting one pair per element', () => {
+      const env = { items: [{ id: 'a' }], totalCount: 5, offset: 0, limit: 1, hasMore: true } as unknown as JsonValue;
+      const out = applyPaginationStyle(env, 'link-header', { tag: ['foo', 'bar'], offset: '0', limit: '1' }, '/leads');
+      const link = out.headers['Link']!;
+      expect(link).toContain('tag=foo');
+      expect(link).toContain('tag=bar');
+    });
+
+    it('empty query (no extra params) still produces correct next URL', () => {
+      const out = applyPaginationStyle(ENVELOPE, 'link-header', {}, '/leads');
+      const link = out.headers['Link']!;
+      expect(link).toContain('offset=2');
+      expect(link).toContain('limit=2');
+      expect(link).toContain('rel="next"');
+    });
+
+    it('URL-encodes special characters in param values', () => {
+      const env = { items: [{ id: 'a' }], totalCount: 5, offset: 0, limit: 1, hasMore: true } as unknown as JsonValue;
+      const out = applyPaginationStyle(env, 'link-header', { q: 'hello world', offset: '0', limit: '1' }, '/leads');
+      const link = out.headers['Link']!;
+      expect(link).toContain('q=hello%20world');
+    });
+  });
 });

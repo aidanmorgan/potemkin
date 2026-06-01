@@ -545,6 +545,112 @@ describe('Query operators', () => {
     });
   });
 
+  // ── Empty expected value edge cases ────────────────────────────────────────
+
+  describe('numeric operators with empty expected value', () => {
+    it('ne with empty expected does not treat a 0-valued field as equal', () => {
+      const graph = makeGraph([
+        { id: 'a', score: 0 },
+        { id: 'b', score: 10 },
+      ]);
+      // ?score:ne= — empty expected should NOT match score=0 (Number('')===0 is the bug)
+      const result = runQuery({
+        boundary: makeBoundary(),
+        targetId: null,
+        queryParams: { 'score:ne': '' },
+        graph,
+        cel,
+        openapi: emptyDoc,
+      }) as any[];
+      // Both entities should survive: ne with empty expected is undefined/NaN, not equal to 0
+      expect(result.map((e: any) => e.id).sort()).toEqual(['a', 'b']);
+    });
+
+    it('gt with empty expected does not spuriously filter to score>0', () => {
+      const graph = makeGraph([
+        { id: 'a', score: 0 },
+        { id: 'b', score: -5 },
+        { id: 'c', score: 10 },
+      ]);
+      // ?score:gt= — empty expected produces NaN, comparison is skipped, all pass through
+      const result = runQuery({
+        boundary: makeBoundary(),
+        targetId: null,
+        queryParams: { 'score:gt': '' },
+        graph,
+        cel,
+        openapi: emptyDoc,
+      }) as any[];
+      expect(result).toHaveLength(3);
+    });
+
+    it('lt with empty expected does not spuriously filter to score<0', () => {
+      const graph = makeGraph([
+        { id: 'a', score: 0 },
+        { id: 'b', score: 5 },
+        { id: 'c', score: -5 },
+      ]);
+      const result = runQuery({
+        boundary: makeBoundary(),
+        targetId: null,
+        queryParams: { 'score:lt': '' },
+        graph,
+        cel,
+        openapi: emptyDoc,
+      }) as any[];
+      expect(result).toHaveLength(3);
+    });
+
+    it('normal score:gt=10 still works correctly with empty-fix in place', () => {
+      const graph = makeGraph([
+        { id: 'a', score: 5 },
+        { id: 'b', score: 15 },
+        { id: 'c', score: 20 },
+      ]);
+      const result = runQuery({
+        boundary: makeBoundary(),
+        targetId: null,
+        queryParams: { 'score:gt': '10' },
+        graph,
+        cel,
+        openapi: emptyDoc,
+      }) as any[];
+      expect(result.map((e: any) => e.id).sort()).toEqual(['b', 'c']);
+    });
+
+    it('gte with empty expected does not filter out entities', () => {
+      const graph = makeGraph([
+        { id: 'a', score: 0 },
+        { id: 'b', score: -1 },
+      ]);
+      const result = runQuery({
+        boundary: makeBoundary(),
+        targetId: null,
+        queryParams: { 'score:gte': '' },
+        graph,
+        cel,
+        openapi: emptyDoc,
+      }) as any[];
+      expect(result).toHaveLength(2);
+    });
+
+    it('lte with empty expected does not filter out entities', () => {
+      const graph = makeGraph([
+        { id: 'a', score: 0 },
+        { id: 'b', score: 1 },
+      ]);
+      const result = runQuery({
+        boundary: makeBoundary(),
+        targetId: null,
+        queryParams: { 'score:lte': '' },
+        graph,
+        cel,
+        openapi: emptyDoc,
+      }) as any[];
+      expect(result).toHaveLength(2);
+    });
+  });
+
   // ── Combined filters ───────────────────────────────────────────────────────
 
   describe('combined filters', () => {
