@@ -160,25 +160,24 @@ See `src/engine/projection.ts` for the AJV validation implementation.
 behaviors:
   - name: createLead
     match:
-      intent: creation
+      operationId: createLead
       condition: "true"
     emit: LeadCreated
     dispatch_commands:
       - boundary: Campaign
         intent: mutation
+        operationId: getCampaign
         target_id: "command.payload.assignedCampaignId"
         payload:
           leadSource: "command.payload.source"
-        condition: "command.payload.assignedCampaignId != null"
+        condition: "command.payload?.assignedCampaignId != null"
 ```
 
-### `match.intent`
+### `match.operationId`
 
-One of `creation`, `mutation`, or `query`. Behaviors with a non-matching intent are skipped without evaluating `condition`.
+The OpenAPI `operationId` that this behavior handles (e.g. `createLead`, `qualifyLead`). Behaviors whose `operationId` does not match the incoming operation are skipped without evaluating `condition`. This field is **required** — omitting it halts boot with `BOOT_ERR_MISSING_OPERATION_ID`.
 
-- `creation` — mapped from `POST` when `identity.creation` is defined.
-- `mutation` — mapped from `PUT`, `PATCH`, `DELETE`, and `POST` without identity creation.
-- `query` — mapped from `GET`.
+> ⚠️ `match.intent` is removed. Using it halts boot with `BOOT_ERR_REMOVED_SYNTAX`. Replace all `intent:` fields in `match` blocks with `operationId:` pointing to the OpenAPI operationId.
 
 ### `match.condition`
 
@@ -196,16 +195,16 @@ Named guard conditions evaluated **before** `match.condition`. If any guard eval
 
 ```yaml
 match:
-  intent: mutation
+  operationId: contactLead
   requires:
     - name: not-dnc
       condition: "state.status != 'DNC'"
       error_code: LEAD_IS_DNC
-      message: "Cannot contact a lead that has been marked Do Not Call"
+      error_message: "Cannot contact a lead that has been marked Do Not Call"
     - name: not-converted
       condition: "state.status != 'CONVERTED'"
       error_code: LEAD_ALREADY_CONVERTED
-      message: "Cannot contact a lead that has already been converted"
+      error_message: "Cannot contact a lead that has already been converted"
   condition: "$concat('/leads/', command.targetId, '/contact') == command.path"
 ```
 
@@ -224,7 +223,7 @@ List of scope strings that the caller's actor must possess. Evaluated before `re
 
 ```yaml
 match:
-  intent: creation
+  operationId: createLead
   required_scopes: [admin, lead:write]
   condition: "true"
 ```
@@ -274,6 +273,7 @@ Secondary commands queued for execution within the same Unit of Work. Each secon
 dispatch_commands:
   - boundary: Lead
     intent: mutation
+    operationId: patchLead
     target_id: "command.payload.leadId"
     payload:
       opportunityId: "command.targetId"
@@ -284,6 +284,7 @@ dispatch_commands:
 |-------|------|----------|-------------|
 | `boundary` | string | yes | Target boundary logical name |
 | `intent` | string | yes | `creation`, `mutation`, or `query` |
+| `operationId` | string | yes | OpenAPI operationId for the secondary command |
 | `target_id` | CEL string | yes | CEL expression resolving to the target aggregate ID |
 | `payload` | `map<string, CEL>` | no | Payload fields (each value is a CEL expression) |
 | `condition` | CEL boolean | no | When present and `false`, this entry is silently skipped (Tier 1) |

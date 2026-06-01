@@ -297,6 +297,62 @@ describe('sandbox security — vm escape prevention', () => {
     expect(result).toMatch(/^blocked/);
   });
 
+  // The context global is host-created; globalThis.constructor.constructor was a
+  // live RCE escape (potemkin-mm7g) until the bootstrap neutralized it.
+  it.each([
+    ['globalThis.constructor.constructor', `globalThis.constructor.constructor("return process")()`],
+    ['(0,eval)("globalThis") chain', `(0,eval)("globalThis").constructor.constructor("return process")()`],
+    ['(function(){return this})() chain', `(function(){ return this || globalThis; })().constructor.constructor("return process")()`],
+    ['Object.getPrototypeOf(globalThis) chain', `Object.getPrototypeOf(globalThis).constructor.constructor("return process")()`],
+  ])('escape via %s does not yield host process', (_label, expr) => {
+    const code = `
+      export default () => {
+        try {
+          const result = ${expr};
+          return result != null ? 'ESCAPED' : 'blocked';
+        } catch(e) {
+          return 'blocked:' + e.message;
+        }
+      };
+    `;
+    const handle = compileAndInstantiate(code);
+    const result = invokeScript(handle, makeCtx()) as string;
+    expect(result).not.toBe('ESCAPED');
+    expect(result).toMatch(/^blocked/);
+  });
+
+  it('real RCE via globalThis.constructor chain is blocked', () => {
+    const code = `
+      export default () => {
+        try {
+          const proc = globalThis.constructor.constructor("return process")();
+          const out = proc.mainModule.require("child_process").execSync("echo PWNED").toString();
+          return 'ESCAPED:' + out;
+        } catch(e) {
+          return 'blocked:' + e.message;
+        }
+      };
+    `;
+    const handle = compileAndInstantiate(code);
+    const result = invokeScript(handle, makeCtx()) as string;
+    expect(result).not.toContain('PWNED');
+    expect(result).toMatch(/^blocked/);
+  });
+
+  it('realm-native Function and eval remain available but cannot see host globals', () => {
+    const code = `
+      export default () => {
+        const fnProc = (() => { try { return Function("return typeof process")(); } catch(e){ return 'threw'; } })();
+        const evalProc = (() => { try { return eval("typeof process"); } catch(e){ return 'threw'; } })();
+        return fnProc + ',' + evalProc;
+      };
+    `;
+    const handle = compileAndInstantiate(code);
+    const result = invokeScript(handle, makeCtx()) as string;
+    // process must be undefined in the realm (not visible), proving realm fn/eval are safe.
+    expect(result).toBe('undefined,undefined');
+  });
+
   it('transpiled reducer using JSON/Math/Date/new Date/helpers works end-to-end', () => {
     const code = `
       export default function reducer(ctx: { state: { balance: number }; helpers: { uuid: () => string; now: () => string } }) {

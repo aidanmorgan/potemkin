@@ -4,6 +4,9 @@
   "description": "Specmatic Stateful Simulation Engine — CQRS/ES HTTP service simulator via OpenAPI + YAML DSL",
   "license": "MIT",
   "main": "dist/index.js",
+  "engines": {
+    "node": ">=20.6.0"
+  },
   "scripts": {
     "build": "tsc",
     "test": "jest",

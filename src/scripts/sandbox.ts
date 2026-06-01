@@ -43,10 +43,25 @@ function deriveNumericSeed(s: string): number {
  * At invocation time, the script is re-run in a fresh vm context per call
  * with a 50ms timeout.
  *
- * Security model:
+ * Security model (defense-in-depth, see TRUST MODEL note below):
  * - The vm context receives NO host-realm objects or functions. Any host-realm
  *   object injected into vm.createContext is reachable via .constructor chains
  *   and allows escape to the host Function constructor → full RCE.
+ * - The one host-Function reach path that is NOT an injection — the host-created
+ *   context global, reachable via globalThis.constructor.constructor(...),
+ *   (0,eval)("globalThis")..., (function(){return this})()... — is neutralized in
+ *   the bootstrap by redefining globalThis.constructor to the realm-native Object.
+ *   After that, every reachable .constructor chain resolves to the REALM Function,
+ *   which executes in the realm scope where host globals (process, require) are
+ *   undefined. Realm-native Function/eval are therefore safe.
+ *
+ * TRUST MODEL: Node's vm is officially NOT a hard security boundary. Reducer
+ * scripts here are TRUSTED operator-authored code loaded from the operator's own
+ * config/disk (an operator who writes a malicious reducer already controls the
+ * deployment) — the sandbox is best-effort defense-in-depth, not a boundary for
+ * untrusted network input. If untrusted reducers ever become a requirement, move
+ * execution to a real isolate (isolated-vm) or a separate process.
+ *
  * - JSON, Math, Date are realm-native in every vm context and require no injection.
  * - URL is not available in vm realm and is not injected.
  * - console is overridden inside the realm by the bootstrap to push to a buffer;
@@ -166,6 +181,29 @@ function invokeWithCode(
   // After script.runInContext, the host reads this array as primitive strings.
   const bootstrapScriptTopLevel = `
 'use strict';
+
+// ---- Neutralize the one host-Function reach path: the context global ----
+// vm.createContext produces a host-created global object. Every realm-native
+// built-in (Object, Array, Date, JSON, Math, Error, Symbol, Promise, async/
+// generator function constructors, the realm-native Function/eval) resolves its
+// .constructor chain to the REALM Function, which runs in the realm scope where
+// 'process' is undefined — those are all safe. The SOLE exception is
+// 'globalThis.constructor', which points at the HOST Object whose .constructor
+// is the HOST Function — giving globalThis.constructor.constructor("return
+// process")() full host access (also reachable via (0,eval)("globalThis") and
+// (function(){return this})()). We redefine globalThis.constructor to the
+// realm-native Object so every reachable .constructor chain now resolves to the
+// realm Function. (Empirically verified to close globalThis/eval/this/proto/RCE
+// vectors while leaving legitimate realm-native code working.)
+(function() {
+  var _RealmObject = ({}).constructor;
+  try {
+    Object.defineProperty(globalThis, 'constructor', {
+      value: _RealmObject, writable: false, enumerable: false, configurable: false,
+    });
+  } catch (_e) { /* already locked down */ }
+})();
+
 var _ctxData = JSON.parse(__ctxDataJson__);
 
 // ---- mulberry32 PRNG (realm-native — uses only arithmetic, no host objects) ----
