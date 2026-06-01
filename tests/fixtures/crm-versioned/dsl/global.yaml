@@ -46,7 +46,7 @@ sagas:
         boundary: Opportunity
         intent: creation
         operationId: createOpportunity
-        target_id: "${$uuidv7()}"
+        target_id: "$uuidv7()"
         payload:
           leadId: "${event.aggregateId}"
           agentId: "${event.payload.agentId}"
