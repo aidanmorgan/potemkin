@@ -4,6 +4,7 @@ import type { CelEvaluator } from '../cel/evaluator.js';
 import type { Logger } from '../observability/logger.js';
 import { CelPhase } from '../cel/phases.js';
 import { checkScopes } from '../identity/scopeChecker.js';
+import { matchHeadersAnd } from '../engine/headerMatch.js';
 
 export interface FaultEvalInput {
   readonly command: Command;
@@ -70,15 +71,10 @@ function matchesFaultRule(
 
   if (rule.match.intent !== undefined && rule.match.intent !== command.intent) return false;
 
-  // Header matching: all specified headers must be present on the command.
-  // For value "*", only presence is required; otherwise exact value match.
+  // Header matching: all declared headers must match (AND semantics).
+  // Name lookup is case-insensitive; '*' and 'present' are any-value sentinels.
   if (rule.match.headers && Object.keys(rule.match.headers).length > 0) {
-    const reqHeaders = command.headers ?? {};
-    for (const [name, expected] of Object.entries(rule.match.headers)) {
-      const actual = reqHeaders[name];
-      if (actual === undefined) return false;
-      if (expected !== '*' && actual !== expected) return false;
-    }
+    if (!matchHeadersAnd(rule.match.headers, command.headers ?? {})) return false;
   }
 
   if (rule.match.requiredScopes && rule.match.requiredScopes.length > 0) {

@@ -60,9 +60,9 @@ function cfg(session: SessionAuthConfig | undefined) {
     ttlSeconds: session?.ttlSeconds ?? DEFAULT_TTL_SECONDS,
     loginPath: session?.loginPath ?? '/sessions',
     logoutPath: session?.logoutPath ?? '/sessions/current',
-    // The fixture configures the CSRF header name via csrf_header; the schema
-    // surfaces it as csrfHeader. CSRF is enforced when a header name is set.
-    csrfHeader: session?.csrfHeader,
+    // CSRF is enforced when a header name is configured AND csrf is not
+    // explicitly disabled (csrf defaults to true when absent).
+    csrfHeader: session?.csrf !== false ? session?.csrfHeader : undefined,
   };
 }
 

@@ -15,6 +15,7 @@ import {
   UnhandledOperationError,
   InternalExecutionError,
 } from '../errors.js';
+import { matchHeadersAnd } from './headerMatch.js';
 import { checkScopes } from '../identity/scopeChecker.js';
 import { lookupOperationId } from '../contract/loader.js';
 import type { OpenApiDoc } from '../contract/loader.js';
@@ -179,18 +180,10 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
       continue;
     }
 
-    // Header matching: all declared headers must be present; if expected !== 'present',
-    // value must also match exactly. Header names are compared case-insensitively by
-    // lowercasing both sides (command.headers keys are already lowercased).
+    // Header matching: all declared headers must match (AND semantics).
+    // Name lookup is case-insensitive; '*' and 'present' are any-value sentinels.
     if (behavior.match.headers && Object.keys(behavior.match.headers).length > 0) {
-      const reqHeaders = command.headers ?? {};
-      let headersMatch = true;
-      for (const [name, expected] of Object.entries(behavior.match.headers)) {
-        const actual = reqHeaders[name.toLowerCase()];
-        if (actual === undefined) { headersMatch = false; break; }
-        if (expected !== 'present' && actual !== expected) { headersMatch = false; break; }
-      }
-      if (!headersMatch) {
+      if (!matchHeadersAnd(behavior.match.headers, command.headers ?? {})) {
         log?.debug({ behaviorName: behavior.name }, 'Skipping behavior — header match failed');
         continue;
       }

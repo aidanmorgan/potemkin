@@ -263,7 +263,6 @@ export interface FaultRule {
 
 /** JWT (HS256) validator config. */
 export interface JwtAuthConfig {
-  readonly enabled?: boolean;
   /** Shared secret for HS256. */
   readonly secret: string;
   /** Algorithm — must be 'HS256'. */
@@ -282,7 +281,6 @@ export interface JwtAuthConfig {
 
 /** Session/cookie auth config. */
 export interface SessionAuthConfig {
-  readonly enabled?: boolean;
   /** Cookie name. Default: `sid`. */
   readonly cookieName?: string;
   /** TTL in seconds. */

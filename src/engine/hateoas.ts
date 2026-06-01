@@ -49,6 +49,17 @@ function expandPath(contractPath: string, id: string): string {
 }
 
 /**
+ * Prefix a relative path with baseUrl when present. Ensures exactly one slash
+ * between the base and the path (trailing slash stripped from base; leading
+ * slash on path is preserved).
+ */
+function applyBaseUrl(path: string, baseUrl: string | undefined): string {
+  if (!baseUrl) return path;
+  const base = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+  return `${base}${path}`;
+}
+
+/**
  * Return the entity's id from a typical "state" object. Falls back to null when
  * absent or non-string (links are skipped in that case).
  */
@@ -148,6 +159,7 @@ export function computeLinks(input: HateoasInput): Record<string, HateoasLink> |
   }
 
   const links: Record<string, HateoasLink> = {};
+  const baseUrl = hateoas.baseUrl;
 
   // The entity's canonical GET path template. For a collection boundary like
   // `Lead` (path `/leads`), this resolves to the sibling single-entity path
@@ -160,7 +172,7 @@ export function computeLinks(input: HateoasInput): Record<string, HateoasLink> |
   const includeSelf = hateoas.selfLinks !== false;
   if (includeSelf && entityPathTemplate !== null) {
     links['self'] = {
-      href: expandPath(entityPathTemplate, id),
+      href: applyBaseUrl(expandPath(entityPathTemplate, id), baseUrl),
       method: 'GET',
     };
   }
@@ -189,7 +201,7 @@ export function computeLinks(input: HateoasInput): Record<string, HateoasLink> |
       if (!evaluateBehaviorMatch(gate, entity, cel, linkName)) continue;
 
       links[linkName] = {
-        href: expandPath(other.contractPath, id),
+        href: applyBaseUrl(expandPath(other.contractPath, id), baseUrl),
         method: behavior.match.method,
       };
       // First matching behavior per boundary wins; stop scanning this boundary.
