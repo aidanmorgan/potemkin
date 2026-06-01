@@ -30,7 +30,7 @@
  *      callers that don't run queries.
  */
 
-import type { ExecutionResult } from '../types.js';
+import type { ExecutionResult, JsonObject, JsonValue } from '../types.js';
 import type { CompiledDsl } from '../dsl/types.js';
 import type { StateGraph } from '../stategraph/graph.js';
 import type { EventStore } from '../eventstore/store.js';
@@ -63,6 +63,9 @@ import { findTriggeredSagas, runSaga } from '../sagas/orchestrator.js';
 import { prepareWebhookDelivery, deliverWebhook, type FetchLike } from '../webhooks/dispatcher.js';
 import type { SideEffectQueue, SideEffectThunk } from './sideEffects.js';
 import type { WebhookConfig } from '../dsl/types.js';
+import type { ControlHeaders } from '../http/controlHeaders.js';
+import type { TsReducerRegistry } from './tsReducerRegistry.js';
+import type { BoundaryInferenceResult } from '../dsl/schemaInference.js';
 
 // ---------------------------------------------------------------------------
 // Public interface
@@ -110,20 +113,20 @@ export interface UowInput {
    */
   readonly derivedProjections?: DerivedProjectionRegistry;
   /** Parsed X-Potemkin-* control headers (dry-run, skip-sagas, etc.). */
-  readonly controls?: import('../http/controlHeaders.js').ControlHeaders;
+  readonly controls?: ControlHeaders;
   /**
    * C3: TypeScript-reducer registry. When supplied, projection consults it
    * FIRST for each (boundary, event) and runs the TS reducer in place of the
    * YAML reducer on a hit. Threaded from sys.tsReducerRegistry by the gateway,
    * forwarding handler, and saga orchestrator.
    */
-  readonly tsReducerRegistry?: import('./tsReducerRegistry.js').TsReducerRegistry;
+  readonly tsReducerRegistry?: TsReducerRegistry;
   /**
    * C5: per-boundary inferred schemas (keyed by boundary). When supplied, the
    * computed fields + topological order for the projecting boundary are passed
    * to projectEvent so computed fields recompute after reducer patches apply.
    */
-  readonly inferredSchemas?: Readonly<Record<string, import('../dsl/schemaInference.js').BoundaryInferenceResult>>;
+  readonly inferredSchemas?: Readonly<Record<string, BoundaryInferenceResult>>;
   /**
    * Injectable webhook transport. When supplied alongside `dsl.webhooks`, each
    * committed event is matched against the webhook subscriptions and a signed
@@ -214,7 +217,7 @@ function shadowAsStateGraph(shadow: ShadowGraph, global: StateGraph): StateGraph
     },
     entries: () => {
       const allKeys = shadowAsStateGraph(shadow, global).keys();
-      return allKeys.map((k): readonly [string, import('../types.js').JsonObject] => [
+      return allKeys.map((k): readonly [string, JsonObject] => [
         k,
         (shadow.get(k) ?? global.get(k))!,
       ]);
@@ -300,7 +303,7 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
   // Step 1 — Fault-sim short-circuit (req 31)
   // -------------------------------------------------------------------------
   if (command.faultSignal !== undefined && command.faultSignal !== '') {
-    let signal: { status: number; body: import('../types.js').JsonValue; headers?: Record<string, string> };
+    let signal: { status: number; body: JsonValue; headers?: Record<string, string> };
     try {
       signal = JSON.parse(command.faultSignal) as typeof signal;
     } catch {
@@ -607,7 +610,7 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
         // Step 8 — Response construction
         // -----------------------------------------------------------------------
         let status: number;
-        let body: import('../types.js').JsonValue;
+        let body: JsonValue;
 
         if (command.intent === 'query') {
           if (input.openapi === undefined) {

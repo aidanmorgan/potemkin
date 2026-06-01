@@ -8,7 +8,7 @@
 import * as fc from 'fast-check';
 import { createEventStore } from '../../src/eventstore/store';
 import { ConcurrencyConflictError } from '../../src/errors';
-import type { DomainEvent, JsonObject } from '../../src/types';
+import type { DomainEvent } from '../../src/types';
 import { makeEvent } from './_helpers/fixtures';
 
 const RUN_COUNT = 100;

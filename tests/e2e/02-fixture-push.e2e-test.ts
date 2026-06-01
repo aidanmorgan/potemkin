@@ -27,7 +27,6 @@ function javaAvailable(): boolean {
 const describeWithJava = javaAvailable() ? describe : describe.skip;
 
 const APEX_LEAD_ID = '00000000-0000-7000-8000-000000000010';
-const BLUESKY_LEAD_ID = '00000000-0000-7000-8000-000000000011';
 
 describeWithJava('02 — Fixture push: seeded entities registered with Specmatic', () => {
   let app: E2eApp;

@@ -7,7 +7,7 @@
  * the unit of work aborts before any event is committed.
  */
 
-import { bootSystem, type BootedSystem } from '../../src/engine/boot.js';
+import { bootSystem } from '../../src/engine/boot.js';
 import { executeUnitOfWork } from '../../src/engine/uow.js';
 import { loadOpenApi } from '../../src/contract/loader.js';
 import { compileDsl } from '../../src/dsl/parser.js';

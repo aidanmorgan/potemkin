@@ -4,7 +4,6 @@
 import { validateBoundaryConfig } from '../../../src/dsl/schema';
 import { runPatternMatch } from '../../../src/engine/patternMatcher';
 import type { PatternMatchInput } from '../../../src/engine/patternMatcher';
-import { BootError } from '../../../src/errors';
 import { makeBoundary, makeCommand, makeOpenApi } from '../_helpers';
 import type { ShadowGraph } from '../../../src/stategraph/shadow';
 import { createCelEvaluator } from '../../../src/cel/evaluator';

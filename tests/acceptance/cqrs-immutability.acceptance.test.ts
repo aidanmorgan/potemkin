@@ -123,7 +123,7 @@ describe('cqrs-immutability.acceptance', () => {
   });
 
   it('sequenceVersions for a single aggregate form a contiguous 1-based sequence', async () => {
-    const callRes = await app.agent
+    await app.agent
       .post('/calls')
       .send({
         leadId: APEX_LEAD_ID,
@@ -132,8 +132,6 @@ describe('cqrs-immutability.acceptance', () => {
         outcome: 'NO_ANSWER',
       })
       .expect(201);
-
-    const callId = callRes.body.id as string;
 
     // Log another call to the same lead to generate more events
     await app.agent

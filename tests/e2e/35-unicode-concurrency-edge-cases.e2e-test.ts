@@ -12,13 +12,11 @@
 
 import { startE2eApp } from './_harness/e2e-test-app';
 import type { E2eApp } from './_harness/e2e-test-app';
-import { fwd, getGraphNode, getEventCount, getEventsByAggregate, adminReset, javaAvailable } from './_harness/crm-e2e-helpers';
+import { fwd, getGraphNode, getEventCount, getEventsByAggregate, javaAvailable } from './_harness/crm-e2e-helpers';
 import type { JsonObject } from './_harness/crm-e2e-helpers';
 
 const describeWithJava = javaAvailable() ? describe : describe.skip;
 
-const AGENT_ID = '00000000-0000-7000-8000-000000000003';
-const CAMPAIGN_ID = '00000000-0000-7000-8000-000000000001';
 
 describeWithJava('35 — Unicode, Concurrency & Edge Cases (full Specmatic stack)', () => {
   let app: E2eApp;

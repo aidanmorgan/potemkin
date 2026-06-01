@@ -1,11 +1,8 @@
-import { Given, When, Then, Before, After } from '@cucumber/cucumber';
+import { Then, Before, After } from '@cucumber/cucumber';
 import assert from 'assert';
 import type { SimWorld } from '../support/world.js';
-import pino from 'pino';
 import { createLogger, childLogger } from '../../../src/observability/logger.js';
-import { createEngineMetrics } from '../../../src/observability/metrics.js';
-import { metrics } from '@opentelemetry/api';
-import { trace, context } from '@opentelemetry/api';
+import { trace } from '@opentelemetry/api';
 import {
   BasicTracerProvider,
   InMemorySpanExporter,

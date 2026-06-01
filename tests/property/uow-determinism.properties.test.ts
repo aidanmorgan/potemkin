@@ -12,7 +12,7 @@ import { createStateGraph } from '../../src/stategraph/graph';
 import { createCelEvaluator } from '../../src/cel/evaluator';
 import { projectEvent } from '../../src/engine/projection';
 import type { DomainEvent, JsonObject } from '../../src/types';
-import { makeCompiledDsl, makeCustomerBoundaryConfig } from './_helpers/fixtures';
+import { makeCustomerBoundaryConfig } from './_helpers/fixtures';
 
 const RUN_COUNT = 100;
 const SEED = 42;
@@ -64,7 +64,6 @@ function runSequence(aggregateIds: string[]): { store: ReturnType<typeof createE
   const store = createEventStore();
   const graph = createStateGraph();
   const cel = createCelEvaluator();
-  const dsl = makeCompiledDsl();
   const boundary = makeCustomerBoundaryConfig();
 
   for (let i = 0; i < aggregateIds.length; i++) {

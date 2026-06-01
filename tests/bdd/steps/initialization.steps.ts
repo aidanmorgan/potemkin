@@ -1,17 +1,11 @@
-import { Given, When, Then } from '@cucumber/cucumber';
+import { When, Then } from '@cucumber/cucumber';
 import assert from 'assert';
 import type { SimWorld } from '../support/world.js';
 import { bootSystem } from '../../../src/engine/boot.js';
 import { loadOpenApi } from '../../../src/contract/loader.js';
 import { compileDsl } from '../../../src/dsl/parser.js';
 import { BootError } from '../../../src/errors.js';
-import {
-  CRM_OPENAPI_YAML,
-  LEAD_DSL_YAML,
-  LEAD_COLLECTION_DSL_YAML,
-  OPPORTUNITY_DSL_YAML,
-  OPPORTUNITY_COLLECTION_DSL_YAML,
-} from '../support/world.js';
+import { CRM_OPENAPI_YAML } from '../support/world.js';
 
 // REQ-8: Boot compiles all DSL modules
 Then('the compiled DSL should have at least {int} boundaries', function (this: SimWorld, min: number) {

@@ -4,7 +4,7 @@
 import { validateBoundaryConfig } from '../../../src/dsl/schema';
 import { projectEvent } from '../../../src/engine/projection';
 import type { ProjectionInput } from '../../../src/engine/projection';
-import { BootError, InternalExecutionError } from '../../../src/errors';
+import { InternalExecutionError } from '../../../src/errors';
 import { makeBoundary, makeDomainEvent } from '../_helpers';
 import { createCelEvaluator } from '../../../src/cel/evaluator';
 import { createStateGraph } from '../../../src/stategraph/graph';

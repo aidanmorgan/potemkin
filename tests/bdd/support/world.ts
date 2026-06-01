@@ -1,11 +1,10 @@
 import { setWorldConstructor, World, setDefaultTimeout } from '@cucumber/cucumber';
 import type { IWorldOptions } from '@cucumber/cucumber';
 import { bootSystem, resetSystem, createGateway } from '../../../src/index.js';
-import type { BootedSystem, BootInput } from '../../../src/engine/boot.js';
-import type { JsonValue, JsonObject } from '../../../src/types.js';
+import type { BootedSystem } from '../../../src/engine/boot.js';
+import type { JsonValue, JsonObject, DomainEvent } from '../../../src/types.js';
 import type { Express } from 'express';
 import { loadOpenApi } from '../../../src/contract/loader.js';
-import type { OpenApiDoc } from '../../../src/contract/loader.js';
 import { compileDsl } from '../../../src/dsl/parser.js';
 import {
   withPersistentServer,
@@ -377,7 +376,6 @@ export interface LastResponse {
 let _sharedSystem: BootedSystem | undefined;
 let _sharedApp: Express | undefined;
 let _sharedServer: PersistentServer | undefined;
-let _sharedOpenapi: OpenApiDoc | undefined;
 
 /** Close the shared persistent server. Call from an AfterAll hook. */
 export async function closeSharedServer(): Promise<void> {
@@ -414,7 +412,6 @@ export class SimWorld extends World {
     }
 
     const openapi = await loadOpenApi(CRM_OPENAPI_YAML);
-    _sharedOpenapi = openapi;
 
     const sys = await bootSystem({
       openapi,
@@ -493,7 +490,7 @@ export class SimWorld extends World {
     };
   }
 
-  getEvents(): readonly import('../../../src/types.js').DomainEvent[] {
+  getEvents(): readonly DomainEvent[] {
     if (!this.sys) return [];
     return this.sys.events.all();
   }

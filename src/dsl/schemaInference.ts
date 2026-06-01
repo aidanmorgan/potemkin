@@ -168,8 +168,6 @@ const RE_NULL = /^\s*null\s*$/;
 const RE_LENGTH_SIZE = /^\s*(length|size)\s*\(/;
 const RE_SUM = /^\s*sum\s*\(/;
 const RE_TERNARY = /^([^?]+)\?([^:]+):(.+)$/;
-const RE_EVENT_REF = /^\s*event\.payload(?:\.([A-Za-z_$][\w$]*))+\s*$/;
-const RE_STATE_REF = /^\s*state(?:\.([A-Za-z_$][\w$]*))+\s*$/;
 
 // Infers FieldType from a CEL expression. Anything that doesn't match a
 // known pattern returns `unknown` — callers tolerate that.
@@ -462,7 +460,7 @@ function iterateInference(opts: IterateOptions): {
   // fields are non-converged. We computed this lazily via the cap: if we
   // exited via the cap with prevHash still changing, then the last delta
   // names the diverged fields.
-  let divergedFields: string[] = [];
+  const divergedFields: string[] = [];
   if (iterations === MAX_INFERENCE_ITERATIONS) {
     // run one extra speculative pass to detect any new diff
     const after: MutableSchema = { fields: new Map(cur.fields) };

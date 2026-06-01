@@ -1,14 +1,6 @@
 import { Given, When, Then } from '@cucumber/cucumber';
 import assert from 'assert';
 import type { SimWorld } from '../support/world.js';
-import {
-  bootSystem,
-  createGateway,
-  createEventStore,
-  createStateGraph,
-} from '../../../src/index.js';
-import { loadOpenApi } from '../../../src/contract/loader.js';
-import { CRM_OPENAPI_YAML, LEAD_DSL_YAML, LEAD_COLLECTION_DSL_YAML, OPPORTUNITY_DSL_YAML, OPPORTUNITY_COLLECTION_DSL_YAML } from '../support/world.js';
 
 // ---------------------------------------------------------------------------
 // REQ-6 cross-boundary fixture: Opportunity boundary cascades to Lead.opportunityIds

@@ -2,6 +2,7 @@ import { buildScriptRegistry } from '../../../src/scripts/registry.js';
 import { BootError } from '../../../src/errors.js';
 import { createLogger } from '../../../src/observability/logger.js';
 import type { CompiledDsl, BoundaryConfig } from '../../../src/dsl/types.js';
+import type { JsonObject } from '../../../src/types.js';
 
 const logger = createLogger({ name: 'test-registry' });
 
@@ -111,7 +112,7 @@ describe('buildScriptRegistry', () => {
       command: { commandId: 'x', boundary: 'Loan', intent: 'mutation' as const, targetId: null, payload: {}, queryParams: {}, httpMethod: 'PUT', path: '/', origin: 'inbound' as const, depth: 0 },
       state: { amount: 100000 },
       payload: {},
-      helpers: { uuid: () => 'u', now: () => 'n', deepClone: <T>(v: T) => v, deepMerge: (a: import('../../../src/types.js').JsonObject, b: import('../../../src/types.js').JsonObject) => ({ ...a, ...b } as import('../../../src/types.js').JsonObject) },
+      helpers: { uuid: () => 'u', now: () => 'n', deepClone: <T>(v: T) => v, deepMerge: (a: JsonObject, b: JsonObject) => ({ ...a, ...b } as JsonObject) },
       logger: logger,
     };
     const result = handle!.fn(mockCtx);

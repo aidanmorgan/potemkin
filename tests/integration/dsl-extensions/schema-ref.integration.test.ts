@@ -67,7 +67,7 @@ reducers:
 describe('REQ-65: schema_ref — payload violates schema', () => {
   it('aborts UoW when event payload fails schema validation', async () => {
     const entityId = nextUuidv7();
-    const { result, events } = await bootAndRun({
+    const { result } = await bootAndRun({
       boundaryName: 'Widget',
       contractPath: '/widgets/{id}',
       entity: { id: entityId, status: 'ACTIVE', amount: 0 },

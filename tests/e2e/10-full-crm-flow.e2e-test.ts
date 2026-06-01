@@ -42,11 +42,6 @@ async function fwd(
   return res.json() as Promise<{ status: number; body: Record<string, unknown>; headers: Record<string, string> }>;
 }
 
-function managerAuth(): Record<string, string> {
-  // Engine uses simulation shortcut: Bearer <actorId>:<scope1>,<scope2>
-  return { authorization: 'Bearer mgr1:manager' };
-}
-
 describeWithJava('10 — Full CRM happy-path flow', () => {
   let app: E2eApp;
 

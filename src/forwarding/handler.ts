@@ -14,7 +14,13 @@
 import type { RequestHandler, Request, Response } from 'express';
 import { createHash } from 'node:crypto';
 import type { BootedSystem } from '../engine/boot.js';
-import type { ForwardedRequest, ForwardedResponse, RoutesDiscoveryResponse, FixturesResponse } from './types.js';
+import type { JournalEntry } from '../dsl/patches.js';
+import type { BoundaryConfig } from '../dsl/types.js';
+import type { OpenApiOperation } from '../contract/loader.js';
+import type { ControlHeaders } from '../http/controlHeaders.js';
+import type { Logger } from '../observability/logger.js';
+import type { CelEvaluator } from '../cel/evaluator.js';
+import type { ForwardedRequest, ForwardedResponse, RoutesDiscoveryResponse, FixturesResponse, FixtureStub } from './types.js';
 import { deriveFixtures } from './fixtures.js';
 import type { Actor, Command, Intent, JsonObject, JsonValue } from '../types.js';
 import { matchRoute } from '../contract/router.js';
@@ -604,10 +610,10 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
     // 20. Response mutations (per-boundary HATEOAS/mask via _patches) + deprecation
     //     headers. Body patches are reported in `_patches` for the plugin's
     //     response interceptor (the base body stays unchanged here).
-    let patches: readonly import('../dsl/patches.js').JournalEntry[] | undefined;
+    let patches: readonly JournalEntry[] | undefined;
     if (result.status >= 200 && result.status < 300 && outBody !== null && outBody !== undefined) {
       const pathItem = sys.openapi.paths[route.contractPath] as
-        | Record<string, import('../contract/loader.js').OpenApiOperation | undefined>
+        | Record<string, OpenApiOperation | undefined>
         | undefined;
       const mutation = applyResponseMutations({
         body: outBody,
@@ -713,15 +719,15 @@ async function runBulkCreate(args: {
   sys: BootedSystem;
   fwd: ForwardedRequest;
   route: { contractPath: string; pathParams: Record<string, string> };
-  boundary: import('../dsl/types.js').BoundaryConfig;
+  boundary: BoundaryConfig;
   intent: Intent;
   method: string;
   path: string;
   actor: Actor | undefined;
-  controls: import('../http/controlHeaders.js').ControlHeaders;
-  logger: import('../observability/logger.js').Logger;
+  controls: ControlHeaders;
+  logger: Logger;
   send: (r: ForwardedResponse) => void;
-  reqCel: import('../cel/evaluator.js').CelEvaluator;
+  reqCel: CelEvaluator;
 }): Promise<void> {
   const { sys, fwd, route, boundary, intent, method, path, actor, controls, logger, send, reqCel } = args;
   const items = fwd.body as JsonValue[];
@@ -936,7 +942,7 @@ export function createRoutesHandler(sys: BootedSystem): RequestHandler {
  * is deterministic regardless of insertion order.
  */
 function computeFixturesChecksum(
-  stubs: readonly import('./types.js').FixtureStub[],
+  stubs: readonly FixtureStub[],
 ): string {
   const sorted = [...stubs].sort((a, b) =>
     a.httpRequest.path.localeCompare(b.httpRequest.path),
@@ -956,7 +962,7 @@ function computeFixturesChecksum(
 export function createFixturesHandler(sys: BootedSystem): RequestHandler {
   // Lazily cached fixture list — derived once at first request and reused.
   // The checksum doubles as the ETag for conditional requests.
-  let cachedStubs: readonly import('./types.js').FixtureStub[] | null = null;
+  let cachedStubs: readonly FixtureStub[] | null = null;
   let cachedChecksum: string | null = null;
 
   return function fixturesHandler(req: Request, res: Response): void {

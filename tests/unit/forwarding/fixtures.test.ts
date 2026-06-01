@@ -16,8 +16,8 @@ import { createHash } from 'node:crypto';
 import { deriveFixtures } from '../../../src/forwarding/fixtures.js';
 import { createFixturesHandler } from '../../../src/forwarding/handler.js';
 import type { BootedSystem } from '../../../src/engine/boot.js';
-import type { FixturesResponse } from '../../../src/forwarding/types.js';
-import type { DomainEvent } from '../../../src/types.js';
+import type { FixturesResponse, FixtureStub } from '../../../src/forwarding/types.js';
+import type { DomainEvent, JsonObject } from '../../../src/types.js';
 import {
   withPersistentServer,
   type PersistentAgent,
@@ -105,12 +105,12 @@ function makeStubSystem(opts: {
       paths: paths as never,
     },
     graph: {
-      get: (id: string) => (opts.entities[id] as import('../../../src/types.js').JsonObject) ?? null,
+      get: (id: string) => (opts.entities[id] as JsonObject) ?? null,
       set: () => undefined,
       delete: () => undefined,
       keys: () => Object.freeze(Object.keys(opts.entities)),
-      values: () => Object.freeze(Object.values(opts.entities) as import('../../../src/types.js').JsonObject[]),
-      entries: () => Object.freeze(Object.entries(opts.entities) as readonly (readonly [string, import('../../../src/types.js').JsonObject])[]),
+      values: () => Object.freeze(Object.values(opts.entities) as JsonObject[]),
+      entries: () => Object.freeze(Object.entries(opts.entities) as readonly (readonly [string, JsonObject])[]),
       purge: () => undefined,
       size: () => Object.keys(opts.entities).length,
     },
@@ -344,7 +344,7 @@ describe('deriveFixtures — checksum stability', () => {
     const stubs2 = deriveFixtures(sys);
 
     // Compute checksum the same way the handler does
-    function checksum(stubs: readonly import('../../../src/forwarding/types.js').FixtureStub[]) {
+    function checksum(stubs: readonly FixtureStub[]) {
       const sorted = [...stubs].sort((a, b) =>
         a.httpRequest.path.localeCompare(b.httpRequest.path),
       );

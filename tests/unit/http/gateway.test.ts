@@ -11,7 +11,6 @@
  *  - ETag header for mutating commands
  */
 
-import request from 'supertest';
 import { createTestApp, type TestApp } from '../../acceptance/_helpers/test-app.js';
 import { nextUuidv7 } from '../../../src/ids/uuidv7.js';
 

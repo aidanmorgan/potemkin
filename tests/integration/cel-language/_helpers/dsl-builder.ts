@@ -168,7 +168,6 @@ components:
   // -------------------------------------------------------------------------
   // Build DSL inline based on phase
   // -------------------------------------------------------------------------
-  const initEntry = JSON.stringify(opts.initialEntity);
   const initYaml = buildInitYaml(opts.initialEntity);
   const cmdPayload = opts.commandPayload ?? {};
 

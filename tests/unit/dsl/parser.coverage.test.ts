@@ -1,3 +1,6 @@
+import { parseDslYaml } from '../../../src/dsl/parser';
+import { BootError } from '../../../src/errors';
+
 /**
  * Coverage backfill for dsl/parser.ts
  *
@@ -81,7 +84,6 @@ describe('dsl/parser.ts — line 19 non-Error throw coverage', () => {
     jest.resetModules();
 
     jest.mock('js-yaml', () => ({
-      // eslint-disable-next-line @typescript-eslint/no-throw-literal
       load: () => { throw null; },
       dump: jest.fn(),
     }));
@@ -105,8 +107,6 @@ describe('dsl/parser.ts — line 19 non-Error throw coverage', () => {
   it('normal Error throw still uses err.message (existing path — control)', () => {
     // This verifies the positive branch (err instanceof Error) still works correctly.
     // js-yaml throws YAMLException which IS an Error subclass.
-    const { parseDslYaml } = require('../../../src/dsl/parser');
-    const { BootError } = require('../../../src/errors');
 
     let caughtError: unknown;
     try {

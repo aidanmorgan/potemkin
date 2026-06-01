@@ -84,6 +84,7 @@ export interface BoundaryBehavior {
   }[];
 }
 
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type -- nominal alias for ReducerDecl used across the DSL contract
 export interface BoundaryReducer extends ReducerDecl {}
 
 export interface BoundaryHateoasEntry {

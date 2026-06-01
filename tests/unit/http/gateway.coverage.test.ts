@@ -12,6 +12,7 @@
  */
 
 import { createGateway } from '../../../src/http/gateway';
+import * as uowModule from '../../../src/engine/uow';
 import { bootSystem, type BootedSystem } from '../../../src/engine/boot';
 import { loadOpenApi } from '../../../src/contract/loader';
 import { resetSystem } from '../../../src/engine/reset';
@@ -141,8 +142,7 @@ describe('http/gateway.ts — defensive guard coverage', () => {
       // Mock executeUnitOfWork to throw FaultSimulatedError
       // FaultSimulatedError is defined in errors.ts; it extends SimError
       // The gateway catches it at lines 228-231 and returns fault.status/body
-      const { executeUnitOfWork } = require('../../../src/engine/uow');
-      jest.spyOn(require('../../../src/engine/uow'), 'executeUnitOfWork')
+      jest.spyOn(uowModule, 'executeUnitOfWork')
         .mockRejectedValueOnce(
           new FaultSimulatedError(503, { error: 'SERVICE_DOWN' }),
         );
@@ -163,7 +163,7 @@ describe('http/gateway.ts — defensive guard coverage', () => {
         { 'Retry-After': '60', 'X-Fault-Source': 'gateway-test' },
       );
 
-      jest.spyOn(require('../../../src/engine/uow'), 'executeUnitOfWork')
+      jest.spyOn(uowModule, 'executeUnitOfWork')
         .mockRejectedValueOnce(fault);
 
       const res = await agent
@@ -181,7 +181,7 @@ describe('http/gateway.ts — defensive guard coverage', () => {
   describe('lines 232-235 — generic error from UoW (not a known SimError)', () => {
     it('plain Error thrown from UoW returns 500 INTERNAL (lines 232-235)', async () => {
       // Throw a plain Error (not any SimError subclass) — hits the else branch at lines 232-235
-      jest.spyOn(require('../../../src/engine/uow'), 'executeUnitOfWork')
+      jest.spyOn(uowModule, 'executeUnitOfWork')
         .mockRejectedValueOnce(new Error('Unexpected plain JavaScript error from UoW'));
 
       const res = await agent
@@ -195,7 +195,7 @@ describe('http/gateway.ts — defensive guard coverage', () => {
 
     it('non-Error primitive thrown from UoW returns 500 INTERNAL with String(err) message (line 235)', async () => {
       // Throw a string literal (not an Error) → String(err) branch at line 234
-      jest.spyOn(require('../../../src/engine/uow'), 'executeUnitOfWork')
+      jest.spyOn(uowModule, 'executeUnitOfWork')
         .mockRejectedValueOnce('non-error-string-from-uow');
 
       const res = await agent
@@ -212,7 +212,7 @@ describe('http/gateway.ts — defensive guard coverage', () => {
   describe('line 225 — ContractViolationError from UoW execution', () => {
     it('ContractViolationError from UoW returns 400 (line 225)', async () => {
       // Mock UoW to throw ContractViolationError (response validation failure)
-      jest.spyOn(require('../../../src/engine/uow'), 'executeUnitOfWork')
+      jest.spyOn(uowModule, 'executeUnitOfWork')
         .mockRejectedValueOnce(
           new ContractViolationError('Response body does not match schema', {
             errors: [{ field: 'id', message: 'required' }] as any,
@@ -287,7 +287,7 @@ describe('http/gateway.ts — defensive guard coverage', () => {
         // Do nothing — validation passes
       });
       // Also mock UoW to return a result so we don't need a real entity
-      jest.spyOn(require('../../../src/engine/uow'), 'executeUnitOfWork')
+      jest.spyOn(uowModule, 'executeUnitOfWork')
         .mockResolvedValueOnce({
           status: 201,
           body: { id: 'gen-id', label: 'from-null-body' },
@@ -317,7 +317,7 @@ describe('http/gateway.ts — defensive guard coverage', () => {
       jest.spyOn(sys.validator, 'validateRequest').mockImplementation(() => {
         // pass validation so we reach the UoW call
       });
-      jest.spyOn(require('../../../src/engine/uow'), 'executeUnitOfWork')
+      jest.spyOn(uowModule, 'executeUnitOfWork')
         .mockResolvedValueOnce({
           status: 201,
           body: { id: 'something', label: 'cascaded' },
@@ -421,7 +421,7 @@ describe('http/gateway.ts — null targetId creation (lines 247-250)', () => {
     // No identity.creation.generate → targetId remains null (line 165-170)
     // isMutating=true, result.events.length > 0, primaryAggregateId === null
     // → hits the else branch at line 249: primaryEvents = result.events
-    jest.spyOn(require('../../../src/engine/uow'), 'executeUnitOfWork')
+    jest.spyOn(uowModule, 'executeUnitOfWork')
       .mockResolvedValueOnce({
         status: 201,
         body: { name: 'widget-one' },

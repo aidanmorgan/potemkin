@@ -10,8 +10,6 @@ import { createTestApp, type TestApp } from './_helpers/test-app.js';
 import { executeUnitOfWork } from '../../src/engine/uow.js';
 import { nextUuidv7 } from '../../src/ids/uuidv7.js';
 
-const AGENT_ID = '00000000-0000-7000-8000-000000000003';
-const CAMPAIGN_ID = '00000000-0000-7000-8000-000000000001';
 
 describe('concurrency-control.acceptance', () => {
   let app: TestApp;

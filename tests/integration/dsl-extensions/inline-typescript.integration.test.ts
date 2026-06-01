@@ -8,70 +8,8 @@
  */
 
 import { bootAndRun, expectBootError } from './_helpers/dsl-builder.js';
-import { BootError, InternalExecutionError } from '../../../src/errors.js';
+import { BootError } from '../../../src/errors.js';
 import { nextUuidv7 } from '../../../src/ids/uuidv7.js';
-
-// ---------------------------------------------------------------------------
-// Helper: build a minimal boundary YAML with inline scripts
-// ---------------------------------------------------------------------------
-
-function makeScriptBoundaryYaml(opts: {
-  conditionScript?: string;   // code for condition script
-  payloadScript?: string;     // code for a script used in payload_template
-  postconditionScript?: string;
-  extraScripts?: Array<{ name: string; code: string }>;
-  condition?: string;         // if not ts:
-  postcondition?: string;
-  emit?: string;
-}): string {
-  const scripts: Array<{ name: string; code: string }> = [];
-  if (opts.conditionScript) {
-    scripts.push({ name: 'checkCondition', code: opts.conditionScript });
-  }
-  if (opts.payloadScript) {
-    scripts.push({ name: 'buildPayload', code: opts.payloadScript });
-  }
-  if (opts.postconditionScript) {
-    scripts.push({ name: 'checkPostcondition', code: opts.postconditionScript });
-  }
-  if (opts.extraScripts) {
-    scripts.push(...opts.extraScripts);
-  }
-
-  const scriptBlock = scripts.length > 0
-    ? `scripts:\n${scripts.map(s => `  - name: ${s.name}\n    code: |\n${s.code.split('\n').map(l => `      ${l}`).join('\n')}`).join('\n')}`
-    : '';
-
-  const condition = opts.condition ?? (opts.conditionScript ? 'ts:checkCondition' : 'true');
-  const postcondition = opts.postcondition ?? (opts.postconditionScript ? '\n    postcondition: "ts:checkPostcondition"' : '');
-  const emitType = opts.emit ?? 'WidgetUpdated';
-
-  const payloadField = opts.payloadScript
-    ? `      computed: "ts:buildPayload"`
-    : `      id: "command.targetId"`;
-
-  return `
-boundary: Widget
-contract_path: /widgets/{id}
-fallback_override: false
-${scriptBlock}
-event_catalog:
-  - type: WidgetUpdated
-    payload_template:
-      id: "command.targetId"
-      ${opts.payloadScript ? 'computed: "ts:buildPayload"' : ''}
-behaviors:
-  - name: test-behavior
-    match:
-      intent: mutation
-      condition: "${condition}"${postcondition}
-    emit: ${emitType}
-reducers:
-  - on: WidgetUpdated
-    patches:
-      - { op: replace, path: /status, value: "\${'UPDATED'}" }
-`;
-}
 
 // ---------------------------------------------------------------------------
 // Test A: script returning boolean used in behaviors[].match.condition
@@ -389,7 +327,7 @@ reducers:
 describe('REQ-69: sandbox — fs and process blocked', () => {
   it('script cannot require fs — returns controlled failure', async () => {
     const entityId = nextUuidv7();
-    const { result, events } = await bootAndRun({
+    const { result } = await bootAndRun({
       boundaryName: 'Widget',
       contractPath: '/widgets/{id}',
       entity: { id: entityId, status: 'ACTIVE' },

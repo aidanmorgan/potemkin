@@ -14,7 +14,6 @@ const intSchema: ObjectGraphSchema = { name: 'i', kind: 'integer' };
 const numSchema: ObjectGraphSchema = { name: 'n', kind: 'number' };
 const boolSchema: ObjectGraphSchema = { name: 'b', kind: 'boolean' };
 const nullSchema: ObjectGraphSchema = { name: 'null', kind: 'null' };
-const anySchema: ObjectGraphSchema = { name: 'any', kind: 'any' };
 
 describe('schema/typeCheck — additional branch coverage', () => {
   // ── isAssignable edge cases ─────────────────────────────────────────────────

@@ -1,6 +1,5 @@
 import {
   trace,
-  context,
   SpanStatusCode,
 } from '@opentelemetry/api';
 import type { Tracer, Span } from '@opentelemetry/api';

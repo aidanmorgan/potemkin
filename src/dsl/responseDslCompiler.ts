@@ -4,6 +4,7 @@
 // source tag.
 
 import type { Patch } from './patches.js';
+import type { JsonValue } from '../types.js';
 
 export interface HateoasEntry {
   readonly rel: string;
@@ -32,7 +33,7 @@ export function compileResponseHateoas(entries: readonly HateoasEntry[]): Patch[
   out.push({
     op: 'merge',
     path: '/_links',
-    value: links as unknown as Record<string, import('../types.js').JsonValue>,
+    value: links as unknown as Record<string, JsonValue>,
   });
   return out;
 }

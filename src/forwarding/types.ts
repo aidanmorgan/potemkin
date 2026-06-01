@@ -8,6 +8,7 @@
  */
 
 import type { JsonValue } from '../types.js';
+import type { JournalEntry } from '../dsl/patches.js';
 
 /**
  * Payload the Kotlin plugin sends to POST /_engine/forward.
@@ -43,7 +44,7 @@ export interface ForwardedResponse {
    * Applying these to `body` reproduces the engine's mutated body. Empty when
    * no mutations applied. Deprecation/Sunset/Link are conveyed via `headers`.
    */
-  readonly _patches?: readonly import('../dsl/patches.js').JournalEntry[];
+  readonly _patches?: readonly JournalEntry[];
 }
 
 /**

@@ -128,7 +128,7 @@ describe('26 — Concurrency & Idempotency (engine-only)', () => {
 
     it('GET with idempotency key -> key ignored (queries bypass)', async () => {
       const key = `idem-get-${Date.now()}`;
-      const r1 = await fwd(app.engineUrl, 'GET', '/leads', null, { 'idempotency-key': key });
+      await fwd(app.engineUrl, 'GET', '/leads', null, { 'idempotency-key': key });
       const r2 = await fwd(app.engineUrl, 'GET', '/leads', null, { 'idempotency-key': key });
       expect(r2.headers?.['x-idempotency-replay']).not.toBe('true');
     }, 60_000);

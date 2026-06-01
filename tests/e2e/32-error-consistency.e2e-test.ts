@@ -24,7 +24,6 @@ import {
   fwd,
   getGraphNode,
   getEventCount,
-  getAllEvents,
   javaAvailable,
 } from './_harness/crm-e2e-helpers';
 import type { JsonObject } from './_harness/crm-e2e-helpers';
@@ -34,8 +33,6 @@ const describeWithJava = javaAvailable() ? describe : describe.skip;
 // Seeded entity IDs from fixture YAML files
 const APEX_LEAD_ID   = '00000000-0000-7000-8000-000000000010'; // NEW
 const DELTA_LEAD_ID  = '00000000-0000-7000-8000-000000000013'; // DISQUALIFIED
-const AGENT_ID       = '00000000-0000-7000-8000-000000000003';
-const CAMPAIGN_ID    = '00000000-0000-7000-8000-000000000001';
 
 // A UUID that does not correspond to any seeded or created entity.
 const NON_EXISTENT_ID = '00000000-dead-7000-8000-000000000099';
@@ -381,7 +378,7 @@ describeWithJava('32 — Error Response Consistency (full Specmatic stack)', () 
       errorResponses.push({ label: '422 guard failure', res: r422 });
 
       // Verify each error response
-      for (const { label, res } of errorResponses) {
+      for (const { label: _label, res } of errorResponses) {
         expect(res.status).toBeGreaterThanOrEqual(400);
         assertErrorShape(res.body);
       }

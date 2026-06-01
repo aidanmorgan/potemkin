@@ -1,9 +1,6 @@
-import { Given, When, Then } from '@cucumber/cucumber';
+import { Given, Then } from '@cucumber/cucumber';
 import assert from 'assert';
 import type { SimWorld } from '../support/world.js';
-import { bootSystem, createGateway } from '../../../src/index.js';
-import { loadOpenApi } from '../../../src/contract/loader.js';
-import { CRM_OPENAPI_YAML } from '../support/world.js';
 
 // REQ-16: Pattern Matcher evaluates command against behavior rules
 Then('the pattern matcher should evaluate the command and produce an event', async function (this: SimWorld) {
@@ -31,7 +28,6 @@ Then('when multiple rules could match, only the first fires', async function (th
   await this.sendHttp('PATCH', `/opportunities/${oppId}`, { stage: 'negotiating' });
   assert.strictEqual(this.lastResponse?.status, 200);
 
-  const eventsAfter = this.getEventCount();
   const newEvents = this.getEvents().slice(eventsBefore);
   // Only one event should have been produced (first match only)
   assert.strictEqual(newEvents.length, 1, 'Only one event should be produced (first match wins)');

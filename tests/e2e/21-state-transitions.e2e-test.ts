@@ -29,7 +29,7 @@
 import { startE2eApp } from './_harness/e2e-test-app';
 import type { E2eApp } from './_harness/e2e-test-app';
 import {
-  fwd, getGraphNode, getEventsByAggregate, getAllEntities,
+  fwd, getGraphNode, getEventsByAggregate,
   javaAvailable,
 } from './_harness/crm-e2e-helpers';
 import type { JsonObject } from './_harness/crm-e2e-helpers';

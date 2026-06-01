@@ -1,6 +1,7 @@
 import { Given, When, Then } from '@cucumber/cucumber';
 import assert from 'assert';
 import type { SimWorld } from '../support/world.js';
+import type { JsonObject } from '../../../src/types.js';
 
 // ---------------------------------------------------------------------------
 // Background / boot steps
@@ -20,7 +21,7 @@ Given('the system state is reset to baseline', async function (this: SimWorld) {
 
 When('I send {string} with body {string}', async function (this: SimWorld, requestLine: string, bodyStr: string) {
   const [method, path] = requestLine.split(' ');
-  const body = JSON.parse(bodyStr) as import('../../../src/types.js').JsonObject;
+  const body = JSON.parse(bodyStr) as JsonObject;
   await this.sendHttp(method, path, body);
 });
 
@@ -33,7 +34,7 @@ When(
   'I send {string} with body {string} and header {string}: {string}',
   async function (this: SimWorld, requestLine: string, bodyStr: string, headerName: string, headerValue: string) {
     const [method, path] = requestLine.split(' ');
-    const body = JSON.parse(bodyStr) as import('../../../src/types.js').JsonObject;
+    const body = JSON.parse(bodyStr) as JsonObject;
     await this.sendHttp(method, path, body, { [headerName]: headerValue });
   },
 );

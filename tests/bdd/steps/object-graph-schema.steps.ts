@@ -1,11 +1,10 @@
 import { Given, When, Then } from '@cucumber/cucumber';
 import assert from 'assert';
 import type { SimWorld } from '../support/world.js';
-import { bootSystem, createGateway } from '../../../src/index.js';
+import { bootSystem } from '../../../src/index.js';
 import { loadOpenApi } from '../../../src/contract/loader.js';
 import { compileDsl } from '../../../src/dsl/parser.js';
 import { BootError } from '../../../src/errors.js';
-import { CRM_OPENAPI_YAML } from '../support/world.js';
 
 // Minimal OpenAPI spec with additionalProperties: false so unknown paths are detectable
 const STRICT_OPENAPI_YAML = `
@@ -264,11 +263,11 @@ Then('the runtime type guard should reject a string value for a number field', a
   const { guardAssignedValue } = await import('../../../src/schema/runtimeGuard.js');
   const { InternalExecutionError } = await import('../../../src/errors.js');
 
-  let threw = false;
+  let _threw = false;
   try {
     guardAssignedValue(this.sys.schemaRegistry, 'Lead', 'score', 'not-a-number');
   } catch (err) {
-    threw = true;
+    _threw = true;
     assert.ok(err instanceof InternalExecutionError, 'Should throw InternalExecutionError');
     assert.ok(
       JSON.stringify(err.details).includes('SCHEMA_TYPE_MISMATCH'),

@@ -11,8 +11,9 @@ import type { EngineMetrics } from '../observability/metrics.js';
 import type { ObjectGraphSchemaRegistry } from '../schema/types.js';
 import type { DerivedProjectionRegistry } from '../projections/types.js';
 import type { PluginControlClient } from '../lifecycle/types.js';
+import type { FetchLike } from '../webhooks/dispatcher.js';
+import type { LoadedConfig } from '../dsl/configLoader.js';
 
-import { compileDsl } from '../dsl/parser.js';
 import { validateBehaviorOperationIds } from '../dsl/behaviorValidation.js';
 import { BootError } from '../errors.js';
 import { createCelEvaluator } from '../cel/evaluator.js';
@@ -71,7 +72,7 @@ export interface BootInput {
    * (when `compiledDsl` is supplied directly rather than a potemkin.yaml).
    * The on-disk path reads this from potemkin.yaml's typescript: block.
    */
-  readonly typescript?: import('../dsl/typescriptScanner.js').TypescriptConfig;
+  readonly typescript?: TypescriptConfig;
   /** Working directory for resolving `typescript.scan[]` globs on the in-memory path. */
   readonly typescriptCwd?: string;
   /**
@@ -79,7 +80,7 @@ export interface BootInput {
    * wires a `fetch`-backed transport. Tests inject a fake to assert webhook
    * deliveries without performing real HTTP.
    */
-  readonly webhookTransport?: import('../webhooks/dispatcher.js').FetchLike;
+  readonly webhookTransport?: FetchLike;
 }
 
 export interface BootedSystem {
@@ -149,7 +150,7 @@ export interface BootedSystem {
    * tests may override it (via BootInput.webhookTransport) to assert deliveries
    * without real HTTP.
    */
-  readonly webhookTransport: import('../webhooks/dispatcher.js').FetchLike;
+  readonly webhookTransport: FetchLike;
   /**
    * C6: active TypeScript watcher when typescript.watch was enabled (and
    * NODE_ENV !== 'production'). Its onSwap atomic-replaces tsReducerRegistry on
@@ -310,7 +311,7 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
     let dsl: CompiledDsl;
     // Captured from the on-disk loader path for the TypeScript-reducer scan
     // (Step 2b) and the optional watcher (Step 11).
-    let loadedConfig: import('../dsl/configLoader.js').LoadedConfig | undefined;
+    let loadedConfig: LoadedConfig | undefined;
     let configDir: string | undefined;
     if (input.compiledDsl) {
       bootLog.info(
@@ -487,7 +488,7 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       throw new BootError(
         'BOOT_ERR_DSL_SCHEMA_VIOLATION',
         `Static DSL schema check found ${violations.length} violation(s)`,
-        { violations: violations as unknown as import('../types.js').JsonObject[] },
+        { violations: violations as unknown as JsonObject[] },
       );
     }
 

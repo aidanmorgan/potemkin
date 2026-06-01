@@ -12,47 +12,6 @@ import { nextUuidv7 } from '../../../src/ids/uuidv7.js';
 // ---------------------------------------------------------------------------
 // Fixture factories
 // ---------------------------------------------------------------------------
-
-function makeRequiresDsl(opts: {
-  requires: string;   // YAML block for requires[]
-  conditionExpr?: string;
-  emitType?: string;
-}): { yaml: string; entity: Record<string, unknown> } {
-  const entityId = nextUuidv7();
-  const condition = opts.conditionExpr ?? 'true';
-  const emitType = opts.emitType ?? 'WidgetUpdated';
-  return {
-    entity: { id: entityId, status: 'ACTIVE', balance: 500, transactions: [] },
-    yaml: `
-boundary: Widget
-contract_path: /widgets/{id}
-fallback_override: false
-event_catalog:
-  - type: WidgetUpdated
-    payload_template:
-      id: "command.targetId"
-  - type: OtherEvent
-    payload_template:
-      id: "command.targetId"
-behaviors:
-  - name: test-behavior
-    match:
-      intent: mutation
-      condition: "${condition}"
-${opts.requires}
-    emit: ${emitType}
-reducers:
-  - on: WidgetUpdated
-    patches:
-      - { op: replace, path: /status, value: "\${'UPDATED'}" }
-  - on: OtherEvent
-    patches:
-      - { op: replace, path: /status, value: "\${'OTHER'}" }
-`,
-  };
-}
-
-// ---------------------------------------------------------------------------
 // Test: single requires guard, passing → behavior fires
 // ---------------------------------------------------------------------------
 
@@ -148,7 +107,7 @@ reducers:
 describe('REQ-61: match.requires — multiple guards, first failure wins', () => {
   it('reports first failed guard when multiple guards are present', async () => {
     const entityId = nextUuidv7();
-    const { result, thrownError } = await bootAndRun({
+    const { result } = await bootAndRun({
       boundaryName: 'Widget',
       contractPath: '/widgets/{id}',
       entity: { id: entityId, status: 'FROZEN', balance: 0 },

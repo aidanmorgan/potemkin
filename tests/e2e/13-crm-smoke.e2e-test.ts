@@ -10,7 +10,7 @@
 import { execSync } from 'node:child_process';
 import { startE2eApp } from './_harness/e2e-test-app';
 import type { E2eApp } from './_harness/e2e-test-app';
-import { fwd, getGraphNode, getEntityCount, getAllEntities } from './_harness/crm-e2e-helpers';
+import { fwd, getGraphNode, getEntityCount } from './_harness/crm-e2e-helpers';
 
 function javaAvailable(): boolean {
   try { execSync('java -version', { stdio: 'pipe' }); return true; } catch { return false; }
@@ -19,9 +19,7 @@ function javaAvailable(): boolean {
 const describeWithJava = javaAvailable() ? describe : describe.skip;
 
 const SEEDED_LEAD_NEW = '00000000-0000-7000-8000-000000000010';
-const SEEDED_LEAD_CONTACTED = '00000000-0000-7000-8000-000000000011';
 const SEEDED_CAMPAIGN_ACTIVE = '00000000-0000-7000-8000-000000000001';
-const SEEDED_CAMPAIGN_DRAFT = '00000000-0000-7000-8000-000000000002';
 const SEEDED_AGENT = '00000000-0000-7000-8000-000000000003';
 
 describeWithJava('13 — CRM Smoke (full Specmatic stack)', () => {

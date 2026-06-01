@@ -1,11 +1,12 @@
-import { Given, When, Then } from '@cucumber/cucumber';
+import { When, Then } from '@cucumber/cucumber';
 import assert from 'assert';
 import type { SimWorld } from '../support/world.js';
+import type { JsonObject } from '../../../src/types.js';
 
 // REQ-12: Invalid request payload rejected with contract-violation
 When('I send a POST to {string} with an invalid body', async function (this: SimWorld, path: string) {
   // Send a wrong type for 'companyName' (schema says string, we send a number) — this triggers AJV validation
-  await this.sendHttp('POST', path, { companyName: 12345, email: 'test@example.com' } as unknown as import('../../../src/types.js').JsonObject);
+  await this.sendHttp('POST', path, { companyName: 12345, email: 'test@example.com' } as unknown as JsonObject);
 });
 
 Then('the response should be a contract violation error', function (this: SimWorld) {

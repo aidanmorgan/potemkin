@@ -8,10 +8,6 @@
 
 import { createCelEvaluator } from '../../../src/cel/evaluator.js';
 import { CelPhase } from '../../../src/cel/phases.js';
-import { bootSystem } from '../../../src/engine/boot.js';
-import { executeUnitOfWork } from '../../../src/engine/uow.js';
-import { resetSystem } from '../../../src/engine/reset.js';
-import { loadOpenApi } from '../../../src/contract/loader.js';
 import { nextUuidv7 } from '../../../src/ids/uuidv7.js';
 import { runCelFixture } from './_helpers/dsl-builder.js';
 

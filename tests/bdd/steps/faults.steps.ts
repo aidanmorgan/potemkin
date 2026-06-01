@@ -225,8 +225,6 @@ When('I trigger a self-referential cascade that exceeds max depth', async functi
   assert.ok(this.sys, 'System not booted');
   const { executeUnitOfWork } = await import('../../../src/engine/uow.js');
   const { nextUuidv7 } = await import('../../../src/ids/uuidv7.js');
-  const { InfiniteLoopError } = await import('../../../src/errors.js');
-
   // Simulate a command already at depth exceeding maxDepth
   try {
     await executeUnitOfWork({

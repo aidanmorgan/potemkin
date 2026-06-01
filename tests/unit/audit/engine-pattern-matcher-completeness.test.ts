@@ -15,8 +15,6 @@ import { makeBoundary, makeCommand as makeCommandBase, makeOpenApi } from '../_h
 import type { ShadowGraph } from '../../../src/stategraph/shadow';
 import type { Command } from '../../../src/types';
 
-// operationId for the behavior handling each intent under the default test OpenAPI.
-const OP_FOR = { creation: 'createTest', mutation: 'updateTest', query: 'getTest' } as const;
 
 // Local makeCommand deriving a contract-consistent (method, path) from intent.
 function makeCommand(overrides: Partial<Command> = {}): Command {

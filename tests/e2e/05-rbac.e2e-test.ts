@@ -22,10 +22,6 @@ function javaAvailable(): boolean {
 
 const describeWithJava = javaAvailable() ? describe : describe.skip;
 
-// Seeded NEW lead
-const APEX_LEAD_ID = '00000000-0000-7000-8000-000000000010';
-const CAMPAIGN_ID = '00000000-0000-7000-8000-000000000001';
-const AGENT_ID = '00000000-0000-7000-8000-000000000003';
 
 async function postForward(
   engineUrl: string,

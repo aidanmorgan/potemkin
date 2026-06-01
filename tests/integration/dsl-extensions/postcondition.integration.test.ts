@@ -57,7 +57,7 @@ reducers:
 describe('REQ-62: postcondition — fails, UoW aborts', () => {
   it('aborts UoW with POSTCONDITION_VIOLATED when postcondition is false', async () => {
     const entityId = nextUuidv7();
-    const { result, events, state, thrownError } = await bootAndRun({
+    const { result, state, thrownError } = await bootAndRun({
       boundaryName: 'Widget',
       contractPath: '/widgets/{id}',
       entity: { id: entityId, status: 'ACTIVE', balance: 50 },

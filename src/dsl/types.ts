@@ -1,4 +1,6 @@
 import type { Intent, JsonObject, JsonValue } from '../types.js';
+import type { DeclaredState } from './schemaInference.js';
+import type { ScriptRegistry } from '../scripts/types.js';
 
 export interface EventCatalogEntry {
   readonly type: string;                              // event type key
@@ -154,7 +156,7 @@ export interface BoundaryConfig {
    * and internal (typed) fields. Feeds buildInferredSchema at boot and
    * recomputeComputedFields at projection time.
    */
-  readonly state?: import('./schemaInference.js').DeclaredState;
+  readonly state?: DeclaredState;
   /** When false, downgrades the computed-field INCOMPLETE_DEPS check to a WARN. */
   readonly strictSchema?: boolean;
 }
@@ -392,7 +394,7 @@ export interface CompiledDsl {
   readonly byContractPath: Record<string, BoundaryConfig>;
   readonly byBoundaryName: Record<string, BoundaryConfig>;
   /** REQ-68: script registry built at boot time, attached to CompiledDsl */
-  readonly scriptRegistry?: import('../scripts/types.js').ScriptRegistry;
+  readonly scriptRegistry?: ScriptRegistry;
   /** REQ-73: saga declarations */
   readonly sagas?: readonly SagaConfig[];
   /** REQ-81: idempotency configuration */

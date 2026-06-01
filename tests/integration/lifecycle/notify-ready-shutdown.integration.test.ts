@@ -14,7 +14,7 @@
  *     ready notification fails gracefully (no exception escapes).
  */
 
-import * as http from 'node:http';
+import type * as http from 'node:http';
 import express from 'express';
 import type { Express } from 'express';
 import { bootSystem } from '../../../src/engine/boot.js';

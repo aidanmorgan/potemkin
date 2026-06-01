@@ -10,7 +10,6 @@ import { createEventStore } from '../../../src/eventstore/store';
 import { createCelEvaluator } from '../../../src/cel/evaluator';
 import { EntityAbsenceError } from '../../../src/errors';
 import { makeBoundary } from '../_helpers';
-import type { BoundaryConfig } from '../../../src/dsl/types';
 
 const cel = createCelEvaluator();
 

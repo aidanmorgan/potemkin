@@ -17,6 +17,7 @@ import type { EngineOnlyApp } from './_harness/engine-only-app';
 import { fwd } from './_harness/crm-e2e-helpers';
 import type { JsonObject } from './_harness/crm-e2e-helpers';
 import { createHmac } from 'node:crypto';
+import type { Server } from 'node:http';
 
 const AGENT_ID    = '00000000-0000-7000-8000-000000000003';
 const CAMPAIGN_ID = '00000000-0000-7000-8000-000000000001';
@@ -39,7 +40,7 @@ describe('45 — Stage 6 Polish Features (engine-only)', () => {
 
   describe('Webhook HMAC signing (secret in global.yaml)', () => {
     const WEBHOOK_PORT = 19876;
-    let webhookServer: import('node:http').Server;
+    let webhookServer: Server;
     let receivedRequests: Array<{
       body: string;
       parsedBody: JsonObject;

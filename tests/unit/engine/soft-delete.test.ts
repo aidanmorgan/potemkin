@@ -14,7 +14,7 @@ import { runQuery } from '../../../src/engine/query';
 import { createStateGraph } from '../../../src/stategraph/graph';
 import { createShadowGraph } from '../../../src/stategraph/shadow';
 import { createCelEvaluator } from '../../../src/cel/evaluator';
-import { makeBoundary, makeCommand, makeDomainEvent, makeOpenApi } from '../_helpers';
+import { makeBoundary, makeCommand, makeOpenApi } from '../_helpers';
 import type { OpenApiDoc } from '../../../src/contract/loader';
 
 const cel = createCelEvaluator();
@@ -45,7 +45,6 @@ describe('soft delete', () => {
         targetId: 'lead-1',
       });
 
-      let projectedEvent: any = null;
       const result = runPatternMatch({
         command,
         boundary,
@@ -55,7 +54,6 @@ describe('soft delete', () => {
         now: () => '2025-06-01T00:00:00.000Z',
         nextSequenceVersion: () => 1,
         projectToShadow: (evt) => {
-          projectedEvent = evt;
           // Simulate projection: merge payload into state
           const current = shadow.get(evt.aggregateId) ?? {};
           shadow.stage(evt.aggregateId, { ...current, ...evt.payload });

@@ -11,7 +11,6 @@ import {
   lub,
   ftKnown,
   ftUnknown,
-  ftArray,
   ftNarrowed,
   lintUnusedComputed,
   recomputeComputedFields,

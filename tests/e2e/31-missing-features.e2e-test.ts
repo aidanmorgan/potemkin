@@ -17,11 +17,11 @@
 import { startE2eApp } from './_harness/e2e-test-app';
 import type { E2eApp } from './_harness/e2e-test-app';
 import {
-  fwd, getGraphNode, getEventsByAggregate, getAllEvents, getAllEntities,
-  getEntityCount, getEventCount, adminReset,
+  fwd, getGraphNode, adminReset,
   javaAvailable,
 } from './_harness/crm-e2e-helpers';
 import type { JsonObject } from './_harness/crm-e2e-helpers';
+import type { Server } from 'node:http';
 
 const describeWithJava = javaAvailable() ? describe : describe.skip;
 
@@ -29,7 +29,6 @@ const describeWithJava = javaAvailable() ? describe : describe.skip;
 const APEX_LEAD_ID     = '00000000-0000-7000-8000-000000000010'; // Apex Solutions Ltd, score=50, NEW
 const BLUESKY_LEAD_ID  = '00000000-0000-7000-8000-000000000011'; // BlueSky Tech, score=80, CONTACTED
 const CORNER_LEAD_ID   = '00000000-0000-7000-8000-000000000012'; // Cornerstone Corp, score=20, QUALIFIED
-const DELTA_LEAD_ID    = '00000000-0000-7000-8000-000000000013'; // Delta Dynamics, score=70, DISQUALIFIED
 const ECHO_LEAD_ID     = '00000000-0000-7000-8000-000000000014'; // Echo Enterprises, score=50, NEW
 
 const AGENT_ID = '00000000-0000-7000-8000-000000000003';
@@ -644,7 +643,7 @@ describeWithJava('31 — Missing Features (full Specmatic stack)', () => {
     let app: E2eApp;
 
     // Tiny webhook receiver
-    let webhookServer: import('node:http').Server;
+    let webhookServer: Server;
     let receivedRequests: Array<{ body: JsonObject; timestamp: number }>;
     let failNextN: number;
 

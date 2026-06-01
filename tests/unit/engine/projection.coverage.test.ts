@@ -208,7 +208,6 @@ describe('projection.ts additional coverage', () => {
 
       const mockValidator: Partial<ContractValidator> = {
         validateEntity: () => {
-          // eslint-disable-next-line @typescript-eslint/no-throw-literal
           throw 'non-error-string-from-validator';
         },
       };

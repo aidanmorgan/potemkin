@@ -9,8 +9,8 @@
 import { execSync } from 'node:child_process';
 import { startE2eApp } from './_harness/e2e-test-app';
 import type { E2eApp } from './_harness/e2e-test-app';
-import { fwd, getGraphNode, getEventsByAggregate, getAllEvents } from './_harness/crm-e2e-helpers';
-import type { JsonObject, DomainEvent } from './_harness/crm-e2e-helpers';
+import { fwd, getEventsByAggregate, getAllEvents } from './_harness/crm-e2e-helpers';
+import type { JsonObject } from './_harness/crm-e2e-helpers';
 
 function javaAvailable(): boolean {
   try { execSync('java -version', { stdio: 'pipe' }); return true; } catch { return false; }

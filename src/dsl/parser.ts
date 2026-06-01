@@ -2,7 +2,7 @@ import * as yaml from 'js-yaml';
 import { BootError } from '../errors.js';
 import { createLogger, getTracer, withSpan } from '../observability/index.js';
 import { validateBoundaryConfig, validateGlobalConfig } from './schema.js';
-import type { BoundaryConfig, CompiledDsl, SagaConfig, IdempotencyConfig, DerivedProjectionConfig, LatencyConfig } from './types.js';
+import type { AuthConfig, BoundaryConfig, CompiledDsl, FaultRule, HateoasConfig, SagaConfig, IdempotencyConfig, DerivedProjectionConfig, LatencyConfig, SecurityHeadersConfig, VersioningConfig, WebhookConfig } from './types.js';
 import { buildScriptRegistry } from '../scripts/registry.js';
 
 const log = createLogger({ name: 'dsl' });
@@ -119,12 +119,12 @@ export async function compileDsl(
     let sagas: readonly SagaConfig[] | undefined;
     let idempotency: IdempotencyConfig | undefined;
     let derivedProjections: readonly DerivedProjectionConfig[] | undefined;
-    let auth: import('./types.js').AuthConfig | undefined;
-    let hateoas: import('./types.js').HateoasConfig | undefined;
-    let versioning: import('./types.js').VersioningConfig | undefined;
-    let securityHeaders: import('./types.js').SecurityHeadersConfig | undefined;
-    let faults: readonly import('./types.js').FaultRule[] | undefined;
-    let webhooks: readonly import('./types.js').WebhookConfig[] | undefined;
+    let auth: AuthConfig | undefined;
+    let hateoas: HateoasConfig | undefined;
+    let versioning: VersioningConfig | undefined;
+    let securityHeaders: SecurityHeadersConfig | undefined;
+    let faults: readonly FaultRule[] | undefined;
+    let webhooks: readonly WebhookConfig[] | undefined;
 
     if (globalYaml) {
       let rawGlobal: unknown;

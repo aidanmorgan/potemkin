@@ -30,8 +30,10 @@
  *  - SagaFailed
  */
 
-import type { DomainEvent, Command, JsonObject, JsonValue } from '../types.js';
-import type { SagaConfig, SagaStep } from '../dsl/types.js';
+import type { DomainEvent, Command, Intent, JsonObject, JsonValue } from '../types.js';
+import type { SagaConfig } from '../dsl/types.js';
+import type { TsReducerRegistry } from '../engine/tsReducerRegistry.js';
+import type { BoundaryInferenceResult } from '../dsl/schemaInference.js';
 import type { EventStore } from '../eventstore/store.js';
 import type { StateGraph } from '../stategraph/graph.js';
 import type { CelEvaluator } from '../cel/evaluator.js';
@@ -61,9 +63,9 @@ export interface SagaRunInput {
   readonly schemaRegistry?: ObjectGraphSchemaRegistry;
   readonly openapi?: OpenApiDoc;
   /** C3: TS-reducer registry threaded into saga-step units of work. */
-  readonly tsReducerRegistry?: import('../engine/tsReducerRegistry.js').TsReducerRegistry;
+  readonly tsReducerRegistry?: TsReducerRegistry;
   /** C5: per-boundary inferred schemas threaded into saga-step units of work. */
-  readonly inferredSchemas?: Readonly<Record<string, import('../dsl/schemaInference.js').BoundaryInferenceResult>>;
+  readonly inferredSchemas?: Readonly<Record<string, BoundaryInferenceResult>>;
 }
 
 function makeSagaEvent(
@@ -93,7 +95,7 @@ function makeSagaEvent(
  * The base Intent union covers creation/mutation/query; saga steps may also
  * carry 'deletion' to produce a DELETE-method command (potemkin-v2pu).
  */
-type SagaIntent = import('../types.js').Intent | 'deletion';
+type SagaIntent = Intent | 'deletion';
 
 /**
  * Evaluate CEL expressions in a step's payload/targetId against the trigger context.
@@ -150,7 +152,7 @@ function buildStepCommand(
   return {
     commandId: nextUuidv7(),
     boundary,
-    intent: step.intent as import('../types.js').Intent,
+    intent: step.intent as Intent,
     operationId: step.operationId,
     targetId,
     payload,

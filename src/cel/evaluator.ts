@@ -23,7 +23,7 @@
  *   Map:    size, has, keys, values
  */
 
-import { CelPhase } from './phases.js';
+import type { CelPhase } from './phases.js';
 import {
   callBuiltin, deepEqual, naturalCompare, createFakeRng,
   type BuiltinContext, type FakeRng,
@@ -683,7 +683,7 @@ function buildEvaluator(args: {
     } catch (err) {
       logger.debug(
         { src: expression.slice(0, 120) },
-        // eslint-disable-next-line @typescript-eslint/no-base-to-string
+         
         `CEL compile error: ${err instanceof Error ? err.message : /* istanbul ignore next */ String(err)}`,
       );
       throw err;
@@ -716,7 +716,7 @@ function buildEvaluator(args: {
             src: compiled.source.slice(0, 120),
             ctxKeys: Object.keys(ctx),
           },
-          // eslint-disable-next-line @typescript-eslint/no-base-to-string
+           
           `CEL evaluate error: ${err instanceof Error ? err.message : /* istanbul ignore next */ String(err)}`,
         );
         throw err;

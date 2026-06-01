@@ -17,13 +17,6 @@ import type { OpenApiDoc } from '../../../src/contract/loader';
 // Helpers / fixture builders
 // ---------------------------------------------------------------------------
 
-function makeDoc(paths: Record<string, unknown> = {}): OpenApiDoc {
-  return {
-    raw: { components: {}, paths },
-    paths: paths as OpenApiDoc['paths'],
-  };
-}
-
 const minimalOpenApiObject = {
   openapi: '3.0.0',
   info: { title: 'Test API', version: '1.0.0' },

@@ -12,7 +12,7 @@
  */
 
 import type { DomainEvent, JsonObject, JsonValue } from '../types.js';
-import type { DerivedProjectionConfig, DerivedProjectionReduceEntry } from '../dsl/types.js';
+import type { DerivedProjectionConfig, DerivedProjectionReduceEntry, ReducerPatchOp } from '../dsl/types.js';
 import type { CelEvaluator } from '../cel/evaluator.js';
 import type { Logger } from '../observability/logger.js';
 import type { DerivedStateMap, DerivedProjectionRegistry } from './types.js';
@@ -190,7 +190,7 @@ function applyReduceEntry(
 
 function applyDerivedProjectionPatch(
   buf: JsonObject,
-  patch: import('../dsl/types.js').ReducerPatchOp,
+  patch: ReducerPatchOp,
   cel: CelEvaluator,
   celCtx: Record<string, unknown>,
   logger: Logger | undefined,

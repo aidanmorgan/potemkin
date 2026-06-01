@@ -1,7 +1,6 @@
 import { projectEvent, setByDotPath, getByDotPath } from '../../../src/engine/projection';
 import { createStateGraph } from '../../../src/stategraph/graph';
 import { createCelEvaluator } from '../../../src/cel/evaluator';
-import { InternalExecutionError } from '../../../src/errors';
 import { makeBoundary, makeDomainEvent } from '../_helpers';
 
 describe('engine/projection', () => {

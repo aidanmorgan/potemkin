@@ -5,7 +5,7 @@
  * suite (serialised via maxWorkers: 1).
  */
 
-import * as http from 'node:http';
+import type * as http from 'node:http';
 import type { BootedSystem } from '../../../src/engine/boot';
 import { bootSystem } from '../../../src/engine/boot';
 import { resetSystem } from '../../../src/engine/reset';

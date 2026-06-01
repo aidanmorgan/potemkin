@@ -131,7 +131,6 @@ function extractOperation(rawOp: unknown): OpenApiOperation | undefined {
 }
 
 const HTTP_METHODS = ['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace'] as const;
-type HttpMethod = (typeof HTTP_METHODS)[number];
 
 function normalisePaths(rawDoc: OpenAPI.Document): Record<string, OpenApiPathItem> {
   const paths: Record<string, OpenApiPathItem> = {};

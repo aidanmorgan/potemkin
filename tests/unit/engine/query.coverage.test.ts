@@ -10,6 +10,7 @@ import { runQuery } from '../../../src/engine/query';
 import { createStateGraph } from '../../../src/stategraph/graph';
 import { createCelEvaluator } from '../../../src/cel/evaluator';
 import { makeBoundary } from '../_helpers';
+import { EntityAbsenceError } from '../../../src/errors';
 
 const cel = createCelEvaluator();
 
@@ -221,7 +222,6 @@ describe('engine/query.ts additional coverage', () => {
   describe('non-Error throw in runQuery span catch (line 50)', () => {
     it('throws EntityAbsenceError even for missing entity — Error instanceof branch covered', () => {
       const graph = createStateGraph();
-      const { EntityAbsenceError } = require('../../../src/errors');
 
       expect(() =>
         runQuery({

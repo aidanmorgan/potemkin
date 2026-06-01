@@ -15,20 +15,12 @@ import { startE2eApp } from './_harness/e2e-test-app';
 import type { E2eApp } from './_harness/e2e-test-app';
 import {
   fwd,
-  getGraphNode,
-  adminReset,
   javaAvailable,
 } from './_harness/crm-e2e-helpers';
 import type { JsonObject } from './_harness/crm-e2e-helpers';
 
 const describeWithJava = javaAvailable() ? describe : describe.skip;
 
-// Seeded Lead IDs from lead.yaml initialization
-const APEX_LEAD_ID    = '00000000-0000-7000-8000-000000000010'; // score=50, NEW, WEBSITE, "Apex Solutions Ltd"
-const BLUESKY_LEAD_ID = '00000000-0000-7000-8000-000000000011'; // score=80, CONTACTED, REFERRAL, "BlueSky Tech"
-const CORNER_LEAD_ID  = '00000000-0000-7000-8000-000000000012'; // score=20, QUALIFIED, COLD_LIST, "Cornerstone Corp"
-const DELTA_LEAD_ID   = '00000000-0000-7000-8000-000000000013'; // score=70, DISQUALIFIED, PARTNER, "Delta Dynamics"
-const ECHO_LEAD_ID    = '00000000-0000-7000-8000-000000000014'; // score=50, NEW, WEBSITE, "Echo Enterprises"
 
 describeWithJava('34 — Query Edge Cases (full Specmatic stack)', () => {
   let app: E2eApp;

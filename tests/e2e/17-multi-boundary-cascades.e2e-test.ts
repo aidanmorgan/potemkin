@@ -18,7 +18,6 @@ import type { E2eApp } from './_harness/e2e-test-app';
 import {
   fwd,
   getGraphNode,
-  getEntityCount,
   getEventsByAggregate,
 } from './_harness/crm-e2e-helpers';
 import type { JsonObject } from './_harness/crm-e2e-helpers';

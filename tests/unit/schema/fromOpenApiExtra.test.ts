@@ -7,7 +7,6 @@
  */
 
 import { deriveSchemasFromOpenApi } from '../../../src/schema/fromOpenApi';
-import { BootError } from '../../../src/errors';
 import type { OpenApiDoc } from '../../../src/contract/loader';
 
 function makeDoc(schemas: Record<string, object>): OpenApiDoc {

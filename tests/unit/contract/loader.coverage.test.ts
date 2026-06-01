@@ -7,6 +7,9 @@
  */
 
 import { loadOpenApi } from '../../../src/contract/loader';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 
 describe('contract/loader.ts additional coverage', () => {
 
@@ -65,9 +68,6 @@ describe('contract/loader.ts additional coverage', () => {
 
   describe('loadOpenApi string source — file path branch (line 160)', () => {
     it('loads from a real file path string (passes string directly to SwaggerParser)', async () => {
-      const fs = require('fs');
-      const os = require('os');
-      const path = require('path');
 
       // Write a minimal valid OpenAPI spec to a temp file
       const tmpDir = os.tmpdir();

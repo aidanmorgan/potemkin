@@ -140,7 +140,7 @@ describe('EventStore properties', () => {
 
   it('events returned by all() are frozen', () => {
     fc.assert(
-      fc.property(arbEventSequence, ({ aggregateId, events }) => {
+      fc.property(arbEventSequence, ({ events }) => {
         const store = createEventStore();
         store.append(events);
         const all = store.all();

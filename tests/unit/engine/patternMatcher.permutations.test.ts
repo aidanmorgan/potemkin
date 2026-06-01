@@ -16,14 +16,6 @@ import type { CelEvaluator } from '../../../src/cel/evaluator';
 import type { Command } from '../../../src/types';
 
 // operationId for the behavior that should handle a given intent under the default
-// test OpenAPI: creation → POST /test (createTest), mutation → PATCH /test/{id}
-// (updateTest), query → GET /test/{id} (getTest).
-const OP_FOR = {
-  creation: 'createTest',
-  mutation: 'updateTest',
-  query: 'getTest',
-} as const;
-
 // Local makeCommand that derives a contract-consistent (method, path) from intent,
 // so the pattern matcher resolves the matching operationId. Explicit overrides win.
 function makeCommand(overrides: Partial<Command> = {}): Command {
@@ -288,7 +280,7 @@ describe('engine/patternMatcher — permutations', () => {
     });
 
     it('2 behaviors: first matches → only first behavior fires', () => {
-      let callOrder: string[] = [];
+      const callOrder: string[] = [];
       const cel: CelEvaluator = {
         compile: (e: string) => ({ source: e, _ast: {} as any }),
     evaluateDslValue: jest.fn() as any,

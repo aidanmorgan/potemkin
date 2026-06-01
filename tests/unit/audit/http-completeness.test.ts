@@ -18,7 +18,6 @@
  * 10. OPTIONS on contract path does NOT return 200/204 with CORS headers (gap).
  */
 
-import request from 'supertest';
 import { createTestApp, type TestApp } from '../../acceptance/_helpers/test-app.js';
 
 const LEAD_PAYLOAD = {

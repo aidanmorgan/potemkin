@@ -10,7 +10,7 @@
 import * as fc from 'fast-check';
 import { guardAssignPath, guardAssignedValue } from '../../src/schema/runtimeGuard';
 import { pathExists } from '../../src/schema/pathResolver';
-import { makeCrmRegistry, CUSTOMER_SCHEMA } from './_helpers/fixtures';
+import { makeCrmRegistry } from './_helpers/fixtures';
 import { InternalExecutionError } from '../../src/errors';
 
 const RUN_COUNT = 200;

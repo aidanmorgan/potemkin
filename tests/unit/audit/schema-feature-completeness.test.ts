@@ -8,7 +8,7 @@
 
 import { isAssignable, validateEntityAgainstSchema } from '../../../src/schema/typeCheck';
 import { deriveSchemasFromOpenApi } from '../../../src/schema/fromOpenApi';
-import { resolvePath, pathExists } from '../../../src/schema/pathResolver';
+import { resolvePath } from '../../../src/schema/pathResolver';
 import { guardAssignPath, guardAssignedValue } from '../../../src/schema/runtimeGuard';
 import { staticCheckDsl } from '../../../src/schema/dslStaticChecker';
 import type { ObjectGraphSchema, ObjectGraphSchemaRegistry } from '../../../src/schema/types';

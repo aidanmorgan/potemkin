@@ -2,7 +2,6 @@ import type { BootedSystem } from './boot.js';
 import type { DomainEvent, JsonObject } from '../types.js';
 import { projectEvent } from './projection.js';
 import { childLogger } from '../observability/logger.js';
-import { withSpan } from '../observability/tracing.js';
 import { applyEventToDerivedProjections } from '../projections/engine.js';
 
 /**

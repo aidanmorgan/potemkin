@@ -12,7 +12,6 @@ import { executeUnitOfWork } from '../../../src/engine/uow';
 import { createStateGraph } from '../../../src/stategraph/graph';
 import { createEventStore } from '../../../src/eventstore/store';
 import { createCelEvaluator } from '../../../src/cel/evaluator';
-import { createContractValidator } from '../../../src/contract/validator';
 import { makeBoundary, makeCommand, makeOpenApi } from '../_helpers';
 import type { ContractValidator } from '../../../src/contract/validator';
 
@@ -288,12 +287,6 @@ describe('audit fields — updatedAt / updatedBy', () => {
       targetId: 'agg-1',
       payload: {},
     });
-
-    // Query requires openapi
-    const minimalOpenapi = {
-      raw: { components: { schemas: {} } },
-      paths: {},
-    };
 
     await executeUnitOfWork({
       command,

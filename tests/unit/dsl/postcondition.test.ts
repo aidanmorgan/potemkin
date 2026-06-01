@@ -31,7 +31,7 @@ function makeInput(overrides: Partial<PatternMatchInput> = {}): PatternMatchInpu
     cel,
     nextEventId: () => 'evt-1',
     nextSequenceVersion: () => 1,
-    projectToShadow: jest.fn((evt) => {
+    projectToShadow: jest.fn((_evt) => {
       // Simulate projection: update shadow balance
     }),
     now: () => '2024-01-01T00:00:00.000Z',
@@ -103,7 +103,7 @@ describe('REQ-62: postcondition runtime behavior', () => {
   it('succeeds when postcondition evaluates to true', () => {
     // Set up shadow so that after projectToShadow is called, get() returns a valid state
     const shadow = makeNoopShadow({ balance: 100 });
-    const projectToShadow = jest.fn((evt) => {
+    const projectToShadow = jest.fn((_evt) => {
       // Simulate: reduce balance by 50 on LoanRepaid
       shadow.stage('agg-1', { balance: 50 });
     });

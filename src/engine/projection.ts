@@ -13,8 +13,9 @@ import { deepClone, deepMerge } from '../stategraph/graph.js';
 import { applyPatches, type JournalEntry, type Patch } from '../dsl/patches.js';
 import { applyReducerPatchList } from './reducerPatches.js';
 import type { TsReducerRegistry } from './tsReducerRegistry.js';
-import type { ReducerContext } from '../sdk/index.js';
+import type { ReducerContext, RegisteredReducer } from '../sdk/index.js';
 import { recomputeComputedFields } from '../dsl/schemaInference.js';
+import type { DeclaredComputedField } from '../dsl/schemaInference.js';
 import type { CelContext } from '../cel/evaluator.js';
 import { CelPhase } from '../cel/phases.js';
 import { guardAssignedValue } from '../schema/runtimeGuard.js';
@@ -128,7 +129,7 @@ export interface ProjectionInput {
    * order against post-patch state. A formula error aborts projection (500),
    * discarding the candidate — preserving atomicity.
    */
-  readonly computed?: readonly import('../dsl/schemaInference.js').DeclaredComputedField[];
+  readonly computed?: readonly DeclaredComputedField[];
   readonly computedOrder?: readonly string[];
 }
 
@@ -324,7 +325,7 @@ function _projectEvent(input: ProjectionInput): ProjectionResult {
  * the state so it cannot mutate the buffer out from under applyPatches.
  */
 function runTsReducer(
-  reducer: import('../sdk/index.js').RegisteredReducer,
+  reducer: RegisteredReducer,
   state: JsonObject,
   event: DomainEvent,
   cel: CelEvaluator,

@@ -6,7 +6,8 @@
  * used in integration tests with HTTP queries to /_admin/ endpoints.
  */
 
-import type { E2eApp } from './e2e-test-app';
+
+import { execSync } from 'node:child_process';
 
 export interface JsonObject { [key: string]: unknown }
 export interface DomainEvent {
@@ -97,7 +98,7 @@ export async function adminReset(engineUrl: string): Promise<void> {
 
 export function javaAvailable(): boolean {
   try {
-    require('child_process').execSync('java -version', { stdio: 'pipe' });
+    execSync('java -version', { stdio: 'pipe' });
     return true;
   } catch {
     return false;

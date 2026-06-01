@@ -1,18 +1,27 @@
 import { BootError } from '../errors.js';
 import { assertNoRemovedReducerKeys } from './removedSyntax.js';
 import { firstBareCelReference } from './celInterpolation.js';
-import type { JsonObject, JsonValue } from '../types.js';
+import type { JsonObject, JsonValue, Intent } from '../types.js';
 import { POTEMKIN_SIGNAL_ALIASES } from '../http/potemkinHeaders.js';
 import type {
+  AuthConfig,
   BehaviorRule,
   BoundaryConfig,
+  DeprecationConfig,
   EmitWhenEntry,
   EventCatalogEntry,
+  FaultRule,
+  HateoasConfig,
+  HateoasLinkEntry,
   IdentityConfig,
+  JwtAuthConfig,
+  ReducerPatchOp,
   ReducerRule,
   RequiresGuard,
   ScriptDeclaration,
   SecondaryCommandSpec,
+  SecurityHeadersConfig,
+  SessionAuthConfig,
   SagaConfig,
   SagaStep,
   SagaTrigger,
@@ -20,7 +29,11 @@ import type {
   IdempotencyConfig,
   DerivedProjectionConfig,
   DerivedProjectionReduceEntry,
+  VersionDecl,
+  VersioningConfig,
+  WebhookConfig,
 } from './types.js';
+import type { DeclaredComputedField, DeclaredInternalField, DeclaredState, FieldKind, FieldType } from './schemaInference.js';
 import { createCelEvaluator } from '../cel/evaluator.js';
 import { createLogger } from '../observability/logger.js';
 
@@ -117,37 +130,6 @@ function requireStringStringMap(
   return v as Record<string, string>;
 }
 
-// Validates a map where values are either strings or objects (for append blocks).
-function requireStringMixedMap(
-  obj: Record<string, unknown>,
-  key: string,
-  ctx: string,
-): Record<string, string> | undefined {
-  const v = obj[key];
-  if (v === undefined || v === null) return undefined;
-  if (!isRecord(v)) {
-    throw new BootError(
-      'BOOT_ERR_DSL_SYNTAX',
-      `${ctx}: field "${key}" must be an object (got ${JSON.stringify(v)})`,
-      { field: key, context: ctx },
-    );
-  }
-  for (const [k, val] of Object.entries(v)) {
-    if (typeof val !== 'string' && !isRecord(val)) {
-      throw new BootError(
-        'BOOT_ERR_DSL_SYNTAX',
-        `${ctx}: field "${key}.${k}" must be a string or object (got ${JSON.stringify(val)})`,
-        { field: `${key}.${k}`, context: ctx },
-      );
-    }
-  }
-  // Serialise object values as JSON strings (CEL-compatible representation)
-  const result: Record<string, string> = {};
-  for (const [k, val] of Object.entries(v)) {
-    result[k] = typeof val === 'string' ? val : JSON.stringify(val);
-  }
-  return result;
-}
 
 /**
  * Validate a CEL expression or ts: sentinel for non-reducer phases.
@@ -557,14 +539,14 @@ function validateReducerRule(raw: unknown, index: number): ReducerRule {
   };
 }
 
-function optionalPatchList(raw: Record<string, unknown>, ctx: string): readonly import('./types.js').ReducerPatchOp[] | undefined {
+function optionalPatchList(raw: Record<string, unknown>, ctx: string): readonly ReducerPatchOp[] | undefined {
   const val = raw['patches'];
   if (val === undefined) return undefined;
   if (!Array.isArray(val)) {
     throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.patches: must be an array`, { context: ctx });
   }
   const known = new Set(['add', 'remove', 'replace', 'append', 'prepend', 'increment', 'merge', 'upsert', 'move', 'copy']);
-  return val.map((p, i): import('./types.js').ReducerPatchOp => {
+  return val.map((p, i): ReducerPatchOp => {
     if (!isRecord(p)) {
       throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.patches[${i}]: must be an object`, { context: ctx });
     }
@@ -599,9 +581,9 @@ function optionalPatchList(raw: Record<string, unknown>, ctx: string): readonly 
       }
     }
     return {
-      op: op as import('./types.js').ReducerPatchOp['op'],
+      op: op as ReducerPatchOp['op'],
       path,
-      ...(p['value'] !== undefined ? { value: p['value'] as import('./types.js').ReducerPatchOp['value'] } : {}),
+      ...(p['value'] !== undefined ? { value: p['value'] as ReducerPatchOp['value'] } : {}),
       ...(p['by'] !== undefined ? { by: p['by'] as number } : {}),
       ...(p['key'] !== undefined ? { key: p['key'] as string } : {}),
       ...(p['deep'] !== undefined ? { deep: p['deep'] as boolean } : {}),
@@ -702,19 +684,6 @@ function validateScriptDeclaration(raw: unknown, index: number, boundaryCtx: str
 // ---------------------------------------------------------------------------
 // Cross-reference validation
 // ---------------------------------------------------------------------------
-
-function collectTsRefs(emitCond: string | undefined, conditions: string[]): string[] {
-  const refs: string[] = [];
-  for (const c of conditions) {
-    if (c.startsWith(TS_SENTINEL)) {
-      refs.push(c.slice(TS_SENTINEL.length));
-    }
-  }
-  if (emitCond !== undefined && emitCond.startsWith(TS_SENTINEL)) {
-    refs.push(emitCond.slice(TS_SENTINEL.length));
-  }
-  return refs;
-}
 
 function crossValidate(config: {
   behaviors: readonly BehaviorRule[];
@@ -1006,7 +975,7 @@ export function validateBoundaryConfig(raw: unknown): BoundaryConfig {
   }
 
   // Boundary-scoped fault rules — reuse the same parser as global fault_rules.
-  let faults: readonly import('./types.js').FaultRule[] | undefined;
+  let faults: readonly FaultRule[] | undefined;
   const faultRulesRaw = raw['fault_rules'];
   if (faultRulesRaw !== undefined && faultRulesRaw !== null) {
     if (!Array.isArray(faultRulesRaw)) {
@@ -1053,13 +1022,13 @@ export function validateBoundaryConfig(raw: unknown): BoundaryConfig {
 function validateDeclaredState(
   raw: unknown,
   ctx: string,
-): import('./schemaInference.js').DeclaredState | undefined {
+): DeclaredState | undefined {
   if (raw === undefined || raw === null) return undefined;
   if (!isRecord(raw)) {
     throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.state must be a mapping`, { field: 'state' });
   }
 
-  let computed: import('./schemaInference.js').DeclaredComputedField[] | undefined;
+  let computed: DeclaredComputedField[] | undefined;
   const computedRaw = raw['computed'];
   if (computedRaw !== undefined && computedRaw !== null) {
     if (!Array.isArray(computedRaw)) {
@@ -1098,7 +1067,7 @@ function validateDeclaredState(
     });
   }
 
-  let internal: import('./schemaInference.js').DeclaredInternalField[] | undefined;
+  let internal: DeclaredInternalField[] | undefined;
   const internalRaw = raw['internal'];
   if (internalRaw !== undefined && internalRaw !== null) {
     if (!Array.isArray(internalRaw)) {
@@ -1126,7 +1095,7 @@ const SCALAR_FIELD_KINDS = new Set(['string', 'integer', 'number', 'boolean', 'n
 function fieldTypeFromName(
   typeName: string,
   ctx: string,
-): import('./schemaInference.js').FieldType {
+): FieldType {
   if (!SCALAR_FIELD_KINDS.has(typeName)) {
     throw new BootError(
       'BOOT_ERR_DSL_SYNTAX',
@@ -1134,11 +1103,11 @@ function fieldTypeFromName(
       { context: ctx, type: typeName },
     );
   }
-  return { kind: typeName as import('./schemaInference.js').FieldKind, confidence: 'known' };
+  return { kind: typeName as FieldKind, confidence: 'known' };
 }
 
 /** D2: parse an optional `deprecated:` envelope { date?, sunset?, replacement? }. */
-function validateDeprecationConfig(raw: unknown, ctx: string): import('./types.js').DeprecationConfig | undefined {
+function validateDeprecationConfig(raw: unknown, ctx: string): DeprecationConfig | undefined {
   if (raw === undefined || raw === null) return undefined;
   if (!isRecord(raw)) {
     throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.deprecated must be a mapping`, { field: 'deprecated' });
@@ -1154,7 +1123,7 @@ function validateDeprecationConfig(raw: unknown, ctx: string): import('./types.j
 }
 
 /** D1: parse an optional `hateoas:` list of { rel, href } entries. */
-function validateHateoasEntries(raw: unknown, ctx: string): readonly import('./types.js').HateoasLinkEntry[] | undefined {
+function validateHateoasEntries(raw: unknown, ctx: string): readonly HateoasLinkEntry[] | undefined {
   if (raw === undefined || raw === null) return undefined;
   if (!Array.isArray(raw)) {
     throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.hateoas must be an array`, { field: 'hateoas' });
@@ -1333,12 +1302,12 @@ export interface GlobalConfig {
   readonly sagas?: readonly SagaConfig[];
   readonly idempotency?: IdempotencyConfig;
   readonly derivedProjections?: readonly DerivedProjectionConfig[];
-  readonly auth?: import('./types.js').AuthConfig;
-  readonly hateoas?: import('./types.js').HateoasConfig;
-  readonly versioning?: import('./types.js').VersioningConfig;
-  readonly securityHeaders?: import('./types.js').SecurityHeadersConfig;
-  readonly faults?: readonly import('./types.js').FaultRule[];
-  readonly webhooks?: readonly import('./types.js').WebhookConfig[];
+  readonly auth?: AuthConfig;
+  readonly hateoas?: HateoasConfig;
+  readonly versioning?: VersioningConfig;
+  readonly securityHeaders?: SecurityHeadersConfig;
+  readonly faults?: readonly FaultRule[];
+  readonly webhooks?: readonly WebhookConfig[];
 }
 
 /**
@@ -1358,7 +1327,7 @@ const KNOWN_GLOBAL_KEYS: ReadonlySet<string> = new Set([
   'webhooks',
 ]);
 
-function validateAuthConfig(raw: unknown): import('./types.js').AuthConfig {
+function validateAuthConfig(raw: unknown): AuthConfig {
   if (!isRecord(raw)) {
     throw new BootError('BOOT_ERR_DSL_SYNTAX', 'auth must be a mapping', { received: typeof raw });
   }
@@ -1367,7 +1336,7 @@ function validateAuthConfig(raw: unknown): import('./types.js').AuthConfig {
     throw new BootError('BOOT_ERR_DSL_SYNTAX', 'auth.mode must be simple|jwt|session', { mode: typeof mode === 'string' ? mode : null });
   }
   const jwtRaw = raw['jwt'];
-  let jwt: import('./types.js').JwtAuthConfig | undefined;
+  let jwt: JwtAuthConfig | undefined;
   if (jwtRaw !== undefined && jwtRaw !== null) {
     if (!isRecord(jwtRaw)) throw new BootError('BOOT_ERR_DSL_SYNTAX', 'auth.jwt must be a mapping');
     const secret = jwtRaw['secret'];
@@ -1384,7 +1353,7 @@ function validateAuthConfig(raw: unknown): import('./types.js').AuthConfig {
     };
   }
   const sessionRaw = raw['session'];
-  let session: import('./types.js').SessionAuthConfig | undefined;
+  let session: SessionAuthConfig | undefined;
   if (sessionRaw !== undefined && sessionRaw !== null) {
     if (!isRecord(sessionRaw)) throw new BootError('BOOT_ERR_DSL_SYNTAX', 'auth.session must be a mapping');
     session = {
@@ -1404,7 +1373,7 @@ function validateAuthConfig(raw: unknown): import('./types.js').AuthConfig {
 }
 
 /** Parse the global `hateoas:` block. */
-function validateGlobalHateoas(raw: unknown): import('./types.js').HateoasConfig {
+function validateGlobalHateoas(raw: unknown): HateoasConfig {
   if (!isRecord(raw)) {
     throw new BootError('BOOT_ERR_DSL_SYNTAX', 'Global config: "hateoas" must be a mapping', { received: typeof raw });
   }
@@ -1416,7 +1385,7 @@ function validateGlobalHateoas(raw: unknown): import('./types.js').HateoasConfig
 }
 
 /** Parse the global `security_headers:` block. */
-function validateGlobalSecurityHeaders(raw: unknown): import('./types.js').SecurityHeadersConfig {
+function validateGlobalSecurityHeaders(raw: unknown): SecurityHeadersConfig {
   if (!isRecord(raw)) {
     throw new BootError('BOOT_ERR_DSL_SYNTAX', 'Global config: "security_headers" must be a mapping', { received: typeof raw });
   }
@@ -1432,11 +1401,11 @@ function validateGlobalSecurityHeaders(raw: unknown): import('./types.js').Secur
 }
 
 /** Parse the global `versioning:` block. Exactly one version may be marked default. */
-function validateGlobalVersioning(raw: unknown): import('./types.js').VersioningConfig {
+function validateGlobalVersioning(raw: unknown): VersioningConfig {
   if (!isRecord(raw)) {
     throw new BootError('BOOT_ERR_DSL_SYNTAX', 'Global config: "versioning" must be a mapping', { received: typeof raw });
   }
-  let versions: import('./types.js').VersionDecl[] | undefined;
+  let versions: VersionDecl[] | undefined;
   if (raw['versions'] !== undefined && raw['versions'] !== null) {
     if (!Array.isArray(raw['versions'])) {
       throw new BootError('BOOT_ERR_DSL_SYNTAX', 'Global config: "versioning.versions" must be an array', { field: 'versioning.versions' });
@@ -1468,7 +1437,7 @@ function validateGlobalVersioning(raw: unknown): import('./types.js').Versioning
 }
 
 /** Parse a single `fault_rules[i]` entry into a FaultRule. */
-function validateFaultRule(raw: unknown, i: number): import('./types.js').FaultRule {
+function validateFaultRule(raw: unknown, i: number): FaultRule {
   const ctx = `fault_rules[${i}]`;
   if (!isRecord(raw)) {
     throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx} must be a mapping`, { context: ctx });
@@ -1516,7 +1485,7 @@ function validateFaultRule(raw: unknown, i: number): import('./types.js').FaultR
     name,
     match: {
       ...(typeof matchRaw['boundary'] === 'string' ? { boundary: matchRaw['boundary'] } : {}),
-      ...(typeof intentRaw === 'string' ? { intent: intentRaw as import('../types.js').Intent } : {}),
+      ...(typeof intentRaw === 'string' ? { intent: intentRaw as Intent } : {}),
       ...(Object.keys(expandedHeaders).length > 0 ? { headers: expandedHeaders } : {}),
       condition,
       ...(typeof probabilityRaw === 'number' ? { probability: probabilityRaw } : {}),
@@ -1531,7 +1500,7 @@ function validateFaultRule(raw: unknown, i: number): import('./types.js').FaultR
 }
 
 /** Parse a single `webhooks[i]` entry into a WebhookConfig. */
-function validateWebhookConfig(raw: unknown, i: number): import('./types.js').WebhookConfig {
+function validateWebhookConfig(raw: unknown, i: number): WebhookConfig {
   const ctx = `webhooks[${i}]`;
   if (!isRecord(raw)) {
     throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx} must be a mapping`, { context: ctx });
@@ -1547,7 +1516,7 @@ function validateWebhookConfig(raw: unknown, i: number): import('./types.js').We
 
   const payload = requireStringStringMap(raw, 'payload', ctx);
 
-  let retry: import('./types.js').WebhookConfig['retry'];
+  let retry: WebhookConfig['retry'];
   if (raw['retry'] !== undefined && raw['retry'] !== null) {
     if (!isRecord(raw['retry'])) {
       throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.retry must be a mapping`, { context: ctx });
@@ -1563,7 +1532,7 @@ function validateWebhookConfig(raw: unknown, i: number): import('./types.js').We
     name,
     trigger: {
       ...(typeof triggerRaw['boundary'] === 'string' ? { boundary: triggerRaw['boundary'] } : {}),
-      ...(typeof triggerRaw['intent'] === 'string' ? { intent: triggerRaw['intent'] as import('../types.js').Intent } : {}),
+      ...(typeof triggerRaw['intent'] === 'string' ? { intent: triggerRaw['intent'] as Intent } : {}),
       condition,
     },
     url,
@@ -1617,27 +1586,27 @@ export function validateGlobalConfig(raw: unknown): GlobalConfig {
     derivedProjections = (raw['derived_projections'] as unknown[]).map((p, i) => validateDerivedProjectionConfig(p, i));
   }
 
-  let auth: import('./types.js').AuthConfig | undefined;
+  let auth: AuthConfig | undefined;
   if (raw['auth'] !== undefined && raw['auth'] !== null) {
     auth = validateAuthConfig(raw['auth']);
   }
 
-  let hateoas: import('./types.js').HateoasConfig | undefined;
+  let hateoas: HateoasConfig | undefined;
   if (raw['hateoas'] !== undefined && raw['hateoas'] !== null) {
     hateoas = validateGlobalHateoas(raw['hateoas']);
   }
 
-  let versioning: import('./types.js').VersioningConfig | undefined;
+  let versioning: VersioningConfig | undefined;
   if (raw['versioning'] !== undefined && raw['versioning'] !== null) {
     versioning = validateGlobalVersioning(raw['versioning']);
   }
 
-  let securityHeaders: import('./types.js').SecurityHeadersConfig | undefined;
+  let securityHeaders: SecurityHeadersConfig | undefined;
   if (raw['security_headers'] !== undefined && raw['security_headers'] !== null) {
     securityHeaders = validateGlobalSecurityHeaders(raw['security_headers']);
   }
 
-  let faults: readonly import('./types.js').FaultRule[] | undefined;
+  let faults: readonly FaultRule[] | undefined;
   if (raw['fault_rules'] !== undefined && raw['fault_rules'] !== null) {
     if (!Array.isArray(raw['fault_rules'])) {
       throw new BootError('BOOT_ERR_DSL_SYNTAX', 'Global config: "fault_rules" must be an array', { field: 'fault_rules' });
@@ -1645,7 +1614,7 @@ export function validateGlobalConfig(raw: unknown): GlobalConfig {
     faults = (raw['fault_rules'] as unknown[]).map((f, i) => validateFaultRule(f, i));
   }
 
-  let webhooks: readonly import('./types.js').WebhookConfig[] | undefined;
+  let webhooks: readonly WebhookConfig[] | undefined;
   if (raw['webhooks'] !== undefined && raw['webhooks'] !== null) {
     if (!Array.isArray(raw['webhooks'])) {
       throw new BootError('BOOT_ERR_DSL_SYNTAX', 'Global config: "webhooks" must be an array', { field: 'webhooks' });

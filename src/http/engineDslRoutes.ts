@@ -7,6 +7,7 @@ import type { Express, Request, Response } from 'express';
 import express from 'express';
 
 import type { BootedSystem } from '../engine/boot.js';
+import type { DomainEvent } from '../types.js';
 import { compileDsl } from '../dsl/parser.js';
 import { computeSpecVersion } from '../dsl/specVersion.js';
 import { createCelEvaluator } from '../cel/evaluator.js';
@@ -93,12 +94,12 @@ function makeStateAccessor(sys: BootedSystem): StateAccessor {
  */
 function reproduceAggregateJournal(
   sys: BootedSystem,
-  events: readonly import('../types.js').DomainEvent[],
+  events: readonly DomainEvent[],
 ): JournalEntry[] {
   const graph = createStateGraph();
   const cel = createCelEvaluator();
   const journal: JournalEntry[] = [];
-  let failedOn: import('../types.js').DomainEvent | undefined;
+  let failedOn: DomainEvent | undefined;
   try {
     for (const event of events) {
       failedOn = event;

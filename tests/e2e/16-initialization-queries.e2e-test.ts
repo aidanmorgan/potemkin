@@ -16,9 +16,7 @@ import {
   fwd,
   getGraphNode,
   getEntityCount,
-  getAllEntities,
   getAllEvents,
-  getEventsByAggregate,
 } from './_harness/crm-e2e-helpers';
 import type { JsonObject } from './_harness/crm-e2e-helpers';
 

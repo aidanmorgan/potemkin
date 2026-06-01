@@ -64,7 +64,8 @@ describe('observability/logger.ts — lines 19 and 39 coverage', () => {
       // be called immediately when usePretty=true (default in non-production env).
       jest.resetModules();
 
-      const Module = require('module');
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.resetModules() context requires dynamic require
+      const Module = require('module') as { _resolveFilename: (request: string, ...args: unknown[]) => string };
       const origResolve = Module._resolveFilename;
       Module._resolveFilename = function(request: string, ...args: unknown[]) {
         if (request === 'pino-pretty') {

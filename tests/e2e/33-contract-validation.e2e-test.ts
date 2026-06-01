@@ -20,8 +20,6 @@ import type { JsonObject } from './_harness/crm-e2e-helpers';
 
 const describeWithJava = javaAvailable() ? describe : describe.skip;
 
-const AGENT_ID = '00000000-0000-7000-8000-000000000003';
-const CAMPAIGN_ID = '00000000-0000-7000-8000-000000000001';
 
 describeWithJava('33 — Contract Validation (full Specmatic stack)', () => {
   let app: E2eApp;

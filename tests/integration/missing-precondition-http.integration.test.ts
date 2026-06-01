@@ -124,27 +124,6 @@ async function buildSystem(): Promise<BootedSystem> {
   return bootSystem({ openapi, compiledDsl: await compileDsl([{ name: 'precondWidget', yaml: PRECOND_DSL_YAML }]) });
 }
 
-// Helper: determine whether If-Match is required for a given operation by inspecting
-// the OpenAPI parameters.  This mirrors what the refactor agent's wired callback does.
-function makeRequiresPrecondition(sys: BootedSystem): (boundary: string, method: string) => boolean {
-  return (boundary: string, method: string): boolean => {
-    // Walk the OpenAPI paths to find the operation matching this boundary + method
-    const paths = (sys.openapi as unknown as Record<string, unknown>)['paths'] as Record<string, Record<string, unknown>> | undefined;
-    if (!paths) return false;
-    for (const [, pathItem] of Object.entries(paths)) {
-      const op = pathItem[method.toLowerCase()] as Record<string, unknown> | undefined;
-      if (!op) continue;
-      const params = op['parameters'] as Array<Record<string, unknown>> | undefined;
-      if (!params) continue;
-      const ifMatchParam = params.find(
-        (p) => p['name'] === 'If-Match' && p['in'] === 'header' && p['required'] === true,
-      );
-      if (ifMatchParam) return true;
-    }
-    return false;
-  };
-}
-
 // ---------------------------------------------------------------------------
 // Suite A: Direct UoW-level tests (works today, refactor-agent-independent)
 // ---------------------------------------------------------------------------

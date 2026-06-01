@@ -31,14 +31,14 @@ import {
   AggregationTemporality,
 } from '@opentelemetry/sdk-metrics';
 import { createEngineMetrics } from '../../../src/observability/metrics.js';
-import { withSpan } from '../../../src/observability/tracing.js';
-import { createEventStore } from '../../../src/eventstore/store.js';
-import { createStateGraph } from '../../../src/stategraph/graph.js';
 import { createLogger } from '../../../src/observability/logger.js';
-import { createTestApp, type TestApp } from '../../acceptance/_helpers/test-app.js';
+import { createTestApp } from '../../acceptance/_helpers/test-app.js';
 import { collectMetricDataPoints } from '../../integration/_helpers/otel.js';
 import { withPersistentServer } from '../../_support/persistentAgent.js';
 import { registerFileTeardown } from '../../_support/testTeardown.js';
+import { Writable } from 'stream';
+import type { Logger as PinoLogger } from 'pino';
+import pino from 'pino';
 
 // ---------------------------------------------------------------------------
 // OTel test infrastructure helpers
@@ -811,7 +811,6 @@ describe('observability/logger — structured log bindings (REQ-42)', () => {
    */
 
   it('childLogger carries provided bindings in output', (done) => {
-    const { Writable } = require('stream') as typeof import('stream');
     const lines: string[] = [];
 
     const dest = new Writable({
@@ -821,9 +820,7 @@ describe('observability/logger — structured log bindings (REQ-42)', () => {
       },
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const pino = require('pino') as (opts: unknown, dest: unknown) => import('pino').Logger;
-    const baseLogger = pino({ level: 'info' }, dest);
+    const baseLogger = pino({ level: 'info' }, dest) as PinoLogger;
     const child = baseLogger.child({
       boundary: 'Lead',
       commandId: 'cmd-abc',
