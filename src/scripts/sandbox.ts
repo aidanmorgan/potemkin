@@ -6,11 +6,24 @@ import { InternalExecutionError } from '../errors.js';
 const SCRIPT_TIMEOUT_MS = 50;
 
 /**
- * UUID pool size: pre-generate this many UUIDs from the host side before
- * entering the vm, so realm-native helpers.uuid() can serve multiple calls
- * per reducer invocation without touching any host-realm function inside the vm.
+ * Maximum number of log entries the realm-side buffer will collect per
+ * invocation. Entries beyond this limit are dropped and a truncated marker
+ * is appended instead.
  */
-const UUID_POOL_SIZE = 10;
+const LOG_BUFFER_CAP = 100;
+
+/**
+ * Derive a 32-bit unsigned integer seed from a string using a simple djb2-style
+ * hash. The result is a primitive number, safe to inject into the vm context.
+ */
+function deriveNumericSeed(s: string): number {
+  let h = 2166136261; // FNV-1a 32-bit offset basis
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = (Math.imul(h, 16777619)) >>> 0;
+  }
+  return h >>> 0;
+}
 
 /**
  * Compile the transpiled CJS JS into a ScriptHandle.
@@ -23,16 +36,19 @@ const UUID_POOL_SIZE = 10;
  *   and allows escape to the host Function constructor → full RCE.
  * - JSON, Math, Date are realm-native in every vm context and require no injection.
  * - URL is not available in vm realm and is not injected.
- * - console is realm-native in every vm context; no injection needed.
+ * - console is overridden inside the realm by the bootstrap to push to a buffer;
+ *   no host-realm console is injected.
  * - ScriptContext data (command/state/payload/event) is serialised to a JSON
  *   string primitive and deserialised inside the realm via a bootstrap script.
- * - Helper functions (uuid, now) are pre-evaluated on the host side and their
- *   string results are injected as primitives (safe: string.constructor resolves
- *   to the vm-realm String, not the host Function).
+ * - uuid() is implemented in the realm bootstrap via a mulberry32 PRNG seeded
+ *   from __uuidSeed__ (a primitive number derived host-side). This produces
+ *   unbounded distinct UUID-v4-format strings without any host-realm function.
+ * - now() helper is pre-evaluated host-side and injected as a string primitive.
  * - deepClone/deepMerge helpers are re-implemented in the realm bootstrap using
  *   the realm-native JSON global (equivalent for plain JSON data).
- * - logger is provided as a realm-native no-op object; reducers rarely log and
- *   the host Logger cannot be injected safely.
+ * - console.* and ctx.logger.* push entries into a realm-side bounded array
+ *   (__logBuffer__). After runInContext returns, entries are read as plain
+ *   primitive strings (safe) and forwarded to the host childLog logger.
  */
 export function instantiateScript(
   name: string,
@@ -89,18 +105,16 @@ function invokeWithCode(
   //
   // Safe injections (primitives only):
   //   __ctxDataJson__ — JSON-serialised plain-data portions of ScriptContext
-  //   __uuidPool__    — JSON array of pre-generated UUID strings
+  //   __uuidSeed__    — primitive number seed for the realm-native PRNG
   //   __nowVal__      — pre-evaluated ISO timestamp string
+  //   __logBufCap__   — primitive number cap for the log buffer
   //
-  // Everything else (JSON, Math, Date, console) is already realm-native.
+  // Everything else (JSON, Math, Date) is already realm-native.
   // URL is not available in vm realm and is not injected.
+  // console is overridden in the bootstrap script using realm-native functions.
   // ---------------------------------------------------------------------------
 
-  // Pre-evaluate host-side helper results before entering the vm.
-  const uuidPool: string[] = [];
-  for (let i = 0; i < UUID_POOL_SIZE; i++) {
-    uuidPool.push(ctx.helpers.uuid());
-  }
+  const nowVal = ctx.helpers.now();
 
   const ctxData = {
     command: ctx.command,
@@ -109,21 +123,78 @@ function invokeWithCode(
     event: ctx.event ?? null,
   };
 
+  // Derive a deterministic numeric seed from the script name + current timestamp.
+  // Both inputs are already primitives; deriveNumericSeed runs on the host side
+  // and the result is injected as a plain number.
+  const uuidSeed: number = deriveNumericSeed(`${name}:${boundary}:${nowVal}`);
+
   const safeContext = vm.createContext({
     __ctxDataJson__: JSON.stringify(ctxData),
-    __uuidPoolJson__: JSON.stringify(uuidPool),
-    __nowVal__: ctx.helpers.now(),
+    __uuidSeed__: uuidSeed,
+    __nowVal__: nowVal,
+    __logBufCap__: LOG_BUFFER_CAP,
   });
 
   // Bootstrap: reconstruct __ctx__ from primitives using only realm-native
   // objects and functions. No host-realm value is referenced here.
   // Run as a top-level (non-IIFE) script so __ctx__ is visible in the vm
   // context's global scope and accessible to the reducer script that runs next.
+  //
+  // uuid() uses a mulberry32 PRNG seeded from __uuidSeed__ (a primitive number).
+  // It generates UUID-v4-format strings on demand — unbounded and always distinct
+  // for a given seed because the internal state counter increments on every call.
+  //
+  // Log entries are pushed into __logBuffer__ (bounded by __logBufCap__).
+  // After script.runInContext, the host reads this array as primitive strings.
   const bootstrapScriptTopLevel = `
 'use strict';
 var _ctxData = JSON.parse(__ctxDataJson__);
-var _uuidPool = JSON.parse(__uuidPoolJson__);
-var _uuidIdx = 0;
+
+// ---- mulberry32 PRNG (realm-native — uses only arithmetic, no host objects) ----
+var _prngState = __uuidSeed__ >>> 0;
+function _prngNext() {
+  _prngState = (_prngState + 0x6D2B79F5) >>> 0;
+  var z = _prngState;
+  z = Math.imul(z ^ (z >>> 15), z | 1) >>> 0;
+  z = (z ^ (z + Math.imul(z ^ (z >>> 7), z | 61) >>> 0)) >>> 0;
+  return (z ^ (z >>> 14)) >>> 0;
+}
+
+// ---- Produce a 32-bit hex string (8 hex chars) from a uint32 ----
+function _toHex8(n) {
+  var s = (n >>> 0).toString(16);
+  while (s.length < 8) s = '0' + s;
+  return s;
+}
+function _toHex4(n) {
+  var s = (n & 0xFFFF).toString(16);
+  while (s.length < 4) s = '0' + s;
+  return s;
+}
+
+// ---- Generate UUID v4 format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx ----
+// Consumes 4 × 32-bit PRNG values (128 bits total), then stamps version/variant.
+// Layout:
+//   p1 (8 hex)  = a[31:0]          [32 bits]
+//   p2 (4 hex)  = b[31:16]         [16 bits]
+//   p3 (4 hex)  = '4' + b[11:0]    [version=4, 12 bits]
+//   p4 (4 hex)  = variant + c[27:16] [variant=10xx, 12 bits]
+//   p5 (12 hex) = c[15:0] + d[31:16] + d[15:0]  [48 bits exactly]
+function _genUuid() {
+  var a = _prngNext();
+  var b = _prngNext();
+  var c = _prngNext();
+  var d = _prngNext();
+  var p1 = _toHex8(a);
+  var p2 = _toHex4(b >>> 16);
+  var p3 = '4' + _toHex4(b & 0x0FFF).slice(0, 3);
+  // variant bits: 10xx → values 8, 9, a, or b
+  var variant = ((c >>> 30) & 0x1) | 0x8;
+  var p4 = variant.toString(16) + _toHex4((c >>> 16) & 0x0FFF).slice(0, 3);
+  // p5: exactly 48 bits = 12 hex chars: c[15:0](4) + d[31:16](4) + d[15:0](4)
+  var p5 = _toHex4(c & 0xFFFF) + _toHex4(d >>> 16) + _toHex4(d & 0xFFFF);
+  return p1 + '-' + p2 + '-' + p3 + '-' + p4 + '-' + p5;
+}
 
 function _deepClone(v) {
   return JSON.parse(JSON.stringify(v));
@@ -146,13 +217,37 @@ function _deepMerge(target, source) {
   return result;
 }
 
-var _noopLogger = {
-  info: function() {},
-  warn: function() {},
-  error: function() {},
-  debug: function() {},
-  child: function() { return _noopLogger; },
+// ---- Log buffer: realm-native array of primitive strings, bounded by __logBufCap__ ----
+// host reads this after runInContext as plain strings — no realm function is called.
+var __logBuffer__ = [];
+function _pushLog(level, msg) {
+  if (__logBuffer__.length >= __logBufCap__) {
+    if (__logBuffer__[__logBuffer__.length - 1] !== '{"level":"truncated","msg":"[log buffer cap reached]"}') {
+      __logBuffer__.push('{"level":"truncated","msg":"[log buffer cap reached]"}');
+    }
+    return;
+  }
+  var entry = '{"level":' + JSON.stringify(level) + ',"msg":' + JSON.stringify(String(msg)) + '}';
+  __logBuffer__.push(entry);
+}
+
+// Override realm-native console methods with buffering versions.
+console.log   = function() { _pushLog('info',  Array.prototype.join.call(arguments, ' ')); };
+console.info  = function() { _pushLog('info',  Array.prototype.join.call(arguments, ' ')); };
+console.warn  = function() { _pushLog('warn',  Array.prototype.join.call(arguments, ' ')); };
+console.error = function() { _pushLog('error', Array.prototype.join.call(arguments, ' ')); };
+console.debug = function() { _pushLog('debug', Array.prototype.join.call(arguments, ' ')); };
+
+var _makeLogger = function(bindings) {
+  return {
+    info:  function(msg) { _pushLog('info',  msg); },
+    warn:  function(msg) { _pushLog('warn',  msg); },
+    error: function(msg) { _pushLog('error', msg); },
+    debug: function(msg) { _pushLog('debug', msg); },
+    child: function(b)   { return _makeLogger(b); },
+  };
 };
+var _realmLogger = _makeLogger({});
 
 var __ctx__ = {
   command: _ctxData.command,
@@ -160,16 +255,12 @@ var __ctx__ = {
   payload: _ctxData.payload,
   event: _ctxData.event,
   helpers: {
-    uuid: function() {
-      var val = _uuidPool[_uuidIdx];
-      if (_uuidIdx < _uuidPool.length - 1) _uuidIdx++;
-      return val;
-    },
+    uuid: function() { return _genUuid(); },
     now: function() { return __nowVal__; },
     deepClone: _deepClone,
     deepMerge: _deepMerge,
   },
-  logger: _noopLogger,
+  logger: _realmLogger,
 };
 `;
 
@@ -185,6 +276,31 @@ var __ctx__ = {
       timeout: SCRIPT_TIMEOUT_MS,
       breakOnSigint: true,
     });
+
+    // Drain the realm log buffer into the host logger.
+    // We read __logBuffer__ from the context as an array reference; each element
+    // is guaranteed to be a primitive string because _pushLog only pushes
+    // JSON.stringify results. We do NOT call any realm function here.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rawBuffer = (safeContext as any).__logBuffer__;
+    if (Array.isArray(rawBuffer)) {
+      const len = rawBuffer.length;
+      for (let i = 0; i < len; i++) {
+        const raw = rawBuffer[i];
+        if (typeof raw !== 'string') continue;
+        try {
+          const entry = JSON.parse(raw) as { level?: string; msg?: string };
+          const level = typeof entry.level === 'string' ? entry.level : 'info';
+          const msg = typeof entry.msg === 'string' ? entry.msg : raw;
+          if (level === 'warn') _log.warn({ source: 'reducer' }, msg);
+          else if (level === 'error') _log.error({ source: 'reducer' }, msg);
+          else if (level === 'debug') _log.debug({ source: 'reducer' }, msg);
+          else _log.info({ source: 'reducer' }, msg);
+        } catch {
+          _log.info({ source: 'reducer' }, raw);
+        }
+      }
+    }
 
     // Reducers must be synchronous. A thenable return value means the script used
     // async/Promise — the vm timeout does not cover microtask continuations, so an

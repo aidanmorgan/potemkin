@@ -169,6 +169,27 @@ class WorkflowPropagatorTest {
     }
 
     @Test
+    fun `capturedBySession is bounded and does not grow past the configured cap`() {
+        val cap = 10
+        val prop = WorkflowPropagator(blockOf(extract = "BODY.id", use = "PATH.leadId"), maxSessions = cap)
+
+        // Insert cap + 5 distinct sessions by using distinct JWT subjects.
+        repeat(cap + 5) { i ->
+            val headers = mapOf(PotemkinHeaders.JWT_CLAIMS to """{"sub":"user-$i"}""")
+            prop.observeResponse(
+                HttpRequest(method = "POST", path = "/leads", headers = headers),
+                HttpResponse(status = 201, body = io.specmatic.core.value.StringValue("""{"id":"lead-$i"}""")),
+            )
+        }
+
+        // Access the underlying map size via reflection to verify the cap is enforced.
+        val field = WorkflowPropagator::class.java.getDeclaredField("capturedBySession")
+        field.isAccessible = true
+        val map = field.get(prop) as Map<*, *>
+        assertTrue(map.size <= cap, "capturedBySession must not exceed cap=$cap; actual size=${map.size}")
+    }
+
+    @Test
     fun `chains without correlation share the default session namespace`() {
         // Documented single-session fallback: requests carrying neither a JWT
         // subject nor a workflow-session header share one namespace, so a later

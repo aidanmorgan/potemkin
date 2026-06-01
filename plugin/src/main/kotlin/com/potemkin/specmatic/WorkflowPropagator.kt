@@ -5,6 +5,8 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.specmatic.core.HttpRequest
 import io.specmatic.core.HttpResponse
 import org.slf4j.LoggerFactory
+import java.util.Collections
+import java.util.LinkedHashMap
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -62,11 +64,29 @@ import java.util.concurrent.ConcurrentHashMap
 class WorkflowPropagator(
     private val block: WorkflowBlock,
     private val mapper: ObjectMapper = jacksonObjectMapper(),
+    private val maxSessions: Int = MAX_SESSIONS,
 ) {
     private val log = LoggerFactory.getLogger(WorkflowPropagator::class.java)
 
-    /** session key -> (id name -> last extracted value). */
-    private val capturedBySession = ConcurrentHashMap<String, ConcurrentHashMap<String, String>>()
+    /**
+     * session key -> (id name -> last extracted value).
+     *
+     * Bounded by [maxSessions] using an LRU eviction policy so long-running processes
+     * do not accumulate unbounded entries for every distinct JWT subject or workflow
+     * session header ever seen. The map is wrapped in [Collections.synchronizedMap] so
+     * concurrent reads/writes are safe; the inner [ConcurrentHashMap] per session is
+     * lock-free for individual id captures within a session.
+     */
+    private val capturedBySession: MutableMap<String, ConcurrentHashMap<String, String>> =
+        Collections.synchronizedMap(
+            object : LinkedHashMap<String, ConcurrentHashMap<String, String>>(
+                maxSessions + 1, 0.75f, /* accessOrder= */ true,
+            ) {
+                override fun removeEldestEntry(
+                    eldest: Map.Entry<String, ConcurrentHashMap<String, String>>,
+                ): Boolean = size > maxSessions
+            },
+        )
 
     /** name -> the response-body field to extract (the leaf of `extract`). */
     private val extractField: Map<String, String>
@@ -166,6 +186,13 @@ class WorkflowPropagator(
             ?.takeIf { it.isNotEmpty() }
 
     companion object {
+        /**
+         * Maximum number of concurrent session namespaces retained by [capturedBySession].
+         * When the cap is exceeded, the least-recently-used session entry is evicted.
+         * 1 000 covers large parallel test suites with hundreds of distinct JWT subjects.
+         */
+        internal const val MAX_SESSIONS = 1_000
+
         /**
          * Shared namespace used when a request carries neither a JWT subject nor a
          * [PotemkinHeaders.WORKFLOW_SESSION] header — the single-session fallback.

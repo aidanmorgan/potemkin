@@ -98,6 +98,18 @@ class FixtureLifecycleManagerTest {
         }
     }
 
+    // ---- helpers ------------------------------------------------------------------------
+
+    /** Polls [condition] every 20 ms until true, or fails after [timeoutMs]. */
+    private fun awaitCondition(timeoutMs: Long = 2_000, condition: () -> Boolean) {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (condition()) return
+            Thread.sleep(20)
+        }
+        assertTrue(condition(), "Condition not met within ${timeoutMs}ms")
+    }
+
     // ---- initial UP push ----------------------------------------------------------------
 
     @Test
@@ -134,10 +146,11 @@ class FixtureLifecycleManagerTest {
 
         assertEquals(0, bridge.registered.size, "No push expected when starting in DOWN state")
 
-        // Simulate transition to UP
+        // Simulate transition to UP — push is dispatched asynchronously.
         monitor.markUpExternal()
         manager.onTransition(HealthState.Down, HealthState.Up)
 
+        awaitCondition { bridge.registered.size >= 1 }
         assertEquals(1, bridge.registered.size)
         assertEquals("/orders", bridge.registered[0].httpRequest.path)
     }
@@ -150,9 +163,10 @@ class FixtureLifecycleManagerTest {
         val manager = FixtureLifecycleManager(monitor, fixturesClient, bridge)
         manager.start()
 
-        // Simulate DOWN
+        // Simulate DOWN — clear is dispatched asynchronously.
         manager.onTransition(HealthState.Up, HealthState.Down)
 
+        awaitCondition { bridge.clearCount >= 1 }
         assertEquals(1, bridge.clearCount)
     }
 
@@ -164,7 +178,8 @@ class FixtureLifecycleManagerTest {
 
         manager.onTransition(HealthState.Up, HealthState.Down)
 
-        // Last recorded pushed-paths should be empty after DOWN
+        // Last recorded pushed-paths should be empty after DOWN (await async dispatch).
+        awaitCondition { fixturesClient.pushedPathHistory.size >= 2 }
         val lastPushed = fixturesClient.pushedPathHistory.last()
         assertTrue(lastPushed.isEmpty(), "Pushed paths should be cleared on DOWN")
     }
@@ -179,13 +194,15 @@ class FixtureLifecycleManagerTest {
         val manager = FixtureLifecycleManager(monitor, fixturesClient, bridge)
         manager.start()
 
-        // DOWN clears
+        // DOWN clears — dispatched asynchronously.
         manager.onTransition(HealthState.Up, HealthState.Down)
+        awaitCondition { bridge.clearCount >= 1 }
         assertEquals(1, bridge.clearCount)
         val registeredAfterDown = bridge.registered.size
 
-        // UP re-pushes
+        // UP re-pushes — dispatched asynchronously.
         manager.onTransition(HealthState.Down, HealthState.Up)
+        awaitCondition { bridge.registered.size > registeredAfterDown }
         assertEquals(registeredAfterDown + 1, bridge.registered.size)
         assertEquals("/products", bridge.registered.last().httpRequest.path)
     }
@@ -287,6 +304,37 @@ class FixtureLifecycleManagerTest {
         val clearsAfterReload = bridge.clearCount
         manager.hotReloadIfChanged()
         assertEquals(clearsAfterReload, bridge.clearCount, "Hash fallback must report no change for identical content")
+    }
+
+    // ---- async dispatch tests -----------------------------------------------------------
+
+    /**
+     * onTransition() must return quickly — the blocking fixture I/O is dispatched to
+     * the coroutine scope, not run inline on the caller's thread (which holds stateLock
+     * in HealthMonitor). Asserts that onTransition completes in well under 500 ms even
+     * when the fixture fetch itself is slow.
+     */
+    @Test
+    fun `onTransition returns quickly without performing fixture fetch synchronously`() {
+        // A fixture client that sleeps 300 ms to simulate a slow HTTP fetch.
+        val slowClient = object : FixturesClient(
+            backendUrl = "http://unused",
+            httpClient = noOpHttpClient(),
+        ) {
+            override fun fetchFixtures(): List<FixtureStub> {
+                Thread.sleep(300)
+                return emptyList()
+            }
+        }
+        monitor.markDownExternal()
+        val manager = FixtureLifecycleManager(monitor, slowClient, bridge)
+        manager.start()
+
+        val startNs = System.nanoTime()
+        manager.onTransition(HealthState.Down, HealthState.Up)
+        val elapsedMs = (System.nanoTime() - startNs) / 1_000_000
+
+        assertTrue(elapsedMs < 200, "onTransition must return in <200 ms (was ${elapsedMs} ms); fetch must be async")
     }
 
     // ---- concurrency tests --------------------------------------------------------------

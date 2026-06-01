@@ -146,7 +146,7 @@ class ControlServerTest {
     }
 
     @Test
-    fun `GET health returns DOWN state after markDownExternal`() {
+    fun `GET health returns 503 ServiceUnavailable with DOWN state after markDownExternal`() {
         val spy = SpyHealthMonitor()
         spy.markDownExternal()
 
@@ -155,7 +155,7 @@ class ControlServerTest {
                 configure(spy, null, null, org.slf4j.LoggerFactory.getLogger("test"))
             }
             val response = client.get("/health")
-            assertEquals(HttpStatusCode.OK, response.status)
+            assertEquals(HttpStatusCode.ServiceUnavailable, response.status)
             val body = response.bodyAsText()
             assertTrue(body.contains("DOWN"), "Response should contain 'DOWN': $body")
         }

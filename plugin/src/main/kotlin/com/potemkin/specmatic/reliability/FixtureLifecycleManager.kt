@@ -11,6 +11,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -41,6 +42,14 @@ class FixtureLifecycleManager(
     private var refreshJob: Job? = null
 
     /**
+     * Monotonically increasing sequence number. Incremented on every onTransition() call.
+     * Each dispatched coroutine captures the sequence number at launch time and checks it
+     * before performing I/O — if a newer transition has been dispatched, the stale
+     * coroutine exits without acting, preventing a stale push from clobbering a newer clear.
+     */
+    private val transitionSeq = AtomicLong(0L)
+
+    /**
      * Last change signal seen from the fixtures endpoint, used to detect hot-reload changes.
      * Prefers the HTTP ETag exposed by [FixturesClient.lastEtag]; falls back to a content
      * hash of the fixture list when the server omits an ETag.
@@ -62,14 +71,23 @@ class FixtureLifecycleManager(
     }
 
     override fun onTransition(from: HealthState, to: HealthState) {
+        // Increment the sequence number before dispatching so any in-flight coroutine
+        // from a prior transition can detect it is stale and exit without acting.
+        val seq = transitionSeq.incrementAndGet()
         when (to) {
             HealthState.Up -> {
-                log.info("FixtureLifecycleManager: engine UP — pushing fixtures")
-                pushFixtures()
+                log.info("FixtureLifecycleManager: engine UP — dispatching fixture push (seq={})", seq)
+                scope.launch {
+                    if (transitionSeq.get() != seq) return@launch
+                    pushFixtures()
+                }
             }
             HealthState.Down -> {
-                log.info("FixtureLifecycleManager: engine DOWN — clearing registered fixtures")
-                clearFixtures()
+                log.info("FixtureLifecycleManager: engine DOWN — dispatching fixture clear (seq={})", seq)
+                scope.launch {
+                    if (transitionSeq.get() != seq) return@launch
+                    clearFixtures()
+                }
             }
             HealthState.Degraded -> {
                 // No action on DEGRADED — keep existing fixtures registered.

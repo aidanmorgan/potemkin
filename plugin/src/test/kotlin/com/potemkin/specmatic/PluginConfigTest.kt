@@ -172,6 +172,85 @@ class PluginConfigTest {
         assertEquals(80, criteria["minCoverage"])
     }
 
+    // ---- resilience / probe / discovery config fields ---------------------------
+
+    @Test
+    fun `plugin resilience block parses maxRetries and backoffMs`() {
+        val yaml = """
+            plugin:
+              resilience:
+                maxRetries: 5
+                backoffMs: 100
+        """.trimIndent()
+
+        val config = PluginConfig.parsePotemkinYaml(yaml)
+
+        assertEquals(5, config.forwarderMaxRetries)
+        assertEquals(100L, config.forwarderBackoffMs)
+    }
+
+    @Test
+    fun `plugin healthProbe block parses initialMs and stableMs`() {
+        val yaml = """
+            plugin:
+              healthProbe:
+                initialMs: 500
+                stableMs: 60000
+        """.trimIndent()
+
+        val config = PluginConfig.parsePotemkinYaml(yaml)
+
+        assertEquals(500L, config.healthProbeInitialMs)
+        assertEquals(60_000L, config.healthProbeStableMs)
+    }
+
+    @Test
+    fun `plugin discovery block parses refreshOnFailureMs`() {
+        val yaml = """
+            plugin:
+              discovery:
+                refreshOnFailureMs: 8000
+        """.trimIndent()
+
+        val config = PluginConfig.parsePotemkinYaml(yaml)
+
+        assertEquals(8_000L, config.discoveryRefreshOnFailureMs)
+    }
+
+    @Test
+    fun `resilience probe and discovery fields default when absent`() {
+        val config = PluginConfig.parsePotemkinYaml("")
+
+        assertEquals(3, config.forwarderMaxRetries)
+        assertEquals(50L, config.forwarderBackoffMs)
+        assertEquals(250L, config.healthProbeInitialMs)
+        assertEquals(30_000L, config.healthProbeStableMs)
+        assertEquals(5_000L, config.discoveryRefreshOnFailureMs)
+    }
+
+    @Test
+    fun `all resilience probe and discovery fields parsed from a single YAML`() {
+        val yaml = """
+            plugin:
+              resilience:
+                maxRetries: 7
+                backoffMs: 200
+              healthProbe:
+                initialMs: 300
+                stableMs: 45000
+              discovery:
+                refreshOnFailureMs: 12000
+        """.trimIndent()
+
+        val config = PluginConfig.parsePotemkinYaml(yaml)
+
+        assertEquals(7, config.forwarderMaxRetries)
+        assertEquals(200L, config.forwarderBackoffMs)
+        assertEquals(300L, config.healthProbeInitialMs)
+        assertEquals(45_000L, config.healthProbeStableMs)
+        assertEquals(12_000L, config.discoveryRefreshOnFailureMs)
+    }
+
     // ---- E3: malformed YAML throws BOOT_ERR_INVALID_YAML (AC-E3.3) ----------
 
     @Test

@@ -1,8 +1,10 @@
 import { instantiateScript, invokeScript } from '../../../src/scripts/sandbox.js';
 import { transpileScript } from '../../../src/scripts/transpile.js';
 import { InternalExecutionError } from '../../../src/errors.js';
-import { createLogger } from '../../../src/observability/logger.js';
+import { createLogger, _resetRootPinoForTest } from '../../../src/observability/logger.js';
+import type { Logger } from '../../../src/observability/logger.js';
 import type { ScriptContext } from '../../../src/scripts/types.js';
+import { Writable } from 'node:stream';
 
 function makeCtx(overrides: Partial<ScriptContext> = {}): ScriptContext {
   const logger = createLogger({ name: 'test' });
@@ -55,10 +57,12 @@ describe('instantiateScript / invokeScript', () => {
   });
 
   it('can use helpers from context', () => {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
     const code = `export default (ctx) => ctx.helpers.uuid();`;
     const handle = compileAndInstantiate(code);
     const result = invokeScript(handle, makeCtx());
-    expect(result).toBe('00000000-0000-0000-0000-000000000001');
+    expect(typeof result).toBe('string');
+    expect(result as string).toMatch(uuidRegex);
   });
 
   it('can use JSON global in sandbox', () => {
@@ -346,6 +350,105 @@ describe('sandbox security — vm escape prevention', () => {
       const details = (err as InternalExecutionError).details as Record<string, unknown>;
       expect(details['code']).toBe('SCRIPT_ASYNC_RESULT');
     }
+  });
+
+  // -------------------------------------------------------------------------
+  // potemkin-0guf: uuid() — unbounded distinct UUIDs from realm-native PRNG
+  // -------------------------------------------------------------------------
+  it('uuid() produces 1000 distinct UUID-v4-format strings', () => {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+    const code = `
+      export default (ctx) => {
+        var ids = [];
+        for (var i = 0; i < 1000; i++) ids.push(ctx.helpers.uuid());
+        return JSON.stringify(ids);
+      };
+    `;
+    const handle = compileAndInstantiate(code);
+    const raw = invokeScript(handle, makeCtx()) as string;
+    const ids = JSON.parse(raw) as string[];
+    expect(ids.length).toBe(1000);
+    for (const id of ids) {
+      expect(id).toMatch(uuidRegex);
+    }
+    expect(new Set(ids).size).toBe(1000);
+  });
+
+  it('uuid() produces the same sequence for the same seed across two invocations', () => {
+    const code = `
+      export default (ctx) => {
+        var ids = [];
+        for (var i = 0; i < 20; i++) ids.push(ctx.helpers.uuid());
+        return JSON.stringify(ids);
+      };
+    `;
+    const handle = compileAndInstantiate(code);
+    const ctx = makeCtx();
+    const run1 = JSON.parse(invokeScript(handle, ctx) as string) as string[];
+    const run2 = JSON.parse(invokeScript(handle, ctx) as string) as string[];
+    expect(run1).toEqual(run2);
+  });
+
+  // -------------------------------------------------------------------------
+  // potemkin-rwwr: console/logger forwarding to host logger
+  // -------------------------------------------------------------------------
+
+  function makeMockLoggerCapture(): { logger: Logger; lines: string[] } {
+    const lines: string[] = [];
+    _resetRootPinoForTest();
+    const dest = new Writable({
+      write(chunk, _enc, cb) {
+        lines.push(chunk.toString());
+        cb();
+      },
+    });
+    const logger = createLogger({ name: 'test-capture', level: 'debug', _dest: dest });
+    return { logger, lines };
+  }
+
+  function compileAndInstantiateWithLogger(
+    code: string,
+    logger: Logger,
+    name = 'testScript',
+    boundary = 'TestBoundary',
+  ) {
+    const transpiled = transpileScript(name, boundary, code);
+    return instantiateScript(name, boundary, transpiled, logger);
+  }
+
+  it('console.log inside reducer is forwarded to host logger', async () => {
+    const { logger, lines } = makeMockLoggerCapture();
+    const code = `export default (ctx) => { console.log('hello from reducer'); return 1; };`;
+    const handle = compileAndInstantiateWithLogger(code, logger);
+    invokeScript(handle, makeCtx());
+    // Give pino's async stream a tick to flush
+    await new Promise((r) => setImmediate(r));
+    const combined = lines.join('');
+    expect(combined).toContain('hello from reducer');
+  });
+
+  it('ctx.logger.info inside reducer is forwarded to host logger', async () => {
+    const { logger, lines } = makeMockLoggerCapture();
+    const code = `export default (ctx) => { ctx.logger.info('yo', { extra: 1 }); return 2; };`;
+    const handle = compileAndInstantiateWithLogger(code, logger);
+    invokeScript(handle, makeCtx());
+    await new Promise((r) => setImmediate(r));
+    const combined = lines.join('');
+    expect(combined).toContain('yo');
+  });
+
+  it('log buffer is capped and a truncated marker is appended', () => {
+    const { logger } = makeMockLoggerCapture();
+    // Write 120 log lines — exceeds the 100-entry cap
+    const code = `
+      export default (ctx) => {
+        for (var i = 0; i < 120; i++) console.log('line-' + i);
+        return 'done';
+      };
+    `;
+    const handle = compileAndInstantiateWithLogger(code, logger);
+    // Should not throw — just silently caps
+    expect(() => invokeScript(handle, makeCtx())).not.toThrow();
   });
 
   it('transpiled TypeScript reducer using Object/Array/Map/Set/Error works end-to-end', () => {

@@ -110,9 +110,17 @@ class PotemkinResponseInterceptor(
      * header (code 199 = miscellaneous warning). The `_patches` field remains
      * in the body because we made no change — Specmatic clients tolerate the
      * extra field, and preserving the original is the documented failure mode.
+     *
+     * The [detail] string is embedded inside an RFC 7234 quoted-string. Any
+     * double-quote characters are escaped as `\"` and any CR or LF characters
+     * are stripped so the header remains a single well-formed line.
      */
     private fun withWarning(original: HttpResponse, detail: String): HttpResponse {
-        val warning = "199 potemkin \"$detail\""
+        val sanitised = detail
+            .replace("\r", "")
+            .replace("\n", "")
+            .replace("\"", "\\\"")
+        val warning = "199 potemkin \"$sanitised\""
         return original.copy(headers = original.headers + ("Warning" to warning))
     }
 }

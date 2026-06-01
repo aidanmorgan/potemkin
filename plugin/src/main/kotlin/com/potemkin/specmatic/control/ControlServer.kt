@@ -118,7 +118,12 @@ private suspend fun respondHealth(
 ) {
     val current = healthMonitor.currentState()
     val since = healthMonitor.upSince()
+    val status = when (current) {
+        HealthState.Down -> HttpStatusCode.ServiceUnavailable
+        else -> HttpStatusCode.OK
+    }
     call.respond(
+        status,
         HealthStatusResponse(
             state = current.toString(),
             since = since?.toString() ?: Instant.now().toString(),

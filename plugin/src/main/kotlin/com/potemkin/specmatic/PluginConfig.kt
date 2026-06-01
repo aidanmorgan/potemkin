@@ -114,6 +114,14 @@ data class PluginConfig(
             val cb = plugin["circuitBreaker"] as? Map<String, Any?> ?: emptyMap()
             val cbFailureRate = (cb["failureRate"] as? Number)?.toInt() ?: 50
             val cbWaitMs = (cb["waitMs"] as? Number)?.toLong() ?: 10_000L
+            val resilience = plugin["resilience"] as? Map<String, Any?> ?: emptyMap()
+            val forwarderMaxRetries = (resilience["maxRetries"] as? Number)?.toInt() ?: 3
+            val forwarderBackoffMs = (resilience["backoffMs"] as? Number)?.toLong() ?: 50L
+            val healthProbe = plugin["healthProbe"] as? Map<String, Any?> ?: emptyMap()
+            val healthProbeInitialMs = (healthProbe["initialMs"] as? Number)?.toLong() ?: 250L
+            val healthProbeStableMs = (healthProbe["stableMs"] as? Number)?.toLong() ?: 30_000L
+            val discovery = plugin["discovery"] as? Map<String, Any?> ?: emptyMap()
+            val discoveryRefreshOnFailureMs = (discovery["refreshOnFailureMs"] as? Number)?.toLong() ?: 5_000L
 
             val forwardBlocks = try {
                 ForwardBlocks.parse(raw)
@@ -130,7 +138,12 @@ data class PluginConfig(
             return PluginConfig(
                 backendUrl = backendUrl,
                 forwardTimeoutMs = forwardTimeoutMs,
+                discoveryRefreshOnFailureMs = discoveryRefreshOnFailureMs,
                 controlPort = controlPort,
+                healthProbeInitialMs = healthProbeInitialMs,
+                healthProbeStableMs = healthProbeStableMs,
+                forwarderMaxRetries = forwarderMaxRetries,
+                forwarderBackoffMs = forwarderBackoffMs,
                 circuitBreakerFailureRate = cbFailureRate,
                 circuitBreakerWaitMs = cbWaitMs,
                 forwardBlocks = forwardBlocks,

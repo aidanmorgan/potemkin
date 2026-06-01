@@ -126,4 +126,26 @@ class PotemkinResponseInterceptorTest {
         val result = interceptor.interceptResponse(req, resp)
         assertEquals(resp.body.toStringLiteral(), result.body.toStringLiteral())
     }
+
+    @Test
+    fun `Warning header with double-quote and CRLF in detail is well-formed single line`() {
+        // Construct a response whose patch detail contains a double-quote and CRLF
+        // so we can verify the Warning header is a valid quoted-string on one line.
+        val malformedPatch = """{"x":1,"_patches":[{"op":"frobnicate","path":"/x\"evil\r\nInjected:hdr"}]}"""
+        val resp = response(malformedPatch)
+
+        val result = interceptor.interceptResponse(req, resp)
+
+        val warning = result.headers["Warning"]
+        assertTrue(warning != null, "Warning header must be present")
+        // Must be a single line (no CR or LF).
+        assertFalse(warning!!.contains('\r'), "Warning header must not contain CR: $warning")
+        assertFalse(warning.contains('\n'), "Warning header must not contain LF: $warning")
+        // Must start and end with a valid 199 potemkin quoted-string.
+        assertTrue(warning.startsWith("199 potemkin \""), "Warning must start with '199 potemkin \"': $warning")
+        assertTrue(warning.endsWith("\""), "Warning must end with closing quote: $warning")
+        // The embedded double-quote must be escaped, not raw.
+        val detail = warning.removePrefix("199 potemkin \"").removeSuffix("\"")
+        assertFalse(detail.contains('"'), "Unescaped double-quote must not appear in detail: $detail")
+    }
 }
