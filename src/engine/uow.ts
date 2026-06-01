@@ -329,6 +329,22 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
   }
 
   // -------------------------------------------------------------------------
+  // Pre-flight: openapi required for all non-fault-sim executions.
+  // Checked here, BEFORE lock acquisition, so a misconfigured caller fails
+  // fast with a clear message rather than surfacing a 500 mid-cascade while
+  // holding the aggregate lock.
+  // -------------------------------------------------------------------------
+  if (input.openapi === undefined) {
+    throw new InternalExecutionError(
+      'UowInput.openapi is required — supply the OpenAPI document from BootedSystem.openapi',
+      { commandId: command.commandId, boundary: command.boundary },
+    );
+  }
+  // Extract to a local const so TypeScript carries the narrowed (non-undefined)
+  // type into the async closures below without re-checking.
+  const openapi: OpenApiDoc = input.openapi;
+
+  // -------------------------------------------------------------------------
   // Step 2 — Outer tracing span
   // -------------------------------------------------------------------------
   return withSpan(
@@ -424,13 +440,6 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
             async (_childSpan) => {
               const shadowAsGraphAdapter = shadowAsStateGraph(shadow, graph);
 
-              if (input.openapi === undefined) {
-                throw new InternalExecutionError(
-                  'openapi document required in UowInput for operationId-based pattern matching',
-                  { commandId: cmd.commandId },
-                );
-              }
-
               let outcome: PatternMatchResult;
               try {
                 outcome = runPatternMatch({
@@ -444,7 +453,7 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
                   schemaRegistry,
                   tracer,
                   scriptRegistry: input.dsl.scriptRegistry,
-                  openapi: input.openapi,
+                  openapi,
                   nextSequenceVersion: (aggregateId) => {
                     const delta = stagedSeqDeltas.get(aggregateId) ?? 0;
                     const next = eventStore.currentSequenceVersion(aggregateId) + delta + 1;
@@ -463,7 +472,7 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
                       logger,
                       schemaRegistry,
                       tracer,
-                      openapi: input.openapi,
+                      openapi,
                       ...(input.tsReducerRegistry ? { tsReducerRegistry: input.tsReducerRegistry } : {}),
                       ...(() => {
                         const inf = input.inferredSchemas?.[boundary.boundary];
@@ -571,7 +580,13 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
                     validator,
                     logger,
                     schemaRegistry,
-                    openapi: input.openapi,
+                    openapi,
+                    // Thread the system's shared lock map so saga-step UoWs
+                    // serialize against concurrent inbound requests on the same
+                    // aggregate (defense-in-depth: the event store also rejects
+                    // non-monotonic sequences, but the lock prevents the race
+                    // that causes spurious saga-step failures).
+                    ...(input.aggregateLocks ? { aggregateLocks: input.aggregateLocks } : {}),
                     ...(input.tsReducerRegistry ? { tsReducerRegistry: input.tsReducerRegistry } : {}),
                     ...(input.inferredSchemas ? { inferredSchemas: input.inferredSchemas } : {}),
                   }).catch((err: unknown) => {
@@ -613,11 +628,6 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
         let body: JsonValue;
 
         if (command.intent === 'query') {
-          if (input.openapi === undefined) {
-            throw new InternalExecutionError(
-              'openapi document required in UowInput for query intent',
-            );
-          }
           const boundary = dsl.byBoundaryName[command.boundary];
           if (boundary === undefined) {
             throw new InternalExecutionError(`Unknown boundary "${command.boundary}"`);
@@ -628,7 +638,7 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
             queryParams: command.queryParams,
             graph,
             cel,
-            openapi: input.openapi,
+            openapi,
             logger,
             schemaRegistry,
             events: eventStore,

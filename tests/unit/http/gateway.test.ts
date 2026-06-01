@@ -9,8 +9,18 @@
  *    InternalExecutionError, FaultSimulatedError, and generic Error)
  *  - Fault simulation (x-specmatic-fault header with headers field set)
  *  - ETag header for mutating commands
+ *  - Idempotency replay serves the post-pipeline body+headers (potemkin-3r96)
  */
 
+import { createGateway } from '../../../src/http/gateway.js';
+import { bootSystem } from '../../../src/engine/boot.js';
+import { loadOpenApi } from '../../../src/contract/loader.js';
+import { compileDsl } from '../../../src/dsl/parser.js';
+import {
+  withPersistentServer,
+  type PersistentAgent,
+} from '../../_support/persistentAgent.js';
+import { registerFileTeardown } from '../../_support/testTeardown.js';
 import { createTestApp, type TestApp } from '../../acceptance/_helpers/test-app.js';
 import { nextUuidv7 } from '../../../src/ids/uuidv7.js';
 
@@ -182,5 +192,143 @@ describe('http/gateway — branch coverage', () => {
     // id should be a UUID-like string
     expect(typeof res.body.id).toBe('string');
     expect(res.body.id.length).toBeGreaterThan(0);
+  });
+
+  // ── targetId from path + intent creation with generate (end of main suite)
+
+});
+
+// ── Idempotency replay serves post-pipeline body+headers (potemkin-3r96) ──────
+//
+// Uses a self-contained minimal system with idempotency enabled so the test
+// does not depend on the createTestApp fixture loading the global YAML.
+
+const IDEM_OPENAPI = `
+openapi: "3.0.3"
+info:
+  title: Idempotency Gateway Test
+  version: "1.0.0"
+paths:
+  /widgets:
+    post:
+      operationId: createWidget
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Widget"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Widget"
+components:
+  schemas:
+    Widget:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+      additionalProperties: true
+`;
+
+const IDEM_DSL = `
+boundary: Widget
+contract_path: /widgets
+identity:
+  creation:
+    generate: '$uuidv7()'
+behaviors:
+  - name: createWidget
+    match:
+      operationId: createWidget
+      condition: 'true'
+    emit: WidgetCreated
+event_catalog:
+  - type: WidgetCreated
+    payload_template:
+      id: command.targetId
+      label: command.payload.label
+reducers:
+  - on: WidgetCreated
+    patches:
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
+      - { op: replace, path: /label, value: "\${event.payload.label}" }
+`;
+
+const IDEM_GLOBAL = `
+idempotency:
+  enabled: true
+  ttl_seconds: 86400
+  hash_includes_body: true
+`;
+
+describe('http/gateway — idempotency replay serves post-pipeline response (potemkin-3r96)', () => {
+  let agent: PersistentAgent;
+
+  beforeAll(async () => {
+    const openapi = await loadOpenApi(IDEM_OPENAPI);
+    const compiledDsl = await compileDsl([{ name: 'widget', yaml: IDEM_DSL }], IDEM_GLOBAL);
+    const sys = await bootSystem({ openapi, compiledDsl });
+    const app = createGateway(sys);
+    const { agent: a, close } = await withPersistentServer(app);
+    agent = a;
+    registerFileTeardown(close);
+  });
+
+  it('idempotency replay body+headers equal the original post-pipeline response (format mutation)', async () => {
+    const KEY = `gw-3r96-${Date.now()}`;
+
+    const original = await agent
+      .post('/widgets')
+      .set('Idempotency-Key', KEY)
+      .set('X-Potemkin-Response-Format', 'hal')
+      .send({ label: 'HAL Widget' })
+      .expect(201);
+
+    expect(original.headers['x-potemkin-response-format']).toBe('hal');
+    expect(original.headers['x-specmatic-result']).toBe('success');
+
+    const replay = await agent
+      .post('/widgets')
+      .set('Idempotency-Key', KEY)
+      .set('X-Potemkin-Response-Format', 'hal')
+      .send({ label: 'HAL Widget' })
+      .expect(201);
+
+    expect(replay.headers['x-idempotency-replay']).toBe('true');
+    // Replayed body must equal the original mutated (HAL) body.
+    expect(replay.body).toEqual(original.body);
+    // Replayed headers include the post-pipeline headers from the original.
+    expect(replay.headers['x-potemkin-response-format']).toBe(original.headers['x-potemkin-response-format']);
+    expect(replay.headers['x-specmatic-result']).toBe(original.headers['x-specmatic-result']);
+  });
+
+  it('idempotency replay includes ETag header from original mutating response', async () => {
+    const KEY = `gw-3r96-etag-${Date.now()}`;
+
+    const original = await agent
+      .post('/widgets')
+      .set('Idempotency-Key', KEY)
+      .send({ label: 'ETag Widget' })
+      .expect(201);
+
+    expect(original.headers['etag']).toBeDefined();
+    expect(original.headers['x-specmatic-result']).toBe('success');
+
+    const replay = await agent
+      .post('/widgets')
+      .set('Idempotency-Key', KEY)
+      .send({ label: 'ETag Widget' })
+      .expect(201);
+
+    expect(replay.headers['x-idempotency-replay']).toBe('true');
+    expect(replay.headers['etag']).toBe(original.headers['etag']);
+    expect(replay.headers['x-specmatic-result']).toBe('success');
   });
 });

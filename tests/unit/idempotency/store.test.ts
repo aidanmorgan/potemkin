@@ -65,4 +65,45 @@ describe('idempotency/store', () => {
     const result = store.check({ method: METHOD, path: PATH, idempotencyKey: KEY, body: { amount: 9999 }, hashIncludesBody: false });
     expect(result.hit).toBe(true);
   });
+
+  it('record() prunes expired entries without a check() call', () => {
+    jest.useFakeTimers();
+    try {
+      const store = createIdempotencyStore();
+
+      // Record 5 entries with a 100ms TTL
+      for (let i = 0; i < 5; i++) {
+        store.record({
+          method: METHOD,
+          path: PATH,
+          idempotencyKey: `key-${i}`,
+          body: BODY,
+          hashIncludesBody: true,
+          response: RESPONSE,
+          ttlMs: 100,
+        });
+      }
+      // All 5 are live
+      expect(store.size()).toBe(5);
+
+      // Advance clock past expiry — all 5 are now stale
+      jest.advanceTimersByTime(200);
+
+      // Record a new entry (no check() call) — record() must prune the 5 expired entries
+      store.record({
+        method: METHOD,
+        path: PATH,
+        idempotencyKey: 'key-fresh',
+        body: BODY,
+        hashIncludesBody: true,
+        response: RESPONSE,
+        ttlMs: 60_000,
+      });
+
+      // Only the fresh entry remains — the 5 expired entries were pruned inside record()
+      expect(store.size()).toBe(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });

@@ -1,10 +1,27 @@
-import { createLogger, rootLogger, childLogger } from '../../../src/observability/logger';
+import { Writable } from 'node:stream';
+import { createLogger, rootLogger, childLogger, _resetRootPinoForTest } from '../../../src/observability/logger';
 import type pino from 'pino';
 
 // Use 'fatal' as a practical way to suppress most output in tests
 const QUIET: pino.Level = 'fatal';
 
+function makeCapture(): { dest: Writable; lines: () => string[] } {
+  const chunks: string[] = [];
+  const dest = new Writable({
+    write(chunk: Buffer, _enc: string, cb: () => void) {
+      chunks.push(chunk.toString());
+      cb();
+    },
+  });
+  return { dest, lines: () => chunks };
+}
+
 describe('observability/logger', () => {
+  afterEach(() => {
+    // Reset singleton so capture tests don't bleed into later tests
+    _resetRootPinoForTest();
+  });
+
   describe('createLogger', () => {
     it('returns a logger instance with required methods', () => {
       const logger = createLogger({ name: 'test', level: QUIET });
@@ -32,16 +49,31 @@ describe('observability/logger', () => {
       expect(() => createLogger({ pretty: true, level: QUIET })).not.toThrow();
     });
 
-    it('logger.info returns undefined (call completes synchronously)', () => {
-      const logger = createLogger({ level: QUIET });
-      const result = logger.info('test message');
-      expect(result).toBeUndefined();
+    it('logger.info emits an info-level record with the message and fields', (done) => {
+      _resetRootPinoForTest();
+      const { dest, lines } = makeCapture();
+      const logger = createLogger({ level: 'info', _dest: dest });
+      logger.info({ requestId: 'r-1' }, 'hello info');
+      setImmediate(() => {
+        const parsed = JSON.parse(lines().join('')) as Record<string, unknown>;
+        expect(parsed['level']).toBe(30);
+        expect(parsed['msg']).toBe('hello info');
+        expect(parsed['requestId']).toBe('r-1');
+        done();
+      });
     });
 
-    it('logger.error returns undefined (call completes synchronously)', () => {
-      const logger = createLogger({ level: QUIET });
-      const result = logger.error({ err: new Error('test') }, 'error message');
-      expect(result).toBeUndefined();
+    it('logger.error emits an error-level record with the message and fields', (done) => {
+      _resetRootPinoForTest();
+      const { dest, lines } = makeCapture();
+      const logger = createLogger({ level: 'info', _dest: dest });
+      logger.error({ err: new Error('boom') }, 'error message');
+      setImmediate(() => {
+        const parsed = JSON.parse(lines().join('')) as Record<string, unknown>;
+        expect(parsed['level']).toBe(50);
+        expect(parsed['msg']).toBe('error message');
+        done();
+      });
     });
 
     it('accepts bindings in options', () => {
@@ -71,11 +103,20 @@ describe('observability/logger', () => {
       expect(typeof child.info).toBe('function');
     });
 
-    it('child logger.info returns undefined (call completes synchronously)', () => {
-      const parent = createLogger({ level: QUIET });
-      const child = childLogger(parent, { context: 'test' });
-      const result = child.info('child message');
-      expect(result).toBeUndefined();
+    it('child logger emits an info-level record with parent and child bindings merged', (done) => {
+      _resetRootPinoForTest();
+      const { dest, lines } = makeCapture();
+      const parent = createLogger({ name: 'parent-svc', level: 'info', _dest: dest });
+      const child = childLogger(parent, { context: 'test', requestId: 'req-child' });
+      child.info('child message');
+      setImmediate(() => {
+        const parsed = JSON.parse(lines().join('')) as Record<string, unknown>;
+        expect(parsed['level']).toBe(30);
+        expect(parsed['msg']).toBe('child message');
+        expect(parsed['context']).toBe('test');
+        expect(parsed['requestId']).toBe('req-child');
+        done();
+      });
     });
 
     it('child is distinct from parent', () => {

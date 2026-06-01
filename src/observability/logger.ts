@@ -10,6 +10,8 @@ export interface CreateLoggerOptions {
   readonly level?: pino.Level | pino.LevelWithSilent;
   readonly pretty?: boolean;
   readonly bindings?: Record<string, unknown>;
+  /** Test-only: writable stream to capture pino output. Requires _resetRootPinoForTest() before use. */
+  readonly _dest?: NodeJS.WritableStream;
 }
 
 function resolvePrettyTransport(): LoggerOptions['transport'] {
@@ -27,7 +29,11 @@ function resolvePrettyTransport(): LoggerOptions['transport'] {
 // A single shared root with .child() bindings produces identical output without
 // the leak.
 let _rootPino: Logger | undefined;
-function getRootPino(level: pino.LevelWithSilent, usePretty: boolean): Logger {
+function getRootPino(
+  level: pino.LevelWithSilent,
+  usePretty: boolean,
+  dest?: NodeJS.WritableStream,
+): Logger {
   if (_rootPino) return _rootPino;
   const transport = usePretty ? resolvePrettyTransport() : undefined;
   const pinoOpts: LoggerOptions = {
@@ -35,7 +41,7 @@ function getRootPino(level: pino.LevelWithSilent, usePretty: boolean): Logger {
     timestamp: pino.stdTimeFunctions.isoTime,
     transport,
   };
-  _rootPino = pino(pinoOpts);
+  _rootPino = dest ? pino(pinoOpts, dest) : pino(pinoOpts);
   return _rootPino;
 }
 
@@ -43,10 +49,13 @@ export function createLogger(opts?: CreateLoggerOptions): Logger {
   const level: pino.LevelWithSilent =
     (opts?.level ?? (process.env['LOG_LEVEL'] as pino.LevelWithSilent | undefined)) ?? 'info';
 
+  // When a custom dest is provided (test-only), skip pretty so JSON goes directly to the stream.
   const usePretty =
-    opts?.pretty !== undefined
-      ? opts.pretty
-      : process.env['NODE_ENV'] !== 'production';
+    opts?._dest !== undefined
+      ? false
+      : opts?.pretty !== undefined
+        ? opts.pretty
+        : process.env['NODE_ENV'] !== 'production';
 
   // Generate a stable instanceId for root loggers; may throw NotImplemented in tests
   let instanceId: string;
@@ -62,7 +71,12 @@ export function createLogger(opts?: CreateLoggerOptions): Logger {
     ...opts?.bindings,
   };
 
-  return getRootPino(level, usePretty).child(baseBindings);
+  return getRootPino(level, usePretty, opts?._dest).child(baseBindings);
+}
+
+/** Reset the shared pino root so a test can inject a custom destination. */
+export function _resetRootPinoForTest(): void {
+  _rootPino = undefined;
 }
 
 let _rootLogger: Logger | undefined;

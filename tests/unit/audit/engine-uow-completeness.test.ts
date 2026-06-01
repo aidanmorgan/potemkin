@@ -343,6 +343,7 @@ it('FIX I3: depth === maxDepth now throws (>= check) — off-by-one boundary is 
       events: sys.events,
       cel: sys.cel,
       validator: sys.validator,
+      openapi: sys.openapi,
       maxDepth: 5,
     }),
   ).rejects.toThrow(InfiniteLoopError);

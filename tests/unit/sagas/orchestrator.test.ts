@@ -403,3 +403,120 @@ describe('sagas/orchestrator - runSaga httpMethod mapping (potemkin-v2pu)', () =
     expect(compensationCall[0].command.httpMethod).toBe('DELETE');
   });
 });
+
+// ---------------------------------------------------------------------------
+// potemkin-i1xd: aggregateLocks threading
+// ---------------------------------------------------------------------------
+
+describe('sagas/orchestrator - aggregateLocks forwarded to executeUnitOfWork (potemkin-i1xd)', () => {
+  beforeEach(() => {
+    executeUnitOfWork.mockReset();
+    executeUnitOfWork.mockResolvedValue({ status: 200, body: {}, events: [] });
+  });
+
+  it('runSaga forwards aggregateLocks to every step executeUnitOfWork call', async () => {
+    const saga: SagaConfig = {
+      name: 'TwoStepLockSaga',
+      trigger: { boundary: 'Lead', intent: 'creation', condition: 'true' },
+      steps: [
+        {
+          name: 'step1',
+          boundary: 'X',
+          intent: 'mutation',
+          operationId: 'doX',
+          targetId: '"x-1"',
+          payload: {},
+        },
+        {
+          name: 'step2',
+          boundary: 'X',
+          intent: 'mutation',
+          operationId: 'doX',
+          targetId: '"x-1"',
+          payload: {},
+        },
+      ],
+    };
+
+    const sharedLocks = new Map<string, Promise<void>>();
+    const input = { ...makeRunSagaInput(saga), aggregateLocks: sharedLocks };
+    await runSaga(input);
+
+    const calls = executeUnitOfWork.mock.calls as Array<[{ aggregateLocks?: Map<string, Promise<void>> }]>;
+    expect(calls).toHaveLength(2);
+    for (const [callInput] of calls) {
+      // Each saga-step UoW must receive the SAME shared lock map instance.
+      expect(callInput.aggregateLocks).toBe(sharedLocks);
+    }
+  });
+
+  it('runSaga forwards aggregateLocks to compensation executeUnitOfWork calls', async () => {
+    executeUnitOfWork
+      .mockResolvedValueOnce({ status: 201, body: {}, events: [] }) // step1 ok
+      .mockRejectedValueOnce(new Error('step2 failed'))              // step2 fails
+      .mockResolvedValueOnce({ status: 200, body: {}, events: [] }); // compensation
+
+    const saga: SagaConfig = {
+      name: 'CompensationLockSaga',
+      trigger: { boundary: 'Lead', intent: 'creation', condition: 'true' },
+      steps: [
+        {
+          name: 'createX',
+          boundary: 'X',
+          intent: 'creation',
+          operationId: 'createX',
+          payload: {},
+          compensation: {
+            intent: 'deletion' as never,
+            operationId: 'deleteX',
+            targetId: '"x-1"',
+          },
+        },
+        {
+          name: 'failStep',
+          boundary: 'Y',
+          intent: 'mutation',
+          operationId: 'doY',
+          targetId: '"y-1"',
+          payload: {},
+        },
+      ],
+    };
+
+    const sharedLocks = new Map<string, Promise<void>>();
+    const input = { ...makeRunSagaInput(saga), aggregateLocks: sharedLocks };
+    await runSaga(input);
+
+    const calls = executeUnitOfWork.mock.calls as Array<[{ aggregateLocks?: Map<string, Promise<void>> }]>;
+    // step1 + step2(fails) + compensation = 3 calls total.
+    expect(calls).toHaveLength(3);
+    for (const [callInput] of calls) {
+      expect(callInput.aggregateLocks).toBe(sharedLocks);
+    }
+  });
+
+  it('runSaga without aggregateLocks does not pass aggregateLocks to executeUnitOfWork', async () => {
+    const saga: SagaConfig = {
+      name: 'NoLockSaga',
+      trigger: { boundary: 'Lead', intent: 'creation', condition: 'true' },
+      steps: [
+        {
+          name: 'step1',
+          boundary: 'X',
+          intent: 'mutation',
+          operationId: 'doX',
+          targetId: '"x-1"',
+          payload: {},
+        },
+      ],
+    };
+
+    const input = makeRunSagaInput(saga); // no aggregateLocks
+    await runSaga(input);
+
+    const calls = executeUnitOfWork.mock.calls as Array<[{ aggregateLocks?: Map<string, Promise<void>> }]>;
+    expect(calls).toHaveLength(1);
+    // aggregateLocks must be absent (not passed) so the UoW creates a fresh no-op map.
+    expect(calls[0]![0].aggregateLocks).toBeUndefined();
+  });
+});

@@ -120,7 +120,7 @@ function isCredentialedRequest(req: Request): boolean {
 }
 
 const CORS_ALLOW_METHODS = 'GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS';
-const CORS_ALLOW_HEADERS = 'Content-Type, If-Match, x-specmatic-fault';
+const CORS_ALLOW_HEADERS = 'Content-Type, Authorization, If-Match, Idempotency-Key, x-specmatic-fault';
 
 /**
  * Convert an OpenAPI path template (/loans/{id}) to an Express route pattern (/loans/:id).
@@ -830,32 +830,6 @@ async function handleContractRequest(
       }
     }
 
-    // 6c. REQ-81/83: Record idempotency entry after successful execution
-    if (idempotencyEnabled && idempotencyKey && intent !== 'query') {
-      const store = sys.idempotencyStore;
-      const requestBody: JsonValue = (req.body as JsonValue | null | undefined) ?? {};
-      const hashIncludesBody = idempotencyCfg?.hashIncludesBody ?? true;
-      const ttlMs = (idempotencyCfg?.ttlSeconds ?? 86400) * 1000;
-      try {
-        store.record({
-          method: effectiveMethod,
-          path: req.path,
-          idempotencyKey,
-          body: requestBody,
-          hashIncludesBody,
-          response: {
-            status: result.status,
-            body: result.body,
-            headers: responseHeaders,
-          },
-          ttlMs,
-        });
-      } catch {
-        // Non-fatal: log but don't fail the response
-        logger.warn({ idempotencyKey }, 'Failed to record idempotency entry');
-      }
-    }
-
     // Attach response snapshot to the committed events for reducer chaining.
     if (!controls.transparency.dryRun && result.events.length > 0) {
       sys.events.attachResponse(
@@ -969,6 +943,34 @@ async function handleContractRequest(
     // not control its trace/span identifiers). See potemkin-0la.
     if (controls.observability.traceId) responseHeaders['X-Potemkin-Trace-Id'] = controls.observability.traceId;
     if (controls.observability.spanName) responseHeaders['X-Potemkin-Span-Name'] = controls.observability.spanName;
+
+    // 6c. REQ-81/83: Record idempotency entry after the full pipeline (HATEOAS,
+    // mask, format, trace headers) so the cached body+headers match what the
+    // caller actually received, and replays are identical to the original response.
+    if (idempotencyEnabled && idempotencyKey && intent !== 'query') {
+      const store = sys.idempotencyStore;
+      const requestBody: JsonValue = (req.body as JsonValue | null | undefined) ?? {};
+      const hashIncludesBody = idempotencyCfg?.hashIncludesBody ?? true;
+      const ttlMs = (idempotencyCfg?.ttlSeconds ?? 86400) * 1000;
+      try {
+        store.record({
+          method: effectiveMethod,
+          path: req.path,
+          idempotencyKey,
+          body: requestBody,
+          hashIncludesBody,
+          response: {
+            status: result.status,
+            body: outBody ?? null,
+            headers: responseHeaders,
+          },
+          ttlMs,
+        });
+      } catch {
+        // Non-fatal: log but don't fail the response
+        logger.warn({ idempotencyKey }, 'Failed to record idempotency entry');
+      }
+    }
 
     // HEAD response: same status + headers as GET, but empty body (RFC 7231 §4.3.2).
     if (isHead) {

@@ -18,7 +18,7 @@ import { applyHateoasLinks } from '../engine/hateoas.js';
 // ---------------------------------------------------------------------------
 
 const CORS_ALLOW_METHODS = 'GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS';
-const CORS_ALLOW_HEADERS = 'Content-Type, If-Match, x-specmatic-fault';
+const CORS_ALLOW_HEADERS = 'Content-Type, Authorization, If-Match, Idempotency-Key, x-specmatic-fault';
 
 /**
  * Resolve the CORS allowed-origin value for a request. Replicates

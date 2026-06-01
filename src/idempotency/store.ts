@@ -46,6 +46,9 @@ export interface IdempotencyStore {
 
   /** Drop all recorded entries (used by engine reset). */
   clear(): void;
+
+  /** Return the number of non-expired entries currently held (for diagnostics/testing). */
+  size(): number;
 }
 
 export interface CheckParams {
@@ -129,6 +132,7 @@ export function createIdempotencyStore(): IdempotencyStore {
     },
 
     record({ method, path, idempotencyKey, body, hashIncludesBody, response, ttlMs }) {
+      cleanup();
       const keyHash = computeKeyHash(method, path, idempotencyKey, body, hashIncludesBody);
       const bodyHash = computeBodyHash(body);
       _store.set(idempotencyKey, {
@@ -142,6 +146,15 @@ export function createIdempotencyStore(): IdempotencyStore {
 
     clear() {
       _store.clear();
+    },
+
+    size() {
+      const now = Date.now();
+      let count = 0;
+      for (const entry of _store.values()) {
+        if (entry.expiresAt > now) count++;
+      }
+      return count;
     },
   };
 }

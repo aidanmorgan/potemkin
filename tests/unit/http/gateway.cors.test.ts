@@ -210,4 +210,34 @@ describe('gateway — CORS credentialed requests (potemkin-yq1l)', () => {
     expect(res.headers['access-control-allow-origin']).not.toBe('https://evil.com');
     expect(res.headers['access-control-allow-credentials']).toBeUndefined();
   });
+
+  // ── Access-Control-Allow-Headers includes browser-sent custom headers (potemkin-svq2) ──
+
+  it('OPTIONS preflight includes Authorization in Access-Control-Allow-Headers', async () => {
+    const res = await agent
+      .options('/items')
+      .set('Origin', 'https://browser.example.com')
+      .expect(204);
+
+    expect(res.headers['access-control-allow-headers']).toContain('Authorization');
+  });
+
+  it('OPTIONS preflight includes Idempotency-Key in Access-Control-Allow-Headers', async () => {
+    const res = await agent
+      .options('/items')
+      .set('Origin', 'https://browser.example.com')
+      .expect(204);
+
+    expect(res.headers['access-control-allow-headers']).toContain('Idempotency-Key');
+  });
+
+  it('GET response includes Authorization and Idempotency-Key in Access-Control-Allow-Headers', async () => {
+    const res = await agent
+      .get('/items')
+      .set('Origin', 'https://browser.example.com')
+      .expect(200);
+
+    expect(res.headers['access-control-allow-headers']).toContain('Authorization');
+    expect(res.headers['access-control-allow-headers']).toContain('Idempotency-Key');
+  });
 });

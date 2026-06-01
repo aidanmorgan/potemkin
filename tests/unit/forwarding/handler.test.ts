@@ -10,8 +10,19 @@
  *  - Fault simulation passes through (the forwarded x-specmatic-fault header)
  *  - ETag header is set for mutating commands that produce events
  *  - Health endpoint returns correct shape
+ *  - Idempotency replay serves post-pipeline body+headers (potemkin-3r96)
+ *  - CORS preflight reflects Origin + Authorization/Idempotency-Key (potemkin-svq2)
  */
 
+import { createGateway } from '../../../src/http/gateway.js';
+import { bootSystem } from '../../../src/engine/boot.js';
+import { loadOpenApi } from '../../../src/contract/loader.js';
+import { compileDsl } from '../../../src/dsl/parser.js';
+import {
+  withPersistentServer,
+  type PersistentAgent,
+} from '../../_support/persistentAgent.js';
+import { registerFileTeardown } from '../../_support/testTeardown.js';
 import { createTestApp, type TestApp } from '../../acceptance/_helpers/test-app.js';
 import { nextUuidv7 } from '../../../src/ids/uuidv7.js';
 
@@ -315,6 +326,43 @@ describe('forwarding/handler — createForwardingHandler', () => {
     expect(typeof res.body.headers).toBe('object');
     expect('body' in res.body).toBe(true);
   });
+
+  // ── CORS preflight (OPTIONS) via forwarding path (potemkin-svq2) ─────────────
+
+  it('forwarded OPTIONS includes Authorization and Idempotency-Key in access-control-allow-headers', async () => {
+    const res = await app.agent
+      .post('/_engine/forward')
+      .send({
+        method: 'OPTIONS',
+        path: '/leads',
+        headers: {},
+        query: {},
+        body: null,
+      })
+      .expect(200);
+    expect(res.body.status).toBe(204);
+    expect(res.body.headers['access-control-allow-headers']).toContain('Authorization');
+    expect(res.body.headers['access-control-allow-headers']).toContain('Idempotency-Key');
+  });
+
+  it('forwarded credentialed OPTIONS reflects the request Origin in access-control-allow-origin', async () => {
+    const res = await app.agent
+      .post('/_engine/forward')
+      .send({
+        method: 'OPTIONS',
+        path: '/leads',
+        headers: {
+          origin: 'https://browser.example.com',
+          authorization: 'Bearer alice:reader',
+        },
+        query: {},
+        body: null,
+      })
+      .expect(200);
+    expect(res.body.status).toBe(204);
+    expect(res.body.headers['access-control-allow-origin']).toBe('https://browser.example.com');
+    expect(res.body.headers['access-control-allow-credentials']).toBe('true');
+  });
 });
 
 describe('forwarding/handler — healthHandler', () => {
@@ -337,5 +385,133 @@ describe('forwarding/handler — healthHandler', () => {
   it('GET /_engine/health includes a version field', async () => {
     const res = await app.agent.get('/_engine/health').expect(200);
     expect(typeof res.body.version).toBe('string');
+  });
+});
+
+// ── Idempotency replay serves post-pipeline body+headers via forwarding (potemkin-3r96) ──
+//
+// Uses a self-contained minimal system with idempotency enabled so the test
+// does not depend on the createTestApp fixture loading the global YAML.
+
+const FWD_IDEM_OPENAPI = `
+openapi: "3.0.3"
+info:
+  title: Forwarding Idempotency Test
+  version: "1.0.0"
+paths:
+  /widgets:
+    post:
+      operationId: createWidget
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Widget"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Widget"
+components:
+  schemas:
+    Widget:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+      additionalProperties: true
+`;
+
+const FWD_IDEM_DSL = `
+boundary: Widget
+contract_path: /widgets
+identity:
+  creation:
+    generate: '$uuidv7()'
+behaviors:
+  - name: createWidget
+    match:
+      operationId: createWidget
+      condition: 'true'
+    emit: WidgetCreated
+event_catalog:
+  - type: WidgetCreated
+    payload_template:
+      id: command.targetId
+      label: command.payload.label
+reducers:
+  - on: WidgetCreated
+    patches:
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
+      - { op: replace, path: /label, value: "\${event.payload.label}" }
+`;
+
+const FWD_IDEM_GLOBAL = `
+idempotency:
+  enabled: true
+  ttl_seconds: 86400
+  hash_includes_body: true
+`;
+
+describe('forwarding/handler — idempotency replay serves post-pipeline response (potemkin-3r96)', () => {
+  let agent: PersistentAgent;
+
+  beforeAll(async () => {
+    const openapi = await loadOpenApi(FWD_IDEM_OPENAPI);
+    const compiledDsl = await compileDsl([{ name: 'widget', yaml: FWD_IDEM_DSL }], FWD_IDEM_GLOBAL);
+    const sys = await bootSystem({ openapi, compiledDsl });
+    const gateway = createGateway(sys);
+    const { agent: a, close } = await withPersistentServer(gateway);
+    agent = a;
+    registerFileTeardown(close);
+  });
+
+  it('forwarded idempotency replay body+headers equal the original post-pipeline response', async () => {
+    const KEY = `fwd-3r96-${Date.now()}`;
+
+    const original = await agent
+      .post('/_engine/forward')
+      .send({
+        method: 'POST',
+        path: '/widgets',
+        headers: {
+          'idempotency-key': KEY,
+          'x-potemkin-response-format': 'hal',
+        },
+        query: {},
+        body: { label: 'HAL Widget' },
+      })
+      .expect(200);
+
+    expect(original.body.status).toBe(201);
+    expect(original.body.headers['x-potemkin-response-format']).toBe('hal');
+    expect(original.body.headers['x-specmatic-result']).toBe('success');
+
+    const replay = await agent
+      .post('/_engine/forward')
+      .send({
+        method: 'POST',
+        path: '/widgets',
+        headers: {
+          'idempotency-key': KEY,
+          'x-potemkin-response-format': 'hal',
+        },
+        query: {},
+        body: { label: 'HAL Widget' },
+      })
+      .expect(200);
+
+    expect(replay.body.status).toBe(201);
+    expect(replay.body.headers['x-idempotency-replay']).toBe('true');
+    // Replayed body must equal the original mutated (HAL) body.
+    expect(replay.body.body).toEqual(original.body.body);
+    // Replayed headers include the post-pipeline headers from the original.
+    expect(replay.body.headers['x-potemkin-response-format']).toBe(original.body.headers['x-potemkin-response-format']);
+    expect(replay.body.headers['x-specmatic-result']).toBe(original.body.headers['x-specmatic-result']);
   });
 });

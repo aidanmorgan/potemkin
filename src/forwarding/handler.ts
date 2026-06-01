@@ -200,7 +200,12 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
     const method = isHead ? 'GET' : rawMethod;
 
     if (rawMethod === 'OPTIONS') {
-      send({ status: 204, headers: corsPreflightHeaders(), body: null });
+      const preflightOrigin = fwd.headers['origin'] ?? fwd.headers['Origin'];
+      const preflightCredentialed = Boolean(
+        fwd.headers['authorization'] ?? fwd.headers['Authorization'] ??
+        fwd.headers['cookie'] ?? fwd.headers['Cookie'],
+      );
+      send({ status: 204, headers: corsPreflightHeaders(preflightOrigin, preflightCredentialed), body: null });
       return;
     }
 
@@ -588,23 +593,6 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       }
     }
 
-    // 19. Record idempotency entry after successful execution.
-    if (idempotencyEnabled && idempotencyKey && intent !== 'query') {
-      const store = sys.idempotencyStore;
-      const requestBody: JsonValue = fwd.body ?? {};
-      const hashIncludesBody = idempotencyCfg?.hashIncludesBody ?? true;
-      const ttlMs = (idempotencyCfg?.ttlSeconds ?? 86400) * 1000;
-      try {
-        store.record({
-          method, path, idempotencyKey, body: requestBody, hashIncludesBody,
-          response: { status: result.status, body: result.body, headers: responseHeaders },
-          ttlMs,
-        });
-      } catch {
-        logger.warn({ idempotencyKey }, 'Failed to record idempotency entry in forwarding handler');
-      }
-    }
-
     let outBody: JsonValue | null | undefined = result.body;
 
     // 20. Response mutations (per-boundary HATEOAS/mask via _patches) + deprecation
@@ -689,6 +677,25 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
     // X-Potemkin-Body-Truncate — slice the serialised body to N bytes.
     if (chaos.bodyTruncateBytes !== undefined && outBody !== null && outBody !== undefined) {
       outBody = truncateBody(outBody, chaos.bodyTruncateBytes);
+    }
+
+    // 19. Record idempotency entry after the full pipeline (HATEOAS, mask, format,
+    // trace headers) so the cached body+headers match what the caller received, and
+    // replays are identical to the original mutated response.
+    if (idempotencyEnabled && idempotencyKey && intent !== 'query') {
+      const store = sys.idempotencyStore;
+      const requestBody: JsonValue = fwd.body ?? {};
+      const hashIncludesBody = idempotencyCfg?.hashIncludesBody ?? true;
+      const ttlMs = (idempotencyCfg?.ttlSeconds ?? 86400) * 1000;
+      try {
+        store.record({
+          method, path, idempotencyKey, body: requestBody, hashIncludesBody,
+          response: { status: result.status, body: outBody ?? null, headers: responseHeaders },
+          ttlMs,
+        });
+      } catch {
+        logger.warn({ idempotencyKey }, 'Failed to record idempotency entry in forwarding handler');
+      }
     }
 
     send({

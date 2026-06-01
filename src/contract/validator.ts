@@ -107,12 +107,23 @@ function stripValueRanges(schema: JsonObject): JsonObject {
   return strip(schema) as JsonObject;
 }
 
+export interface ContractValidatorCacheOptions {
+  /**
+   * Maximum number of entries in the JSON-key-based validator cache.
+   * Once the cap is reached the oldest entry is evicted (LRU by insertion order).
+   * Defaults to 512, which is ample for typical single-contract deployments while
+   * bounding memory under workloads that emit many structurally-distinct schemas.
+   */
+  readonly maxKeyedValidators?: number;
+}
+
 /**
  * Create a ContractValidator backed by the given OpenAPI document and boundary configs.
  */
 export function createContractValidator(
   doc: OpenApiDoc,
   _boundaries: readonly BoundaryConfig[],
+  cacheOptions?: ContractValidatorCacheOptions,
 ): ContractValidator {
   const ajv = new Ajv({ allErrors: true, strict: false, useDefaults: true });
   addFormats(ajv);
@@ -132,8 +143,13 @@ export function createContractValidator(
     }
   }
 
+  const maxKeyedValidators = cacheOptions?.maxKeyedValidators ?? 512;
+
   // Cache compiled validators by schema object reference (using WeakMap) and
   // by a serialized JSON key (using Map) for primitive-keyed lookups.
+  // The WeakMap is the fast, identity-keyed primary cache (GC'd automatically).
+  // The Map is bounded to maxKeyedValidators entries; the oldest entry is evicted
+  // when the cap is reached (Map iteration order is insertion order).
   const validatorCache = new WeakMap<object, ValidateFunction>();
   const validatorCacheByKey = new Map<string, ValidateFunction>();
 
@@ -152,6 +168,14 @@ export function createContractValidator(
 
     const compiled = ajv.compile(schema);
     validatorCache.set(schema, compiled);
+
+    // Evict the oldest entry before inserting to keep the map within the cap
+    if (validatorCacheByKey.size >= maxKeyedValidators) {
+      const oldestKey = validatorCacheByKey.keys().next().value;
+      if (oldestKey !== undefined) {
+        validatorCacheByKey.delete(oldestKey);
+      }
+    }
     validatorCacheByKey.set(key, compiled);
     return compiled;
   }

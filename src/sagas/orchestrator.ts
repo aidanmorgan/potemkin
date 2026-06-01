@@ -66,6 +66,14 @@ export interface SagaRunInput {
   readonly tsReducerRegistry?: TsReducerRegistry;
   /** C5: per-boundary inferred schemas threaded into saga-step units of work. */
   readonly inferredSchemas?: Readonly<Record<string, BoundaryInferenceResult>>;
+  /**
+   * Per-BootedSystem aggregate lock map. When supplied, every saga-step
+   * executeUnitOfWork call serializes on the SAME map as live gateway requests,
+   * so a concurrent inbound request and an in-flight saga step targeting the
+   * same aggregate cannot interleave. Omitting it (e.g. in unit tests that mock
+   * executeUnitOfWork) creates a fresh no-op map per step.
+   */
+  readonly aggregateLocks?: Map<string, Promise<void>>;
 }
 
 function makeSagaEvent(
@@ -185,6 +193,7 @@ export async function runSaga(input: SagaRunInput): Promise<void> {
     openapi,
     tsReducerRegistry,
     inferredSchemas,
+    aggregateLocks,
   } = input;
 
   const sagaInstanceId = nextUuidv7();
@@ -232,6 +241,7 @@ export async function runSaga(input: SagaRunInput): Promise<void> {
         logger,
         schemaRegistry,
         openapi,
+        ...(aggregateLocks ? { aggregateLocks } : {}),
         ...(tsReducerRegistry ? { tsReducerRegistry } : {}),
         ...(inferredSchemas ? { inferredSchemas } : {}),
       });
@@ -294,6 +304,7 @@ export async function runSaga(input: SagaRunInput): Promise<void> {
             logger,
             schemaRegistry,
             openapi,
+            ...(aggregateLocks ? { aggregateLocks } : {}),
             ...(tsReducerRegistry ? { tsReducerRegistry } : {}),
             ...(inferredSchemas ? { inferredSchemas } : {}),
           });

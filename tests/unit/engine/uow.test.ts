@@ -8,6 +8,8 @@
  *  - global lock path (targetId null)
  *  - faultSignal short-circuit (with and without metrics)
  *  - unparseable faultSignal → InternalExecutionError
+ *  - missing openapi fails pre-flight BEFORE lock acquisition (potemkin-owc3)
+ *  - shared aggregateLocks serializes concurrent direct + saga-step UoWs (potemkin-i1xd)
  */
 
 import { executeUnitOfWork } from '../../../src/engine/uow';
@@ -537,5 +539,378 @@ describe('engine/uow — additional branch coverage', () => {
 
     expect(r1.status).toBe(200);
     expect(r2.status).toBe(200);
+  });
+});
+
+// ── potemkin-owc3: openapi pre-flight check ───────────────────────────────────
+
+describe('engine/uow — pre-flight openapi check (potemkin-owc3)', () => {
+  it('throws InternalExecutionError before acquiring the lock when openapi is omitted', async () => {
+    const aggregateLocks = new Map<string, Promise<void>>();
+    const widgetId = nextUuidv7();
+
+    await expect(
+      executeUnitOfWork({
+        command: {
+          commandId: nextUuidv7(),
+          boundary: 'Widget',
+          intent: 'creation',
+          targetId: widgetId,
+          payload: { label: 'no-openapi' },
+          queryParams: {},
+          httpMethod: 'POST',
+          path: '/widgets',
+          origin: 'inbound',
+          depth: 0,
+        },
+        dsl: sys.dsl,
+        // openapi deliberately omitted
+        graph: sys.graph,
+        events: sys.events,
+        cel: sys.cel,
+        validator: sys.validator,
+        schemaRegistry: sys.schemaRegistry,
+        aggregateLocks,
+      } as never),
+    ).rejects.toBeInstanceOf(InternalExecutionError);
+
+    // The lock map must be untouched — the error fires before acquireLock.
+    expect(aggregateLocks.size).toBe(0);
+  });
+
+  it('InternalExecutionError for missing openapi carries the commandId and boundary', async () => {
+    const commandId = nextUuidv7();
+    const widgetId = nextUuidv7();
+
+    let caught: unknown;
+    try {
+      await executeUnitOfWork({
+        command: {
+          commandId,
+          boundary: 'Widget',
+          intent: 'creation',
+          targetId: widgetId,
+          payload: { label: 'no-openapi' },
+          queryParams: {},
+          httpMethod: 'POST',
+          path: '/widgets',
+          origin: 'inbound',
+          depth: 0,
+        },
+        dsl: sys.dsl,
+        graph: sys.graph,
+        events: sys.events,
+        cel: sys.cel,
+        validator: sys.validator,
+        schemaRegistry: sys.schemaRegistry,
+      } as never);
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeInstanceOf(InternalExecutionError);
+    const iee = caught as InternalExecutionError;
+    expect(iee.message).toMatch(/UowInput\.openapi is required/);
+    // Extra data is stored in SimError.details (JsonValue).
+    expect(iee.details).toMatchObject({
+      commandId,
+      boundary: 'Widget',
+    });
+  });
+});
+
+// ── Counter fixture for concurrent saga-step serialization test ───────────────
+//
+// Counter is a boundary that emits a CounterIncremented event on mutation so
+// two concurrent UoWs targeting the same counter aggregate WILL both write to
+// the event store.  Without a shared aggregateLocks map the second append
+// races and produces a non-monotonic sequence error; with it they serialize.
+
+const COUNTER_OPENAPI = `
+openapi: "3.0.3"
+info:
+  title: Counter Test
+  version: "1.0.0"
+paths:
+  /counters:
+    post:
+      operationId: createCounter
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Counter"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Counter"
+  /counters/{id}:
+    put:
+      operationId: incrementCounter
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CounterById"
+components:
+  schemas:
+    Counter:
+      type: object
+      properties:
+        id:
+          type: string
+        value:
+          type: integer
+      required:
+        - id
+        - value
+    CounterById:
+      type: object
+      properties:
+        id:
+          type: string
+        value:
+          type: integer
+      required:
+        - id
+        - value
+`;
+
+const COUNTER_DSL = `
+boundary: Counter
+contract_path: /counters
+fallback_override: false
+identity:
+  creation:
+    generate: "$uuidv7()"
+event_catalog:
+  - type: CounterCreated
+    payload_template:
+      id: "command.targetId"
+      value: "0"
+behaviors:
+  - name: create-counter
+    match:
+      operationId: createCounter
+      condition: "true"
+    emit: CounterCreated
+reducers:
+  - on: CounterCreated
+    patches:
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
+      - { op: replace, path: /value, value: 0 }
+`;
+
+const COUNTER_BY_ID_DSL = `
+boundary: CounterById
+contract_path: /counters/{id}
+fallback_override: false
+event_catalog:
+  - type: CounterIncremented
+    payload_template:
+      id: "command.targetId"
+      delta: "1"
+behaviors:
+  - name: increment-counter
+    match:
+      operationId: incrementCounter
+      condition: "true"
+    emit: CounterIncremented
+reducers:
+  - on: CounterIncremented
+    patches:
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
+      - { op: replace, path: /value, value: "\${state.value != null ? state.value + 1 : 1}" }
+`;
+
+// ── potemkin-i1xd: concurrent direct + saga-step UoWs serialize ──────────────
+
+describe('engine/uow — shared aggregateLocks serializes concurrent UoWs on same aggregate (potemkin-i1xd)', () => {
+  let counterSys: BootedSystem;
+
+  beforeEach(async () => {
+    const openapi = await loadOpenApi(COUNTER_OPENAPI);
+    counterSys = await bootSystem({
+      openapi,
+      compiledDsl: await compileDsl([
+        { name: 'counter', yaml: COUNTER_DSL },
+        { name: 'counterById', yaml: COUNTER_BY_ID_DSL },
+      ]),
+    });
+  });
+
+  afterEach(() => {
+    resetSystem(counterSys);
+  });
+
+  async function createCounter(): Promise<string> {
+    const counterId = nextUuidv7();
+    await executeUnitOfWork({
+      command: {
+        commandId: nextUuidv7(),
+        boundary: 'Counter',
+        intent: 'creation',
+        targetId: counterId,
+        payload: {},
+        queryParams: {},
+        httpMethod: 'POST',
+        path: '/counters',
+        origin: 'inbound',
+        depth: 0,
+      },
+      dsl: counterSys.dsl,
+      openapi: counterSys.openapi,
+      graph: counterSys.graph,
+      events: counterSys.events,
+      cel: counterSys.cel,
+      validator: counterSys.validator,
+      schemaRegistry: counterSys.schemaRegistry,
+      aggregateLocks: counterSys.aggregateLocks,
+    });
+    return counterId;
+  }
+
+  it('two concurrent increments sharing aggregateLocks both succeed with a monotonic event sequence', async () => {
+    const counterId = await createCounter();
+    const eventsBefore = counterSys.events.byAggregate(counterId).length;
+
+    // Simulate: one direct inbound increment + one increment representing a
+    // saga step — both share the system aggregateLocks so they serialize on
+    // the same aggregate.  Without the shared lock the second append would
+    // race and throw a non-monotonic sequence error from the event store.
+    const [r1, r2] = await Promise.all([
+      executeUnitOfWork({
+        command: {
+          commandId: nextUuidv7(),
+          boundary: 'CounterById',
+          intent: 'mutation',
+          targetId: counterId,
+          payload: {},
+          queryParams: {},
+          httpMethod: 'PUT',
+          path: `/counters/${counterId}`,
+          origin: 'inbound',
+          depth: 0,
+        },
+        dsl: counterSys.dsl,
+        openapi: counterSys.openapi,
+        graph: counterSys.graph,
+        events: counterSys.events,
+        cel: counterSys.cel,
+        validator: counterSys.validator,
+        schemaRegistry: counterSys.schemaRegistry,
+        aggregateLocks: counterSys.aggregateLocks,
+      }),
+      executeUnitOfWork({
+        command: {
+          commandId: nextUuidv7(),
+          boundary: 'CounterById',
+          intent: 'mutation',
+          targetId: counterId,
+          payload: {},
+          queryParams: {},
+          httpMethod: 'PUT',
+          path: `/counters/${counterId}`,
+          // origin secondary simulates a saga-step UoW sharing the same map.
+          origin: 'secondary',
+          depth: 1,
+        },
+        dsl: counterSys.dsl,
+        openapi: counterSys.openapi,
+        graph: counterSys.graph,
+        events: counterSys.events,
+        cel: counterSys.cel,
+        validator: counterSys.validator,
+        schemaRegistry: counterSys.schemaRegistry,
+        aggregateLocks: counterSys.aggregateLocks,
+      }),
+    ]);
+
+    expect(r1.status).toBe(200);
+    expect(r2.status).toBe(200);
+
+    // Both increments committed — two new events with strictly monotonic
+    // sequence versions (the shared lock guaranteed serial execution).
+    const eventsAfter = counterSys.events.byAggregate(counterId);
+    expect(eventsAfter.length).toBe(eventsBefore + 2);
+    const [first, second] = eventsAfter.slice(eventsBefore);
+    expect(second!.sequenceVersion).toBe(first!.sequenceVersion + 1);
+  });
+
+  it('two concurrent increments WITHOUT shared aggregateLocks produce a non-monotonic sequence error', async () => {
+    // Documents the unsafe behaviour that the fix addresses:  without a shared
+    // lock each UoW races to read currentSequenceVersion and both compute the
+    // same next version, so the second append throws.
+    const counterId = await createCounter();
+
+    const results = await Promise.allSettled([
+      executeUnitOfWork({
+        command: {
+          commandId: nextUuidv7(),
+          boundary: 'CounterById',
+          intent: 'mutation',
+          targetId: counterId,
+          payload: {},
+          queryParams: {},
+          httpMethod: 'PUT',
+          path: `/counters/${counterId}`,
+          origin: 'inbound',
+          depth: 0,
+        },
+        dsl: counterSys.dsl,
+        openapi: counterSys.openapi,
+        graph: counterSys.graph,
+        events: counterSys.events,
+        cel: counterSys.cel,
+        validator: counterSys.validator,
+        schemaRegistry: counterSys.schemaRegistry,
+        // No aggregateLocks passed — each UoW uses an independent fresh map.
+      }),
+      executeUnitOfWork({
+        command: {
+          commandId: nextUuidv7(),
+          boundary: 'CounterById',
+          intent: 'mutation',
+          targetId: counterId,
+          payload: {},
+          queryParams: {},
+          httpMethod: 'PUT',
+          path: `/counters/${counterId}`,
+          origin: 'secondary',
+          depth: 1,
+        },
+        dsl: counterSys.dsl,
+        openapi: counterSys.openapi,
+        graph: counterSys.graph,
+        events: counterSys.events,
+        cel: counterSys.cel,
+        validator: counterSys.validator,
+        schemaRegistry: counterSys.schemaRegistry,
+        // No aggregateLocks passed — each UoW uses an independent fresh map.
+      }),
+    ]);
+
+    const errorCount = results.filter((r) => r.status === 'rejected').length;
+    // Without serialization the second concurrent write on the same aggregate
+    // hits a non-monotonic sequence version and is rejected.
+    expect(errorCount).toBeGreaterThanOrEqual(1);
   });
 });
