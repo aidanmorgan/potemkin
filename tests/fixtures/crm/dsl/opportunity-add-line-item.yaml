@@ -2,7 +2,7 @@ boundary: OpportunityAddLineItem
 contract_path: /opportunities/{id}/line-items
 fallback_override: false
 
-# Inline TypeScript helpers (REQ-66/67): generate a line-item id and compute
+# Inline TypeScript helpers: generate a line-item id and compute
 # the per-line total (quantity * unitPrice) server-side.
 scripts:
   - name: generateLineItemId
@@ -18,7 +18,7 @@ scripts:
         return qty * price;
       }
 
-# C4/C5: computed fields on the Opportunity aggregate. totalValue sums each
+# Computed fields on the Opportunity aggregate. totalValue sums each
 # line's lineTotal; itemCount counts the line items. Both recompute after the
 # LineItemAdded reducer appends to /lineItems.
 state:

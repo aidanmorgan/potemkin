@@ -36,7 +36,7 @@ event_catalog:
       leadSource: "command.payload.leadSource"
 
 behaviors:
-  # Create campaign — REQ-61: match.requires to enforce startedAt < endedAt
+  # Create campaign — match.requires to enforce startedAt < endedAt
   - name: createCampaign
     match:
       operationId: createCampaign
@@ -48,7 +48,7 @@ behaviors:
           error_message: "Campaign startedAt must be before endedAt"
     emit: CampaignCreated
 
-  # Activate campaign — REQ-61: requires DRAFT/PAUSED status (path-guarded)
+  # Activate campaign — requires DRAFT/PAUSED status (path-guarded)
   - name: activateCampaign
     match:
       operationId: activateCampaign
@@ -60,7 +60,7 @@ behaviors:
           error_message: "Campaign must be in DRAFT or PAUSED status to activate"
     emit: CampaignActivated
 
-  # Pause campaign — REQ-64: emit_when with multiple branches
+  # Pause campaign — emit_when with multiple branches
   - name: pauseCampaign
     match:
       operationId: pauseCampaign

@@ -5,7 +5,7 @@
 # The shared secret is hard-coded here for the test harness only — NEVER use this
 # in production. Tests mint JWTs in-process using the same secret.
 
-# REQ-84 extension: JWT authentication
+# JWT authentication
 auth:
   mode: jwt
   jwt:
@@ -16,7 +16,7 @@ auth:
     subject_claim: "sub"
     scopes_claim: "scopes"
 
-# REQ-81/82/83: Idempotency config
+# Idempotency config
 idempotency:
   enabled: true
   ttl_seconds: 86400
@@ -37,7 +37,7 @@ security_headers:
   custom_headers:
     X-Custom-Sim-Header: "potemkin-sim"
 
-# REQ-73–80: Sagas with compensation
+# Sagas with compensation
 sagas:
   - name: LeadConversionSaga
     trigger:
@@ -209,7 +209,7 @@ fault_rules:
         error: DEPENDENCY_DEGRADED
         message: Downstream dependency degraded — failing fast
 
-# REQ-88/89/90: Derived projections aggregating across boundaries
+# Derived projections aggregating across boundaries
 derived_projections:
   - name: CampaignDashboard
     key: "event.payload.campaignId != null ? event.payload.campaignId : event.payload.assignedCampaignId"

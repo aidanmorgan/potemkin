@@ -19,7 +19,7 @@ event_catalog:
       closedAt: "$now()"
 
 behaviors:
-  # REQ-62: postcondition on WON
+  # postcondition on WON
   - name: closeWon
     match:
       operationId: closeOpportunity
@@ -31,7 +31,7 @@ behaviors:
           error_message: "Opportunity must be in PROPOSED or NEGOTIATING stage to be won"
     emit: OpportunityWon
     postcondition: "state.stage == 'WON' && state.value > 0"
-    # REQ-63: conditional dispatch to agent metrics
+    # conditional dispatch to agent metrics
     dispatch_commands:
       - boundary: Agent
         intent: mutation
@@ -41,7 +41,7 @@ behaviors:
           incrementConversions: "true"
         condition: "state.agentId != null"
 
-  # REQ-64: emit_when with alternative
+  # emit_when with alternative
   - name: closeLost
     match:
       operationId: closeOpportunity

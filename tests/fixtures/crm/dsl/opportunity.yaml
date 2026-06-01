@@ -26,7 +26,7 @@ event_catalog:
       probability: "command.payload.probability"
       advancedAt: "$now()"
 
-  # REQ-65: schema_ref on OpportunityWon event
+  # schema_ref on OpportunityWon event
   - type: OpportunityWon
     schema_ref: "#/components/schemas/OpportunityWon"
     payload_template:
@@ -55,7 +55,7 @@ behaviors:
           error_message: "Opportunity value must be greater than zero"
     emit: OpportunityCreated
 
-  # Advance opportunity — REQ-61: requires not in terminal state
+  # Advance opportunity — requires not in terminal state
   - name: advanceOpportunity
     match:
       operationId: advanceOpportunity
@@ -71,7 +71,7 @@ behaviors:
           error_message: "Opportunity is already at NEGOTIATING stage"
     emit: OpportunityAdvanced
 
-  # Close as WON — REQ-62: postcondition ensures value > 0 after winning
+  # Close as WON — postcondition ensures value > 0 after winning
   - name: closeWon
     match:
       operationId: closeOpportunity
@@ -83,7 +83,7 @@ behaviors:
           error_message: "Opportunity must be in PROPOSED or NEGOTIATING stage to be won"
     emit: OpportunityWon
     postcondition: "state.stage == 'WON' && state.value > 0"
-    # REQ-63: conditional dispatch to agent metrics
+    # conditional dispatch to agent metrics
     dispatch_commands:
       - boundary: Agent
         intent: mutation
@@ -93,7 +93,7 @@ behaviors:
           incrementConversions: "true"
         condition: "state.agentId != null"
 
-  # Close as LOST — REQ-64: emit_when with alternative
+  # Close as LOST — emit_when with alternative
   - name: closeLost
     match:
       operationId: closeOpportunity

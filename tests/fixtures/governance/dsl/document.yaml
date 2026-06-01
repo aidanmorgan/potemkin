@@ -5,8 +5,8 @@ identity:
   creation:
     generate: $uuidv7()
 
-# D1 HATEOAS: a static self link injected into the response body.
-# D3 mask: internalNotes is removed from the response before it is served.
+# HATEOAS: a static self link injected into the response body.
+# mask: internalNotes is removed from the response before it is served.
 hateoas:
   - rel: self
     href: /documents

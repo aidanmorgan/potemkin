@@ -8,7 +8,7 @@ event_catalog:
       activatedAt: "$now()"
 
 behaviors:
-  # REQ-61: requires guard — must be in DRAFT or PAUSED status
+  # requires guard — must be in DRAFT or PAUSED status
   - name: activateCampaign
     match:
       operationId: activateCampaign

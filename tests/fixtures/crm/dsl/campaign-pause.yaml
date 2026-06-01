@@ -8,7 +8,7 @@ event_catalog:
       pausedAt: "$now()"
 
 behaviors:
-  # REQ-64: emit_when with multiple branches
+  # emit_when with multiple branches
   - name: pauseCampaign
     match:
       operationId: pauseCampaign

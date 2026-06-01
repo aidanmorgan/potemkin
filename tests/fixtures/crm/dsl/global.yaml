@@ -1,7 +1,7 @@
 # The Nuisance Bureau CRM — Global configuration
 # Contains: idempotency, sagas (with compensation), derived projections,
 # security headers
-# REQ-81/82/83: Idempotency config
+# Idempotency config
 idempotency:
   enabled: true
   ttl_seconds: 86400
@@ -22,7 +22,7 @@ security_headers:
   custom_headers:
     X-Custom-Sim-Header: "potemkin-sim"
 
-# REQ-73–80: Sagas with compensation
+# Sagas with compensation
 sagas:
   # Lead Conversion Saga: creates an Opportunity when a lead is converted
   # Steps: create opportunity → if fails, revert lead status
@@ -218,7 +218,7 @@ fault_rules:
         error: DEPENDENCY_DEGRADED
         message: Downstream dependency degraded — failing fast
 
-# REQ-88/89/90: Derived projections aggregating across boundaries
+# Derived projections aggregating across boundaries
 derived_projections:
   # CampaignDashboard: aggregates lead count and conversion rate per campaign
   - name: CampaignDashboard

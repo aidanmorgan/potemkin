@@ -10,7 +10,7 @@ event_catalog:
       reason: "command.payload?.reason != null ? command.payload.reason : 'No reason given'"
 
 behaviors:
-  # REQ-84/85/86: RBAC required_scopes
+  # RBAC required_scopes
   # HATEOAS: surfaced as the `dnc` action link in any state except DNC/CONVERTED.
   - name: markLeadDNC
     link_name: dnc

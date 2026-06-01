@@ -1,5 +1,5 @@
 /**
- * Tests for src/http/engineDslHandler.ts (REQ-WIRE-001/003/005).
+ * Tests for src/http/engineDslHandler.ts.
  */
 
 import {
@@ -40,7 +40,7 @@ function makeProducer(
   };
 }
 
-describe('handleEngineDsl — install/replay flow (REQ-WIRE-003)', () => {
+describe('handleEngineDsl — install/replay flow', () => {
   it('returns installed{200} for a fresh bundle', async () => {
     const r = await handleEngineDsl(
       {
@@ -77,7 +77,7 @@ describe('handleEngineDsl — install/replay flow (REQ-WIRE-003)', () => {
   });
 });
 
-describe('handleEngineDsl — malformed bundles (REQ-WIRE-001)', () => {
+describe('handleEngineDsl — malformed bundles', () => {
   it('returns badRequest{400} when the payload is malformed', async () => {
     const r = await handleEngineDsl(
       'not an object',
@@ -91,7 +91,7 @@ describe('handleEngineDsl — malformed bundles (REQ-WIRE-001)', () => {
   });
 });
 
-describe('handleEngineDsl — install rejected (REQ-WIRE-003 AC-003.2)', () => {
+describe('handleEngineDsl — install rejected', () => {
   it('returns badRequest when producer throws and leaves the store unchanged', async () => {
     const installed: InstalledBundle = {
       specVersion: 'prev',
@@ -110,7 +110,7 @@ describe('handleEngineDsl — install rejected (REQ-WIRE-003 AC-003.2)', () => {
   });
 });
 
-describe('handleEngineDsl — unavailable (REQ-WIRE-003 AC-003.3)', () => {
+describe('handleEngineDsl — unavailable', () => {
   it('returns unavailable{503} when not accepting bundles', async () => {
     const r = await handleEngineDsl(
       { modules: [], typescript: null, specEndpoints: [] },
@@ -122,7 +122,7 @@ describe('handleEngineDsl — unavailable (REQ-WIRE-003 AC-003.3)', () => {
   });
 });
 
-describe('handleEngineState (REQ-WIRE-005)', () => {
+describe('handleEngineState', () => {
   it('returns found{200} with state + _meta when the aggregate exists', () => {
     const acc: StateAccessor = {
       get: () => ({
@@ -152,7 +152,7 @@ describe('handleEngineState (REQ-WIRE-005)', () => {
     expect(r.kind).toBe('notFound');
   });
 
-  it('is side-effect-free — does not mutate the accessor (AC-005.3)', () => {
+  it('is side-effect-free — does not mutate the accessor', () => {
     let getCount = 0;
     const acc: StateAccessor = {
       get: () => {

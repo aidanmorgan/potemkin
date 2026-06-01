@@ -11,7 +11,7 @@ event_catalog:
       campaignId: "state.assignedCampaignId"
 
 behaviors:
-  # REQ-62: postcondition
+  # postcondition
   # HATEOAS: surfaced as the `convert` action link only while QUALIFIED.
   - name: convertLead
     link_name: convert

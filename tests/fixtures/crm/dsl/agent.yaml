@@ -31,7 +31,7 @@ event_catalog:
       incrementAt: "$now()"
 
 behaviors:
-  # Create agent — REQ-61: match.requires to validate quota > 0
+  # Create agent — match.requires to validate quota > 0
   - name: createAgent
     match:
       operationId: createAgent
@@ -43,7 +43,7 @@ behaviors:
           error_message: "Daily call quota must be greater than zero"
     emit: AgentCreated
 
-  # Update status — REQ-64: emit_when with 2 branches based on new status
+  # Update status — emit_when with 2 branches based on new status
   - name: updateAgentStatus
     match:
       operationId: updateAgentStatus

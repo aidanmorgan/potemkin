@@ -14,7 +14,7 @@ plugin:
     timeoutMs: 30000
   controlPort: 0
 
-# E4 — Seeds: dynamic Specmatic expectations registered at boot. Each targets a
+# Seeds: dynamic Specmatic expectations registered at boot. Each targets a
 # seed-only contract path (no engine boundary), so the plugin lets Specmatic
 # serve the seeded response. One starts from the contract base, one from empty;
 # both apply patches to produce the served body.
@@ -50,7 +50,7 @@ seeds:
         path: /label
         value: from-empty
 
-# E6 — Workflow: capture the created lead id and propagate it into a later
+# Workflow: capture the created lead id and propagate it into a later
 # request path placeholder (`/leads/{leadId}`).
 workflow:
   ids:
@@ -58,7 +58,7 @@ workflow:
       extract: "BODY.id"
       use: "PATH.leadId"
 
-# E5 — Overlay: flip GET /leads/{id} to deprecated in the served spec.
+# Overlay: flip GET /leads/{id} to deprecated in the served spec.
 overlay:
   patches:
     - op: add

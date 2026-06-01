@@ -9,8 +9,8 @@ event_catalog:
       lastContactedAt: "$now()"
 
 behaviors:
-  # REQ-61: match.requires with error_code/error_message
-  # REQ-64: emit_when with 2+ alternatives
+  # match.requires with error_code/error_message
+  # emit_when with 2+ alternatives
   # HATEOAS: surfaced as the `contact` action link, but only while the lead is
   # still NEW — once contacted the link disappears (link_condition is independent
   # of the runtime match condition, which still allows re-contact).

@@ -27,7 +27,7 @@ query_mapping:
   campaignId: "state.assignedCampaignId == param"
   agentId: "state.assignedAgentId == param"
 
-# REQ-66: inline TypeScript script for lead scoring
+# Inline TypeScript script for lead scoring
 scripts:
   - name: computeScore
     code: |
@@ -38,7 +38,7 @@ scripts:
       }
 
 event_catalog:
-  # REQ-65: schema_ref on LeadCreated event
+  # schema_ref on LeadCreated event
   - type: LeadCreated
     schema_ref: "#/components/schemas/LeadCreated"
     payload_template:
@@ -87,7 +87,7 @@ event_catalog:
 
 behaviors:
   # IMPORTANT: appendCallId is FIRST so it matches secondary dispatches from Call logging
-  # before any other mutation behaviors are evaluated. First-match semantics (REQ-17)
+  # before any other mutation behaviors are evaluated. First-match semantics
   # ensure subsequent behaviors with requires guards are never reached.
   - name: appendCallId
     match:
@@ -95,13 +95,13 @@ behaviors:
       condition: "has(command.payload.callId)"
     emit: CallIdAppended
 
-  # Create lead with inline TS scoring (REQ-66/67)
+  # Create lead with inline TS scoring
   - name: createLead
     match:
       operationId: createLead
       condition: "true"
     emit: LeadCreated
-    # REQ-63: dispatch_commands with condition — assign to campaign only if one provided
+    # dispatch_commands with condition — assign to campaign only if one provided
     dispatch_commands:
       - boundary: Campaign
         intent: mutation
@@ -111,8 +111,8 @@ behaviors:
           leadSource: "command.payload.source"
         condition: "command.payload?.assignedCampaignId != null"
 
-  # Contact lead — REQ-61: match.requires with error_code/error_message
-  # REQ-64: emit_when with 2+ alternatives
+  # Contact lead — match.requires with error_code/error_message
+  # emit_when with 2+ alternatives
   - name: contactLead
     match:
       operationId: contactLead
@@ -132,7 +132,7 @@ behaviors:
       - when: "state.status == 'QUALIFIED'"
         emit: LeadContacted
 
-  # Qualify lead — REQ-61: requires guard using CEL comprehension
+  # Qualify lead — requires guard using CEL comprehension
   - name: qualifyLead
     match:
       operationId: qualifyLead
@@ -155,7 +155,7 @@ behaviors:
       condition: "$concat('/leads/', command.targetId, '/disqualify') == command.path && (state.status == 'CONTACTED' || state.status == 'QUALIFIED')"
     emit: LeadDisqualified
 
-  # Convert lead — REQ-62: postcondition
+  # Convert lead — postcondition
   - name: convertLead
     match:
       operationId: convertLead
@@ -163,7 +163,7 @@ behaviors:
     emit: LeadConverted
     postcondition: "state.status == 'CONVERTED'"
 
-  # DNC — REQ-84/85/86: RBAC required_scopes
+  # DNC — RBAC required_scopes
   - name: markLeadDNC
     match:
       operationId: dncLead

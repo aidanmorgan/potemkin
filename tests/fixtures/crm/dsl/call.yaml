@@ -10,7 +10,7 @@ query_mapping:
   campaignId: "state.campaignId == param"
 
 event_catalog:
-  # REQ-65: schema_ref on CallLogged event
+  # schema_ref on CallLogged event
   - type: CallLogged
     schema_ref: "#/components/schemas/CallLogged"
     payload_template:
@@ -25,8 +25,8 @@ event_catalog:
       notes: "command.payload?.notes != null ? command.payload.notes : ''"
 
 behaviors:
-  # Log call — REQ-61: match.requires to validate outcome is provided
-  # REQ-63: dispatch_commands with condition
+  # Log call — match.requires to validate outcome is provided
+  # dispatch_commands with condition
   # Multi-emit: updates Lead.callIds + Agent.dailyCallCount
   - name: logCall
     match:

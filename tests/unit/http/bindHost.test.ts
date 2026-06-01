@@ -1,5 +1,5 @@
 /**
- * Tests for src/http/bindHost.ts (REQ-WIRE-004).
+ * Tests for src/http/bindHost.ts.
  */
 
 import { resolveBindHost } from '../../../src/http/bindHost.js';
@@ -15,7 +15,7 @@ function expectBootCode(fn: () => unknown, code: string): void {
   expect(caught?.code).toBe(code);
 }
 
-describe('resolveBindHost — default (REQ-WIRE-004 AC-004.2)', () => {
+describe('resolveBindHost — default', () => {
   it('returns 127.0.0.1 when the env has no override', () => {
     expect(resolveBindHost('dsl', { env: {} })).toBe('127.0.0.1');
     expect(resolveBindHost('state', { env: {} })).toBe('127.0.0.1');
@@ -28,7 +28,7 @@ describe('resolveBindHost — default (REQ-WIRE-004 AC-004.2)', () => {
   });
 });
 
-describe('resolveBindHost — override requires allow-remote (REQ-WIRE-004 AC-004.1)', () => {
+describe('resolveBindHost — override requires allow-remote', () => {
   it('refuses POTEMKIN_DSL_BIND_HOST without POTEMKIN_ALLOW_REMOTE_DSL=1', () => {
     expectBootCode(
       () => resolveBindHost('dsl', { env: { POTEMKIN_DSL_BIND_HOST: '0.0.0.0' } }),
@@ -44,7 +44,7 @@ describe('resolveBindHost — override requires allow-remote (REQ-WIRE-004 AC-00
     ).toBe('0.0.0.0');
   });
 
-  it('refuses POTEMKIN_STATE_BIND_HOST without POTEMKIN_ALLOW_REMOTE_STATE=1 (AC-004.4)', () => {
+  it('refuses POTEMKIN_STATE_BIND_HOST without POTEMKIN_ALLOW_REMOTE_STATE=1', () => {
     expectBootCode(
       () => resolveBindHost('state', { env: { POTEMKIN_STATE_BIND_HOST: '10.0.0.1' } }),
       'BOOT_ERR_REMOTE_STATE_NOT_ALLOWED',
@@ -52,7 +52,7 @@ describe('resolveBindHost — override requires allow-remote (REQ-WIRE-004 AC-00
   });
 });
 
-describe('resolveBindHost — refuses "localhost" by name (REQ-WIRE-004 AC-004.3)', () => {
+describe('resolveBindHost — refuses "localhost" by name', () => {
   it('refuses POTEMKIN_DSL_BIND_HOST=localhost even with allow-remote=1', () => {
     expectBootCode(
       () =>

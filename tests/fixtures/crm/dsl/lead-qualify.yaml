@@ -9,7 +9,7 @@ event_catalog:
       qualifiedAt: "$now()"
 
 behaviors:
-  # REQ-61: requires guard using CEL comprehension (filter/exists)
+  # requires guard using CEL comprehension (filter/exists)
   # HATEOAS: surfaced as the `qualify` action link only while CONTACTED.
   - name: qualifyLead
     link_name: qualify

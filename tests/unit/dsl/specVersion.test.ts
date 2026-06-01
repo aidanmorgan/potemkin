@@ -1,6 +1,6 @@
 import { computeSpecVersion } from '../../../src/dsl/specVersion.js';
 
-describe('computeSpecVersion (REQ-WIRE-002)', () => {
+describe('computeSpecVersion', () => {
   it('is deterministic for identical inputs', () => {
     const mods = [
       { path: 'a.yaml', yaml: 'boundary: A\n' },
