@@ -363,6 +363,25 @@ describe('forwarding/handler — createForwardingHandler', () => {
     expect(res.body.headers['access-control-allow-origin']).toBe('https://browser.example.com');
     expect(res.body.headers['access-control-allow-credentials']).toBe('true');
   });
+
+  it('forwarded OPTIONS with non-standard header casing (ORIGIN / AUTHORIZATION) still reflects origin and signals credentials', async () => {
+    const res = await app.agent
+      .post('/_engine/forward')
+      .send({
+        method: 'OPTIONS',
+        path: '/leads',
+        headers: {
+          ORIGIN: 'https://exotic.example.com',
+          AUTHORIZATION: 'Bearer bob:reader',
+        },
+        query: {},
+        body: null,
+      })
+      .expect(200);
+    expect(res.body.status).toBe(204);
+    expect(res.body.headers['access-control-allow-origin']).toBe('https://exotic.example.com');
+    expect(res.body.headers['access-control-allow-credentials']).toBe('true');
+  });
 });
 
 describe('forwarding/handler — healthHandler', () => {

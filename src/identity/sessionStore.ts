@@ -9,6 +9,10 @@
  * - Session ids are UUIDv7 strings.
  * - CSRF tokens are random hex strings; one per session.
  * - Expiry is enforced on lookup (`get()` returns null and evicts).
+ * - A background sweep periodically removes entries that were created but
+ *   never looked up (prevents unbounded map growth on login floods).
+ * - A maxSessions cap causes create() to throw once the live session count
+ *   reaches the limit, rather than growing without bound.
  * - The store is fully in-memory and resettable for `/_admin/reset`.
  * - An optional `nowMs` callback lets the engine wire session expiry through
  *   the same virtual clock used by CEL (admin clock advance affects TTL).
@@ -38,8 +42,10 @@ export interface SessionStore {
   get(sessionId: string): Session | null;
   /** Destroy a session by id. Returns true if the entry existed. */
   destroy(sessionId: string): boolean;
-  /** Wipe all sessions — used by /_admin/reset to return to a clean state. */
+  /** Wipe all sessions and stop the background sweep timer. */
   reset(): void;
+  /** Stop the background sweep timer and release the store. */
+  dispose(): void;
   /** Active session count (excludes expired-but-not-yet-evicted entries). */
   size(): number;
 }
@@ -47,6 +53,16 @@ export interface SessionStore {
 export interface SessionStoreOptions {
   /** Clock function returning the current time in ms. Defaults to Date.now. */
   readonly nowMs?: () => number;
+  /**
+   * How often (ms) the background sweep runs to delete expired entries that were
+   * never looked up. Defaults to 60 000 ms (60 s). Set to 0 to disable.
+   */
+  readonly sweepIntervalMs?: number;
+  /**
+   * Maximum number of live (non-expired) sessions. create() throws when this
+   * limit is reached. Defaults to Infinity (no cap).
+   */
+  readonly maxSessions?: number;
 }
 
 /** Build a per-session CSRF token. 32 random bytes → 64 hex chars. */
@@ -57,9 +73,51 @@ function generateCsrfToken(): string {
 export function createSessionStore(opts: SessionStoreOptions = {}): SessionStore {
   const sessions = new Map<string, Session>();
   const now = opts.nowMs ?? Date.now;
+  const sweepIntervalMs = opts.sweepIntervalMs ?? 60_000;
+  const maxSessions = opts.maxSessions ?? Infinity;
+
+  /** Delete all map entries whose expiresAt is in the past. */
+  function sweep(): void {
+    const current = now();
+    for (const [id, session] of sessions.entries()) {
+      if (current >= session.expiresAt) {
+        sessions.delete(id);
+      }
+    }
+  }
+
+  let sweepTimer: ReturnType<typeof setInterval> | undefined;
+
+  if (sweepIntervalMs > 0) {
+    sweepTimer = setInterval(sweep, sweepIntervalMs);
+    // unref() so the timer doesn't prevent the Node.js process from exiting
+    // when nothing else is keeping it alive.
+    if (sweepTimer.unref) {
+      sweepTimer.unref();
+    }
+  }
+
+  function stopSweep(): void {
+    if (sweepTimer !== undefined) {
+      clearInterval(sweepTimer);
+      sweepTimer = undefined;
+    }
+  }
 
   return {
     create(actor: Actor, ttlMs: number): Session {
+      // Count only live sessions toward the cap.
+      const current = now();
+      let liveCount = 0;
+      for (const session of sessions.values()) {
+        if (current < session.expiresAt) liveCount++;
+      }
+      if (liveCount >= maxSessions) {
+        throw new Error(
+          `Session limit of ${maxSessions} reached; cannot create a new session`,
+        );
+      }
+
       const created = now();
       const session: Session = {
         id: nextUuidv7(),
@@ -88,6 +146,11 @@ export function createSessionStore(opts: SessionStoreOptions = {}): SessionStore
 
     reset(): void {
       sessions.clear();
+      stopSweep();
+    },
+
+    dispose(): void {
+      stopSweep();
     },
 
     size(): number {

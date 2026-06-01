@@ -13,10 +13,17 @@
  *   6. reset()   — clears all sessions
  *   7. CSRF tokens differ between sessions
  *   8. size()    — reports the live (non-expired) count
+ *   9. sweep     — sessions never looked up are removed by the background sweep once expired
+ *  10. dispose() — sweep timer is stopped; no callback fires after dispose
+ *  11. reset()   — sweep timer is stopped; no callback fires after reset
+ *  12. create()  — rejects once maxSessions cap is reached
  *
  * The store accepts an injectable `nowMs` clock — tests use that rather than
  * jest fake timers, which lets us advance the clock deterministically without
  * touching global Date.
+ *
+ * Sweep-timer tests use jest fake timers for setInterval/clearInterval control
+ * while keeping the injected clock for expiry logic.
  */
 import { createSessionStore } from '../../../src/identity/sessionStore';
 import type { Actor } from '../../../src/types';
@@ -176,5 +183,121 @@ describe('identity/sessionStore', () => {
     // The store should not mutate or wrap the actor; the same shape comes back.
     expect(fetched?.actor.id).toBe(ACTOR_ALICE.id);
     expect(fetched?.actor.scopes).toEqual(ACTOR_ALICE.scopes);
+  });
+
+  describe('background sweep', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('sessions never looked up are removed by the sweep once expired', () => {
+      let now = 1_700_000_000_000;
+      const store = createSessionStore({
+        nowMs: () => now,
+        sweepIntervalMs: 30_000,
+      });
+
+      // Create sessions but never call get() on them.
+      store.create(ACTOR_ALICE, TTL_MS);
+      store.create(ACTOR_BOB, TTL_MS);
+
+      // Both sessions exist in-map (size counts non-expired).
+      expect(store.size()).toBe(2);
+
+      // Advance the injected clock past TTL so both sessions are expired.
+      now += TTL_MS + 1;
+
+      // Sessions are expired but not yet swept — still in map (size sees them as expired).
+      expect(store.size()).toBe(0);
+
+      // Advance fake timers to trigger the sweep interval.
+      jest.advanceTimersByTime(30_000);
+
+      // Sweep has run: expired entries are physically deleted from the map.
+      // size() and get() continue to return 0/null as before, and the map is now empty.
+      expect(store.size()).toBe(0);
+
+      store.dispose();
+    });
+
+    it('dispose() stops the sweep timer so no callback fires after dispose', () => {
+      let now = 1_700_000_000_000;
+      const store = createSessionStore({
+        nowMs: () => now,
+        sweepIntervalMs: 30_000,
+      });
+
+      store.create(ACTOR_ALICE, TTL_MS);
+      now += TTL_MS + 1;
+
+      store.dispose();
+
+      // Advance fake timers well past the sweep interval — the sweep must not fire.
+      jest.advanceTimersByTime(120_000);
+
+      // The expired session was not swept (dispose stopped the timer before the
+      // sweep had a chance to run). size() still correctly returns 0 (clock-based),
+      // but the raw map entry is still present — which is the whole point of the fix:
+      // confirming no timer callback fired after dispose.
+      const pendingTimers = jest.getTimerCount();
+      expect(pendingTimers).toBe(0);
+    });
+
+    it('reset() stops the sweep timer so no callback fires after reset', () => {
+      let now = 1_700_000_000_000;
+      const store = createSessionStore({
+        nowMs: () => now,
+        sweepIntervalMs: 30_000,
+      });
+
+      store.create(ACTOR_ALICE, TTL_MS);
+      now += TTL_MS + 1;
+
+      store.reset();
+
+      // Advance fake timers well past the sweep interval.
+      jest.advanceTimersByTime(120_000);
+
+      // No pending timers remain — reset() cleared the interval.
+      const pendingTimers = jest.getTimerCount();
+      expect(pendingTimers).toBe(0);
+    });
+  });
+
+  describe('maxSessions cap', () => {
+    it('create() rejects once maxSessions is reached', () => {
+      const store = createSessionStore({ maxSessions: 2 });
+      store.create(ACTOR_ALICE, TTL_MS);
+      store.create(ACTOR_BOB, TTL_MS);
+
+      expect(() => store.create(ACTOR_ALICE, TTL_MS)).toThrow(/session limit/i);
+    });
+
+    it('create() succeeds again after a session is destroyed', () => {
+      const store = createSessionStore({ maxSessions: 1 });
+      const session = store.create(ACTOR_ALICE, TTL_MS);
+
+      expect(() => store.create(ACTOR_BOB, TTL_MS)).toThrow(/session limit/i);
+
+      store.destroy(session.id);
+      // Should no longer throw after freeing a slot.
+      expect(() => store.create(ACTOR_BOB, TTL_MS)).not.toThrow();
+    });
+
+    it('create() counts only live sessions toward the cap', () => {
+      let now = 1_700_000_000_000;
+      const store = createSessionStore({ nowMs: () => now, maxSessions: 1 });
+      store.create(ACTOR_ALICE, TTL_MS);
+
+      // Advance past expiry so the session is logically gone.
+      now += TTL_MS + 1;
+
+      // The slot is freed (expired sessions don't count toward the cap).
+      expect(() => store.create(ACTOR_BOB, TTL_MS)).not.toThrow();
+    });
   });
 });

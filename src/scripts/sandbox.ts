@@ -34,9 +34,13 @@ export function instantiateScript(
 
   // Build a wrapper that sets up CJS module/exports and runs the code,
   // then calls the default export with __ctx__ (injected at call time).
-  // We wrap in an IIFE so variables don't pollute the outer context.
+  // We wrap in a strict-mode IIFE so:
+  //   1. 'this' is undefined inside the function body (blocks this.constructor.constructor escape)
+  //   2. Variables don't pollute the outer context.
   const wrappedForExecution = `
+'use strict';
 (function() {
+  'use strict';
   var module = { exports: {} };
   var exports = module.exports;
   ${transpiledCode}
@@ -66,27 +70,22 @@ function invokeWithCode(
   sandboxConsole: Record<string, unknown>,
 ): unknown {
   // Build a fresh context per invocation so scripts cannot share state.
-  // Object is needed because esbuild CJS output uses Object.defineProperty etc.
-  // Array and Error are needed for standard JS operations in scripts.
+  //
+  // SECURITY: Do NOT inject host-realm constructors (Object, Array, Error, etc.).
+  // Injecting host-realm constructors allows escape via Object.constructor("return process")().
+  // The vm context's own realm already provides Object, Array, Error, Map, Set, Promise,
+  // RegExp, String, Number, Boolean, Symbol, etc. natively — no injection needed.
+  //
+  // JSON and Math ARE realm-native globals too, but we inject them explicitly as a
+  // belt-and-suspenders measure (they carry no escape risk since they have no .constructor
+  // path to Function). Date and URL are similarly safe and convenient to expose.
+  //
   // process, require, fs, net, __dirname, global, globalThis are intentionally excluded.
   const safeContext = vm.createContext({
     JSON,
     Math,
     Date,
     URL,
-    Object,
-    Array,
-    Error,
-    TypeError,
-    RangeError,
-    String,
-    Number,
-    Boolean,
-    Symbol,
-    RegExp,
-    Map,
-    Set,
-    Promise,
     console: sandboxConsole,
     __ctx__: ctx,
   });
@@ -94,11 +93,26 @@ function invokeWithCode(
   const script = new vm.Script(wrappedCode, { filename: `<script:${boundary}:${name}>` });
 
   try {
-    return script.runInContext(safeContext, {
+    const result = script.runInContext(safeContext, {
       timeout: SCRIPT_TIMEOUT_MS,
       breakOnSigint: true,
     });
+
+    // Reducers must be synchronous. A thenable return value means the script used
+    // async/Promise — the vm timeout does not cover microtask continuations, so an
+    // async reducer could hang the host event loop after runInContext returns.
+    if (result !== null && result !== undefined && typeof (result as { then?: unknown }).then === 'function') {
+      throw new InternalExecutionError(
+        `Script "${name}" returned a Promise or thenable — reducer scripts must be synchronous`,
+        { code: 'SCRIPT_ASYNC_RESULT', scriptName: name },
+      );
+    }
+
+    return result;
   } catch (err) {
+    // Re-throw errors we already wrapped (e.g. the async-result check above).
+    if (err instanceof InternalExecutionError) throw err;
+
     // The vm may throw its own Error class (not the host's Error), so we use duck-typing
     // rather than instanceof for cross-realm compatibility.
     const errStr = String(err);

@@ -134,3 +134,105 @@ describe('instantiateScript / invokeScript', () => {
     expect(result).toBe('no-process');
   });
 });
+
+describe('sandbox security — vm escape prevention', () => {
+  it('Object.constructor("return process")() does not yield host process', () => {
+    // Injecting the host-realm Object allowed: Object.constructor === Function (host),
+    // so Object.constructor("return process")() returned the host process object.
+    // After the fix (no host-realm Object injected), the vm-realm Object.constructor
+    // is the vm-realm Function, which cannot access identifiers outside the context.
+    const code = `
+      export default () => {
+        try {
+          const result = Object.constructor("return process")();
+          return result != null ? 'ESCAPED' : 'blocked';
+        } catch(e) {
+          return 'blocked:' + e.message;
+        }
+      };
+    `;
+    const handle = compileAndInstantiate(code);
+    const result = invokeScript(handle, makeCtx()) as string;
+    expect(result).not.toBe('ESCAPED');
+    expect(result).toMatch(/^blocked/);
+  });
+
+  it('this.constructor.constructor("return process")() does not yield host process', () => {
+    // Without strict mode in the wrapper IIFE, 'this' inside the function refers to
+    // the vm context object (a host-realm plain object), whose .constructor is the
+    // host Object, and .constructor.constructor is the host Function.
+    // With 'use strict', 'this' in the IIFE is undefined, blocking this escape path.
+    const code = `
+      export default () => {
+        try {
+          const result = this.constructor.constructor("return process")();
+          return result != null ? 'ESCAPED' : 'blocked';
+        } catch(e) {
+          return 'blocked:' + e.message;
+        }
+      };
+    `;
+    const handle = compileAndInstantiate(code);
+    const result = invokeScript(handle, makeCtx()) as string;
+    expect(result).not.toBe('ESCAPED');
+    expect(result).toMatch(/^blocked/);
+  });
+
+  it('rejects a reducer that returns a Promise with SCRIPT_ASYNC_RESULT', () => {
+    const code = `export default () => Promise.resolve(42);`;
+    const handle = compileAndInstantiate(code);
+    expect(() => invokeScript(handle, makeCtx())).toThrow(InternalExecutionError);
+    try {
+      invokeScript(handle, makeCtx());
+    } catch (err) {
+      expect(err instanceof InternalExecutionError).toBe(true);
+      const details = (err as InternalExecutionError).details as Record<string, unknown>;
+      expect(details['code']).toBe('SCRIPT_ASYNC_RESULT');
+      expect(details['scriptName']).toBe('testScript');
+    }
+  });
+
+  it('rejects an async reducer (Promise.resolve().then(...)) with SCRIPT_ASYNC_RESULT', () => {
+    // A reducer returning a pending thenable returns synchronously from vm.runInContext,
+    // but its microtask continuation runs on the host event loop — bypassing the timeout.
+    const code = `export default () => Promise.resolve().then(() => 99);`;
+    const handle = compileAndInstantiate(code);
+    try {
+      invokeScript(handle, makeCtx());
+      fail('expected InternalExecutionError');
+    } catch (err) {
+      expect(err instanceof InternalExecutionError).toBe(true);
+      const details = (err as InternalExecutionError).details as Record<string, unknown>;
+      expect(details['code']).toBe('SCRIPT_ASYNC_RESULT');
+    }
+  });
+
+  it('transpiled TypeScript reducer using Object/Array/Map/Set/Error works end-to-end', () => {
+    // Verifies that removing host-realm constructor injections does not break
+    // legitimate reducers. The esbuild CJS preamble uses Object.defineProperty,
+    // Object.getOwnPropertyNames, etc., which rely on the vm-realm native Object.
+    const code = `
+      export default function reducer(ctx: { state: { balance: number } }) {
+        const keys = Object.keys(ctx.state);
+        const arr = Array.from(keys);
+        const map = new Map(arr.map((k: string, i: number) => [k, i] as [string, number]));
+        const set = new Set([1, 2, 3]);
+        const err = new Error('ok');
+        return {
+          keysLen: keys.length,
+          arrLen: arr.length,
+          mapSize: map.size,
+          setSize: set.size,
+          hasErr: err.message === 'ok',
+        };
+      }
+    `;
+    const handle = compileAndInstantiate(code);
+    const result = invokeScript(handle, makeCtx()) as Record<string, unknown>;
+    expect(result.keysLen).toBe(1);
+    expect(result.arrLen).toBe(1);
+    expect(result.mapSize).toBe(1);
+    expect(result.setSize).toBe(3);
+    expect(result.hasErr).toBe(true);
+  });
+});

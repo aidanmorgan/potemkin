@@ -156,6 +156,65 @@ describe('dsl/schema', () => {
       ]);
     });
 
+    describe('patch operand finiteness guards', () => {
+      function makeIncrementConfig(by: unknown) {
+        return {
+          boundary: 'B',
+          contract_path: '/b',
+          behaviors: [],
+          reducers: [{ on: 'Ev', patches: [{ op: 'increment', path: '/count', by }] }],
+          event_catalog: [{ type: 'Ev', payload_template: {} }],
+        };
+      }
+
+      it('accepts a finite increment by value', () => {
+        expect(() => validateBoundaryConfig(makeIncrementConfig(1))).not.toThrow();
+      });
+
+      it('rejects increment by: Infinity with BOOT_ERR_DSL_SYNTAX', () => {
+        let caught: unknown;
+        try {
+          validateBoundaryConfig(makeIncrementConfig(Infinity));
+        } catch (e) {
+          caught = e;
+        }
+        expect(caught).toBeInstanceOf(BootError);
+        expect((caught as BootError).code).toBe('BOOT_ERR_DSL_SYNTAX');
+        expect((caught as BootError).message).toMatch(/by.*finite/i);
+      });
+
+      it('rejects increment by: NaN with BOOT_ERR_DSL_SYNTAX', () => {
+        let caught: unknown;
+        try {
+          validateBoundaryConfig(makeIncrementConfig(NaN));
+        } catch (e) {
+          caught = e;
+        }
+        expect(caught).toBeInstanceOf(BootError);
+        expect((caught as BootError).code).toBe('BOOT_ERR_DSL_SYNTAX');
+        expect((caught as BootError).message).toMatch(/by.*finite/i);
+      });
+
+      it('rejects add value: Infinity with BOOT_ERR_DSL_SYNTAX', () => {
+        const raw = {
+          boundary: 'B',
+          contract_path: '/b',
+          behaviors: [],
+          reducers: [{ on: 'Ev', patches: [{ op: 'add', path: '/score', value: Infinity }] }],
+          event_catalog: [{ type: 'Ev', payload_template: {} }],
+        };
+        let caught: unknown;
+        try {
+          validateBoundaryConfig(raw);
+        } catch (e) {
+          caught = e;
+        }
+        expect(caught).toBeInstanceOf(BootError);
+        expect((caught as BootError).code).toBe('BOOT_ERR_DSL_SYNTAX');
+        expect((caught as BootError).message).toMatch(/value.*finite/i);
+      });
+    });
+
     it('rejects removed reducer key assign with BOOT_ERR_REMOVED_SYNTAX', () => {
       const raw = {
         boundary: 'B',

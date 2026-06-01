@@ -293,7 +293,7 @@ function evalExpr(expr: Expr, ctx: CelContext, builtinCtx: BuiltinContext, scope
     case 'nullSafeMethod': {
       const receiver = evalExpr(expr.receiver, ctx, builtinCtx, scopes);
       if (receiver === null || receiver === undefined) return null;
-      return evalMethod(expr.receiver, expr.method, expr.args, ctx, builtinCtx, scopes, false);
+      return evalMethod(expr.receiver, expr.method, expr.args, ctx, builtinCtx, scopes, false, { value: receiver });
     }
 
     case 'comprehension': {
@@ -398,8 +398,11 @@ function evalMethod(
   builtinCtx: BuiltinContext,
   scopes: Scope[],
   _nullSafe: boolean,
+  preEvaluatedReceiver?: { value: unknown },
 ): unknown {
-  const receiver = evalExpr(receiverExpr, ctx, builtinCtx, scopes);
+  const receiver = preEvaluatedReceiver !== undefined
+    ? preEvaluatedReceiver.value
+    : evalExpr(receiverExpr, ctx, builtinCtx, scopes);
   const args = argExprs.map(a => evalExpr(a, ctx, builtinCtx, scopes));
 
   // String methods

@@ -580,6 +580,25 @@ function optionalPatchList(raw: Record<string, unknown>, ctx: string): readonly 
         );
       }
     }
+    // Guard numeric value: Infinity/NaN would round-trip through JSON.stringify to null,
+    // silently corrupting the field on every subsequent read.
+    if (typeof patchValue === 'number' && !Number.isFinite(patchValue)) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `${ctx}.patches[${i}].value: numeric value must be finite (got ${String(patchValue)}) — YAML .inf/.nan are not allowed as patch values`,
+        { field: `${ctx}.patches[${i}].value`, path },
+      );
+    }
+    // Guard increment `by`: Infinity/NaN writes non-finite directly into state,
+    // which JSON.stringify converts to null and corrupts the field.
+    const patchBy = p['by'];
+    if (typeof patchBy === 'number' && !Number.isFinite(patchBy)) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `${ctx}.patches[${i}].by: increment operand must be finite (got ${String(patchBy)}) — YAML .inf/.nan are not allowed`,
+        { field: `${ctx}.patches[${i}].by`, path },
+      );
+    }
     return {
       op: op as ReducerPatchOp['op'],
       path,

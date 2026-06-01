@@ -336,6 +336,52 @@ describe('cel/evaluator', () => {
     });
   });
 
+  // ── null-safe method ──────────────────────────────────────────────────────
+  describe('null-safe method (?.)', () => {
+    it('receiver expression is evaluated exactly once for nullSafeMethod', () => {
+      let evalCount = 0;
+      const ctx: Record<string, unknown> = {};
+      Object.defineProperty(ctx, 'str', {
+        get() {
+          evalCount++;
+          return 'hello';
+        },
+        enumerable: true,
+        configurable: true,
+      });
+      const result = cel.evaluate('str?.startsWith("hel")', ctx, phase);
+      expect(result).toBe(true);
+      expect(evalCount).toBe(1);
+    });
+
+    it('null-safe method returns null when receiver is null', () => {
+      const result = eval_('x?.startsWith("a")', { x: null });
+      expect(result).toBeNull();
+    });
+
+    it('null-safe method returns null when receiver is undefined', () => {
+      const ctx: Record<string, unknown> = { x: undefined };
+      const result = cel.evaluate('x?.contains("a")', ctx, phase);
+      expect(result).toBeNull();
+    });
+
+    it('receiver expression is not evaluated for non-null-safe method case', () => {
+      let evalCount = 0;
+      const ctx: Record<string, unknown> = {};
+      Object.defineProperty(ctx, 'str', {
+        get() {
+          evalCount++;
+          return 'world';
+        },
+        enumerable: true,
+        configurable: true,
+      });
+      const result = cel.evaluate('str.endsWith("rld")', ctx, phase);
+      expect(result).toBe(true);
+      expect(evalCount).toBe(1);
+    });
+  });
+
   // ── parse errors ───────────────────────────────────────────────────────────
   describe('parse errors', () => {
     it('throws on unexpected character @', () => {

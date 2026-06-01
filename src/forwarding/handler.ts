@@ -200,10 +200,10 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
     const method = isHead ? 'GET' : rawMethod;
 
     if (rawMethod === 'OPTIONS') {
-      const preflightOrigin = fwd.headers['origin'] ?? fwd.headers['Origin'];
+      const preflightOrigin = readForwardedHeader(fwd.headers, 'origin');
       const preflightCredentialed = Boolean(
-        fwd.headers['authorization'] ?? fwd.headers['Authorization'] ??
-        fwd.headers['cookie'] ?? fwd.headers['Cookie'],
+        readForwardedHeader(fwd.headers, 'authorization') ??
+        readForwardedHeader(fwd.headers, 'cookie'),
       );
       send({ status: 204, headers: corsPreflightHeaders(preflightOrigin, preflightCredentialed), body: null });
       return;
