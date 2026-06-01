@@ -69,6 +69,7 @@ import { applyResponseMutations, buildOperationLookup } from './responseMutation
 import type { OpenApiOperation } from '../contract/loader.js';
 import { rebuildEntityAtVersion, findEventById } from '../engine/timeTravel.js';
 import { resolveBoundaryLatencyMs, delay } from '../forwarding/responsePipeline.js';
+import { resolveChaosHeaders, truncateBody } from './chaosHeaders.js';
 
 /** Node.js normalises header names to lowercase; this is the lowercased If-Match header. */
 const IF_MATCH_HEADER_LC = 'if-match';
@@ -723,6 +724,30 @@ async function handleContractRequest(
       }
     }
 
+    // 6a-ter: Chaos headers — resolve X-Potemkin-* chaos primitives, mirroring
+    // the forwarding handler. Evaluated after DSL faults so YAML fault_rules win
+    // over header-driven chaos when both are present. Boundary latency was already
+    // applied above so only chaos.extraLatencyMs is added here.
+    const faultRules = [...globalFaults, ...boundaryFaults];
+    const chaos = resolveChaosHeaders(requestHeaders, faultRules);
+
+    if (chaos.response !== undefined || chaos.dropConnection === true) {
+      await delay(chaos.extraLatencyMs);
+      if (chaos.dropConnection === true) {
+        res.socket?.destroy();
+        return;
+      }
+      const cr = chaos.response!;
+      let chaosBody: JsonValue | null | undefined = cr.body ?? null;
+      if (chaos.bodyTruncateBytes !== undefined && chaosBody !== null && chaosBody !== undefined) {
+        chaosBody = truncateBody(chaosBody, chaos.bodyTruncateBytes);
+      }
+      if (cr.headers) res.set(cr.headers);
+      if (isHead) res.status(cr.status).end();
+      else res.status(cr.status).json(chaosBody);
+      return;
+    }
+
     // 6b. Idempotency check.
     const idempotencyKey = req.headers['idempotency-key'] as string | undefined;
     const idempotencyCfg = sys.dsl.idempotency;
@@ -764,6 +789,9 @@ async function handleContractRequest(
         throw err;
       }
     }
+
+    // Apply any chaos latency stacked with the already-applied boundary latency.
+    if (chaos.extraLatencyMs > 0) await delay(chaos.extraLatencyMs);
 
     let result;
     try {
@@ -966,7 +994,7 @@ async function handleContractRequest(
     // 6c. Record idempotency entry after the full pipeline (HATEOAS, mask, format,
     // trace headers) so the cached body+headers match what the caller actually
     // received, and replays are identical to the original response.
-    if (idempotencyEnabled && idempotencyKey && intent !== 'query') {
+    if (idempotencyEnabled && idempotencyKey && intent !== 'query' && controls.transparency.dryRun !== true) {
       const store = sys.idempotencyStore;
       const requestBody: JsonValue = (req.body as JsonValue | null | undefined) ?? {};
       const hashIncludesBody = idempotencyCfg?.hashIncludesBody ?? true;

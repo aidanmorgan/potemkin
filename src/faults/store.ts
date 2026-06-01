@@ -16,13 +16,19 @@ export interface FaultStore {
   clear(): void;
 }
 
-export function createFaultStore(): FaultStore {
+export interface FaultStoreOptions {
+  /** Clock function returning current time in ms. Defaults to Date.now. */
+  readonly nowMs?: () => number;
+}
+
+export function createFaultStore(opts: FaultStoreOptions = {}): FaultStore {
   const entries = new Map<string, DynamicFaultEntry>();
+  const now = opts.nowMs ?? Date.now;
 
   function pruneExpired(): void {
-    const now = Date.now();
+    const current = now();
     for (const [id, entry] of entries) {
-      if (entry.expiresAt !== undefined && entry.expiresAt <= now) {
+      if (entry.expiresAt !== undefined && entry.expiresAt <= current) {
         entries.delete(id);
       }
     }
@@ -32,12 +38,12 @@ export function createFaultStore(): FaultStore {
     add(rule: FaultRule, ttlSeconds?: number): string {
       pruneExpired();
       const id = nextUuidv7();
-      const now = Date.now();
+      const current = now();
       entries.set(id, {
         id,
         rule,
-        createdAt: now,
-        ...(ttlSeconds !== undefined ? { expiresAt: now + ttlSeconds * 1000 } : {}),
+        createdAt: current,
+        ...(ttlSeconds !== undefined ? { expiresAt: current + ttlSeconds * 1000 } : {}),
       });
       return id;
     },

@@ -556,3 +556,64 @@ describe('forwarding/handler — idempotency replay serves post-pipeline respons
     expect(replay.body.headers['x-specmatic-result']).toBe(original.body.headers['x-specmatic-result']);
   });
 });
+
+// ── ez5t: dry-run + Idempotency-Key does NOT write to the forwarding store ────
+//
+// A forwarded dry-run request executes the full UoW but does not commit events.
+// The idempotency store must NOT record a dry-run response; a subsequent real
+// forwarded request with the same key must be processed fresh.
+
+describe('forwarding/handler — dry-run requests are not cached in the idempotency store', () => {
+  let agent: PersistentAgent;
+
+  beforeAll(async () => {
+    const openapi = await loadOpenApi(FWD_IDEM_OPENAPI);
+    const compiledDsl = await compileDsl([{ name: 'widget', yaml: FWD_IDEM_DSL }], FWD_IDEM_GLOBAL);
+    const sys = await bootSystem({ openapi, compiledDsl });
+    const gateway = createGateway(sys);
+    const { agent: a, close } = await withPersistentServer(gateway);
+    agent = a;
+    registerFileTeardown(close);
+  });
+
+  it('forwarded dry-run + Idempotency-Key does not cache the response; subsequent real request is processed fresh', async () => {
+    const KEY = `fwd-ez5t-${Date.now()}`;
+
+    // Dry-run forwarded request — must NOT write to the idempotency store.
+    const dryRun = await agent
+      .post('/_engine/forward')
+      .send({
+        method: 'POST',
+        path: '/widgets',
+        headers: {
+          'idempotency-key': KEY,
+          'x-potemkin-dry-run': 'true',
+        },
+        query: {},
+        body: { label: 'Dry Widget' },
+      })
+      .expect(200);
+
+    expect(dryRun.body.status).toBe(201);
+    expect(dryRun.body.headers['x-potemkin-dry-run']).toBe('true');
+    expect(dryRun.body.headers['x-idempotency-replay']).toBeUndefined();
+
+    // Real forwarded request with the same key — must not replay the dry-run response.
+    const real = await agent
+      .post('/_engine/forward')
+      .send({
+        method: 'POST',
+        path: '/widgets',
+        headers: {
+          'idempotency-key': KEY,
+        },
+        query: {},
+        body: { label: 'Real Widget' },
+      })
+      .expect(200);
+
+    expect(real.body.status).toBe(201);
+    expect(real.body.headers['x-idempotency-replay']).toBeUndefined();
+    expect(real.body.body.label).toBe('Real Widget');
+  });
+});

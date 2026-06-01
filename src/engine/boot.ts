@@ -705,11 +705,11 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       schemaRegistry,
       requiresPrecondition: preconditionRequired,
       derivedProjections,
-      idempotencyStore: createIdempotencyStore(),
+      idempotencyStore: createIdempotencyStore({ nowMs: () => Date.now() + cel.getClockOffset() }),
       // Session expiry tracks the CEL virtual clock so admin clock-advance can
       // expire live sessions (and clock-reset restores them within TTL).
       sessionStore: createSessionStore({ nowMs: () => Date.now() + cel.getClockOffset() }),
-      faultStore: createFaultStore(),
+      faultStore: createFaultStore({ nowMs: () => Date.now() + cel.getClockOffset() }),
       aggregateLocks: new Map<string, Promise<void>>(),
       tsReducerRegistry,
       inferredSchemas,

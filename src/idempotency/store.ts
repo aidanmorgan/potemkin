@@ -64,12 +64,18 @@ export interface RecordParams extends CheckParams {
   readonly ttlMs: number;
 }
 
+export interface IdempotencyStoreOptions {
+  /** Clock function returning current time in ms. Defaults to Date.now. */
+  readonly nowMs?: () => number;
+}
+
 /**
  * Create a new in-memory idempotency store.
  * Lazily cleans up expired entries on each `check` call.
  */
-export function createIdempotencyStore(): IdempotencyStore {
+export function createIdempotencyStore(opts: IdempotencyStoreOptions = {}): IdempotencyStore {
   const _store = new Map<string, IdempotencyEntry>();
+  const now = opts.nowMs ?? Date.now;
 
   function computeKeyHash(
     method: string,
@@ -90,9 +96,9 @@ export function createIdempotencyStore(): IdempotencyStore {
   }
 
   function cleanup(): void {
-    const now = Date.now();
+    const current = now();
     for (const [k, entry] of _store) {
-      if (entry.expiresAt <= now) {
+      if (entry.expiresAt <= current) {
         _store.delete(k);
       }
     }
@@ -106,7 +112,7 @@ export function createIdempotencyStore(): IdempotencyStore {
       const existing = _store.get(idempotencyKey);
 
       if (!existing) return { hit: false };
-      if (existing.expiresAt <= Date.now()) {
+      if (existing.expiresAt <= now()) {
         _store.delete(idempotencyKey);
         return { hit: false };
       }
@@ -140,7 +146,7 @@ export function createIdempotencyStore(): IdempotencyStore {
         bodyHash,
         idempotencyKey,
         response,
-        expiresAt: Date.now() + ttlMs,
+        expiresAt: now() + ttlMs,
       });
     },
 
@@ -149,10 +155,10 @@ export function createIdempotencyStore(): IdempotencyStore {
     },
 
     size() {
-      const now = Date.now();
+      const current = now();
       let count = 0;
       for (const entry of _store.values()) {
-        if (entry.expiresAt > now) count++;
+        if (entry.expiresAt > current) count++;
       }
       return count;
     },

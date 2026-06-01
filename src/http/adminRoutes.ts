@@ -213,11 +213,13 @@ export function registerAdminRoutes(app: Express, sys: BootedSystem): void {
           return;
         }
         // Optional TTL: ttlMs (duration) takes precedence over expiresAt (epoch).
+        // Use the virtual clock (CEL offset) so clock-advance affects fault expiry.
+        const virtualNow = Date.now() + sys.cel.getClockOffset();
         let ttlSeconds: number | undefined;
         if (typeof body['ttlMs'] === 'number' && body['ttlMs'] > 0) {
           ttlSeconds = body['ttlMs'] / 1000;
-        } else if (typeof body['expiresAt'] === 'number' && body['expiresAt'] > Date.now()) {
-          ttlSeconds = (body['expiresAt'] - Date.now()) / 1000;
+        } else if (typeof body['expiresAt'] === 'number' && body['expiresAt'] > virtualNow) {
+          ttlSeconds = (body['expiresAt'] - virtualNow) / 1000;
         }
         const id = sys.faultStore.add(rule, ttlSeconds);
         sys.logger.info({ faultId: id, name: rule.name, ttlSeconds }, 'Admin: dynamic fault rule registered');

@@ -66,6 +66,32 @@ describe('idempotency/store', () => {
     expect(result.hit).toBe(true);
   });
 
+  it('injected nowMs: advancing virtual clock past ttlSeconds expires the entry', () => {
+    let virtualMs = 1_000_000;
+    const store = createIdempotencyStore({ nowMs: () => virtualMs });
+
+    store.record({
+      method: METHOD,
+      path: PATH,
+      idempotencyKey: KEY,
+      body: BODY,
+      hashIncludesBody: true,
+      response: RESPONSE,
+      ttlMs: 5_000, // 5 s TTL from virtual clock
+    });
+
+    // Entry is live before TTL elapses.
+    expect(store.size()).toBe(1);
+    const hitBefore = store.check({ method: METHOD, path: PATH, idempotencyKey: KEY, body: BODY, hashIncludesBody: true });
+    expect(hitBefore.hit).toBe(true);
+
+    // Advance virtual clock past the TTL — entry must expire.
+    virtualMs += 6_000;
+    expect(store.size()).toBe(0);
+    const missAfter = store.check({ method: METHOD, path: PATH, idempotencyKey: KEY, body: BODY, hashIncludesBody: true });
+    expect(missAfter.hit).toBe(false);
+  });
+
   it('record() prunes expired entries without a check() call', () => {
     jest.useFakeTimers();
     try {

@@ -635,7 +635,7 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
 
     // Record idempotency entry after the full pipeline so the cached response
     // matches exactly what the caller received (HATEOAS, mask, format, trace headers applied).
-    if (idempotencyEnabled && idempotencyKey && intent !== 'query') {
+    if (idempotencyEnabled && idempotencyKey && intent !== 'query' && controls.transparency.dryRun !== true) {
       const store = sys.idempotencyStore;
       const requestBody: JsonValue = fwd.body ?? {};
       const hashIncludesBody = idempotencyCfg?.hashIncludesBody ?? true;

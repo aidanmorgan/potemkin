@@ -466,3 +466,87 @@ describe('http/gateway — time-travel with computed fields', () => {
     expect(readAtVersion.body.doubled).toBe(createRes.body.doubled);
   });
 });
+
+// ── ez5t: dry-run + Idempotency-Key does NOT write to the store ───────────────
+//
+// A dry-run request executes the full UoW but does not commit events. The
+// idempotency store must NOT record a dry-run response; a subsequent real
+// request with the same key must be processed fresh (not a phantom replay).
+
+describe('http/gateway — dry-run requests are not cached in the idempotency store', () => {
+  let agent: PersistentAgent;
+
+  beforeAll(async () => {
+    const openapi = await loadOpenApi(IDEM_OPENAPI);
+    const compiledDsl = await compileDsl([{ name: 'widget', yaml: IDEM_DSL }], IDEM_GLOBAL);
+    const sys = await bootSystem({ openapi, compiledDsl });
+    const app = createGateway(sys);
+    const { agent: a, close } = await withPersistentServer(app);
+    agent = a;
+    registerFileTeardown(close);
+  });
+
+  it('dry-run + Idempotency-Key does not cache the response; subsequent real request is processed fresh', async () => {
+    const KEY = `gw-ez5t-${Date.now()}`;
+
+    // Dry-run request — should NOT write to the idempotency store.
+    const dryRun = await agent
+      .post('/widgets')
+      .set('Idempotency-Key', KEY)
+      .set('X-Potemkin-Dry-Run', 'true')
+      .send({ label: 'Dry Widget' })
+      .expect(201);
+
+    expect(dryRun.headers['x-potemkin-dry-run']).toBe('true');
+    expect(dryRun.headers['x-idempotency-replay']).toBeUndefined();
+
+    // Real request with the same key — must be processed fresh, not replayed from the dry-run.
+    const real = await agent
+      .post('/widgets')
+      .set('Idempotency-Key', KEY)
+      .send({ label: 'Real Widget' })
+      .expect(201);
+
+    expect(real.headers['x-idempotency-replay']).toBeUndefined();
+    expect(real.body.label).toBe('Real Widget');
+  });
+});
+
+// ── aahe: chaos headers are applied on the gateway path ──────────────────────
+//
+// The gateway advertises chaos headers in CORS_ALLOW_HEADERS and applies DSL
+// fault_rules, so chaos header resolution must also run on the gateway path.
+
+describe('http/gateway — chaos headers applied on gateway (direct) path', () => {
+  let agent: PersistentAgent;
+
+  beforeAll(async () => {
+    const openapi = await loadOpenApi(IDEM_OPENAPI);
+    const compiledDsl = await compileDsl([{ name: 'widget', yaml: IDEM_DSL }]);
+    const sys = await bootSystem({ openapi, compiledDsl });
+    const app = createGateway(sys);
+    const { agent: a, close } = await withPersistentServer(app);
+    agent = a;
+    registerFileTeardown(close);
+  });
+
+  it('X-Potemkin-Force-Status short-circuits the gateway with the requested status', async () => {
+    const res = await agent
+      .post('/widgets')
+      .set('X-Potemkin-Force-Status', '503')
+      .send({ label: 'Chaos Widget' })
+      .expect(503);
+
+    expect(res.body.error).toBe('FORCED_STATUS');
+  });
+
+  it('X-Potemkin-Error-Class returns the mapped status for the named error class', async () => {
+    const res = await agent
+      .post('/widgets')
+      .set('X-Potemkin-Error-Class', 'throttle')
+      .send({ label: 'Throttle Widget' })
+      .expect(429);
+
+    expect(res.body.error).toBe('TOO_MANY_REQUESTS');
+  });
+});
