@@ -2,8 +2,10 @@
 // The sandbox require-hook resolves that specifier here.
 
 import type { Patch } from '../dsl/patches.js';
+import type { ScriptContext } from '../scripts/types.js';
 
 export type { Patch };
+export type { ScriptContext };
 
 export interface ReducerContext {
   /** Current wall-clock (respects the global clock offset for time-travel). */
@@ -179,6 +181,98 @@ function keyOf(key: ReducerKey): string {
 
 /** Process-wide singleton. The sandbox surfaces this to every loaded TS file. */
 export const registry = new Registry();
+
+// ─── Script registry ─────────────────────────────────────────────────────────
+
+export type ScriptFn = (ctx: ScriptContext) => unknown;
+
+export interface RegisteredScript {
+  readonly id: string;
+  readonly fn: ScriptFn;
+  /** Source descriptor (registration style). */
+  readonly source: string;
+}
+
+class ScriptRegistry {
+  private entries = new Map<string, RegisteredScript>();
+
+  /** Read a registered script by id. */
+  get(id: string): RegisteredScript | undefined {
+    return this.entries.get(id);
+  }
+
+  /** Read all entries (non-destructive snapshot). The registry is cleared by resetSync() at the start of each scan. */
+  snapshot(): readonly RegisteredScript[] {
+    return [...this.entries.values()];
+  }
+
+  /**
+   * Register a script. Used by `defineScript()` helper + `@Script()` decorator.
+   * Rejects an empty id or a duplicate id with a clear error.
+   */
+  registerSync(entry: RegisteredScript): void {
+    if (!entry.id) {
+      throw new Error('BOOT_ERR_SCRIPT_INVALID_ID: script id must be a non-empty string');
+    }
+    if (this.entries.has(entry.id)) {
+      const existing = this.entries.get(entry.id)!;
+      throw new Error(
+        `BOOT_ERR_SCRIPT_CONFLICT: script "${entry.id}" already registered from ${existing.source}`,
+      );
+    }
+    this.entries.set(entry.id, entry);
+  }
+
+  /** Clear the registry (used by tests/setupAfterEnv.ts afterEach). */
+  resetSync(): void {
+    this.entries.clear();
+  }
+}
+
+/** Process-wide script registry singleton. */
+export const scriptRegistry = new ScriptRegistry();
+
+/**
+ * Function-style script registration helper.
+ *
+ *   export const computeScore = defineScript('computeScore', (ctx) => {
+ *     const base: Record<string, number> = { REFERRAL: 80, WEBSITE: 50 };
+ *     return base[ctx.command.payload.source as string] ?? 30;
+ *   });
+ */
+export function defineScript(id: string, fn: ScriptFn, source?: string): ScriptFn {
+  scriptRegistry.registerSync({ id, fn, source: source ?? '<helper>' });
+  return fn;
+}
+
+/**
+ * Class-decorator style script registration. The decorated class must expose a
+ * `run(ctx: ScriptContext): unknown` method; the decorator instantiates the
+ * class and registers `instance.run.bind(instance)` under the given id.
+ * Mirrors `@Reducer` which expects an `apply` method.
+ *
+ *   @Script('computeScore')
+ *   export class ComputeScore {
+ *     run(ctx: ScriptContext): number {
+ *       return ctx.command.payload.score as number;
+ *     }
+ *   }
+ */
+export function Script(
+  id: string,
+): <T extends { new (...args: never[]): { run: ScriptFn } }>(target: T) => T {
+  return (target) => {
+    const instance = new target();
+    scriptRegistry.registerSync({
+      id,
+      fn: instance.run.bind(instance),
+      source: target.name ? `class:${target.name}` : '<decorator>',
+    });
+    return target;
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Function-style registration helper.

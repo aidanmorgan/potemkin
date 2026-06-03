@@ -98,7 +98,7 @@ describe('typescriptWatcher — in-flight guard (no concurrent rescans)', () => 
   it('coalesces a second change event that arrives while the first rescan is in-flight — no BOOT_ERR_REDUCER_CONFLICT, onError is never called for a conflict, and exactly one follow-up rescan runs', async () => {
     // Arrange deferred promises for the two triggered rescans (the initial scan
     // resolves immediately so startTypescriptWatcher can complete).
-    const emptyResult: ScannerResult = { files: [], registered: [] };
+    const emptyResult: ScannerResult = { files: [], registered: [], scripts: [] };
     const d1 = deferred<ScannerResult>(); // first triggered rescan (held in-flight)
     const d2 = deferred<ScannerResult>(); // coalesced follow-up rescan
     let rescanCallCount = 0; // counts only post-start rescan calls (not the initial one)

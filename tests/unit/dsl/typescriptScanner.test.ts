@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 
 import { scanTypescriptReducers } from '../../../src/dsl/typescriptScanner.js';
-import { registry } from '../../../src/sdk/index.js';
+import { registry, scriptRegistry } from '../../../src/sdk/index.js';
 import { BootError } from '../../../src/errors.js';
 
 async function makeTree(files: Record<string, string>): Promise<string> {
@@ -18,6 +18,7 @@ async function makeTree(files: Record<string, string>): Promise<string> {
 
 beforeEach(async () => {
   await registry.reset();
+  scriptRegistry.resetSync();
 });
 
 describe('typescriptScanner — discovers and loads .ts reducer files', () => {
@@ -182,5 +183,81 @@ describe('typescriptScanner — transpile errors', () => {
       if (e instanceof BootError) caught = e;
     }
     expect(caught?.code).toBe('BOOT_ERR_TS_TRANSPILE');
+  });
+});
+
+describe('typescriptScanner — script registry drained alongside reducers', () => {
+  it('drains @Script-registered scripts into result.scripts', async () => {
+    const root = await makeTree({
+      'src/r/score.ts': `
+        const sdk = require('@potemkin/sdk');
+        sdk.Script('computeScore')(
+          class ComputeScore {
+            run(ctx) {
+              const base = { REFERRAL: 80, WEBSITE: 50 };
+              return base[ctx.command.payload.source] ?? 30;
+            }
+          }
+        );
+      `,
+    });
+    const result = await scanTypescriptReducers(
+      { scan: [{ include: ['src/r/**/*.ts'] }] },
+      { cwd: root },
+    );
+    expect(result.scripts.length).toBe(1);
+    expect(result.scripts[0].id).toBe('computeScore');
+    expect(typeof result.scripts[0].fn).toBe('function');
+  });
+
+  it('drains defineScript-registered scripts into result.scripts', async () => {
+    const root = await makeTree({
+      'src/r/helper.ts': `
+        const sdk = require('@potemkin/sdk');
+        sdk.defineScript('riskScore', function(ctx) { return 99; });
+      `,
+    });
+    const result = await scanTypescriptReducers(
+      { scan: [{ include: ['src/r/**/*.ts'] }] },
+      { cwd: root },
+    );
+    expect(result.scripts.length).toBe(1);
+    expect(result.scripts[0].id).toBe('riskScore');
+  });
+
+  it('resets the script registry between successive scans', async () => {
+    const root = await makeTree({
+      'src/r/a.ts': `
+        require('@potemkin/sdk').defineScript('scriptA', function() { return 1; });
+      `,
+    });
+    const first = await scanTypescriptReducers(
+      { scan: [{ include: ['src/r/**/*.ts'] }] },
+      { cwd: root },
+    );
+    expect(first.scripts.length).toBe(1);
+
+    // Second scan of the same tree — scriptA must appear exactly once
+    // (not duplicated from a stale registry state).
+    const second = await scanTypescriptReducers(
+      { scan: [{ include: ['src/r/**/*.ts'] }] },
+      { cwd: root },
+    );
+    expect(second.scripts.length).toBe(1);
+    expect(second.scripts[0].id).toBe('scriptA');
+  });
+
+  it('result.scripts is empty when no scripts are declared in scanned files', async () => {
+    const root = await makeTree({
+      'src/r/reducerOnly.ts': `
+        require('@potemkin/sdk').reducer({ boundary: 'A', event: 'E' }, () => []);
+      `,
+    });
+    const result = await scanTypescriptReducers(
+      { scan: [{ include: ['src/r/**/*.ts'] }] },
+      { cwd: root },
+    );
+    expect(result.registered.length).toBe(1);
+    expect(result.scripts.length).toBe(0);
   });
 });

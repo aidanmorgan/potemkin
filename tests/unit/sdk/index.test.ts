@@ -10,6 +10,9 @@ import {
   Reducer,
   reducer,
   registry,
+  Script,
+  defineScript,
+  scriptRegistry,
   add,
   remove,
   replace,
@@ -21,9 +24,12 @@ import {
   merge,
   upsert,
 } from '../../../src/sdk/index.js';
+import type { ScriptContext } from '../../../src/sdk/index.js';
+import { createLogger } from '../../../src/observability/logger.js';
 
 beforeEach(async () => {
   await registry.reset();
+  scriptRegistry.resetSync();
 });
 
 describe('SDK exports surface (REQ-TS-001)', () => {
@@ -123,5 +129,104 @@ describe('Registry (REQ-TS-002)', () => {
       source: 'test',
     });
     expect(registry.get({ boundary: 'A', event: 'E' })).toBeDefined();
+  });
+});
+
+// ─── Script registry ──────────────────────────────────────────────────────────
+
+function makeCtx(): ScriptContext {
+  return {
+    command: {
+      commandId: 'c1',
+      boundary: 'Test',
+      intent: 'mutation',
+      targetId: null,
+      payload: { source: 'REFERRAL' },
+      queryParams: {},
+      httpMethod: 'POST',
+      path: '/test',
+      origin: 'inbound',
+      depth: 0,
+    },
+    state: null,
+    payload: { source: 'REFERRAL' },
+    helpers: {
+      uuid: () => 'test-uuid',
+      now: () => '2026-01-01T00:00:00.000Z',
+      deepClone: <T>(v: T) => v,
+      deepMerge: (a, b) => ({ ...a, ...b }),
+    },
+    logger: createLogger({ name: 'test-script' }),
+  };
+}
+
+describe('defineScript() helper', () => {
+  it('registers a script discoverable by id from scriptRegistry.snapshot()', () => {
+    const fn = (_ctx: ScriptContext): number => 42;
+    defineScript('computeScore', fn);
+    const snapped = scriptRegistry.snapshot();
+    expect(snapped.length).toBe(1);
+    expect(snapped[0].id).toBe('computeScore');
+    expect(snapped[0].fn).toBe(fn);
+  });
+
+  it('returns the function unchanged for caller use', () => {
+    const fn = (_ctx: ScriptContext): string => 'ok';
+    const out = defineScript('myScript', fn);
+    expect(out).toBe(fn);
+  });
+});
+
+describe('@Script() decorator', () => {
+  it('registers via decorator class style and the fn delegates to run()', () => {
+    @Script('scoreCalc')
+    class ScoreCalc {
+      run(ctx: ScriptContext): number {
+        return ctx.command.payload['source'] === 'REFERRAL' ? 80 : 30;
+      }
+    }
+    void ScoreCalc;
+    const entry = scriptRegistry.snapshot().find((s) => s.id === 'scoreCalc');
+    expect(entry).toBeDefined();
+    expect(entry?.fn(makeCtx())).toBe(80);
+  });
+
+  it('source descriptor identifies the class name', () => {
+    @Script('namedClass')
+    class MyClassScript {
+      run(): number { return 1; }
+    }
+    void MyClassScript;
+    const entry = scriptRegistry.snapshot().find((s) => s.id === 'namedClass');
+    expect(entry?.source).toBe('class:MyClassScript');
+  });
+});
+
+describe('scriptRegistry — validation', () => {
+  it('rejects a duplicate id with BOOT_ERR_SCRIPT_CONFLICT', () => {
+    defineScript('dup', () => 1);
+    expect(() => defineScript('dup', () => 2)).toThrow(/BOOT_ERR_SCRIPT_CONFLICT/);
+  });
+
+  it('rejects an empty id with BOOT_ERR_SCRIPT_INVALID_ID', () => {
+    expect(() => defineScript('', () => 1)).toThrow(/BOOT_ERR_SCRIPT_INVALID_ID/);
+  });
+
+  it('decorator + helper on the same id collide with BOOT_ERR_SCRIPT_CONFLICT', () => {
+    defineScript('clashing', () => 0);
+    expect(() => {
+      @Script('clashing')
+      class _ {
+        run(): number { return 0; }
+      }
+      void _;
+    }).toThrow(/BOOT_ERR_SCRIPT_CONFLICT/);
+  });
+
+  it('resetSync() clears all entries', () => {
+    defineScript('s1', () => 1);
+    defineScript('s2', () => 2);
+    scriptRegistry.resetSync();
+    expect(scriptRegistry.snapshot().length).toBe(0);
   });
 });

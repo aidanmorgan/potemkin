@@ -6,7 +6,7 @@ import { glob } from 'tinyglobby';
 import * as esbuild from 'esbuild';
 
 import { BootError } from '../errors.js';
-import { registry as sdkRegistry, type RegisteredReducer } from '../sdk/index.js';
+import { registry as sdkRegistry, scriptRegistry as sdkScriptRegistry, type RegisteredReducer, type RegisteredScript } from '../sdk/index.js';
 
 // Scans typescript.scan[].include/exclude, transpiles each .ts via esbuild,
 // loads each module into a tiny vm sandbox whose require() resolves only
@@ -33,6 +33,8 @@ export interface ScannerOptions {
 export interface ScannerResult {
   readonly files: readonly string[];
   readonly registered: readonly RegisteredReducer[];
+  /** Scripts discovered via @Script() / defineScript() in the scanned files. */
+  readonly scripts: readonly RegisteredScript[];
 }
 
 const FORBIDDEN_BUILTINS = new Set([
@@ -50,6 +52,7 @@ export async function scanTypescriptReducers(
   opts: ScannerOptions,
 ): Promise<ScannerResult> {
   await sdkRegistry.reset();
+  sdkScriptRegistry.resetSync();
 
   const files: string[] = [];
   for (const entry of config.scan) {
@@ -71,7 +74,11 @@ export async function scanTypescriptReducers(
     loadModule(file, opts.cwd, config.scan, new Set(), moduleCache);
   }
 
-  return { files: dedup, registered: sdkRegistry.snapshot() };
+  return {
+    files: dedup,
+    registered: sdkRegistry.snapshot(),
+    scripts: sdkScriptRegistry.snapshot(),
+  };
 }
 
 interface SandboxRequire {

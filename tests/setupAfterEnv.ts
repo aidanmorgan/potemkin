@@ -7,7 +7,7 @@
 // Snapshot env before each test and restore it after, so every test sees a
 // pristine, isolated environment regardless of what others do.
 
-import { registry as sdkRegistry } from '../src/sdk/index.js';
+import { registry as sdkRegistry, scriptRegistry as sdkScriptRegistry } from '../src/sdk/index.js';
 import { runTeardowns, runFileTeardowns } from './_support/testTeardown.js';
 
 let envSnapshot: Record<string, string | undefined>;
@@ -22,6 +22,7 @@ afterEach(async () => {
   // (via scanTypescriptReducers) never leaks into another test's projection.
   await runTeardowns();
   await sdkRegistry.reset();
+  sdkScriptRegistry.resetSync();
 });
 
 afterAll(async () => {
