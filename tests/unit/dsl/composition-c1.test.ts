@@ -145,42 +145,54 @@ parameters:
 // ---------------------------------------------------------------------------
 
 describe('C1 — use: grammar', () => {
+  // The component that the use: entries reference — must be supplied so the C3
+  // linker can resolve and instantiate it. Parameters are not required here so
+  // no `with:` values need to match declared required parameters.
+  const documentComponentYaml = `
+kind: component
+name: DocumentEntity
+event_catalog:
+  - type: DocumentCreated
+    payload_template: {}
+reducers:
+  - on: DocumentCreated
+behaviors: []
+`;
+
   it('parses a use: array into UseEntry structures on CompiledDsl.use', async () => {
     const useMappingYaml = `
 use:
   - component: DocumentEntity
     as: Document
     contract_path: /documents
-    with:
-      initialStatus: DRAFT
   - component: DocumentEntity
     as: ArchivedDocument
     contract_path: /archived-documents
-    with:
-      initialStatus: ARCHIVED
     bind:
       SiblingAlias: ConcreteTarget
 `;
     const compiled = await compileDsl(
       [],
       undefined,
-      undefined,
+      [{ name: 'document-entity.yaml', yaml: documentComponentYaml }],
       [{ name: 'simulation.yaml', yaml: useMappingYaml }],
     );
 
+    // C3 linker resolved the use entries into concrete boundaries.
+    expect(compiled.byBoundaryName['Document']).toBeDefined();
+    expect(compiled.byBoundaryName['ArchivedDocument']).toBeDefined();
+    // The raw use entries are still stashed for downstream consumers.
     expect(compiled.use).toBeDefined();
     expect(compiled.use!).toHaveLength(2);
     expect(compiled.use![0]).toMatchObject({
       component: 'DocumentEntity',
       as: 'Document',
       contractPath: '/documents',
-      with: { initialStatus: 'DRAFT' },
     });
     expect(compiled.use![1]).toMatchObject({
       component: 'DocumentEntity',
       as: 'ArchivedDocument',
       contractPath: '/archived-documents',
-      with: { initialStatus: 'ARCHIVED' },
       bind: { SiblingAlias: 'ConcreteTarget' },
     });
   });

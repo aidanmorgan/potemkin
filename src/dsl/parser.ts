@@ -4,6 +4,7 @@ import { createLogger, getTracer, withSpan } from '../observability/index.js';
 import { validateBoundaryConfig, validateComponentConfig, validateGlobalConfig, validateUseEntries } from './schema.js';
 import type { AuthConfig, BoundaryConfig, CompiledDsl, ComponentDefinition, FaultRule, HateoasConfig, ReactionRule, ReactionsByTrigger, SagaConfig, IdempotencyConfig, DerivedProjectionConfig, LatencyConfig, SecurityHeadersConfig, UseEntry, VersioningConfig, WebhookConfig } from './types.js';
 import { buildScriptRegistry } from '../scripts/registry.js';
+import { linkComponents } from './componentLinker.js';
 
 const log = createLogger({ name: 'dsl' });
 
@@ -312,6 +313,17 @@ export async function compileDsl(
         allUseEntries.push(...useEntries);
         log.debug({ useCount: useEntries.length, module: mod.name }, 'Registered use-mapping entries');
       }
+    }
+
+    // C3: Link use: entries into concrete boundaries.
+    // Runs after file boundaries are registered and before cross-reference validation,
+    // so the merged byBoundaryName is the flat model the rest of compileDsl operates on.
+    // The duplicate-name/path guard inside linkComponents covers concrete post-link names
+    // in addition to the file-boundary guard applied in the loop above.
+    if (allUseEntries.length > 0) {
+      const linked = linkComponents(allUseEntries, componentsMap, byBoundaryName, byContractPath);
+      boundaries.push(...linked);
+      log.info({ linkedCount: linked.length }, 'Linked use: entries into concrete boundaries');
     }
 
     let sagas: readonly SagaConfig[] | undefined;
