@@ -98,6 +98,11 @@ domain event (`type`, `aggregateId`, `payload`, `sequenceVersion`, `boundary`) a
 
 ## Coexistence
 
+- Cross-file composition ([`cross-file-composition.md`](cross-file-composition.md)) treats `reactions`
+  as one of the reference kinds its linker rewrites: a reaction declared inside a reusable component
+  has its `on:`/`boundary:` names rewritten to the concrete instantiated names (self via `as`,
+  siblings via `bind:`). R2 therefore validates reaction references against the compiled
+  post-composition model, not a file-local one.
 - `derived_projections` stay read-only/post-commit; `reactions` are the in-UoW write-side analogue.
 - `dispatch_commands` (explicit orchestration) and `sagas` (eventual, compensating) are unchanged.
 - `reactions` become the natural default for "this operation should also update these other graphs"
