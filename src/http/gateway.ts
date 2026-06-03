@@ -697,6 +697,9 @@ async function handleContractRequest(
       });
       if (faultResponse !== null) {
         sys.metrics.faultsSimulatedTotal.add(1);
+        // Boundary latency was already applied above (line ~675); add only the
+        // rule's own delay_ms delta so it is not double-counted.
+        await delay(faultResponse.delay_ms ?? 0);
         if (faultResponse.headers) res.set(faultResponse.headers);
         if (isHead) res.status(faultResponse.status).end();
         else res.status(faultResponse.status).json(faultResponse.body ?? null);
@@ -1035,6 +1038,13 @@ async function handleContractRequest(
         // Non-fatal: log but don't fail the response
         logger.warn({ idempotencyKey }, 'Failed to record idempotency entry');
       }
+    }
+
+    // X-Potemkin-Body-Truncate — unconditionally slice the serialised body to N
+    // bytes, mirroring the forwarding handler which applies truncation after the
+    // full pipeline regardless of whether other chaos headers are present.
+    if (chaos.bodyTruncateBytes !== undefined && outBody !== null && outBody !== undefined) {
+      outBody = truncateBody(outBody, chaos.bodyTruncateBytes);
     }
 
     // HEAD response: same status + headers as GET, but empty body (RFC 7231 §4.3.2).

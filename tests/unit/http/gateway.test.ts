@@ -760,3 +760,111 @@ describe('http/gateway — body-truncate writes raw bytes on direct path (wnre)'
     expect(rawBody.startsWith('"')).toBe(false);
   });
 });
+
+// ── potemkin-25xb fix (a): fault_rule delay_ms applied on gateway path ────────
+//
+// A YAML fault_rule with delay_ms must delay the gateway response by at least
+// that many ms. Boundary latency was already applied before the fault-hit branch,
+// so only the rule's own delay delta is added (no double-counting).
+
+const FAULT_DELAY_GLOBAL = `
+fault_rules:
+  - name: slow-fault
+    match:
+      headers: { "x-trigger-slow-fault": "*" }
+    response:
+      status: 503
+      body: { error: "SLOW_FAULT" }
+    delay_ms: 200
+`;
+
+describe('http/gateway — fault_rule delay_ms applied on gateway path (potemkin-25xb-a)', () => {
+  let agent: PersistentAgent;
+
+  beforeAll(async () => {
+    const openapi = await loadOpenApi(COND_OPENAPI);
+    const compiledDsl = await compileDsl(
+      [{ name: 'item', yaml: COND_DSL }, { name: 'item-by-id', yaml: COND_BY_ID_DSL }],
+      FAULT_DELAY_GLOBAL,
+    );
+    const sys = await bootSystem({ openapi, compiledDsl });
+    const app = createGateway(sys);
+    const { agent: a, close } = await withPersistentServer(app);
+    agent = a;
+    registerFileTeardown(close);
+  });
+
+  it('fault_rule with delay_ms delays the gateway response by at least delay_ms', async () => {
+    const start = Date.now();
+    const res = await agent
+      .get('/items')
+      .set('x-trigger-slow-fault', 'yes')
+      .expect(503);
+    const elapsed = Date.now() - start;
+
+    expect(res.body.error).toBe('SLOW_FAULT');
+    expect(elapsed).toBeGreaterThanOrEqual(180);
+  });
+});
+
+// ── potemkin-25xb fix (b): X-Potemkin-Body-Truncate alone truncates normal path
+//
+// Sending only X-Potemkin-Body-Truncate (no force-status or other chaos header)
+// must still truncate the final response body, matching the forwarding handler
+// which applies truncation unconditionally after the full pipeline.
+
+describe('http/gateway — X-Potemkin-Body-Truncate alone truncates normal path (potemkin-25xb-b)', () => {
+  let agent: PersistentAgent;
+
+  beforeAll(async () => {
+    const openapi = await loadOpenApi(COND_OPENAPI);
+    const compiledDsl = await compileDsl([
+      { name: 'item', yaml: COND_DSL },
+      { name: 'item-by-id', yaml: COND_BY_ID_DSL },
+    ]);
+    const sys = await bootSystem({ openapi, compiledDsl });
+    const app = createGateway(sys);
+    const { agent: a, close } = await withPersistentServer(app);
+    agent = a;
+    registerFileTeardown(close);
+  });
+
+  it('X-Potemkin-Body-Truncate alone truncates the gateway response body to N bytes', async () => {
+    // Seed an item so the list body is non-trivial (more than 8 bytes serialised).
+    await agent.post('/items').send({ name: 'truncate-test-item' }).expect(201);
+
+    // Use a raw buffer parser: superagent's JSON parser throws on truncated JSON,
+    // so we collect the raw bytes ourselves and inspect them directly.
+    const res = await agent
+      .get('/items')
+      .set('X-Potemkin-Body-Truncate', '8')
+      .buffer(true)
+      .parse((r, callback) => {
+        let data = '';
+        r.on('data', (chunk: Buffer) => { data += chunk.toString(); });
+        r.on('end', () => callback(null, data));
+      })
+      .expect(200);
+
+    const rawBody = res.body as string;
+    // Body must be at most 8 bytes.
+    expect(rawBody.length).toBeLessThanOrEqual(8);
+    // Must not be a JSON-quoted string (no double-serialisation).
+    expect(rawBody.startsWith('"')).toBe(false);
+  });
+
+  it('X-Potemkin-Body-Truncate alone still returns the correct 2xx status', async () => {
+    const res = await agent
+      .get('/items')
+      .set('X-Potemkin-Body-Truncate', '4')
+      .buffer(true)
+      .parse((r, callback) => {
+        let data = '';
+        r.on('data', (chunk: Buffer) => { data += chunk.toString(); });
+        r.on('end', () => callback(null, data));
+      })
+      .expect(200);
+
+    expect((res.body as string).length).toBeLessThanOrEqual(4);
+  });
+});
