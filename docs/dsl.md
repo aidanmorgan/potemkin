@@ -1803,3 +1803,248 @@ reactions:
 One `POST /orders` emits `OrderPlaced` once; Inventory, Notification, and Audit each receive their events in the same atomic commit. The Order boundary has no `reactions` key and no knowledge of its subscribers.
 
 See [`tests/e2e/66-reactions-fanout.e2e-test.ts`](../tests/e2e/66-reactions-fanout.e2e-test.ts) for a nine-boundary variant that includes a six-hop chain (deeper than the `dispatch_commands` depth limit).
+
+---
+
+## 20. Cross-file composition
+
+Cross-file composition lets you define an entity once as a *component* and activate it as any number of concrete live boundaries from a separate mapping file — each with its own path, name, and parameters. Fragment components let you share a slice of an event catalog and its reducers across boundaries without repeating the definition.
+
+The canonical worked example is [`tests/e2e/68-composition.e2e-test.ts`](../tests/e2e/68-composition.e2e-test.ts).
+
+---
+
+### 20.1 Components (`kind: component`)
+
+A file with `kind: component` is loaded into a catalog at boot and **never** becomes a live boundary on its own. It carries any combination of `event_catalog`, `reducers`, `behaviors`, `identity`, `state`, `reactions`, and `include`. It does not carry `contract_path`.
+
+```yaml
+kind: component
+name: DocumentEntity
+
+parameters:
+  initialStatus:
+    type: string
+    required: true
+  createOp:
+    type: string
+    required: true
+
+identity:
+  creation:
+    generate: "$uuidv7()"
+
+event_catalog:
+  - type: DocumentCreated
+    payload_template:
+      id:     "command.targetId"
+      status: "'{{initialStatus}}'"
+      title:  "command.payload.title"
+
+behaviors:
+  - name: create-document
+    match:
+      operationId: "{{createOp}}"
+      condition: "true"
+    emit: DocumentCreated
+
+reducers:
+  - on: DocumentCreated
+    patches:
+      - op: add
+        path: /status
+        value: "${event.payload.status}"
+```
+
+Top-level keys allowed on a component:
+
+| Key | Description |
+|-----|-------------|
+| `kind` | Must be `component`. |
+| `name` | Logical component name, unique across the catalog. |
+| `parameters` | Named parameter declarations (see [§20.2](#202-parameters)). |
+| `event_catalog` | Reusable event type definitions (same shape as a boundary's `event_catalog`). |
+| `reducers` | Reusable reducer rules. |
+| `behaviors` | Reusable behavior rules. |
+| `identity` | Optional identity config merged into the concrete boundary at link time. |
+| `state` | Optional declared state schema merged at link time. |
+| `reactions` | Optional choreography reactions declared inside the component (boundary-name references are rewritten at link time — see [§20.5](#205-reference-rewriting)). |
+| `include` | Fragment inclusions resolved at link time (see [§20.4](#204-include-fragment-merge)). |
+
+A component file is not validated against an OpenAPI contract (it has no `contract_path`), so there is no `BOOT_ERR_DSL_REFERENCE` for unknown operationIds during Phase 1. Validation against the contract happens in Phase 3 on the linked concrete boundaries.
+
+---
+
+### 20.2 Parameters
+
+The `parameters:` block declares named substitution variables. At link time the engine substitutes `{{name}}` tokens found in **string leaves** of the component (both values and keys such as JSON Pointer path segments) before CEL compilation.
+
+```yaml
+parameters:
+  initialStatus:
+    type: string
+    required: true
+  retryLimit:
+    type: number
+    default: 3
+  enableAudit:
+    type: boolean
+    default: false
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `string` \| `number` \| `boolean` | Declared substitution type. The supplied value is type-checked at link time. |
+| `default` | string / number / boolean | Value used when the caller omits the parameter. If both `default` and `required: true` are given the default supplies the value, so the requirement never triggers — prefer one or the other. |
+| `required` | boolean | When `true`, callers must supply a value. Boot fails with `BOOT_ERR_DSL_SYNTAX` if absent. |
+
+**`{{name}}` substitution rules:**
+
+- A string that is *exactly* `{{name}}` (nothing else) substitutes to the native typed value (string, number, or boolean). This preserves the type in numeric patch `value` fields.
+- A `{{name}}` token *embedded* inside a larger string is always coerced to a string via `String()` — e.g. `"status-{{suffix}}"`.
+- CEL `${...}` expressions are passed through byte-for-byte; `{{...}}` inside a CEL span is never matched.
+- An unknown `{{token}}` (no declared parameter with that name) throws `BOOT_ERR_DSL_SYNTAX`.
+- Passing an argument name that is not declared in `parameters:` also throws `BOOT_ERR_DSL_SYNTAX`.
+
+---
+
+### 20.3 `use:` — whole-boundary instantiation
+
+A separate mapping file activates one or more components as concrete live boundaries. The loader treats a file as a use-mapping file when it carries a top-level `use:` array and has no `boundary:` or `kind:` key; the `use:` entries are what the loader reads.
+
+```yaml
+use:
+  - component: DocumentEntity
+    as: Document
+    contract_path: /documents
+    with:
+      initialStatus: "DRAFT"
+      createOp: createDocument
+    bind:
+      Notifier: Notification
+
+  - component: DocumentEntity
+    as: Draft
+    contract_path: /drafts
+    with:
+      initialStatus: "PENDING"
+      createOp: createDraft
+    bind:
+      Notifier: Notification
+```
+
+Each entry produces one concrete `BoundaryConfig` (name = `as`, path = `contract_path`). Multiple `use:` entries referencing the same component each produce a **distinct** concrete boundary — different `as`/`contract_path` is what makes them distinct.
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `component` | yes | Name of the component to instantiate (must exist in the catalog). |
+| `as` | yes | Concrete boundary name the instantiated boundary will carry. |
+| `contract_path` | yes | OpenAPI route path for the concrete boundary (e.g. `/documents`). |
+| `with` | no | Parameter bindings — key/value pairs passed to the component at link time. |
+| `bind` | no | Maps component-local sibling alias names to concrete boundary names (see [§20.5](#205-reference-rewriting)). |
+
+Two `use:` entries that produce the same `as` name or the same `contract_path` halt boot with `BOOT_ERR_DSL_DUPLICATE_BOUNDARY`. The same error fires when a `use:` entry collides with a file boundary that was already registered.
+
+---
+
+### 20.4 `include:` — fragment merge
+
+`include:` merges a component's `event_catalog`, `reducers`, and `behaviors` into the host boundary (or into a component's own definition for nested includes). It appears on any live boundary or component file.
+
+```yaml
+boundary: Document
+contract_path: /documents
+
+include:
+  - component: AuditMixin
+    with:
+      actorField: "lastActor"
+
+event_catalog:
+  - type: DocumentCreated
+    payload_template:
+      id: "command.targetId"
+```
+
+`include:` on a component is evaluated after `use:` linking, so component-carried `include:` entries propagate to every concrete boundary the component is instantiated into.
+
+**Merge precedence:**
+
+- **Local wins** — a host-declared event type, reducer `on`, or behavior name overrides any identically-keyed included entry (the included entry is silently dropped).
+- **Included fragments coexist** — when no local override exists, included entries are appended after the host's own declarations, in the order the `include:` array is listed.
+- **Clash between two included fragments** — if two included components contribute the same event `type` or behavior `name` and neither is locally overridden, boot fails with `BOOT_ERR_DSL_SYNTAX` naming both sources.
+- **Reducer `on` is not a unique key** — multiple included reducers with the same `on` value all coexist and all run when the event fires. No clash error is raised for `on` collisions.
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `component` | yes | Name of the component whose fragments are merged in. |
+| `with` | no | Parameter bindings applied to the included component before merging. |
+
+---
+
+### 20.5 Reference rewriting
+
+Components refer to boundary names that exist only after instantiation. The linker rewrites these references at link time so each concrete instance is independently wired.
+
+**Self reference** — any boundary name inside the component that equals the component's own `name` is rewritten to `use.as`.
+
+**Sibling reference** — any other boundary name that appears as a key in `use.bind` is rewritten to the corresponding concrete name from the `bind` map.
+
+**Unbound reference** — any other boundary name that is neither self nor a bind key throws `BOOT_ERR_DSL_REFERENCE`. Add the alias to `bind:` to resolve it.
+
+**Shadowing guard** — a `bind` alias that equals the component's own `name` throws `BOOT_ERR_DSL_SYNTAX`. Self always rewrites to `as`; a `bind` entry with the same key would be silently ignored, so the engine rejects it explicitly.
+
+Reference positions rewritten:
+
+| Position | Notes |
+|----------|-------|
+| `reactions[].boundary` | The reacting boundary — typically the component self-name. |
+| `reactions[].on` | The `Boundary:` prefix of a qualified trigger; bare `EventType` triggers are left unchanged. |
+| `behaviors[].dispatch_commands[].boundary` | The target boundary of a secondary command. |
+
+Example from the composition fixture:
+
+```yaml
+reactions:
+  - name: notify-on-document-created
+    on: "DocumentEntity:DocumentCreated"
+    boundary: Notifier
+    intent: creation
+    emit: NotificationCreated
+```
+
+When instantiated with `as: Document` and `bind: { Notifier: Notification }`:
+- `on: "DocumentEntity:DocumentCreated"` rewrites to `"Document:DocumentCreated"` (self rewrite).
+- `boundary: Notifier` rewrites to `Notification` (sibling rewrite from `bind`).
+
+When instantiated again with `as: Draft` and the same `bind`, the same component definition produces `on: "Draft:DocumentCreated"` — two independent reaction wirings from one definition.
+
+---
+
+### 20.6 Validation phases
+
+Boot-time validation runs in three phases:
+
+**Phase 1 — per-file (partial).** Each file is classified as a live boundary, a component, or a use-mapping module. Component files are validated for shape and intra-component references (event catalog entries resolve within their own catalog, reducer `on` values resolve to events in the same catalog, `parameters:` is well-formed). No `contract_path`↔OpenAPI binding or cross-component reference checks run here. A component without `contract_path` is valid at this phase.
+
+**Phase 2 — linking.** The linker resolves `use:` and `include:` entries, type-checks and substitutes parameters, rewrites self/sibling references, merges fragments, and emits the flat set of concrete `BoundaryConfig` objects. Errors detected here:
+- Unknown component name in `use:` or `include:`.
+- Missing required parameter.
+- Parameter type mismatch.
+- Unknown `{{token}}` or unknown argument name.
+- Unbound sibling alias (not in `bind:`).
+- `bind` alias shadowing the component self-name.
+- Duplicate concrete boundary name or `contract_path`.
+- `include:` clash between two fragments on the same event type or behavior name.
+
+**Phase 3 — existing checks on the linked model.** The full suite of cross-reference, contract-binding, object-graph schema, and reaction cross-reference checks runs on the flat linked model — the same checks that run on file boundaries today. Inert component definitions (those not referenced by any `use:` or `include:`) are never presented to Phase 3.
+
+---
+
+### 20.7 Error codes
+
+| Code | Cause |
+|------|-------|
+| `BOOT_ERR_DSL_SYNTAX` | YAML parse failure; unknown `{{token}}`; unknown argument name in `with:`; missing required parameter; parameter type mismatch; `bind` alias shadows component self-name; `include:` clash between two included fragments on the same event type or behavior name. |
+| `BOOT_ERR_DSL_REFERENCE` | `use:` or `include:` references an unknown component name; an unbound sibling alias appears in a boundary reference position and is not listed in `bind:`. |
+| `BOOT_ERR_DSL_DUPLICATE_BOUNDARY` | Two `use:` entries (or a `use:` entry and a file boundary) produce the same concrete boundary name or the same `contract_path`. |

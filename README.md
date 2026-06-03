@@ -22,6 +22,8 @@ It runs in two modes:
   - [Taking the entity id from a header instead of the URL](#taking-the-entity-id-from-a-header-instead-of-the-url)
   - [Declaring the events a boundary can emit](#declaring-the-events-a-boundary-can-emit)
   - [Validating an event payload against an OpenAPI schema](#validating-an-event-payload-against-an-openapi-schema)
+  - [Defining an entity once and reusing it across paths](#defining-an-entity-once-and-reusing-it-across-paths)
+  - [Sharing events and reducers across entities](#sharing-events-and-reducers-across-entities)
 - [Writing behaviour: turning requests into events](#writing-behaviour-turning-requests-into-events)
   - [Routing a request to a behaviour by operation](#routing-a-request-to-a-behaviour-by-operation)
   - [Allowing a transition only from certain states](#allowing-a-transition-only-from-certain-states)
@@ -213,6 +215,126 @@ event_catalog:
 ```
 
 The `schema_ref` describe block in [`60-reducer-patch-ops`](tests/e2e/60-reducer-patch-ops.e2e-test.ts) demonstrates both the happy path and the validation failure.
+
+### Defining an entity once and reusing it across paths
+
+If you want the same entity shape (events, behaviors, reducers) to appear at two or more URL paths without duplicating the YAML, declare the entity as a *component* (`kind: component`) and activate it with `use:` entries in a separate mapping file. Each `use:` entry becomes an independent concrete boundary with its own name and path; changing the component definition updates every instantiation at once.
+
+Create the component file (no `contract_path`):
+
+```yaml
+kind: component
+name: DocumentEntity
+
+parameters:
+  initialStatus:
+    type: string
+    required: true
+  createOp:
+    type: string
+    required: true
+
+identity:
+  creation:
+    generate: "$uuidv7()"
+
+event_catalog:
+  - type: DocumentCreated
+    payload_template:
+      id:     "command.targetId"
+      status: "'{{initialStatus}}'"
+      title:  "command.payload.title"
+
+behaviors:
+  - name: create-document
+    match:
+      operationId: "{{createOp}}"
+      condition: "true"
+    emit: DocumentCreated
+
+reducers:
+  - on: DocumentCreated
+    patches:
+      - op: add
+        path: /status
+        value: "${event.payload.status}"
+```
+
+Then instantiate it from a mapping file (only a `use:` key — no `boundary:` or `contract_path` at the top level):
+
+```yaml
+use:
+  - component: DocumentEntity
+    as: Document
+    contract_path: /documents
+    with:
+      initialStatus: "DRAFT"
+      createOp: createDocument
+
+  - component: DocumentEntity
+    as: Draft
+    contract_path: /drafts
+    with:
+      initialStatus: "PENDING"
+      createOp: createDraft
+```
+
+Both `Document` and `Draft` are live boundaries at boot. The component file itself produces no boundary. Two `use:` entries for the same component with different `as`/`contract_path` values are always distinct — there is no collision. If two entries share the same name or path, boot fails with `BOOT_ERR_DSL_DUPLICATE_BOUNDARY`.
+
+See [`tests/e2e/68-composition.e2e-test.ts`](tests/e2e/68-composition.e2e-test.ts) for the full worked example including independent state, parameter substitution, and reactions across instances.
+
+### Sharing events and reducers across entities
+
+If you want a slice of behavior — an audit trail, a status lifecycle, a set of computed fields — to appear in several boundaries without copying it, extract it into a fragment component and `include:` it from each host. The host's own declarations win on any key clash, so local customisation always takes precedence.
+
+Create the fragment (no `contract_path`, no `behaviors` required):
+
+```yaml
+kind: component
+name: AuditMixin
+
+parameters:
+  actorField:
+    type: string
+    default: "lastActor"
+
+event_catalog:
+  - type: AuditLogged
+    payload_template:
+      actor: "'system'"
+
+reducers:
+  - on: AuditLogged
+    patches:
+      - op: replace
+        path: "/{{actorField}}"
+        value: "${event.payload.actor}"
+```
+
+Include it from a live boundary or from another component:
+
+```yaml
+boundary: Document
+contract_path: /documents
+
+include:
+  - component: AuditMixin
+    with:
+      actorField: "lastActor"
+
+event_catalog:
+  - type: DocumentCreated
+    payload_template:
+      id: "command.targetId"
+```
+
+After linking, `Document` carries both `DocumentCreated` (local) and `AuditLogged` + its reducer (from the mixin). A second boundary that includes the same mixin gets identical audit behavior independently.
+
+Merge rules: local event types, behavior names, and reducer `on` values all shadow the mixin's entry of the same key. Two included fragments that both contribute the same event type or behavior name with no local override cause `BOOT_ERR_DSL_SYNTAX`. Multiple reducers with the same `on` are not a clash — all matching reducers run.
+
+`include:` on a component file is also supported; every boundary instantiated from that component inherits the mixin automatically.
+
+See [`tests/e2e/68-composition.e2e-test.ts`](tests/e2e/68-composition.e2e-test.ts) for a variant where `AuditMixin` is included inside `DocumentEntity` and thus propagates to both `Document` and `Draft` instances.
 
 ---
 

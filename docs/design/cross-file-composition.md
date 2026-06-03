@@ -1,6 +1,6 @@
 # Design spec: cross-file boundary composition
 
-Status: proposed. Tracking: epic `potemkin-<comp-epic>` and child increments C1..C9.
+Status: C1–C8 shipped; C9 (regression/migration) in progress.
 Related: [`multi-boundary-reactions.md`](multi-boundary-reactions.md) (reactions are one of the
 reference kinds the linker rewrites).
 
