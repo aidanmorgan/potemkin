@@ -8,9 +8,12 @@ import express from 'express';
 
 import type { BootedSystem } from '../engine/boot.js';
 import type { CompiledDsl } from '../dsl/types.js';
-import type { DomainEvent } from '../types.js';
+import type { DomainEvent, JsonObject } from '../types.js';
+import { BootError } from '../errors.js';
 import { compileDsl } from '../dsl/parser.js';
 import { validateBoundaryTsRefs } from '../dsl/schema.js';
+import { validateBehaviorOperationIds } from '../dsl/behaviorValidation.js';
+import { staticCheckDsl } from '../schema/dslStaticChecker.js';
 import {
   buildInferredSchema,
   boundaryConfigToInferenceInput,
@@ -100,6 +103,16 @@ export function mergeGlobalConfig(freshDsl: CompiledDsl, existingDsl: CompiledDs
       : existingDsl.derivedProjections !== undefined
         ? { derivedProjections: existingDsl.derivedProjections }
         : {}),
+    ...(freshDsl.reactions !== undefined
+      ? { reactions: freshDsl.reactions }
+      : existingDsl.reactions !== undefined
+        ? { reactions: existingDsl.reactions }
+        : {}),
+    ...(freshDsl.reactionsByTrigger !== undefined
+      ? { reactionsByTrigger: freshDsl.reactionsByTrigger }
+      : existingDsl.reactionsByTrigger !== undefined
+        ? { reactionsByTrigger: existingDsl.reactionsByTrigger }
+        : {}),
   };
 }
 
@@ -172,6 +185,30 @@ function makeInstallProducer(sys: BootedSystem): InstallProducer {
       };
       const requiresPrecondition = buildPreconditionMap(sys.openapi, dsl.boundaries);
 
+      // Run the same boot-time validations boot.ts runs so a pushed boundary
+      // with an invalid operationId or schema-violating reducer patch is
+      // rejected at push time (400) rather than silently installed.
+      // validateBehaviorOperationIds throws BootError on an unknown operationId.
+      validateBehaviorOperationIds(dsl, sys.openapi);
+      // staticCheckDsl returns violations (e.g. unknown state paths in reducers).
+      // Use the tolerant per-boundary registry (byBoundary) built above so
+      // boundaries without OpenAPI schemas are skipped — the checker emits
+      // DSL_BOUNDARY_UNKNOWN for those, which we ignore here because the
+      // tolerant registry deliberately omits unbound boundaries (matching
+      // the pre-existing accept-behavior for pushes of unbound boundaries).
+      // Only actionable path/type violations cause a push rejection (400).
+      const staticViolations = await staticCheckDsl(dsl, schemaRegistry);
+      const actionableViolations = staticViolations.filter(
+        (v) => v.code !== 'DSL_BOUNDARY_UNKNOWN',
+      );
+      if (actionableViolations.length > 0) {
+        throw new BootError(
+          'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+          `Static DSL schema check found ${actionableViolations.length} violation(s)`,
+          { violations: actionableViolations as unknown as JsonObject[] },
+        );
+      }
+
       // Coherent swap: the graph is left untouched so projected state survives.
       (sys as {
         dsl: typeof dsl;
@@ -183,6 +220,18 @@ function makeInstallProducer(sys: BootedSystem): InstallProducer {
       (sys as { schemaRegistry: ObjectGraphSchemaRegistry }).schemaRegistry = schemaRegistry;
       (sys as { requiresPrecondition: typeof requiresPrecondition }).requiresPrecondition =
         requiresPrecondition;
+
+      // Pre-register newly-declared derived_projections names in the live registry
+      // so that GET /_admin/derived/<name> returns 200 {} immediately for a
+      // declared-but-empty projection (not 404, which is reserved for unknown names).
+      // Mirrors the boot-time pre-registration loop in boot.ts (Step 9).
+      if (dsl.derivedProjections) {
+        for (const proj of dsl.derivedProjections) {
+          if (!sys.derivedProjections.has(proj.name)) {
+            sys.derivedProjections.set(proj.name, new Map());
+          }
+        }
+      }
       // The stored bundle's specVersion must equal what handleEngineDsl derives
       // from the same payload.modules — otherwise the replay (304) check never
       // matches and every install recompiles.

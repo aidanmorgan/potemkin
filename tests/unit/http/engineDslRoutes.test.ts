@@ -11,7 +11,7 @@
  */
 
 import { mergeGlobalConfig } from '../../../src/http/engineDslRoutes.js';
-import type { CompiledDsl, SagaConfig, AuthConfig, WebhookConfig, FaultRule } from '../../../src/dsl/types.js';
+import type { CompiledDsl, SagaConfig, AuthConfig, WebhookConfig, FaultRule, ReactionRule, ReactionsByTrigger } from '../../../src/dsl/types.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -60,6 +60,18 @@ const FAULT: FaultRule = {
   match: { condition: 'true' },
   response: { status: 503 },
 };
+
+const REACTION: ReactionRule = {
+  name: 'test-reaction',
+  on: 'Lead:LeadCreated',
+  boundary: 'Campaign',
+  emit: 'CampaignTriggered',
+  intent: 'creation',
+};
+
+const REACTIONS_BY_TRIGGER: ReactionsByTrigger = new Map([
+  ['Lead:LeadCreated', [REACTION]],
+]);
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -179,6 +191,44 @@ describe('mergeGlobalConfig — preserves global fields on boundary-only push', 
     expect(merged.derivedProjections).toEqual(derivedProjections);
   });
 
+  it('carries reactions from existing dsl when fresh has none', () => {
+    const existing: CompiledDsl = { ...compiledDslFrom([boundary('Lead', '/leads')]), reactions: [REACTION] };
+    const fresh: CompiledDsl = compiledDslFrom([boundary('Lead', '/leads')]);
+
+    const merged = mergeGlobalConfig(fresh, existing);
+
+    expect(merged.reactions).toEqual([REACTION]);
+  });
+
+  it('does NOT override fresh reactions with existing when fresh has reactions', () => {
+    const freshReaction: ReactionRule = { ...REACTION, name: 'fresh-reaction' };
+    const existing: CompiledDsl = { ...compiledDslFrom([boundary('Lead', '/leads')]), reactions: [REACTION] };
+    const fresh: CompiledDsl = { ...compiledDslFrom([boundary('Lead', '/leads')]), reactions: [freshReaction] };
+
+    const merged = mergeGlobalConfig(fresh, existing);
+
+    expect(merged.reactions).toEqual([freshReaction]);
+  });
+
+  it('carries reactionsByTrigger from existing dsl when fresh has none', () => {
+    const existing: CompiledDsl = { ...compiledDslFrom([boundary('Lead', '/leads')]), reactionsByTrigger: REACTIONS_BY_TRIGGER };
+    const fresh: CompiledDsl = compiledDslFrom([boundary('Lead', '/leads')]);
+
+    const merged = mergeGlobalConfig(fresh, existing);
+
+    expect(merged.reactionsByTrigger).toBe(REACTIONS_BY_TRIGGER);
+  });
+
+  it('does NOT override fresh reactionsByTrigger with existing when fresh has reactionsByTrigger', () => {
+    const freshTrigger: ReactionsByTrigger = new Map([['Lead:LeadCreated', [{ ...REACTION, name: 'fresh-r' }]]]);
+    const existing: CompiledDsl = { ...compiledDslFrom([boundary('Lead', '/leads')]), reactionsByTrigger: REACTIONS_BY_TRIGGER };
+    const fresh: CompiledDsl = { ...compiledDslFrom([boundary('Lead', '/leads')]), reactionsByTrigger: freshTrigger };
+
+    const merged = mergeGlobalConfig(fresh, existing);
+
+    expect(merged.reactionsByTrigger).toBe(freshTrigger);
+  });
+
   it('preserves ALL global fields simultaneously (regression)', () => {
     const existing: CompiledDsl = {
       ...compiledDslFrom([boundary('Lead', '/leads')]),
@@ -191,6 +241,8 @@ describe('mergeGlobalConfig — preserves global fields on boundary-only push', 
       securityHeaders: { enabled: true },
       idempotency: { enabled: true, ttlSeconds: 60, hashIncludesBody: false },
       derivedProjections: [],
+      reactions: [REACTION],
+      reactionsByTrigger: REACTIONS_BY_TRIGGER,
     };
     const newBound = boundary('Campaign', '/campaigns');
     const fresh: CompiledDsl = compiledDslFrom([newBound]);
@@ -209,6 +261,8 @@ describe('mergeGlobalConfig — preserves global fields on boundary-only push', 
     expect(merged.securityHeaders).toEqual({ enabled: true });
     expect(merged.idempotency).toEqual({ enabled: true, ttlSeconds: 60, hashIncludesBody: false });
     expect(merged.derivedProjections).toEqual([]);
+    expect(merged.reactions).toEqual([REACTION]);
+    expect(merged.reactionsByTrigger).toBe(REACTIONS_BY_TRIGGER);
   });
 
   it('is safe when existing dsl has no global fields', () => {
@@ -226,5 +280,7 @@ describe('mergeGlobalConfig — preserves global fields on boundary-only push', 
     expect(merged.securityHeaders).toBeUndefined();
     expect(merged.idempotency).toBeUndefined();
     expect(merged.derivedProjections).toBeUndefined();
+    expect(merged.reactions).toBeUndefined();
+    expect(merged.reactionsByTrigger).toBeUndefined();
   });
 });
