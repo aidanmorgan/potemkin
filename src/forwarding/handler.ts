@@ -33,6 +33,7 @@ import { applyResponseMutations, buildOperationLookup } from '../http/responseMu
 import { parseControlHeaders, applyMask } from '../http/controlHeaders.js';
 import { applyPaginationStyle, applyResponseFormat } from '../http/responseFormat.js';
 import { resolveChaosHeaders, truncateBody } from '../http/chaosHeaders.js';
+import { buildSecurityHeaders } from '../http/securityHeaders.js';
 import { evaluateFaultRules } from '../faults/index.js';
 import { rebuildEntityAtVersion, findEventById } from '../engine/timeTravel.js';
 import {
@@ -166,7 +167,19 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
     const fwd: ForwardedRequest = req.body as ForwardedRequest;
 
     // Always HTTP 200 on the wire; the real status travels in the envelope's `status` field.
-    const send = (r: ForwardedResponse): void => { res.status(200).json(r); };
+    // Security headers (viyn): build once per request, lowercase the keys to match the
+    // ForwardedResponse lowercase-header convention, then merge into every outgoing envelope
+    // as defaults — explicit per-response headers win (same precedence as the gateway
+    // middleware, which uses setHeader so per-handler assignments override it).
+    const rawSecHeaders = buildSecurityHeaders(sys.dsl.securityHeaders);
+    const dslSecurityHeaders: Record<string, string> = {};
+    for (const [k, v] of Object.entries(rawSecHeaders)) dslSecurityHeaders[k.toLowerCase()] = v;
+    const send = (r: ForwardedResponse): void => {
+      const merged: ForwardedResponse = Object.keys(dslSecurityHeaders).length > 0
+        ? { ...r, headers: { ...dslSecurityHeaders, ...(r.headers ?? {}) } }
+        : r;
+      res.status(200).json(merged);
+    };
 
     const rawMethod = fwd.method.toUpperCase();
     const path = fwd.path;
@@ -281,55 +294,12 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       actor = { id: id ?? 'unknown', scopes: (scopesStr ?? '').split(',').filter(Boolean) };
     }
 
-    // Tier 4: time-travel intercepts for GET requests — projects transient state
-    // from the event log; never runs the UoW.
-    if (method === 'GET') {
-      const ttTargetId = route.pathParams['id'] ?? null;
-      if (controls.timeTravel.readAtVersion !== undefined && ttTargetId !== null) {
-        const ttInferred = sys.inferredSchemas?.[boundary.boundary];
-        const ttComputedArgs = ttInferred && ttInferred.computedOrder.length > 0
-          ? { computed: sys.dsl.byBoundaryName[boundary.boundary]?.state?.computed ?? [], computedOrder: ttInferred.computedOrder }
-          : {};
-        const rebuilt = rebuildEntityAtVersion(
-          ttTargetId, controls.timeTravel.readAtVersion, boundary, sys.events, reqCel, logger,
-          sys.tsReducerRegistry,
-          ttComputedArgs.computed,
-          ttComputedArgs.computedOrder,
-        );
-        const headers = { 'x-potemkin-read-at-version': String(controls.timeTravel.readAtVersion) };
-        if (rebuilt === null) {
-          send({ status: 404, headers, body: { error: 'ENTITY_ABSENCE', message: `entity ${ttTargetId} not found at version ${controls.timeTravel.readAtVersion}` } });
-        } else {
-          send({ status: 200, headers, body: isHead ? null : rebuilt });
-        }
-        return;
-      }
-      if (controls.timeTravel.replayEvent) {
-        const evt = findEventById(controls.timeTravel.replayEvent, sys.events);
-        const headers = { 'x-potemkin-replayed-event': controls.timeTravel.replayEvent };
-        if (!evt) {
-          send({ status: 404, headers, body: { error: 'EVENT_NOT_FOUND', message: `event ${controls.timeTravel.replayEvent} not found` } });
-        } else {
-          send({
-            status: 200,
-            headers,
-            body: isHead ? null : {
-              eventId: evt.eventId,
-              type: evt.type,
-              aggregateId: evt.aggregateId,
-              sequenceVersion: evt.sequenceVersion,
-              timestamp: evt.timestamp,
-              payload: evt.payload,
-              causedBy: evt.causedBy ?? null,
-            },
-          });
-        }
-        return;
-      }
-    }
-
     // 8b. Chaos headers — resolve X-Potemkin-* chaos primitives.
-    const faultRules = sys.dsl.faults ?? [];
+    // mh29: include boundary.faults so header-driven chaos (X-Potemkin-Use-Fault /
+    // X-Potemkin-Force-Status) matching a boundary-scoped fault rule resolves the
+    // same YAML-shaped response on the forwarding path as on the gateway path.
+    // Mirror gateway.ts:714: const faultRules = [...globalFaults, ...boundaryFaults].
+    const faultRules = [...(sys.dsl.faults ?? []), ...(boundary.faults ?? [])];
     const chaos = resolveChaosHeaders(lc, faultRules);
 
     const isBulkArrayBody =
@@ -391,6 +361,63 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       if (genRule === '$uuidv7()') targetId = nextUuidv7();
     }
 
+    // Tier 4: time-travel intercepts for GET requests — projects transient state
+    // from the event log; never runs the UoW.
+    // 5m9o: placed AFTER extractEntityKey so that boundaries with non-path
+    // identity.key (from: query, header, payload) resolve a correct targetId here,
+    // mirroring gateway.ts:559-574 which resolves targetId before the time-travel
+    // block at line 575.
+    if (method === 'GET') {
+      if (controls.timeTravel.readAtVersion !== undefined && targetId !== null) {
+        const ttInferred = sys.inferredSchemas?.[boundary.boundary];
+        const ttComputedArgs = ttInferred && ttInferred.computedOrder.length > 0
+          ? { computed: sys.dsl.byBoundaryName[boundary.boundary]?.state?.computed ?? [], computedOrder: ttInferred.computedOrder }
+          : {};
+        let rebuilt: ReturnType<typeof rebuildEntityAtVersion>;
+        try {
+          rebuilt = rebuildEntityAtVersion(
+            targetId, controls.timeTravel.readAtVersion, boundary, sys.events, reqCel, logger,
+            sys.tsReducerRegistry,
+            ttComputedArgs.computed,
+            ttComputedArgs.computedOrder,
+          );
+        } catch (err) {
+          const mapped = mapErrorToStatus(err);
+          send({ status: mapped.status, headers: mapped.headers ?? {}, body: mapped.body });
+          return;
+        }
+        const headers = { 'x-potemkin-read-at-version': String(controls.timeTravel.readAtVersion) };
+        if (rebuilt === null) {
+          send({ status: 404, headers, body: { error: 'ENTITY_ABSENCE', message: `entity ${targetId} not found at version ${controls.timeTravel.readAtVersion}` } });
+        } else {
+          send({ status: 200, headers, body: isHead ? null : rebuilt });
+        }
+        return;
+      }
+      if (controls.timeTravel.replayEvent) {
+        const evt = findEventById(controls.timeTravel.replayEvent, sys.events);
+        const headers = { 'x-potemkin-replayed-event': controls.timeTravel.replayEvent };
+        if (!evt) {
+          send({ status: 404, headers, body: { error: 'EVENT_NOT_FOUND', message: `event ${controls.timeTravel.replayEvent} not found` } });
+        } else {
+          send({
+            status: 200,
+            headers,
+            body: isHead ? null : {
+              eventId: evt.eventId,
+              type: evt.type,
+              aggregateId: evt.aggregateId,
+              sequenceVersion: evt.sequenceVersion,
+              timestamp: evt.timestamp,
+              payload: evt.payload,
+              causedBy: evt.causedBy ?? null,
+            },
+          });
+        }
+        return;
+      }
+    }
+
     const command: Command = {
       commandId: nextUuidv7(),
       boundary: boundary.boundary,
@@ -407,6 +434,14 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       ...(faultHeaderRaw ? { faultSignal: faultHeaderRaw } : {}),
       ...(actor !== undefined ? { actor } : {}),
     };
+
+    // q4v1: Boundary latency is applied BEFORE chaos+idempotency, mirroring
+    // gateway.ts:675 which calls delay(resolveBoundaryLatencyMs(boundary.latency))
+    // before the fault-rule eval (line 689) and idempotency check (line 739).
+    // This ensures idempotency replays and chaos short-circuits still incur the
+    // configured boundary delay — the same behaviour as the gateway path.
+    const boundaryLatencyMs = resolveBoundaryLatencyMs(boundary.latency);
+    await delay(boundaryLatencyMs);
 
     // DSL fault rules — evaluate before the UoW so a match mutates no state.
     // Skipped when Skip-Dispatch is set.
@@ -428,17 +463,17 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       });
       if (faultResponse !== null) {
         sys.metrics.faultsSimulatedTotal.add(1);
-        // Apply the rule's pre-response delay on top of any boundary latency.
-        await delay(resolveBoundaryLatencyMs(boundary.latency) + (faultResponse.delay_ms ?? 0));
+        // Boundary latency was already applied above; add only the rule's own
+        // delay_ms delta so it is not double-counted (mirrors gateway.ts:702).
+        await delay(faultResponse.delay_ms ?? 0);
         const headers = lowercaseHeaderMap(faultResponse.headers);
         send({ status: faultResponse.status, headers, body: isHead ? null : (faultResponse.body ?? null) });
         return;
       }
     }
 
-    const boundaryLatencyMs = resolveBoundaryLatencyMs(boundary.latency);
     if (chaos.response !== undefined || chaos.dropConnection === true) {
-      await delay(chaos.extraLatencyMs + boundaryLatencyMs);
+      await delay(chaos.extraLatencyMs);
       if (chaos.dropConnection === true) {
         // The forwarding layer cannot destroy the upstream socket, so it surfaces
         // a synthetic 504 + marker for the Kotlin plugin to treat as a dropped connection.
@@ -478,7 +513,9 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       }
     }
 
-    await delay(boundaryLatencyMs + chaos.extraLatencyMs);
+    // Apply chaos extra latency on the normal (non-short-circuit) path.
+    // Boundary latency was already applied above.
+    if (chaos.extraLatencyMs > 0) await delay(chaos.extraLatencyMs);
 
     const deferred = controls.sideEffects.bulkTransactional === true
       ? createSideEffectQueue()

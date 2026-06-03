@@ -229,6 +229,26 @@ use:
       expect.objectContaining({ code: 'BOOT_ERR_DSL_SYNTAX' }),
     );
   });
+
+  it('throws BOOT_ERR_DSL_SYNTAX for unknown key on use: entry (p7k9)', () => {
+    expect(() =>
+      validateUseEntries(
+        [{ component: 'DocEntity', as: 'Doc', contract_path: '/docs', binds: { x: 'y' } }],
+        'root',
+      ),
+    ).toThrow(
+      expect.objectContaining({ code: 'BOOT_ERR_DSL_SYNTAX', message: expect.stringContaining('binds') }),
+    );
+  });
+
+  it('accepts valid use: entry with all known keys', () => {
+    expect(() =>
+      validateUseEntries(
+        [{ component: 'DocEntity', as: 'Doc', contract_path: '/docs', with: { x: 1 }, bind: { A: 'B' } }],
+        'root',
+      ),
+    ).not.toThrow();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -279,6 +299,26 @@ event_catalog: []
 `);
     expect(def.include).toBeDefined();
     expect(def.include![0]).toMatchObject({ component: 'AuditMixin', with: { actorField: 'updatedBy' } });
+  });
+
+  it('throws BOOT_ERR_DSL_SYNTAX for unknown key on include: entry (p7k9)', () => {
+    expect(() =>
+      validateIncludeEntries(
+        [{ component: 'AuditMixin', bind: { x: 'y' } }],
+        'root',
+      ),
+    ).toThrow(
+      expect.objectContaining({ code: 'BOOT_ERR_DSL_SYNTAX', message: expect.stringContaining('bind') }),
+    );
+  });
+
+  it('accepts valid include: entry with only component and with', () => {
+    expect(() =>
+      validateIncludeEntries(
+        [{ component: 'AuditMixin', with: { actorField: 'modifiedBy' } }],
+        'root',
+      ),
+    ).not.toThrow();
   });
 });
 

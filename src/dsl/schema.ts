@@ -1,6 +1,7 @@
 import { BootError } from '../errors.js';
 import { assertNoRemovedReducerKeys, assertNoInlineScripts } from './removedSyntax.js';
 import { firstBareCelReference } from './celInterpolation.js';
+import { parsePointer } from './patches.js';
 import { lexTemplate } from '../cel/grammar/templateLexer.js';
 import type { JsonObject, JsonValue, Intent } from '../types.js';
 import { POTEMKIN_SIGNAL_ALIASES } from '../http/potemkinHeaders.js';
@@ -593,6 +594,67 @@ function optionalPatchList(raw: Record<string, unknown>, ctx: string): readonly 
     if (typeof path !== 'string') {
       throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.patches[${i}].path: must be a string`, { context: ctx });
     }
+    // Reject paths containing ${...} — patch paths are NOT CEL-interpolated;
+    // a dollar-brace in a path creates a literal key with that name, silently
+    // corrupting state instead of evaluating a dynamic expression.
+    if (path.includes('${')) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `${ctx}.patches[${i}].path: "${path}" contains \${...} — patch paths are not CEL-interpolated; use a literal RFC 6901 pointer`,
+        { context: ctx, path },
+      );
+    }
+    // Validate that the path is a well-formed RFC 6901 JSON Pointer (must be
+    // empty string or start with '/'). Call parsePointer so invalid values
+    // surface at boot rather than exploding on the first matching event.
+    try {
+      parsePointer(path);
+    } catch {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `${ctx}.patches[${i}].path: "${path}" is not a valid RFC 6901 JSON Pointer (must start with '/')`,
+        { context: ctx, path },
+      );
+    }
+    // Per-op required-field validation: each op declares which companion fields
+    // it consumes at runtime (see src/engine/reducerPatches.ts resolveReducerPatch).
+    // Missing required fields default silently there — catch them here at boot.
+    if (op === 'move' || op === 'copy') {
+      if (p['from'] === undefined) {
+        throw new BootError(
+          'BOOT_ERR_DSL_SYNTAX',
+          `${ctx}.patches[${i}]: op "${op}" requires "from"`,
+          { context: ctx, op, field: 'from' },
+        );
+      }
+    }
+    if (op === 'upsert') {
+      if (p['key'] === undefined) {
+        throw new BootError(
+          'BOOT_ERR_DSL_SYNTAX',
+          `${ctx}.patches[${i}]: op "upsert" requires "key"`,
+          { context: ctx, op, field: 'key' },
+        );
+      }
+    }
+    if (op === 'add' || op === 'replace' || op === 'append' || op === 'prepend' || op === 'merge') {
+      if (!Object.prototype.hasOwnProperty.call(p, 'value')) {
+        throw new BootError(
+          'BOOT_ERR_DSL_SYNTAX',
+          `${ctx}.patches[${i}]: op "${op}" requires "value" (may be null, false, or 0)`,
+          { context: ctx, op, field: 'value' },
+        );
+      }
+    }
+    if (op === 'increment') {
+      if (!Object.prototype.hasOwnProperty.call(p, 'by') && !Object.prototype.hasOwnProperty.call(p, 'value')) {
+        throw new BootError(
+          'BOOT_ERR_DSL_SYNTAX',
+          `${ctx}.patches[${i}]: op "increment" requires "by" (or "value" as alias)`,
+          { context: ctx, op, field: 'by' },
+        );
+      }
+    }
     // Reducer-phase values are CEL only — reject ts: script sentinels.
     const patchValue = p['value'];
     if (typeof patchValue === 'string' && patchValue.startsWith(TS_SENTINEL)) {
@@ -1059,6 +1121,16 @@ export function validateUseEntries(
     const contractPath = requireString(item, 'contract_path', ectx);
     const withBindings = validateWithBindings(item['with'], ectx);
     const bindMap = validateBindMap(item['bind'], ectx);
+    const knownUseKeys = new Set(['component', 'as', 'contract_path', 'with', 'bind']);
+    for (const key of Object.keys(item)) {
+      if (!knownUseKeys.has(key)) {
+        throw new BootError(
+          'BOOT_ERR_DSL_SYNTAX',
+          `${ectx}: unknown key "${key}" — allowed keys are: component, as, contract_path, with, bind`,
+          { field: key, context: ectx },
+        );
+      }
+    }
     return {
       component,
       as: as_,
@@ -1103,6 +1175,16 @@ export function validateIncludeEntries(
     }
     const component = requireString(item, 'component', ectx);
     const withBindings = validateWithBindings(item['with'], ectx);
+    const knownIncludeKeys = new Set(['component', 'with']);
+    for (const key of Object.keys(item)) {
+      if (!knownIncludeKeys.has(key)) {
+        throw new BootError(
+          'BOOT_ERR_DSL_SYNTAX',
+          `${ectx}: unknown key "${key}" — allowed keys are: component, with`,
+          { field: key, context: ectx },
+        );
+      }
+    }
     return {
       component,
       ...(withBindings !== undefined ? { with: withBindings } : {}),

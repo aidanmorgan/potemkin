@@ -247,6 +247,189 @@ describe('dsl/schema', () => {
       }
     });
 
+    // ── iuh1: patch path RFC 6901 and dollar-brace validation ───────────────
+    describe('patch path validation (iuh1)', () => {
+      function makeWithPath(path: string, op = 'replace', extra: Record<string, unknown> = {}) {
+        return {
+          boundary: 'B',
+          contract_path: '/b',
+          behaviors: [],
+          reducers: [{ on: 'Ev', patches: [{ op, path, value: 'x', ...extra }] }],
+          event_catalog: [{ type: 'Ev', payload_template: {} }],
+        };
+      }
+
+      it('rejects a path not starting with "/" with BOOT_ERR_DSL_SYNTAX', () => {
+        let caught: unknown;
+        try {
+          validateBoundaryConfig(makeWithPath('status'));
+        } catch (e) {
+          caught = e;
+        }
+        expect(caught).toBeInstanceOf(BootError);
+        expect((caught as BootError).code).toBe('BOOT_ERR_DSL_SYNTAX');
+        expect((caught as BootError).message).toMatch(/RFC 6901/i);
+      });
+
+      it('rejects a path containing "${" with BOOT_ERR_DSL_SYNTAX', () => {
+        let caught: unknown;
+        try {
+          validateBoundaryConfig(makeWithPath('/items/${state.idx}'));
+        } catch (e) {
+          caught = e;
+        }
+        expect(caught).toBeInstanceOf(BootError);
+        expect((caught as BootError).code).toBe('BOOT_ERR_DSL_SYNTAX');
+        expect((caught as BootError).message).toMatch(/not CEL-interpolated/i);
+      });
+
+      it('accepts a valid RFC 6901 pointer path', () => {
+        expect(() => validateBoundaryConfig(makeWithPath('/status'))).not.toThrow();
+      });
+
+      it('accepts a nested RFC 6901 pointer', () => {
+        expect(() => validateBoundaryConfig(makeWithPath('/nested/field'))).not.toThrow();
+      });
+
+      it('accepts an array-index RFC 6901 pointer', () => {
+        expect(() => validateBoundaryConfig(makeWithPath('/arr/0'))).not.toThrow();
+      });
+    });
+
+    // ── 2d2o: per-op required-field validation ───────────────────────────────
+    describe('patch op required-field validation (2d2o)', () => {
+      function makePatch(patch: Record<string, unknown>) {
+        return {
+          boundary: 'B',
+          contract_path: '/b',
+          behaviors: [],
+          reducers: [{ on: 'Ev', patches: [patch] }],
+          event_catalog: [{ type: 'Ev', payload_template: {} }],
+        };
+      }
+
+      it('rejects op:move without "from" with BOOT_ERR_DSL_SYNTAX', () => {
+        let caught: unknown;
+        try {
+          validateBoundaryConfig(makePatch({ op: 'move', path: '/a' }));
+        } catch (e) {
+          caught = e;
+        }
+        expect(caught).toBeInstanceOf(BootError);
+        expect((caught as BootError).code).toBe('BOOT_ERR_DSL_SYNTAX');
+        expect((caught as BootError).message).toMatch(/move/);
+        expect((caught as BootError).message).toMatch(/from/);
+      });
+
+      it('rejects op:copy without "from" with BOOT_ERR_DSL_SYNTAX', () => {
+        let caught: unknown;
+        try {
+          validateBoundaryConfig(makePatch({ op: 'copy', path: '/a' }));
+        } catch (e) {
+          caught = e;
+        }
+        expect(caught).toBeInstanceOf(BootError);
+        expect((caught as BootError).code).toBe('BOOT_ERR_DSL_SYNTAX');
+        expect((caught as BootError).message).toMatch(/copy/);
+        expect((caught as BootError).message).toMatch(/from/);
+      });
+
+      it('rejects op:upsert without "key" with BOOT_ERR_DSL_SYNTAX', () => {
+        let caught: unknown;
+        try {
+          validateBoundaryConfig(makePatch({ op: 'upsert', path: '/items', value: { id: '1' } }));
+        } catch (e) {
+          caught = e;
+        }
+        expect(caught).toBeInstanceOf(BootError);
+        expect((caught as BootError).code).toBe('BOOT_ERR_DSL_SYNTAX');
+        expect((caught as BootError).message).toMatch(/upsert/);
+        expect((caught as BootError).message).toMatch(/key/);
+      });
+
+      it.each(['add', 'replace', 'append', 'prepend', 'merge'])(
+        'rejects op:%s without "value" with BOOT_ERR_DSL_SYNTAX',
+        (op) => {
+          let caught: unknown;
+          try {
+            validateBoundaryConfig(makePatch({ op, path: '/f' }));
+          } catch (e) {
+            caught = e;
+          }
+          expect(caught).toBeInstanceOf(BootError);
+          expect((caught as BootError).code).toBe('BOOT_ERR_DSL_SYNTAX');
+          expect((caught as BootError).message).toMatch(new RegExp(op));
+          expect((caught as BootError).message).toMatch(/value/);
+        },
+      );
+
+      it('rejects op:increment with neither "by" nor "value" with BOOT_ERR_DSL_SYNTAX', () => {
+        let caught: unknown;
+        try {
+          validateBoundaryConfig(makePatch({ op: 'increment', path: '/count' }));
+        } catch (e) {
+          caught = e;
+        }
+        expect(caught).toBeInstanceOf(BootError);
+        expect((caught as BootError).code).toBe('BOOT_ERR_DSL_SYNTAX');
+        expect((caught as BootError).message).toMatch(/increment/);
+      });
+
+      it('accepts op:remove with only path', () => {
+        expect(() =>
+          validateBoundaryConfig(makePatch({ op: 'remove', path: '/field' })),
+        ).not.toThrow();
+      });
+
+      it('accepts op:move with from present', () => {
+        expect(() =>
+          validateBoundaryConfig(makePatch({ op: 'move', path: '/b', from: '/a' })),
+        ).not.toThrow();
+      });
+
+      it('accepts op:copy with from present', () => {
+        expect(() =>
+          validateBoundaryConfig(makePatch({ op: 'copy', path: '/b', from: '/a' })),
+        ).not.toThrow();
+      });
+
+      it('accepts op:upsert with key present', () => {
+        expect(() =>
+          validateBoundaryConfig(makePatch({ op: 'upsert', path: '/items', key: 'id', value: { id: '1' } })),
+        ).not.toThrow();
+      });
+
+      it('accepts op:increment with by present', () => {
+        expect(() =>
+          validateBoundaryConfig(makePatch({ op: 'increment', path: '/count', by: 1 })),
+        ).not.toThrow();
+      });
+
+      it('accepts op:increment with value as alias for by', () => {
+        expect(() =>
+          validateBoundaryConfig(makePatch({ op: 'increment', path: '/count', value: 5 })),
+        ).not.toThrow();
+      });
+
+      it('accepts op:add with value:null (presence check, not truthiness)', () => {
+        expect(() =>
+          validateBoundaryConfig(makePatch({ op: 'add', path: '/f', value: null })),
+        ).not.toThrow();
+      });
+
+      it('accepts op:replace with value:false', () => {
+        expect(() =>
+          validateBoundaryConfig(makePatch({ op: 'replace', path: '/flag', value: false })),
+        ).not.toThrow();
+      });
+
+      it('accepts op:add with value:0', () => {
+        expect(() =>
+          validateBoundaryConfig(makePatch({ op: 'add', path: '/count', value: 0 })),
+        ).not.toThrow();
+      });
+    });
+
     it('throws BootError for BOOT_ERR_DSL_SYNTAX code on invalid input', () => {
       try {
         validateBoundaryConfig(null);

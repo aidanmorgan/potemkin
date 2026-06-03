@@ -49,20 +49,16 @@ export function rebuildEntityAtVersion(
 
   for (const evt of stream) {
     if (evt.sequenceVersion > maxVersion) break;
-    try {
-      projectEvent({
-        event: evt,
-        boundary,
-        graph,
-        cel,
-        logger,
-        tsReducerRegistry,
-        computed,
-        computedOrder,
-      });
-    } catch (err) {
-      logger?.debug({ aggregateId: evt.aggregateId, event: evt.type, err }, 'Time-travel patch apply failed');
-    }
+    projectEvent({
+      event: evt,
+      boundary,
+      graph,
+      cel,
+      logger,
+      tsReducerRegistry,
+      computed,
+      computedOrder,
+    });
     applied++;
   }
 

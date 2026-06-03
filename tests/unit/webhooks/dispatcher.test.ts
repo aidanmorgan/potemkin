@@ -156,3 +156,66 @@ describe('webhooks/dispatcher — delivery', () => {
     expect(callCount).toBe(2);
   });
 });
+
+describe('webhooks/dispatcher — permanent 4xx bail (no retry)', () => {
+  const delivery = {
+    url: 'http://example.test/webhook',
+    headers: {},
+    body: '{}',
+  };
+
+  it.each([400, 401, 403, 404, 410])(
+    'status %i is attempted exactly once — no retry',
+    async (status) => {
+      let callCount = 0;
+      const fetchImpl: FetchLike = async () => {
+        callCount += 1;
+        return { ok: false, status };
+      };
+      const result = await deliverWebhook(delivery, fetchImpl, { maxAttempts: 3 }, noDelay);
+      expect(callCount).toBe(1);
+      expect(result.attempts).toBe(1);
+      expect(result.delivered).toBe(false);
+      expect(result.lastStatus).toBe(status);
+    },
+  );
+
+  it('503 (server error) still retries to maxAttempts', async () => {
+    let callCount = 0;
+    const fetchImpl: FetchLike = async () => {
+      callCount += 1;
+      return { ok: false, status: 503 };
+    };
+    const result = await deliverWebhook(delivery, fetchImpl, { maxAttempts: 3 }, noDelay);
+    expect(callCount).toBe(3);
+    expect(result.attempts).toBe(3);
+    expect(result.delivered).toBe(false);
+    expect(result.lastStatus).toBe(503);
+  });
+
+  it('429 (too many requests) is retriable — retries to maxAttempts', async () => {
+    let callCount = 0;
+    const fetchImpl: FetchLike = async () => {
+      callCount += 1;
+      return { ok: false, status: 429 };
+    };
+    const result = await deliverWebhook(delivery, fetchImpl, { maxAttempts: 3 }, noDelay);
+    expect(callCount).toBe(3);
+    expect(result.attempts).toBe(3);
+    expect(result.delivered).toBe(false);
+    expect(result.lastStatus).toBe(429);
+  });
+
+  it('408 (request timeout) is retriable — retries to maxAttempts', async () => {
+    let callCount = 0;
+    const fetchImpl: FetchLike = async () => {
+      callCount += 1;
+      return { ok: false, status: 408 };
+    };
+    const result = await deliverWebhook(delivery, fetchImpl, { maxAttempts: 3 }, noDelay);
+    expect(callCount).toBe(3);
+    expect(result.attempts).toBe(3);
+    expect(result.delivered).toBe(false);
+    expect(result.lastStatus).toBe(408);
+  });
+});

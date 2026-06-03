@@ -3,7 +3,6 @@
 // "did you mean?" suggestion; removed snake_case keys throw BOOT_ERR_REMOVED_SYNTAX.
 
 import { BootError } from '../errors.js';
-import { assertNoRemovedReducerKeys } from './removedSyntax.js';
 import type { Patch } from './patches.js';
 import type {
   DeclaredComputedField,
@@ -117,29 +116,6 @@ export interface GlobalModule {
   readonly idempotency?: Record<string, unknown>;
   readonly auth?: Record<string, unknown>;
   readonly hateoas?: Record<string, unknown>;
-}
-
-/**
- * Validate a global module (sagas/idempotency/derived_projections/etc) for
- * removed syntax.  The full semantic validation is done later by
- * validateGlobalConfig (schema.ts); this pass runs earlier on the raw parsed
- * object so the configSchema.ts path is consistent with boundary validation.
- */
-export function validateGlobalModuleRemovedKeys(raw: unknown, source: string): void {
-  if (!isObject(raw)) return;
-  // Validate reduce entries within derived_projections for removed assign/append keys.
-  const derived = raw['derived_projections'];
-  if (Array.isArray(derived)) {
-    for (const proj of derived) {
-      if (!isObject(proj)) continue;
-      const reduce = proj['reduce'];
-      if (!Array.isArray(reduce)) continue;
-      for (const entry of reduce) {
-        if (!isObject(entry)) continue;
-        assertNoRemovedReducerKeys(entry, `${source}: derived_projections[].reduce`);
-      }
-    }
-  }
 }
 
 
@@ -508,105 +484,6 @@ function assertGovernanceBlock(
     );
   }
   return raw as PotemkinConfigGovernance;
-}
-
-export function validateBoundaryModule(raw: unknown, ctx: ValidationContext): BoundaryModule {
-  if (!isObject(raw)) {
-    throw new BootError(
-      'BOOT_ERR_DSL_SCHEMA_VIOLATION',
-      `${ctx.source}: boundary module root must be an object`,
-      { source: ctx.source },
-    );
-  }
-
-  rejectSnakeCaseKeys(raw, ctx.source);
-
-  if (typeof raw['boundary'] !== 'string' || (raw['boundary'] as string).length === 0) {
-    throw new BootError(
-      'BOOT_ERR_DSL_SCHEMA_VIOLATION',
-      `${ctx.source}: "boundary" is required and must be a non-empty string`,
-      { source: ctx.source },
-    );
-  }
-
-  if (typeof raw['specId'] !== 'string' || (raw['specId'] as string).length === 0) {
-    throw new BootError(
-      'BOOT_ERR_MISSING_SPEC_ID',
-      `${ctx.source}: boundary "${raw['boundary']}" is missing required "specId"`,
-      { source: ctx.source, boundary: raw['boundary'] as string },
-    );
-  }
-
-  if (typeof raw['contractPath'] !== 'string') {
-    throw new BootError(
-      'BOOT_ERR_DSL_SCHEMA_VIOLATION',
-      `${ctx.source}: "contractPath" is required and must be a string`,
-      { source: ctx.source },
-    );
-  }
-
-  const events = raw['events'];
-  if (!Array.isArray(events)) {
-    throw new BootError(
-      'BOOT_ERR_DSL_SCHEMA_VIOLATION',
-      `${ctx.source}: "events" must be an array`,
-      { source: ctx.source },
-    );
-  }
-
-  const reducers = raw['reducers'];
-  if (reducers !== undefined && !Array.isArray(reducers)) {
-    throw new BootError(
-      'BOOT_ERR_DSL_SCHEMA_VIOLATION',
-      `${ctx.source}: "reducers" must be an array`,
-      { source: ctx.source },
-    );
-  }
-  if (Array.isArray(reducers)) {
-    for (const r of reducers) {
-      if (!isObject(r)) continue;
-          assertNoRemovedReducerKeys(r, ctx.source);
-    }
-  }
-
-  assertOptionalStringArray(raw['methods'], 'methods', ctx.source);
-  assertOptionalStringArray(raw['mask'], 'mask', ctx.source);
-  assertOptionalBoolean(raw['outOfContract'], 'outOfContract', ctx.source);
-  assertOptionalBoolean(raw['strict'], 'strict', ctx.source);
-  if (raw['behaviors'] !== undefined && !Array.isArray(raw['behaviors'])) {
-    throw new BootError(
-      'BOOT_ERR_DSL_SCHEMA_VIOLATION',
-      `${ctx.source}: "behaviors" must be an array`,
-      { source: ctx.source },
-    );
-  }
-  if (raw['hateoas'] !== undefined && !Array.isArray(raw['hateoas'])) {
-    throw new BootError(
-      'BOOT_ERR_DSL_SCHEMA_VIOLATION',
-      `${ctx.source}: "hateoas" must be an array`,
-      { source: ctx.source },
-    );
-  }
-  if (raw['state'] !== undefined && !isObject(raw['state'])) {
-    throw new BootError(
-      'BOOT_ERR_DSL_SCHEMA_VIOLATION',
-      `${ctx.source}: "state" must be an object`,
-      { source: ctx.source },
-    );
-  }
-
-  return raw as unknown as BoundaryModule;
-}
-
-function assertOptionalStringArray(value: unknown, field: string, source: string): void {
-  if (value === undefined) return;
-  if (!Array.isArray(value) || value.some((v) => typeof v !== 'string')) {
-    throw new BootError(
-      'BOOT_ERR_DSL_SCHEMA_VIOLATION',
-      `${source}: "${field}" must be an array of strings`,
-      { source, field },
-    );
-  }
 }
 
 function assertOptionalBoolean(value: unknown, field: string, source: string): void {

@@ -83,7 +83,3 @@ export function firstBareCelReference(value: string): string | null {
   return null;
 }
 
-/** True when `value` carries a CEL reference that is not wrapped in `${...}`. */
-export function hasBareCelReference(value: string): boolean {
-  return firstBareCelReference(value) !== null;
-}

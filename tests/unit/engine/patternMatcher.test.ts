@@ -472,4 +472,97 @@ describe('engine/patternMatcher', () => {
       expect(result.events[0]?.type).toBe('FallbackEv');
     });
   });
+
+  describe('dispatch_commands — mutation target_id resolution', () => {
+    function makeCelWithTargetResult(targetResult: unknown) {
+      return {
+        compile: (e: string) => ({ source: e, _ast: {} as any }),
+        evaluate: (_expr: string, _ctx: unknown, _phase: unknown) => {
+          // Return targetResult only for the target_id expression; return true otherwise
+          // so behavior conditions evaluate to true.
+          if (_expr === 'null_target') return targetResult;
+          return true;
+        },
+      };
+    }
+
+    function makeBoundaryWithDispatch(targetIdExpr: string) {
+      return makeBoundary({
+        behaviors: [
+          {
+            name: 'b1',
+            match: { operationId: 'createTest', condition: 'true' },
+            emit: 'Created',
+            dispatchCommands: [
+              {
+                boundary: 'OtherBoundary',
+                intent: 'mutation' as const,
+                operationId: 'updateOther',
+                targetId: targetIdExpr,
+              },
+            ],
+          },
+        ],
+        eventCatalog: [{ type: 'Created', payloadTemplate: {} }],
+      });
+    }
+
+    it('throws InternalExecutionError when dispatch_commands mutation target_id resolves to null', () => {
+      const boundary = makeBoundaryWithDispatch('null_target');
+      const cel = makeCelWithTargetResult(null);
+
+      expect(() =>
+        runPatternMatch(makeInput({
+          boundary,
+          cel: cel as any,
+          projectToShadow: jest.fn(),
+        })),
+      ).toThrow(InternalExecutionError);
+    });
+
+    it('throws InternalExecutionError when dispatch_commands mutation target_id resolves to a non-string (number)', () => {
+      const boundary = makeBoundaryWithDispatch('null_target');
+      const cel = makeCelWithTargetResult(42);
+
+      expect(() =>
+        runPatternMatch(makeInput({
+          boundary,
+          cel: cel as any,
+          projectToShadow: jest.fn(),
+        })),
+      ).toThrow(InternalExecutionError);
+    });
+
+    it('does not create a phantom aggregate when target_id resolves to null — error is thrown before queueing', () => {
+      const boundary = makeBoundaryWithDispatch('null_target');
+      const cel = makeCelWithTargetResult(null);
+
+      let result: ReturnType<typeof runPatternMatch> | undefined;
+      try {
+        result = runPatternMatch(makeInput({
+          boundary,
+          cel: cel as any,
+          projectToShadow: jest.fn(),
+        }));
+      } catch {
+        // expected
+      }
+      expect(result).toBeUndefined();
+    });
+
+    it('queues a secondary command when target_id resolves to a valid string', () => {
+      const boundary = makeBoundaryWithDispatch('null_target');
+      const cel = makeCelWithTargetResult('valid-agg-id');
+
+      const result = runPatternMatch(makeInput({
+        boundary,
+        cel: cel as any,
+        projectToShadow: jest.fn(),
+      }));
+
+      expect(result.secondaryCommands).toHaveLength(1);
+      expect(result.secondaryCommands[0]?.targetId).toBe('valid-agg-id');
+      expect(result.secondaryCommands[0]?.intent).toBe('mutation');
+    });
+  });
 });

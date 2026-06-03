@@ -1,7 +1,6 @@
 import {
   REMOVED_KEY_MAP,
   validatePotemkinConfig,
-  validateBoundaryModule,
 } from '../../../src/dsl/configSchema';
 import { BootError } from '../../../src/errors';
 
@@ -59,21 +58,4 @@ describe('REMOVED_KEY_MAP — legacy snake_case rejection', () => {
     },
   );
 
-  it.each(ENTRIES)(
-    'boundary-module validator rejects legacy "%s" and names replacement "%s"',
-    (legacy, replacement) => {
-      const raw = {
-        boundary: 'B',
-        specId: 'x',
-        contractPath: '/b',
-        events: [],
-        [legacy]: 'whatever',
-      };
-      const err = catchBoot(() => validateBoundaryModule(raw, { source: 'dsl/b.yaml' }));
-      expect(err.code).toBe('BOOT_ERR_REMOVED_SYNTAX');
-      expect(err.message).toContain(legacy);
-      expect(err.message).toContain(replacement);
-      expect(err.details).toMatchObject({ removed: legacy, replacement });
-    },
-  );
 });

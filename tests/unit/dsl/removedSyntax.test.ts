@@ -1,6 +1,5 @@
 import { assertNoRemovedReducerKeys, assertNoInlineScripts, REMOVED_REDUCER_KEYS } from '../../../src/dsl/removedSyntax';
 import { validateBoundaryConfig } from '../../../src/dsl/schema';
-import { validateBoundaryModule } from '../../../src/dsl/configSchema';
 import { BootError } from '../../../src/errors';
 
 describe('removedSyntax — single reducer-mutation key policy (A3)', () => {
@@ -27,7 +26,7 @@ describe('removedSyntax — single reducer-mutation key policy (A3)', () => {
     ).not.toThrow();
   });
 
-  it('both validator pipelines reject the removed keys via the same policy (in-memory)', () => {
+  it('validateBoundaryConfig rejects the removed keys', () => {
     const raw = {
       boundary: 'B',
       contract_path: '/b',
@@ -44,22 +43,7 @@ describe('removedSyntax — single reducer-mutation key policy (A3)', () => {
     expect(code).toBe('BOOT_ERR_REMOVED_SYNTAX');
   });
 
-  it('both validator pipelines reject the removed keys via the same policy (on-disk module)', () => {
-    const raw = {
-      boundary: 'B',
-      specId: 'x',
-      contractPath: '/b',
-      events: [],
-      reducers: [{ on: 'Ev', append: { list: 'event.payload' } }],
-    };
-    let code: string | undefined;
-    try {
-      validateBoundaryModule(raw, { source: 'dsl/b.yaml' });
-    } catch (e) {
-      code = (e as BootError).code;
-    }
-    expect(code).toBe('BOOT_ERR_REMOVED_SYNTAX');
-  });
+
 });
 
 describe('removedSyntax — inline scripts removal (B3)', () => {

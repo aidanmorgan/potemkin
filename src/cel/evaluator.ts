@@ -190,9 +190,10 @@ export interface CelEvaluator {
   /**
    * Derive a lightweight per-request sub-evaluator that layers this request's
    * clock offset and faker seed on top of the shared evaluator WITHOUT mutating
-   * it. The sub-evaluator shares the parent's compile cache and admin clock, so
-   * concurrent requests each get their own offset/seed with no cross-request
-   * leak. Returns `this` when the request context carries neither control.
+   * it. The sub-evaluator shares the parent root's admin clock and host/root
+   * registry (via parentRoot), so concurrent requests each get their own
+   * offset/seed with no cross-request leak. Returns `this` when the request
+   * context carries neither control.
    */
   withRequestContext(reqCtx: CelRequestContext): CelEvaluator;
 }

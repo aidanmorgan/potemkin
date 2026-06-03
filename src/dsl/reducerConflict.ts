@@ -1,16 +1,10 @@
-// Cross-checks YAML boundary modules against TS-registered reducers.
+// Cross-checks the compiled snake_case DSL against TS-registered reducers.
 // Emits BOOT_ERR_REDUCER_CONFLICT, BOOT_ERR_UNKNOWN_BOUNDARY/EVENT,
 // and BOOT_ERR_REDUCER_MISSING as appropriate.
 
 import { BootError } from '../errors.js';
-import type { BoundaryModule } from './configSchema.js';
 import type { CompiledDsl } from './types.js';
 import type { RegisteredReducer } from '../sdk/index.js';
-
-export interface ReducerConflictInput {
-  readonly modules: readonly { path: string; boundary: BoundaryModule }[];
-  readonly tsReducers: readonly RegisteredReducer[];
-}
 
 export interface DslReducerConflictInput {
   readonly dsl: CompiledDsl;
@@ -20,10 +14,7 @@ export interface DslReducerConflictInput {
 }
 
 /**
- * Cross-check a compiled snake_case DSL against TS-registered reducers. This is
- * the boot-path entry point: it reuses the same rules as validateReducerConflicts
- * but reads the canonical CompiledDsl shape (eventCatalog[].type, reducers[].on,
- * reducers[].patches) directly.
+ * Cross-check a compiled snake_case DSL against TS-registered reducers.
  *
  * - A TS reducer that targets an unknown boundary → BOOT_ERR_UNKNOWN_BOUNDARY.
  * - A TS reducer that targets an undeclared event → BOOT_ERR_UNKNOWN_EVENT.
@@ -82,55 +73,3 @@ export function validateReducerConflictsFromDsl(input: DslReducerConflictInput):
   }
 }
 
-export function validateReducerConflicts(input: ReducerConflictInput): void {
-  const boundaryByName = new Map<string, { path: string; boundary: BoundaryModule }>();
-  for (const m of input.modules) boundaryByName.set(m.boundary.boundary, m);
-
-  for (const tsR of input.tsReducers) {
-    const target = boundaryByName.get(tsR.boundary);
-    if (!target) {
-      throw new BootError(
-        'BOOT_ERR_UNKNOWN_BOUNDARY',
-        `TS reducer (${tsR.source}) targets boundary "${tsR.boundary}" which is not declared in any module`,
-        { source: tsR.source, boundary: tsR.boundary },
-      );
-    }
-    const eventExists = target.boundary.events.some((e) => e.name === tsR.event);
-    if (!eventExists) {
-      throw new BootError(
-        'BOOT_ERR_UNKNOWN_EVENT',
-        `TS reducer (${tsR.source}) targets event "${tsR.boundary}:${tsR.event}" — event not declared in boundary`,
-        { source: tsR.source, boundary: tsR.boundary, event: tsR.event },
-      );
-    }
-  }
-
-  for (const m of input.modules) {
-    const yamlReducers = m.boundary.reducers ?? [];
-    for (const yamlR of yamlReducers) {
-      const tsR = input.tsReducers.find(
-        (r) => r.boundary === m.boundary.boundary && r.event === yamlR.on,
-      );
-      const hasYamlPatches = Array.isArray(yamlR.patches) && yamlR.patches.length > 0;
-      if (tsR && hasYamlPatches) {
-        throw new BootError(
-          'BOOT_ERR_REDUCER_CONFLICT',
-          `Reducer (${m.boundary.boundary}:${yamlR.on}) is declared by both YAML (${m.path}) and TS (${tsR.source})`,
-          {
-            boundary: m.boundary.boundary,
-            event: yamlR.on,
-            yamlSource: m.path,
-            tsSource: tsR.source,
-          },
-        );
-      }
-      if (yamlR.implementation === 'typescript' && !tsR) {
-        throw new BootError(
-          'BOOT_ERR_REDUCER_MISSING',
-          `Reducer (${m.boundary.boundary}:${yamlR.on}) is marked implementation: typescript but no TS reducer is registered`,
-          { boundary: m.boundary.boundary, event: yamlR.on, yamlSource: m.path },
-        );
-      }
-    }
-  }
-}

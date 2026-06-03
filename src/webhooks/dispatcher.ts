@@ -215,7 +215,16 @@ export async function deliverWebhook(
         });
         lastStatus = res.status;
         if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
+          const err = new Error(`HTTP ${res.status}`);
+          // Permanent client errors are not retriable; bail immediately.
+          // 408 (Request Timeout) and 429 (Too Many Requests) remain retriable.
+          const isPermanentClientError =
+            res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429;
+          if (isPermanentClientError) {
+            _bail(err);
+            return;
+          }
+          throw err;
         }
       },
       {

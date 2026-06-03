@@ -4,9 +4,11 @@
  * Deduplicates commands within a configurable TTL window using a client-supplied
  * Idempotency-Key header (RFC 7240-style).
  *
- * Hash key = SHA-256( method + "\n" + path + "\n" + idempotencyKey [+ "\n" + body] )
- * - If the same hash is seen within the TTL → return the cached response.
- * - If the same idempotencyKey is seen with a DIFFERENT body hash → 409 conflict.
+ * Map key  = raw idempotencyKey string (from the Idempotency-Key header).
+ * keyHash  = SHA-256( method + "\n" + path + "\n" + idempotencyKey [+ "\n" + body] )
+ *            stored per-entry for collision detection — not used as the Map key.
+ * - If the same idempotencyKey is seen within the TTL and keyHash matches → return the cached response.
+ * - If the same idempotencyKey is seen with a different keyHash or body → 409 conflict.
  */
 
 import { createHash } from 'node:crypto';

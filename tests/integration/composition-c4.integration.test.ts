@@ -489,7 +489,7 @@ describe('C4 — local declaration wins over included entry on key clash', () =>
     expect(matching[0]!.payloadTemplate['actor']).toBe("'local-override'");
   });
 
-  it('only one AuditLogged reducer (local version)', async () => {
+  it('both local and included AuditLogged reducers are present (reducer on is non-unique)', async () => {
     const dsl = await compileDsl(
       [{ name: 'document.yaml', yaml: DOCUMENT_WITH_LOCAL_OVERRIDE_YAML }],
       undefined,
@@ -498,9 +498,99 @@ describe('C4 — local declaration wins over included entry on key clash', () =>
 
     const boundary = dsl.byBoundaryName['Document']!;
     const matching = boundary.reducers.filter((r) => r.on === 'AuditLogged');
-    expect(matching).toHaveLength(1);
-    // Local reducer patches /lastActor to 'local-wins', not the mixin's actor path.
-    expect(matching[0]!.patches![0]!.value).toBe("'local-wins'");
+    // The local reducer and the included mixin reducer both coexist.
+    expect(matching).toHaveLength(2);
+    const values = matching.map((r) => r.patches![0]!.value);
+    expect(values).toContain("'local-wins'");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 2b: Both local and included reducer run on the same event (3kwi)
+// ---------------------------------------------------------------------------
+
+// Boundary with a local reducer for AuditLogged AND an included mixin reducer for
+// AuditLogged. The two reducers patch different fields (/status vs /lastActor), so
+// both effects are independently observable after projection.
+const DOCUMENT_WITH_LOCAL_AND_MIXIN_REDUCER_YAML = `
+boundary: Document
+contract_path: /documents/{id}
+include:
+  - component: AuditMixin
+    with:
+      actorField: "lastActor"
+event_catalog:
+  - type: DocumentCreated
+    payload_template:
+      id: "command.targetId"
+      status: "'DRAFT'"
+  - type: AuditLogged
+    payload_template:
+      actor: "'mixin-actor'"
+behaviors:
+  - name: create-document
+    match:
+      operationId: createDocument
+      condition: "true"
+    emit: DocumentCreated
+  - name: log-audit
+    match:
+      operationId: auditDocument
+      condition: "true"
+    emit: AuditLogged
+reducers:
+  - on: DocumentCreated
+    patches:
+      - { op: replace, path: /id,     value: "\${event.payload.id}" }
+      - { op: replace, path: /status, value: "\${event.payload.status}" }
+  - on: AuditLogged
+    patches:
+      - { op: replace, path: /status, value: "'local-patched'" }
+`;
+
+describe('C4 — local and included reducer on same event both run (end-to-end projection)', () => {
+  it('state reflects patches from BOTH the local and the included reducer after AuditLogged', async () => {
+    const openapi = await loadOpenApi(OPENAPI_YAML);
+    const dsl = await compileDsl(
+      [{ name: 'document.yaml', yaml: DOCUMENT_WITH_LOCAL_AND_MIXIN_REDUCER_YAML }],
+      undefined,
+      [{ name: 'audit-mixin.yaml', yaml: AUDIT_MIXIN_YAML }],
+    );
+    const sys = await bootSystem({ openapi, compiledDsl: dsl });
+
+    try {
+      const id = nextUuidv7();
+
+      const createCmd = makeCommand('Document', `/documents/${id}`, 'createDocument', id);
+      await executeUnitOfWork({
+        command: createCmd,
+        dsl: sys.dsl,
+        openapi: sys.openapi,
+        graph: sys.graph,
+        events: sys.events,
+        cel: sys.cel,
+        validator: sys.validator,
+      });
+
+      const auditCmd = makeMutationCommand('Document', `/documents/${id}`, 'auditDocument', id);
+      await executeUnitOfWork({
+        command: auditCmd,
+        dsl: sys.dsl,
+        openapi: sys.openapi,
+        graph: sys.graph,
+        events: sys.events,
+        cel: sys.cel,
+        validator: sys.validator,
+      });
+
+      const state = sys.graph.get(id);
+      // Local reducer patches /status; mixin reducer patches /lastActor.
+      // Both must have run for these to hold simultaneously.
+      expect(state!['status']).toBe('local-patched');
+      expect(state!['lastActor']).toBe('mixin-actor');
+    } finally {
+      resetSystem(sys);
+    }
   });
 });
 

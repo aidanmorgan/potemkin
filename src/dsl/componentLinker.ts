@@ -341,14 +341,14 @@ export function linkComponents(
 /**
  * Merge a single included fragment (after substituteParameters) into the host
  * accumulator maps. Clash detection:
- *  - A key already present in `localKeys` (the host's own declarations) is
- *    silently skipped — local wins.
- *  - For event `type` and behavior `name` (unique keys): a key already present
- *    in the corresponding `includedKeys` map (from a prior include) AND not in
- *    `localKeys` is a clash between two included fragments → boot error.
- *  - For reducer `on` (non-unique key): the engine runs ALL reducers whose `on`
- *    matches an event type, so multiple included reducers with the same `on` are
- *    legitimate and are both appended. No clash error is raised.
+ *  - For event `type` and behavior `name` (unique keys): if `localKeys` already
+ *    has the key, the included entry is silently skipped — local wins. A key in
+ *    `includedKeys` from a prior include (not covered by `localKeys`) is a clash
+ *    between two included fragments → boot error.
+ *  - For reducer `on` (non-unique key): ALL included reducers are appended
+ *    unconditionally — the engine runs every reducer whose `on` matches, so a
+ *    local reducer and an included reducer on the same event both run. No
+ *    local-wins skip and no clash error.
  */
 function mergeFragment(
   fragmentEventCatalog: readonly EventCatalogEntry[] | undefined,
@@ -382,11 +382,12 @@ function mergeFragment(
   }
 
   // Merge reducer rules (on is a NON-unique key — the engine runs ALL reducers
-  // matching an event type, so coexistence is correct; append unconditionally
-  // unless the host has a local reducer with the same `on` (local wins).
+  // matching an event type, so coexistence is correct; append unconditionally.
+  // Unlike event_catalog type and behavior name (which are unique keys), reducer
+  // `on` has no local-wins semantics: a local reducer and an included reducer on
+  // the same event are both valid and both run.
   for (const rule of fragmentReducers ?? []) {
     const key = rule.on;
-    if (localReducerOns.has(key)) continue; // local wins, skip this included reducer
     includedReducerOns.set(key, sourceComponentName);
     accReducers.push(rule);
   }
@@ -416,11 +417,12 @@ function mergeFragment(
  * linkComponents) are already present in `boundaries`.
  *
  * Precedence:
- *  - Host's own (local) declarations always win on a key clash.
- *  - A clash between two included fragments on the same event type or behavior
- *    name with no local override is a BOOT_ERR_DSL_SYNTAX.
- *  - Multiple included reducers with the same `on` coexist (both appended) —
- *    reducer `on` is a non-unique key; the engine runs all matching reducers.
+ *  - Event `type` and behavior `name` are unique keys: local declarations win
+ *    over included ones; a clash between two included fragments on the same key
+ *    (with no local override) is a BOOT_ERR_DSL_SYNTAX.
+ *  - Reducer `on` is a non-unique key: ALL reducers (local and included) are
+ *    kept — the engine runs every reducer whose `on` matches an event type, so
+ *    a local reducer and an included reducer on the same event both run.
  *
  * The merged BoundaryConfig replaces the original in `byBoundaryName` and
  * the `boundaries` array (mutated in place). `byContractPath` is updated to

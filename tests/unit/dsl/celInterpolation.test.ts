@@ -1,4 +1,4 @@
-import { firstBareCelReference, hasBareCelReference } from '../../../src/dsl/celInterpolation';
+import { firstBareCelReference } from '../../../src/dsl/celInterpolation';
 
 describe('celInterpolation — bare CEL reference detection (A4)', () => {
   describe('flags bare context references that need ${...}', () => {
@@ -9,7 +9,6 @@ describe('celInterpolation — bare CEL reference detection (A4)', () => {
       ['state.x > 0 ? 1 : 2', 'state.'],
     ])('flags %s', (value, token) => {
       expect(firstBareCelReference(value)).toBe(token);
-      expect(hasBareCelReference(value)).toBe(true);
     });
 
     it('flags a bare $builtin', () => {
@@ -17,7 +16,7 @@ describe('celInterpolation — bare CEL reference detection (A4)', () => {
     });
 
     it('flags a reference outside ${...} even when another is interpolated', () => {
-      expect(hasBareCelReference('${state.x} and event.y')).toBe(true);
+      expect(firstBareCelReference('${state.x} and event.y')).toBe('event.');
     });
   });
 
@@ -32,19 +31,18 @@ describe('celInterpolation — bare CEL reference detection (A4)', () => {
       'plainLiteral',
     ])('accepts %s', (value) => {
       expect(firstBareCelReference(value)).toBeNull();
-      expect(hasBareCelReference(value)).toBe(false);
     });
 
     it('does not flag a string literal that merely contains "event."', () => {
-      expect(hasBareCelReference("'event.happened was logged'")).toBe(false);
+      expect(firstBareCelReference("'event.happened was logged'")).toBeNull();
     });
 
     it('does not flag a quoted literal containing a $ sign', () => {
-      expect(hasBareCelReference("'$5.00 fee'")).toBe(false);
+      expect(firstBareCelReference("'$5.00 fee'")).toBeNull();
     });
 
     it('does not flag a bare $ followed by a digit (not a builtin token)', () => {
-      expect(hasBareCelReference('$5 discount')).toBe(false);
+      expect(firstBareCelReference('$5 discount')).toBeNull();
     });
   });
 

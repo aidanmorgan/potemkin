@@ -464,6 +464,19 @@ describe('engine/patternMatcher — permutations', () => {
     });
 
     it('two dispatch_commands specs → two secondary commands', () => {
+      const cel: CelEvaluator = {
+        compile: (e: string) => ({ source: e, _ast: {} as any }),
+        evaluateDslValue: jest.fn() as any,
+        getClockOffset: jest.fn(() => 0),
+        setClockOffset: jest.fn(),
+        withRequestContext(this: CelEvaluator) { return this; },
+        evaluate: jest.fn((expr) => {
+          const src = typeof expr === 'string' ? expr : (expr as any).source;
+          if (src === '"t1"') return 't1';
+          if (src === '"t2"') return 't2';
+          return true;
+        }),
+      };
       const boundary = makeBoundary({
         behaviors: [{
           name: 'create',
@@ -476,7 +489,7 @@ describe('engine/patternMatcher — permutations', () => {
         }],
         eventCatalog: [{ type: 'Created', payloadTemplate: {} }],
       });
-      const result = runPatternMatch(makeInput({ boundary }));
+      const result = runPatternMatch(makeInput({ boundary, cel }));
       expect(result.secondaryCommands).toHaveLength(2);
       expect(result.secondaryCommands[0]?.boundary).toBe('B1');
       expect(result.secondaryCommands[1]?.boundary).toBe('B2');
@@ -590,6 +603,18 @@ describe('engine/patternMatcher — permutations', () => {
     });
 
     it('secondary command httpMethod is PUT for mutation intent', () => {
+      const cel: CelEvaluator = {
+        compile: (e: string) => ({ source: e, _ast: {} as any }),
+        evaluateDslValue: jest.fn() as any,
+        getClockOffset: jest.fn(() => 0),
+        setClockOffset: jest.fn(),
+        withRequestContext(this: CelEvaluator) { return this; },
+        evaluate: jest.fn((expr) => {
+          const src = typeof expr === 'string' ? expr : (expr as any).source;
+          if (src === '"x"') return 'x';
+          return true;
+        }),
+      };
       const boundary = makeBoundary({
         behaviors: [{
           name: 'create',
@@ -599,7 +624,7 @@ describe('engine/patternMatcher — permutations', () => {
         }],
         eventCatalog: [{ type: 'Created', payloadTemplate: {} }],
       });
-      const result = runPatternMatch(makeInput({ boundary }));
+      const result = runPatternMatch(makeInput({ boundary, cel }));
       expect(result.secondaryCommands[0]?.httpMethod).toBe('PUT');
     });
 

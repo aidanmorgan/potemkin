@@ -1,4 +1,4 @@
-import { projectEvent, setByDotPath, getByDotPath } from '../../../src/engine/projection';
+import { projectEvent } from '../../../src/engine/projection';
 import { createStateGraph } from '../../../src/stategraph/graph';
 import { createCelEvaluator } from '../../../src/cel/evaluator';
 import { makeBoundary, makeDomainEvent } from '../_helpers';
@@ -262,56 +262,4 @@ describe('engine/projection', () => {
     });
   });
 
-  describe('setByDotPath', () => {
-    it('sets a top-level key', () => {
-      const obj = { a: 1 };
-      setByDotPath(obj, 'a', 99);
-      expect(obj.a).toBe(99);
-    });
-
-    it('sets a nested key', () => {
-      const obj = { a: { b: 1 } };
-      setByDotPath(obj, 'a.b', 42);
-      expect((obj.a as any).b).toBe(42);
-    });
-
-    it('creates intermediate objects', () => {
-      const obj = {} as any;
-      setByDotPath(obj, 'a.b.c', 'value');
-      expect(obj.a.b.c).toBe('value');
-    });
-
-    it('sets array element by bracket notation', () => {
-      const obj = { items: ['x', 'y', 'z'] } as any;
-      setByDotPath(obj, 'items[1]', 'replaced');
-      expect(obj.items[1]).toBe('replaced');
-    });
-
-    it('throws InternalExecutionError for empty path', () => {
-      const obj = { a: 1 };
-      expect(() => setByDotPath(obj, '', 99)).toThrow();
-    });
-  });
-
-  describe('getByDotPath', () => {
-    it('gets a top-level key', () => {
-      expect(getByDotPath({ a: 42 }, 'a')).toBe(42);
-    });
-
-    it('gets a nested key', () => {
-      expect(getByDotPath({ a: { b: 99 } }, 'a.b')).toBe(99);
-    });
-
-    it('returns undefined for missing path', () => {
-      expect(getByDotPath({}, 'a.b.c')).toBeUndefined();
-    });
-
-    it('gets array element by bracket notation', () => {
-      expect(getByDotPath({ items: [10, 20, 30] }, 'items[1]')).toBe(20);
-    });
-
-    it('returns undefined on non-object traversal', () => {
-      expect(getByDotPath({ a: 42 } as any, 'a.b')).toBeUndefined();
-    });
-  });
 });

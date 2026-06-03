@@ -81,7 +81,7 @@ function matchesFaultRule(
     try {
       checkScopes(command.actor, rule.match.requiredScopes as string[], rule.name);
     } catch (err) {
-      logger?.warn(
+      logger?.debug(
         { faultName: rule.name, requiredScopes: rule.match.requiredScopes, err },
         'Fault rule scope check failed — treating as no-match',
       );

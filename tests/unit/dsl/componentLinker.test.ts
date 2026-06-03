@@ -825,7 +825,7 @@ describe('C4 — mergeIncludes: local declaration overrides included entry on ke
     expect(matching[0]!.payloadTemplate['customField']).toBe("'local'");
   });
 
-  it('keeps the local reducer, not the included one, on key clash', () => {
+  it('appends included reducer alongside the local reducer on the same on (both present)', () => {
     const localReducer = { on: 'AuditLogged', patches: [{ op: 'replace' as const, path: '/localField', value: 'true' }] };
     const host = makeHostBoundary({
       reducers: [localReducer],
@@ -839,8 +839,11 @@ describe('C4 — mergeIncludes: local declaration overrides included entry on ke
 
     const merged = byBoundaryName['HostBoundary']!;
     const matching = merged.reducers.filter((r) => r.on === 'AuditLogged');
-    expect(matching).toHaveLength(1);
-    expect(matching[0]!.patches![0]!.path).toBe('/localField');
+    // Both the local reducer and the included reducer coexist — reducer `on` is non-unique.
+    expect(matching).toHaveLength(2);
+    const paths = matching.map((r) => r.patches![0]!.path);
+    expect(paths).toContain('/localField');
+    expect(paths).toContain('/lastActor');
   });
 });
 

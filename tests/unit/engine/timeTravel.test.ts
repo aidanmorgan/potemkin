@@ -14,6 +14,7 @@ import { createStateGraph } from '../../../src/stategraph/graph';
 import { createEventStore } from '../../../src/eventstore/store';
 import { createCelEvaluator } from '../../../src/cel/evaluator';
 import { createTsReducerRegistry } from '../../../src/engine/tsReducerRegistry';
+import { InternalExecutionError } from '../../../src/errors';
 import { makeBoundary, makeDomainEvent } from '../_helpers';
 import type { DomainEvent } from '../../../src/types';
 
@@ -201,5 +202,80 @@ describe('rebuildEntityAtVersion — auditFields', () => {
     expect(replayState).toEqual(liveState);
     expect((replayState as { updatedAt?: string })?.updatedAt).toBe('2025-01-15T10:00:00.000Z');
     expect((replayState as { updatedBy?: string })?.updatedBy).toBe('user-9');
+  });
+});
+
+// ── all-or-nothing replay (error propagation) ────────────────────────────────
+
+describe('rebuildEntityAtVersion — all-or-nothing replay', () => {
+  it('throws when a TS reducer throws, not returning partial state', () => {
+    const boundary = makeBoundary();
+
+    const tsRegistry = createTsReducerRegistry([
+      {
+        boundary: 'TestBoundary',
+        event: 'WidgetUpdated',
+        source: 'test-inline',
+        fn: (_state, _event) => {
+          throw new InternalExecutionError('Reducer exploded', { code: 'TEST_REDUCER_ERROR' });
+        },
+      },
+    ]);
+
+    const evt = makeEvt({ sequenceVersion: 1 });
+    const events = createEventStore();
+    events.append([evt]);
+
+    expect(() =>
+      rebuildEntityAtVersion('agg-1', 1, boundary, events, cel, undefined, tsRegistry),
+    ).toThrow(InternalExecutionError);
+  });
+
+  it('applied++ does not increment on failure — the applied===0 guard returns null when all events fail', () => {
+    const boundary = makeBoundary();
+
+    const tsRegistry = createTsReducerRegistry([
+      {
+        boundary: 'TestBoundary',
+        event: 'WidgetUpdated',
+        source: 'test-inline',
+        fn: (_state, _event) => {
+          throw new InternalExecutionError('Reducer exploded', { code: 'TEST_REDUCER_ERROR' });
+        },
+      },
+    ]);
+
+    const evt = makeEvt({ sequenceVersion: 1 });
+    const events = createEventStore();
+    events.append([evt]);
+
+    // The throw propagates out — caller maps to 500; no partial state is returned.
+    expect(() =>
+      rebuildEntityAtVersion('agg-1', 1, boundary, events, cel, undefined, tsRegistry),
+    ).toThrow();
+  });
+
+  it('clean replay over a valid event sequence returns correct historical state', () => {
+    const boundary = makeBoundary({
+      reducers: [
+        {
+          on: 'WidgetUpdated',
+          patches: [
+            { op: 'replace', path: '/score', value: '${event.payload.score}' },
+          ],
+        },
+      ],
+    });
+
+    const evt1 = makeEvt({ eventId: 'e1', sequenceVersion: 1, payload: { name: 'Gadget', score: 10 } });
+    const evt2 = makeEvt({ eventId: 'e2', sequenceVersion: 2, payload: { name: 'Gadget', score: 20 } });
+    const events = createEventStore();
+    events.append([evt1, evt2]);
+
+    const stateAtV1 = rebuildEntityAtVersion('agg-1', 1, boundary, events, cel);
+    expect((stateAtV1 as { score?: number })?.score).toBe(10);
+
+    const stateAtV2 = rebuildEntityAtVersion('agg-1', 2, boundary, events, cel);
+    expect((stateAtV2 as { score?: number })?.score).toBe(20);
   });
 });
