@@ -58,6 +58,7 @@ import {
   MissingPreconditionError,
   InternalExecutionError,
 } from '../errors.js';
+import { fireReactions } from './reactions.js';
 import { applyEventToDerivedProjections } from '../projections/engine.js';
 import { findTriggeredSagas, runSaga } from '../sagas/orchestrator.js';
 import { prepareWebhookDelivery, deliverWebhook, type FetchLike } from '../webhooks/dispatcher.js';
@@ -504,13 +505,60 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
                 throw err;
               }
 
-              // Accumulate staged events
+              // Accumulate staged events, then fire reactions for each.
               // Note: stagedSeqDeltas is already updated eagerly by nextSequenceVersion
               // (called inside runPatternMatch), so we do NOT update it again here.
-              for (const evt of outcome.events) {
+              //
+              // Reaction fan-out: after each event is staged (and already projected
+              // to shadow by runPatternMatch), consult the reaction registry.
+              // Reaction-emitted events are themselves eligible to trigger further
+              // reactions — we process them via a local work queue so the same
+              // per-event reaction check handles recursive fan-out.
+              const shadowAsGraphAdapterForReactions = shadowAsStateGraph(shadow, graph);
+
+              // Seed the queue with the events produced by runPatternMatch.
+              const reactionWorkQueue: DomainEvent[] = [...outcome.events];
+
+              while (reactionWorkQueue.length > 0) {
+                const evt = reactionWorkQueue.shift()!;
+
+                // Stage this event (if it wasn't already from a prior iteration —
+                // primary events are staged here; reaction events are also staged here).
                 stagedEvents.push(evt);
                 const evtLog = logger.child({ eventId: evt.eventId, aggregateId: evt.aggregateId });
                 evtLog.debug({ eventType: evt.type }, 'UoW staged event');
+
+                // Fire reactions for this event (if the DSL declares any and
+                // reactions haven't been suppressed).
+                if (dsl.reactionsByTrigger && input.controls?.sideEffects.skipDispatch !== true) {
+                  const reactionEvents = fireReactions({
+                    triggerEvent: evt,
+                    dsl,
+                    shadowGraph: shadowAsGraphAdapterForReactions,
+                    cel,
+                    nextEventId: () => nextUuidv7(),
+                    now: () => new Date(Date.now() + cel.getClockOffset()).toISOString(),
+                    nextSequenceVersion: (aggregateId) => {
+                      const delta = stagedSeqDeltas.get(aggregateId) ?? 0;
+                      const next = eventStore.currentSequenceVersion(aggregateId) + delta + 1;
+                      stagedSeqDeltas.set(aggregateId, delta + 1);
+                      return next;
+                    },
+                    currentStagedCount: stagedEvents.length,
+                    logger,
+                    schemaRegistry,
+                    tracer,
+                    openapi,
+                    tsReducerRegistry: input.tsReducerRegistry,
+                    inferredSchemas: input.inferredSchemas,
+                  });
+
+                  // Reaction-emitted events are already projected into shadow by fireReactions.
+                  // Enqueue them so their own reactions can fire (recursive fan-out).
+                  for (const rEvt of reactionEvents) {
+                    reactionWorkQueue.push(rEvt);
+                  }
+                }
               }
 
               // Enqueue secondary commands for next iterations
