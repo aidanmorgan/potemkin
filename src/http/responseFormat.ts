@@ -58,23 +58,24 @@ function firstQuery(value: string | string[] | undefined): string | undefined {
 /**
  * Build a query string from `query`, overriding `offset` and `limit`, and dropping `cursor`.
  * Array-valued params emit one key=value pair per element. Keys and values are percent-encoded.
+ * offset and limit are appended last so they appear at a predictable position in Link headers.
  */
 function buildQueryString(
   query: Record<string, string | string[]>,
   offset: number,
   limit: number,
 ): string {
-  const parts: string[] = [];
+  const params = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {
     if (key === 'offset' || key === 'limit' || key === 'cursor') continue;
     const values = Array.isArray(value) ? value : [value];
     for (const v of values) {
-      parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(v)}`);
+      params.append(key, v);
     }
   }
-  parts.push(`offset=${offset}`);
-  parts.push(`limit=${limit}`);
-  return parts.join('&');
+  params.append('offset', String(offset));
+  params.append('limit', String(limit));
+  return params.toString();
 }
 
 export interface PaginationTransformResult {

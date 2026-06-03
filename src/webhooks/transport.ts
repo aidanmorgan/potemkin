@@ -10,12 +10,22 @@
 
 import type { FetchLike } from './dispatcher.js';
 
+/** Default per-delivery HTTP timeout in milliseconds. */
+const DEFAULT_DELIVERY_TIMEOUT_MS = 10_000;
+
 /**
  * Build a `FetchLike` backed by the global `fetch`. Throws at construction time
  * when no global fetch is available so the missing dependency is surfaced loudly
  * rather than silently manufacturing permanent delivery failures.
+ *
+ * @param deliveryTimeoutMs  Per-attempt HTTP timeout in ms (default 10 000).
+ *                           Each fetch is wrapped in `AbortSignal.timeout` so a
+ *                           hung endpoint does not hold a connection open beyond
+ *                           this window.
  */
-export function createFetchWebhookTransport(): FetchLike {
+export function createFetchWebhookTransport(
+  deliveryTimeoutMs: number = DEFAULT_DELIVERY_TIMEOUT_MS,
+): FetchLike {
   const globalFetch = (globalThis as { fetch?: typeof fetch }).fetch;
   if (typeof globalFetch !== 'function') {
     throw new Error(
@@ -28,6 +38,7 @@ export function createFetchWebhookTransport(): FetchLike {
       method: init.method,
       headers: init.headers,
       body: init.body,
+      signal: AbortSignal.timeout(deliveryTimeoutMs),
     });
     return { ok: res.ok, status: res.status };
   };

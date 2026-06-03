@@ -164,7 +164,8 @@ describe('responseFormat — applyPaginationStyle', () => {
       const env = { items: [{ id: 'a' }], totalCount: 5, offset: 0, limit: 1, hasMore: true } as unknown as JsonValue;
       const out = applyPaginationStyle(env, 'link-header', { q: 'hello world', offset: '0', limit: '1' }, '/leads');
       const link = out.headers['Link']!;
-      expect(link).toContain('q=hello%20world');
+      // URLSearchParams encodes spaces as '+' (application/x-www-form-urlencoded)
+      expect(link).toContain('q=hello+world');
     });
   });
 });

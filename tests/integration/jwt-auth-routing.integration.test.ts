@@ -101,7 +101,7 @@ describe('F1: JWT validation routing in the engine gateway', () => {
   it('auth.mode=jwt + valid JWT → request proceeds (201)', async () => {
     const agent = await bootWith(JWT_GLOBAL);
     const id = nextUuidv7();
-    const token = signJwtHs256({ sub: 'alice', scopes: ['admin'] }, SECRET);
+    const token = await signJwtHs256({ sub: 'alice', scopes: ['admin'] }, SECRET);
     const res = await agent
       .post(`/widgets/${id}`)
       .set('Authorization', `Bearer ${token}`)
@@ -124,7 +124,7 @@ describe('F1: JWT validation routing in the engine gateway', () => {
   it('auth.mode=jwt + invalid signature → 401', async () => {
     const agent = await bootWith(JWT_GLOBAL);
     const id = nextUuidv7();
-    const forged = signJwtHs256({ sub: 'mallory', scopes: ['admin'] }, 'wrong-secret');
+    const forged = await signJwtHs256({ sub: 'mallory', scopes: ['admin'] }, 'wrong-secret');
     const res = await agent
       .post(`/widgets/${id}`)
       .set('Authorization', `Bearer ${forged}`)

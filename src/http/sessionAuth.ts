@@ -14,6 +14,7 @@
 // in preference to the Authorization-header path, so scoped behaviours see the
 // session actor and fire 401/403 exactly as they do for JWT/legacy auth.
 
+import * as cookieLib from 'cookie';
 import type { Request, Response, NextFunction } from 'express';
 import type { Actor, JsonObject } from '../types.js';
 import type { AuthConfig, SessionAuthConfig } from '../dsl/types.js';
@@ -34,22 +35,13 @@ interface SessionRequest extends Request {
   [SESSION_HANDLED_KEY]?: boolean;
 }
 
-/** Parse a Cookie header into a name→value map. */
+/** Parse a Cookie header into a name→value map using the `cookie` library. */
 function parseCookies(header: string | undefined): Record<string, string> {
+  if (!header) return {};
+  const parsed = cookieLib.parse(header);
   const out: Record<string, string> = {};
-  if (!header) return out;
-  for (const part of header.split(';')) {
-    const eq = part.indexOf('=');
-    if (eq <= 0) continue;
-    const name = part.slice(0, eq).trim();
-    const value = part.slice(eq + 1).trim();
-    if (name) {
-      try {
-        out[name] = decodeURIComponent(value);
-      } catch {
-        out[name] = value;
-      }
-    }
+  for (const [name, value] of Object.entries(parsed)) {
+    if (value !== undefined) out[name] = value;
   }
   return out;
 }

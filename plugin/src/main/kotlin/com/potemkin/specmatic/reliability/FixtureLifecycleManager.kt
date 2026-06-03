@@ -231,37 +231,56 @@ class FixtureLifecycleManager(
         }
     }
 
-    internal fun hotReloadIfChanged() {
+    internal suspend fun hotReloadIfChanged() {
         try {
+            // Fetch fixtures OUTSIDE the mutex so the DOWN-transition coroutine can
+            // acquire transitionMutex and clear without waiting for this slow I/O.
             val fixtures = fixturesClient.fetchFixtures()
             // Prefer the HTTP ETag as the change signal; fall back to a content hash only
             // when the server omits an ETag.
             val newSignal = changeSignal(fixtures)
-            val known = lastSignal.getAndSet(newSignal)
 
-            if (known == null) {
-                // First call — record the baseline signal; no reload needed.
-                log.debug("FixtureLifecycleManager: hot-reload baseline set (signal={})", newSignal)
-                return
-            }
-
-            if (known == newSignal) {
-                log.debug("FixtureLifecycleManager: fixtures unchanged (signal match), skipping hot-reload")
-                return
-            }
-
-            log.info("FixtureLifecycleManager: fixture change detected — hot-reloading")
-            bridge.clearExpectations()
-            val pushed = mutableSetOf<Pair<String, String>>()
-            var count = 0
-            for (fixture in fixtures) {
-                if (bridge.registerStub(fixture)) {
-                    pushed.add(fixture.httpRequest.method.uppercase() to fixture.httpRequest.path)
-                    count++
+            // Acquire the mutex to serialise the compare-and-swap of lastSignal and the
+            // clear+register step against the DOWN-transition coroutine's clearFixtures().
+            //
+            // Invariant: once the mutex is held, re-check that the engine is still UP.
+            // If a DOWN transition fired while we were fetching (slow I/O), clearFixtures()
+            // has already run and set lastSignal=null; registering stubs now would leave
+            // fixtures seated while the engine is DOWN.  Aborting here prevents that race.
+            transitionMutex.withLock {
+                if (monitor.currentState() != HealthState.Up) {
+                    log.debug(
+                        "FixtureLifecycleManager: hot-reload aborted — engine is no longer UP after fetch",
+                    )
+                    return
                 }
+
+                val known = lastSignal.getAndSet(newSignal)
+
+                if (known == null) {
+                    // First call — record the baseline signal; no reload needed.
+                    log.debug("FixtureLifecycleManager: hot-reload baseline set (signal={})", newSignal)
+                    return
+                }
+
+                if (known == newSignal) {
+                    log.debug("FixtureLifecycleManager: fixtures unchanged (signal match), skipping hot-reload")
+                    return
+                }
+
+                log.info("FixtureLifecycleManager: fixture change detected — hot-reloading")
+                bridge.clearExpectations()
+                val pushed = mutableSetOf<Pair<String, String>>()
+                var count = 0
+                for (fixture in fixtures) {
+                    if (bridge.registerStub(fixture)) {
+                        pushed.add(fixture.httpRequest.method.uppercase() to fixture.httpRequest.path)
+                        count++
+                    }
+                }
+                fixturesClient.recordPushedPaths(pushed)
+                log.info("FixtureLifecycleManager: hot-reload complete — {} fixture(s) registered", count)
             }
-            fixturesClient.recordPushedPaths(pushed)
-            log.info("FixtureLifecycleManager: hot-reload complete — {} fixture(s) registered", count)
         } catch (e: Exception) {
             log.warn("FixtureLifecycleManager: hot-reload failed: {}", e.message, e)
         }

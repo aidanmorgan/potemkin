@@ -19,8 +19,8 @@ import { createCelEvaluator } from '../../../src/cel/evaluator';
 import type { WebhookConfig } from '../../../src/dsl/types';
 import type { DomainEvent } from '../../../src/types';
 
-/** No-op sleep injected into delivery tests so they don't incur real backoff delays. */
-const noSleep = (): Promise<void> => Promise.resolve();
+/** async-retry overrides for deterministic, zero-delay tests. */
+const noDelay = { minTimeout: 0, maxTimeout: 0, randomize: false };
 
 const cel = createCelEvaluator();
 
@@ -97,7 +97,7 @@ describe('webhooks/dispatcher — delivery', () => {
       return { ok: true, status: 200 };
     };
     const delivery = prepareWebhookDelivery(WEBHOOK, makeEvent(), 'LeadConvert', 'mutation', cel)!;
-    const result = await deliverWebhook(delivery, fetchImpl, undefined, undefined, noSleep);
+    const result = await deliverWebhook(delivery, fetchImpl, undefined, noDelay);
     expect(result).toMatchObject({ attempts: 1, delivered: true, lastStatus: 200 });
     expect(calls).toHaveLength(1);
     expect(calls[0]!.url).toBe('http://example.test/webhook');
@@ -110,7 +110,7 @@ describe('webhooks/dispatcher — delivery', () => {
       return { ok: false, status: 503 };
     };
     const delivery = prepareWebhookDelivery(WEBHOOK, makeEvent(), 'LeadConvert', 'mutation', cel)!;
-    const result = await deliverWebhook(delivery, fetchImpl, { maxAttempts: 3 }, undefined, noSleep);
+    const result = await deliverWebhook(delivery, fetchImpl, { maxAttempts: 3 }, noDelay);
     expect(attempts).toBe(3);
     expect(result).toMatchObject({ attempts: 3, delivered: false, lastStatus: 503 });
   });
@@ -118,7 +118,7 @@ describe('webhooks/dispatcher — delivery', () => {
   it('never throws when the transport throws', async () => {
     const fetchImpl: FetchLike = async () => { throw new Error('network down'); };
     const delivery = prepareWebhookDelivery(WEBHOOK, makeEvent(), 'LeadConvert', 'mutation', cel)!;
-    const result = await deliverWebhook(delivery, fetchImpl, { maxAttempts: 2 }, undefined, noSleep);
+    const result = await deliverWebhook(delivery, fetchImpl, { maxAttempts: 2 }, noDelay);
     expect(result.delivered).toBe(false);
     expect(result.attempts).toBe(2);
   });
@@ -132,8 +132,7 @@ describe('webhooks/dispatcher — delivery', () => {
         : { ok: true, status: 200 };
     };
     const delivery = prepareWebhookDelivery(WEBHOOK, makeEvent(), 'LeadConvert', 'mutation', cel)!;
-    // No retry config — relies on the default maxAttempts of 3.
-    const result = await deliverWebhook(delivery, fetchImpl, undefined, undefined, noSleep);
+    const result = await deliverWebhook(delivery, fetchImpl, undefined, noDelay);
     expect(result.delivered).toBe(true);
     expect(result.attempts).toBeGreaterThan(1);
     expect(result.lastStatus).toBe(200);
@@ -147,28 +146,22 @@ describe('webhooks/dispatcher — delivery', () => {
     expect(computeBackoffMs(3, 1000, fixedJitter)).toBe(Math.round(1000 * 4 * 0.75));
   });
 
-  it('honors an explicit retry override for both maxAttempts and delayMs', async () => {
-    const sleepCalls: number[] = [];
-    const sleepSpy = (ms: number): Promise<void> => {
-      sleepCalls.push(ms);
-      return Promise.resolve();
+  it('honors an explicit maxAttempts override via retryConfig', async () => {
+    let callCount = 0;
+    const fetchImpl: FetchLike = async () => {
+      callCount += 1;
+      return { ok: false, status: 503 };
     };
-    // Fixed jitter at 0.0 → delay = base * 2^(attempt-1) * 0.5
-    const fixedJitter = () => 0.0;
-    const fetchImpl: FetchLike = async () => ({ ok: false, status: 503 });
     const delivery = prepareWebhookDelivery(WEBHOOK, makeEvent(), 'LeadConvert', 'mutation', cel)!;
     const result = await deliverWebhook(
       delivery,
       fetchImpl,
       { maxAttempts: 2, delayMs: 500 },
-      fixedJitter,
-      sleepSpy,
+      noDelay,
     );
-    // Explicit maxAttempts honored.
     expect(result.attempts).toBe(2);
     expect(result.delivered).toBe(false);
-    // One sleep between the two attempts, computed from base=500 jitter=0 → 500 * 1 * 0.5 = 250.
-    expect(sleepCalls).toHaveLength(1);
-    expect(sleepCalls[0]).toBe(Math.round(500 * 1 * 0.5));
+    expect(result.lastStatus).toBe(503);
+    expect(callCount).toBe(2);
   });
 });

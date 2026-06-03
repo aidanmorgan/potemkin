@@ -204,6 +204,65 @@ describe('http/sessionAuth — CSRF toggle (potemkin-1vu7)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Cookie parsing — potemkin-qvgc
+// ---------------------------------------------------------------------------
+
+describe('http/sessionAuth — cookie parsing (potemkin-qvgc)', () => {
+  it('resolves session from a percent-encoded cookie value that the old hand-rolled parser mishandled', () => {
+    const store = createSessionStore();
+    const auth = makeAuth();
+    const middleware = createSessionAuthMiddleware(auth, store)!;
+
+    // Create a session; the middleware itself percent-encodes the id in Set-Cookie.
+    const session = store.create({ id: 'bob', scopes: ['admin'] }, 60_000);
+
+    // Send a percent-encoded cookie that decodes back to the real session id —
+    // the `cookie` library performs RFC 6265 percent-decoding on parse.
+    const encodedSid = encodeURIComponent(session.id);
+    const cookieHeader = `sid=${encodedSid}; other=ignored%20value`;
+
+    const req = makeReq({
+      method: 'GET',
+      path: '/resource',
+      headers: { cookie: cookieHeader },
+    });
+    const fake = makeRes();
+    const next = jest.fn();
+
+    middleware(req, fake.res, next as NextFunction);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    const actor = (req as unknown as Record<string, unknown>)[SESSION_ACTOR_KEY];
+    expect(actor).toEqual({ id: 'bob', scopes: ['admin'] });
+  });
+
+  it('handles a cookie header with percent-encoded special characters in non-session cookies', () => {
+    const store = createSessionStore();
+    const auth = makeAuth();
+    const middleware = createSessionAuthMiddleware(auth, store)!;
+
+    const session = store.create({ id: 'carol', scopes: [] }, 60_000);
+    // Use the literal session id (no encoding needed, UUIDs are URL-safe)
+    // but add a sibling cookie whose value contains percent-encoded characters
+    const cookieHeader = `sid=${session.id}; tracking=hello%20world%21`;
+
+    const req = makeReq({
+      method: 'GET',
+      path: '/resource',
+      headers: { cookie: cookieHeader },
+    });
+    const fake = makeRes();
+    const next = jest.fn();
+
+    middleware(req, fake.res, next as NextFunction);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    const actor = (req as unknown as Record<string, unknown>)[SESSION_ACTOR_KEY];
+    expect(actor).toEqual({ id: 'carol', scopes: [] });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Basic session lifecycle (regression guard)
 // ---------------------------------------------------------------------------
 

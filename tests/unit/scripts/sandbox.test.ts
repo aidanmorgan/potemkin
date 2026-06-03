@@ -107,6 +107,16 @@ describe('instantiateScript / invokeScript', () => {
     }
   }, 10000);
 
+  it('bootstrap timeout does not disrupt normal script execution (potemkin-aay9)', () => {
+    // The bootstrap vm.Script now runs with the same SCRIPT_TIMEOUT_MS budget as
+    // the user script. This verifies that a normal invocation still succeeds — the
+    // bootstrap is well under budget — while gaining consistent wall-time accounting.
+    const code = `export default (ctx) => ctx.state.balance + 1;`;
+    const handle = compileAndInstantiate(code);
+    const result = invokeScript(handle, makeCtx());
+    expect(result).toBe(101);
+  });
+
   it('does not expose fs in the sandbox', () => {
     const code = `
       export default () => {

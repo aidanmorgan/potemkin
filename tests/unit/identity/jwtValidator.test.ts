@@ -22,8 +22,8 @@ function nowSec(): number {
 }
 
 describe('identity/jwtValidator', () => {
-  it('returns Actor for a valid signed JWT', () => {
-    const token = signJwtHs256(
+  it('returns Actor for a valid signed JWT', async () => {
+    const token = await signJwtHs256(
       { sub: 'alice', scopes: 'manager admin', iss: 'tester', aud: 'api', exp: nowSec() + 60 },
       SECRET,
     );
@@ -32,8 +32,8 @@ describe('identity/jwtValidator', () => {
     expect(actor.scopes).toEqual(['manager', 'admin']);
   });
 
-  it('accepts a scopes[] array', () => {
-    const token = signJwtHs256(
+  it('accepts a scopes[] array', async () => {
+    const token = await signJwtHs256(
       { sub: 'bob', scopes: ['viewer', 'agent'], iss: 'tester', aud: 'api', exp: nowSec() + 60 },
       SECRET,
     );
@@ -41,8 +41,8 @@ describe('identity/jwtValidator', () => {
     expect(actor.scopes).toEqual(['viewer', 'agent']);
   });
 
-  it('honours a configured subjectClaim', () => {
-    const token = signJwtHs256(
+  it('honours a configured subjectClaim', async () => {
+    const token = await signJwtHs256(
       { user_id: 'carol', scopes: 'manager', iss: 'tester', aud: 'api', exp: nowSec() + 60 },
       SECRET,
     );
@@ -55,8 +55,8 @@ describe('identity/jwtValidator', () => {
       .toThrow(JwtValidationError);
   });
 
-  it('rejects JWTs signed with the wrong secret', () => {
-    const token = signJwtHs256(
+  it('rejects JWTs signed with the wrong secret', async () => {
+    const token = await signJwtHs256(
       { sub: 'alice', scopes: 'manager', iss: 'tester', aud: 'api', exp: nowSec() + 60 },
       'a-different-secret',
     );
@@ -69,8 +69,8 @@ describe('identity/jwtValidator', () => {
     }
   });
 
-  it('rejects expired JWTs', () => {
-    const token = signJwtHs256(
+  it('rejects expired JWTs', async () => {
+    const token = await signJwtHs256(
       { sub: 'alice', scopes: 'manager', iss: 'tester', aud: 'api', exp: nowSec() - 10 },
       SECRET,
     );
@@ -82,8 +82,8 @@ describe('identity/jwtValidator', () => {
     }
   });
 
-  it('rejects JWTs whose nbf is in the future', () => {
-    const token = signJwtHs256(
+  it('rejects JWTs whose nbf is in the future', async () => {
+    const token = await signJwtHs256(
       {
         sub: 'alice',
         scopes: 'manager',
@@ -102,8 +102,8 @@ describe('identity/jwtValidator', () => {
     }
   });
 
-  it('rejects alg: none', () => {
-    const token = signJwtHs256(
+  it('rejects alg: none', async () => {
+    const token = await signJwtHs256(
       { sub: 'alice', scopes: 'manager', iss: 'tester', aud: 'api', exp: nowSec() + 60 },
       SECRET,
       { alg: 'none' },
@@ -116,8 +116,8 @@ describe('identity/jwtValidator', () => {
     }
   });
 
-  it('rejects wrong issuer when issuer is configured', () => {
-    const token = signJwtHs256(
+  it('rejects wrong issuer when issuer is configured', async () => {
+    const token = await signJwtHs256(
       { sub: 'alice', scopes: 'manager', iss: 'evil', aud: 'api', exp: nowSec() + 60 },
       SECRET,
     );
@@ -129,8 +129,8 @@ describe('identity/jwtValidator', () => {
     }
   });
 
-  it('rejects wrong audience when audience is configured', () => {
-    const token = signJwtHs256(
+  it('rejects wrong audience when audience is configured', async () => {
+    const token = await signJwtHs256(
       { sub: 'alice', scopes: 'manager', iss: 'tester', aud: 'other', exp: nowSec() + 60 },
       SECRET,
     );
@@ -142,8 +142,8 @@ describe('identity/jwtValidator', () => {
     }
   });
 
-  it('accepts an aud array that contains the configured audience', () => {
-    const token = signJwtHs256(
+  it('accepts an aud array that contains the configured audience', async () => {
+    const token = await signJwtHs256(
       {
         sub: 'alice',
         scopes: 'manager',
@@ -157,8 +157,8 @@ describe('identity/jwtValidator', () => {
     expect(actor.id).toBe('alice');
   });
 
-  it('rejects JWTs missing the configured subject claim', () => {
-    const token = signJwtHs256(
+  it('rejects JWTs missing the configured subject claim', async () => {
+    const token = await signJwtHs256(
       { scopes: 'manager', iss: 'tester', aud: 'api', exp: nowSec() + 60 },
       SECRET,
     );
@@ -173,8 +173,8 @@ describe('identity/jwtValidator', () => {
   describe('blank shared secret guard', () => {
     const blankSecrets = ['', ' ', '\t', '   \n'];
 
-    it.each(blankSecrets)('rejects token when secret is %j', (blankSecret) => {
-      const token = signJwtHs256(
+    it.each(blankSecrets)('rejects token when secret is %j', async (blankSecret) => {
+      const token = await signJwtHs256(
         { sub: 'alice', scopes: 'manager', iss: 'tester', aud: 'api', exp: nowSec() + 60 },
         blankSecret,
       );
@@ -187,8 +187,8 @@ describe('identity/jwtValidator', () => {
       }
     });
 
-    it('rejects a token signed with a real secret when config secret is blank', () => {
-      const token = signJwtHs256(
+    it('rejects a token signed with a real secret when config secret is blank', async () => {
+      const token = await signJwtHs256(
         { sub: 'alice', scopes: 'manager', iss: 'tester', aud: 'api', exp: nowSec() + 60 },
         SECRET,
       );
@@ -203,8 +203,8 @@ describe('identity/jwtValidator', () => {
   });
 
   describe('requiredClaims enforcement', () => {
-    it('is a no-op when requiredClaims is not configured', () => {
-      const token = signJwtHs256(
+    it('is a no-op when requiredClaims is not configured', async () => {
+      const token = await signJwtHs256(
         { sub: 'alice', scopes: 'manager', iss: 'tester', aud: 'api', exp: nowSec() + 60 },
         SECRET,
       );
@@ -212,8 +212,8 @@ describe('identity/jwtValidator', () => {
       expect(actor.id).toBe('alice');
     });
 
-    it('is a no-op when requiredClaims is an empty object', () => {
-      const token = signJwtHs256(
+    it('is a no-op when requiredClaims is an empty object', async () => {
+      const token = await signJwtHs256(
         { sub: 'alice', scopes: 'manager', iss: 'tester', aud: 'api', exp: nowSec() + 60 },
         SECRET,
       );
@@ -221,8 +221,8 @@ describe('identity/jwtValidator', () => {
       expect(actor.id).toBe('alice');
     });
 
-    it('accepts a token that has all required claims with matching values', () => {
-      const token = signJwtHs256(
+    it('accepts a token that has all required claims with matching values', async () => {
+      const token = await signJwtHs256(
         { sub: 'alice', scopes: 'manager', iss: 'tester', aud: 'api', exp: nowSec() + 60, tenant: 'acme', role: 'admin' },
         SECRET,
       );
@@ -230,8 +230,8 @@ describe('identity/jwtValidator', () => {
       expect(actor.id).toBe('alice');
     });
 
-    it('accepts a token when expected is * and claim is present with any value', () => {
-      const token = signJwtHs256(
+    it('accepts a token when expected is * and claim is present with any value', async () => {
+      const token = await signJwtHs256(
         { sub: 'alice', scopes: 'manager', iss: 'tester', aud: 'api', exp: nowSec() + 60, tenant: 'anything' },
         SECRET,
       );
@@ -239,8 +239,8 @@ describe('identity/jwtValidator', () => {
       expect(actor.id).toBe('alice');
     });
 
-    it('rejects a token that is missing a required claim', () => {
-      const token = signJwtHs256(
+    it('rejects a token that is missing a required claim', async () => {
+      const token = await signJwtHs256(
         { sub: 'alice', scopes: 'manager', iss: 'tester', aud: 'api', exp: nowSec() + 60 },
         SECRET,
       );
@@ -254,8 +254,8 @@ describe('identity/jwtValidator', () => {
       }
     });
 
-    it('rejects a token with a required claim present but wrong value', () => {
-      const token = signJwtHs256(
+    it('rejects a token with a required claim present but wrong value', async () => {
+      const token = await signJwtHs256(
         { sub: 'alice', scopes: 'manager', iss: 'tester', aud: 'api', exp: nowSec() + 60, tenant: 'wrong' },
         SECRET,
       );
@@ -269,8 +269,8 @@ describe('identity/jwtValidator', () => {
       }
     });
 
-    it('rejects when expected is * but claim is absent', () => {
-      const token = signJwtHs256(
+    it('rejects when expected is * but claim is absent', async () => {
+      const token = await signJwtHs256(
         { sub: 'alice', scopes: 'manager', iss: 'tester', aud: 'api', exp: nowSec() + 60 },
         SECRET,
       );
@@ -283,8 +283,8 @@ describe('identity/jwtValidator', () => {
       }
     });
 
-    it('coerces non-string claim values to string for comparison', () => {
-      const token = signJwtHs256(
+    it('coerces non-string claim values to string for comparison', async () => {
+      const token = await signJwtHs256(
         { sub: 'alice', scopes: 'manager', iss: 'tester', aud: 'api', exp: nowSec() + 60, level: 5 },
         SECRET,
       );

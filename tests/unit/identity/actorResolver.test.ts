@@ -5,7 +5,7 @@ import type { AuthConfig } from '../../../src/dsl/types';
 const SECRET = 'top-secret-key';
 const JWT_AUTH: AuthConfig = { mode: 'jwt', jwt: { secret: SECRET } };
 
-function validToken(): string {
+async function validToken(): Promise<string> {
   return signJwtHs256({ sub: 'alice', scopes: ['trader', 'admin'] }, SECRET);
 }
 
@@ -23,8 +23,9 @@ describe('resolveActor — auth-mode-aware actor resolution', () => {
   });
 
   describe('jwt mode', () => {
-    it('returns the actor from a valid signed JWT', () => {
-      const actor = resolveActor(`Bearer ${validToken()}`, JWT_AUTH);
+    it('returns the actor from a valid signed JWT', async () => {
+      const token = await validToken();
+      const actor = resolveActor(`Bearer ${token}`, JWT_AUTH);
       expect(actor?.id).toBe('alice');
       expect(actor?.scopes).toEqual(expect.arrayContaining(['trader', 'admin']));
     });
@@ -33,8 +34,8 @@ describe('resolveActor — auth-mode-aware actor resolution', () => {
       expect(() => resolveActor('Bearer mgr1:manager', JWT_AUTH)).toThrow(JwtValidationError);
     });
 
-    it('rejects a token signed with the wrong secret', () => {
-      const forged = signJwtHs256({ sub: 'mallory', scopes: ['admin'] }, 'wrong-secret');
+    it('rejects a token signed with the wrong secret', async () => {
+      const forged = await signJwtHs256({ sub: 'mallory', scopes: ['admin'] }, 'wrong-secret');
       expect(() => resolveActor(`Bearer ${forged}`, JWT_AUTH)).toThrow(JwtValidationError);
     });
 

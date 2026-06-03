@@ -316,7 +316,10 @@ var __ctx__ = {
   let scriptResult: unknown;
 
   try {
-    bootstrapVmScript.runInContext(safeContext);
+    bootstrapVmScript.runInContext(safeContext, {
+      timeout: SCRIPT_TIMEOUT_MS,
+      breakOnSigint: true,
+    });
     scriptResult = script.runInContext(safeContext, {
       timeout: SCRIPT_TIMEOUT_MS,
       breakOnSigint: true,

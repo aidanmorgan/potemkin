@@ -81,18 +81,14 @@ export function joinPointer(segments: readonly string[]): string {
 }
 
 /**
- * Deep-clone a JSON-compatible value. We assume valid JSON (no cycles, no
- * Dates, no functions) since state and patches come exclusively from
- * JSON-shaped sources (YAML literals, CEL evaluation results, HTTP bodies).
+ * Deep-clone a JSON-compatible value using the built-in structuredClone.
+ * Patches and state are always JSON-shaped (no cycles, no Dates, no functions),
+ * so structuredClone is a direct drop-in that avoids maintaining a hand-rolled
+ * recursive copy. Primitives (null, string, number, boolean) are returned as-is.
  */
 function cloneJson<T extends JsonValue>(v: T): T {
   if (v === null || typeof v !== 'object') return v;
-  if (Array.isArray(v)) return v.map(cloneJson) as T;
-  const out: Record<string, JsonValue> = {};
-  for (const [k, val] of Object.entries(v as Record<string, JsonValue>)) {
-    out[k] = cloneJson(val);
-  }
-  return out as T;
+  return structuredClone(v);
 }
 
 interface NavResult {

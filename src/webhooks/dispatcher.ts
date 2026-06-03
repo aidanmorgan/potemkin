@@ -20,6 +20,7 @@
  */
 
 import { createHmac } from 'node:crypto';
+import retry from 'async-retry';
 import type { WebhookConfig } from '../dsl/types.js';
 import type { DomainEvent, JsonValue } from '../types.js';
 import type { CelEvaluator } from '../cel/evaluator.js';
@@ -183,50 +184,75 @@ export function computeBackoffMs(
 }
 
 /**
- * Deliver a prepared webhook with bounded retry and exponential backoff + jitter.
+ * Options that control the retry behaviour inside `deliverWebhook`.
+ * These map directly to `async-retry` options and are exposed as a test seam
+ * so callers can set `minTimeout: 0, maxTimeout: 0, randomize: false` to get
+ * instant, deterministic backoff in tests.
+ */
+export interface DeliverRetryOverrides {
+  readonly minTimeout?: number;
+  readonly maxTimeout?: number;
+  readonly factor?: number;
+  readonly randomize?: boolean;
+}
+
+/**
+ * Deliver a prepared webhook with bounded retry and exponential backoff + jitter
+ * via `async-retry`.
+ *
  * Returns the number of attempts made and whether delivery ultimately succeeded.
  * Never throws — transport failures are surfaced via the result so the caller
  * can log/ignore them.
  *
- * @param jitterFn  Injectable source of randomness in [0, 0.5) — defaults to
- *                  `() => Math.random() / 2`. Pass a deterministic function in
- *                  tests to avoid flakiness.
- * @param sleepFn   Injectable sleep — defaults to a real `setTimeout`-backed
- *                  promise. Pass `() => Promise.resolve()` in tests to skip
- *                  actual delays.
+ * @param retryConfig    Per-webhook `retry` block from the DSL (maxAttempts / delayMs).
+ * @param retryOverrides async-retry option overrides for test determinism
+ *                       (e.g. `{ minTimeout: 0, maxTimeout: 0, randomize: false }`).
  */
 export async function deliverWebhook(
   delivery: WebhookDelivery,
   fetchImpl: FetchLike,
-  retry?: { maxAttempts?: number; delayMs?: number },
-  jitterFn: () => number = () => Math.random() / 2,
-  sleepFn: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+  retryConfig?: { maxAttempts?: number; delayMs?: number },
+  retryOverrides?: DeliverRetryOverrides,
 ): Promise<{ attempts: number; delivered: boolean; lastStatus?: number }> {
-  const maxAttempts = Math.max(1, retry?.maxAttempts ?? DEFAULT_MAX_ATTEMPTS);
-  const baseDelayMs = retry?.delayMs ?? DEFAULT_BASE_DELAY_MS;
+  const maxAttempts = Math.max(1, retryConfig?.maxAttempts ?? DEFAULT_MAX_ATTEMPTS);
+  const baseDelayMs = retryConfig?.delayMs ?? DEFAULT_BASE_DELAY_MS;
   let lastStatus: number | undefined;
+  let attempts = 0;
 
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      const res = await fetchImpl(delivery.url, {
-        method: 'POST',
-        headers: delivery.headers,
-        body: delivery.body,
-      });
-      lastStatus = res.status;
-      if (res.ok) return { attempts: attempt, delivered: true, lastStatus };
-    } catch (err) {
-      // Treat a transport throw as a failed attempt.
-      rootLogger().warn(
-        { url: delivery.url, attempt, maxAttempts, err },
-        'Webhook delivery transport threw — counting as a failed attempt',
-      );
-    }
-    // Back off between attempts only — no delay after the final attempt.
-    if (attempt < maxAttempts) {
-      await sleepFn(computeBackoffMs(attempt, baseDelayMs, jitterFn));
-    }
+  try {
+    await retry(
+      async (_bail, attemptNumber) => {
+        attempts = attemptNumber;
+        const res = await fetchImpl(delivery.url, {
+          method: 'POST',
+          headers: delivery.headers,
+          body: delivery.body,
+        });
+        lastStatus = res.status;
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+      },
+      {
+        retries: maxAttempts - 1,
+        minTimeout: retryOverrides?.minTimeout ?? baseDelayMs,
+        maxTimeout: retryOverrides?.maxTimeout ?? MAX_BACKOFF_MS,
+        factor: retryOverrides?.factor ?? 2,
+        randomize: retryOverrides?.randomize ?? true,
+        onRetry: (err: Error, attempt: number) => {
+          rootLogger().warn(
+            { url: delivery.url, attempt, maxAttempts, err: err.message },
+            'Webhook delivery failed — retrying',
+          );
+        },
+      },
+    );
+    return { attempts, delivered: true, lastStatus };
+  } catch (err) {
+    rootLogger().warn(
+      { url: delivery.url, attempts, maxAttempts, err },
+      'Webhook delivery failed after all attempts',
+    );
+    return { attempts, delivered: false, ...(lastStatus !== undefined ? { lastStatus } : {}) };
   }
-
-  return { attempts: maxAttempts, delivered: false, ...(lastStatus !== undefined ? { lastStatus } : {}) };
 }

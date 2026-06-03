@@ -129,8 +129,8 @@ export function createStateGraph(): StateGraph {
     },
 
     set(targetId: string, value: JsonObject): void {
-      // Deep-clone then deep-freeze: atomic pointer swap per §6.2
-      const frozen = deepFreeze(deepClone(value));
+      // structuredClone produces a fresh copy; deepFreeze makes it immutable for §6.2.
+      const frozen = deepFreeze(structuredClone(value));
       store.set(targetId, frozen);
     },
 

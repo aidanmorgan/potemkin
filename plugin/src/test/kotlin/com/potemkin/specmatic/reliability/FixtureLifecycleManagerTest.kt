@@ -8,6 +8,7 @@ import com.potemkin.specmatic.FixturesClient
 import com.potemkin.specmatic.SpecmaticStubBridge
 import io.specmatic.mock.ScenarioStub
 import io.specmatic.stub.HttpStubData
+import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -263,7 +264,7 @@ class FixtureLifecycleManagerTest {
         // Change fixtures to simulate ETag/content change.
         fixturesClient.setFixtures(listOf(fixtureV2))
         // hotReloadIfChanged: known (fixtureV1 checksum) != new (fixtureV2 checksum) → reload.
-        manager.hotReloadIfChanged()
+        runBlocking { manager.hotReloadIfChanged() }
 
         // Should have cleared once and re-registered the new fixture.
         assertTrue(bridge.clearCount >= 1, "Expected at least one clear during hot-reload")
@@ -284,7 +285,7 @@ class FixtureLifecycleManagerTest {
 
         // Content changes but the server reports the same ETag.
         fixturesClient.setFixtures(listOf(makeFixture("GET", "/changed-but-same-etag")))
-        manager.hotReloadIfChanged()
+        runBlocking { manager.hotReloadIfChanged() }
 
         assertEquals(clearsBefore, bridge.clearCount, "Unchanged ETag must not trigger a reload")
     }
@@ -302,7 +303,7 @@ class FixtureLifecycleManagerTest {
 
         // Same content, new ETag.
         fixturesClient.setEtag("\"v2\"")
-        manager.hotReloadIfChanged()
+        runBlocking { manager.hotReloadIfChanged() }
 
         assertTrue(bridge.clearCount > clearsBefore, "Changed ETag must trigger a reload")
     }
@@ -319,12 +320,12 @@ class FixtureLifecycleManagerTest {
 
         // Content changes; with no ETag the hash fallback must detect it.
         fixturesClient.setFixtures(listOf(makeFixture("GET", "/v2")))
-        manager.hotReloadIfChanged()
+        runBlocking { manager.hotReloadIfChanged() }
         assertTrue(bridge.clearCount > clearsBefore, "Hash fallback must detect content change when ETag is absent")
 
         // Identical content again → hash fallback reports no change.
         val clearsAfterReload = bridge.clearCount
-        manager.hotReloadIfChanged()
+        runBlocking { manager.hotReloadIfChanged() }
         assertEquals(clearsAfterReload, bridge.clearCount, "Hash fallback must report no change for identical content")
     }
 
@@ -387,7 +388,7 @@ class FixtureLifecycleManagerTest {
                         when ((t + i) % 3) {
                             0 -> manager.pushFixtures()
                             1 -> manager.clearFixtures()
-                            else -> manager.hotReloadIfChanged()
+                            else -> runBlocking { manager.hotReloadIfChanged() }
                         }
                     }
                 } catch (e: Throwable) {
@@ -449,10 +450,105 @@ class FixtureLifecycleManagerTest {
         val clearsBefore = bridge.clearCount
 
         // Same fixture set — hotReloadIfChanged should detect no change (baseline was set by start).
-        manager.hotReloadIfChanged()
-        manager.hotReloadIfChanged()
+        runBlocking { manager.hotReloadIfChanged() }
+        runBlocking { manager.hotReloadIfChanged() }
 
         assertEquals(clearsBefore, bridge.clearCount, "Should not clear when fixture set is unchanged")
+    }
+
+    // ---- hot-reload concurrent with DOWN transition -----------------------------------
+
+    /**
+     * Verifies the hot-reload/DOWN-transition invariant:
+     *
+     *   A DOWN transition concurrent with a hot reload must NEVER leave fixtures
+     *   registered while the engine is DOWN.
+     *
+     * Timeline (controlled via latches):
+     *  1. Engine is UP with a baseline signal set.
+     *  2. Fixtures change so hotReloadIfChanged would normally re-register.
+     *  3. hotReloadIfChanged begins its fetch (slow I/O) — paused by [fetchStarted] latch.
+     *  4. While the fetch is blocked, a DOWN transition fires:
+     *     monitor → Down, onTransition dispatched, clears fixtures under transitionMutex.
+     *  5. The DOWN clear completes (verified via clearCount).
+     *  6. The fetch is released by [allowFetchComplete] latch.
+     *  7. hotReloadIfChanged acquires transitionMutex and re-checks monitor.currentState():
+     *     engine is DOWN → abort, no stubs registered.
+     *
+     * The deterministic interleaving is enforced by the two latches; no sleep/busy-wait
+     * needed for the correctness assertion.  The fix that makes this safe is:
+     *   - transitionMutex.withLock { ... } wraps the compare+register step, and
+     *   - monitor.currentState() is re-checked after acquiring the mutex.
+     */
+    @Test
+    fun `hot-reload concurrent with DOWN transition does not seat fixtures while engine is down`() {
+        val fetchStarted = java.util.concurrent.CountDownLatch(1)
+        val allowFetchComplete = java.util.concurrent.CountDownLatch(1)
+
+        // A fixtures client with two ETag values to ensure a signal mismatch is detected,
+        // and a slow fetch that pauses in the middle to allow the DOWN transition to race.
+        val callCount = java.util.concurrent.atomic.AtomicInteger(0)
+        val latchingClient = object : FixturesClient(
+            backendUrl = "http://unused",
+            httpClient = noOpHttpClient(),
+        ) {
+            override fun fetchFixtures(): List<FixtureStub> {
+                val n = callCount.incrementAndGet()
+                return if (n == 1) {
+                    // First call from start() — baseline, no latch
+                    listOf(makeFixture("GET", "/original"))
+                } else {
+                    // Second call from hotReloadIfChanged — pause here so DOWN can fire
+                    fetchStarted.countDown()
+                    allowFetchComplete.await()
+                    listOf(makeFixture("GET", "/should-not-be-seated"))
+                }
+            }
+
+            override fun lastEtag(): String? = when (callCount.get()) {
+                1 -> "\"v1\""
+                else -> "\"v2\""   // changed ETag — would normally trigger reload
+            }
+
+            override fun recordPushedPaths(paths: Set<Pair<String, String>>) {}
+            override fun excludedPaths(): Set<Pair<String, String>> = emptySet()
+        }
+
+        val manager = FixtureLifecycleManager(monitor, latchingClient, bridge)
+        manager.start()   // baseline: lastSignal = etag:"v1", registered 1 fixture
+
+        assertEquals(1, bridge.registered.size, "start() must push the initial fixture")
+
+        // Dispatch hotReloadIfChanged on a separate thread so we can control its timing.
+        val reloadThread = Thread {
+            runBlocking { manager.hotReloadIfChanged() }
+        }
+        reloadThread.start()
+
+        // Wait until the slow fetch has begun (hotReloadIfChanged is now between fetch and mutex).
+        assertTrue(fetchStarted.await(2, java.util.concurrent.TimeUnit.SECONDS), "Reload fetch must start within 2s")
+
+        // While the fetch is blocked: fire the DOWN transition.
+        monitor.markDownExternal()
+        manager.onTransition(HealthState.Up, HealthState.Down)
+
+        // Wait for the DOWN clear to complete before releasing the fetch.
+        awaitCondition(2_000) { bridge.clearCount >= 1 }
+
+        // Now release the blocked fetch — hotReloadIfChanged will resume, acquire the mutex,
+        // re-check monitor.currentState() (→ Down), and abort without re-registering stubs.
+        allowFetchComplete.countDown()
+
+        reloadThread.join(2_000)
+
+        // The DOWN transition must have cleared exactly once.
+        assertEquals(1, bridge.clearCount, "DOWN transition must have cleared exactly once")
+        // The hot-reload must NOT have re-registered the new fixture (engine is DOWN).
+        assertTrue(
+            bridge.registered.none { it.httpRequest.path == "/should-not-be-seated" },
+            "hot-reload must not register /should-not-be-seated while engine is DOWN; " +
+                "registered=${bridge.registered.map { it.httpRequest.path }}",
+        )
     }
 
     // ---- stale-push guard -----------------------------------------------
