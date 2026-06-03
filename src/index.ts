@@ -63,14 +63,14 @@ export { validateBoundaryConfig, validateGlobalConfig } from './dsl/schema.js';
 export type { GlobalConfig } from './dsl/schema.js';
 export { parseDslYaml, compileDsl } from './dsl/parser.js';
 
-// ── Scripts (inline TypeScript escape hatch) ───────────────────────────────────
+// ── Scripts (scanned @Script host functions) ──────────────────────────────────
 export type {
   ScriptContext,
   ScriptHelpers,
   ScriptHandle,
   ScriptRegistry,
 } from './scripts/types.js';
-export { buildScriptRegistry, buildCompositeScriptRegistry } from './scripts/registry.js';
+export { buildCompositeScriptRegistry } from './scripts/registry.js';
 
 // ── Contract ──────────────────────────────────────────────────────────────────
 export type {

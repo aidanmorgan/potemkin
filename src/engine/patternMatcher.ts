@@ -20,7 +20,6 @@ import { checkScopes } from '../identity/scopeChecker.js';
 import { lookupOperationId } from '../contract/loader.js';
 import type { OpenApiDoc } from '../contract/loader.js';
 import { matchRoute } from '../contract/router.js';
-import { invokeScript } from '../scripts/sandbox.js';
 import { nextUuidv7 } from '../ids/uuidv7.js';
 import { deepClone, deepMerge } from '../stategraph/graph.js';
 
@@ -125,7 +124,7 @@ export function evaluateExpr(
         { code: 'SCRIPT_EXECUTION_FAILED', scriptName, boundary },
       );
     }
-    return invokeScript(handle, scriptCtxBuilder());
+    return handle.fn(scriptCtxBuilder());
   }
   return cel.evaluate(expr, celCtx, phase);
 }
@@ -224,7 +223,13 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
             boundary.boundary, buildScriptCtx,
           );
         } catch (err) {
-          // If evaluation throws, treat as failed requirement
+          if (err instanceof InternalExecutionError || req.condition.startsWith(TS_SENTINEL)) {
+            throw new InternalExecutionError(
+              `Requires condition "${req.name}" script failed for behavior "${behavior.name}": ${err instanceof Error ? err.message : String(err)}`,
+              { code: 'SCRIPT_EXECUTION_FAILED', behavior: behavior.name, requirement: req.name },
+            );
+          }
+          // Genuine CEL evaluation/parse miss — treat as failed requirement
           condResult = false;
           log?.debug({ behaviorName: behavior.name, requiresName: req.name, err }, 'Requires condition evaluation error');
         }
@@ -253,6 +258,13 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
       );
       matched = result === true;
     } catch (err) {
+      if (err instanceof InternalExecutionError || behavior.match.condition.startsWith(TS_SENTINEL)) {
+        throw new InternalExecutionError(
+          `Behavior condition script failed for behavior "${behavior.name}": ${err instanceof Error ? err.message : String(err)}`,
+          { code: 'SCRIPT_EXECUTION_FAILED', behavior: behavior.name },
+        );
+      }
+      // Genuine CEL evaluation/parse miss — treat as no-match
       log?.debug({ behaviorName: behavior.name, err }, 'Behavior condition evaluation error — treating as no-match');
       matched = false;
     }
@@ -399,6 +411,13 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
             boundary.boundary, buildEmitWhenScriptCtx,
           );
         } catch (err) {
+          if (err instanceof InternalExecutionError || ewEntry.when.startsWith(TS_SENTINEL)) {
+            throw new InternalExecutionError(
+              `emit_when condition script failed for behavior "${behavior.name}": ${err instanceof Error ? err.message : String(err)}`,
+              { code: 'SCRIPT_EXECUTION_FAILED', behavior: behavior.name, when: ewEntry.when },
+            );
+          }
+          // Genuine CEL evaluation/parse miss — skip this emit_when entry
           log?.debug({ behaviorName: behavior.name, when: ewEntry.when, err }, 'emit_when condition error');
           whenResult = false;
         }

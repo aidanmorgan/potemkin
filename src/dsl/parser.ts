@@ -229,7 +229,6 @@ export function validateReactionCrossReferences(
  * @throws {BootError} with code `BOOT_ERR_DSL_SYNTAX` on any parse or validation failure.
  * @throws {BootError} with code `BOOT_ERR_DSL_DUPLICATE_BOUNDARY` on duplicate boundary names
  *   or contract paths.
- * @throws {BootError} with code `BOOT_ERR_SCRIPT_SYNTAX` on transpilation failure.
  */
 export async function compileDsl(
   modules: readonly { name: string; yaml: string }[],
@@ -419,10 +418,6 @@ export async function compileDsl(
       ...(hasComponents ? { components: componentsMap } : {}),
       ...(hasUseEntries ? { use: allUseEntries as readonly UseEntry[] } : {}),
     };
-
-    // Inline scripts were removed in B3: no boundary carries scripts[] any longer.
-    // buildScriptRegistry is retained for the sandbox/transpile machinery but is
-    // never called from the parser path after B3.
 
     return partialDsl as CompiledDsl;
   });

@@ -1,66 +1,13 @@
-import type { Logger } from '../observability/logger.js';
-import type { CompiledDsl } from '../dsl/types.js';
 import type { ScriptHandle, ScriptRegistry } from './types.js';
 import type { RegisteredScript } from '../sdk/index.js';
-import { transpileScript } from './transpile.js';
-import { instantiateScript } from './sandbox.js';
-
-// After B3, inline scripts were removed from the DSL surface:
-// validateBoundaryConfig rejects any boundary YAML containing `scripts:`.
-// buildScriptRegistry is retained so the sandbox/transpile unit tests continue
-// to compile and run in isolation. The production boot path (parser.ts) no
-// longer calls buildScriptRegistry because no BoundaryConfig will carry scripts.
-// The function accesses `boundary.scripts` via a type cast to preserve the
-// unit-test contract without re-adding `scripts?` to BoundaryConfig.
-type BoundaryWithLegacyScripts = {
-  readonly boundary: string;
-  readonly scripts?: readonly { readonly name: string; readonly code: string }[];
-};
-
-export function buildScriptRegistry(dsl: CompiledDsl, logger: Logger): ScriptRegistry {
-  const handles = new Map<string, ScriptHandle>();
-
-  for (const boundary of dsl.boundaries as unknown as BoundaryWithLegacyScripts[]) {
-    if (!boundary.scripts || boundary.scripts.length === 0) {
-      continue;
-    }
-
-    for (const decl of boundary.scripts) {
-      const key = `${boundary.boundary}::${decl.name}`;
-
-      const transpiledCode = transpileScript(decl.name, boundary.boundary, decl.code);
-      const handle = instantiateScript(decl.name, boundary.boundary, transpiledCode, logger);
-
-      handles.set(key, handle);
-    }
-  }
-
-  return {
-    get(boundary: string, name: string): ScriptHandle | undefined {
-      return handles.get(`${boundary}::${name}`);
-    },
-    has(boundary: string, name: string): boolean {
-      return handles.has(`${boundary}::${name}`);
-    },
-    size(): number {
-      return handles.size;
-    },
-  };
-}
 
 /**
  * Build a composite ScriptRegistry that resolves ts:<id> references against
- * both inline scripts (keyed by boundary+name) and scanned @Script functions
- * (keyed by global id).
- *
- * Resolution order:
- *   1. Inline registry — get(boundary, name) for the existing scripts[].code path.
- *   2. Scanned registry — find a RegisteredScript whose id === name, then wrap it
- *      as a ScriptHandle for direct host execution (no vm sandbox).
+ * scanned @Script functions (keyed by global id).
  *
  * Scanned @Script functions are already-compiled, trusted, operator-authored host
- * code. They execute directly as host calls (mirroring how TS reducers are invoked)
- * rather than being pushed through the node:vm inline-source sandbox.
+ * code. They execute directly as host calls rather than being pushed through a vm
+ * sandbox.
  */
 export function buildCompositeScriptRegistry(
   inlineRegistry: ScriptRegistry | undefined,
