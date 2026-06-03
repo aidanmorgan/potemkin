@@ -71,7 +71,7 @@ export type {
   ScriptHandle,
   ScriptRegistry,
 } from './scripts/types.js';
-export { buildScriptRegistry } from './scripts/registry.js';
+export { buildScriptRegistry, buildCompositeScriptRegistry } from './scripts/registry.js';
 
 // ── Contract ──────────────────────────────────────────────────────────────────
 export type {

@@ -455,7 +455,7 @@ reducers:
 // ---------------------------------------------------------------------------
 
 describe('ts: reference to missing script → boot error', () => {
-  it('halts boot with BootError when ts: reference has no matching script', async () => {
+  it('halts boot with BOOT_ERR_DSL_REFERENCE when ts: reference resolves to neither inline nor scanned', async () => {
     const bootError = await expectBootError({
       boundaryName: 'Widget',
       contractPath: '/widgets/{id}',
@@ -480,6 +480,7 @@ reducers:
 `,
     });
     expect(bootError).toBeInstanceOf(BootError);
+    expect(bootError.code).toBe('BOOT_ERR_DSL_REFERENCE');
     expect(bootError.message).toContain('nonExistentScript');
   });
 });

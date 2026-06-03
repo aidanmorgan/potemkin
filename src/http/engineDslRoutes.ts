@@ -10,6 +10,7 @@ import type { BootedSystem } from '../engine/boot.js';
 import type { CompiledDsl } from '../dsl/types.js';
 import type { DomainEvent } from '../types.js';
 import { compileDsl } from '../dsl/parser.js';
+import { validateBoundaryTsRefs } from '../dsl/schema.js';
 import {
   buildInferredSchema,
   boundaryConfigToInferenceInput,
@@ -120,6 +121,13 @@ function makeInstallProducer(sys: BootedSystem): InstallProducer {
       // onto the BootedSystem so subsequent requests see the new DSL.
       const modules = payload.modules.map((m) => ({ name: m.path, yaml: m.yaml }));
       const freshDsl = await compileDsl(modules);
+      // Fail fast on a pushed boundary whose ts:<id> resolves to neither an inline
+      // script in this bundle nor a scanned @Script known to the running system —
+      // the same guard boot applies, restored on the hot-push path (the push does
+      // not re-scan, so scanned ids come from the booted system).
+      for (const boundary of freshDsl.boundaries) {
+        validateBoundaryTsRefs(boundary, sys.scannedScriptIds);
+      }
       // Preserve global-config fields (sagas, auth, webhooks, faults, etc.)
       // from the current sys.dsl so a boundary-only push does not erase
       // config loaded from potemkin.yaml at boot time.

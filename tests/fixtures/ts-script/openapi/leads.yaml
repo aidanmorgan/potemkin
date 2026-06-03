@@ -1,0 +1,46 @@
+openapi: 3.0.3
+info:
+  title: Lead API (ts-script fixture)
+  version: "1.0.0"
+paths:
+  /leads:
+    post:
+      operationId: createLead
+      summary: Create a lead
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - companyName
+                - source
+              properties:
+                companyName:
+                  type: string
+                source:
+                  type: string
+      responses:
+        "201":
+          description: Lead created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+components:
+  schemas:
+    Lead:
+      type: object
+      additionalProperties: true
+      required:
+        - id
+      properties:
+        id:
+          type: string
+        companyName:
+          type: string
+        source:
+          type: string
+        score:
+          type: number

@@ -33,6 +33,9 @@ import { createDerivedProjectionRegistry, applyEventToDerivedProjections } from 
 import { createPluginControlClient } from '../lifecycle/pluginControlClient.js';
 import { scanTypescriptReducers, type TypescriptConfig } from '../dsl/typescriptScanner.js';
 import { validateReducerConflictsFromDsl } from '../dsl/reducerConflict.js';
+import { validateBoundaryTsRefs } from '../dsl/schema.js';
+import { buildCompositeScriptRegistry } from '../scripts/registry.js';
+import type { RegisteredScript } from '../sdk/index.js';
 import { createTsReducerRegistry, type TsReducerRegistry } from './tsReducerRegistry.js';
 import { createFetchWebhookTransport } from '../webhooks/transport.js';
 import { deriveFixtures } from '../forwarding/fixtures.js';
@@ -85,6 +88,8 @@ export interface BootInput {
 
 export interface BootedSystem {
   readonly dsl: CompiledDsl;
+  /** Global ids of scripts discovered by the @Script scanner, for ts:<id> validation on hot DSL push. */
+  readonly scannedScriptIds: ReadonlySet<string>;
   readonly openapi: OpenApiDoc;
   readonly events: EventStore;
   readonly graph: StateGraph;
@@ -369,9 +374,10 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
         { nodeEnv: 'production' },
       );
     }
+    let scannedScripts: RegisteredScript[] = [];
     if (tsConfig && tsScanCwd) {
       const phaseStart2b = Date.now();
-      bootLog.info({ step: 'ts_scan' }, 'Boot: scanning TypeScript reducers');
+      bootLog.info({ step: 'ts_scan' }, 'Boot: scanning TypeScript reducers and scripts');
       const scan = await scanTypescriptReducers(tsConfig, { cwd: tsScanCwd });
       validateReducerConflictsFromDsl({
         dsl,
@@ -379,10 +385,32 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
         tsReducers: scan.registered,
       });
       tsReducerRegistry.swap(scan.registered);
+      scannedScripts = [...scan.scripts];
       bootLog.info(
-        { step: 'ts_scan', files: scan.files.length, reducers: scan.registered.length, durationMs: Date.now() - phaseStart2b },
-        'Boot: TypeScript reducers scanned and registered',
+        { step: 'ts_scan', files: scan.files.length, reducers: scan.registered.length, scripts: scan.scripts.length, durationMs: Date.now() - phaseStart2b },
+        'Boot: TypeScript reducers and scripts scanned and registered',
       );
+    }
+
+    // ── Step 2b-ii: Validate ts: script references against combined id set ────
+    // ts: refs may resolve to either inline scripts[].code (keyed by name within
+    // a boundary) or scanned @Script functions (keyed by global id). An id that
+    // resolves to neither halts boot with BOOT_ERR_DSL_REFERENCE. This check
+    // replaces the parse-time check that only knew about inline scripts.
+    const scannedScriptIds = new Set(scannedScripts.map((s) => s.id));
+    for (const boundary of dsl.boundaries) {
+      validateBoundaryTsRefs(boundary, scannedScriptIds);
+    }
+
+    // ── Step 2b-iii: Build composite script registry ──────────────────────────
+    // Merges the inline scripts[].code registry (node:vm sandbox, 50ms budget)
+    // with scanned @Script functions (direct host call — no sandbox). The
+    // inline path is preserved unchanged (B3 removes it later). The composite
+    // registry is attached to a new dsl object so the UoW's scriptRegistry
+    // reference picks up scanned scripts automatically.
+    if (scannedScripts.length > 0 || dsl.scriptRegistry) {
+      const compositeRegistry = buildCompositeScriptRegistry(dsl.scriptRegistry, scannedScripts);
+      dsl = { ...dsl, scriptRegistry: compositeRegistry };
     }
 
     // ── Step 2c: Per-boundary schema inference + computed-field lint ──────────
@@ -704,6 +732,7 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
 
     const bootedSystem = {
       dsl,
+      scannedScriptIds,
       openapi: input.openapi,
       events,
       graph,

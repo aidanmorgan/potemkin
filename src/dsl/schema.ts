@@ -838,7 +838,6 @@ function crossValidate(config: {
   scripts?: readonly ScriptDeclaration[];
 }): void {
   const catalogTypes = new Set(config.eventCatalog.map((e) => e.type));
-  const scriptNames = new Set(config.scripts?.map((s) => s.name) ?? []);
 
   // Validate script name uniqueness
   if (config.scripts) {
@@ -878,69 +877,13 @@ function crossValidate(config: {
       }
     }
 
-    // Validate ts: references resolve to known scripts
-    const tsRefs: string[] = [];
-    // match.condition
-    if (behavior.match.condition.startsWith(TS_SENTINEL)) {
-      tsRefs.push(behavior.match.condition.slice(TS_SENTINEL.length));
-    }
-    // requires conditions
-    for (const req of behavior.match.requires ?? []) {
-      if (req.condition.startsWith(TS_SENTINEL)) {
-        tsRefs.push(req.condition.slice(TS_SENTINEL.length));
-      }
-    }
-    // postcondition
-    if (behavior.postcondition?.startsWith(TS_SENTINEL)) {
-      tsRefs.push(behavior.postcondition.slice(TS_SENTINEL.length));
-    }
-    // emitWhen.when
-    for (const ew of behavior.emitWhen ?? []) {
-      if (ew.when.startsWith(TS_SENTINEL)) {
-        tsRefs.push(ew.when.slice(TS_SENTINEL.length));
-      }
-    }
-    // dispatchCommands
-    for (const dc of behavior.dispatchCommands ?? []) {
-      if (dc.condition?.startsWith(TS_SENTINEL)) {
-        tsRefs.push(dc.condition.slice(TS_SENTINEL.length));
-      }
-      if (dc.targetId.startsWith(TS_SENTINEL)) {
-        tsRefs.push(dc.targetId.slice(TS_SENTINEL.length));
-      }
-      for (const v of Object.values(dc.payload ?? {})) {
-        if (v.startsWith(TS_SENTINEL)) {
-          tsRefs.push(v.slice(TS_SENTINEL.length));
-        }
-      }
-    }
-
-    for (const ref of tsRefs) {
-      if (!scriptNames.has(ref)) {
-        throw new BootError(
-          'BOOT_ERR_DSL_SYNTAX',
-          `Boundary "${config.boundary}": behavior "${behavior.name}" references unknown script "ts:${ref}"`,
-          { boundary: config.boundary, behavior: behavior.name, scriptName: ref },
-        );
-      }
-    }
+    // ts: reference resolution is deferred to boot time (validateBoundaryTsRefs),
+    // because scanned @Script ids are only available after the TypeScript scanner
+    // runs. crossValidate only has access to inline scriptNames.
   }
 
-  // Validate event_catalog payload_template ts: references
-  for (const entry of config.eventCatalog) {
-    for (const [field, expr] of Object.entries(entry.payloadTemplate)) {
-      if (expr.startsWith(TS_SENTINEL)) {
-        const scriptName = expr.slice(TS_SENTINEL.length);
-        if (!scriptNames.has(scriptName)) {
-          throw new BootError(
-            'BOOT_ERR_DSL_SYNTAX',
-            `Boundary "${config.boundary}": event_catalog "${entry.type}" payload_template field "${field}" references unknown script "ts:${scriptName}"`,
-            { boundary: config.boundary, eventType: entry.type, scriptName },
-          );
-        }
-      }
-    }
-  }
+  // event_catalog payload_template ts: reference resolution is also deferred to
+  // boot time for the same reason.
 
   for (const reducer of config.reducers) {
     if (!catalogTypes.has(reducer.on)) {
@@ -948,6 +891,92 @@ function crossValidate(config: {
         'BOOT_ERR_DSL_REFERENCE',
         `Boundary "${config.boundary}": reducer subscribed to unknown event type "${reducer.on}" (not in event_catalog)`,
         { boundary: config.boundary, missingType: reducer.on },
+      );
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Boot-time ts: reference validation (runs after TypeScript scanner)
+// ---------------------------------------------------------------------------
+
+/**
+ * Collect all ts:<id> script ids referenced in a boundary config.
+ * Returns the raw ids (without the "ts:" prefix).
+ */
+function collectBoundaryTsRefs(config: {
+  behaviors: readonly BehaviorRule[];
+  eventCatalog: readonly EventCatalogEntry[];
+}): string[] {
+  const refs: string[] = [];
+
+  for (const behavior of config.behaviors) {
+    if (behavior.match.condition.startsWith(TS_SENTINEL)) {
+      refs.push(behavior.match.condition.slice(TS_SENTINEL.length));
+    }
+    for (const req of behavior.match.requires ?? []) {
+      if (req.condition.startsWith(TS_SENTINEL)) {
+        refs.push(req.condition.slice(TS_SENTINEL.length));
+      }
+    }
+    if (behavior.postcondition?.startsWith(TS_SENTINEL)) {
+      refs.push(behavior.postcondition.slice(TS_SENTINEL.length));
+    }
+    for (const ew of behavior.emitWhen ?? []) {
+      if (ew.when.startsWith(TS_SENTINEL)) {
+        refs.push(ew.when.slice(TS_SENTINEL.length));
+      }
+    }
+    for (const dc of behavior.dispatchCommands ?? []) {
+      if (dc.condition?.startsWith(TS_SENTINEL)) {
+        refs.push(dc.condition.slice(TS_SENTINEL.length));
+      }
+      if (dc.targetId.startsWith(TS_SENTINEL)) {
+        refs.push(dc.targetId.slice(TS_SENTINEL.length));
+      }
+      for (const v of Object.values(dc.payload ?? {})) {
+        if (v.startsWith(TS_SENTINEL)) {
+          refs.push(v.slice(TS_SENTINEL.length));
+        }
+      }
+    }
+  }
+
+  for (const entry of config.eventCatalog) {
+    for (const expr of Object.values(entry.payloadTemplate)) {
+      if (expr.startsWith(TS_SENTINEL)) {
+        refs.push(expr.slice(TS_SENTINEL.length));
+      }
+    }
+  }
+
+  return refs;
+}
+
+/**
+ * Validate that every ts:<id> reference in a boundary resolves to either an
+ * inline script name or a scanned @Script id. Called at boot time after the
+ * TypeScript scanner has run, so both sets are available.
+ *
+ * @throws {BootError} BOOT_ERR_DSL_REFERENCE when an id resolves to neither.
+ */
+export function validateBoundaryTsRefs(
+  config: {
+    boundary: string;
+    behaviors: readonly BehaviorRule[];
+    eventCatalog: readonly EventCatalogEntry[];
+    scripts?: readonly ScriptDeclaration[];
+  },
+  scannedScriptIds: ReadonlySet<string>,
+): void {
+  const inlineNames = new Set(config.scripts?.map((s) => s.name) ?? []);
+  const refs = collectBoundaryTsRefs(config);
+  for (const ref of refs) {
+    if (!inlineNames.has(ref) && !scannedScriptIds.has(ref)) {
+      throw new BootError(
+        'BOOT_ERR_DSL_REFERENCE',
+        `Boundary "${config.boundary}": ts: reference "ts:${ref}" does not resolve to any inline script or scanned @Script id`,
+        { boundary: config.boundary, scriptId: ref },
       );
     }
   }

@@ -1,4 +1,4 @@
-import { buildScriptRegistry } from '../../../src/scripts/registry.js';
+import { buildScriptRegistry, buildCompositeScriptRegistry } from '../../../src/scripts/registry.js';
 import { BootError } from '../../../src/errors.js';
 import { createLogger } from '../../../src/observability/logger.js';
 import type { CompiledDsl, BoundaryConfig } from '../../../src/dsl/types.js';
@@ -117,5 +117,36 @@ describe('buildScriptRegistry', () => {
     };
     const result = handle!.fn(mockCtx);
     expect(result).toBe('HIGH');
+  });
+});
+
+describe('buildCompositeScriptRegistry — inline-vs-scanned precedence (B2)', () => {
+  const scanned = [
+    { id: 'shared', source: 'class:Shared', fn: () => 'SCANNED' as unknown },
+    { id: 'onlyScanned', source: 'class:OnlyScanned', fn: () => 'SCANNED_ONLY' as unknown },
+  ];
+
+  it('an inline script shadows a scanned @Script with the same name (inline wins)', () => {
+    // Inline registry built from a boundary that declares an inline `shared` script.
+    const inline = buildScriptRegistry(
+      makeDsl([makeBasicBoundary('B', [{ name: 'shared', code: 'export default () => "INLINE"' }])]),
+      logger,
+    );
+    const composite = buildCompositeScriptRegistry(inline, scanned);
+    const handle = composite.get('B', 'shared');
+    expect(handle).toBeDefined();
+    expect(handle!.source).not.toMatch(/^class:/); // resolved from inline, not the scanned class
+  });
+
+  it('falls back to the scanned @Script by global id when there is no inline script', () => {
+    const composite = buildCompositeScriptRegistry(undefined, scanned);
+    const handle = composite.get('AnyBoundary', 'onlyScanned');
+    expect(handle).toBeDefined();
+    expect(handle!.source).toBe('class:OnlyScanned');
+  });
+
+  it('returns undefined when the id matches neither inline nor scanned', () => {
+    const composite = buildCompositeScriptRegistry(undefined, scanned);
+    expect(composite.get('B', 'missing')).toBeUndefined();
   });
 });

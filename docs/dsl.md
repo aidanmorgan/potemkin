@@ -671,7 +671,7 @@ The sentinel is permitted in:
 At boot, each `scripts[].code` is transpiled from TypeScript to JavaScript using `esbuild.transformSync`. This is transpile-only — no TypeScript type-checking is performed. The compiled JavaScript is cached in the execution matrix.
 
 - Syntax error → `BOOT_ERR_SCRIPT_SYNTAX` (boot halt)
-- `ts:` sentinel referencing unknown script → `BOOT_ERR_DSL_SYNTAX` (boot halt)
+- `ts:` sentinel referencing an id that matches neither an inline script nor a scanned `@Script` → `BOOT_ERR_DSL_REFERENCE` (boot halt)
 
 ### Runtime execution
 
@@ -705,7 +705,7 @@ Every script receives a single `ctx` argument of the following shape (see `src/s
 | Condition | Code | HTTP status |
 |-----------|------|-------------|
 | `esbuild.transformSync` fails | `BOOT_ERR_SCRIPT_SYNTAX` | boot halt |
-| `ts:<name>` references unknown script | `BOOT_ERR_DSL_SYNTAX` | boot halt |
+| `ts:<id>` resolves to neither an inline script nor a scanned `@Script` | `BOOT_ERR_DSL_REFERENCE` | boot halt |
 | `ts:` in reducer-phase field | `BOOT_ERR_DSL_SYNTAX` | boot halt |
 | Script CPU timeout (50 ms) | `SCRIPT_TIMEOUT` | 500 |
 | Script throws unhandled exception | `INTERNAL_EXECUTION_FAILURE` | 500 |
@@ -747,7 +747,7 @@ This is the mechanism that ensures `GET /leads` returns the same seed data after
 | Code | Cause |
 |------|-------|
 | `BOOT_ERR_DSL_SYNTAX` | YAML parse failure, invalid field type, `emit` + `emit_when` co-presence, `ts:` in reducer, malformed CEL expression |
-| `BOOT_ERR_DSL_REFERENCE` | `emit` or `on` references an event type not in `event_catalog` |
+| `BOOT_ERR_DSL_REFERENCE` | `emit` or `on` references an event type not in `event_catalog`; or a `ts:<id>` sentinel resolves to neither an inline script nor a scanned `@Script` id |
 | `BOOT_ERR_DSL_SCHEMA_VIOLATION` | `assign`/`append` path references unknown field in OpenAPI schema; `schema_ref` cannot be resolved |
 | `BOOT_ERR_DSL_EMIT_REQUIRED` | Behavior has neither `emit` nor `emit_when` |
 | `BOOT_ERR_SCRIPT_SYNTAX` | `esbuild.transformSync` failed for a `scripts[]` entry |

@@ -1,0 +1,40 @@
+boundary: Lead
+contract_path: /leads
+fallback_override: false
+
+identity:
+  creation:
+    generate: $uuidv7()
+
+event_catalog:
+  - type: LeadCreated
+    payload_template:
+      id: "command.targetId"
+      companyName: "command.payload.companyName"
+      source: "command.payload.source"
+      score: "ts:computeScore"
+
+behaviors:
+  - name: createLead
+    match:
+      operationId: createLead
+      condition: "true"
+    emit: LeadCreated
+
+reducers:
+  - on: LeadCreated
+    patches:
+      - op: replace
+        path: /id
+        value: "${event.payload.id}"
+      - op: replace
+        path: /companyName
+        value: "${event.payload.companyName}"
+      - op: replace
+        path: /source
+        value: "${event.payload.source}"
+      - op: replace
+        path: /score
+        value: "${event.payload.score}"
+
+initialization: []
