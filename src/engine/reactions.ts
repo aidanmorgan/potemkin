@@ -1,5 +1,5 @@
 /**
- * In-UoW reaction firing engine — R3.
+ * In-UoW reaction firing engine — R3 + R4.
  *
  * Consults the reaction registry for rules matching a just-staged event, evaluates
  * each rule's `when` gate, hydrates the emitted event from the reacting boundary's
@@ -10,10 +10,15 @@
  * are sorted by reacting boundary name ascending, then by declaration index.
  * This is noted here for replay correctness; see TODO potemkin-atbe.
  *
- * Termination (R4): this increment imposes a per-UoW staged-event ceiling of
- * MAX_UOW_REACTIONS_BUDGET (1000). Exceeding it throws InternalExecutionError.
- * TODO(potemkin-gpdk): replace with fired-set dedup + configurable budget so
- *   reactions are exempt from the dispatch depth cap.
+ * Termination (R4 — fired-set dedup + event budget):
+ *  - firedReactions: a per-UoW Set of "<reactionId>@<aggregateId>" keys maintained by
+ *    the caller (UoW). A given reaction fires at most once per target aggregate within
+ *    a UoW; duplicates (including cycles) are silently suppressed.
+ *  - maxUowEvents: a configurable per-UoW event budget (default MAX_UOW_REACTION_EVENTS)
+ *    as a backstop for genuinely unbounded distinct-aggregate fan-outs; exceeding it
+ *    throws ReactionBudgetExceededError (HTTP 508) naming the offending reaction.
+ *  - Reactions are NOT bounded by the dispatch depth cap (MAX_UOW_DEPTH=5); they run
+ *    in their own work queue inside the cascade span and do not increment cmd.depth.
  */
 
 import type { DomainEvent, JsonObject, JsonValue } from '../types.js';
@@ -29,7 +34,7 @@ import type { TsReducerRegistry } from './tsReducerRegistry.js';
 import type { BoundaryInferenceResult } from '../dsl/schemaInference.js';
 
 import { CelPhase } from '../cel/phases.js';
-import { InternalExecutionError } from '../errors.js';
+import { InternalExecutionError, ReactionBudgetExceededError } from '../errors.js';
 import { projectEvent } from './projection.js';
 
 // ---------------------------------------------------------------------------
@@ -37,11 +42,31 @@ import { projectEvent } from './projection.js';
 // ---------------------------------------------------------------------------
 
 /**
- * Temporary per-UoW ceiling on total staged events (primary + dispatched + reactions).
- * If this is exceeded an InternalExecutionError is thrown to prevent infinite loops.
- * TODO(potemkin-gpdk): replace with fired-set dedup + configurable budget.
+ * Default per-UoW event budget for reaction-emitted events.
+ *
+ * The fired-set dedup handles cycles; this is a backstop for genuinely unbounded
+ * distinct-aggregate fan-outs. Configurable via UowInput.maxUowEvents.
+ *
+ * This constant lives in the engine layer (not the DSL) so DSL types stay unchanged.
  */
-export const MAX_UOW_REACTIONS_BUDGET = 1000;
+export const MAX_UOW_REACTION_EVENTS = 1000;
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Derive a stable, deterministic reaction identifier for the fired-set key.
+ *
+ * Uses reaction.name when present (human-meaningful, guaranteed unique by the
+ * YAML author). Otherwise falls back to a synthetic key derived from the
+ * (boundary, on, emit) triple, which is stable across replay even when reactions
+ * are anonymous.
+ */
+export function deriveReactionId(reaction: { name?: string; boundary?: string; on: string; emit: string }): string {
+  if (reaction.name) return reaction.name;
+  return `${reaction.boundary ?? ''}:${reaction.on}→${reaction.emit}`;
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -58,8 +83,21 @@ export interface FireReactionsInput {
   readonly nextEventId: () => string;
   readonly now: () => string;
   readonly nextSequenceVersion: (aggregateId: string) => number;
-  /** How many events have already been staged in this UoW (budget check). */
-  readonly currentStagedCount: number;
+  /**
+   * Per-UoW fired-set: keys are "<reactionId>@<aggregateId>".
+   * The caller (UoW) allocates this Set before the reaction work queue loop and
+   * passes the same instance for every fireReactions call within that UoW.
+   * fireReactions checks the set BEFORE firing (dedup/cycle suppression) and
+   * adds to it AFTER a successful fire.
+   */
+  readonly firedReactions: Set<string>;
+  /**
+   * Per-UoW event budget for reaction-emitted events.
+   * Defaults to MAX_UOW_REACTION_EVENTS when not supplied.
+   */
+  readonly maxUowEvents?: number;
+  /** How many reaction-emitted events have already been added to stagedEvents (budget check). */
+  readonly currentReactionEventCount: number;
   readonly logger?: Logger;
   readonly schemaRegistry?: ObjectGraphSchemaRegistry;
   readonly tracer?: Tracer;
@@ -121,6 +159,7 @@ export function fireReactions(input: FireReactionsInput): readonly DomainEvent[]
   });
 
   const emittedEvents: DomainEvent[] = [];
+  const budget = input.maxUowEvents ?? MAX_UOW_REACTION_EVENTS;
 
   // CEL context for when/target/payload evaluations
   const celCtx = {
@@ -129,22 +168,6 @@ export function fireReactions(input: FireReactionsInput): readonly DomainEvent[]
   };
 
   for (const reaction of sorted) {
-    // Budget check before attempting to fire each reaction
-    const totalSoFar = input.currentStagedCount + emittedEvents.length;
-    if (totalSoFar >= MAX_UOW_REACTIONS_BUDGET) {
-      throw new InternalExecutionError(
-        `Reaction budget exceeded: more than ${MAX_UOW_REACTIONS_BUDGET} events staged in a single UoW. ` +
-        `Last reaction: "${reaction.name ?? reaction.on}" on boundary "${reaction.boundary}". ` +
-        `TODO(potemkin-gpdk): implement fired-set dedup + configurable budget.`,
-        {
-          code: 'REACTION_BUDGET_EXCEEDED',
-          budget: MAX_UOW_REACTIONS_BUDGET,
-          reaction: reaction.name ?? reaction.on,
-          boundary: reaction.boundary ?? null,
-        },
-      );
-    }
-
     const reactingBoundaryName = reaction.boundary!;
     const reactingBoundary = dsl.byBoundaryName[reactingBoundaryName];
     if (!reactingBoundary) {
@@ -218,6 +241,20 @@ export function fireReactions(input: FireReactionsInput): readonly DomainEvent[]
       );
     }
 
+    // Step 2b: Fired-set dedup — suppress duplicate (reactionId, aggregateId) within this UoW.
+    // This is the primary cycle-breaking mechanism. A reaction may legitimately fire on many
+    // DISTINCT aggregates, but firing on the SAME aggregate twice in one UoW is idempotent and
+    // must be silently suppressed (not errored) to break cycles.
+    const reactionId = deriveReactionId(reaction);
+    const firedKey = `${reactionId}@${aggregateId}`;
+    if (input.firedReactions.has(firedKey)) {
+      log?.debug(
+        { reaction: reactionId, aggregateId },
+        'Reaction suppressed — already fired on this aggregate in this UoW (cycle break)',
+      );
+      continue;
+    }
+
     // Step 3: Evaluate payload overrides (CEL map merged over payload_template)
     const payloadOverrides: JsonObject = {};
     if (reaction.payload) {
@@ -233,6 +270,21 @@ export function fireReactions(input: FireReactionsInput): readonly DomainEvent[]
         }
         payloadOverrides[field] = val as JsonValue;
       }
+    }
+
+    // Step 3b: Budget backstop — for genuinely unbounded distinct-aggregate explosions.
+    // Fires AFTER dedup so cycles (suppressed above) don't count toward the budget.
+    const totalReactionEvents = input.currentReactionEventCount + emittedEvents.length;
+    if (totalReactionEvents >= budget) {
+      throw new ReactionBudgetExceededError(
+        `Reaction event budget exceeded: more than ${budget} reaction-emitted events in a single UoW. ` +
+        `Offending reaction: "${reactionId}" on boundary "${reactingBoundaryName}".`,
+        {
+          budget,
+          reaction: reactionId,
+          boundary: reactingBoundaryName,
+        },
+      );
     }
 
     // Step 4: Hydrate the emitted event from the reacting boundary's event_catalog
@@ -272,6 +324,9 @@ export function fireReactions(input: FireReactionsInput): readonly DomainEvent[]
           : {};
       })(),
     });
+
+    // Mark this (reactionId, aggregateId) pair as fired in this UoW.
+    input.firedReactions.add(firedKey);
 
     emittedEvents.push(emittedEvent);
     log?.debug(

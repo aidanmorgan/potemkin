@@ -42,6 +42,7 @@ export abstract class SimError extends Error {
       case 'MISSING_PRECONDITION': return new MissingPreconditionError(message, details);
       case 'INTERNAL_EXECUTION_ERROR': return new InternalExecutionError(message, details);
       case 'INFINITE_LOOP': return new InfiniteLoopError(message, details);
+      case 'REACTION_BUDGET_EXCEEDED': return new ReactionBudgetExceededError(message, details);
       case 'FAULT_SIMULATED': {
         const status = typeof json['status'] === 'number' ? json['status'] : 500;
         const simulatedBody = (json['simulatedBody'] as JsonValue | undefined) ?? null;
@@ -156,6 +157,22 @@ export class InternalExecutionError extends SimError {
 export class InfiniteLoopError extends SimError {
   readonly status = 508 as const;
   readonly code = 'INFINITE_LOOP' as const;
+
+  constructor(message: string, details?: JsonValue) {
+    super(message, details);
+  }
+}
+
+/**
+ * Per-UoW reaction event budget exhausted (HTTP 508).
+ *
+ * Thrown when a genuinely unbounded distinct-aggregate fan-out exceeds the
+ * configurable event budget (`max_uow_events`, default 1000). The fired-set
+ * dedup handles cycles; this is the backstop for legitimate unbounded breadth.
+ */
+export class ReactionBudgetExceededError extends SimError {
+  readonly status = 508 as const;
+  readonly code = 'REACTION_BUDGET_EXCEEDED' as const;
 
   constructor(message: string, details?: JsonValue) {
     super(message, details);

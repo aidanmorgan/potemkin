@@ -144,6 +144,13 @@ export interface UowInput {
    * rolled back. When absent, side-effects fire immediately (the normal path).
    */
   readonly deferSideEffects?: SideEffectQueue;
+  /**
+   * Per-UoW event budget for reaction-emitted events.
+   * Defaults to MAX_UOW_REACTION_EVENTS (1000) in reactions.ts when not supplied.
+   * The fired-set dedup handles cycles; this is a backstop for genuinely unbounded
+   * distinct-aggregate fan-outs. Exceeding it throws ReactionBudgetExceededError (508).
+   */
+  readonly maxUowEvents?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -514,10 +521,23 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
               // Reaction-emitted events are themselves eligible to trigger further
               // reactions — we process them via a local work queue so the same
               // per-event reaction check handles recursive fan-out.
+              //
+              // Termination (R4):
+              //  - firedReactions: per-UoW Set of "<reactionId>@<aggregateId>" keys.
+              //    A given (reaction, aggregate) pair fires at most once per UoW;
+              //    duplicates (including cycles) are silently suppressed by fireReactions.
+              //    The Set is shared across all cascade depths so cycles spanning command
+              //    boundaries are also caught.
+              //  - Reactions do NOT increment cmd.depth and are not bounded by maxDepth;
+              //    they run entirely within their own reactionWorkQueue.
               const shadowAsGraphAdapterForReactions = shadowAsStateGraph(shadow, graph);
+              const firedReactions = new Set<string>();
 
               // Seed the queue with the events produced by runPatternMatch.
               const reactionWorkQueue: DomainEvent[] = [...outcome.events];
+              // Track how many reaction-emitted events have been enqueued (not primary events)
+              // so the budget check in fireReactions counts only reaction-produced events.
+              let reactionEventCount = 0;
 
               while (reactionWorkQueue.length > 0) {
                 const evt = reactionWorkQueue.shift()!;
@@ -544,7 +564,9 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
                       stagedSeqDeltas.set(aggregateId, delta + 1);
                       return next;
                     },
-                    currentStagedCount: stagedEvents.length,
+                    firedReactions,
+                    maxUowEvents: input.maxUowEvents,
+                    currentReactionEventCount: reactionEventCount,
                     logger,
                     schemaRegistry,
                     tracer,
@@ -557,6 +579,7 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
                   // Enqueue them so their own reactions can fire (recursive fan-out).
                   for (const rEvt of reactionEvents) {
                     reactionWorkQueue.push(rEvt);
+                    reactionEventCount++;
                   }
                 }
               }
