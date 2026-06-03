@@ -30,7 +30,7 @@
  *     different concrete sibling targets (the core reuse property).
  */
 
-import { linkComponents } from '../../../src/dsl/componentLinker';
+import { linkComponents, mergeIncludes } from '../../../src/dsl/componentLinker';
 import { BootError } from '../../../src/errors';
 import type { BoundaryConfig, ComponentDefinition, ReactionRule, SecondaryCommandSpec, UseEntry } from '../../../src/dsl/types';
 
@@ -729,5 +729,357 @@ describe('C5 — parameterised boundary reference is substituted then rewritten'
     );
 
     expect(result[0]!.behaviors![0]!.dispatchCommands![0]!.boundary).toBe('ConcreteWarehouse');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C4: mergeIncludes — fragment inclusion
+// ---------------------------------------------------------------------------
+
+function makeHostBoundary(overrides: Partial<BoundaryConfig> = {}): BoundaryConfig {
+  return {
+    boundary: 'HostBoundary',
+    contractPath: '/hosts',
+    fallbackOverride: false,
+    behaviors: [],
+    reducers: [],
+    eventCatalog: [],
+    ...overrides,
+  };
+}
+
+function makeAuditMixin(): ComponentDefinition {
+  return {
+    kind: 'component',
+    name: 'AuditMixin',
+    eventCatalog: [{ type: 'AuditLogged', payloadTemplate: { actor: 'command.actor' } }],
+    reducers: [{ on: 'AuditLogged', patches: [{ op: 'replace', path: '/lastActor', value: '${event.payload.actor}' }] }],
+    behaviors: [],
+  };
+}
+
+// C4.1: A boundary that includes a mixin gains the mixin's event types and reducers.
+describe('C4 — mergeIncludes: boundary gains included event types and reducers', () => {
+  it('appends mixin event catalog entries to the host', () => {
+    const host = makeHostBoundary({
+      include: [{ component: 'AuditMixin' }],
+    });
+    const boundaries = [host];
+    const byBoundaryName = { HostBoundary: host };
+    const byContractPath = { '/hosts': host };
+
+    mergeIncludes(boundaries, { AuditMixin: makeAuditMixin() }, byBoundaryName, byContractPath);
+
+    const merged = byBoundaryName['HostBoundary']!;
+    const types = merged.eventCatalog.map((e) => e.type);
+    expect(types).toContain('AuditLogged');
+  });
+
+  it('appends mixin reducer rules to the host', () => {
+    const host = makeHostBoundary({
+      include: [{ component: 'AuditMixin' }],
+    });
+    const boundaries = [host];
+    const byBoundaryName = { HostBoundary: host };
+    const byContractPath = { '/hosts': host };
+
+    mergeIncludes(boundaries, { AuditMixin: makeAuditMixin() }, byBoundaryName, byContractPath);
+
+    const merged = byBoundaryName['HostBoundary']!;
+    const ons = merged.reducers.map((r) => r.on);
+    expect(ons).toContain('AuditLogged');
+  });
+
+  it('registers the merged boundary in byBoundaryName', () => {
+    const host = makeHostBoundary({
+      include: [{ component: 'AuditMixin' }],
+    });
+    const boundaries = [host];
+    const byBoundaryName = { HostBoundary: host };
+    const byContractPath = { '/hosts': host };
+
+    mergeIncludes(boundaries, { AuditMixin: makeAuditMixin() }, byBoundaryName, byContractPath);
+
+    expect(byBoundaryName['HostBoundary']).toBe(boundaries[0]);
+  });
+});
+
+// C4.2: Local declarations override included ones on the same key.
+describe('C4 — mergeIncludes: local declaration overrides included entry on key clash', () => {
+  it('keeps the local event catalog entry, not the included one', () => {
+    const localEvent = { type: 'AuditLogged', payloadTemplate: { customField: "'local'" } };
+    const host = makeHostBoundary({
+      eventCatalog: [localEvent],
+      include: [{ component: 'AuditMixin' }],
+    });
+    const boundaries = [host];
+    const byBoundaryName = { HostBoundary: host };
+    const byContractPath = { '/hosts': host };
+
+    mergeIncludes(boundaries, { AuditMixin: makeAuditMixin() }, byBoundaryName, byContractPath);
+
+    const merged = byBoundaryName['HostBoundary']!;
+    // Only one AuditLogged entry (local wins; mixin's is suppressed).
+    const matching = merged.eventCatalog.filter((e) => e.type === 'AuditLogged');
+    expect(matching).toHaveLength(1);
+    expect(matching[0]!.payloadTemplate['customField']).toBe("'local'");
+  });
+
+  it('keeps the local reducer, not the included one, on key clash', () => {
+    const localReducer = { on: 'AuditLogged', patches: [{ op: 'replace' as const, path: '/localField', value: 'true' }] };
+    const host = makeHostBoundary({
+      reducers: [localReducer],
+      include: [{ component: 'AuditMixin' }],
+    });
+    const boundaries = [host];
+    const byBoundaryName = { HostBoundary: host };
+    const byContractPath = { '/hosts': host };
+
+    mergeIncludes(boundaries, { AuditMixin: makeAuditMixin() }, byBoundaryName, byContractPath);
+
+    const merged = byBoundaryName['HostBoundary']!;
+    const matching = merged.reducers.filter((r) => r.on === 'AuditLogged');
+    expect(matching).toHaveLength(1);
+    expect(matching[0]!.patches![0]!.path).toBe('/localField');
+  });
+});
+
+// C4.3: Clash rules for two included fragments:
+//  - event type clash → BOOT_ERR_DSL_SYNTAX (event type is a unique key)
+//  - behavior name clash → BOOT_ERR_DSL_SYNTAX (behavior name is a unique key)
+//  - reducer on clash → COEXIST (reducer on is a non-unique key; engine runs all matches)
+describe('C4 — mergeIncludes: clash between two included fragments', () => {
+  it('throws when two included components provide the same event type', () => {
+    const mixin1: ComponentDefinition = {
+      kind: 'component',
+      name: 'MixinA',
+      eventCatalog: [{ type: 'Clashing', payloadTemplate: {} }],
+      reducers: [],
+      behaviors: [],
+    };
+    const mixin2: ComponentDefinition = {
+      kind: 'component',
+      name: 'MixinB',
+      eventCatalog: [{ type: 'Clashing', payloadTemplate: {} }],
+      reducers: [],
+      behaviors: [],
+    };
+    const host = makeHostBoundary({
+      include: [{ component: 'MixinA' }, { component: 'MixinB' }],
+    });
+    const boundaries = [host];
+    const byBoundaryName = { HostBoundary: host };
+    const byContractPath = { '/hosts': host };
+
+    expect(() =>
+      mergeIncludes(boundaries, { MixinA: mixin1, MixinB: mixin2 }, byBoundaryName, byContractPath),
+    ).toThrow(expect.objectContaining({ code: 'BOOT_ERR_DSL_SYNTAX' }));
+  });
+
+  it('two included components providing the same reducer on both coexist (reducer on is non-unique)', () => {
+    // The engine runs ALL reducers whose `on` matches, so coexistence is correct.
+    const mixin1: ComponentDefinition = {
+      kind: 'component',
+      name: 'MixinA',
+      eventCatalog: [],
+      reducers: [{ on: 'SharedEvent', patches: [{ op: 'replace', path: '/fieldA', value: 'fromA' }] }],
+      behaviors: [],
+    };
+    const mixin2: ComponentDefinition = {
+      kind: 'component',
+      name: 'MixinB',
+      eventCatalog: [],
+      reducers: [{ on: 'SharedEvent', patches: [{ op: 'replace', path: '/fieldB', value: 'fromB' }] }],
+      behaviors: [],
+    };
+    const host = makeHostBoundary({
+      include: [{ component: 'MixinA' }, { component: 'MixinB' }],
+    });
+    const boundaries = [host];
+    const byBoundaryName = { HostBoundary: host };
+    const byContractPath = { '/hosts': host };
+
+    expect(() =>
+      mergeIncludes(boundaries, { MixinA: mixin1, MixinB: mixin2 }, byBoundaryName, byContractPath),
+    ).not.toThrow();
+
+    const merged = byBoundaryName['HostBoundary']!;
+    const matching = merged.reducers.filter((r) => r.on === 'SharedEvent');
+    // Both reducers are present.
+    expect(matching).toHaveLength(2);
+    const paths = matching.map((r) => r.patches![0]!.path);
+    expect(paths).toContain('/fieldA');
+    expect(paths).toContain('/fieldB');
+  });
+
+  it('does NOT throw when the host locally overrides the clashing key', () => {
+    const mixin1: ComponentDefinition = {
+      kind: 'component',
+      name: 'MixinA',
+      eventCatalog: [{ type: 'Clashing', payloadTemplate: {} }],
+      reducers: [],
+      behaviors: [],
+    };
+    const mixin2: ComponentDefinition = {
+      kind: 'component',
+      name: 'MixinB',
+      eventCatalog: [{ type: 'Clashing', payloadTemplate: {} }],
+      reducers: [],
+      behaviors: [],
+    };
+    // The host declares Clashing locally — both mixin entries are suppressed.
+    const host = makeHostBoundary({
+      eventCatalog: [{ type: 'Clashing', payloadTemplate: { localField: "'yes'" } }],
+      include: [{ component: 'MixinA' }, { component: 'MixinB' }],
+    });
+    const boundaries = [host];
+    const byBoundaryName = { HostBoundary: host };
+    const byContractPath = { '/hosts': host };
+
+    expect(() =>
+      mergeIncludes(boundaries, { MixinA: mixin1, MixinB: mixin2 }, byBoundaryName, byContractPath),
+    ).not.toThrow();
+
+    const merged = byBoundaryName['HostBoundary']!;
+    const matching = merged.eventCatalog.filter((e) => e.type === 'Clashing');
+    expect(matching).toHaveLength(1);
+    expect(matching[0]!.payloadTemplate['localField']).toBe("'yes'");
+  });
+});
+
+// C4.4: Unknown included component throws BOOT_ERR_DSL_REFERENCE.
+describe('C4 — mergeIncludes: unknown included component throws BOOT_ERR_DSL_REFERENCE', () => {
+  it('throws when the included component is not in the catalog', () => {
+    const host = makeHostBoundary({
+      include: [{ component: 'GhostMixin' }],
+    });
+    const boundaries = [host];
+    const byBoundaryName = { HostBoundary: host };
+    const byContractPath = { '/hosts': host };
+
+    expect(() =>
+      mergeIncludes(boundaries, {}, byBoundaryName, byContractPath),
+    ).toThrow(expect.objectContaining({ code: 'BOOT_ERR_DSL_REFERENCE' }));
+  });
+
+  it('error message names the missing component', () => {
+    const host = makeHostBoundary({
+      include: [{ component: 'MissingMixin' }],
+    });
+    const boundaries = [host];
+    const byBoundaryName = { HostBoundary: host };
+    const byContractPath = { '/hosts': host };
+
+    try {
+      mergeIncludes(boundaries, {}, byBoundaryName, byContractPath);
+      fail('expected BootError');
+    } catch (e) {
+      expect(e).toBeInstanceOf(BootError);
+      expect((e as BootError).message).toContain('MissingMixin');
+    }
+  });
+});
+
+// C4.5: Parameter substitution applies to included components.
+describe('C4 — mergeIncludes: parameter substitution applied via with:', () => {
+  it('substitutes {{param}} tokens in included component event types', () => {
+    const paramMixin: ComponentDefinition = {
+      kind: 'component',
+      name: 'ParamMixin',
+      parameters: { prefix: { type: 'string', required: true } },
+      eventCatalog: [{ type: '{{prefix}}Done', payloadTemplate: {} }],
+      reducers: [{ on: '{{prefix}}Done' }],
+      behaviors: [],
+    };
+    const host = makeHostBoundary({
+      include: [{ component: 'ParamMixin', with: { prefix: 'Audit' } }],
+    });
+    const boundaries = [host];
+    const byBoundaryName = { HostBoundary: host };
+    const byContractPath = { '/hosts': host };
+
+    mergeIncludes(boundaries, { ParamMixin: paramMixin }, byBoundaryName, byContractPath);
+
+    const merged = byBoundaryName['HostBoundary']!;
+    const types = merged.eventCatalog.map((e) => e.type);
+    expect(types).toContain('AuditDone');
+    const ons = merged.reducers.map((r) => r.on);
+    expect(ons).toContain('AuditDone');
+  });
+});
+
+// C4.6: Boundaries without include: are untouched by mergeIncludes.
+describe('C4 — mergeIncludes: boundaries without include: are unmodified', () => {
+  it('leaves boundaries without include: unchanged (same object reference)', () => {
+    const host = makeHostBoundary(); // no include:
+    const boundaries = [host];
+    const byBoundaryName = { HostBoundary: host };
+    const byContractPath = { '/hosts': host };
+
+    mergeIncludes(boundaries, {}, byBoundaryName, byContractPath);
+
+    expect(boundaries[0]).toBe(host);
+    expect(byBoundaryName['HostBoundary']).toBe(host);
+  });
+});
+
+// C4.7 (Defect 2): component-carried include: propagated through use: instantiation.
+// linkComponents must copy the component's include field onto the concrete BoundaryConfig
+// so that the subsequent mergeIncludes pass processes it.
+describe('C4 — use:-instantiated boundary with component-declared include: gains mixin fragments', () => {
+  it('linkComponents propagates component include: onto the concrete boundary', () => {
+    // A component that declares include: AuditMixin.
+    const component: ComponentDefinition = {
+      kind: 'component',
+      name: 'AuditedEntity',
+      eventCatalog: [{ type: 'EntityCreated', payloadTemplate: {} }],
+      reducers: [{ on: 'EntityCreated' }],
+      behaviors: [],
+      include: [{ component: 'AuditMixin' }],
+    };
+
+    const { byBoundaryName, byContractPath } = emptyMaps();
+    const linked = linkComponents(
+      [makeUseEntry({ component: 'AuditedEntity', as: 'MyEntity', contractPath: '/my-entities' })],
+      { AuditedEntity: component },
+      byBoundaryName,
+      byContractPath,
+    );
+
+    // The concrete boundary must carry the include field so mergeIncludes can act on it.
+    expect(linked[0]!.include).toBeDefined();
+    expect(linked[0]!.include).toHaveLength(1);
+    expect(linked[0]!.include![0]!.component).toBe('AuditMixin');
+  });
+
+  it('mergeIncludes then merges the mixin into the use:-instantiated boundary', () => {
+    const component: ComponentDefinition = {
+      kind: 'component',
+      name: 'AuditedEntity',
+      eventCatalog: [{ type: 'EntityCreated', payloadTemplate: {} }],
+      reducers: [{ on: 'EntityCreated' }],
+      behaviors: [],
+      include: [{ component: 'AuditMixin' }],
+    };
+
+    const { byBoundaryName, byContractPath } = emptyMaps();
+    const linked = linkComponents(
+      [makeUseEntry({ component: 'AuditedEntity', as: 'MyEntity', contractPath: '/my-entities' })],
+      { AuditedEntity: component },
+      byBoundaryName,
+      byContractPath,
+    );
+
+    // Now run the C4 merge pass.
+    mergeIncludes(linked, { AuditedEntity: component, AuditMixin: makeAuditMixin() }, byBoundaryName, byContractPath);
+
+    const merged = byBoundaryName['MyEntity']!;
+    const types = merged.eventCatalog.map((e) => e.type);
+    expect(types).toContain('EntityCreated');
+    expect(types).toContain('AuditLogged');
+
+    const ons = merged.reducers.map((r) => r.on);
+    expect(ons).toContain('EntityCreated');
+    expect(ons).toContain('AuditLogged');
   });
 });

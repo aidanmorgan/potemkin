@@ -1,6 +1,6 @@
 # Design spec: multi-boundary atomic reactions (choreography)
 
-Status: proposed. Tracking: epic `potemkin-<epic>` and child increments below.
+Status: R1–R5, R7 shipped; R6 (documentation) and R8 (regression sweep) complete.
 
 ## Problem
 

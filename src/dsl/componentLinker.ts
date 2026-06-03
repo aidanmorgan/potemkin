@@ -1,8 +1,9 @@
 /**
  * C3: Whole-boundary instantiation linker.
+ * C4: Fragment inclusion (include:) merge.
  * C5: Cross-component reference rewriting (self via `as`, siblings via `bind`).
  *
- * Turns each `use:` entry into a concrete live BoundaryConfig by:
+ * C3 — Turns each `use:` entry into a concrete live BoundaryConfig by:
  *  1. Looking up the component by name in the compiled component catalog.
  *  2. Calling substituteParameters (C2) to apply parameter bindings.
  *  3. Rewriting boundary references (C5): self → as, siblings → bind map.
@@ -14,6 +15,22 @@
  *
  * Multiple use: entries referencing the same component each produce a DISTINCT
  * concrete boundary — different `as`/`contractPath` is what makes them distinct.
+ *
+ * C4 — mergeIncludes(): resolves include: on every file boundary (and every
+ * use:-instantiated boundary) and merges included fragments into the host.
+ * Merge precedence:
+ *  - LOCAL wins: a host-declared event type / reducer on / behavior name
+ *    overrides an identically-keyed included entry.
+ *  - INCLUDED wins (when host has no local override): the included fragment's
+ *    entry is appended.
+ *  - CLASH between two INCLUDED fragments on the same event type or behavior
+ *    name (with no host override) throws BOOT_ERR_DSL_SYNTAX. Reducer `on`
+ *    is NOT a unique key — multiple included reducers with the same `on` are
+ *    appended (all matching reducers run in the engine).
+ *
+ * Resolve include AFTER C3 linking so that component-carried include: on
+ * use:-instantiated boundaries works (linkComponents propagates the component
+ * include field into the concrete BoundaryConfig before mergeIncludes runs).
  *
  * C5 rewriting rules (applied after C2 parameter substitution):
  *  - SELF: a boundary name equal to the component's own `name` rewrites to `use.as`.
@@ -34,7 +51,9 @@ import type {
   BehaviorRule,
   BoundaryConfig,
   ComponentDefinition,
+  EventCatalogEntry,
   ReactionRule,
+  ReducerRule,
   SecondaryCommandSpec,
   UseEntry,
 } from './types.js';
@@ -287,6 +306,8 @@ export function linkComponents(
     // 6. Construct concrete BoundaryConfig.
     // The component carries optional DSL sections; absent sections become their
     // empty-array / undefined equivalents for a BoundaryConfig.
+    // include: is propagated so that mergeIncludes (C4, which runs after C3) can
+    // process component-carried fragment inclusions on the instantiated boundary.
     const concrete: BoundaryConfig = {
       boundary: entry.as,
       contractPath: entry.contractPath,
@@ -299,6 +320,9 @@ export function linkComponents(
       ...(rewritten.reactions !== undefined && rewritten.reactions.length > 0
         ? { reactions: rewritten.reactions }
         : {}),
+      ...(rewritten.include !== undefined && rewritten.include.length > 0
+        ? { include: rewritten.include }
+        : {}),
     };
 
     // 7. Register in both indexes.
@@ -308,4 +332,182 @@ export function linkComponents(
   }
 
   return linked;
+}
+
+// ---------------------------------------------------------------------------
+// C4: mergeIncludes
+// ---------------------------------------------------------------------------
+
+/**
+ * Merge a single included fragment (after substituteParameters) into the host
+ * accumulator maps. Clash detection:
+ *  - A key already present in `localKeys` (the host's own declarations) is
+ *    silently skipped — local wins.
+ *  - For event `type` and behavior `name` (unique keys): a key already present
+ *    in the corresponding `includedKeys` map (from a prior include) AND not in
+ *    `localKeys` is a clash between two included fragments → boot error.
+ *  - For reducer `on` (non-unique key): the engine runs ALL reducers whose `on`
+ *    matches an event type, so multiple included reducers with the same `on` are
+ *    legitimate and are both appended. No clash error is raised.
+ */
+function mergeFragment(
+  fragmentEventCatalog: readonly EventCatalogEntry[] | undefined,
+  fragmentReducers: readonly ReducerRule[] | undefined,
+  fragmentBehaviors: readonly BehaviorRule[] | undefined,
+  localEventTypes: ReadonlySet<string>,
+  localReducerOns: ReadonlySet<string>,
+  localBehaviorNames: ReadonlySet<string>,
+  includedEventTypes: Map<string, string>,   // key → source component name
+  includedReducerOns: Map<string, string>,   // tracked for informational purposes only (no clash error)
+  includedBehaviorNames: Map<string, string>,
+  accEventCatalog: EventCatalogEntry[],
+  accReducers: ReducerRule[],
+  accBehaviors: BehaviorRule[],
+  sourceComponentName: string,
+  hostBoundaryName: string,
+): void {
+  // Merge event catalog entries (type is a unique key — clash is a boot error).
+  for (const entry of fragmentEventCatalog ?? []) {
+    const key = entry.type;
+    if (localEventTypes.has(key)) continue; // local wins
+    if (includedEventTypes.has(key)) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `boundary "${hostBoundaryName}": include: clash — event type "${key}" is contributed by both "${includedEventTypes.get(key)}" and "${sourceComponentName}" with no local override`,
+        { boundary: hostBoundaryName, key, source1: includedEventTypes.get(key)!, source2: sourceComponentName },
+      );
+    }
+    includedEventTypes.set(key, sourceComponentName);
+    accEventCatalog.push(entry);
+  }
+
+  // Merge reducer rules (on is a NON-unique key — the engine runs ALL reducers
+  // matching an event type, so coexistence is correct; append unconditionally
+  // unless the host has a local reducer with the same `on` (local wins).
+  for (const rule of fragmentReducers ?? []) {
+    const key = rule.on;
+    if (localReducerOns.has(key)) continue; // local wins, skip this included reducer
+    includedReducerOns.set(key, sourceComponentName);
+    accReducers.push(rule);
+  }
+
+  // Merge behavior rules (name is a unique key — clash is a boot error).
+  for (const behavior of fragmentBehaviors ?? []) {
+    const key = behavior.name;
+    if (localBehaviorNames.has(key)) continue;
+    if (includedBehaviorNames.has(key)) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `boundary "${hostBoundaryName}": include: clash — behavior name "${key}" is contributed by both "${includedBehaviorNames.get(key)}" and "${sourceComponentName}" with no local override`,
+        { boundary: hostBoundaryName, key, source1: includedBehaviorNames.get(key)!, source2: sourceComponentName },
+      );
+    }
+    includedBehaviorNames.set(key, sourceComponentName);
+    accBehaviors.push(behavior);
+  }
+}
+
+/**
+ * C4: Resolve all include: entries on the given boundaries and merge the
+ * included component fragments into each host boundary.
+ *
+ * Called AFTER C3 linkComponents so that use:-instantiated boundaries (which
+ * may themselves carry include: from their component definition, propagated by
+ * linkComponents) are already present in `boundaries`.
+ *
+ * Precedence:
+ *  - Host's own (local) declarations always win on a key clash.
+ *  - A clash between two included fragments on the same event type or behavior
+ *    name with no local override is a BOOT_ERR_DSL_SYNTAX.
+ *  - Multiple included reducers with the same `on` coexist (both appended) —
+ *    reducer `on` is a non-unique key; the engine runs all matching reducers.
+ *
+ * The merged BoundaryConfig replaces the original in `byBoundaryName` and
+ * the `boundaries` array (mutated in place). `byContractPath` is updated to
+ * point at the new object as well.
+ *
+ * @param boundaries     All concrete BoundaryConfig objects (file + linked).
+ * @param components     Parsed component catalog.
+ * @param byBoundaryName Mutable boundary-name index (updated in place).
+ * @param byContractPath Mutable contract-path index (updated in place).
+ * @throws {BootError}   BOOT_ERR_DSL_REFERENCE for unknown included component.
+ * @throws {BootError}   BOOT_ERR_DSL_SYNTAX for include: clash between two fragments.
+ */
+export function mergeIncludes(
+  boundaries: BoundaryConfig[],
+  components: Record<string, ComponentDefinition>,
+  byBoundaryName: Record<string, BoundaryConfig>,
+  byContractPath: Record<string, BoundaryConfig>,
+): void {
+  for (let i = 0; i < boundaries.length; i++) {
+    const host = boundaries[i]!;
+    if (!host.include || host.include.length === 0) continue;
+
+    const hostName = host.boundary;
+
+    // Pre-compute local key sets (the host's own declarations win unconditionally).
+    const localEventTypes = new Set(host.eventCatalog.map((e) => e.type));
+    const localReducerOns = new Set(host.reducers.map((r) => r.on));
+    const localBehaviorNames = new Set(host.behaviors.map((b) => b.name));
+
+    // Accumulate included entries in order of the include: array.
+    const accEventCatalog: EventCatalogEntry[] = [];
+    const accReducers: ReducerRule[] = [];
+    const accBehaviors: BehaviorRule[] = [];
+
+    // Track which included-fragment (by component name) claimed each key —
+    // used for clash detection between two distinct fragments.
+    const includedEventTypes = new Map<string, string>();
+    const includedReducerOns = new Map<string, string>();
+    const includedBehaviorNames = new Map<string, string>();
+
+    for (const includeEntry of host.include) {
+      const component = components[includeEntry.component];
+      if (component === undefined) {
+        throw new BootError(
+          'BOOT_ERR_DSL_REFERENCE',
+          `boundary "${hostName}": include: references unknown component "${includeEntry.component}"`,
+          { boundary: hostName, component: includeEntry.component },
+        );
+      }
+
+      // Apply parameter substitution (C2) on the component before merging.
+      const substituted = substituteParameters(component, includeEntry.with ?? {});
+
+      mergeFragment(
+        substituted.eventCatalog,
+        substituted.reducers,
+        substituted.behaviors,
+        localEventTypes,
+        localReducerOns,
+        localBehaviorNames,
+        includedEventTypes,
+        includedReducerOns,
+        includedBehaviorNames,
+        accEventCatalog,
+        accReducers,
+        accBehaviors,
+        component.name,
+        hostName,
+      );
+    }
+
+    // If no fragments contributed anything new, leave the boundary unchanged.
+    if (accEventCatalog.length === 0 && accReducers.length === 0 && accBehaviors.length === 0) {
+      continue;
+    }
+
+    // Build the merged boundary: local entries first, included entries appended.
+    const merged: BoundaryConfig = {
+      ...host,
+      eventCatalog: [...host.eventCatalog, ...accEventCatalog],
+      reducers: [...host.reducers, ...accReducers],
+      behaviors: [...host.behaviors, ...accBehaviors],
+    };
+
+    // Update the mutable arrays and indexes in place.
+    boundaries[i] = merged;
+    byBoundaryName[hostName] = merged;
+    byContractPath[host.contractPath] = merged;
+  }
 }

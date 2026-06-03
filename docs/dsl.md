@@ -770,6 +770,7 @@ This is the mechanism that ensures `GET /leads` returns the same seed data after
 | `AUTH_INSUFFICIENT_SCOPES` | 403 | Actor present but scopes are not a superset of `required_scopes` |
 | `IDEMPOTENCY_KEY_CONFLICT` | 409 | Idempotency key reused with a different request body |
 | `INFINITE_LOOP_DETECTED` | 508 | Secondary command recursion exceeded `max_uow_depth = 5` |
+| `REACTION_BUDGET_EXCEEDED` | 508 | Reaction fan-out exceeded the per-UoW event budget (see [Section 19](#19-reactions-choreography)) |
 | `CEL_PHASE_BANNED` | 500 | Non-deterministic function called in reducer phase |
 
 ---
@@ -1058,12 +1059,23 @@ The boot sequence performs the following validation steps in order:
 
 | Limit | Value | Error on breach |
 |-------|-------|----------------|
-| `max_uow_depth` | 5 levels of secondary command recursion | HTTP 508 `INFINITE_LOOP_DETECTED` |
+| `max_uow_depth` | 5 levels of secondary command recursion (`dispatch_commands`) | HTTP 508 `INFINITE_LOOP_DETECTED` |
+| Reaction event budget | 1000 events per UoW (reactions only; separate from depth) | HTTP 508 `ReactionBudgetExceeded` |
 | Script CPU timeout | 50 ms per invocation | HTTP 500 `SCRIPT_TIMEOUT` |
 | Pattern-match priority | First-match-wins, source document order | n/a |
 | Reducer determinism | `$uuidv7`/`$now`/`now`/`timestamp` banned | `CEL_PHASE_BANNED` |
 | `emit` + `emit_when` co-presence | Mutually exclusive | `BOOT_ERR_DSL_SYNTAX` (boot halt) |
 | Script name characters | `[A-Za-z_][A-Za-z0-9_]*` | `BOOT_ERR_DSL_SYNTAX` (boot halt) |
+
+### Dispatch depth vs reaction termination
+
+`dispatch_commands` and `reactions` use **different** termination mechanisms and must not be confused:
+
+- **`dispatch_commands` depth cap** (`max_uow_depth = 5`): secondary commands are dispatched recursively with an incrementing `depth` counter. Any secondary command at depth > 5 throws `InfiniteLoopError` (HTTP 508 `INFINITE_LOOP_DETECTED`) immediately. This governs explicit orchestration declared in `behaviors[].dispatch_commands`.
+
+- **Reaction termination** (fired-set dedup + event budget): reactions are **not** governed by the depth counter. Instead, the UoW maintains a fired-set `Set<reactionId@aggregateId>` — a reaction fires at most once per target aggregate per UoW, breaking cycles regardless of chain depth. A separate per-UoW event budget (default 1000) is a backstop against unbounded fan-out across distinct aggregates; exceeding it throws `ReactionBudgetExceededError` (HTTP 508). Reactions can therefore chain to depths greater than 5 as long as they visit distinct aggregates and remain within the budget.
+
+The two mechanisms coexist: a behaviour that uses both `dispatch_commands` and fires reactions operates under both limits independently.
 
 ### Legacy field names
 
@@ -1656,3 +1668,120 @@ fault_rules:
 ```
 
 See: [`tests/e2e/46-chaos-headers.e2e-test.ts`](../tests/e2e/46-chaos-headers.e2e-test.ts), [`tests/e2e/48-control-headers.e2e-test.ts`](../tests/e2e/48-control-headers.e2e-test.ts)
+
+---
+
+## 19. Reactions (choreography)
+
+`reactions` is an array that may appear in any boundary file (or in the global config). Each entry declares that a boundary subscribes to another boundary's committed-to-shadow event and emits its own event inside the **same Unit of Work** — atomically, with no coupling to the source boundary.
+
+This is the write-side analogue of `derived_projections` (§9): where derived projections subscribe to events and build a read model, reactions subscribe to events and mutate write state. The canonical worked example is [`tests/e2e/66-reactions-fanout.e2e-test.ts`](../tests/e2e/66-reactions-fanout.e2e-test.ts).
+
+### Grammar
+
+```yaml
+reactions:
+  - name: record-conversion-on-campaign
+    on: "Lead:LeadConverted"
+    when: "event.payload.campaignId != null"
+    boundary: Campaign
+    emit: CampaignConversionRecorded
+    intent: mutation
+    target: "event.payload.campaignId"
+    payload:
+      leadId: "event.aggregateId"
+```
+
+| Field | Required | Meaning |
+|-------|----------|---------|
+| `on` | yes | Trigger subscription: `Boundary:EventType` or bare `EventType` (matches any boundary). |
+| `emit` | yes | Event type to emit, resolved against the reacting boundary's `event_catalog`. |
+| `target` | yes (mutation) | CEL expression resolving to the aggregate id the emitted event applies to. For `creation`, may be omitted — the reacting boundary's `identity.creation.generate` is used instead. |
+| `boundary` | no | Reacting boundary name. Defaults to the boundary of the file the reaction is declared in. Required when the reaction is declared in the global config. |
+| `name` | no | Human-readable label used in trace logs and error messages. |
+| `when` | no | CEL gate; the reaction fires only when this expression evaluates to `true`. Omitting it is equivalent to `"true"`. |
+| `intent` | no | `mutation` (default) or `creation`. |
+| `payload` | no | Map of field names to CEL expressions, merged over the emitted event's `payload_template`. Each value is a CEL expression. |
+
+A reaction requires **no behaviour** on the reacting boundary — only the event in its `event_catalog` and a reducer for it.
+
+### In-UoW atomic semantics
+
+Reactions fire inside the running Unit of Work, not after commit:
+
+1. After each event is staged and projected to the shadow graph, the reaction registry is consulted for entries whose `on` subscription matches `<boundary>:<eventType>` (or bare `<eventType>`).
+2. `when` is evaluated against the trigger context; `false` skips the reaction.
+3. `target` and `payload` are evaluated; the emitted event type's `payload_template` is hydrated and the reaction's `payload` overrides are merged on top.
+4. The emitted event is appended to the same `stagedEvents` queue and projected into the same shadow graph via the reacting boundary's reducers. Its staging can trigger further reactions (recursive fan-out), processed by the same FIFO queue.
+5. All events — primary, dispatched, and reaction-emitted — are committed in a single `eventStore.append(stagedEvents)` call. Any reaction error aborts the entire UoW (atomic, all-or-nothing).
+
+### CEL context
+
+The `when`, `target`, and `payload` expressions evaluate against the trigger event context:
+
+| Variable | Description |
+|----------|-------------|
+| `event` | The trigger domain event (`type`, `aggregateId`, `payload`, `sequenceVersion`, `boundary`) |
+| `payload` | Alias for `event.payload` |
+
+The emitted event's `payload_template` hydrates in the EventHydration phase — `$uuidv7()` and `$now()` are permitted there. In addition to `event` and `payload`, the `payload_template` context also exposes `state`, the current shadow-graph state of the reacting aggregate (the target identified by `target`), so a hydrated field may reference existing state on that aggregate. The reducer-phase ban on non-deterministic functions is preserved for reactions' reducers.
+
+### Termination (fired-set dedup + event budget)
+
+Reactions are **not** bounded by the `dispatch_commands` depth-5 cap (`max_uow_depth`). Instead the UoW maintains:
+
+- A **fired-set**: `Set<reactionId + '@' + targetAggregateId>`. A given reaction fires at most once per target aggregate within a UoW. This breaks cycles and deduplicates fan-out without a fixed depth ceiling.
+- A per-UoW **event budget** (`max_uow_events`, default 1000) as a backstop against runaway fan-out across unbounded distinct aggregates. Exceeding it throws `ReactionBudgetExceededError` (HTTP 508) and names the offending reaction.
+
+This guarantees halt while allowing unbounded breadth and depth across distinct aggregates.
+
+### Deterministic ordering
+
+For a single trigger event, matching reactions fire in a stable order:
+
+1. Reacting boundary name ascending (lexicographic).
+2. Declaration index within that boundary (document order).
+
+This ordering is deterministic so that event-log replay reproduces identical state. Reactions fire from primary and dispatched events within the UoW; saga-step events (post-commit UoWs) trigger reactions within their own UoW.
+
+### Boot-time errors
+
+| Code | Cause |
+|------|-------|
+| `BOOT_ERR_DSL_SYNTAX` | YAML parse failure, invalid field type, malformed CEL expression in `when`/`target`/`payload`, or `ts:` script sentinel in a reaction CEL field |
+| `BOOT_ERR_DSL_REFERENCE` | `emit` references an event type not in the reacting boundary's `event_catalog`, or `boundary` names an unknown boundary, or `on` references a boundary that does not exist |
+
+### Example: three-boundary fan-out
+
+The following files show a single `POST /orders` request atomically updating three independent boundaries — with zero modifications to `order.yaml`. Each subscriber declares its own reaction:
+
+```yaml
+# inventory.yaml
+reactions:
+  - name: reserve-inventory-on-order-placed
+    on: "Order:OrderPlaced"
+    intent: creation
+    emit: InventoryReserved
+```
+
+```yaml
+# notification.yaml
+reactions:
+  - name: queue-notification-on-order-placed
+    on: "Order:OrderPlaced"
+    intent: creation
+    emit: NotificationQueued
+```
+
+```yaml
+# audit.yaml
+reactions:
+  - name: record-audit-on-order-placed
+    on: "Order:OrderPlaced"
+    intent: creation
+    emit: AuditRecorded
+```
+
+One `POST /orders` emits `OrderPlaced` once; Inventory, Notification, and Audit each receive their events in the same atomic commit. The Order boundary has no `reactions` key and no knowledge of its subscribers.
+
+See [`tests/e2e/66-reactions-fanout.e2e-test.ts`](../tests/e2e/66-reactions-fanout.e2e-test.ts) for a nine-boundary variant that includes a six-hop chain (deeper than the `dispatch_commands` depth limit).

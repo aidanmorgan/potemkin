@@ -48,6 +48,7 @@ It runs in two modes:
 - [Workflows, reactions, and side effects](#workflows-reactions-and-side-effects)
   - [Coordinating a multi-step workflow with automatic rollback](#coordinating-a-multi-step-workflow-with-automatic-rollback)
   - [Building a cross-boundary read model](#building-a-cross-boundary-read-model)
+  - [Reacting to another boundary's events without coupling the source](#reacting-to-another-boundarys-events-without-coupling-the-source)
   - [Running custom logic that CEL can't express](#running-custom-logic-that-cel-cant-express)
   - [Owning an event's projection in TypeScript](#owning-an-events-projection-in-typescript)
   - [Calling out to another service when an event fires](#calling-out-to-another-service-when-an-event-fires)
@@ -313,7 +314,7 @@ dispatch_commands:
     condition: "command.payload.leadId != null"
 ```
 
-[`22-cross-boundary-dispatch`](tests/e2e/22-cross-boundary-dispatch.e2e-test.ts) is the canonical example. A deeper secondary-command cascade is in [`04-cqrs-cascade`](tests/e2e/04-cqrs-cascade.e2e-test.ts), and a multi-boundary variant is in [`17-multi-boundary-cascades`](tests/e2e/17-multi-boundary-cascades.e2e-test.ts). When you want the *other* boundaries to react on their own terms instead of being driven from here, see the multi-boundary reactions design in [`docs/design/multi-boundary-reactions.md`](docs/design/multi-boundary-reactions.md).
+[`22-cross-boundary-dispatch`](tests/e2e/22-cross-boundary-dispatch.e2e-test.ts) is the canonical example. A deeper secondary-command cascade is in [`04-cqrs-cascade`](tests/e2e/04-cqrs-cascade.e2e-test.ts), and a multi-boundary variant is in [`17-multi-boundary-cascades`](tests/e2e/17-multi-boundary-cascades.e2e-test.ts). When you want the *other* boundaries to react on their own terms instead of being driven from here, see [Reacting to another boundary's events without coupling the source](#reacting-to-another-boundarys-events-without-coupling-the-source) below.
 
 ---
 
@@ -585,6 +586,41 @@ If you want full programmatic control over how an event updates aggregate state 
 
 [`53-ts-reducer-end-to-end`](tests/e2e/53-ts-reducer-end-to-end.e2e-test.ts) runs a function-style reducer through the full stack.
 
+### Reacting to another boundary's events without coupling the source
+
+If you want one operation to atomically update several boundaries — and you want each downstream boundary to subscribe on its own terms, without the source knowing about any of them — declare `reactions` in the reacting boundaries' files. Each reaction names the event it subscribes to, the event it will emit, and a `target` CEL expression that resolves to the affected aggregate id. The source boundary needs no changes at all: add a new subscriber by dropping a new YAML file with a `reactions:` block, and the source is unmodified.
+
+All reaction-emitted events are committed in the same atomic Unit of Work as the original event. Any reaction failure aborts the entire transaction. Reactions can chain — a reaction-emitted event may itself trigger further reactions in other boundaries — without being bounded by the `dispatch_commands` depth limit of 5. Termination is guaranteed by a fired-set that allows each `(reaction, aggregate)` pair to fire at most once per UoW, plus an event budget backstop.
+
+```yaml
+# inventory.yaml — declares its own subscription; order.yaml is untouched
+reactions:
+  - name: reserve-inventory-on-order-placed
+    on: "Order:OrderPlaced"
+    intent: creation
+    emit: InventoryReserved
+```
+
+```yaml
+# notification.yaml — independently subscribes to the same source event
+reactions:
+  - name: queue-notification-on-order-placed
+    on: "Order:OrderPlaced"
+    intent: creation
+    emit: NotificationQueued
+```
+
+```yaml
+# audit.yaml — a third subscriber; source still has no reactions key
+reactions:
+  - name: record-audit-on-order-placed
+    on: "Order:OrderPlaced"
+    intent: creation
+    emit: AuditRecorded
+```
+
+A single `POST /orders` then commits four events — `OrderPlaced`, `InventoryReserved`, `NotificationQueued`, and `AuditRecorded` — atomically. The nine-boundary variant in [`66-reactions-fanout`](tests/e2e/66-reactions-fanout.e2e-test.ts) chains six hops deep (past the dispatch depth limit) and fans out to three independent legs, all in one request.
+
 ### Calling out to another service when an event fires
 
 If you want to notify an external system whenever a subscribed event is emitted — a payment processor, a fulfillment service, a logging endpoint — configure an outbound webhook. The engine POSTs the payload to your URL after the Unit of Work commits, signs the body with `x-potemkin-signature: sha256=<hmac>`, and retries with backoff up to `maxAttempts` times on failure.
@@ -807,5 +843,5 @@ If you want the engine to reject structurally invalid requests before they reach
 - **[docs/dsl.md](docs/dsl.md)** — the complete DSL reference (every field, boot/runtime errors, worked examples, and the response-generation section).
 - **[docs/cel.md](docs/cel.md)** — the CEL expression language: built-ins, operators, phase restrictions, and determinism guarantees.
 - **[docs/specmatic.md](docs/specmatic.md)** — the Specmatic integration guide.
-- **[docs/design/multi-boundary-reactions.md](docs/design/multi-boundary-reactions.md)** — proposed design for one operation atomically updating many boundaries.
+- **[docs/design/multi-boundary-reactions.md](docs/design/multi-boundary-reactions.md)** — design spec for multi-boundary atomic reactions (R1–R5, R7 shipped); covers grammar, semantics, CEL context, termination, and ordering.
 - **[tests/e2e/README.md](tests/e2e/README.md)** — how to run the e2e harness (engine-only vs full stack).

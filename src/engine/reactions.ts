@@ -381,8 +381,9 @@ interface HydrateReactionEventInput {
  * Hydrate a reaction-emitted event from the reacting boundary's event_catalog entry.
  *
  * The payload_template is evaluated in EventHydration phase against
- * `{ event: triggerEvent, payload: triggerEvent.payload }` — the same context that
- * when/target/payload use. The reaction's `payload` overrides are merged on top.
+ * `{ event: triggerEvent, payload: triggerEvent.payload, state }`, where `state` is
+ * the current shadow-graph state of the resolved target aggregate. The reaction's
+ * `payload` overrides are merged on top.
  *
  * Uses the same hydration path as behaviour-emitted events in runPatternMatch.
  */

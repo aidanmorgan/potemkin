@@ -4,7 +4,7 @@ import { createLogger, getTracer, withSpan } from '../observability/index.js';
 import { validateBoundaryConfig, validateComponentConfig, validateGlobalConfig, validateUseEntries } from './schema.js';
 import type { AuthConfig, BoundaryConfig, CompiledDsl, ComponentDefinition, FaultRule, HateoasConfig, ReactionRule, ReactionsByTrigger, SagaConfig, IdempotencyConfig, DerivedProjectionConfig, LatencyConfig, SecurityHeadersConfig, UseEntry, VersioningConfig, WebhookConfig } from './types.js';
 import { buildScriptRegistry } from '../scripts/registry.js';
-import { linkComponents } from './componentLinker.js';
+import { linkComponents, mergeIncludes } from './componentLinker.js';
 
 const log = createLogger({ name: 'dsl' });
 
@@ -324,6 +324,16 @@ export async function compileDsl(
       const linked = linkComponents(allUseEntries, componentsMap, byBoundaryName, byContractPath);
       boundaries.push(...linked);
       log.info({ linkedCount: linked.length }, 'Linked use: entries into concrete boundaries');
+    }
+
+    // C4: Merge include: fragments into their host boundaries.
+    // Runs after C3 so that use:-instantiated boundaries (which may carry
+    // include: from their component definition) are already in `boundaries`.
+    // Boundaries without include: are untouched.
+    const hasAnyIncludes = boundaries.some((b) => b.include && b.include.length > 0);
+    if (hasAnyIncludes) {
+      mergeIncludes(boundaries, componentsMap, byBoundaryName, byContractPath);
+      log.info('Merged include: fragments into host boundaries');
     }
 
     let sagas: readonly SagaConfig[] | undefined;
