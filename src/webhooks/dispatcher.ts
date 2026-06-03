@@ -169,21 +169,6 @@ const DEFAULT_MAX_ATTEMPTS = 3;
 const DEFAULT_BASE_DELAY_MS = 1_000;
 
 /**
- * Compute the backoff delay for a given attempt using full-jitter exponential
- * backoff: `base * 2^(attempt-1) * (0.5 + jitter)`, capped at MAX_BACKOFF_MS.
- * `attempt` is 1-based; jitter is a function returning a value in [0, 0.5).
- */
-export function computeBackoffMs(
-  attempt: number,
-  baseMs: number,
-  jitterFn: () => number,
-): number {
-  const exponential = baseMs * Math.pow(2, attempt - 1);
-  const capped = Math.min(exponential, MAX_BACKOFF_MS);
-  return Math.round(capped * (0.5 + jitterFn()));
-}
-
-/**
  * Options that control the retry behaviour inside `deliverWebhook`.
  * These map directly to `async-retry` options and are exposed as a test seam
  * so callers can set `minTimeout: 0, maxTimeout: 0, randomize: false` to get

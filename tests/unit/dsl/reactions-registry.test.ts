@@ -13,9 +13,13 @@
  *  - BOOT_ERR_DSL_REFERENCE: qualified trigger names an unknown trigger boundary
  *  - BOOT_ERR_DSL_REFERENCE: qualified trigger event not in that boundary's catalog
  *  - Existing boundaries with no reactions compile without error (empty registry)
+ *  - xaze: fired-set id disambiguation — distinct reactions never collide on the
+ *    fired-set key (the key is the (boundary,on,emit,target,when) tuple, not the name),
+ *    so a reused reaction name (legal under composition) does not silently miss-fire
  */
 
 import { buildReactionRegistry, validateReactionCrossReferences, compileDsl } from '../../../src/dsl/parser';
+import { deriveReactionId } from '../../../src/engine/reactions';
 import { BootError } from '../../../src/errors';
 import type { ReactionRule, BoundaryConfig } from '../../../src/dsl/types';
 
@@ -315,6 +319,47 @@ event_catalog:
     payload_template: {}
 `;
     await expect(compileDsl([{ name: 'campaign', yaml: campaignYaml }], globalYaml)).rejects.toThrow(BootError);
+  });
+});
+
+// ── xaze: fired-set id disambiguation (collision-free across distinct reactions) ──
+//
+// deriveReactionId keys the per-UoW fired-set off the reaction's distinguishing
+// shape (boundary, on, emit, target, when), NOT its name. Two genuinely distinct
+// reactions therefore never collide — even when they share a name, which happens
+// legitimately when a named component reaction is instantiated more than once.
+
+describe('xaze: deriveReactionId — distinct reactions never collide on the fired-set key', () => {
+  it('gives two reactions that share a name but differ in trigger distinct ids', () => {
+    const r1 = makeReaction({ name: 'notify', on: 'Document:DocumentCreated', emit: 'NotificationCreated', boundary: 'Notification' });
+    const r2 = makeReaction({ name: 'notify', on: 'Draft:DocumentCreated', emit: 'NotificationCreated', boundary: 'Notification' });
+    expect(deriveReactionId(r1)).not.toBe(deriveReactionId(r2));
+  });
+
+  it('gives two reactions that share name + trigger but differ in target distinct ids', () => {
+    const r1 = makeReaction({ name: 'fanout', on: 'Lead:LeadConverted', emit: 'CampaignClosed', boundary: 'Campaign', target: 'event.payload.campaignId' });
+    const r2 = makeReaction({ name: 'fanout', on: 'Lead:LeadConverted', emit: 'CampaignClosed', boundary: 'Campaign', target: 'event.payload.parentCampaignId' });
+    expect(deriveReactionId(r1)).not.toBe(deriveReactionId(r2));
+  });
+
+  it('gives two reactions that differ only in their when gate distinct ids', () => {
+    const r1 = makeReaction({ name: 'gate', on: 'Lead:LeadConverted', emit: 'CampaignClosed', boundary: 'Campaign', when: 'event.payload.tier == "gold"' });
+    const r2 = makeReaction({ name: 'gate', on: 'Lead:LeadConverted', emit: 'CampaignClosed', boundary: 'Campaign', when: 'event.payload.tier == "silver"' });
+    expect(deriveReactionId(r1)).not.toBe(deriveReactionId(r2));
+  });
+
+  it('gives the same id to a reaction firing again on the same shape (true-cycle dedup)', () => {
+    const r1 = makeReaction({ name: 'cycle', on: 'A:E', emit: 'F', boundary: 'B', target: 'event.aggregateId' });
+    const r2 = makeReaction({ name: 'different-label', on: 'A:E', emit: 'F', boundary: 'B', target: 'event.aggregateId' });
+    // Identical distinguishing shape → identical id, so a cycle is suppressed
+    // regardless of label. This is the deliberate dedup behaviour.
+    expect(deriveReactionId(r1)).toBe(deriveReactionId(r2));
+  });
+
+  it('does not throw at boot when two reactions share a name (composition reuse is legal)', () => {
+    const r1 = makeReaction({ name: 'reused', on: 'Lead:LeadConverted', emit: 'CampaignClosed', boundary: 'Campaign' });
+    const r2 = makeReaction({ name: 'reused', on: 'Lead:LeadCreated', emit: 'CampaignConversionRecorded', boundary: 'Campaign' });
+    expect(() => validateReactionCrossReferences([r1, r2], byBoundaryName)).not.toThrow();
   });
 });
 

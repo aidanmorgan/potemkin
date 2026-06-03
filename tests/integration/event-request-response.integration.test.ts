@@ -6,6 +6,7 @@
 import type { BootedSystem } from '../../src/engine/boot.js';
 import { resetSystem } from '../../src/engine/reset.js';
 import { bootCrmAgent, type CrmAgent } from './_helpers/crm-boot.js';
+import type { ForwardedRequest } from '../../src/forwarding/types.js';
 
 const APEX_LEAD_ID = '00000000-0000-7000-8000-000000000010';
 
@@ -88,6 +89,75 @@ describe('Event request/response capture', () => {
     expect(contacted).toBeDefined();
     expect(contacted!.request!.path).toBe(`/leads/${APEX_LEAD_ID}/contact`);
     expect(contacted!.request!.method).toBe('POST');
+  });
+});
+
+describe('Event response capture — forwarding path', () => {
+  let sys: BootedSystem;
+  let agent: CrmAgent['agent'];
+
+  beforeAll(async () => {
+    const booted = await bootCrmAgent();
+    sys = booted.sys;
+    agent = booted.agent;
+  });
+
+  beforeEach(() => {
+    resetSystem(sys);
+  });
+
+  it('a forwarded mutation populates event.response on the committed events', async () => {
+    const beforeCount = sys.events.size();
+
+    const fwd: ForwardedRequest = {
+      method: 'POST',
+      path: '/leads',
+      headers: {},
+      query: {},
+      body: {
+        companyName: 'FwdResp Corp',
+        contactName: 'FR',
+        phone: '+61 2 9111 0099',
+        email: 'fwdresp@test.com',
+        source: 'WEBSITE',
+      },
+    };
+
+    const res = await agent.post('/_engine/forward').send(fwd).expect(200);
+    expect(res.body.status).toBe(201);
+    const leadId = res.body.body.id as string;
+
+    const newEvents = sys.events.all().slice(beforeCount);
+    expect(newEvents.length).toBeGreaterThan(0);
+    const created = newEvents.find(e => e.aggregateId === leadId && e.type === 'LeadCreated');
+    expect(created).toBeDefined();
+    expect(created!.response).toBeDefined();
+    expect(created!.response!.status).toBe(201);
+    expect((created!.response!.body as Record<string, unknown>)['companyName']).toBe('FwdResp Corp');
+  });
+
+  it('a forwarded dry-run mutation does NOT attach event.response', async () => {
+    const beforeCount = sys.events.size();
+
+    const fwd: ForwardedRequest = {
+      method: 'POST',
+      path: '/leads',
+      headers: { 'x-potemkin-dry-run': 'true' },
+      query: {},
+      body: {
+        companyName: 'DryRun FwdResp',
+        contactName: 'DR',
+        phone: '+61 2 9111 0098',
+        email: 'dryresp@test.com',
+        source: 'WEBSITE',
+      },
+    };
+
+    const res = await agent.post('/_engine/forward').send(fwd).expect(200);
+    expect(res.body.status).toBe(201);
+
+    // Dry-run commits no events: store is unchanged.
+    expect(sys.events.size()).toBe(beforeCount);
   });
 });
 

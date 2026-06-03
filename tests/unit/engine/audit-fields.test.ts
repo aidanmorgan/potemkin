@@ -6,6 +6,9 @@
  *   - updatedBy: command.actor.id or null
  *
  * These tests exercise the UoW execution path to verify audit field injection.
+ *
+ * wifc: reaction-emitted events must also carry the originating actor's id so
+ * that audit boundaries record updatedBy correctly (not null).
  */
 
 import { executeUnitOfWork } from '../../../src/engine/uow';
@@ -13,7 +16,11 @@ import { createStateGraph } from '../../../src/stategraph/graph';
 import { createEventStore } from '../../../src/eventstore/store';
 import { createCelEvaluator } from '../../../src/cel/evaluator';
 import { makeBoundary, makeCommand, makeOpenApi } from '../_helpers';
+import { fireReactions } from '../../../src/engine/reactions';
+import { projectEvent } from '../../../src/engine/projection';
 import type { ContractValidator } from '../../../src/contract/validator';
+import type { DomainEvent } from '../../../src/types';
+import type { CompiledDsl } from '../../../src/dsl/types';
 
 // OpenAPI used for operationId resolution in these UoW tests. The boundary is bound
 // to /test; commands hit POST /test (createTest), PATCH /test/{id} (updateTest), and
@@ -302,5 +309,188 @@ describe('audit fields — updatedAt / updatedBy', () => {
     // Query should not add audit fields
     expect(entity!.updatedAt).toBeUndefined();
     expect(entity!.updatedBy).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// wifc — reaction-emitted events carry originating actor for audit boundaries
+// ---------------------------------------------------------------------------
+
+describe('wifc: reaction-emitted event records updatedBy = originating actor', () => {
+  const cel = createCelEvaluator();
+
+  it('reaction-emitted event on an audit_fields boundary records updatedBy from originating actor', () => {
+    // Reacting boundary with auditFields enabled
+    const reactingBoundary = makeBoundary({
+      boundary: 'Inventory',
+      contractPath: '/inventory/{id}',
+      auditFields: true,
+      eventCatalog: [
+        { type: 'StockReserved', payloadTemplate: { id: 'event.aggregateId' } },
+      ],
+      reducers: [
+        {
+          on: 'StockReserved',
+          patches: [{ op: 'replace', path: '/id', value: '${event.payload.id}' }],
+        },
+      ],
+    });
+
+    const dsl: CompiledDsl = {
+      boundaries: [reactingBoundary],
+      byContractPath: { '/inventory/{id}': reactingBoundary },
+      byBoundaryName: { Inventory: reactingBoundary },
+      reactionsByTrigger: new Map([
+        [
+          'Order:OrderPlaced',
+          [
+            {
+              name: 'reserve-stock',
+              on: 'Order:OrderPlaced',
+              boundary: 'Inventory',
+              emit: 'StockReserved',
+              intent: 'mutation' as const,
+              target: '"inv-agg-1"',
+            },
+          ],
+        ],
+      ]),
+    } as unknown as CompiledDsl;
+
+    const shadowGraph = createStateGraph();
+    shadowGraph.set('inv-agg-1', { id: 'inv-agg-1' });
+
+    // Trigger event carries a request snapshot with the originating actor
+    const triggerEvent: DomainEvent = {
+      eventId: 'evt-trigger-1',
+      boundary: 'Order',
+      aggregateId: 'order-agg-1',
+      type: 'OrderPlaced',
+      payload: { productId: 'prod-1', quantity: 2 },
+      timestamp: '2024-01-01T00:00:00.000Z',
+      sequenceVersion: 1,
+      causedBy: 'cmd-actor',
+      request: {
+        method: 'POST',
+        path: '/orders',
+        query: {},
+        headers: {},
+        payload: {},
+        actorId: 'user-actor-99',
+        actorScopes: ['orders:write'],
+      },
+    };
+
+    let seq = 0;
+    const emitted = fireReactions({
+      triggerEvent,
+      dsl,
+      shadowGraph,
+      cel,
+      nextEventId: () => `evt-${++seq}`,
+      now: () => '2024-01-01T00:00:00.000Z',
+      nextSequenceVersion: () => 1,
+      firedReactions: new Set(),
+      currentReactionEventCount: 0,
+    });
+
+    expect(emitted).toHaveLength(1);
+    const reactionEvent = emitted[0]!;
+
+    // The reaction-emitted event must carry the originating actor's id
+    expect(reactionEvent.request).toBeDefined();
+    expect(reactionEvent.request!.actorId).toBe('user-actor-99');
+
+    // Project the reaction event through the audit_fields boundary and check updatedBy
+    projectEvent({
+      event: reactionEvent,
+      boundary: reactingBoundary,
+      graph: shadowGraph,
+      cel,
+    });
+
+    const projected = shadowGraph.get('inv-agg-1');
+    expect(projected).not.toBeNull();
+    expect(projected!.updatedBy).toBe('user-actor-99');
+  });
+
+  it('reaction-emitted event records updatedBy = null when trigger event has no request', () => {
+    const reactingBoundary = makeBoundary({
+      boundary: 'Inventory',
+      contractPath: '/inventory/{id}',
+      auditFields: true,
+      eventCatalog: [
+        { type: 'StockReserved', payloadTemplate: { id: 'event.aggregateId' } },
+      ],
+      reducers: [
+        {
+          on: 'StockReserved',
+          patches: [{ op: 'replace', path: '/id', value: '${event.payload.id}' }],
+        },
+      ],
+    });
+
+    const dsl: CompiledDsl = {
+      boundaries: [reactingBoundary],
+      byContractPath: { '/inventory/{id}': reactingBoundary },
+      byBoundaryName: { Inventory: reactingBoundary },
+      reactionsByTrigger: new Map([
+        [
+          'Order:OrderPlaced',
+          [
+            {
+              name: 'reserve-stock-anon',
+              on: 'Order:OrderPlaced',
+              boundary: 'Inventory',
+              emit: 'StockReserved',
+              intent: 'mutation' as const,
+              target: '"inv-agg-2"',
+            },
+          ],
+        ],
+      ]),
+    } as unknown as CompiledDsl;
+
+    const shadowGraph = createStateGraph();
+    shadowGraph.set('inv-agg-2', { id: 'inv-agg-2' });
+
+    // Trigger event has NO request field (system-generated event, no actor)
+    const triggerEvent: DomainEvent = {
+      eventId: 'evt-trigger-2',
+      boundary: 'Order',
+      aggregateId: 'order-agg-2',
+      type: 'OrderPlaced',
+      payload: {},
+      timestamp: '2024-01-01T00:00:00.000Z',
+      sequenceVersion: 1,
+      causedBy: null,
+    };
+
+    let seq = 0;
+    const emitted = fireReactions({
+      triggerEvent,
+      dsl,
+      shadowGraph,
+      cel,
+      nextEventId: () => `evt-r-${++seq}`,
+      now: () => '2024-01-01T00:00:00.000Z',
+      nextSequenceVersion: () => 1,
+      firedReactions: new Set(),
+      currentReactionEventCount: 0,
+    });
+
+    expect(emitted).toHaveLength(1);
+    const reactionEvent = emitted[0]!;
+    expect(reactionEvent.request).toBeUndefined();
+
+    projectEvent({
+      event: reactionEvent,
+      boundary: reactingBoundary,
+      graph: shadowGraph,
+      cel,
+    });
+
+    const projected = shadowGraph.get('inv-agg-2');
+    expect(projected!.updatedBy).toBeNull();
   });
 });

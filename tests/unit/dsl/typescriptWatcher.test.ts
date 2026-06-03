@@ -7,6 +7,8 @@ import { registry } from '../../../src/sdk/index.js';
 import { BootError } from '../../../src/errors.js';
 import * as typescriptScanner from '../../../src/dsl/typescriptScanner.js';
 import type { ScannerResult } from '../../../src/dsl/typescriptScanner.js';
+import { createTsScriptRegistry } from '../../../src/engine/tsScriptRegistry.js';
+import type { RegisteredScript } from '../../../src/sdk/index.js';
 
 async function makeTree(files: Record<string, string>): Promise<string> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'potemkin-ts-watch-'));
@@ -213,6 +215,131 @@ describe('typescriptWatcher — in-flight guard (no concurrent rescans)', () => 
 
       // Exactly 3 scan invocations — no extra concurrent call.
       expect(spyFinal).toHaveBeenCalledTimes(3);
+    } finally {
+      await w.stop();
+    }
+  });
+});
+
+// ── TsScriptRegistry swap mechanism ──────────────────────────────────────────
+//
+// These tests exercise the mutable holder directly (no real chokidar watcher
+// needed).  The mechanism used in boot.ts is:
+//
+//   1. createTsScriptRegistry(inlineRegistry, initialScripts) returns a holder
+//      that implements ScriptRegistry and is placed into dsl.scriptRegistry.
+//   2. The onSwap callback calls tsScriptRegistry.swap(result.scripts).
+//   3. Every subsequent call to dsl.scriptRegistry.get(boundary, name) resolves
+//      against the NEW @Script functions because the holder's `current` pointer
+//      is updated atomically inside swap().
+//
+// Because dsl.scriptRegistry is read at UoW time (not captured at boot time),
+// all in-flight and future UoWs see the new functions immediately after swap().
+
+describe('TsScriptRegistry — swap updates get() to the new @Script function', () => {
+  function makeScript(id: string, returnValue: unknown): RegisteredScript {
+    return { id, fn: () => returnValue, source: `test:${id}` };
+  }
+
+  it('get() returns the initial function before any swap', () => {
+    const initial = makeScript('computeScore', 42);
+    const reg = createTsScriptRegistry(undefined, [initial]);
+
+    const handle = reg.get('Lead', 'computeScore');
+    expect(handle).toBeDefined();
+    expect(handle!.fn({} as never)).toBe(42);
+  });
+
+  it('get() returns the NEW function immediately after swap()', () => {
+    const initial = makeScript('computeScore', 42);
+    const reg = createTsScriptRegistry(undefined, [initial]);
+
+    const updated = makeScript('computeScore', 99);
+    reg.swap([updated]);
+
+    const handle = reg.get('Lead', 'computeScore');
+    expect(handle).toBeDefined();
+    expect(handle!.fn({} as never)).toBe(99);
+  });
+
+  it('get() returns undefined for an id removed from the snapshot after swap()', () => {
+    const initial = makeScript('computeScore', 42);
+    const reg = createTsScriptRegistry(undefined, [initial]);
+
+    reg.swap([]); // empty snapshot — script no longer present
+
+    expect(reg.get('Lead', 'computeScore')).toBeUndefined();
+  });
+
+  it('size() reflects the number of scripts after swap()', () => {
+    const reg = createTsScriptRegistry(undefined, [makeScript('s1', 1), makeScript('s2', 2)]);
+    expect(reg.size()).toBe(2);
+
+    reg.swap([makeScript('s1', 10), makeScript('s2', 20), makeScript('s3', 30)]);
+    expect(reg.size()).toBe(3);
+  });
+
+  it('inline registry entries are preserved across swap()', () => {
+    const inlineHandle = { name: 'legacyScript', boundary: 'Orders', source: 'inline', fn: () => 'legacy' };
+    const inlineRegistry = {
+      get: (b: string, n: string) => (b === 'Orders' && n === 'legacyScript' ? inlineHandle : undefined),
+      has: (b: string, n: string) => b === 'Orders' && n === 'legacyScript',
+      size: () => 1,
+    };
+
+    const reg = createTsScriptRegistry(inlineRegistry, [makeScript('scannedFn', 'original')]);
+
+    reg.swap([makeScript('scannedFn', 'updated')]);
+
+    // Scanned script updated.
+    expect(reg.get('Lead', 'scannedFn')!.fn({} as never)).toBe('updated');
+    // Inline script still resolvable.
+    expect(reg.get('Orders', 'legacyScript')).toBe(inlineHandle);
+  });
+});
+
+describe('typescriptWatcher — onSwap callback receives scripts in result', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('onSwap result.scripts is the scripts array returned by scanTypescriptReducers', async () => {
+    const scriptEntry: RegisteredScript = { id: 'myScript', fn: () => 'v1', source: 'test' };
+    const mockResult: ScannerResult = {
+      files: [],
+      registered: [],
+      scripts: [scriptEntry],
+    };
+
+    jest.spyOn(typescriptScanner, 'scanTypescriptReducers').mockResolvedValue(mockResult);
+
+    const { promises: fsp } = await import('node:fs');
+    const osp = await import('node:path');
+    const osp2 = await import('node:os');
+    const root = await fsp.mkdtemp(osp.join(osp2.tmpdir(), 'potemkin-ts-watch-scripts-'));
+    await fsp.mkdir(osp.join(root, 'src'), { recursive: true });
+    await fsp.writeFile(osp.join(root, 'src', 'seed.ts'), '// seed', 'utf8');
+
+    const swapScripts: RegisteredScript[][] = [];
+
+    const w = await startTypescriptWatcher({
+      config: { scan: [{ include: ['src/**/*.ts'] }], watch: true, watchDebounceMs: 10 },
+      cwd: root,
+      onSwap: (r) => { swapScripts.push([...r.scripts]); },
+    });
+
+    try {
+      await fsp.writeFile(osp.join(root, 'src', 'a.ts'), '// change', 'utf8');
+
+      const deadline = Date.now() + 3000;
+      while (Date.now() < deadline && swapScripts.length === 0) {
+        await new Promise((r2) => setTimeout(r2, 30));
+      }
+
+      expect(swapScripts.length).toBeGreaterThanOrEqual(1);
+      const lastSwap = swapScripts[swapScripts.length - 1];
+      expect(lastSwap).toHaveLength(1);
+      expect(lastSwap[0].id).toBe('myScript');
     } finally {
       await w.stop();
     }

@@ -23,9 +23,24 @@ import { createLogger } from '../observability/index.js';
 
 const logger = createLogger({ name: 'forwarding.fixtures' });
 
-// Shared AJV instance for response-schema validation
-const ajv = new Ajv({ allErrors: true, strict: false, useDefaults: true });
-addFormats(ajv);
+// Per-schema validator cache keyed by schema object identity. A ref string like
+// `#/components/schemas/X` is only unique within one OpenAPI document, so a
+// string-keyed cache would collide across concurrently-booted systems. Keying
+// by the resolved schema *object* via a WeakMap is safe across systems and lets
+// schemas be garbage-collected with their OpenAPI doc (mirrors the pattern used
+// in src/engine/projection.ts).
+const _fixtureValidatorBySchema = new WeakMap<object, (data: unknown) => boolean>();
+
+function compileFixtureValidator(schema: object): (data: unknown) => boolean {
+  const cached = _fixtureValidatorBySchema.get(schema);
+  if (cached) return cached;
+  const ajv = new Ajv({ allErrors: true, strict: false, useDefaults: true });
+  addFormats(ajv);
+  const compiled = ajv.compile(schema);
+  const validate = (data: unknown): boolean => compiled(data) as boolean;
+  _fixtureValidatorBySchema.set(schema, validate);
+  return validate;
+}
 
 /**
  * Check whether a given OpenAPI path template is a "get-by-id" path relative to
@@ -95,8 +110,8 @@ function validateBodyAgainstSchema(
   const schema = getOp.responseSchemas['200'] ?? getOp.responseSchemas['default'];
   if (!schema) return true;
 
-  const validate = ajv.compile(schema);
-  return validate(body) as boolean;
+  const validate = compileFixtureValidator(schema as object);
+  return validate(body);
 }
 
 /**

@@ -77,14 +77,27 @@ export const MAX_UOW_REACTION_EVENTS = 1000;
 /**
  * Derive a stable, deterministic reaction identifier for the fired-set key.
  *
- * Uses reaction.name when present (human-meaningful, guaranteed unique by the
- * YAML author). Otherwise falls back to a synthetic key derived from the
- * (boundary, on, emit) triple, which is stable across replay even when reactions
- * are anonymous.
+ * The id is built from the reaction's full distinguishing shape — the
+ * (boundary, on, emit, target, when) tuple — rather than its `name`. Two
+ * genuinely distinct reactions therefore never collide on the fired-set key,
+ * even when they share a `name` (which legitimately happens when a named
+ * component reaction is instantiated more than once: each instance is rewritten
+ * to a distinct boundary/on/target). A true cycle — the same reaction re-firing
+ * on the same aggregate — still maps to the same id and is suppressed. The id is
+ * a pure function of the reaction's fields, so it is stable across replay.
+ *
+ * `name` is intentionally excluded: it carries no identity beyond what the tuple
+ * already encodes, and including it would let two structurally identical
+ * reactions evade dedup merely by differing in label.
  */
-export function deriveReactionId(reaction: { name?: string; boundary?: string; on: string; emit: string }): string {
-  if (reaction.name) return reaction.name;
-  return `${reaction.boundary ?? ''}:${reaction.on}→${reaction.emit}`;
+export function deriveReactionId(reaction: {
+  boundary?: string;
+  on: string;
+  emit: string;
+  target?: string;
+  when?: string;
+}): string {
+  return `${reaction.boundary ?? ''}:${reaction.on}→${reaction.emit}|t=${reaction.target ?? ''}|w=${reaction.when ?? ''}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -305,10 +318,10 @@ export function fireReactions(input: FireReactionsInput): readonly DomainEvent[]
     if (totalReactionEvents >= budget) {
       throw new ReactionBudgetExceededError(
         `Reaction event budget exceeded: more than ${budget} reaction-emitted events in a single UoW. ` +
-        `Offending reaction: "${reactionId}" on boundary "${reactingBoundaryName}".`,
+        `Offending reaction: "${reaction.name ?? reaction.on}" on boundary "${reactingBoundaryName}".`,
         {
           budget,
-          reaction: reactionId,
+          reaction: reaction.name ?? reaction.on,
           boundary: reactingBoundaryName,
         },
       );
@@ -489,6 +502,28 @@ function hydrateReactionEvent(input: HydrateReactionEventInput): DomainEvent {
 
   const sequenceVersion = nextSequenceVersion(aggregateId);
 
+  // Propagate a minimal request snapshot so audit boundaries record the correct actor.
+  // The actor comes from the originating command via the trigger event's request field.
+  // Reaction-emitted events have no HTTP method/path/payload of their own, so those
+  // fields carry a synthetic sentinel; only actorId/actorScopes are meaningful here.
+  const reactionRequest = triggerEvent.request !== undefined
+    ? {
+        method: 'REACTION',
+        path: '',
+        query: {},
+        headers: {},
+        payload: {},
+        ...(triggerEvent.request.actorId !== undefined
+          ? {
+              actorId: triggerEvent.request.actorId,
+              ...(triggerEvent.request.actorScopes !== undefined
+                ? { actorScopes: triggerEvent.request.actorScopes }
+                : {}),
+            }
+          : {}),
+      }
+    : undefined;
+
   const domainEvent: DomainEvent = Object.freeze({
     eventId,
     boundary: reactingBoundary.boundary,
@@ -498,6 +533,7 @@ function hydrateReactionEvent(input: HydrateReactionEventInput): DomainEvent {
     timestamp: now(),
     sequenceVersion,
     causedBy: triggerEvent.eventId,
+    ...(reactionRequest !== undefined ? { request: reactionRequest } : {}),
   });
 
   logger?.debug(

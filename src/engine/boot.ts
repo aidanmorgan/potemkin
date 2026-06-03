@@ -37,6 +37,7 @@ import { validateBoundaryTsRefs } from '../dsl/schema.js';
 import { buildCompositeScriptRegistry } from '../scripts/registry.js';
 import type { RegisteredScript } from '../sdk/index.js';
 import { createTsReducerRegistry, type TsReducerRegistry } from './tsReducerRegistry.js';
+import { createTsScriptRegistry } from './tsScriptRegistry.js';
 import { createFetchWebhookTransport } from '../webhooks/transport.js';
 import { deriveFixtures } from '../forwarding/fixtures.js';
 import {
@@ -405,9 +406,22 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
     // After B3 the inline scripts[].code form is removed; dsl.scriptRegistry
     // will always be undefined here, but buildCompositeScriptRegistry handles
     // undefined gracefully so the branch is retained for scanned-only usage.
+    //
+    // When watch mode is active the composite registry is wrapped in a
+    // TsScriptRegistry mutable holder (same pattern as TsReducerRegistry) so
+    // the onSwap callback below can rebuild it from the new @Script snapshot
+    // without touching any UoW call site.  The holder itself is placed into
+    // dsl.scriptRegistry, so all existing reads of input.dsl.scriptRegistry
+    // automatically see the latest functions after each hot reload.
+    let tsScriptRegistry: ReturnType<typeof createTsScriptRegistry> | undefined;
     if (scannedScripts.length > 0 || dsl.scriptRegistry) {
-      const compositeRegistry = buildCompositeScriptRegistry(dsl.scriptRegistry, scannedScripts);
-      dsl = { ...dsl, scriptRegistry: compositeRegistry };
+      if (tsConfig?.watch === true) {
+        tsScriptRegistry = createTsScriptRegistry(dsl.scriptRegistry, scannedScripts);
+        dsl = { ...dsl, scriptRegistry: tsScriptRegistry };
+      } else {
+        const compositeRegistry = buildCompositeScriptRegistry(dsl.scriptRegistry, scannedScripts);
+        dsl = { ...dsl, scriptRegistry: compositeRegistry };
+      }
     }
 
     // ── Step 2c: Per-boundary schema inference + computed-field lint ──────────
@@ -716,9 +730,10 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
         cwd: tsScanCwd,
         onSwap: (result) => {
           tsReducerRegistry.swap(result.registered);
+          tsScriptRegistry?.swap(result.scripts);
           bootLog.info(
-            { step: 'ts_watch_swap', reducers: result.registered.length },
-            'Boot: TypeScript reducer registry hot-swapped',
+            { step: 'ts_watch_swap', reducers: result.registered.length, scripts: result.scripts.length },
+            'Boot: TypeScript reducer and script registries hot-swapped',
           );
         },
         onError: (err) => {

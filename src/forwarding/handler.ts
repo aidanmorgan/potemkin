@@ -225,11 +225,13 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       ...(controls.transparency.seed !== undefined ? { seed: controls.transparency.seed } : {}),
     });
 
-    // 5a. Admin gating for actor-override / impersonate and request-validation skip.
+    // 5a. Admin gating for actor-override / impersonate and request/response-validation skips.
     const usesAdminGated =
       Boolean(controls.identity.actorOverride) ||
       Boolean(controls.identity.impersonate) ||
-      controls.validation.skipRequestValidation === true;
+      controls.validation.skipRequestValidation === true ||
+      controls.validation.skipResponseValidation === true ||
+      controls.validation.allowAdditionalProperties === true;
     if (usesAdminGated) {
       let callerActor;
       try {
@@ -517,6 +519,15 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       const mapped = mapErrorToStatus(err);
       send({ status: mapped.status, headers: { ...(mapped.headers ?? {}), 'x-specmatic-result': 'failure' }, body: mapped.body });
       return;
+    }
+
+    // Attach response snapshot to committed events so saga compensation and
+    // time-travel reads see event.response — mirroring gateway lines 896-900.
+    if (!controls.transparency.dryRun && result.events.length > 0) {
+      sys.events.attachResponse(
+        result.events.map(e => e.eventId),
+        { status: result.status, body: result.body, headers: { ...(result.headers ?? {}) } },
+      );
     }
 
     const responseHeaders: Record<string, string> = { ...(result.headers ?? {}) };

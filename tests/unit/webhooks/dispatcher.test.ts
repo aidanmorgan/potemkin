@@ -11,7 +11,6 @@ import {
   signWebhookBody,
   prepareWebhookDelivery,
   deliverWebhook,
-  computeBackoffMs,
   WEBHOOK_SIGNATURE_HEADER,
   type FetchLike,
 } from '../../../src/webhooks/dispatcher';
@@ -136,14 +135,6 @@ describe('webhooks/dispatcher — delivery', () => {
     expect(result.delivered).toBe(true);
     expect(result.attempts).toBeGreaterThan(1);
     expect(result.lastStatus).toBe(200);
-  });
-
-  it('applies jitter via the injected deterministic function to compute the backoff delay', () => {
-    // jitter fixed at 0.25 → delay = base * 2^(attempt-1) * (0.5 + 0.25) = base * 0.75
-    const fixedJitter = () => 0.25;
-    expect(computeBackoffMs(1, 1000, fixedJitter)).toBe(Math.round(1000 * 1 * 0.75));
-    expect(computeBackoffMs(2, 1000, fixedJitter)).toBe(Math.round(1000 * 2 * 0.75));
-    expect(computeBackoffMs(3, 1000, fixedJitter)).toBe(Math.round(1000 * 4 * 0.75));
   });
 
   it('honors an explicit maxAttempts override via retryConfig', async () => {

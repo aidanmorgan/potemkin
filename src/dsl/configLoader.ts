@@ -16,23 +16,12 @@ import {
   validatePotemkinConfig,
   type PotemkinConfig,
   type PotemkinConfigPlugin,
-  type PotemkinConfigSeed,
-  type PotemkinConfigWorkflow,
-  type PotemkinConfigOverlay,
-  type PotemkinConfigGovernance,
 } from './configSchema.js';
 
 export interface SpecEndpoint {
   readonly specId: string;
   readonly path: string;
   readonly method: string;
-}
-
-export interface ForwardBlocks {
-  readonly seeds?: readonly PotemkinConfigSeed[];
-  readonly workflow?: PotemkinConfigWorkflow;
-  readonly overlay?: PotemkinConfigOverlay;
-  readonly governance?: PotemkinConfigGovernance;
 }
 
 export interface LoadedConfig {
@@ -50,8 +39,13 @@ export interface LoadedConfig {
   /** Absolute paths of use-mapping files (files with only a `use:` key). */
   readonly useMappingModulePaths: readonly string[];
   readonly pluginConfig: PotemkinConfigPlugin | undefined;
-  readonly forwardBlocks: ForwardBlocks;
   readonly typescript: PotemkinConfig['typescript'];
+  // Note: the `seeds`/`workflow`/`overlay`/`governance` forward blocks from
+  // potemkin.yaml are intentionally NOT surfaced here. The Kotlin Specmatic
+  // plugin parses them directly from potemkin.yaml (ForwardBlocks.parse in
+  // plugin/src/main/kotlin/.../ForwardBlocks.kt), and the e2e harness reads the
+  // same file directly — the TS engine never consumes them, so collecting them
+  // here would be a parsed-but-dead field.
 }
 
 export interface LoadOptions {
@@ -181,12 +175,6 @@ export async function loadPotemkinConfig(
     componentModulePaths: componentModules.map((m) => m.path),
     useMappingModulePaths: useMappingModules.map((m) => m.path),
     pluginConfig: config.plugin,
-    forwardBlocks: {
-      ...(config.seeds ? { seeds: config.seeds } : {}),
-      ...(config.workflow ? { workflow: config.workflow } : {}),
-      ...(config.overlay ? { overlay: config.overlay } : {}),
-      ...(config.governance ? { governance: config.governance } : {}),
-    },
     typescript: config.typescript,
   };
 }

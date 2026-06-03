@@ -471,8 +471,55 @@ export function mergeIncludes(
         );
       }
 
+      // Reject unsupported sections in an included component: reactions, identity,
+      // state, and nested include: cannot be merged via include: (no as/bind context
+      // for reference rewriting, and semantic mismatches). Make failures loud.
+      if (component.reactions !== undefined && component.reactions.length > 0) {
+        throw new BootError(
+          'BOOT_ERR_DSL_SYNTAX',
+          `boundary "${hostName}": include: component "${component.name}" declares "reactions" — reactions are not supported under include: (use use: for components with reactions)`,
+          { boundary: hostName, component: component.name, section: 'reactions' },
+        );
+      }
+      if (component.identity !== undefined) {
+        throw new BootError(
+          'BOOT_ERR_DSL_SYNTAX',
+          `boundary "${hostName}": include: component "${component.name}" declares "identity" — identity is not supported under include:`,
+          { boundary: hostName, component: component.name, section: 'identity' },
+        );
+      }
+      if (component.state !== undefined) {
+        throw new BootError(
+          'BOOT_ERR_DSL_SYNTAX',
+          `boundary "${hostName}": include: component "${component.name}" declares "state" — state is not supported under include:`,
+          { boundary: hostName, component: component.name, section: 'state' },
+        );
+      }
+      if (component.include !== undefined && component.include.length > 0) {
+        throw new BootError(
+          'BOOT_ERR_DSL_SYNTAX',
+          `boundary "${hostName}": include: component "${component.name}" declares its own "include:" — nested include is not supported under include:`,
+          { boundary: hostName, component: component.name, section: 'include' },
+        );
+      }
+
       // Apply parameter substitution (C2) on the component before merging.
       const substituted = substituteParameters(component, includeEntry.with ?? {});
+
+      // Reject behaviors whose dispatchCommands reference a boundary name that is
+      // not a known concrete boundary. include: has no as/bind rewriting context,
+      // so alias-looking names would be merged verbatim and silently mis-target.
+      for (const behavior of substituted.behaviors ?? []) {
+        for (const dc of behavior.dispatchCommands ?? []) {
+          if (!Object.prototype.hasOwnProperty.call(byBoundaryName, dc.boundary)) {
+            throw new BootError(
+              'BOOT_ERR_DSL_SYNTAX',
+              `boundary "${hostName}": include: component "${component.name}" behavior "${behavior.name}" dispatch_commands.boundary "${dc.boundary}" is not a known concrete boundary — included behaviors must use concrete boundary names (include: has no bind: rewriting context)`,
+              { boundary: hostName, component: component.name, behavior: behavior.name, alias: dc.boundary },
+            );
+          }
+        }
+      }
 
       mergeFragment(
         substituted.eventCatalog,

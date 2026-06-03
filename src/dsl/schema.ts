@@ -1147,6 +1147,37 @@ function validateParametersBlock(
     const paramType = typeRaw as ParameterType;
     const defaultRaw = entry['default'];
     const requiredRaw = entry['required'];
+
+    // required must be a boolean when present.
+    if (requiredRaw !== undefined && typeof requiredRaw !== 'boolean') {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `${pctx}: "required" must be a boolean (got ${JSON.stringify(requiredRaw)})`,
+        { field: `parameters.${paramName}.required`, context: pctx },
+      );
+    }
+
+    // required: true and default are mutually exclusive.
+    if (requiredRaw === true && defaultRaw !== undefined) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `${pctx}: parameter "${paramName}" declares both "required: true" and "default" — they are mutually exclusive`,
+        { field: `parameters.${paramName}`, context: pctx },
+      );
+    }
+
+    // default must match the declared type.
+    if (defaultRaw !== undefined) {
+      const defaultJsType = typeof defaultRaw;
+      if (defaultJsType !== paramType) {
+        throw new BootError(
+          'BOOT_ERR_DSL_SYNTAX',
+          `${pctx}: parameter "${paramName}" default value type mismatch — declared type is ${paramType} but default is ${defaultJsType} (${JSON.stringify(defaultRaw)})`,
+          { field: `parameters.${paramName}.default`, context: pctx },
+        );
+      }
+    }
+
     const decl: ParameterDecl = {
       type: paramType,
       ...(defaultRaw !== undefined ? { default: defaultRaw as string | number | boolean } : {}),
@@ -1240,7 +1271,7 @@ export function validateComponentConfig(raw: unknown): ComponentDefinition {
     if (!Array.isArray(reactionsRaw)) {
       throw new BootError('BOOT_ERR_DSL_SYNTAX', 'component: "reactions" must be an array', { field: 'reactions' });
     }
-    reactions = reactionsRaw.map((item, i) => validateReactionRule(item, i, undefined));
+    reactions = reactionsRaw.map((item, i) => validateReactionRule(item, i, name));
   }
 
   const include = validateIncludeEntries(raw['include'], 'component');

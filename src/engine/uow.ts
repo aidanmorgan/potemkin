@@ -468,9 +468,9 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
             async (_childSpan) => {
               const shadowAsGraphAdapter = shadowAsStateGraph(shadow, graph);
 
-              let outcome: PatternMatchResult;
+              let matchOutcome: PatternMatchResult;
               try {
-                outcome = runPatternMatch({
+                matchOutcome = runPatternMatch({
                   command: cmd,
                   boundary,
                   shadow,
@@ -543,7 +543,7 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
               const shadowAsGraphAdapterForReactions = shadowAsStateGraph(shadow, graph);
 
               // Seed the queue with the events produced by runPatternMatch.
-              const reactionWorkQueue: DomainEvent[] = [...outcome.events];
+              const reactionWorkQueue: DomainEvent[] = [...matchOutcome.events];
 
               while (reactionWorkQueue.length > 0) {
                 const evt = reactionWorkQueue.shift()!;
@@ -594,7 +594,7 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
               // Enqueue secondary commands for next iterations
               // Tier 2: skip-dispatch suppresses secondary commands entirely.
               if (input.controls?.sideEffects.skipDispatch !== true) {
-                for (const sec of outcome.secondaryCommands) {
+                for (const sec of matchOutcome.secondaryCommands) {
                   pendingCommands.push(sec);
                 }
               }

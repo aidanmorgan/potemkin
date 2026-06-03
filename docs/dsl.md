@@ -1949,7 +1949,11 @@ Two `use:` entries that produce the same `as` name or the same `contract_path` h
 
 ### 20.4 `include:` — fragment merge
 
-`include:` merges a component's `event_catalog`, `reducers`, and `behaviors` into the host boundary (or into a component's own definition for nested includes). It appears on any live boundary or component file.
+`include:` merges a component's `event_catalog`, `reducers`, and `behaviors` into the host boundary. It appears on any live boundary file.
+
+**Supported sections only.** An included component must declare only `event_catalog`, `reducers`, and `behaviors`. Declaring `reactions`, `identity`, `state`, or a nested `include:` in an included component halts boot with `BOOT_ERR_DSL_SYNTAX`. Use `use:` for components that need reactions, identity, or state (those require a full instantiation context with `as`/`bind` rewriting).
+
+**Concrete boundary names required.** Included behaviours that dispatch secondary commands (`dispatch_commands[].boundary`) must use concrete, known boundary names. `include:` has no `as`/`bind` rewriting context, so an alias would be merged verbatim and silently mis-target Phase-3 validation. Boot fails with `BOOT_ERR_DSL_SYNTAX` if any dispatch boundary is not a concrete boundary present in the live boundary registry at the time `include:` is resolved.
 
 ```yaml
 boundary: Document

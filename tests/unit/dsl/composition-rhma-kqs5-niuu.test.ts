@@ -1,0 +1,689 @@
+/**
+ * Tests for three composition-validation fixes.
+ *
+ * rhma — Component reaction omitting boundary defaults to the component name
+ *   (and C5 self-rewrites it to `as` at instantiation).
+ *
+ * kqs5 — include: of a component rejects unsupported sections (reactions /
+ *   identity / state / nested include:) with loud BOOT_ERR_DSL_SYNTAX errors,
+ *   and rejects included behaviours whose dispatchCommands.boundary is not a
+ *   concrete known boundary name.
+ *
+ * niuu — parameters: default is type-checked; required+default is mutually
+ *   exclusive; required is validated as boolean.
+ */
+
+import { parseComponentYaml } from '../../../src/dsl/parser';
+import { validateComponentConfig } from '../../../src/dsl/schema';
+import { linkComponents, mergeIncludes } from '../../../src/dsl/componentLinker';
+import { BootError } from '../../../src/errors';
+import type { BoundaryConfig, ComponentDefinition, UseEntry } from '../../../src/dsl/types';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function emptyMaps(): {
+  byBoundaryName: Record<string, BoundaryConfig>;
+  byContractPath: Record<string, BoundaryConfig>;
+} {
+  return { byBoundaryName: {}, byContractPath: {} };
+}
+
+function makeUseEntry(overrides: Partial<UseEntry> = {}): UseEntry {
+  return {
+    component: 'TestEntity',
+    as: 'MyEntity',
+    contractPath: '/my-entities',
+    ...overrides,
+  };
+}
+
+function stubBoundary(name: string, contractPath: string): BoundaryConfig {
+  return {
+    boundary: name,
+    contractPath,
+    fallbackOverride: false,
+    behaviors: [],
+    reducers: [],
+    eventCatalog: [],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// rhma — Component reaction with no explicit boundary
+// ---------------------------------------------------------------------------
+
+describe('rhma — component reaction omitting boundary defaults to the component name', () => {
+  it('a component reaction with no boundary: boots clean (no misleading global-config error)', () => {
+    expect(() =>
+      validateComponentConfig({
+        kind: 'component',
+        name: 'WidgetEntity',
+        event_catalog: [
+          { type: 'WidgetCreated', payload_template: {} },
+          { type: 'WidgetNotified', payload_template: {} },
+        ],
+        reducers: [],
+        behaviors: [],
+        reactions: [
+          // No boundary field — should default to "WidgetEntity"
+          { on: 'WidgetCreated', emit: 'WidgetNotified' },
+        ],
+      }),
+    ).not.toThrow();
+  });
+
+  it('the defaulted boundary is the component name', () => {
+    const def = validateComponentConfig({
+      kind: 'component',
+      name: 'WidgetEntity',
+      event_catalog: [
+        { type: 'WidgetCreated', payload_template: {} },
+        { type: 'WidgetNotified', payload_template: {} },
+      ],
+      reducers: [],
+      behaviors: [],
+      reactions: [
+        { on: 'WidgetCreated', emit: 'WidgetNotified' },
+      ],
+    });
+
+    expect(def.reactions).toHaveLength(1);
+    expect(def.reactions![0]!.boundary).toBe('WidgetEntity');
+  });
+
+  it('C5 rewrites the defaulted boundary to as when instantiated via use:', () => {
+    const component: ComponentDefinition = {
+      kind: 'component',
+      name: 'WidgetEntity',
+      eventCatalog: [
+        { type: 'WidgetCreated', payloadTemplate: {} },
+        { type: 'WidgetNotified', payloadTemplate: {} },
+      ],
+      reducers: [],
+      behaviors: [],
+      // boundary defaults to component name at parse time (schema fix)
+      reactions: [{ on: 'WidgetEntity:WidgetCreated', boundary: 'WidgetEntity', emit: 'WidgetNotified' }],
+    };
+
+    const { byBoundaryName, byContractPath } = emptyMaps();
+    const result = linkComponents(
+      [makeUseEntry({ component: 'WidgetEntity', as: 'Widget', contractPath: '/widgets' })],
+      { WidgetEntity: component },
+      byBoundaryName,
+      byContractPath,
+    );
+
+    expect(result[0]!.reactions).toHaveLength(1);
+    expect(result[0]!.reactions![0]!.boundary).toBe('Widget');
+    expect(result[0]!.reactions![0]!.on).toBe('Widget:WidgetCreated');
+  });
+
+  it('parseComponentYaml: reaction without boundary does not throw misleading global-config error', () => {
+    expect(() =>
+      parseComponentYaml(`
+kind: component
+name: NoBoundaryReaction
+event_catalog:
+  - type: SomethingHappened
+    payload_template: {}
+  - type: ResponseEmitted
+    payload_template: {}
+reducers: []
+behaviors: []
+reactions:
+  - on: SomethingHappened
+    emit: ResponseEmitted
+`),
+    ).not.toThrow();
+  });
+
+  it('parseComponentYaml: omitted reaction boundary defaults to the component name', () => {
+    const def = parseComponentYaml(`
+kind: component
+name: NoBoundaryReaction
+event_catalog:
+  - type: SomethingHappened
+    payload_template: {}
+  - type: ResponseEmitted
+    payload_template: {}
+reducers: []
+behaviors: []
+reactions:
+  - on: SomethingHappened
+    emit: ResponseEmitted
+`);
+
+    expect(def.reactions![0]!.boundary).toBe('NoBoundaryReaction');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// kqs5 — include: rejects unsupported sections with loud errors
+// ---------------------------------------------------------------------------
+
+describe('kqs5 — include: rejects included component with reactions', () => {
+  it('throws BOOT_ERR_DSL_SYNTAX naming "reactions"', () => {
+    const mixin: ComponentDefinition = {
+      kind: 'component',
+      name: 'ReactiveMixin',
+      eventCatalog: [{ type: 'MixinEvent', payloadTemplate: {} }],
+      reducers: [],
+      behaviors: [],
+      reactions: [{ on: 'MixinEvent', boundary: 'ReactiveMixin', emit: 'MixinEvent' }],
+    };
+
+    const host = stubBoundary('HostBoundary', '/hosts');
+    const hostWithInclude: BoundaryConfig = {
+      ...host,
+      include: [{ component: 'ReactiveMixin' }],
+    };
+    const boundaries = [hostWithInclude];
+    const byBoundaryName = { HostBoundary: hostWithInclude };
+    const byContractPath = { '/hosts': hostWithInclude };
+
+    expect(() =>
+      mergeIncludes(boundaries, { ReactiveMixin: mixin }, byBoundaryName, byContractPath),
+    ).toThrow(
+      expect.objectContaining({ code: 'BOOT_ERR_DSL_SYNTAX' }),
+    );
+  });
+
+  it('error message names the unsupported section "reactions"', () => {
+    const mixin: ComponentDefinition = {
+      kind: 'component',
+      name: 'ReactiveMixin',
+      eventCatalog: [],
+      reducers: [],
+      behaviors: [],
+      reactions: [{ on: 'SomeEvent', boundary: 'ReactiveMixin', emit: 'SomeEvent' }],
+    };
+
+    const host = stubBoundary('HostBoundary', '/hosts');
+    const hostWithInclude: BoundaryConfig = {
+      ...host,
+      include: [{ component: 'ReactiveMixin' }],
+    };
+    const boundaries = [hostWithInclude];
+    const byBoundaryName = { HostBoundary: hostWithInclude };
+    const byContractPath = { '/hosts': hostWithInclude };
+
+    try {
+      mergeIncludes(boundaries, { ReactiveMixin: mixin }, byBoundaryName, byContractPath);
+      fail('expected BootError');
+    } catch (e) {
+      expect(e).toBeInstanceOf(BootError);
+      expect((e as BootError).message).toContain('reactions');
+      expect((e as BootError).message).toContain('ReactiveMixin');
+    }
+  });
+});
+
+describe('kqs5 — include: rejects included component with identity', () => {
+  it('throws BOOT_ERR_DSL_SYNTAX naming "identity"', () => {
+    const mixin: ComponentDefinition = {
+      kind: 'component',
+      name: 'IdentityMixin',
+      eventCatalog: [],
+      reducers: [],
+      behaviors: [],
+      identity: { creation: { generate: 'uuid' } },
+    };
+
+    const host = stubBoundary('HostBoundary', '/hosts');
+    const hostWithInclude: BoundaryConfig = {
+      ...host,
+      include: [{ component: 'IdentityMixin' }],
+    };
+    const boundaries = [hostWithInclude];
+    const byBoundaryName = { HostBoundary: hostWithInclude };
+    const byContractPath = { '/hosts': hostWithInclude };
+
+    expect(() =>
+      mergeIncludes(boundaries, { IdentityMixin: mixin }, byBoundaryName, byContractPath),
+    ).toThrow(
+      expect.objectContaining({ code: 'BOOT_ERR_DSL_SYNTAX' }),
+    );
+  });
+});
+
+describe('kqs5 — include: rejects included component with state', () => {
+  it('throws BOOT_ERR_DSL_SYNTAX naming "state"', () => {
+    const mixin: ComponentDefinition = {
+      kind: 'component',
+      name: 'StateMixin',
+      eventCatalog: [],
+      reducers: [],
+      behaviors: [],
+      state: { computed: [{ name: 'total', formula: '0', dependsOn: [] }] },
+    };
+
+    const host = stubBoundary('HostBoundary', '/hosts');
+    const hostWithInclude: BoundaryConfig = {
+      ...host,
+      include: [{ component: 'StateMixin' }],
+    };
+    const boundaries = [hostWithInclude];
+    const byBoundaryName = { HostBoundary: hostWithInclude };
+    const byContractPath = { '/hosts': hostWithInclude };
+
+    expect(() =>
+      mergeIncludes(boundaries, { StateMixin: mixin }, byBoundaryName, byContractPath),
+    ).toThrow(
+      expect.objectContaining({ code: 'BOOT_ERR_DSL_SYNTAX' }),
+    );
+  });
+});
+
+describe('kqs5 — include: rejects included component with nested include:', () => {
+  it('throws BOOT_ERR_DSL_SYNTAX naming the nested "include"', () => {
+    const mixin: ComponentDefinition = {
+      kind: 'component',
+      name: 'NestedIncludeMixin',
+      eventCatalog: [],
+      reducers: [],
+      behaviors: [],
+      include: [{ component: 'AnotherMixin' }],
+    };
+
+    const host = stubBoundary('HostBoundary', '/hosts');
+    const hostWithInclude: BoundaryConfig = {
+      ...host,
+      include: [{ component: 'NestedIncludeMixin' }],
+    };
+    const boundaries = [hostWithInclude];
+    const byBoundaryName = { HostBoundary: hostWithInclude };
+    const byContractPath = { '/hosts': hostWithInclude };
+
+    expect(() =>
+      mergeIncludes(boundaries, { NestedIncludeMixin: mixin }, byBoundaryName, byContractPath),
+    ).toThrow(
+      expect.objectContaining({ code: 'BOOT_ERR_DSL_SYNTAX' }),
+    );
+  });
+});
+
+describe('kqs5 — include: rejects included behavior with non-concrete dispatch boundary', () => {
+  it('throws BOOT_ERR_DSL_SYNTAX when dispatch boundary is not in byBoundaryName', () => {
+    const mixin: ComponentDefinition = {
+      kind: 'component',
+      name: 'DispatchMixin',
+      eventCatalog: [{ type: 'MixinDone', payloadTemplate: {} }],
+      reducers: [],
+      behaviors: [
+        {
+          name: 'dispatch-to-alias',
+          match: { operationId: 'doSomething', condition: 'true' },
+          emit: 'MixinDone',
+          dispatchCommands: [
+            {
+              boundary: 'SomeAlias',  // not a concrete known boundary
+              intent: 'mutation',
+              operationId: 'handleIt',
+              targetId: 'event.payload.id',
+            },
+          ],
+        },
+      ],
+    };
+
+    const host = stubBoundary('HostBoundary', '/hosts');
+    const hostWithInclude: BoundaryConfig = {
+      ...host,
+      include: [{ component: 'DispatchMixin' }],
+    };
+    const boundaries = [hostWithInclude];
+    // byBoundaryName does NOT contain 'SomeAlias'
+    const byBoundaryName: Record<string, BoundaryConfig> = { HostBoundary: hostWithInclude };
+    const byContractPath = { '/hosts': hostWithInclude };
+
+    expect(() =>
+      mergeIncludes(boundaries, { DispatchMixin: mixin }, byBoundaryName, byContractPath),
+    ).toThrow(
+      expect.objectContaining({ code: 'BOOT_ERR_DSL_SYNTAX' }),
+    );
+  });
+
+  it('error message names the non-concrete boundary alias', () => {
+    const mixin: ComponentDefinition = {
+      kind: 'component',
+      name: 'DispatchMixin',
+      eventCatalog: [{ type: 'MixinDone', payloadTemplate: {} }],
+      reducers: [],
+      behaviors: [
+        {
+          name: 'dispatch-to-alias',
+          match: { operationId: 'doSomething', condition: 'true' },
+          emit: 'MixinDone',
+          dispatchCommands: [
+            {
+              boundary: 'UnresolvableAlias',
+              intent: 'mutation',
+              operationId: 'handleIt',
+              targetId: 'event.payload.id',
+            },
+          ],
+        },
+      ],
+    };
+
+    const host = stubBoundary('HostBoundary', '/hosts');
+    const hostWithInclude: BoundaryConfig = {
+      ...host,
+      include: [{ component: 'DispatchMixin' }],
+    };
+    const boundaries = [hostWithInclude];
+    const byBoundaryName: Record<string, BoundaryConfig> = { HostBoundary: hostWithInclude };
+    const byContractPath = { '/hosts': hostWithInclude };
+
+    try {
+      mergeIncludes(boundaries, { DispatchMixin: mixin }, byBoundaryName, byContractPath);
+      fail('expected BootError');
+    } catch (e) {
+      expect(e).toBeInstanceOf(BootError);
+      expect((e as BootError).message).toContain('UnresolvableAlias');
+    }
+  });
+
+  it('allows included behaviors with a dispatch boundary that IS a concrete known boundary', () => {
+    const concreteBoundary = stubBoundary('ConcreteTarget', '/concrete');
+    const mixin: ComponentDefinition = {
+      kind: 'component',
+      name: 'ConcreteMixin',
+      eventCatalog: [{ type: 'MixinDone', payloadTemplate: {} }],
+      reducers: [],
+      behaviors: [
+        {
+          name: 'dispatch-to-concrete',
+          match: { operationId: 'doSomething', condition: 'true' },
+          emit: 'MixinDone',
+          dispatchCommands: [
+            {
+              boundary: 'ConcreteTarget',  // a concrete known boundary
+              intent: 'mutation',
+              operationId: 'handleIt',
+              targetId: 'event.payload.id',
+            },
+          ],
+        },
+      ],
+    };
+
+    const host = stubBoundary('HostBoundary', '/hosts');
+    const hostWithInclude: BoundaryConfig = {
+      ...host,
+      include: [{ component: 'ConcreteMixin' }],
+    };
+    const boundaries = [hostWithInclude];
+    const byBoundaryName: Record<string, BoundaryConfig> = {
+      HostBoundary: hostWithInclude,
+      ConcreteTarget: concreteBoundary,
+    };
+    const byContractPath = { '/hosts': hostWithInclude, '/concrete': concreteBoundary };
+
+    expect(() =>
+      mergeIncludes(boundaries, { ConcreteMixin: mixin }, byBoundaryName, byContractPath),
+    ).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// niuu — parameters: default type-check, required+default mutual exclusion,
+//        required must be boolean
+// ---------------------------------------------------------------------------
+
+describe('niuu — parameter default type mismatch halts boot', () => {
+  it('throws BOOT_ERR_DSL_SYNTAX when default is string but type is number', () => {
+    expect(() =>
+      validateComponentConfig({
+        kind: 'component',
+        name: 'BadDefault',
+        parameters: {
+          count: { type: 'number', default: 'not-a-number' },
+        },
+        event_catalog: [],
+        reducers: [],
+        behaviors: [],
+      }),
+    ).toThrow(
+      expect.objectContaining({ code: 'BOOT_ERR_DSL_SYNTAX' }),
+    );
+  });
+
+  it('error message names the parameter with a mismatched default', () => {
+    try {
+      validateComponentConfig({
+        kind: 'component',
+        name: 'BadDefault',
+        parameters: {
+          myParam: { type: 'number', default: 'oops' },
+        },
+        event_catalog: [],
+        reducers: [],
+        behaviors: [],
+      });
+      fail('expected BootError');
+    } catch (e) {
+      expect(e).toBeInstanceOf(BootError);
+      expect((e as BootError).message).toContain('myParam');
+    }
+  });
+
+  it('throws BOOT_ERR_DSL_SYNTAX when default is number but type is boolean', () => {
+    expect(() =>
+      validateComponentConfig({
+        kind: 'component',
+        name: 'BadDefault',
+        parameters: {
+          flag: { type: 'boolean', default: 1 },
+        },
+        event_catalog: [],
+        reducers: [],
+        behaviors: [],
+      }),
+    ).toThrow(
+      expect.objectContaining({ code: 'BOOT_ERR_DSL_SYNTAX' }),
+    );
+  });
+
+  it('throws BOOT_ERR_DSL_SYNTAX when default is boolean but type is string', () => {
+    expect(() =>
+      validateComponentConfig({
+        kind: 'component',
+        name: 'BadDefault',
+        parameters: {
+          label: { type: 'string', default: true },
+        },
+        event_catalog: [],
+        reducers: [],
+        behaviors: [],
+      }),
+    ).toThrow(
+      expect.objectContaining({ code: 'BOOT_ERR_DSL_SYNTAX' }),
+    );
+  });
+
+  it('accepts a default whose type matches the declared type', () => {
+    expect(() =>
+      validateComponentConfig({
+        kind: 'component',
+        name: 'GoodDefault',
+        parameters: {
+          count: { type: 'number', default: 42 },
+          label: { type: 'string', default: 'hello' },
+          flag: { type: 'boolean', default: false },
+        },
+        event_catalog: [],
+        reducers: [],
+        behaviors: [],
+      }),
+    ).not.toThrow();
+  });
+});
+
+describe('niuu — required: true and default are mutually exclusive', () => {
+  it('throws BOOT_ERR_DSL_SYNTAX when both required: true and default are present', () => {
+    expect(() =>
+      validateComponentConfig({
+        kind: 'component',
+        name: 'BadParam',
+        parameters: {
+          myField: { type: 'string', required: true, default: 'fallback' },
+        },
+        event_catalog: [],
+        reducers: [],
+        behaviors: [],
+      }),
+    ).toThrow(
+      expect.objectContaining({ code: 'BOOT_ERR_DSL_SYNTAX' }),
+    );
+  });
+
+  it('error message mentions mutual exclusivity', () => {
+    try {
+      validateComponentConfig({
+        kind: 'component',
+        name: 'BadParam',
+        parameters: {
+          field: { type: 'string', required: true, default: 'x' },
+        },
+        event_catalog: [],
+        reducers: [],
+        behaviors: [],
+      });
+      fail('expected BootError');
+    } catch (e) {
+      expect(e).toBeInstanceOf(BootError);
+      expect((e as BootError).message).toContain('mutually exclusive');
+    }
+  });
+
+  it('allows required: true without default', () => {
+    expect(() =>
+      validateComponentConfig({
+        kind: 'component',
+        name: 'RequiredOnly',
+        parameters: {
+          field: { type: 'string', required: true },
+        },
+        event_catalog: [],
+        reducers: [],
+        behaviors: [],
+      }),
+    ).not.toThrow();
+  });
+
+  it('allows default without required', () => {
+    expect(() =>
+      validateComponentConfig({
+        kind: 'component',
+        name: 'DefaultOnly',
+        parameters: {
+          field: { type: 'string', default: 'fallback' },
+        },
+        event_catalog: [],
+        reducers: [],
+        behaviors: [],
+      }),
+    ).not.toThrow();
+  });
+
+  it('allows required: false with default (not mutually exclusive — only required: true triggers the guard)', () => {
+    expect(() =>
+      validateComponentConfig({
+        kind: 'component',
+        name: 'RequiredFalseWithDefault',
+        parameters: {
+          field: { type: 'string', required: false, default: 'fallback' },
+        },
+        event_catalog: [],
+        reducers: [],
+        behaviors: [],
+      }),
+    ).not.toThrow();
+  });
+});
+
+describe('niuu — required must be a boolean', () => {
+  it('throws BOOT_ERR_DSL_SYNTAX when required is a string', () => {
+    expect(() =>
+      validateComponentConfig({
+        kind: 'component',
+        name: 'BadRequired',
+        parameters: {
+          field: { type: 'string', required: 'yes' },
+        },
+        event_catalog: [],
+        reducers: [],
+        behaviors: [],
+      }),
+    ).toThrow(
+      expect.objectContaining({ code: 'BOOT_ERR_DSL_SYNTAX' }),
+    );
+  });
+
+  it('throws BOOT_ERR_DSL_SYNTAX when required is a number', () => {
+    expect(() =>
+      validateComponentConfig({
+        kind: 'component',
+        name: 'BadRequired',
+        parameters: {
+          field: { type: 'string', required: 1 },
+        },
+        event_catalog: [],
+        reducers: [],
+        behaviors: [],
+      }),
+    ).toThrow(
+      expect.objectContaining({ code: 'BOOT_ERR_DSL_SYNTAX' }),
+    );
+  });
+
+  it('throws BOOT_ERR_DSL_SYNTAX when required is "no" (string, not boolean)', () => {
+    expect(() =>
+      validateComponentConfig({
+        kind: 'component',
+        name: 'BadRequired',
+        parameters: {
+          field: { type: 'string', required: 'no' },
+        },
+        event_catalog: [],
+        reducers: [],
+        behaviors: [],
+      }),
+    ).toThrow(
+      expect.objectContaining({ code: 'BOOT_ERR_DSL_SYNTAX' }),
+    );
+  });
+
+  it('accepts required: true (boolean true)', () => {
+    expect(() =>
+      validateComponentConfig({
+        kind: 'component',
+        name: 'GoodRequired',
+        parameters: {
+          field: { type: 'string', required: true },
+        },
+        event_catalog: [],
+        reducers: [],
+        behaviors: [],
+      }),
+    ).not.toThrow();
+  });
+
+  it('accepts required: false (boolean false)', () => {
+    expect(() =>
+      validateComponentConfig({
+        kind: 'component',
+        name: 'GoodRequired',
+        parameters: {
+          field: { type: 'string', required: false, default: 'x' },
+        },
+        event_catalog: [],
+        reducers: [],
+        behaviors: [],
+      }),
+    ).not.toThrow();
+  });
+});

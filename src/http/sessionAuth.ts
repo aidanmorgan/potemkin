@@ -112,6 +112,13 @@ export function createSessionAuthMiddleware(
 
     // ── Logout ───────────────────────────────────────────────────────────────
     if (req.method === 'DELETE' && req.path === c.logoutPath) {
+      // CSRF check is intentionally skipped for logout. Logout is idempotent and
+      // carries no privileged side-effects beyond invalidating the session cookie,
+      // so a cross-site logout (CSRF) is a minor nuisance rather than a security
+      // risk. Enforcing CSRF here would require a valid session to exist in order
+      // to read the token, which creates an awkward UX when the session has already
+      // expired. This is a widely accepted tradeoff (cf. OWASP CSRF cheat-sheet:
+      // logout is explicitly listed as low-risk for CSRF mitigation).
       const sid = cookies[c.cookieName];
       if (sid) store.destroy(sid);
       res.status(204).setHeader('Set-Cookie', buildClearCookie(c.cookieName)).end();

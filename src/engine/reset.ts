@@ -65,6 +65,7 @@ export function resetSystem(sys: BootedSystem): void {
           cel: sys.cel,
           logger: resetLog,
           schemaRegistry: sys.schemaRegistry,
+          openapi: sys.openapi,
         });
       }
 

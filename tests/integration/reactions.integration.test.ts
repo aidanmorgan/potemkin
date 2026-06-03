@@ -355,6 +355,79 @@ reactions:
 });
 
 // ---------------------------------------------------------------------------
+// Suite 1b (xaze): two DISTINCT reactions sharing a name, same target aggregate,
+// both fire — the fired-set key disambiguates by shape, not by name, so neither
+// is silently suppressed (the original missed-fire bug).
+// ---------------------------------------------------------------------------
+
+describe('reactions xaze: two distinct same-named reactions on one aggregate both fire', () => {
+  const INVENTORY_ID = nextUuidv7();
+
+  // Both reactions share the name "audit-inventory" and target the SAME Inventory
+  // aggregate from the SAME trigger, but emit different events. With a name-keyed
+  // fired-set both would collapse to "audit-inventory@<id>" and the second would be
+  // suppressed; keying by (boundary,on,emit,target,when) keeps them distinct.
+  const GLOBAL_WITH_TWO_SAME_NAMED_REACTIONS = `
+reactions:
+  - name: audit-inventory
+    on: "Order:OrderPlaced"
+    boundary: Inventory
+    emit: StockReserved
+    intent: mutation
+    target: '"${INVENTORY_ID}"'
+  - name: audit-inventory
+    on: "Order:OrderPlaced"
+    boundary: Inventory
+    emit: ReservationIncremented
+    intent: mutation
+    target: '"${INVENTORY_ID}"'
+`;
+
+  let sys: BootedSystem;
+
+  beforeEach(async () => {
+    sys = await buildSystem(GLOBAL_WITH_TWO_SAME_NAMED_REACTIONS);
+    sys.graph.set(INVENTORY_ID, { id: INVENTORY_ID, reserved: 5 });
+  });
+
+  afterEach(() => resetSystem(sys));
+
+  it('commits three events — OrderPlaced plus BOTH same-named reactions fire', async () => {
+    const result = await executeUnitOfWork({
+      command: makePlaceOrderCommand(),
+      dsl: sys.dsl,
+      openapi: sys.openapi,
+      graph: sys.graph,
+      events: sys.events,
+      cel: sys.cel,
+      validator: sys.validator,
+    });
+
+    expect(result.events).toHaveLength(3);
+    const types = result.events.map((e) => e.type);
+    expect(types).toContain('StockReserved');
+    expect(types).toContain('ReservationIncremented');
+  });
+
+  it('the Inventory aggregate reflects both reaction reducers (set to 0, then incremented to 1)', async () => {
+    await executeUnitOfWork({
+      command: makePlaceOrderCommand(),
+      dsl: sys.dsl,
+      openapi: sys.openapi,
+      graph: sys.graph,
+      events: sys.events,
+      cel: sys.cel,
+      validator: sys.validator,
+    });
+
+    const inv = sys.graph.get(INVENTORY_ID);
+    expect(inv).not.toBeNull();
+    // StockReserved sets reserved to 0, then ReservationIncremented adds 1.
+    expect(inv!['reserved']).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Suite 2: Creation reaction
 // ---------------------------------------------------------------------------
 

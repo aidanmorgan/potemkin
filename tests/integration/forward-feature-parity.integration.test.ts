@@ -235,7 +235,39 @@ describe('forwarding/gateway feature parity (adversarial audit)', () => {
       expect(res.body.status).toBe(500);
     });
 
-    it('X-Potemkin-Skip-Response-Validation: true lets the same response through (2xx)', async () => {
+    it('X-Potemkin-Skip-Response-Validation without admin scope is rejected (admin-gated 401)', async () => {
+      const id = nextUuidv7();
+      const res = await agent
+        .post('/_engine/forward')
+        .send({
+          method: 'POST',
+          path: `/widgets/${id}`,
+          headers: { 'X-Potemkin-Skip-Response-Validation': 'true' },
+          query: {},
+          body: { id },
+        } satisfies ForwardedRequest)
+        .expect(200);
+      expect(res.body.status).toBe(401);
+      expect(res.body.body.error).toBe('ADMIN_REQUIRED');
+    });
+
+    it('X-Potemkin-Allow-Additional-Properties without admin scope is rejected (admin-gated 401)', async () => {
+      const id = nextUuidv7();
+      const res = await agent
+        .post('/_engine/forward')
+        .send({
+          method: 'POST',
+          path: `/widgets/${id}`,
+          headers: { 'X-Potemkin-Allow-Additional-Properties': 'true' },
+          query: {},
+          body: { id },
+        } satisfies ForwardedRequest)
+        .expect(200);
+      expect(res.body.status).toBe(401);
+      expect(res.body.body.error).toBe('ADMIN_REQUIRED');
+    });
+
+    it('X-Potemkin-Skip-Response-Validation WITH :admin scope lets the same response through (2xx)', async () => {
       const id = nextUuidv7();
       const res = await agent
         .post('/_engine/forward')
@@ -244,7 +276,7 @@ describe('forwarding/gateway feature parity (adversarial audit)', () => {
           path: `/widgets/${id}`,
           headers: {
             'X-Potemkin-Skip-Response-Validation': 'true',
-            Authorization: 'Bearer admin',
+            Authorization: 'Bearer admin-1:admin',
           },
           query: {},
           body: { id, rogue: true },
@@ -254,7 +286,7 @@ describe('forwarding/gateway feature parity (adversarial audit)', () => {
       expect(res.body.body.surprise).toBe('boom');
     });
 
-    it('X-Potemkin-Allow-Additional-Properties: true relaxes the strict schema (2xx)', async () => {
+    it('X-Potemkin-Allow-Additional-Properties WITH :admin scope relaxes the strict schema (2xx)', async () => {
       const id = nextUuidv7();
       const res = await agent
         .post('/_engine/forward')
@@ -263,7 +295,7 @@ describe('forwarding/gateway feature parity (adversarial audit)', () => {
           path: `/widgets/${id}`,
           headers: {
             'X-Potemkin-Allow-Additional-Properties': 'true',
-            Authorization: 'Bearer admin',
+            Authorization: 'Bearer admin-1:admin',
           },
           query: {},
           body: { id, rogue: true },
