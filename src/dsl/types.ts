@@ -161,6 +161,82 @@ export interface BoundaryConfig {
   readonly strictSchema?: boolean;
   /** Choreography reaction rules declared in this boundary file. */
   readonly reactions?: readonly ReactionRule[];
+  /** Fragment mixins to merge into this boundary at link time (C4). */
+  readonly include?: readonly IncludeEntry[];
+}
+
+// ── Cross-file composition (C1: grammar + types) ─────────────────────────────
+
+/**
+ * Allowed types for a component parameter declaration.
+ * Distinct from the DSL field-type system — these are link-time substitution types.
+ */
+export type ParameterType = 'string' | 'number' | 'boolean';
+
+/** Declaration of a single named parameter in a component. */
+export interface ParameterDecl {
+  /** Substitution type — controls type-checking at link time (C2). */
+  readonly type: ParameterType;
+  /** Default value used when the caller omits this parameter. */
+  readonly default?: string | number | boolean;
+  /** When true, callers must supply a value (no default allowed simultaneously). */
+  readonly required?: boolean;
+}
+
+/**
+ * A `use:` entry: activates a component as one concrete live boundary.
+ * Stashed on CompiledDsl.use for the C3 linker; not resolved in C1.
+ */
+export interface UseEntry {
+  /** Component name to instantiate. */
+  readonly component: string;
+  /** Concrete boundary name the instantiated boundary will carry. */
+  readonly as: string;
+  /** OpenAPI route path for the concrete boundary. */
+  readonly contractPath: string;
+  /** Parameter bindings passed to the component at link time. */
+  readonly with?: Record<string, string | number | boolean>;
+  /** Maps component-local sibling alias names to concrete boundary names (C5). */
+  readonly bind?: Record<string, string>;
+}
+
+/**
+ * An `include:` entry: merges a component's event_catalog/reducers/behaviors
+ * into the containing boundary or component at link time (C4).
+ * Stashed on BoundaryConfig/ComponentDefinition for C4; not resolved in C1.
+ */
+export interface IncludeEntry {
+  /** Component name whose fragments are merged in. */
+  readonly component: string;
+  /** Parameter bindings for this inclusion. */
+  readonly with?: Record<string, string | number | boolean>;
+}
+
+/**
+ * An inert component definition loaded from a `kind: component` file.
+ * Components are not live boundaries — they are instantiated via `use:` (C3)
+ * or included via `include:` (C4). Stored in CompiledDsl.components.
+ */
+export interface ComponentDefinition {
+  readonly kind: 'component';
+  /** Logical component name (must be unique across the catalog). */
+  readonly name: string;
+  /** Named parameter declarations for link-time substitution. */
+  readonly parameters?: Record<string, ParameterDecl>;
+  /** Reusable event catalog entries. */
+  readonly eventCatalog?: readonly EventCatalogEntry[];
+  /** Reusable reducer rules. */
+  readonly reducers?: readonly ReducerRule[];
+  /** Reusable behavior rules. */
+  readonly behaviors?: readonly BehaviorRule[];
+  /** Optional identity config (merged into concrete boundary at link time). */
+  readonly identity?: IdentityConfig;
+  /** Optional declared state schema (merged at link time). */
+  readonly state?: DeclaredState;
+  /** Choreography reactions declared inside this component. */
+  readonly reactions?: readonly ReactionRule[];
+  /** Fragment mixins to merge into this component at link time. */
+  readonly include?: readonly IncludeEntry[];
 }
 
 // ── Reactions (R1: DSL grammar + boot validation) ────────────────────────────
@@ -431,6 +507,17 @@ export interface CompiledDsl {
   readonly boundaries: readonly BoundaryConfig[];
   readonly byContractPath: Record<string, BoundaryConfig>;
   readonly byBoundaryName: Record<string, BoundaryConfig>;
+  /**
+   * Component catalog: inert definitions parsed from `kind: component` files.
+   * Populated by C1; consumed by the C3 linker (use:) and C4 merger (include:).
+   * Absent when no component files were loaded.
+   */
+  readonly components?: Record<string, ComponentDefinition>;
+  /**
+   * Unresolved `use:` entries from mapping/simulation files.
+   * Stashed here by C1 for the C3 linker to consume; not live boundaries yet.
+   */
+  readonly use?: readonly UseEntry[];
   /** Script registry built at boot time */
   readonly scriptRegistry?: ScriptRegistry;
   readonly sagas?: readonly SagaConfig[];

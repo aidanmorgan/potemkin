@@ -1,8 +1,8 @@
 import * as yaml from 'js-yaml';
 import { BootError } from '../errors.js';
 import { createLogger, getTracer, withSpan } from '../observability/index.js';
-import { validateBoundaryConfig, validateGlobalConfig } from './schema.js';
-import type { AuthConfig, BoundaryConfig, CompiledDsl, FaultRule, HateoasConfig, ReactionRule, ReactionsByTrigger, SagaConfig, IdempotencyConfig, DerivedProjectionConfig, LatencyConfig, SecurityHeadersConfig, VersioningConfig, WebhookConfig } from './types.js';
+import { validateBoundaryConfig, validateComponentConfig, validateGlobalConfig, validateUseEntries } from './schema.js';
+import type { AuthConfig, BoundaryConfig, CompiledDsl, ComponentDefinition, FaultRule, HateoasConfig, ReactionRule, ReactionsByTrigger, SagaConfig, IdempotencyConfig, DerivedProjectionConfig, LatencyConfig, SecurityHeadersConfig, UseEntry, VersioningConfig, WebhookConfig } from './types.js';
 import { buildScriptRegistry } from '../scripts/registry.js';
 
 const log = createLogger({ name: 'dsl' });
@@ -45,6 +45,60 @@ export function parseDslYaml(text: string): BoundaryConfig {
   const config = validateBoundaryConfig(raw);
   const latency = parseLatencyConfig((raw as Record<string, unknown> | null)?.['latency']);
   return latency !== undefined ? { ...config, latency } : config;
+}
+
+/**
+ * Parse a `kind: component` YAML module into a ComponentDefinition.
+ * @throws {BootError} with code `BOOT_ERR_DSL_SYNTAX` on parse or validation failure.
+ */
+export function parseComponentYaml(text: string): ComponentDefinition {
+  let raw: unknown;
+  try {
+    raw = yaml.load(text);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new BootError(
+      'BOOT_ERR_DSL_SYNTAX',
+      `YAML parse error: ${message}`,
+      { message, source: text.slice(0, 200) },
+    );
+  }
+  return validateComponentConfig(raw);
+}
+
+/**
+ * Parse a use-mapping YAML file (only `use:` key present) into an array of UseEntry.
+ * @throws {BootError} with code `BOOT_ERR_DSL_SYNTAX` on parse or validation failure.
+ */
+export function parseUseMappingYaml(text: string): readonly UseEntry[] {
+  let raw: unknown;
+  try {
+    raw = yaml.load(text);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new BootError(
+      'BOOT_ERR_DSL_SYNTAX',
+      `YAML parse error: ${message}`,
+      { message, source: text.slice(0, 200) },
+    );
+  }
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new BootError(
+      'BOOT_ERR_DSL_SYNTAX',
+      'Use-mapping file root must be a YAML mapping object',
+      { received: typeof raw },
+    );
+  }
+  const rec = raw as Record<string, unknown>;
+  const useEntries = validateUseEntries(rec['use'], 'root');
+  if (useEntries === undefined || useEntries.length === 0) {
+    throw new BootError(
+      'BOOT_ERR_DSL_SYNTAX',
+      'Use-mapping file must have a non-empty "use" array',
+      { field: 'use' },
+    );
+  }
+  return useEntries;
 }
 
 /**
@@ -166,6 +220,12 @@ export function validateReactionCrossReferences(
  * Accepts an optional `globalYaml` string that can declare top-level fields
  * (sagas, idempotency, derived_projections). When absent these are omitted.
  *
+ * Component modules (`kind: component`) are parsed into a catalog and stashed
+ * on CompiledDsl.components — they produce no live boundaries.
+ *
+ * Use-mapping modules (files with only a `use:` key) are parsed and stashed
+ * on CompiledDsl.use for the C3 linker; they also produce no live boundaries.
+ *
  * @throws {BootError} with code `BOOT_ERR_DSL_SYNTAX` on any parse or validation failure.
  * @throws {BootError} with code `BOOT_ERR_DSL_DUPLICATE_BOUNDARY` on duplicate boundary names
  *   or contract paths.
@@ -174,6 +234,8 @@ export function validateReactionCrossReferences(
 export async function compileDsl(
   modules: readonly { name: string; yaml: string }[],
   globalYaml?: string,
+  componentModules?: readonly { name: string; yaml: string }[],
+  useMappingModules?: readonly { name: string; yaml: string }[],
 ): Promise<CompiledDsl> {
   return withSpan(getTracer('dsl'), 'dsl.compile', (_span) => {
     log.info({ moduleCount: modules.length }, 'Compiling DSL modules');
@@ -224,6 +286,33 @@ export async function compileDsl(
       { boundaryCount: boundaries.length },
       'DSL compilation complete',
     );
+
+    // Parse component modules into the catalog.
+    const componentsMap: Record<string, ComponentDefinition> = {};
+    if (componentModules && componentModules.length > 0) {
+      for (const mod of componentModules) {
+        const componentDef = parseComponentYaml(mod.yaml);
+        if (Object.prototype.hasOwnProperty.call(componentsMap, componentDef.name)) {
+          throw new BootError(
+            'BOOT_ERR_DSL_DUPLICATE_BOUNDARY',
+            `Duplicate component name "${componentDef.name}" found in module "${mod.name}"`,
+            { component: componentDef.name, module: mod.name },
+          );
+        }
+        componentsMap[componentDef.name] = componentDef;
+        log.debug({ component: componentDef.name }, 'Registered component');
+      }
+    }
+
+    // Parse use-mapping modules and accumulate their use entries.
+    const allUseEntries: UseEntry[] = [];
+    if (useMappingModules && useMappingModules.length > 0) {
+      for (const mod of useMappingModules) {
+        const useEntries = parseUseMappingYaml(mod.yaml);
+        allUseEntries.push(...useEntries);
+        log.debug({ useCount: useEntries.length, module: mod.name }, 'Registered use-mapping entries');
+      }
+    }
 
     let sagas: readonly SagaConfig[] | undefined;
     let idempotency: IdempotencyConfig | undefined;
@@ -288,6 +377,9 @@ export async function compileDsl(
       ? allReactions
       : undefined;
 
+    const hasComponents = Object.keys(componentsMap).length > 0;
+    const hasUseEntries = allUseEntries.length > 0;
+
     const partialDsl: Omit<CompiledDsl, 'scriptRegistry'> = {
       boundaries: boundaries as readonly BoundaryConfig[],
       byContractPath,
@@ -303,6 +395,8 @@ export async function compileDsl(
       ...(webhooks !== undefined ? { webhooks } : {}),
       ...(reactions !== undefined ? { reactions } : {}),
       ...(reactionsByTrigger !== undefined ? { reactionsByTrigger } : {}),
+      ...(hasComponents ? { components: componentsMap } : {}),
+      ...(hasUseEntries ? { use: allUseEntries as readonly UseEntry[] } : {}),
     };
 
     const hasScripts = boundaries.some(b => b.scripts && b.scripts.length > 0);

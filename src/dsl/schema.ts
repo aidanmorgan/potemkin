@@ -8,6 +8,7 @@ import type {
   AuthConfig,
   BehaviorRule,
   BoundaryConfig,
+  ComponentDefinition,
   DeprecationConfig,
   EmitWhenEntry,
   EventCatalogEntry,
@@ -16,7 +17,10 @@ import type {
   HateoasLinkEntry,
   IdentityConfig,
   IdentityKeyConfig,
+  IncludeEntry,
   JwtAuthConfig,
+  ParameterDecl,
+  ParameterType,
   ReactionRule,
   ReducerPatchOp,
   ReducerRule,
@@ -32,6 +36,7 @@ import type {
   IdempotencyConfig,
   DerivedProjectionConfig,
   DerivedProjectionReduceEntry,
+  UseEntry,
   VersionDecl,
   VersioningConfig,
   WebhookConfig,
@@ -952,6 +957,365 @@ function crossValidate(config: {
 // Public API
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Cross-file composition validators (C1)
+// ---------------------------------------------------------------------------
+
+const VALID_PARAMETER_TYPES: ReadonlySet<string> = new Set(['string', 'number', 'boolean']);
+
+/**
+ * Parse a `with:` block (parameter bindings) from a use: or include: entry.
+ * Values may be string, number, or boolean. Returns undefined when absent.
+ */
+function validateWithBindings(
+  raw: unknown,
+  ctx: string,
+): Record<string, string | number | boolean> | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (!isRecord(raw)) {
+    throw new BootError(
+      'BOOT_ERR_DSL_SYNTAX',
+      `${ctx}: "with" must be an object`,
+      { field: 'with', context: ctx },
+    );
+  }
+  const out: Record<string, string | number | boolean> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (typeof v !== 'string' && typeof v !== 'number' && typeof v !== 'boolean') {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `${ctx}: "with.${k}" must be a string, number, or boolean (got ${JSON.stringify(v)})`,
+        { field: `with.${k}`, context: ctx },
+      );
+    }
+    out[k] = v;
+  }
+  return out;
+}
+
+/**
+ * Parse a `bind:` block (sibling alias → concrete name map) from a use: entry.
+ * Values must be strings. Returns undefined when absent.
+ */
+function validateBindMap(
+  raw: unknown,
+  ctx: string,
+): Record<string, string> | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (!isRecord(raw)) {
+    throw new BootError(
+      'BOOT_ERR_DSL_SYNTAX',
+      `${ctx}: "bind" must be an object`,
+      { field: 'bind', context: ctx },
+    );
+  }
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (typeof v !== 'string') {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `${ctx}: "bind.${k}" must be a string (got ${JSON.stringify(v)})`,
+        { field: `bind.${k}`, context: ctx },
+      );
+    }
+    out[k] = v;
+  }
+  return out;
+}
+
+/**
+ * Parse a `use:` array. Each entry must have component, as, and contract_path.
+ * Returns undefined when absent.
+ */
+export function validateUseEntries(
+  raw: unknown,
+  ctx: string,
+): readonly UseEntry[] | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (!Array.isArray(raw)) {
+    throw new BootError(
+      'BOOT_ERR_DSL_SYNTAX',
+      `${ctx}: "use" must be an array`,
+      { field: 'use', context: ctx },
+    );
+  }
+  return raw.map((item, i) => {
+    const ectx = `${ctx}.use[${i}]`;
+    if (!isRecord(item)) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `${ectx}: must be an object`,
+        { context: ectx },
+      );
+    }
+    if (item['component'] === undefined || item['component'] === null) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `${ectx}: "component" is required`,
+        { field: 'component', context: ectx },
+      );
+    }
+    const component = requireString(item, 'component', ectx);
+    if (item['as'] === undefined || item['as'] === null) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `${ectx}: "as" is required`,
+        { field: 'as', context: ectx },
+      );
+    }
+    const as_ = requireString(item, 'as', ectx);
+    if (item['contract_path'] === undefined || item['contract_path'] === null) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `${ectx}: "contract_path" is required`,
+        { field: 'contract_path', context: ectx },
+      );
+    }
+    const contractPath = requireString(item, 'contract_path', ectx);
+    const withBindings = validateWithBindings(item['with'], ectx);
+    const bindMap = validateBindMap(item['bind'], ectx);
+    return {
+      component,
+      as: as_,
+      contractPath,
+      ...(withBindings !== undefined ? { with: withBindings } : {}),
+      ...(bindMap !== undefined ? { bind: bindMap } : {}),
+    } satisfies UseEntry;
+  });
+}
+
+/**
+ * Parse an `include:` array. Each entry must have component.
+ * Returns undefined when absent.
+ */
+export function validateIncludeEntries(
+  raw: unknown,
+  ctx: string,
+): readonly IncludeEntry[] | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (!Array.isArray(raw)) {
+    throw new BootError(
+      'BOOT_ERR_DSL_SYNTAX',
+      `${ctx}: "include" must be an array`,
+      { field: 'include', context: ctx },
+    );
+  }
+  return raw.map((item, i) => {
+    const ectx = `${ctx}.include[${i}]`;
+    if (!isRecord(item)) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `${ectx}: must be an object`,
+        { context: ectx },
+      );
+    }
+    if (item['component'] === undefined || item['component'] === null) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `${ectx}: "component" is required`,
+        { field: 'component', context: ectx },
+      );
+    }
+    const component = requireString(item, 'component', ectx);
+    const withBindings = validateWithBindings(item['with'], ectx);
+    return {
+      component,
+      ...(withBindings !== undefined ? { with: withBindings } : {}),
+    } satisfies IncludeEntry;
+  });
+}
+
+/**
+ * Parse the `parameters:` block of a component definition.
+ * Each entry is { type, default?, required? }.
+ */
+function validateParametersBlock(
+  raw: unknown,
+  ctx: string,
+): Record<string, ParameterDecl> | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (!isRecord(raw)) {
+    throw new BootError(
+      'BOOT_ERR_DSL_SYNTAX',
+      `${ctx}: "parameters" must be an object`,
+      { field: 'parameters', context: ctx },
+    );
+  }
+  const out: Record<string, ParameterDecl> = {};
+  for (const [paramName, entry] of Object.entries(raw)) {
+    const pctx = `${ctx}.parameters.${paramName}`;
+    if (!isRecord(entry)) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `${pctx}: parameter declaration must be an object`,
+        { field: `parameters.${paramName}`, context: pctx },
+      );
+    }
+    const typeRaw = entry['type'];
+    if (typeof typeRaw !== 'string' || !VALID_PARAMETER_TYPES.has(typeRaw)) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `${pctx}: "type" must be one of string|number|boolean (got ${JSON.stringify(typeRaw)})`,
+        { field: `parameters.${paramName}.type`, context: pctx },
+      );
+    }
+    const paramType = typeRaw as ParameterType;
+    const defaultRaw = entry['default'];
+    const requiredRaw = entry['required'];
+    const decl: ParameterDecl = {
+      type: paramType,
+      ...(defaultRaw !== undefined ? { default: defaultRaw as string | number | boolean } : {}),
+      ...(requiredRaw !== undefined ? { required: requiredRaw as boolean } : {}),
+    };
+    out[paramName] = decl;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/** Top-level keys allowed in a component file. */
+const KNOWN_COMPONENT_KEYS: ReadonlySet<string> = new Set([
+  'kind', 'name',
+  'parameters',
+  'event_catalog', 'reducers', 'behaviors',
+  'identity', 'state', 'reactions', 'include',
+]);
+
+/**
+ * Validate and parse a `kind: component` YAML file into a ComponentDefinition.
+ * Components have no contract_path and produce no live boundary.
+ */
+export function validateComponentConfig(raw: unknown): ComponentDefinition {
+  if (!isRecord(raw)) {
+    throw new BootError(
+      'BOOT_ERR_DSL_SYNTAX',
+      'Component file root must be a YAML mapping object',
+      { received: typeof raw },
+    );
+  }
+
+  for (const key of Object.keys(raw)) {
+    if (!KNOWN_COMPONENT_KEYS.has(key)) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `Unknown component key "${key}" — supported keys: ${[...KNOWN_COMPONENT_KEYS].sort().join(', ')}`,
+        { key },
+      );
+    }
+  }
+
+  const kind = raw['kind'];
+  if (kind !== 'component') {
+    throw new BootError(
+      'BOOT_ERR_DSL_SYNTAX',
+      `component file "kind" must be "component" (got ${JSON.stringify(kind)})`,
+      { field: 'kind' },
+    );
+  }
+
+  const name = requireString(raw, 'name', 'component');
+  const parameters = validateParametersBlock(raw['parameters'], 'component');
+
+  const eventCatalogRaw = raw['event_catalog'];
+  let eventCatalog: readonly EventCatalogEntry[] | undefined;
+  if (eventCatalogRaw !== undefined && eventCatalogRaw !== null) {
+    if (!Array.isArray(eventCatalogRaw)) {
+      throw new BootError('BOOT_ERR_DSL_SYNTAX', 'component: "event_catalog" must be an array', { field: 'event_catalog' });
+    }
+    eventCatalog = eventCatalogRaw.map((item, i) => validateEventCatalogEntry(item, i));
+  }
+
+  const reducersRaw = raw['reducers'];
+  let reducers: readonly ReducerRule[] | undefined;
+  if (reducersRaw !== undefined && reducersRaw !== null) {
+    if (!Array.isArray(reducersRaw)) {
+      throw new BootError('BOOT_ERR_DSL_SYNTAX', 'component: "reducers" must be an array', { field: 'reducers' });
+    }
+    reducers = reducersRaw.map((item, i) => validateReducerRule(item, i));
+  }
+
+  const behaviorsRaw = raw['behaviors'];
+  let behaviors: readonly BehaviorRule[] | undefined;
+  if (behaviorsRaw !== undefined && behaviorsRaw !== null) {
+    if (!Array.isArray(behaviorsRaw)) {
+      throw new BootError('BOOT_ERR_DSL_SYNTAX', 'component: "behaviors" must be an array', { field: 'behaviors' });
+    }
+    behaviors = behaviorsRaw.map((item, i) => validateBehaviorRule(item, i));
+  }
+
+  let identity: IdentityConfig | undefined;
+  if (raw['identity'] !== undefined && raw['identity'] !== null) {
+    identity = validateIdentityConfig(raw['identity'], 'component');
+  }
+
+  const state = validateDeclaredState(raw['state'], 'component');
+
+  const reactionsRaw = raw['reactions'];
+  let reactions: readonly ReactionRule[] | undefined;
+  if (reactionsRaw !== undefined && reactionsRaw !== null) {
+    if (!Array.isArray(reactionsRaw)) {
+      throw new BootError('BOOT_ERR_DSL_SYNTAX', 'component: "reactions" must be an array', { field: 'reactions' });
+    }
+    reactions = reactionsRaw.map((item, i) => validateReactionRule(item, i, undefined));
+  }
+
+  const include = validateIncludeEntries(raw['include'], 'component');
+
+  // Phase-1 intra-component cross-reference validation: reducers and behaviors
+  // must reference event types declared in this component's own event_catalog.
+  // (Binding-dependent cross-component references are deferred to C2/C3.)
+  if (eventCatalog !== undefined || reducers !== undefined || behaviors !== undefined) {
+    const componentForCrossValidate = {
+      boundary: name,
+      behaviors: behaviors ?? [],
+      reducers: reducers ?? [],
+      eventCatalog: eventCatalog ?? [],
+    };
+    crossValidate(componentForCrossValidate);
+  }
+
+  return {
+    kind: 'component',
+    name,
+    ...(parameters !== undefined ? { parameters } : {}),
+    ...(eventCatalog !== undefined ? { eventCatalog } : {}),
+    ...(reducers !== undefined ? { reducers } : {}),
+    ...(behaviors !== undefined ? { behaviors } : {}),
+    ...(identity !== undefined ? { identity } : {}),
+    ...(state !== undefined ? { state } : {}),
+    ...(reactions !== undefined ? { reactions } : {}),
+    ...(include !== undefined ? { include } : {}),
+  };
+}
+
+/**
+ * Validate and parse a use-only mapping file: a file with only a `use:` key
+ * (no `boundary:`, no `kind:`). These files activate components as concrete
+ * boundaries. The `use:` entries are stashed and returned for the C3 linker.
+ *
+ * Decision: a use-only file is classified as a "mapping file" — distinct from
+ * both boundary modules and global modules. It contributes `use:` entries to
+ * CompiledDsl.use but contributes no boundary module bodies to global merging.
+ * The loader routes it to a third bucket (useMappingModules).
+ */
+export function validateUseMappingConfig(raw: unknown): readonly UseEntry[] {
+  if (!isRecord(raw)) {
+    throw new BootError(
+      'BOOT_ERR_DSL_SYNTAX',
+      'Use-mapping file root must be a YAML mapping object',
+      { received: typeof raw },
+    );
+  }
+  const use = validateUseEntries(raw['use'], 'root');
+  if (use === undefined || use.length === 0) {
+    throw new BootError(
+      'BOOT_ERR_DSL_SYNTAX',
+      'Use-mapping file must have a non-empty "use" array',
+      { field: 'use' },
+    );
+  }
+  return use;
+}
+
 /**
  * Every valid top-level key in a boundary DSL module — used for fail-fast
  * rejection of typos, symmetric with KNOWN_GLOBAL_KEYS for the global config.
@@ -961,6 +1325,8 @@ const KNOWN_BOUNDARY_KEYS: ReadonlySet<string> = new Set([
   'behaviors', 'reducers', 'event_catalog', 'initialization', 'scripts',
   'deprecated', 'hateoas', 'mask', 'state', 'strict_schema', 'latency',
   'audit_fields', 'fault_rules', 'reactions',
+  // Cross-file composition keys (C1)
+  'include',
   // Spec-endpoint cross-check keys consumed by configLoader (camelCase + snake_case).
   'specId', 'spec_id', 'outOfContract', 'out_of_contract', 'method', 'methods',
 ]);
@@ -1228,6 +1594,8 @@ export function validateBoundaryConfig(raw: unknown): BoundaryConfig {
     reactions = reactionsRaw.map((item, i) => validateReactionRule(item, i, boundary));
   }
 
+  const include = validateIncludeEntries(raw['include'], 'root');
+
   crossValidate({ behaviors, reducers, eventCatalog, boundary, scripts });
 
   return {
@@ -1249,6 +1617,7 @@ export function validateBoundaryConfig(raw: unknown): BoundaryConfig {
     ...(auditFields !== undefined ? { auditFields } : {}),
     ...(faults !== undefined ? { faults } : {}),
     ...(reactions !== undefined ? { reactions } : {}),
+    ...(include !== undefined ? { include } : {}),
   };
 }
 

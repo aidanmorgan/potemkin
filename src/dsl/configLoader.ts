@@ -45,6 +45,10 @@ export interface LoadedConfig {
   readonly boundarySourcePaths: Readonly<Record<string, string>>;
   /** Absolute paths of global module files (sagas/idempotency/etc, no `boundary:`). */
   readonly globalModulePaths: readonly string[];
+  /** Absolute paths of `kind: component` files loaded into the component catalog. */
+  readonly componentModulePaths: readonly string[];
+  /** Absolute paths of use-mapping files (files with only a `use:` key). */
+  readonly useMappingModulePaths: readonly string[];
   readonly pluginConfig: PotemkinConfigPlugin | undefined;
   readonly forwardBlocks: ForwardBlocks;
   readonly typescript: PotemkinConfig['typescript'];
@@ -94,9 +98,17 @@ export async function loadPotemkinConfig(
 
   const resolvedFiles = await resolveModuleGlobs(config.modules, configDir);
 
-  // Partition into boundary modules (have a `boundary:` key) and global modules
-  // (sagas/idempotency/auth etc.). Non-mapping files are skipped silently.
+  // Partition into four file kinds:
+  //   1. Boundary modules — have a `boundary:` key (and no `kind: component`).
+  //   2. Component modules — `kind: component` (no `boundary:`).
+  //   3. Use-mapping modules — have a `use:` key but no `boundary:` or `kind:`.
+  //   4. Global modules — everything else (sagas/idempotency/auth etc.).
+  //
+  // The three-way split introduced by C1 is backward-compatible: files without
+  // `kind:` or `use:` classify exactly as before.
   const boundaryModules: ResolvedModule[] = [];
+  const componentModules: ResolvedModule[] = [];
+  const useMappingModules: ResolvedModule[] = [];
   const globalModules: ResolvedModule[] = [];
   for (const filePath of resolvedFiles) {
     let text: string;
@@ -121,8 +133,18 @@ export async function loadPotemkinConfig(
     }
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
       const rec = parsed as Record<string, unknown>;
-      if (rec['boundary'] !== undefined) {
+      if (rec['kind'] === 'component') {
+        // Component file: stash in component catalog, produces no live boundary.
+        componentModules.push({ path: filePath, text, parsed });
+      } else if (rec['kind'] !== undefined) {
+        // Unknown kind: will fail during compilation with a clear BOOT_ERR_DSL_SYNTAX.
+        // Route to component modules so the validator can report the bad kind value.
+        componentModules.push({ path: filePath, text, parsed });
+      } else if (rec['boundary'] !== undefined) {
         boundaryModules.push({ path: filePath, text, parsed });
+      } else if (rec['use'] !== undefined && Array.isArray(rec['use'])) {
+        // Use-mapping file: only `use:` entries, no boundary, no kind.
+        useMappingModules.push({ path: filePath, text, parsed });
       } else {
         globalModules.push({ path: filePath, text, parsed });
       }
@@ -137,7 +159,9 @@ export async function loadPotemkinConfig(
 
   const globalYaml = mergeGlobalModules(globalModules);
   const compileModules = boundaryModules.map((m) => ({ name: m.path, yaml: m.text }));
-  const compiledDsl = await compileDsl(compileModules, globalYaml);
+  const compileComponentModules = componentModules.map((m) => ({ name: m.path, yaml: m.text }));
+  const compileUseMappingModules = useMappingModules.map((m) => ({ name: m.path, yaml: m.text }));
+  const compiledDsl = await compileDsl(compileModules, globalYaml, compileComponentModules, compileUseMappingModules);
 
   const boundarySourcePaths: Record<string, string> = {};
   for (const m of boundaryModules) {
@@ -154,6 +178,8 @@ export async function loadPotemkinConfig(
     boundaryModulePaths: boundaryModules.map((m) => m.path),
     boundarySourcePaths,
     globalModulePaths: globalModules.map((m) => m.path),
+    componentModulePaths: componentModules.map((m) => m.path),
+    useMappingModulePaths: useMappingModules.map((m) => m.path),
     pluginConfig: config.plugin,
     forwardBlocks: {
       ...(config.seeds ? { seeds: config.seeds } : {}),
