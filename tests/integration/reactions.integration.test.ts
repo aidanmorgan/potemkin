@@ -25,7 +25,12 @@ import { loadOpenApi } from '../../src/contract/loader.js';
 import { compileDsl } from '../../src/dsl/parser.js';
 import { nextUuidv7 } from '../../src/ids/uuidv7.js';
 import { InternalExecutionError, ReactionBudgetExceededError } from '../../src/errors.js';
-import type { Command } from '../../src/types.js';
+import type { Command, DomainEvent } from '../../src/types.js';
+import { createCelEvaluator } from '../../src/cel/evaluator.js';
+import { createStateGraph } from '../../src/stategraph/graph.js';
+import { fireReactions } from '../../src/engine/reactions.js';
+import type { CompiledDsl as CompiledDslT } from '../../src/dsl/types.js';
+import type { ScriptRegistry as ScriptRegistryT, ScriptContext as ScriptContextT } from '../../src/scripts/types.js';
 
 // ---------------------------------------------------------------------------
 // Shared minimal OpenAPI
@@ -2226,5 +2231,155 @@ reactions:
     expect(boundaries[0]).toBe('DedupAlpha');
     expect(boundaries[1]).toBe('DedupCounter');
     expect(boundaries[2]).toBe('DedupBeta');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// potemkin-u06n: reaction payload_template ts: sentinel resolves via scriptRegistry
+// ---------------------------------------------------------------------------
+//
+// Verifies that hydrateReactionEvent routes ts:<id> sentinels through evaluateExpr /
+// the script registry identically to the behaviour path in patternMatcher.
+//
+// Boot-time validation requires ts:<id> refs to be backed by a scanned @Script id —
+// bypassing bootSystem lets the test inject an inline ScriptRegistry without needing
+// fixture files. fireReactions is called directly (same pattern as reactions.cel-phase.test.ts
+// for determinism testing) so the script-dispatch path is exercised end-to-end.
+
+// ---------------------------------------------------------------------------
+// Inline ScriptRegistry: computeScore returns (event.payload.quantity * 2)
+// ---------------------------------------------------------------------------
+
+const U06N_SCRIPT_REGISTRY: ScriptRegistryT = {
+  get(boundary: string, name: string) {
+    if (boundary === 'ScoreCalc' && name === 'computeScore') {
+      return {
+        name: 'computeScore',
+        boundary: 'ScoreCalc',
+        source: 'inline-test',
+        fn: (ctx: ScriptContextT) => {
+          const qty = ctx.event?.payload['quantity'] as number | undefined;
+          return typeof qty === 'number' ? qty * 2 : 0;
+        },
+      };
+    }
+    return undefined;
+  },
+  has(boundary: string, name: string) {
+    return boundary === 'ScoreCalc' && name === 'computeScore';
+  },
+  size() { return 1; },
+};
+
+// ---------------------------------------------------------------------------
+// Minimal CompiledDsl for the u06n scenario:
+//   ScoreTrigger:ScoreRequested → ScoreCalc:ScoreComputed (ts:computeScore)
+// ---------------------------------------------------------------------------
+
+function makeU06nDsl(): CompiledDslT {
+  const scoreCalcBoundary = {
+    boundary: 'ScoreCalc',
+    contractPath: '/score-results/{id}',
+    fallbackOverride: false,
+    behaviors: [],
+    reducers: [
+      {
+        on: 'ScoreComputed',
+        patches: [
+          { op: 'replace' as const, path: '/id', value: '${event.payload.id}' },
+          { op: 'replace' as const, path: '/score', value: '${event.payload.score}' },
+        ],
+      },
+    ],
+    eventCatalog: [
+      {
+        type: 'ScoreComputed',
+        payloadTemplate: {
+          id: 'event.aggregateId',
+          score: 'ts:computeScore',
+        },
+      },
+    ],
+  };
+
+  const reactionRule = {
+    name: 'compute-score-on-request',
+    on: 'ScoreTrigger:ScoreRequested',
+    boundary: 'ScoreCalc',
+    emit: 'ScoreComputed',
+    intent: 'mutation' as const,
+    target: '"score-calc-agg-u06n"',
+  };
+
+  return {
+    boundaries: [scoreCalcBoundary],
+    byContractPath: {},
+    byBoundaryName: { ScoreCalc: scoreCalcBoundary },
+    reactionsByTrigger: new Map([['ScoreTrigger:ScoreRequested', [reactionRule]]]),
+    scriptRegistry: U06N_SCRIPT_REGISTRY,
+  } as unknown as CompiledDslT;
+}
+
+describe('potemkin-u06n: reaction payload_template ts: sentinel resolves via scriptRegistry', () => {
+  const SCORE_CALC_ID = 'score-calc-agg-u06n';
+
+  function makeTriggerEvent(quantity: number): DomainEvent {
+    return {
+      eventId: 'evt-trigger-u06n',
+      boundary: 'ScoreTrigger',
+      aggregateId: 'agg-trigger-u06n',
+      type: 'ScoreRequested',
+      payload: { quantity },
+      timestamp: '2024-01-01T00:00:00.000Z',
+      sequenceVersion: 1,
+      causedBy: 'cmd-u06n',
+    };
+  }
+
+  function fireWithQuantity(quantity: number): readonly DomainEvent[] {
+    const cel = createCelEvaluator();
+    const shadowGraph = createStateGraph();
+    shadowGraph.set(SCORE_CALC_ID, { id: SCORE_CALC_ID, score: 0 });
+
+    const dsl = makeU06nDsl();
+    const triggerEvent = makeTriggerEvent(quantity);
+
+    let seq = 0;
+    return fireReactions({
+      triggerEvent,
+      dsl,
+      shadowGraph,
+      cel,
+      nextEventId: () => `evt-u06n-${++seq}`,
+      now: () => '2024-01-01T00:00:00.000Z',
+      nextSequenceVersion: () => 1,
+      firedReactions: new Set(),
+      currentReactionEventCount: 0,
+      scriptRegistry: U06N_SCRIPT_REGISTRY,
+    });
+  }
+
+  it('ts:computeScore in payload_template resolves to the script return value (quantity × 2)', () => {
+    const emitted = fireWithQuantity(7);
+    expect(emitted).toHaveLength(1);
+    const evt = emitted[0]!;
+    expect(evt.boundary).toBe('ScoreCalc');
+    expect(evt.type).toBe('ScoreComputed');
+    // ts:computeScore receives ctx.event.payload.quantity = 7; returns 7 * 2 = 14
+    expect(evt.payload['score']).toBe(14);
+  });
+
+  it('ts:computeScore result varies with quantity (5 → 10)', () => {
+    const emitted = fireWithQuantity(5);
+    expect(emitted[0]!.payload['score']).toBe(10);
+  });
+
+  it('the reaction fires without error (ts: sentinel no longer aborts the UoW)', () => {
+    expect(() => fireWithQuantity(3)).not.toThrow();
+  });
+
+  it('the emitted event aggregateId matches the reaction target', () => {
+    const emitted = fireWithQuantity(4);
+    expect(emitted[0]!.aggregateId).toBe(SCORE_CALC_ID);
   });
 });

@@ -579,6 +579,7 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
                     openapi,
                     tsReducerRegistry: input.tsReducerRegistry,
                     inferredSchemas: input.inferredSchemas,
+                    scriptRegistry: input.dsl.scriptRegistry,
                   });
 
                   // Reaction-emitted events are already projected into shadow by fireReactions.

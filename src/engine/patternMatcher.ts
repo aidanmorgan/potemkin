@@ -94,7 +94,7 @@ export function runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
 // Helper: evaluate a CEL or ts: expression
 // ---------------------------------------------------------------------------
 
-function evaluateExpr(
+export function evaluateExpr(
   expr: string,
   celCtx: Record<string, unknown>,
   phase: CelPhase,

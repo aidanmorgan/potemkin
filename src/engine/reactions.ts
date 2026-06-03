@@ -47,10 +47,14 @@ import type { Tracer } from '../observability/tracing.js';
 import type { OpenApiDoc } from '../contract/loader.js';
 import type { TsReducerRegistry } from './tsReducerRegistry.js';
 import type { BoundaryInferenceResult } from '../dsl/schemaInference.js';
+import type { ScriptRegistry, ScriptContext } from '../scripts/types.js';
 
 import { CelPhase } from '../cel/phases.js';
 import { InternalExecutionError, ReactionBudgetExceededError } from '../errors.js';
 import { projectEvent } from './projection.js';
+import { evaluateExpr } from './patternMatcher.js';
+import { nextUuidv7 } from '../ids/uuidv7.js';
+import { deepClone, deepMerge } from '../stategraph/graph.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -119,6 +123,8 @@ export interface FireReactionsInput {
   readonly openapi?: OpenApiDoc;
   readonly tsReducerRegistry?: TsReducerRegistry;
   readonly inferredSchemas?: Readonly<Record<string, BoundaryInferenceResult>>;
+  /** Script registry for ts: sentinel resolution in payload_template fields. */
+  readonly scriptRegistry?: ScriptRegistry;
 }
 
 // ---------------------------------------------------------------------------
@@ -321,6 +327,7 @@ export function fireReactions(input: FireReactionsInput): readonly DomainEvent[]
       nextSequenceVersion: input.nextSequenceVersion,
       shadowGraph: input.shadowGraph,
       logger: log,
+      scriptRegistry: input.scriptRegistry,
     });
 
     // Step 5: Project the emitted event into the shadow graph via the reacting boundary's reducers
@@ -375,6 +382,8 @@ interface HydrateReactionEventInput {
   readonly nextSequenceVersion: (aggregateId: string) => number;
   readonly shadowGraph: StateGraph;
   readonly logger?: Logger;
+  /** Script registry for ts: sentinel resolution in payload_template fields. */
+  readonly scriptRegistry?: ScriptRegistry;
 }
 
 /**
@@ -400,6 +409,7 @@ function hydrateReactionEvent(input: HydrateReactionEventInput): DomainEvent {
     nextSequenceVersion,
     shadowGraph,
     logger,
+    scriptRegistry,
   } = input;
 
   const catalogEntry = reactingBoundary.eventCatalog.find(e => e.type === reaction.emit);
@@ -414,18 +424,55 @@ function hydrateReactionEvent(input: HydrateReactionEventInput): DomainEvent {
 
   // Build the hydration CEL context using the trigger event and the current
   // shadow state of the reacting aggregate.
+  const currentState = shadowGraph.get(aggregateId) ?? {};
   const payloadTemplateCtx = {
     event: triggerEvent as unknown as Record<string, unknown>,
     payload: triggerEvent.payload as unknown as Record<string, unknown>,
-    state: shadowGraph.get(aggregateId) ?? {},
+    state: currentState,
   };
 
-  // Hydrate payload_template in EventHydration phase (same as runPatternMatch)
+  // Build a ScriptContext for ts: sentinel dispatch in payload_template fields.
+  // The reaction path has no command; a synthetic sentinel is constructed from the
+  // trigger event so that ts: scripts authored for the reaction context receive a
+  // well-typed context. The meaningful fields here are ctx.state, ctx.event,
+  // ctx.payload and ctx.helpers. NOTE: ctx.command.targetId and ctx.command.boundary
+  // carry the TRIGGER event's aggregate/boundary (not the reaction's resolved target),
+  // so a reaction script should read ctx.event/ctx.payload rather than ctx.command.
+  const buildPayloadScriptCtx = (): ScriptContext => ({
+    command: {
+      commandId: triggerEvent.causedBy ?? triggerEvent.eventId,
+      boundary: triggerEvent.boundary,
+      intent: 'mutation',
+      targetId: triggerEvent.aggregateId,
+      payload: triggerEvent.payload,
+      queryParams: {},
+      httpMethod: 'POST',
+      path: '',
+      origin: 'secondary',
+      depth: 0,
+    },
+    state: currentState as JsonObject | null,
+    event: triggerEvent,
+    payload: triggerEvent.payload,
+    helpers: {
+      uuid: () => nextUuidv7(),
+      now,
+      deepClone: <T>(v: T) => deepClone(v as JsonValue) as unknown as T,
+      deepMerge: (a: JsonObject, b: JsonObject) => deepMerge(a, b),
+    },
+    logger: logger ?? ({ child: () => ({} as Logger), info: () => {}, debug: () => {}, warn: () => {}, error: () => {} } as unknown as Logger),
+  });
+
+  // Hydrate payload_template in EventHydration phase, routing ts: sentinels through
+  // the script registry identically to the behaviour path (evaluateExpr in patternMatcher).
   const eventPayload: JsonObject = {};
   for (const [field, expr] of Object.entries(catalogEntry.payloadTemplate)) {
     let value: unknown;
     try {
-      value = cel.evaluate(expr, payloadTemplateCtx, CelPhase.EventHydration);
+      value = evaluateExpr(
+        expr, payloadTemplateCtx, CelPhase.EventHydration, cel, scriptRegistry,
+        reactingBoundary.boundary, buildPayloadScriptCtx,
+      );
     } catch (err) {
       throw new InternalExecutionError(
         `Reaction "${reaction.name ?? reaction.on}" payload_template field "${field}" threw: ${err instanceof Error ? err.message : String(err)}`,
