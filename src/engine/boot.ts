@@ -392,22 +392,19 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       );
     }
 
-    // ── Step 2b-ii: Validate ts: script references against combined id set ────
-    // ts: refs may resolve to either inline scripts[].code (keyed by name within
-    // a boundary) or scanned @Script functions (keyed by global id). An id that
-    // resolves to neither halts boot with BOOT_ERR_DSL_REFERENCE. This check
-    // replaces the parse-time check that only knew about inline scripts.
+    // ── Step 2b-ii: Validate ts: script references against scanned @Script ids ─
+    // After B3, all ts:<id> refs must resolve to a scanned @Script. An id that
+    // resolves to no scanned script halts boot with BOOT_ERR_DSL_REFERENCE.
     const scannedScriptIds = new Set(scannedScripts.map((s) => s.id));
     for (const boundary of dsl.boundaries) {
       validateBoundaryTsRefs(boundary, scannedScriptIds);
     }
 
     // ── Step 2b-iii: Build composite script registry ──────────────────────────
-    // Merges the inline scripts[].code registry (node:vm sandbox, 50ms budget)
-    // with scanned @Script functions (direct host call — no sandbox). The
-    // inline path is preserved unchanged (B3 removes it later). The composite
-    // registry is attached to a new dsl object so the UoW's scriptRegistry
-    // reference picks up scanned scripts automatically.
+    // Scanned @Script functions execute as direct host calls (no sandbox).
+    // After B3 the inline scripts[].code form is removed; dsl.scriptRegistry
+    // will always be undefined here, but buildCompositeScriptRegistry handles
+    // undefined gracefully so the branch is retained for scanned-only usage.
     if (scannedScripts.length > 0 || dsl.scriptRegistry) {
       const compositeRegistry = buildCompositeScriptRegistry(dsl.scriptRegistry, scannedScripts);
       dsl = { ...dsl, scriptRegistry: compositeRegistry };

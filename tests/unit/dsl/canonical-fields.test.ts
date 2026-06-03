@@ -2,7 +2,8 @@
  * DSL canonical vs legacy field-name acceptance tests.
  *
  * Verifies that:
- *  1. scripts[].code   (canonical) and scripts[].source   (legacy) parse identically.
+ *  1. scripts: is removed — any boundary YAML containing scripts: halts boot with
+ *     BOOT_ERR_REMOVED_SYNTAX (both code: and source: forms were removed together).
  *  2. requires[].condition (canonical) and requires[].expression (legacy) parse identically.
  *  3. postcondition: "<string>" (canonical) and postcondition: {expression: "..."} (legacy)
  *     parse identically.
@@ -27,55 +28,57 @@ function makeBase() {
 }
 
 // ---------------------------------------------------------------------------
-// 1. scripts[].code vs scripts[].source
+// 1. scripts: key is removed — all forms throw BOOT_ERR_REMOVED_SYNTAX
 // ---------------------------------------------------------------------------
 
-describe('DSL canonical field: scripts[].code vs scripts[].source', () => {
+describe('DSL removed syntax: scripts: key (B3)', () => {
   const scriptBody = 'export default function(ctx) { return ctx.state.x; }';
 
-  it('canonical form "code" parses correctly', () => {
-    const config = validateBoundaryConfig({
-      ...makeBase(),
-      behaviors: [{ name: 'b', match: { operationId: 'updateThing', condition: 'true' }, emit: 'Evt' }],
-      scripts: [{ name: 'myScript', code: scriptBody }],
-    });
-    const script = config.scripts![0];
-    expect(script.name).toBe('myScript');
-    expect(script.code).toBe(scriptBody);
+  it('throws BOOT_ERR_REMOVED_SYNTAX when scripts: block is present with code:', () => {
+    let caught: BootError | undefined;
+    try {
+      validateBoundaryConfig({
+        ...makeBase(),
+        behaviors: [{ name: 'b', match: { operationId: 'updateThing', condition: 'true' }, emit: 'Evt' }],
+        scripts: [{ name: 'myScript', code: scriptBody }],
+      } as unknown as Record<string, unknown>);
+    } catch (e) {
+      caught = e as BootError;
+    }
+    expect(caught).toBeInstanceOf(BootError);
+    expect(caught!.code).toBe('BOOT_ERR_REMOVED_SYNTAX');
+    expect(caught!.message).toContain('@Script');
   });
 
-  it('legacy form "source" parses to the same result as "code"', () => {
-    const config = validateBoundaryConfig({
-      ...makeBase(),
-      behaviors: [{ name: 'b', match: { operationId: 'updateThing', condition: 'true' }, emit: 'Evt' }],
-      scripts: [{ name: 'myScript', source: scriptBody }],
-    });
-    const script = config.scripts![0];
-    expect(script.name).toBe('myScript');
-    // Regardless of YAML field name, the TypeScript field is always "code"
-    expect(script.code).toBe(scriptBody);
+  it('throws BOOT_ERR_REMOVED_SYNTAX when scripts: block is present with source:', () => {
+    let caught: BootError | undefined;
+    try {
+      validateBoundaryConfig({
+        ...makeBase(),
+        behaviors: [{ name: 'b', match: { operationId: 'updateThing', condition: 'true' }, emit: 'Evt' }],
+        scripts: [{ name: 'myScript', source: scriptBody }],
+      } as unknown as Record<string, unknown>);
+    } catch (e) {
+      caught = e as BootError;
+    }
+    expect(caught).toBeInstanceOf(BootError);
+    expect(caught!.code).toBe('BOOT_ERR_REMOVED_SYNTAX');
+    expect(caught!.message).toContain('ts:<id>');
   });
 
-  it('"code" and "source" both produce identical ScriptDeclaration objects', () => {
-    const codeConfig = validateBoundaryConfig({
-      ...makeBase(),
-      behaviors: [{ name: 'b', match: { operationId: 'updateThing', condition: 'true' }, emit: 'Evt' }],
-      scripts: [{ name: 'myScript', code: scriptBody }],
-    });
-    const sourceConfig = validateBoundaryConfig({
-      ...makeBase(),
-      behaviors: [{ name: 'b', match: { operationId: 'updateThing', condition: 'true' }, emit: 'Evt' }],
-      scripts: [{ name: 'myScript', source: scriptBody }],
-    });
-    expect(codeConfig.scripts![0]).toEqual(sourceConfig.scripts![0]);
-  });
-
-  it('throws BootError when neither "code" nor "source" is provided', () => {
-    expect(() => validateBoundaryConfig({
-      ...makeBase(),
-      behaviors: [{ name: 'b', match: { operationId: 'updateThing', condition: 'true' }, emit: 'Evt' }],
-      scripts: [{ name: 'myScript' }],
-    })).toThrow(BootError);
+  it('throws BOOT_ERR_REMOVED_SYNTAX when scripts: block is present with no code field', () => {
+    let caught: BootError | undefined;
+    try {
+      validateBoundaryConfig({
+        ...makeBase(),
+        behaviors: [{ name: 'b', match: { operationId: 'updateThing', condition: 'true' }, emit: 'Evt' }],
+        scripts: [{ name: 'myScript' }],
+      } as unknown as Record<string, unknown>);
+    } catch (e) {
+      caught = e as BootError;
+    }
+    expect(caught).toBeInstanceOf(BootError);
+    expect(caught!.code).toBe('BOOT_ERR_REMOVED_SYNTAX');
   });
 });
 

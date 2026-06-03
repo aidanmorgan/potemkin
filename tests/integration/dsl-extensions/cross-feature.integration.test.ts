@@ -3,16 +3,19 @@
  * in the same boundary, behavior, or UoW execution.
  *
  * Tests:
- *  - match.requires using ts: reference
+ *  - match.requires using ts: reference (scanned @Script)
  *  - postcondition using CEL comprehension
- *  - dispatch_commands[].condition using inline TS
- *  - emit_when whose `when` is inline TS
- *  - A behavior with ALL Tier 1 features in one block
- *  - Boundary using both inline TS AND CEL in same UoW
+ *  - dispatch_commands[].condition using ts: (scanned @Script)
+ *  - emit_when whose `when` is ts: (scanned @Script)
+ *  - A behavior with ALL Tier 1 features in one block (scanned @Script)
+ *  - Boundary using both ts: AND CEL in same UoW (scanned @Script)
  */
 
+import * as path from 'node:path';
 import { bootAndRun } from './_helpers/dsl-builder.js';
 import { nextUuidv7 } from '../../../src/ids/uuidv7.js';
+
+const SCRIPT_FIXTURE_DIR = path.join(__dirname, '..', '..', 'fixtures', 'inline-ts-migration');
 
 // ---------------------------------------------------------------------------
 // Test A: match.requires using ts: reference
@@ -26,16 +29,11 @@ describe('Cross-feature: match.requires using ts: reference', () => {
       contractPath: '/widgets/{id}',
       entity: { id: entityId, status: 'ACTIVE', balance: 300, tier: 'GOLD' },
       commandPayload: { amount: 100 },
+      typescriptScanDir: SCRIPT_FIXTURE_DIR,
       boundaryYaml: `
 boundary: Widget
 contract_path: /widgets/{id}
 fallback_override: false
-scripts:
-  - name: checkEligible
-    code: |
-      export default function(ctx) {
-        return ctx.state.tier === 'GOLD' && ctx.state.balance >= ctx.command.payload.amount;
-      }
 event_catalog:
   - type: WidgetUpdated
     payload_template:
@@ -54,7 +52,9 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "\${'UPDATED'}" }
+      - op: replace
+        path: /status
+        value: "\${'UPDATED'}"
 `,
     });
     expect(result.status).toBe(200);
@@ -68,16 +68,11 @@ reducers:
       contractPath: '/widgets/{id}',
       entity: { id: entityId, status: 'ACTIVE', balance: 50, tier: 'STANDARD' },
       commandPayload: { amount: 100 },
+      typescriptScanDir: SCRIPT_FIXTURE_DIR,
       boundaryYaml: `
 boundary: Widget
 contract_path: /widgets/{id}
 fallback_override: false
-scripts:
-  - name: checkEligible
-    code: |
-      export default function(ctx) {
-        return ctx.state.tier === 'GOLD' && ctx.state.balance >= ctx.command.payload.amount;
-      }
 event_catalog:
   - type: WidgetUpdated
     payload_template:
@@ -96,7 +91,9 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "\${'UPDATED'}" }
+      - op: replace
+        path: /status
+        value: "\${'UPDATED'}"
 `,
     });
     expect(result.status).toBe(422);
@@ -198,7 +195,7 @@ reducers:
 // Test C: dispatch_commands[].condition using inline TS
 // ---------------------------------------------------------------------------
 
-describe('Cross-feature: dispatch_commands condition using inline TS', () => {
+describe('Cross-feature: dispatch_commands condition using ts: (scanned @Script)', () => {
   it('fires secondary when ts: condition returns true', async () => {
     const entityId = nextUuidv7();
     const secondaryId = nextUuidv7();
@@ -208,16 +205,11 @@ describe('Cross-feature: dispatch_commands condition using inline TS', () => {
       contractPath: '/widgets/{id}',
       entity: { id: entityId, status: 'ACTIVE', riskScore: 85 },
       commandPayload: { amount: 5000, secondaryId },
+      typescriptScanDir: SCRIPT_FIXTURE_DIR,
       boundaryYaml: `
 boundary: Widget
 contract_path: /widgets/{id}
 fallback_override: false
-scripts:
-  - name: isHighRisk
-    code: |
-      export default function(ctx) {
-        return ctx.state.riskScore > 80;
-      }
 event_catalog:
   - type: WidgetUpdated
     payload_template:
@@ -237,7 +229,9 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "\${'UPDATED'}" }
+      - op: replace
+        path: /status
+        value: "\${'UPDATED'}"
 `,
       extraDslModules: [
         {
@@ -280,16 +274,11 @@ reducers:
       contractPath: '/widgets/{id}',
       entity: { id: entityId, status: 'ACTIVE', riskScore: 30 },
       commandPayload: { amount: 100, secondaryId },
+      typescriptScanDir: SCRIPT_FIXTURE_DIR,
       boundaryYaml: `
 boundary: Widget
 contract_path: /widgets/{id}
 fallback_override: false
-scripts:
-  - name: isHighRisk
-    code: |
-      export default function(ctx) {
-        return ctx.state.riskScore > 80;
-      }
 event_catalog:
   - type: WidgetUpdated
     payload_template:
@@ -309,7 +298,9 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "\${'UPDATED'}" }
+      - op: replace
+        path: /status
+        value: "\${'UPDATED'}"
 `,
       extraDslModules: [
         {
@@ -348,7 +339,7 @@ reducers:
 // Test D: emit_when whose `when` uses inline TS
 // ---------------------------------------------------------------------------
 
-describe('Cross-feature: emit_when with ts: when condition', () => {
+describe('Cross-feature: emit_when with ts: when condition (scanned @Script)', () => {
   it('emits event when ts: when condition returns true', async () => {
     const entityId = nextUuidv7();
     const { result, events, state } = await bootAndRun({
@@ -356,16 +347,11 @@ describe('Cross-feature: emit_when with ts: when condition', () => {
       contractPath: '/loans/{id}',
       entity: { id: entityId, status: 'ACTIVE', balance: 100, overdraftAllowed: false },
       commandPayload: { amount: 100 },
+      typescriptScanDir: SCRIPT_FIXTURE_DIR,
       boundaryYaml: `
 boundary: Loan
 contract_path: /loans/{id}
 fallback_override: false
-scripts:
-  - name: isFullSettlement
-    code: |
-      export default function(ctx) {
-        return ctx.command.payload.amount >= ctx.state.balance;
-      }
 event_catalog:
   - type: LoanRepaid
     payload_template:
@@ -387,10 +373,14 @@ behaviors:
 reducers:
   - on: LoanRepaid
     patches:
-      - { op: replace, path: /balance, value: "\${state.balance - event.payload.amount}" }
+      - op: replace
+        path: /balance
+        value: "\${state.balance - event.payload.amount}"
   - on: LoanSettled
     patches:
-      - { op: replace, path: /status, value: "\${'SETTLED'}" }
+      - op: replace
+        path: /status
+        value: "\${'SETTLED'}"
 `,
     });
     expect(result.status).toBe(200);
@@ -421,16 +411,11 @@ describe('Cross-feature: ALL Tier 1 features in one behavior', () => {
         riskScore: 30,
       },
       commandPayload: { amount: 200, secondaryId, notify: true },
+      typescriptScanDir: SCRIPT_FIXTURE_DIR,
       boundaryYaml: `
 boundary: Loan
 contract_path: /loans/{id}
 fallback_override: false
-scripts:
-  - name: checkActive
-    code: |
-      export default function(ctx) {
-        return ctx.state.status === 'ACTIVE';
-      }
 event_catalog:
   - type: LoanRepaid
     payload_template:
@@ -464,10 +449,14 @@ behaviors:
 reducers:
   - on: LoanRepaid
     patches:
-      - { op: replace, path: /balance, value: "\${state.balance - event.payload.amount}" }
+      - op: replace
+        path: /balance
+        value: "\${state.balance - event.payload.amount}"
   - on: NotificationQueued
     patches:
-      - { op: replace, path: /notified, value: "\${true}" }
+      - op: replace
+        path: /notified
+        value: "\${true}"
 `,
       extraDslModules: [
         {
@@ -515,7 +504,7 @@ reducers:
 // Test F: Both inline TS and CEL interleaved in same UoW
 // ---------------------------------------------------------------------------
 
-describe('Cross-feature: inline TS and CEL interleaved in same UoW', () => {
+describe('Cross-feature: ts: and CEL interleaved in same UoW (scanned @Script)', () => {
   it('CEL condition and ts: payload field both work in the same behavior', async () => {
     const entityId = nextUuidv7();
     const { result, events } = await bootAndRun({
@@ -523,16 +512,11 @@ describe('Cross-feature: inline TS and CEL interleaved in same UoW', () => {
       contractPath: '/widgets/{id}',
       entity: { id: entityId, status: 'ACTIVE', balance: 200, tier: 'SILVER' },
       commandPayload: { amount: 50 },
+      typescriptScanDir: SCRIPT_FIXTURE_DIR,
       boundaryYaml: `
 boundary: Widget
 contract_path: /widgets/{id}
 fallback_override: false
-scripts:
-  - name: computeLabel
-    code: |
-      export default function(ctx) {
-        return ctx.state.tier + "-" + ctx.command.payload.amount;
-      }
 event_catalog:
   - type: WidgetUpdated
     payload_template:
@@ -548,8 +532,12 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /label, value: "\${event.payload.label}" }
-      - { op: replace, path: /balance, value: "\${state.balance - event.payload.remaining}" }
+      - op: replace
+        path: /label
+        value: "\${event.payload.label}"
+      - op: replace
+        path: /balance
+        value: "\${state.balance - event.payload.remaining}"
 `,
     });
     expect(result.status).toBe(200);

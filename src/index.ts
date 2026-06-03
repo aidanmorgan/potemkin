@@ -49,7 +49,6 @@ export type {
   SecondaryCommandSpec,
   ReducerRule,
   IdentityConfig,
-  ScriptDeclaration,
   BoundaryConfig,
   CompiledDsl,
   SagaConfig,

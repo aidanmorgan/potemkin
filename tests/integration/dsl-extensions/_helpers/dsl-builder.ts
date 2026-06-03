@@ -17,6 +17,8 @@ import { nextUuidv7 } from '../../../../src/ids/uuidv7.js';
 import { BootError } from '../../../../src/errors.js';
 import type { JsonObject } from '../../../../src/types.js';
 import type { ExecutionResult, DomainEvent } from '../../../../src/types.js';
+import type { TypescriptConfig } from '../../../../src/dsl/typescriptScanner.js';
+import { scriptRegistry as sdkScriptRegistry } from '../../../../src/sdk/index.js';
 
 export type { JsonObject };
 
@@ -83,6 +85,13 @@ export interface RunFixtureOpts {
   readonly intent?: 'mutation' | 'creation';
   /** When true, errors thrown by executeUnitOfWork are caught and returned as { status, error }. */
   readonly catchErrors?: boolean;
+  /**
+   * Optional directory containing scanned @Script files. When provided, boot
+   * scans all *.ts files in the directory (excluding *.test.ts and *.d.ts) and
+   * registers them so ts:<id> references resolve against the scanned registry.
+   * The sdkScriptRegistry is reset after each call.
+   */
+  readonly typescriptScanDir?: string;
 }
 
 export interface RunFixtureResult {
@@ -112,6 +121,7 @@ export async function bootAndRun(opts: RunFixtureOpts): Promise<RunFixtureResult
     commandPayload = {},
     intent = 'mutation',
     catchErrors = true,
+    typescriptScanDir,
   } = opts;
 
   const entityId = entity ? String(entity['id'] ?? nextUuidv7()) : nextUuidv7();
@@ -162,11 +172,20 @@ ${schemasYaml}${extraSchemasYaml}
     ...extraDslModules.map((m) => ({ name: m.name, yaml: rewriteIntentToOperationId(m.yaml) })),
   ];
 
+  const tsConfig: TypescriptConfig | undefined = typescriptScanDir
+    ? { scan: [{ include: ['scripts/**/*.ts'], exclude: ['**/*.test.ts', '**/*.d.ts'] }] }
+    : undefined;
+
   let sys: Awaited<ReturnType<typeof bootSystem>>;
   try {
-    sys = await bootSystem({ openapi, compiledDsl: await compileDsl(dslModules) });
+    sys = await bootSystem({
+      openapi,
+      compiledDsl: await compileDsl(dslModules),
+      ...(tsConfig !== undefined ? { typescript: tsConfig, typescriptCwd: typescriptScanDir } : {}),
+    });
   } catch (err) {
     if (err instanceof BootError) {
+      sdkScriptRegistry.resetSync();
       return { result: { status: 500, body: { error: err.message }, events: [] }, events: [], state: null, bootError: err };
     }
     throw err;
@@ -219,6 +238,7 @@ ${schemasYaml}${extraSchemasYaml}
     return { result, events: result.events, state, thrownError };
   } finally {
     resetSystem(sys);
+    sdkScriptRegistry.resetSync();
   }
 }
 
@@ -232,8 +252,9 @@ export async function expectBootError(opts: {
   contractPath: string;
   schemas?: Record<string, unknown>;
   extraDslModules?: Array<{ name: string; yaml: string }>;
+  typescriptScanDir?: string;
 }): Promise<BootError> {
-  const { boundaryYaml, boundaryName, contractPath, schemas = {}, extraDslModules = [] } = opts;
+  const { boundaryYaml, boundaryName, contractPath, schemas = {}, extraDslModules = [], typescriptScanDir } = opts;
 
   const schemasYaml = buildSchemasYaml(boundaryName, schemas);
   const pathsYaml = buildPathsYaml(contractPath, boundaryName);
@@ -256,11 +277,21 @@ ${schemasYaml}
     ...extraDslModules.map((m) => ({ name: m.name, yaml: rewriteIntentToOperationId(m.yaml) })),
   ];
 
+  const tsConfig: TypescriptConfig | undefined = typescriptScanDir
+    ? { scan: [{ include: ['scripts/**/*.ts'], exclude: ['**/*.test.ts', '**/*.d.ts'] }] }
+    : undefined;
+
   try {
-    const sys = await bootSystem({ openapi, compiledDsl: await compileDsl(dslModules) });
+    const sys = await bootSystem({
+      openapi,
+      compiledDsl: await compileDsl(dslModules),
+      ...(tsConfig !== undefined ? { typescript: tsConfig, typescriptCwd: typescriptScanDir } : {}),
+    });
     resetSystem(sys);
+    sdkScriptRegistry.resetSync();
     throw new Error('Expected a BootError but boot succeeded');
   } catch (err) {
+    sdkScriptRegistry.resetSync();
     if (err instanceof BootError) return err;
     throw err;
   }

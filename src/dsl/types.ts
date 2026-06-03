@@ -98,12 +98,6 @@ export interface IdentityConfig {
   readonly key?: IdentityKeyConfig;
 }
 
-/** Named TypeScript module declared in a boundary config */
-export interface ScriptDeclaration {
-  readonly name: string;
-  readonly code: string;   // TypeScript source
-}
-
 /** A HATEOAS link entry: a relation name and its (templated) href. */
 export interface HateoasLinkEntry {
   readonly rel: string;
@@ -138,8 +132,6 @@ export interface BoundaryConfig {
   readonly reducers: readonly ReducerRule[];
   readonly eventCatalog: readonly EventCatalogEntry[];
   readonly initialization?: readonly JsonObject[];
-  /** Optional inline TypeScript scripts */
-  readonly scripts?: readonly ScriptDeclaration[];
   /** Per-boundary deprecation envelope. */
   readonly deprecated?: DeprecationConfig;
   /** Per-boundary HATEOAS link entries injected into the response `_links`. */

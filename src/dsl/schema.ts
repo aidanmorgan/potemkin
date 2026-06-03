@@ -1,5 +1,5 @@
 import { BootError } from '../errors.js';
-import { assertNoRemovedReducerKeys } from './removedSyntax.js';
+import { assertNoRemovedReducerKeys, assertNoInlineScripts } from './removedSyntax.js';
 import { firstBareCelReference } from './celInterpolation.js';
 import { lexTemplate } from '../cel/grammar/templateLexer.js';
 import type { JsonObject, JsonValue, Intent } from '../types.js';
@@ -25,7 +25,6 @@ import type {
   ReducerPatchOp,
   ReducerRule,
   RequiresGuard,
-  ScriptDeclaration,
   SecondaryCommandSpec,
   SecurityHeadersConfig,
   SessionAuthConfig,
@@ -54,7 +53,6 @@ const dslLogger = createLogger({ name: 'dsl' });
 
 // ---------------------------------------------------------------------------
 // Legacy field aliases accepted at parse time (canonical → legacy):
-//   scripts[].code  (was: source)
 //   requires[].condition  (was: expression)
 //   postcondition: "<string>"  (was: { expression: "..." })
 // All emit a DEBUG log; prefer the canonical names in new YAML.
@@ -803,29 +801,6 @@ function validateInitialization(raw: unknown, ctx: string): readonly JsonObject[
   });
 }
 
-function validateScriptDeclaration(raw: unknown, index: number, boundaryCtx: string): ScriptDeclaration {
-  const ctx = `scripts[${index}] (boundary: ${boundaryCtx})`;
-  if (!isRecord(raw)) {
-    throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}: must be an object`, { context: ctx });
-  }
-  const name = requireString(raw, 'name', ctx);
-
-  // Canonical field: "code".  Legacy alias: "source".
-  // Both are accepted for backward compatibility; prefer "code".
-  const codeRaw = raw['code'] ?? raw['source'];
-  if (raw['code'] === undefined && raw['source'] !== undefined) {
-    dslLogger.debug(`DSL: deprecated field 'source' in ${ctx}, use 'code' instead`);
-  }
-  if (typeof codeRaw !== 'string' || codeRaw.trim() === '') {
-    throw new BootError(
-      'BOOT_ERR_DSL_SYNTAX',
-      `${ctx}: script must have a non-empty "code" (or "source") field`,
-      { field: 'code', context: ctx },
-    );
-  }
-  return { name, code: codeRaw };
-}
-
 // ---------------------------------------------------------------------------
 // Cross-reference validation
 // ---------------------------------------------------------------------------
@@ -835,24 +810,8 @@ function crossValidate(config: {
   reducers: readonly ReducerRule[];
   eventCatalog: readonly EventCatalogEntry[];
   boundary: string;
-  scripts?: readonly ScriptDeclaration[];
 }): void {
   const catalogTypes = new Set(config.eventCatalog.map((e) => e.type));
-
-  // Validate script name uniqueness
-  if (config.scripts) {
-    const seen = new Set<string>();
-    for (const s of config.scripts) {
-      if (seen.has(s.name)) {
-        throw new BootError(
-          'BOOT_ERR_DSL_SYNTAX',
-          `Boundary "${config.boundary}": duplicate script name "${s.name}"`,
-          { boundary: config.boundary, scriptName: s.name },
-        );
-      }
-      seen.add(s.name);
-    }
-  }
 
   for (const behavior of config.behaviors) {
     // Validate emit references
@@ -954,28 +913,25 @@ function collectBoundaryTsRefs(config: {
 }
 
 /**
- * Validate that every ts:<id> reference in a boundary resolves to either an
- * inline script name or a scanned @Script id. Called at boot time after the
- * TypeScript scanner has run, so both sets are available.
+ * Validate that every ts:<id> reference in a boundary resolves to a scanned
+ * @Script id. Called at boot time after the TypeScript scanner has run.
  *
- * @throws {BootError} BOOT_ERR_DSL_REFERENCE when an id resolves to neither.
+ * @throws {BootError} BOOT_ERR_DSL_REFERENCE when an id resolves to no scanned @Script.
  */
 export function validateBoundaryTsRefs(
   config: {
     boundary: string;
     behaviors: readonly BehaviorRule[];
     eventCatalog: readonly EventCatalogEntry[];
-    scripts?: readonly ScriptDeclaration[];
   },
   scannedScriptIds: ReadonlySet<string>,
 ): void {
-  const inlineNames = new Set(config.scripts?.map((s) => s.name) ?? []);
   const refs = collectBoundaryTsRefs(config);
   for (const ref of refs) {
-    if (!inlineNames.has(ref) && !scannedScriptIds.has(ref)) {
+    if (!scannedScriptIds.has(ref)) {
       throw new BootError(
         'BOOT_ERR_DSL_REFERENCE',
-        `Boundary "${config.boundary}": ts: reference "ts:${ref}" does not resolve to any inline script or scanned @Script id`,
+        `Boundary "${config.boundary}": ts: reference "ts:${ref}" does not resolve to any scanned @Script id`,
         { boundary: config.boundary, scriptId: ref },
       );
     }
@@ -1351,7 +1307,10 @@ export function validateUseMappingConfig(raw: unknown): readonly UseEntry[] {
  */
 const KNOWN_BOUNDARY_KEYS: ReadonlySet<string> = new Set([
   'boundary', 'contract_path', 'fallback_override', 'identity', 'query_mapping',
-  'behaviors', 'reducers', 'event_catalog', 'initialization', 'scripts',
+  'behaviors', 'reducers', 'event_catalog', 'initialization',
+  // 'scripts' is retained in the allowed-key set so the unknown-key guard does
+  // not fire before assertNoInlineScripts can emit BOOT_ERR_REMOVED_SYNTAX.
+  'scripts',
   'deprecated', 'hateoas', 'mask', 'state', 'strict_schema', 'latency',
   'audit_fields', 'fault_rules', 'reactions',
   // Cross-file composition keys (C1)
@@ -1557,18 +1516,8 @@ export function validateBoundaryConfig(raw: unknown): BoundaryConfig {
     initialization = validateInitialization(raw['initialization'], 'root');
   }
 
-  let scripts: readonly ScriptDeclaration[] | undefined;
-  const scriptsRaw = raw['scripts'];
-  if (scriptsRaw !== undefined && scriptsRaw !== null) {
-    if (!Array.isArray(scriptsRaw)) {
-      throw new BootError(
-        'BOOT_ERR_DSL_SYNTAX',
-        'root: "scripts" must be an array',
-        { field: 'scripts' },
-      );
-    }
-    scripts = scriptsRaw.map((item, i) => validateScriptDeclaration(item, i, boundary));
-  }
+  // Inline scripts are removed — halt boot immediately if the key is present.
+  assertNoInlineScripts(raw, 'root');
 
   const deprecated = validateDeprecationConfig(raw['deprecated'], 'root');
   const hateoas = validateHateoasEntries(raw['hateoas'], 'root');
@@ -1625,7 +1574,7 @@ export function validateBoundaryConfig(raw: unknown): BoundaryConfig {
 
   const include = validateIncludeEntries(raw['include'], 'root');
 
-  crossValidate({ behaviors, reducers, eventCatalog, boundary, scripts });
+  crossValidate({ behaviors, reducers, eventCatalog, boundary });
 
   return {
     boundary,
@@ -1637,7 +1586,6 @@ export function validateBoundaryConfig(raw: unknown): BoundaryConfig {
     reducers,
     eventCatalog,
     ...(initialization !== undefined ? { initialization } : {}),
-    ...(scripts !== undefined ? { scripts } : {}),
     ...(deprecated !== undefined ? { deprecated } : {}),
     ...(hateoas !== undefined ? { hateoas } : {}),
     ...(mask !== undefined ? { mask } : {}),

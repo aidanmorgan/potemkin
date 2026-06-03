@@ -5,10 +5,22 @@ import type { RegisteredScript } from '../sdk/index.js';
 import { transpileScript } from './transpile.js';
 import { instantiateScript } from './sandbox.js';
 
+// After B3, inline scripts were removed from the DSL surface:
+// validateBoundaryConfig rejects any boundary YAML containing `scripts:`.
+// buildScriptRegistry is retained so the sandbox/transpile unit tests continue
+// to compile and run in isolation. The production boot path (parser.ts) no
+// longer calls buildScriptRegistry because no BoundaryConfig will carry scripts.
+// The function accesses `boundary.scripts` via a type cast to preserve the
+// unit-test contract without re-adding `scripts?` to BoundaryConfig.
+type BoundaryWithLegacyScripts = {
+  readonly boundary: string;
+  readonly scripts?: readonly { readonly name: string; readonly code: string }[];
+};
+
 export function buildScriptRegistry(dsl: CompiledDsl, logger: Logger): ScriptRegistry {
   const handles = new Map<string, ScriptHandle>();
 
-  for (const boundary of dsl.boundaries) {
+  for (const boundary of dsl.boundaries as unknown as BoundaryWithLegacyScripts[]) {
     if (!boundary.scripts || boundary.scripts.length === 0) {
       continue;
     }

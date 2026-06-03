@@ -3,7 +3,6 @@ import { BootError } from '../errors.js';
 import { createLogger, getTracer, withSpan } from '../observability/index.js';
 import { validateBoundaryConfig, validateComponentConfig, validateGlobalConfig, validateUseEntries } from './schema.js';
 import type { AuthConfig, BoundaryConfig, CompiledDsl, ComponentDefinition, FaultRule, HateoasConfig, ReactionRule, ReactionsByTrigger, SagaConfig, IdempotencyConfig, DerivedProjectionConfig, LatencyConfig, SecurityHeadersConfig, UseEntry, VersioningConfig, WebhookConfig } from './types.js';
-import { buildScriptRegistry } from '../scripts/registry.js';
 import { linkComponents, mergeIncludes } from './componentLinker.js';
 
 const log = createLogger({ name: 'dsl' });
@@ -421,11 +420,9 @@ export async function compileDsl(
       ...(hasUseEntries ? { use: allUseEntries as readonly UseEntry[] } : {}),
     };
 
-    const hasScripts = boundaries.some(b => b.scripts && b.scripts.length > 0);
-    if (hasScripts) {
-      const scriptRegistry = buildScriptRegistry(partialDsl as CompiledDsl, log);
-      return { ...partialDsl, scriptRegistry };
-    }
+    // Inline scripts were removed in B3: no boundary carries scripts[] any longer.
+    // buildScriptRegistry is retained for the sandbox/transpile machinery but is
+    // never called from the parser path after B3.
 
     return partialDsl as CompiledDsl;
   });

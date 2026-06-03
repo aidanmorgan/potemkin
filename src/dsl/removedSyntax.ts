@@ -1,11 +1,16 @@
-// Single source of truth for the reducer-mutation vocabulary policy. Both DSL
-// validators — the in-memory pipeline (schema.ts:validateBoundaryConfig, used
-// by compileDsl) and the on-disk pipeline (configSchema.ts:validateBoundaryModule,
-// used by loadPotemkinConfig) — delegate here, so there is exactly one place
-// that decides which reducer keys are legal.
+// Single source of truth for the removed-syntax policies.
 //
 // Reducers express state mutation exclusively via `patches:`. The legacy
-// `assign:` / `append:` / `assignAll:` keys are removed and rejected at boot.
+// `assign:` / `append:` / `assignAll:` keys are removed and rejected at boot —
+// the reducer-key check (assertNoRemovedReducerKeys) is applied by both the
+// in-memory pipeline (schema.ts) and the on-disk pipeline (configSchema.ts).
+//
+// Inline scripts (`scripts: [{ name, code }]`) are removed. Scripts are now
+// authored as @Script(id) class files discovered via typescript.scan and
+// referenced with the `ts:<id>` sentinel. The inline-scripts check
+// (assertNoInlineScripts) is applied by the in-memory boundary validator
+// (schema.ts:validateBoundaryConfig) — the only pipeline that ever accepted the
+// inline `scripts:` form.
 
 import { BootError } from '../errors.js';
 
@@ -26,5 +31,24 @@ export function assertNoRemovedReducerKeys(reducer: Record<string, unknown>, ctx
         { field: `${ctx}.${key}`, removed: key, replacement: 'patches' },
       );
     }
+  }
+}
+
+const INLINE_SCRIPTS_MIGRATION_MESSAGE =
+  'inline `scripts:` is removed — author scripts as a @Script(id) class in a scanned .ts file ' +
+  '(see typescript.scan) and reference them with ts:<id>';
+
+/**
+ * Throw BOOT_ERR_REMOVED_SYNTAX if the boundary raw object contains a `scripts:`
+ * key, indicating the caller is still using the inline `scripts: [{ name, code }]`
+ * form. `ctx` is a human-readable locator (e.g. "root" or the boundary name).
+ */
+export function assertNoInlineScripts(raw: Record<string, unknown>, ctx: string): void {
+  if (raw['scripts'] !== undefined) {
+    throw new BootError(
+      'BOOT_ERR_REMOVED_SYNTAX',
+      `${ctx}.scripts: ${INLINE_SCRIPTS_MIGRATION_MESSAGE}`,
+      { field: `${ctx}.scripts`, removed: 'scripts', replacement: '@Script(id)' },
+    );
   }
 }

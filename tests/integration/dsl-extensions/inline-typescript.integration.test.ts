@@ -1,21 +1,43 @@
 /**
- * Inline TypeScript escape hatch — end-to-end integration permutation tests.
+ * Script behaviour — end-to-end integration permutation tests (B3 migration).
  *
- * Covers: ts: boolean in condition, ts: string in payload_template,
- * helpers usage, script throws, script timeout, blocked globals (fs/process),
- * syntax error at boot, missing script → boot error, ts: in reducer → boot error,
- * ts: in postcondition, wrong return type, closures/module scope, concurrent isolation.
+ * Previously these tests used inline `scripts: [{ name, code }]` YAML. The
+ * inline form is removed (B3). All behavioural coverage is now exercised via
+ * scanned @Script classes in tests/fixtures/inline-ts-migration/scripts/, and
+ * ts:<id> references in boundary YAML resolve against the scanned registry.
+ *
+ * Tests that exercised sandbox isolation (throws, timeout, fs/process blocked)
+ * are covered by unit tests for sandbox/transpile. Those cases are replaced
+ * here with removed-syntax assertions — verifying that a boundary YAML
+ * containing `scripts:` or `code:` halts boot with BOOT_ERR_REMOVED_SYNTAX.
+ *
+ * Covered:
+ *   A  ts: boolean in match.condition (scanned @Script)
+ *   B  ts: string in payload_template (scanned @Script)
+ *   C  ctx.helpers.uuid and ctx.helpers.now (scanned @Script)
+ *   D  inline scripts: throws → removed-syntax assertion
+ *   E  inline scripts: timeout → removed-syntax assertion
+ *   F  inline scripts: fs/process blocked → removed-syntax assertion
+ *   G  inline scripts: syntax error → removed-syntax assertion
+ *   H  ts: reference to non-existent scanned @Script → BOOT_ERR_DSL_REFERENCE
+ *   I  ts: in reducer patch value → BOOT_ERR_SCRIPT_IN_REDUCER
+ *   J  ts: in postcondition (scanned @Script)
+ *   K  concurrent script invocations — isolation (scanned @Script)
+ *   L  module scope / helper function (scanned @Script)
  */
 
+import * as path from 'node:path';
 import { bootAndRun, expectBootError } from './_helpers/dsl-builder.js';
 import { BootError } from '../../../src/errors.js';
 import { nextUuidv7 } from '../../../src/ids/uuidv7.js';
 
+const SCRIPT_FIXTURE_DIR = path.join(__dirname, '..', '..', 'fixtures', 'inline-ts-migration');
+
 // ---------------------------------------------------------------------------
-// Test A: script returning boolean used in behaviors[].match.condition
+// Test A: scanned @Script returning boolean used in behaviors[].match.condition
 // ---------------------------------------------------------------------------
 
-describe('ts: script in match.condition', () => {
+describe('ts: script in match.condition (scanned @Script)', () => {
   it('behavior fires when condition script returns true', async () => {
     const entityId = nextUuidv7();
     const { result, events } = await bootAndRun({
@@ -23,16 +45,11 @@ describe('ts: script in match.condition', () => {
       contractPath: '/widgets/{id}',
       entity: { id: entityId, status: 'ACTIVE', balance: 200 },
       commandPayload: {},
+      typescriptScanDir: SCRIPT_FIXTURE_DIR,
       boundaryYaml: `
 boundary: Widget
 contract_path: /widgets/{id}
 fallback_override: false
-scripts:
-  - name: checkRiskBand
-    code: |
-      export default function(ctx) {
-        return ctx.state.balance > 100;
-      }
 event_catalog:
   - type: WidgetUpdated
     payload_template:
@@ -46,7 +63,9 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "\${'UPDATED'}" }
+      - op: replace
+        path: /status
+        value: "\${'UPDATED'}"
 `,
     });
     expect(result.status).toBe(200);
@@ -60,16 +79,11 @@ reducers:
       contractPath: '/widgets/{id}',
       entity: { id: entityId, status: 'ACTIVE', balance: 50 },
       commandPayload: {},
+      typescriptScanDir: SCRIPT_FIXTURE_DIR,
       boundaryYaml: `
 boundary: Widget
 contract_path: /widgets/{id}
 fallback_override: false
-scripts:
-  - name: checkRiskBand
-    code: |
-      export default function(ctx) {
-        return ctx.state.balance > 100;
-      }
 event_catalog:
   - type: WidgetUpdated
     payload_template:
@@ -83,19 +97,21 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "\${'UPDATED'}" }
+      - op: replace
+        path: /status
+        value: "\${'UPDATED'}"
 `,
     });
-    // Script returns false → behavior doesn't match → 422
+    // Script returns false (balance <= 100) → behavior doesn't match → 422
     expect(result.status).toBe(422);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Test B: script returning a string used in payload_template
+// Test B: scanned @Script returning a string used in payload_template
 // ---------------------------------------------------------------------------
 
-describe('ts: script in payload_template', () => {
+describe('ts: script in payload_template (scanned @Script)', () => {
   it('event payload field is set by script return value', async () => {
     const entityId = nextUuidv7();
     const { result, events } = await bootAndRun({
@@ -103,16 +119,11 @@ describe('ts: script in payload_template', () => {
       contractPath: '/widgets/{id}',
       entity: { id: entityId, status: 'ACTIVE', tier: 'GOLD' },
       commandPayload: {},
+      typescriptScanDir: SCRIPT_FIXTURE_DIR,
       boundaryYaml: `
 boundary: Widget
 contract_path: /widgets/{id}
 fallback_override: false
-scripts:
-  - name: buildPayload
-    code: |
-      export default function(ctx) {
-        return "tier:" + ctx.state.tier;
-      }
 event_catalog:
   - type: WidgetUpdated
     payload_template:
@@ -127,7 +138,9 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /computed, value: "\${event.payload.computed}" }
+      - op: replace
+        path: /computed
+        value: "\${event.payload.computed}"
 `,
     });
     expect(result.status).toBe(200);
@@ -137,10 +150,10 @@ reducers:
 });
 
 // ---------------------------------------------------------------------------
-// Test C: script using ctx.helpers.uuid and ctx.helpers.now
+// Test C: scanned @Script using ctx.helpers.uuid and ctx.helpers.now
 // ---------------------------------------------------------------------------
 
-describe('ctx.helpers — uuid and now', () => {
+describe('ctx.helpers — uuid and now (scanned @Script)', () => {
   it('script can call ctx.helpers.uuid and return a UUID string', async () => {
     const entityId = nextUuidv7();
     const { result, events } = await bootAndRun({
@@ -148,16 +161,11 @@ describe('ctx.helpers — uuid and now', () => {
       contractPath: '/widgets/{id}',
       entity: { id: entityId, status: 'ACTIVE' },
       commandPayload: {},
+      typescriptScanDir: SCRIPT_FIXTURE_DIR,
       boundaryYaml: `
 boundary: Widget
 contract_path: /widgets/{id}
 fallback_override: false
-scripts:
-  - name: makeId
-    code: |
-      export default function(ctx) {
-        return ctx.helpers.uuid();
-      }
 event_catalog:
   - type: WidgetUpdated
     payload_template:
@@ -172,7 +180,9 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /generatedId, value: "\${event.payload.generatedId}" }
+      - op: replace
+        path: /generatedId
+        value: "\${event.payload.generatedId}"
 `,
     });
     expect(result.status).toBe(200);
@@ -188,16 +198,11 @@ reducers:
       contractPath: '/widgets/{id}',
       entity: { id: entityId, status: 'ACTIVE' },
       commandPayload: {},
+      typescriptScanDir: SCRIPT_FIXTURE_DIR,
       boundaryYaml: `
 boundary: Widget
 contract_path: /widgets/{id}
 fallback_override: false
-scripts:
-  - name: getTimestamp
-    code: |
-      export default function(ctx) {
-        return ctx.helpers.now();
-      }
 event_catalog:
   - type: WidgetUpdated
     payload_template:
@@ -212,7 +217,9 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /lastTs, value: "\${event.payload.ts}" }
+      - op: replace
+        path: /lastTs
+        value: "\${event.payload.ts}"
 `,
     });
     expect(result.status).toBe(200);
@@ -223,19 +230,17 @@ reducers:
 });
 
 // ---------------------------------------------------------------------------
-// Test D: script that THROWS → SCRIPT_EXECUTION_FAILED
+// Tests D, E, F, G: inline scripts: form is removed — BOOT_ERR_REMOVED_SYNTAX
+//
+// Sandbox behavior (throws, timeout, fs/process blocking) is tested in
+// tests/unit/scripts/sandbox.test.ts — retained unchanged.
 // ---------------------------------------------------------------------------
 
-describe('script execution failure', () => {
-  it('aborts UoW with SCRIPT_EXECUTION_FAILED when script throws in payload_template', async () => {
-    // A script that throws in payload_template position propagates as SCRIPT_EXECUTION_FAILED.
-    // (Scripts that throw in condition position are treated as no-match, not as a hard error.)
-    const entityId = nextUuidv7();
-    const { result, thrownError } = await bootAndRun({
+describe('inline scripts: is removed — BOOT_ERR_REMOVED_SYNTAX (B3)', () => {
+  it('halts boot with BOOT_ERR_REMOVED_SYNTAX when scripts: block is present (D: throws case)', async () => {
+    const bootError = await expectBootError({
       boundaryName: 'Widget',
       contractPath: '/widgets/{id}',
-      entity: { id: entityId, status: 'ACTIVE' },
-      commandPayload: {},
       boundaryYaml: `
 boundary: Widget
 contract_path: /widgets/{id}
@@ -260,31 +265,20 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "\${'UPDATED'}" }
+      - op: replace
+        path: /status
+        value: "\${'UPDATED'}"
 `,
     });
-    expect(result.status).toBe(500);
-    if (thrownError) {
-      const details = (thrownError as unknown as { details: Record<string, unknown> }).details;
-      expect(details?.['code']).toBe('SCRIPT_EXECUTION_FAILED');
-    }
+    expect(bootError).toBeInstanceOf(BootError);
+    expect(bootError.code).toBe('BOOT_ERR_REMOVED_SYNTAX');
+    expect(bootError.message).toContain('@Script');
   });
-});
 
-// ---------------------------------------------------------------------------
-// Test E: script that times out → SCRIPT_TIMEOUT
-// ---------------------------------------------------------------------------
-
-describe('script timeout', () => {
-  it('aborts UoW with SCRIPT_TIMEOUT when script exceeds execution limit', async () => {
-    // Infinite-loop script in payload_template position causes a hard SCRIPT_TIMEOUT abort.
-    // (Scripts timing out in condition position are treated as no-match, not a hard error.)
-    const entityId = nextUuidv7();
-    const { result, thrownError } = await bootAndRun({
+  it('halts boot with BOOT_ERR_REMOVED_SYNTAX when scripts: block is present (E: timeout case)', async () => {
+    const bootError = await expectBootError({
       boundaryName: 'Widget',
       contractPath: '/widgets/{id}',
-      entity: { id: entityId, status: 'ACTIVE' },
-      commandPayload: {},
       boundaryYaml: `
 boundary: Widget
 contract_path: /widgets/{id}
@@ -309,29 +303,20 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "\${'UPDATED'}" }
+      - op: replace
+        path: /status
+        value: "\${'UPDATED'}"
 `,
     });
-    expect(result.status).toBe(500);
-    if (thrownError) {
-      const details = (thrownError as unknown as { details: Record<string, unknown> }).details;
-      expect(details?.['code']).toBe('SCRIPT_TIMEOUT');
-    }
-  }, 15000);
-});
+    expect(bootError).toBeInstanceOf(BootError);
+    expect(bootError.code).toBe('BOOT_ERR_REMOVED_SYNTAX');
+    expect(bootError.message).toContain('ts:<id>');
+  });
 
-// ---------------------------------------------------------------------------
-// Test F: script attempting to require fs or access process → blocked
-// ---------------------------------------------------------------------------
-
-describe('sandbox — fs and process blocked', () => {
-  it('script cannot require fs — returns controlled failure', async () => {
-    const entityId = nextUuidv7();
-    const { result } = await bootAndRun({
+  it('halts boot with BOOT_ERR_REMOVED_SYNTAX when scripts: block is present (F: sandbox case)', async () => {
+    const bootError = await expectBootError({
       boundaryName: 'Widget',
       contractPath: '/widgets/{id}',
-      entity: { id: entityId, status: 'ACTIVE' },
-      commandPayload: {},
       boundaryYaml: `
 boundary: Widget
 contract_path: /widgets/{id}
@@ -342,9 +327,9 @@ scripts:
       export default function(ctx) {
         try {
           const fs = require('fs');
-          return true; // should NOT reach here
+          return true;
         } catch(e) {
-          return false; // require is blocked
+          return false;
         }
       }
 event_catalog:
@@ -360,61 +345,16 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "\${'UPDATED'}" }
+      - op: replace
+        path: /status
+        value: "\${'UPDATED'}"
 `,
     });
-    // Script returns false (require fails) → condition is false → 422 no-match
-    expect(result.status).toBe(422);
+    expect(bootError).toBeInstanceOf(BootError);
+    expect(bootError.code).toBe('BOOT_ERR_REMOVED_SYNTAX');
   });
 
-  it('script cannot access process global — returns false', async () => {
-    const entityId = nextUuidv7();
-    const { result } = await bootAndRun({
-      boundaryName: 'Widget',
-      contractPath: '/widgets/{id}',
-      entity: { id: entityId, status: 'ACTIVE' },
-      commandPayload: {},
-      boundaryYaml: `
-boundary: Widget
-contract_path: /widgets/{id}
-fallback_override: false
-scripts:
-  - name: tryProcess
-    code: |
-      export default function(ctx) {
-        try {
-          return typeof process !== 'undefined';
-        } catch(e) {
-          return false;
-        }
-      }
-event_catalog:
-  - type: WidgetUpdated
-    payload_template:
-      id: "command.targetId"
-behaviors:
-  - name: test-behavior
-    match:
-      intent: mutation
-      condition: "ts:tryProcess"
-    emit: WidgetUpdated
-reducers:
-  - on: WidgetUpdated
-    patches:
-      - { op: replace, path: /status, value: "\${'UPDATED'}" }
-`,
-    });
-    // process is undefined in sandbox → condition returns false → 422
-    expect(result.status).toBe(422);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Test G: TypeScript syntax error → BOOT_ERR_SCRIPT_SYNTAX at boot
-// ---------------------------------------------------------------------------
-
-describe('script syntax error → boot error', () => {
-  it('halts boot with BOOT_ERR_SCRIPT_SYNTAX when script has invalid TypeScript', async () => {
+  it('halts boot with BOOT_ERR_REMOVED_SYNTAX when scripts: block is present (G: syntax-error case)', async () => {
     const bootError = await expectBootError({
       boundaryName: 'Widget',
       contractPath: '/widgets/{id}',
@@ -426,7 +366,6 @@ scripts:
   - name: badScript
     code: |
       export default function(ctx) {
-        const x: string = 123; // valid TS but esbuild accepts it
         return @@@INVALID_SYNTAX@@@;
       }
 event_catalog:
@@ -442,20 +381,22 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "\${'UPDATED'}" }
+      - op: replace
+        path: /status
+        value: "\${'UPDATED'}"
 `,
     });
     expect(bootError).toBeInstanceOf(BootError);
-    expect(bootError.code).toBe('BOOT_ERR_SCRIPT_SYNTAX');
+    expect(bootError.code).toBe('BOOT_ERR_REMOVED_SYNTAX');
   });
 });
 
 // ---------------------------------------------------------------------------
-// Test H: ts: reference to non-existent script → boot error
+// Test H: ts: reference to non-existent scanned @Script → boot error
 // ---------------------------------------------------------------------------
 
 describe('ts: reference to missing script → boot error', () => {
-  it('halts boot with BOOT_ERR_DSL_REFERENCE when ts: reference resolves to neither inline nor scanned', async () => {
+  it('halts boot with BOOT_ERR_DSL_REFERENCE when ts: reference resolves to no scanned @Script', async () => {
     const bootError = await expectBootError({
       boundaryName: 'Widget',
       contractPath: '/widgets/{id}',
@@ -476,7 +417,9 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "\${'UPDATED'}" }
+      - op: replace
+        path: /status
+        value: "\${'UPDATED'}"
 `,
     });
     expect(bootError).toBeInstanceOf(BootError);
@@ -486,7 +429,7 @@ reducers:
 });
 
 // ---------------------------------------------------------------------------
-// Reducer-phase values are CEL only; a ts: script sentinel is rejected at boot.
+// Test I: ts: in reducer patch value → BOOT_ERR_SCRIPT_IN_REDUCER
 // ---------------------------------------------------------------------------
 
 describe('ts: script in a reducer patch value → boot error', () => {
@@ -494,14 +437,11 @@ describe('ts: script in a reducer patch value → boot error', () => {
     const bootError = await expectBootError({
       boundaryName: 'Widget',
       contractPath: '/widgets/{id}',
+      typescriptScanDir: SCRIPT_FIXTURE_DIR,
       boundaryYaml: `
 boundary: Widget
 contract_path: /widgets/{id}
 fallback_override: false
-scripts:
-  - name: computeValue
-    code: |
-      export default function(ctx) { return 'HACKED'; }
 event_catalog:
   - type: WidgetUpdated
     payload_template:
@@ -515,7 +455,9 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /status, value: "ts:computeValue" }
+      - op: replace
+        path: /status
+        value: "ts:checkRiskBand"
 `,
     });
     expect(bootError).toBeInstanceOf(BootError);
@@ -524,10 +466,10 @@ reducers:
 });
 
 // ---------------------------------------------------------------------------
-// Test J: ts: in postcondition
+// Test J: scanned @Script in postcondition
 // ---------------------------------------------------------------------------
 
-describe('ts: script in postcondition', () => {
+describe('ts: script in postcondition (scanned @Script)', () => {
   it('postcondition script runs after projection and aborts when it returns false', async () => {
     const entityId = nextUuidv7();
     const { result } = await bootAndRun({
@@ -535,16 +477,11 @@ describe('ts: script in postcondition', () => {
       contractPath: '/widgets/{id}',
       entity: { id: entityId, status: 'ACTIVE', balance: 50 },
       commandPayload: { amount: 200 },
+      typescriptScanDir: SCRIPT_FIXTURE_DIR,
       boundaryYaml: `
 boundary: Widget
 contract_path: /widgets/{id}
 fallback_override: false
-scripts:
-  - name: checkBalance
-    code: |
-      export default function(ctx) {
-        return ctx.state !== null && ctx.state.balance >= 0;
-      }
 event_catalog:
   - type: WidgetRepaid
     payload_template:
@@ -560,7 +497,9 @@ behaviors:
 reducers:
   - on: WidgetRepaid
     patches:
-      - { op: replace, path: /balance, value: "\${state.balance - event.payload.amount}" }
+      - op: replace
+        path: /balance
+        value: "\${state.balance - event.payload.amount}"
 `,
     });
     // balance goes to -150, postcondition script returns false → abort
@@ -575,16 +514,11 @@ reducers:
       contractPath: '/widgets/{id}',
       entity: { id: entityId, status: 'ACTIVE', balance: 500 },
       commandPayload: { amount: 100 },
+      typescriptScanDir: SCRIPT_FIXTURE_DIR,
       boundaryYaml: `
 boundary: Widget
 contract_path: /widgets/{id}
 fallback_override: false
-scripts:
-  - name: checkBalance
-    code: |
-      export default function(ctx) {
-        return ctx.state !== null && ctx.state.balance >= 0;
-      }
 event_catalog:
   - type: WidgetRepaid
     payload_template:
@@ -600,7 +534,9 @@ behaviors:
 reducers:
   - on: WidgetRepaid
     patches:
-      - { op: replace, path: /balance, value: "\${state.balance - event.payload.amount}" }
+      - op: replace
+        path: /balance
+        value: "\${state.balance - event.payload.amount}"
 `,
     });
     expect(result.status).toBe(200);
@@ -612,11 +548,8 @@ reducers:
 // Test K: concurrent script invocations — no shared mutable state
 // ---------------------------------------------------------------------------
 
-describe('concurrent script invocations — isolation', () => {
+describe('concurrent script invocations — isolation (scanned @Script)', () => {
   it('two concurrent commands do not share mutable state in scripts', async () => {
-    // Each command should get its own invocation context; closure variable in
-    // module top-level would leak if not re-created per invocation.
-    // We test by running two commands in parallel and checking they each see correct state.
     const entityId1 = nextUuidv7();
     const entityId2 = nextUuidv7();
 
@@ -624,12 +557,6 @@ describe('concurrent script invocations — isolation', () => {
 boundary: Widget
 contract_path: /widgets/{id}
 fallback_override: false
-scripts:
-  - name: getBalance
-    code: |
-      export default function(ctx) {
-        return ctx.state.balance;
-      }
 event_catalog:
   - type: WidgetUpdated
     payload_template:
@@ -644,7 +571,9 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /capturedBalance, value: "\${event.payload.capturedBalance}" }
+      - op: replace
+        path: /capturedBalance
+        value: "\${event.payload.capturedBalance}"
 `;
 
     const [r1, r2] = await Promise.all([
@@ -653,6 +582,7 @@ reducers:
         contractPath: '/widgets/{id}',
         entity: { id: entityId1, status: 'ACTIVE', balance: 100 },
         commandPayload: {},
+        typescriptScanDir: SCRIPT_FIXTURE_DIR,
         boundaryYaml,
       }),
       bootAndRun({
@@ -660,6 +590,7 @@ reducers:
         contractPath: '/widgets/{id}',
         entity: { id: entityId2, status: 'ACTIVE', balance: 999 },
         commandPayload: {},
+        typescriptScanDir: SCRIPT_FIXTURE_DIR,
         boundaryYaml,
       }),
     ]);
@@ -672,32 +603,22 @@ reducers:
 });
 
 // ---------------------------------------------------------------------------
-// Test L: script using closures over module-level variables
+// Test L: scanned @Script using a module-level helper function
 // ---------------------------------------------------------------------------
 
-describe('script module scope — closures', () => {
-  it('script can use a module-level helper function defined in its code block', async () => {
+describe('script module scope — closures (scanned @Script)', () => {
+  it('script can use a module-level helper function defined in its class file', async () => {
     const entityId = nextUuidv7();
     const { result, events } = await bootAndRun({
       boundaryName: 'Widget',
       contractPath: '/widgets/{id}',
       entity: { id: entityId, status: 'ACTIVE', score: 7 },
       commandPayload: {},
+      typescriptScanDir: SCRIPT_FIXTURE_DIR,
       boundaryYaml: `
 boundary: Widget
 contract_path: /widgets/{id}
 fallback_override: false
-scripts:
-  - name: categorize
-    code: |
-      function getBand(score) {
-        if (score >= 8) return 'HIGH';
-        if (score >= 5) return 'MED';
-        return 'LOW';
-      }
-      export default function(ctx) {
-        return getBand(ctx.state.score);
-      }
 event_catalog:
   - type: WidgetUpdated
     payload_template:
@@ -712,7 +633,9 @@ behaviors:
 reducers:
   - on: WidgetUpdated
     patches:
-      - { op: replace, path: /band, value: "\${event.payload.band}" }
+      - op: replace
+        path: /band
+        value: "\${event.payload.band}"
 `,
     });
     expect(result.status).toBe(200);

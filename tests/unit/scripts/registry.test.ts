@@ -6,17 +6,26 @@ import type { JsonObject } from '../../../src/types.js';
 
 const logger = createLogger({ name: 'test-registry' });
 
-function makeDsl(boundaries: BoundaryConfig[]): CompiledDsl {
+// BoundaryWithScripts is an escape-hatch type used by these unit tests so that
+// buildScriptRegistry's sandbox/transpile machinery can be exercised directly.
+// The inline scripts: form was removed from the DSL (B3) — validateBoundaryConfig
+// rejects it at boot — but the registry/sandbox/transpile code is retained and
+// tested here in isolation.
+type BoundaryWithScripts = BoundaryConfig & {
+  readonly scripts?: readonly { name: string; code: string }[];
+};
+
+function makeDsl(boundaries: BoundaryWithScripts[]): CompiledDsl {
   const byBoundaryName: Record<string, BoundaryConfig> = {};
   const byContractPath: Record<string, BoundaryConfig> = {};
   for (const b of boundaries) {
     byBoundaryName[b.boundary] = b;
     byContractPath[b.contractPath] = b;
   }
-  return { boundaries, byBoundaryName, byContractPath };
+  return { boundaries: boundaries as unknown as BoundaryConfig[], byBoundaryName, byContractPath };
 }
 
-function makeBasicBoundary(name: string, scripts?: Array<{ name: string; code: string }>): BoundaryConfig {
+function makeBasicBoundary(name: string, scripts?: Array<{ name: string; code: string }>): BoundaryWithScripts {
   return {
     boundary: name,
     contractPath: `/${name.toLowerCase()}`,
