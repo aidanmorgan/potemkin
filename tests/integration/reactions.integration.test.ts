@@ -1931,3 +1931,300 @@ reactions:
     expect(run1).toEqual(['AbOrder', 'Alpha', 'Bravo']);
   });
 });
+
+// ---------------------------------------------------------------------------
+// R-dedup Suite 13: per-UoW fired-set dedup across dispatch_commands boundary
+// ---------------------------------------------------------------------------
+//
+// Scenario:
+//  - DedupAlpha: createDedupAlpha emits Touched; behavior also declares dispatch_commands
+//    that dispatches a secondary command to DedupBeta.createDedupBeta.
+//  - DedupBeta: createDedupBeta emits Touched (same event type name).
+//  - DedupCounter: a bare reaction `on: Touched` (matches any boundary's Touched) targets
+//    a FIXED counter aggregate id and emits CounterBumped; the CounterBumped reducer
+//    increments /count by 1.
+//  - Inbound: one createDedupAlpha command.
+//    - Alpha emits Touched → reaction fires once → CounterBumped → count becomes 1.
+//      fired-set now holds "bump-counter@<COUNTER_ID>".
+//    - Alpha dispatches createDedupBeta (secondary command, separate cascade iteration).
+//    - Beta emits Touched → bare reaction matches again on the SAME counter aggregate,
+//      but fired-set SUPPRESSES it because "bump-counter@<COUNTER_ID>" is already present.
+//  - ASSERT: /count === 1 (not 2).
+//
+//  Under the OLD per-command scoping, the fired-set would have been reset between cascade
+//  commands and count would be 2. The per-UoW scoping makes it 1.
+
+describe('reactions R-dedup: fired-set dedup suppresses duplicate across dispatch_commands boundary', () => {
+  const DEDUP_COUNTER_ID = 'dedup-counter-fixed';
+
+  const DEDUP_OPENAPI_YAML = `
+openapi: "3.0.3"
+info:
+  title: Dedup Cross-Dispatch Test
+  version: "1.0.0"
+paths:
+  /dedup-alphas:
+    post:
+      operationId: createDedupAlpha
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DedupAlpha"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DedupAlpha"
+  /dedup-betas:
+    post:
+      operationId: createDedupBeta
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DedupBeta"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DedupBeta"
+  /dedup-counters/{id}:
+    get:
+      operationId: getDedupCounter
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DedupCounter"
+components:
+  schemas:
+    DedupAlpha:
+      type: object
+      properties:
+        id: { type: string }
+      required: [id]
+    DedupBeta:
+      type: object
+      properties:
+        id: { type: string }
+      required: [id]
+    DedupCounter:
+      type: object
+      properties:
+        id:    { type: string }
+        count: { type: integer }
+      required: [id, count]
+`;
+
+  const DEDUP_ALPHA_DSL = `
+boundary: DedupAlpha
+contract_path: /dedup-alphas
+fallback_override: false
+identity:
+  creation:
+    generate: "$uuidv7()"
+event_catalog:
+  - type: Touched
+    payload_template:
+      id: "command.targetId"
+behaviors:
+  - name: create-dedup-alpha
+    match:
+      operationId: createDedupAlpha
+      condition: "true"
+    emit: Touched
+    dispatch_commands:
+      - boundary: DedupBeta
+        operationId: createDedupBeta
+        intent: creation
+        target_id: '"dedup-beta-fixed"'
+        payload: {}
+reducers:
+  - on: Touched
+    patches:
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
+`;
+
+  const DEDUP_BETA_DSL = `
+boundary: DedupBeta
+contract_path: /dedup-betas
+fallback_override: false
+identity:
+  creation:
+    generate: "$uuidv7()"
+event_catalog:
+  - type: Touched
+    payload_template:
+      id: "command.targetId"
+behaviors:
+  - name: create-dedup-beta
+    match:
+      operationId: createDedupBeta
+      condition: "true"
+    emit: Touched
+reducers:
+  - on: Touched
+    patches:
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
+`;
+
+  const DEDUP_COUNTER_DSL = `
+boundary: DedupCounter
+contract_path: /dedup-counters/{id}
+fallback_override: false
+event_catalog:
+  - type: CounterBumped
+    payload_template:
+      id: "event.aggregateId"
+behaviors: []
+reducers:
+  - on: CounterBumped
+    patches:
+      - { op: increment, path: /count, by: 1 }
+`;
+
+  // Bare "on: Touched" matches any boundary's Touched event.
+  const DEDUP_GLOBAL_YAML = `
+reactions:
+  - name: bump-counter
+    on: Touched
+    boundary: DedupCounter
+    emit: CounterBumped
+    intent: mutation
+    target: '"${DEDUP_COUNTER_ID}"'
+`;
+
+  let sys: BootedSystem;
+
+  beforeEach(async () => {
+    const openapi = await loadOpenApi(DEDUP_OPENAPI_YAML);
+    const compiledDsl = await compileDsl(
+      [
+        { name: 'dedupAlpha', yaml: DEDUP_ALPHA_DSL },
+        { name: 'dedupBeta', yaml: DEDUP_BETA_DSL },
+        { name: 'dedupCounter', yaml: DEDUP_COUNTER_DSL },
+      ],
+      DEDUP_GLOBAL_YAML,
+    );
+    sys = await bootSystem({ openapi, compiledDsl });
+    // Seed the counter so the mutation reaction has an existing aggregate to mutate.
+    sys.graph.set(DEDUP_COUNTER_ID, { id: DEDUP_COUNTER_ID, count: 0 });
+  });
+
+  afterEach(() => resetSystem(sys));
+
+  it('counter /count is exactly 1 — the second Touched (from dispatched Beta) is suppressed by the per-UoW fired-set', async () => {
+    const cmd: Command = {
+      commandId: nextUuidv7(),
+      boundary: 'DedupAlpha',
+      intent: 'creation',
+      targetId: nextUuidv7(),
+      payload: {},
+      queryParams: {},
+      httpMethod: 'POST',
+      path: '/dedup-alphas',
+      origin: 'inbound',
+      depth: 0,
+    };
+
+    await executeUnitOfWork({
+      command: cmd,
+      dsl: sys.dsl,
+      openapi: sys.openapi,
+      graph: sys.graph,
+      events: sys.events,
+      cel: sys.cel,
+      validator: sys.validator,
+    });
+
+    const counter = sys.graph.get(DEDUP_COUNTER_ID);
+    expect(counter).not.toBeNull();
+    // Per-UoW fired-set dedup: bump-counter fires on DedupAlpha's Touched (count → 1),
+    // then is suppressed when DedupBeta's Touched arrives via the dispatched secondary command.
+    expect(counter!['count']).toBe(1);
+  });
+
+  it('the committed event set contains exactly one CounterBumped (not two)', async () => {
+    const cmd: Command = {
+      commandId: nextUuidv7(),
+      boundary: 'DedupAlpha',
+      intent: 'creation',
+      targetId: nextUuidv7(),
+      payload: {},
+      queryParams: {},
+      httpMethod: 'POST',
+      path: '/dedup-alphas',
+      origin: 'inbound',
+      depth: 0,
+    };
+
+    const result = await executeUnitOfWork({
+      command: cmd,
+      dsl: sys.dsl,
+      openapi: sys.openapi,
+      graph: sys.graph,
+      events: sys.events,
+      cel: sys.cel,
+      validator: sys.validator,
+    });
+
+    const bumps = result.events.filter(e => e.type === 'CounterBumped');
+    expect(bumps).toHaveLength(1);
+  });
+
+  it('the single atomic append contains the expected event types: Alpha Touched, CounterBumped, Beta Touched', async () => {
+    const initialCount = sys.events.size();
+    const cmd: Command = {
+      commandId: nextUuidv7(),
+      boundary: 'DedupAlpha',
+      intent: 'creation',
+      targetId: nextUuidv7(),
+      payload: {},
+      queryParams: {},
+      httpMethod: 'POST',
+      path: '/dedup-alphas',
+      origin: 'inbound',
+      depth: 0,
+    };
+
+    const result = await executeUnitOfWork({
+      command: cmd,
+      dsl: sys.dsl,
+      openapi: sys.openapi,
+      graph: sys.graph,
+      events: sys.events,
+      cel: sys.cel,
+      validator: sys.validator,
+    });
+
+    // Exactly 3 events committed in one append: DedupAlpha Touched + CounterBumped + DedupBeta Touched.
+    // DedupBeta's Touched does NOT trigger a second CounterBumped because the fired-set suppresses it.
+    expect(result.events).toHaveLength(3);
+    expect(sys.events.size()).toBe(initialCount + 3);
+
+    const types = result.events.map(e => e.type);
+    expect(types[0]).toBe('Touched');
+    expect(types[1]).toBe('CounterBumped');
+    expect(types[2]).toBe('Touched');
+
+    const boundaries = result.events.map(e => e.boundary);
+    expect(boundaries[0]).toBe('DedupAlpha');
+    expect(boundaries[1]).toBe('DedupCounter');
+    expect(boundaries[2]).toBe('DedupBeta');
+  });
+});

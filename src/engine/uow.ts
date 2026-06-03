@@ -432,6 +432,13 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
         /** Count of events staged per aggregateId within this UoW, used for monotonic sequence-version assignment. */
         const stagedSeqDeltas = new Map<string, number>();
 
+        // Reaction termination state — scoped to the WHOLE UoW (not per cascade
+        // command) so a (reaction, aggregate) pair fires at most once across the
+        // entire unit of work, including cycles that span secondary-command
+        // boundaries, and the event budget bounds total reaction fan-out.
+        const firedReactions = new Set<string>();
+        let reactionEventCount = 0;
+
         const pendingCommands: Command[] = [command];
 
         while (pendingCommands.length > 0) {
@@ -523,21 +530,20 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
               // per-event reaction check handles recursive fan-out.
               //
               // Termination (R4):
-              //  - firedReactions: per-UoW Set of "<reactionId>@<aggregateId>" keys.
-              //    A given (reaction, aggregate) pair fires at most once per UoW;
-              //    duplicates (including cycles) are silently suppressed by fireReactions.
-              //    The Set is shared across all cascade depths so cycles spanning command
-              //    boundaries are also caught.
+              //  - firedReactions (declared per-UoW above): Set of
+              //    "<reactionId>@<aggregateId>" keys. A given (reaction, aggregate)
+              //    pair fires at most once per UoW; duplicates (including cycles, and
+              //    cycles spanning secondary-command boundaries) are silently
+              //    suppressed by fireReactions because the Set is shared across every
+              //    cascade command in this UoW.
+              //  - reactionEventCount (per-UoW above) bounds total reaction fan-out
+              //    against the event budget.
               //  - Reactions do NOT increment cmd.depth and are not bounded by maxDepth;
               //    they run entirely within their own reactionWorkQueue.
               const shadowAsGraphAdapterForReactions = shadowAsStateGraph(shadow, graph);
-              const firedReactions = new Set<string>();
 
               // Seed the queue with the events produced by runPatternMatch.
               const reactionWorkQueue: DomainEvent[] = [...outcome.events];
-              // Track how many reaction-emitted events have been enqueued (not primary events)
-              // so the budget check in fireReactions counts only reaction-produced events.
-              let reactionEventCount = 0;
 
               while (reactionWorkQueue.length > 0) {
                 const evt = reactionWorkQueue.shift()!;

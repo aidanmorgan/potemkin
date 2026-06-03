@@ -124,13 +124,19 @@ describe('reactions — rejection: missing emit', () => {
 });
 
 describe('reactions — rejection: non-string target', () => {
-  it('throws BOOT_ERR_DSL_SYNTAX when target is a number', () => {
-    expect(() =>
+  it('throws BOOT_ERR_DSL_SYNTAX naming the target field when target is a number', () => {
+    let err: unknown;
+    try {
       validateBoundaryConfig({
         ...minimalBoundaryBase,
         reactions: [{ on: 'Lead:LeadConverted', emit: 'CampaignConversionRecorded', target: 42 }],
-      }),
-    ).toThrow(BootError);
+      });
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(BootError);
+    expect((err as BootError).code).toBe('BOOT_ERR_DSL_SYNTAX');
+    expect((err as Error).message).toContain('target');
   });
 });
 
@@ -161,53 +167,59 @@ describe('reactions — rejection: invalid intent', () => {
 });
 
 describe('reactions — rejection: malformed when CEL', () => {
-  it('throws BOOT_ERR_DSL_SYNTAX when when contains invalid CEL', () => {
-    expect(() =>
+  it('throws BOOT_ERR_DSL_SYNTAX naming the when field when when contains invalid CEL', () => {
+    let err: unknown;
+    try {
       validateBoundaryConfig({
         ...minimalBoundaryBase,
         reactions: [
-          {
-            on: 'Lead:LeadConverted',
-            emit: 'CampaignConversionRecorded',
-            when: '=== not valid CEL ===',
-          },
+          { on: 'Lead:LeadConverted', emit: 'CampaignConversionRecorded', when: '=== not valid CEL ===' },
         ],
-      }),
-    ).toThrow(BootError);
+      });
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(BootError);
+    expect((err as BootError).code).toBe('BOOT_ERR_DSL_SYNTAX');
+    expect((err as Error).message).toContain('when');
   });
 });
 
 describe('reactions — rejection: malformed target CEL', () => {
-  it('throws BOOT_ERR_DSL_SYNTAX when target contains invalid CEL', () => {
-    expect(() =>
+  it('throws BOOT_ERR_DSL_SYNTAX naming the target field when target contains invalid CEL', () => {
+    let err: unknown;
+    try {
       validateBoundaryConfig({
         ...minimalBoundaryBase,
         reactions: [
-          {
-            on: 'Lead:LeadConverted',
-            emit: 'CampaignConversionRecorded',
-            target: '=== not valid CEL ===',
-          },
+          { on: 'Lead:LeadConverted', emit: 'CampaignConversionRecorded', target: '=== not valid CEL ===' },
         ],
-      }),
-    ).toThrow(BootError);
+      });
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(BootError);
+    expect((err as BootError).code).toBe('BOOT_ERR_DSL_SYNTAX');
+    expect((err as Error).message).toContain('target');
   });
 });
 
 describe('reactions — rejection: malformed payload CEL', () => {
-  it('throws BOOT_ERR_DSL_SYNTAX when a payload value contains invalid CEL', () => {
-    expect(() =>
+  it('throws BOOT_ERR_DSL_SYNTAX naming the payload field when a payload value contains invalid CEL', () => {
+    let err: unknown;
+    try {
       validateBoundaryConfig({
         ...minimalBoundaryBase,
         reactions: [
-          {
-            on: 'Lead:LeadConverted',
-            emit: 'CampaignConversionRecorded',
-            payload: { leadId: '=== bad CEL ===' },
-          },
+          { on: 'Lead:LeadConverted', emit: 'CampaignConversionRecorded', payload: { leadId: '=== bad CEL ===' } },
         ],
-      }),
-    ).toThrow(BootError);
+      });
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(BootError);
+    expect((err as BootError).code).toBe('BOOT_ERR_DSL_SYNTAX');
+    expect((err as Error).message).toContain('payload');
   });
 });
 

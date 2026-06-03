@@ -11,7 +11,10 @@
  *  - A "{{name}}" token EMBEDDED within a larger string always yields a
  *    string (the parameter value coerced via String()).
  *  - An unknown {{token}} (no matching declared parameter) is an error.
- *  - CEL ${...} spans are copied through unchanged.
+ *  - CEL ${...} spans are copied through unchanged, including brace-leading
+ *    map/object literals such as ${{'k': expr}} — the substituter skips the
+ *    whole interpolation span (balanced braces) so no {{...}} inside CEL is
+ *    ever matched.
  *
  * Error codes:
  *  - BOOT_ERR_DSL_SYNTAX: missing required parameter, type mismatch,
@@ -35,12 +38,29 @@ import type { DeclaredState } from './schemaInference.js';
 // Token detection
 // ---------------------------------------------------------------------------
 
-/** Regex that detects any {{...}} token in a string (non-greedy). */
-const TOKEN_RE = /\{\{([^}]+)\}\}/g;
-
-/** Returns true when the entire string is a single {{name}} token. */
+/** Returns true when the entire string is a single {{name}} token (and not a CEL ${...} span). */
 function isExactToken(s: string): boolean {
   return /^\{\{([^}]+)\}\}$/.test(s);
+}
+
+/**
+ * Find the index just past a CEL interpolation span that begins with "${" at
+ * `start`, matching braces so nested object/map literals (e.g. ${{'k': v}}) are
+ * consumed whole. Returns the end index (exclusive); if the span is unterminated
+ * it returns the string length.
+ */
+function celSpanEnd(value: string, start: number): number {
+  // value[start] === '$' && value[start+1] === '{'
+  let depth = 0;
+  for (let j = start + 1; j < value.length; j++) {
+    const c = value[j];
+    if (c === '{') depth++;
+    else if (c === '}') {
+      depth--;
+      if (depth === 0) return j + 1;
+    }
+  }
+  return value.length;
 }
 
 /** Extract the parameter name from an exact "{{name}}" string. */
@@ -147,18 +167,39 @@ export function substituteTokens(
     return resolved.get(name)!;
   }
 
-  // Embedded-token substitution (always yields a string).
-  TOKEN_RE.lastIndex = 0;
-  return value.replace(TOKEN_RE, (_match, name: string) => {
-    if (!resolved.has(name)) {
-      throw new BootError(
-        'BOOT_ERR_DSL_SYNTAX',
-        `component "${componentName}": unknown token "{{${name}}}" — no declared parameter with that name`,
-        { token: name, component: componentName },
-      );
+  // Embedded-token substitution (always yields a string). Scan left-to-right,
+  // copying CEL ${...} spans verbatim (so {{...}} inside a CEL map literal like
+  // ${{'k': v}} is never matched) and replacing {{name}} tokens elsewhere.
+  let out = '';
+  let i = 0;
+  const n = value.length;
+  while (i < n) {
+    if (value[i] === '$' && value[i + 1] === '{') {
+      const end = celSpanEnd(value, i);
+      out += value.slice(i, end); // CEL interpolation — copied unchanged
+      i = end;
+      continue;
     }
-    return String(resolved.get(name)!);
-  });
+    if (value[i] === '{' && value[i + 1] === '{') {
+      const close = value.indexOf('}}', i + 2);
+      if (close !== -1) {
+        const name = value.slice(i + 2, close);
+        if (!resolved.has(name)) {
+          throw new BootError(
+            'BOOT_ERR_DSL_SYNTAX',
+            `component "${componentName}": unknown token "{{${name}}}" — no declared parameter with that name`,
+            { token: name, component: componentName },
+          );
+        }
+        out += String(resolved.get(name)!);
+        i = close + 2;
+        continue;
+      }
+    }
+    out += value[i];
+    i++;
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------

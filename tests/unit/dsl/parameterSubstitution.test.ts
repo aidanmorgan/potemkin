@@ -336,6 +336,45 @@ describe('substituteParameters — CEL ${...} expressions are untouched', () => 
     // substituteTokens must not touch ${name}
     expect(substituteTokens(celLike, resolved, 'Comp')).toBe('${name}');
   });
+
+  it('leaves a brace-leading CEL map literal ${{...}} byte-for-byte unchanged', () => {
+    // This form (a CEL object/map literal interpolation) contains a literal
+    // "{{" that must NOT be treated as a parameter token. The repo uses it in
+    // reducer values, e.g. ${{'amount': event.payload.amount}}.
+    const resolved = new Map<string, string | number | boolean>([['statusField', 'x']]);
+    const cel = "${{'amount': event.payload.amount}}";
+    expect(substituteTokens(cel, resolved, 'Comp')).toBe(cel);
+  });
+
+  it('leaves an empty CEL map literal ${{}} unchanged', () => {
+    const resolved = new Map<string, string | number | boolean>([['p', 'v']]);
+    expect(substituteTokens('${{}}', resolved, 'Comp')).toBe('${{}}');
+  });
+
+  it('substitutes a {{token}} OUTSIDE a CEL map literal while leaving the literal intact', () => {
+    const resolved = new Map<string, string | number | boolean>([['field', 'qty']]);
+    const mixed = "/{{field}} = ${{'amount': event.payload.amount}}";
+    expect(substituteTokens(mixed, resolved, 'Comp')).toBe(
+      "/qty = ${{'amount': event.payload.amount}}",
+    );
+  });
+
+  it('does NOT throw on a {{...}} that sits inside a CEL span even if it is not a declared parameter', () => {
+    // Before the fix this threw BOOT_ERR_DSL_SYNTAX for the unknown "token"
+    // 'amount': event.payload.amount. It must be left untouched, not rejected.
+    const component = makeComponent({
+      parameters: { statusField: { type: 'string' } },
+      reducers: [
+        {
+          on: 'EntityUpdated',
+          patches: [{ op: 'replace', path: '/{{statusField}}', value: "${{'amount': event.payload.amount}}" }],
+        },
+      ],
+    });
+    const result = substituteParameters(component, { statusField: 'currentStatus' });
+    expect(result.reducers![0]!.patches![0]!.path).toBe('/currentStatus');
+    expect(result.reducers![0]!.patches![0]!.value).toBe("${{'amount': event.payload.amount}}");
+  });
 });
 
 // ---------------------------------------------------------------------------
