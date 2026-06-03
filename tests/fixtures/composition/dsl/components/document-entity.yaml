@@ -1,0 +1,119 @@
+# DocumentEntity — reusable component (kind: component, no contract_path).
+#
+# Define-once / map-many property:
+#   This file has NO contract_path. It is a pure definition that can be
+#   instantiated any number of times from a separate mapping file via use:.
+#   The mapping file assigns each instance its own concrete name and path.
+#
+# Parameters:
+#   initialStatus  — the status value set on DocumentCreated (e.g. "DRAFT", "ARCHIVED")
+#   createOp       — operationId for the create behavior
+#   updateOp       — operationId for the update behavior
+#
+# AuditMixin is included here (define-once for the mixin too):
+#   Every instantiated boundary gains AuditLogged + the mixin reducer, so the
+#   mixin is reused across all instances without repeating it in each use: entry.
+#
+# Reaction across instantiated boundaries:
+#   When DocumentEntity:DocumentCreated fires, a reaction runs on the sibling
+#   boundary alias "Notifier". Each use: entry supplies a bind: map that wires
+#   "Notifier" to a concrete boundary name, so each instance independently
+#   notifies its own (or a shared) notification boundary.
+
+kind: component
+name: DocumentEntity
+
+parameters:
+  initialStatus:
+    type: string
+    required: true
+  createOp:
+    type: string
+    required: true
+  updateOp:
+    type: string
+    required: true
+  auditOp:
+    type: string
+    required: true
+
+identity:
+  creation:
+    generate: "$uuidv7()"
+
+include:
+  - component: AuditMixin
+    with:
+      actorField: "lastActor"
+
+event_catalog:
+  - type: DocumentCreated
+    payload_template:
+      id:     "command.targetId"
+      status: "'{{initialStatus}}'"
+      title:  "command.payload.title"
+
+  - type: DocumentUpdated
+    payload_template:
+      id:     "command.targetId"
+      status: "'UPDATED'"
+      title:  "command.payload.title"
+
+  - type: AuditLogged
+    payload_template:
+      actor: "command.payload.actor"
+
+behaviors:
+  - name: create-document
+    match:
+      operationId: "{{createOp}}"
+      condition: "true"
+    emit: DocumentCreated
+
+  - name: update-document
+    match:
+      operationId: "{{updateOp}}"
+      condition: "true"
+    emit: DocumentUpdated
+
+  - name: log-audit
+    match:
+      operationId: "{{auditOp}}"
+      condition: "true"
+    emit: AuditLogged
+
+reducers:
+  - on: DocumentCreated
+    patches:
+      - op: add
+        path: /id
+        value: "${event.payload.id}"
+      - op: add
+        path: /status
+        value: "${event.payload.status}"
+      - op: add
+        path: /title
+        value: "${event.payload.title}"
+
+  - on: DocumentUpdated
+    patches:
+      - op: replace
+        path: /status
+        value: "${event.payload.status}"
+      - op: replace
+        path: /title
+        value: "${event.payload.title}"
+
+# Cross-instance reaction (C5 define-once / map-many property):
+#   "DocumentEntity:DocumentCreated" is a self-trigger: the "DocumentEntity"
+#   prefix rewrites to the concrete `as` name at link time (via C5).
+#   "boundary: Notifier" is a sibling alias: it rewrites to the concrete name
+#   in the bind: map supplied by each use: entry, wiring each instance
+#   independently to its downstream notification boundary.
+
+reactions:
+  - name: notify-on-document-created
+    on: "DocumentEntity:DocumentCreated"
+    boundary: Notifier
+    intent: creation
+    emit: NotificationCreated

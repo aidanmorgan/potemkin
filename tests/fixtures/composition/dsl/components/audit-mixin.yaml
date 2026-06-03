@@ -1,0 +1,28 @@
+# AuditMixin — fragment component (kind: component, no contract_path).
+#
+# Defines a single AuditLogged event + reducer that can be included: into any
+# live boundary. The reducer writes the actor name to a configurable field.
+#
+# Define-once: this file has no contract_path and no behaviors — it is purely
+# a reusable fragment. It contributes event + reducer to every boundary that
+# includes it.
+
+kind: component
+name: AuditMixin
+
+parameters:
+  actorField:
+    type: string
+    default: "lastActor"
+
+event_catalog:
+  - type: AuditLogged
+    payload_template:
+      actor: "'system'"
+
+reducers:
+  - on: AuditLogged
+    patches:
+      - op: replace
+        path: "/{{actorField}}"
+        value: "${event.payload.actor}"

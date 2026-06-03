@@ -1,0 +1,39 @@
+# Simulation mapping file — instantiates DocumentEntity twice from a single definition.
+#
+# Define-once / map-many: the component file (document-entity.yaml) has no
+# contract_path. This file gives each instance its concrete name and path.
+#
+# Two instances:
+#   Document      — active documents at /documents
+#   Draft         — drafts at /drafts
+#
+# Both instances bind the "Notifier" sibling alias to the shared Notification
+# boundary, so DocumentEntity:DocumentCreated reactions from EITHER instance
+# fire into the same Notification boundary (cross-instance wiring via C5 bind).
+#
+# AuditMixin is inherited through DocumentEntity's own include: — the mixin's
+# event_catalog and reducer are merged into BOTH concrete boundaries automatically,
+# proving fragment reuse across instances without repeating include: here.
+
+use:
+  - component: DocumentEntity
+    as: Document
+    contract_path: /documents
+    with:
+      initialStatus: "DRAFT"
+      createOp: createDocument
+      updateOp: updateDocument
+      auditOp: auditDocument
+    bind:
+      Notifier: Notification
+
+  - component: DocumentEntity
+    as: Draft
+    contract_path: /drafts
+    with:
+      initialStatus: "PENDING"
+      createOp: createDraft
+      updateOp: updateDraft
+      auditOp: auditDraft
+    bind:
+      Notifier: Notification

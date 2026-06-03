@@ -1,0 +1,36 @@
+# Notification — live boundary that receives cross-instance reactions.
+#
+# Both Document and Draft instances declare a reaction
+# "on: <instance>:DocumentCreated → boundary: Notifier → emit: NotificationCreated".
+# At link time the "Notifier" alias in each use: bind map resolves to this boundary.
+# This boundary is the single concrete target for both instances' reactions,
+# proving that component reactions wire correctly across instantiated boundaries.
+
+boundary: Notification
+contract_path: /notifications
+
+identity:
+  creation:
+    generate: "$uuidv7()"
+
+event_catalog:
+  - type: NotificationCreated
+    payload_template:
+      id:         "$uuidv7()"
+      documentId: "event.aggregateId"
+      message:    "'Document created'"
+
+behaviors: []
+
+reducers:
+  - on: NotificationCreated
+    patches:
+      - op: add
+        path: /id
+        value: "${event.payload.id}"
+      - op: add
+        path: /documentId
+        value: "${event.payload.documentId}"
+      - op: add
+        path: /message
+        value: "${event.payload.message}"

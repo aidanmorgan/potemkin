@@ -30,6 +30,7 @@ const engineOnlySuites = [
   '65-latency',
   '66-reactions-fanout',
   '67-annotation-script',
+  '68-composition',
 ];
 
 /** @type {import('ts-jest').JestConfigWithTsJest} */

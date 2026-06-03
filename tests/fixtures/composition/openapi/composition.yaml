@@ -1,0 +1,238 @@
+openapi: 3.0.3
+info:
+  title: Cross-File Composition Example
+  version: "1.0.0"
+
+# Canonical example: a single component definition (DocumentEntity) is
+# instantiated twice — as Document (/documents) and as Draft (/drafts).
+# The component file has no contract_path; this spec gives each instance its
+# concrete path. A fragment mixin (AuditMixin) is merged into both instances.
+# A reaction declared in the component fires into the Notification boundary
+# from both instances, wired via `bind: { Notifier: Notification }`.
+
+paths:
+  /documents:
+    post:
+      operationId: createDocument
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Document"
+      responses:
+        "201":
+          description: Document created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Document"
+
+  /documents/{id}:
+    get:
+      operationId: getDocument
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Document"
+    patch:
+      operationId: updateDocument
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Document"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Document"
+
+  /documents/{id}/audit:
+    post:
+      operationId: auditDocument
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Document"
+      responses:
+        "200":
+          description: Audited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Document"
+
+  /drafts:
+    post:
+      operationId: createDraft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Draft"
+      responses:
+        "201":
+          description: Draft created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Draft"
+
+  /drafts/{id}:
+    get:
+      operationId: getDraft
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Draft"
+    patch:
+      operationId: updateDraft
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Draft"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Draft"
+
+  /drafts/{id}/audit:
+    post:
+      operationId: auditDraft
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Draft"
+      responses:
+        "200":
+          description: Audited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Draft"
+
+  /notifications:
+    get:
+      operationId: listNotifications
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Notification"
+
+  /notifications/{id}:
+    get:
+      operationId: getNotification
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Notification"
+
+components:
+  schemas:
+    Document:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+        title:
+          type: string
+        lastActor:
+          type: string
+        actor:
+          type: string
+
+    Draft:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+        title:
+          type: string
+        lastActor:
+          type: string
+        actor:
+          type: string
+
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+        documentId:
+          type: string
+        message:
+          type: string
