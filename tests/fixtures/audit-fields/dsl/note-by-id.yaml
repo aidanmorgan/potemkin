@@ -1,0 +1,34 @@
+# Read and mutation boundary for Note aggregates.
+#
+# `audit_fields: true` here ensures that PATCH /notes/{id} mutations stamp
+# updatedAt and updatedBy onto the entity. The actor id is resolved from the
+# `Authorization: Bearer <id>:<scopes>` simulation shortcut (auth.mode: simple).
+boundary: NoteById
+contract_path: /notes/{id}
+fallback_override: true
+audit_fields: true
+
+event_catalog:
+  - type: NoteUpdated
+    payload_template:
+      title: "command.payload.title != null ? command.payload.title : state.title"
+      body: "command.payload.body != null ? command.payload.body : state.body"
+
+behaviors:
+  - name: updateNote
+    match:
+      operationId: updateNote
+      condition: "true"
+    emit: NoteUpdated
+
+reducers:
+  - on: NoteUpdated
+    patches:
+      - op: replace
+        path: /title
+        value: "${event.payload.title}"
+      - op: replace
+        path: /body
+        value: "${event.payload.body}"
+
+initialization: []

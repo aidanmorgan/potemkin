@@ -1,0 +1,84 @@
+openapi: 3.0.3
+info:
+  title: Mask Fields Demo API
+  version: "1.0.0"
+paths:
+  /reports:
+    post:
+      operationId: createReport
+      summary: Create a report (mask removes internalNotes + authorEmail from response)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, summary, internalNotes, authorEmail]
+              properties:
+                title:
+                  type: string
+                summary:
+                  type: string
+                internalNotes:
+                  type: string
+                authorEmail:
+                  type: string
+      responses:
+        "201":
+          description: Report created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Report"
+  /reports/{id}:
+    get:
+      operationId: getReport
+      summary: Get a report by id (mask removes internalNotes + authorEmail from response)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Report found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Report"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+components:
+  schemas:
+    Report:
+      type: object
+      required: [id, title, summary]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        summary:
+          type: string
+        # internalNotes and authorEmail are stored in state but removed by
+        # boundary mask: before the response is served — they are therefore
+        # optional (not required) in the schema.
+        internalNotes:
+          type: string
+        authorEmail:
+          type: string
+    ReportById:
+      $ref: "#/components/schemas/Report"
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        message:
+          type: string

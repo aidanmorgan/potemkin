@@ -1,0 +1,113 @@
+openapi: 3.0.3
+info:
+  title: Audit Fields Demo API
+  version: "1.0.0"
+paths:
+  /notes:
+    post:
+      operationId: createNote
+      summary: Create a note (audit_fields boundary — stamps updatedAt/updatedBy on creation)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, body]
+              properties:
+                title:
+                  type: string
+                body:
+                  type: string
+      responses:
+        "201":
+          description: Note created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Note"
+  /notes/{id}:
+    get:
+      operationId: getNote
+      summary: Get a note by id
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Note found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Note"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      operationId: updateNote
+      summary: Update a note (audit_fields stamps updatedAt/updatedBy = acting actor)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                body:
+                  type: string
+      responses:
+        "200":
+          description: Note updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Note"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+components:
+  schemas:
+    Note:
+      type: object
+      required: [id, title, body]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+        # Audit fields (auto-populated on every non-baseline event when audit_fields: true).
+        updatedAt:
+          type: string
+          format: date-time
+        updatedBy:
+          type: string
+          nullable: true
+    NoteById:
+      $ref: "#/components/schemas/Note"
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        message:
+          type: string

@@ -1,0 +1,57 @@
+# Canonical example of the static boundary mask: feature.
+#
+# `mask:` lists fields that are removed from the response body before it is
+# served. The fields are persisted in aggregate state (so the store can hold
+# sensitive or internal data) but are stripped at the response layer.
+#
+# The `mask:` value is a list of bare field names or RFC 6901 JSON Pointer
+# strings (with a leading `/`). Here `internalNotes` and `authorEmail` are
+# sensitive fields that must never appear in API responses.
+boundary: Report
+contract_path: /reports
+fallback_override: false
+
+mask:
+  - internalNotes
+  - authorEmail
+
+identity:
+  creation:
+    generate: $uuidv7()
+
+event_catalog:
+  - type: ReportCreated
+    payload_template:
+      id: "command.targetId"
+      title: "command.payload.title"
+      summary: "command.payload.summary"
+      internalNotes: "command.payload.internalNotes"
+      authorEmail: "command.payload.authorEmail"
+
+behaviors:
+  - name: createReport
+    match:
+      operationId: createReport
+      condition: "true"
+    emit: ReportCreated
+
+reducers:
+  - on: ReportCreated
+    patches:
+      - op: replace
+        path: /id
+        value: "${event.payload.id}"
+      - op: replace
+        path: /title
+        value: "${event.payload.title}"
+      - op: replace
+        path: /summary
+        value: "${event.payload.summary}"
+      - op: replace
+        path: /internalNotes
+        value: "${event.payload.internalNotes}"
+      - op: replace
+        path: /authorEmail
+        value: "${event.payload.authorEmail}"
+
+initialization: []

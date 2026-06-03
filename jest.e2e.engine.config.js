@@ -33,6 +33,8 @@ const engineOnlySuites = [
   '68-composition',
   '69-strict-schema',
   '70-seeds-engine-only',
+  '71-mask-fields',
+  '72-audit-fields',
 ];
 
 /** @type {import('ts-jest').JestConfigWithTsJest} */

@@ -1,0 +1,18 @@
+# Read boundary for the Report aggregate.
+#
+# `mask:` is declared here too: the same sensitive fields are stripped on
+# GET /reports/{id} responses. This demonstrates that mask: applies
+# boundary-scoped — each boundary that serves an entity must declare its own
+# mask: list.
+boundary: ReportById
+contract_path: /reports/{id}
+fallback_override: true
+
+mask:
+  - internalNotes
+  - authorEmail
+
+event_catalog: []
+behaviors: []
+reducers: []
+initialization: []

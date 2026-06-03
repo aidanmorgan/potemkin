@@ -513,6 +513,13 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
               boundary.boundary, buildDispatchScriptCtx,
             );
           } catch (err) {
+            if (err instanceof InternalExecutionError || spec.condition.startsWith(TS_SENTINEL)) {
+              throw new InternalExecutionError(
+                `dispatch_commands condition script failed for behavior "${behavior.name}": ${err instanceof Error ? err.message : String(err)}`,
+                { code: 'SCRIPT_EXECUTION_FAILED', behavior: behavior.name, condition: spec.condition },
+              );
+            }
+            // Genuine CEL evaluation/parse miss — skip this secondary command
             log?.debug({ condition: spec.condition, err }, 'dispatch_commands condition error — skipping');
             condResult = false;
           }

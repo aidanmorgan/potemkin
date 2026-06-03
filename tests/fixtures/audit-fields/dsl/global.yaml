@@ -1,0 +1,6 @@
+# Global configuration for the audit-fields fixture.
+#
+# auth.mode: simple enables the `Bearer <id>:<scopes>` simulation shortcut so
+# e2e tests can drive an identified actor without a real JWT.
+auth:
+  mode: simple

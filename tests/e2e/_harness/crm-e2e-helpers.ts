@@ -8,6 +8,8 @@
 
 
 import { execSync } from 'node:child_process';
+import { applyPatches, type Patch } from '../../../src/dsl/patches.js';
+import type { JsonValue } from '../../../src/types.js';
 
 export interface JsonObject { [key: string]: unknown }
 export interface DomainEvent {
@@ -25,6 +27,32 @@ export interface ForwardedResponse {
   status: number;
   body: unknown;
   headers: Record<string, string>;
+  /**
+   * Response-mutation patches (HATEOAS / mask) carried by the engine for the
+   * consumer to apply. The Kotlin plugin applies these after Specmatic contract
+   * validation so masking a contract-required field does not fail validation.
+   * Applying these to `body` produces the client-visible (mutated) response.
+   */
+  _patches?: readonly Patch[];
+}
+
+/**
+ * Apply the response-mutation patches from a ForwardedResponse to its base body,
+ * mirroring the consumer contract (plugin or test harness).
+ *
+ * Response-mutation patches travel in `_patches` rather than being pre-applied to
+ * `body` so the Kotlin plugin can pass the BASE body through Specmatic contract
+ * validation first, then apply the patches to produce the client-visible response.
+ * A `remove` on a present field succeeds; patches are applied in order.
+ *
+ * Use this in engine-only tests wherever you need to assert on the final
+ * client-visible body (masked fields absent, HATEOAS links present).
+ */
+export function applyForwardPatches(res: ForwardedResponse): JsonValue {
+  if (!res._patches || res._patches.length === 0) {
+    return res.body as JsonValue;
+  }
+  return applyPatches(res.body as JsonValue, res._patches as readonly Patch[], 'hateoas', { autoVivify: true }).newState;
 }
 
 export async function getGraphNode(engineUrl: string, id: string): Promise<JsonObject | null> {

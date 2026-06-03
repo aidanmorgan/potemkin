@@ -429,3 +429,158 @@ describe('AC4: genuine CEL false / type-mismatch is still treated as no-match (u
     expect(outcome.events).toHaveLength(0);
   });
 });
+
+// ── AC5: dispatch_commands condition @Script throws → InternalExecutionError ──────
+
+describe('AC5: throwing @Script in dispatch_commands condition surfaces as InternalExecutionError', () => {
+  it('re-throws as InternalExecutionError when a ts: dispatch condition script throws (not silently skipped)', () => {
+    const scriptErr = new TypeError('dispatch condition runtime failure');
+    const registry = makeThrowingRegistry('checkDispatch', scriptErr);
+
+    const boundary = makeBoundary({
+      behaviors: [
+        {
+          name: 'cascade',
+          match: { operationId: 'updateTest', condition: 'true' },
+          emit: 'Updated',
+          dispatchCommands: [
+            {
+              boundary: 'TestBoundary',
+              intent: 'query',
+              operationId: 'getTest',
+              targetId: '"agg-1"',
+              condition: 'ts:checkDispatch',
+            },
+          ],
+        },
+      ],
+      eventCatalog: [{ type: 'Updated', payloadTemplate: {} }],
+    });
+
+    expect(() =>
+      runPatternMatch(makeInput({ boundary, scriptRegistry: registry })),
+    ).toThrow(InternalExecutionError);
+  });
+
+  it('does NOT silently skip the secondary command when the dispatch condition script throws', () => {
+    const scriptErr = new Error('script boom in dispatch');
+    const registry = makeThrowingRegistry('checkDispatch', scriptErr);
+
+    const boundary = makeBoundary({
+      behaviors: [
+        {
+          name: 'cascade',
+          match: { operationId: 'updateTest', condition: 'true' },
+          emit: 'Updated',
+          dispatchCommands: [
+            {
+              boundary: 'TestBoundary',
+              intent: 'query',
+              operationId: 'getTest',
+              targetId: '"agg-1"',
+              condition: 'ts:checkDispatch',
+            },
+          ],
+        },
+      ],
+      eventCatalog: [{ type: 'Updated', payloadTemplate: {} }],
+    });
+
+    let thrown: unknown;
+    try {
+      runPatternMatch(makeInput({ boundary, scriptRegistry: registry }));
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown).toBeInstanceOf(InternalExecutionError);
+    expect(thrown).not.toBeInstanceOf(UnhandledOperationError);
+  });
+
+  it('CEL dispatch condition legitimately evaluating false still skips the secondary command', () => {
+    // No script registry — plain CEL condition
+    const boundary = makeBoundary({
+      behaviors: [
+        {
+          name: 'cascade',
+          match: { operationId: 'updateTest', condition: 'true' },
+          emit: 'Updated',
+          dispatchCommands: [
+            {
+              boundary: 'TestBoundary',
+              intent: 'query',
+              operationId: 'getTest',
+              targetId: '"agg-1"',
+              condition: 'false',
+            },
+          ],
+        },
+      ],
+      eventCatalog: [{ type: 'Updated', payloadTemplate: {} }],
+    });
+
+    // fakeCelFalse returns false for all CEL — condition false → skip secondary
+    const outcome = runPatternMatch(makeInput({
+      boundary,
+      cel: {
+        compile: (e: string) => ({ source: e, _ast: {} as any }),
+        evaluate: (expr: string) => {
+          // match.condition 'true' must pass; dispatch condition 'false' must not dispatch
+          if (expr === 'true') return true;
+          return false;
+        },
+      } as any,
+    }));
+    // Primary emit still produces one event; no secondary commands
+    expect(outcome.events).toHaveLength(1);
+    expect(outcome.secondaryCommands).toHaveLength(0);
+  });
+
+  it('ts: dispatch condition returning true still dispatches the secondary command', () => {
+    const handle = {
+      name: 'alwaysTrue',
+      boundary: 'TestBoundary',
+      source: 'class:AlwaysTrue',
+      fn: () => true,
+    };
+    const trueRegistry = {
+      get: (_b: string, name: string) => name === 'alwaysTrue' ? handle : undefined,
+      has: (_b: string, name: string) => name === 'alwaysTrue',
+      size: () => 1,
+    };
+
+    const boundary = makeBoundary({
+      behaviors: [
+        {
+          name: 'cascade',
+          match: { operationId: 'updateTest', condition: 'true' },
+          emit: 'Updated',
+          dispatchCommands: [
+            {
+              boundary: 'TestBoundary',
+              intent: 'query',
+              operationId: 'getTest',
+              targetId: '"agg-1"',
+              condition: 'ts:alwaysTrue',
+            },
+          ],
+        },
+      ],
+      eventCatalog: [{ type: 'Updated', payloadTemplate: {} }],
+    });
+
+    // CEL stub returns 'agg-1' for targetId and true for match.condition
+    const outcome = runPatternMatch(makeInput({
+      boundary,
+      scriptRegistry: trueRegistry as any,
+      cel: {
+        compile: (e: string) => ({ source: e, _ast: {} as any }),
+        evaluate: (expr: string) => {
+          if (expr === '"agg-1"') return 'agg-1';
+          return true;
+        },
+      } as any,
+    }));
+    expect(outcome.secondaryCommands).toHaveLength(1);
+    expect(outcome.secondaryCommands[0].operationId).toBe('getTest');
+  });
+});

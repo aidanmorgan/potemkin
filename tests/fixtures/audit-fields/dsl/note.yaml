@@ -1,0 +1,47 @@
+# Canonical example of per-boundary audit_fields: true (creation boundary).
+#
+# When `audit_fields: true`, the engine automatically stamps `updatedAt` and
+# `updatedBy` on every non-baseline event:
+#   updatedAt — ISO-8601 timestamp of the event (not the system clock)
+#   updatedBy — actor id resolved from the Authorization header, or null
+#
+# A creation event is NOT a BaselineEntityCreatedEvent so audit fields are set
+# on first create too. Use `auth.mode: simple` (declared in global.yaml) with
+# the simulation shortcut `Bearer <id>:<scopes>` to drive an identified actor.
+boundary: Note
+contract_path: /notes
+fallback_override: false
+audit_fields: true
+
+identity:
+  creation:
+    generate: $uuidv7()
+
+event_catalog:
+  - type: NoteCreated
+    payload_template:
+      id: "command.targetId"
+      title: "command.payload.title"
+      body: "command.payload.body"
+
+behaviors:
+  - name: createNote
+    match:
+      operationId: createNote
+      condition: "true"
+    emit: NoteCreated
+
+reducers:
+  - on: NoteCreated
+    patches:
+      - op: replace
+        path: /id
+        value: "${event.payload.id}"
+      - op: replace
+        path: /title
+        value: "${event.payload.title}"
+      - op: replace
+        path: /body
+        value: "${event.payload.body}"
+
+initialization: []
