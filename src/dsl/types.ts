@@ -159,6 +159,33 @@ export interface BoundaryConfig {
   readonly state?: DeclaredState;
   /** When false, downgrades the computed-field INCOMPLETE_DEPS check to a WARN. */
   readonly strictSchema?: boolean;
+  /** Choreography reaction rules declared in this boundary file. */
+  readonly reactions?: readonly ReactionRule[];
+}
+
+// ── Reactions (R1: DSL grammar + boot validation) ────────────────────────────
+
+/**
+ * A single choreography reaction rule: subscribes to a committed-to-shadow
+ * event and emits a new event in the reacting boundary within the same UoW.
+ */
+export interface ReactionRule {
+  /** Optional label for trace logs. */
+  readonly name?: string;
+  /** Trigger subscription: "Boundary:EventType" or bare "EventType". */
+  readonly on: string;
+  /** CEL gate — reaction fires only when true (default: true). */
+  readonly when?: string;
+  /** Reacting boundary name. Required when declared in the global file. */
+  readonly boundary?: string;
+  /** Event type to emit, resolved against the reacting boundary's event_catalog. */
+  readonly emit: string;
+  /** mutation (default) or creation. */
+  readonly intent?: 'mutation' | 'creation';
+  /** CEL resolving to the aggregate id the emitted event applies to. */
+  readonly target?: string;
+  /** CEL map merged over the emitted event's payload_template. */
+  readonly payload?: Record<string, string>;
 }
 
 // ── Tier-2 DSL additions ──────────────────────────────────────────────────────
@@ -408,6 +435,8 @@ export interface CompiledDsl {
   readonly versioning?: VersioningConfig;
   /** Outbound webhook declarations (HMAC-signed dispatch on event emission). */
   readonly webhooks?: readonly WebhookConfig[];
+  /** Choreography reaction rules from all boundary files and the global config. */
+  readonly reactions?: readonly ReactionRule[];
 }
 
 // JsonValue is used transitively by SagaStep consumers

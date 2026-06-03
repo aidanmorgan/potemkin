@@ -17,6 +17,7 @@ import type {
   IdentityConfig,
   IdentityKeyConfig,
   JwtAuthConfig,
+  ReactionRule,
   ReducerPatchOp,
   ReducerRule,
   RequiresGuard,
@@ -959,10 +960,117 @@ const KNOWN_BOUNDARY_KEYS: ReadonlySet<string> = new Set([
   'boundary', 'contract_path', 'fallback_override', 'identity', 'query_mapping',
   'behaviors', 'reducers', 'event_catalog', 'initialization', 'scripts',
   'deprecated', 'hateoas', 'mask', 'state', 'strict_schema', 'latency',
-  'audit_fields', 'fault_rules',
+  'audit_fields', 'fault_rules', 'reactions',
   // Spec-endpoint cross-check keys consumed by configLoader (camelCase + snake_case).
   'specId', 'spec_id', 'outOfContract', 'out_of_contract', 'method', 'methods',
 ]);
+
+/**
+ * Validate a single `reactions[i]` entry.
+ * When `fileBoundary` is provided (boundary-file context), the `boundary` field
+ * defaults to it. When absent (global-file context), `boundary` is required.
+ */
+function validateReactionRule(raw: unknown, idx: number, fileBoundary?: string): ReactionRule {
+  const ctx = `reactions[${idx}]`;
+  if (!isRecord(raw)) {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}: must be an object`, { context: ctx });
+  }
+
+  const name = optionalString(raw, 'name', ctx);
+  const on = requireString(raw, 'on', ctx);
+  const emit = requireString(raw, 'emit', ctx);
+
+  // boundary: required in global context, optional in boundary-file context
+  const boundaryRaw = raw['boundary'];
+  let boundary: string | undefined;
+  if (boundaryRaw !== undefined && boundaryRaw !== null) {
+    if (typeof boundaryRaw !== 'string' || (boundaryRaw as string).trim() === '') {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `${ctx}: optional field "boundary" must be a string (got ${JSON.stringify(boundaryRaw)})`,
+        { field: 'boundary', context: ctx },
+      );
+    }
+    boundary = boundaryRaw as string;
+  } else if (fileBoundary !== undefined) {
+    boundary = fileBoundary;
+  } else {
+    throw new BootError(
+      'BOOT_ERR_DSL_SYNTAX',
+      `${ctx}: "boundary" is required when reactions are declared in the global config`,
+      { field: 'boundary', context: ctx },
+    );
+  }
+
+  // intent: optional, must be 'mutation' or 'creation'
+  let intent: ReactionRule['intent'];
+  const intentRaw = raw['intent'];
+  if (intentRaw !== undefined && intentRaw !== null) {
+    if (intentRaw !== 'mutation' && intentRaw !== 'creation') {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `${ctx}: "intent" must be "mutation" or "creation" (got ${JSON.stringify(intentRaw)})`,
+        { field: 'intent', context: ctx },
+      );
+    }
+    intent = intentRaw;
+  }
+
+  // when: optional CEL gate
+  const when = optionalString(raw, 'when', ctx);
+  if (when !== undefined) {
+    try {
+      celEvaluator.compile(when);
+    } catch (err) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `${ctx}: "when" is not a valid CEL expression: ${err instanceof Error ? err.message : String(err)}`,
+        { field: 'when', context: ctx, expression: when },
+      );
+    }
+  }
+
+  // target: optional CEL resolving to aggregate id
+  const target = optionalString(raw, 'target', ctx);
+  if (target !== undefined) {
+    try {
+      celEvaluator.compile(target);
+    } catch (err) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `${ctx}: "target" is not a valid CEL expression: ${err instanceof Error ? err.message : String(err)}`,
+        { field: 'target', context: ctx, expression: target },
+      );
+    }
+  }
+
+  // payload: optional map<string, CEL string>
+  const payload = requireStringStringMap(raw, 'payload', ctx);
+  if (payload !== undefined) {
+    for (const [fieldKey, celExpr] of Object.entries(payload)) {
+      try {
+        celEvaluator.compile(celExpr);
+      } catch (err) {
+        throw new BootError(
+          'BOOT_ERR_DSL_SYNTAX',
+          `${ctx}: payload field "${fieldKey}" is not a valid CEL expression: ${err instanceof Error ? err.message : String(err)}`,
+          { field: `payload.${fieldKey}`, context: ctx, expression: celExpr },
+        );
+      }
+    }
+  }
+
+  return {
+    ...(name !== undefined ? { name } : {}),
+    on,
+    ...(when !== undefined ? { when } : {}),
+    boundary,
+    emit,
+    ...(intent !== undefined ? { intent } : {}),
+    ...(target !== undefined ? { target } : {}),
+    ...(payload !== undefined ? { payload } : {}),
+  };
+}
 
 export function validateBoundaryConfig(raw: unknown): BoundaryConfig {
   if (!isRecord(raw)) {
@@ -1107,6 +1215,19 @@ export function validateBoundaryConfig(raw: unknown): BoundaryConfig {
     faults = faultRulesRaw.map((item, i) => validateFaultRule(item, i));
   }
 
+  let reactions: readonly ReactionRule[] | undefined;
+  const reactionsRaw = raw['reactions'];
+  if (reactionsRaw !== undefined && reactionsRaw !== null) {
+    if (!Array.isArray(reactionsRaw)) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        'root: "reactions" must be an array',
+        { field: 'reactions' },
+      );
+    }
+    reactions = reactionsRaw.map((item, i) => validateReactionRule(item, i, boundary));
+  }
+
   crossValidate({ behaviors, reducers, eventCatalog, boundary, scripts });
 
   return {
@@ -1127,6 +1248,7 @@ export function validateBoundaryConfig(raw: unknown): BoundaryConfig {
     ...(strictSchema !== undefined ? { strictSchema } : {}),
     ...(auditFields !== undefined ? { auditFields } : {}),
     ...(faults !== undefined ? { faults } : {}),
+    ...(reactions !== undefined ? { reactions } : {}),
   };
 }
 
@@ -1446,6 +1568,7 @@ export interface GlobalConfig {
   readonly securityHeaders?: SecurityHeadersConfig;
   readonly faults?: readonly FaultRule[];
   readonly webhooks?: readonly WebhookConfig[];
+  readonly reactions?: readonly ReactionRule[];
 }
 
 /**
@@ -1463,6 +1586,7 @@ const KNOWN_GLOBAL_KEYS: ReadonlySet<string> = new Set([
   'security_headers',
   'fault_rules',
   'webhooks',
+  'reactions',
 ]);
 
 function validateAuthConfig(raw: unknown): AuthConfig {
@@ -1758,6 +1882,15 @@ export function validateGlobalConfig(raw: unknown): GlobalConfig {
     webhooks = (raw['webhooks'] as unknown[]).map((w, i) => validateWebhookConfig(w, i));
   }
 
+  let reactions: readonly ReactionRule[] | undefined;
+  if (raw['reactions'] !== undefined && raw['reactions'] !== null) {
+    if (!Array.isArray(raw['reactions'])) {
+      throw new BootError('BOOT_ERR_DSL_SYNTAX', 'Global config: "reactions" must be an array', { field: 'reactions' });
+    }
+    // fileBoundary is undefined — boundary field is required on each entry
+    reactions = (raw['reactions'] as unknown[]).map((r, i) => validateReactionRule(r, i, undefined));
+  }
+
   return {
     ...(sagas !== undefined ? { sagas } : {}),
     ...(idempotency !== undefined ? { idempotency } : {}),
@@ -1768,5 +1901,6 @@ export function validateGlobalConfig(raw: unknown): GlobalConfig {
     ...(securityHeaders !== undefined ? { securityHeaders } : {}),
     ...(faults !== undefined ? { faults } : {}),
     ...(webhooks !== undefined ? { webhooks } : {}),
+    ...(reactions !== undefined ? { reactions } : {}),
   };
 }
