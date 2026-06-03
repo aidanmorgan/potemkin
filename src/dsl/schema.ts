@@ -15,6 +15,7 @@ import type {
   HateoasConfig,
   HateoasLinkEntry,
   IdentityConfig,
+  IdentityKeyConfig,
   JwtAuthConfig,
   ReducerPatchOp,
   ReducerRule,
@@ -687,6 +688,33 @@ function validateEventCatalogEntry(raw: unknown, index: number): EventCatalogEnt
   };
 }
 
+function validateIdentityKeyConfig(raw: unknown, ctx: string): IdentityKeyConfig {
+  if (!isRecord(raw)) {
+    throw new BootError(
+      'BOOT_ERR_DSL_SYNTAX',
+      `${ctx}: "identity.key" must be an object`,
+      { field: 'identity.key', context: ctx },
+    );
+  }
+  const from = optionalString(raw, 'from', ctx);
+  if (from !== undefined && !['path', 'query', 'header', 'payload'].includes(from)) {
+    throw new BootError(
+      'BOOT_ERR_DSL_SYNTAX',
+      `${ctx}: "identity.key.from" must be one of: path, query, header, payload (got "${from}")`,
+      { field: 'identity.key.from', context: ctx },
+    );
+  }
+  const name = optionalString(raw, 'name', ctx);
+  const pointer = optionalString(raw, 'pointer', ctx);
+  const cel = optionalString(raw, 'cel', ctx);
+  return {
+    ...(from !== undefined ? { from: from as IdentityKeyConfig['from'] } : {}),
+    ...(name !== undefined ? { name } : {}),
+    ...(pointer !== undefined ? { pointer } : {}),
+    ...(cel !== undefined ? { cel } : {}),
+  };
+}
+
 function validateIdentityConfig(raw: unknown, ctx: string): IdentityConfig {
   if (!isRecord(raw)) {
     throw new BootError(
@@ -695,19 +723,31 @@ function validateIdentityConfig(raw: unknown, ctx: string): IdentityConfig {
       { field: 'identity', context: ctx },
     );
   }
+
+  let creation: IdentityConfig['creation'];
   const creationRaw = raw['creation'];
-  if (creationRaw === undefined || creationRaw === null) {
-    return {};
+  if (creationRaw !== undefined && creationRaw !== null) {
+    if (!isRecord(creationRaw)) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `${ctx}: "identity.creation" must be an object`,
+        { field: 'identity.creation', context: ctx },
+      );
+    }
+    const generate = optionalString(creationRaw, 'generate', `${ctx}.creation`);
+    creation = { ...(generate !== undefined ? { generate } : {}) };
   }
-  if (!isRecord(creationRaw)) {
-    throw new BootError(
-      'BOOT_ERR_DSL_SYNTAX',
-      `${ctx}: "identity.creation" must be an object`,
-      { field: 'identity.creation', context: ctx },
-    );
+
+  let key: IdentityKeyConfig | undefined;
+  const keyRaw = raw['key'];
+  if (keyRaw !== undefined && keyRaw !== null) {
+    key = validateIdentityKeyConfig(keyRaw, `${ctx}.key`);
   }
-  const generate = optionalString(creationRaw, 'generate', `${ctx}.creation`);
-  return { creation: { ...(generate !== undefined ? { generate } : {}) } };
+
+  return {
+    ...(creation !== undefined ? { creation } : {}),
+    ...(key !== undefined ? { key } : {}),
+  };
 }
 
 function validateInitialization(raw: unknown, ctx: string): readonly JsonObject[] {

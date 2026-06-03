@@ -1,0 +1,80 @@
+openapi: 3.0.3
+info:
+  title: Shipment API (webhook-hmac fixture)
+  version: "1.0.0"
+# Minimal single-operation API used to demonstrate outbound webhook dispatch.
+# POST /shipments creates a shipment → engine emits ShipmentCreated → the
+# global webhook config fires an HMAC-signed POST to the configured receiver.
+# This file is intentionally minimal; webhook signing is the system under test.
+paths:
+  /shipments:
+    post:
+      operationId: createShipment
+      summary: Create a shipment; triggers an outbound HMAC-signed webhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [trackingRef, destination]
+              properties:
+                trackingRef:
+                  type: string
+                destination:
+                  type: string
+      responses:
+        "201":
+          description: Shipment created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Shipment"
+  /shipments/{id}:
+    get:
+      operationId: getShipment
+      summary: Get a shipment by id
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Shipment found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Shipment"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+components:
+  schemas:
+    Shipment:
+      type: object
+      additionalProperties: false
+      required: [id, trackingRef, destination, status]
+      properties:
+        id:
+          type: string
+        trackingRef:
+          type: string
+        destination:
+          type: string
+        status:
+          type: string
+    # ShipmentById is the schema the engine resolves for the ShipmentById boundary.
+    # Aliases Shipment so GET /shipments/{id} returns the same shape.
+    ShipmentById:
+      $ref: "#/components/schemas/Shipment"
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string

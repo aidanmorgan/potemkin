@@ -1,0 +1,297 @@
+openapi: 3.0.3
+info:
+  title: Saga Compensation Example API
+  description: >
+    Canonical saga-compensation fixture. OrderFulfillmentSaga triggers on
+    OrderPlaced, reserves inventory (step 1 — succeeds), then attempts to
+    notify a non-existent warehouse aggregate (step 2 — deterministically
+    fails). The EntityAbsenceError from step 2 triggers compensation of
+    step 1, cancelling the reservation. The full SagaStepFailed →
+    SagaCompensated → SagaFailed lifecycle is observable under __saga__.
+  version: "1.0.0"
+paths:
+  # Saga step commands are built with path: '' (hardcoded in the orchestrator).
+  # The contract validator's matchRoute() needs a path template that matches ''
+  # so that response validation does not throw for saga step UoWs. This empty-
+  # path entry provides that match. The operations carry no response schemas so
+  # the validator bails early after matching (no schema = no check), allowing
+  # SagaStepCompleted to be recorded when the domain logic succeeds.
+  '':
+    post:
+      operationId: sagaStepCreation
+      summary: Internal saga step creation (path '' matches orchestrator-built commands)
+      responses:
+        '201':
+          description: Created (no schema — saga response validation pass-through)
+    put:
+      operationId: sagaStepMutation
+      summary: Internal saga step mutation (path '' matches orchestrator-built commands)
+      responses:
+        '200':
+          description: OK (no schema — saga response validation pass-through)
+  /orders:
+    post:
+      operationId: placeOrder
+      summary: Place a new order (triggers OrderFulfillmentSaga)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customerId, itemId, quantity]
+              properties:
+                customerId:
+                  type: string
+                itemId:
+                  type: string
+                quantity:
+                  type: integer
+                  minimum: 1
+      responses:
+        "201":
+          description: Order placed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+    get:
+      operationId: listOrders
+      summary: List all orders
+      responses:
+        "200":
+          description: List of orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Order"
+  /orders/{id}:
+    get:
+      operationId: getOrder
+      summary: Get an order by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Order found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      operationId: cancelOrder
+      summary: Cancel an order (compensating transaction target)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+      responses:
+        "200":
+          description: Order cancelled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+
+  /reservations:
+    post:
+      operationId: createReservation
+      summary: Reserve inventory for an order (saga step 1)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [orderId, itemId, quantity]
+              properties:
+                orderId:
+                  type: string
+                itemId:
+                  type: string
+                quantity:
+                  type: integer
+                  minimum: 1
+      responses:
+        "201":
+          description: Reservation created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Reservation"
+  /reservations/{id}:
+    get:
+      operationId: getReservation
+      summary: Get a reservation by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Reservation found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Reservation"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      operationId: cancelReservation
+      summary: Cancel a reservation (compensating transaction for step 1)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+      responses:
+        "200":
+          description: Reservation cancelled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Reservation"
+
+  /warehouses/{id}/notify:
+    post:
+      operationId: notifyWarehouse
+      summary: >
+        Notify a warehouse about a new order (saga step 2). This operation
+        requires a pre-existing Warehouse aggregate. When no warehouse exists
+        for the given ID, the saga step fails with EntityAbsenceError,
+        triggering compensation of all prior completed steps.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [orderId, itemId, quantity]
+              properties:
+                orderId:
+                  type: string
+                itemId:
+                  type: string
+                quantity:
+                  type: integer
+      responses:
+        "200":
+          description: Warehouse notified
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Warehouse"
+        "404":
+          description: Warehouse not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+components:
+  schemas:
+    Order:
+      type: object
+      additionalProperties: false
+      required: [id, customerId, itemId, quantity, status]
+      properties:
+        id:
+          type: string
+        customerId:
+          type: string
+        itemId:
+          type: string
+        quantity:
+          type: integer
+        status:
+          type: string
+          description: "PENDING | CANCELLED"
+        cancelReason:
+          type: string
+
+    Reservation:
+      type: object
+      additionalProperties: false
+      required: [id, orderId, itemId, quantity, status]
+      properties:
+        id:
+          type: string
+        orderId:
+          type: string
+        itemId:
+          type: string
+        quantity:
+          type: integer
+        status:
+          type: string
+          description: "RESERVED | CANCELLED"
+        cancelReason:
+          type: string
+
+    Warehouse:
+      type: object
+      additionalProperties: false
+      required: [id, status]
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+        lastNotifiedOrderId:
+          type: string
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        message:
+          type: string

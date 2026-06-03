@@ -1,0 +1,33 @@
+# Canonical example: outbound webhook with HMAC signature (webhook-hmac fixture).
+#
+# Webhook config lives here in the global file so it is evaluated as a
+# cross-cutting concern. When a ShipmentCreated event is emitted the engine:
+#   1. Evaluates the `trigger.condition` CEL expression.
+#   2. Resolves the `url` CEL expression to a concrete URL.
+#   3. Builds the `payload` by evaluating each ${...} template against the event.
+#   4. Serialises the payload to canonical JSON (the same bytes that are HMAC-signed).
+#   5. Computes HMAC-SHA256(secret, canonicalJSON) and sets the header:
+#        x-potemkin-signature: sha256=<hex>
+#   6. POST-s the signed body to the receiver with at most `retry.maxAttempts`
+#      attempts on transient failures.
+#
+# The test (64-webhook-hmac.e2e-test.ts) binds a local HTTP server on port 19877
+# and asserts that the received POST body and signature header are correct.
+#
+# Port is hard-coded (19877) so the YAML literal can reference it without CEL
+# interpolation. The receiver binds the same port in the test.
+
+webhooks:
+  - name: shipment-created-webhook
+    trigger:
+      boundary: Shipment
+      condition: "event.type == 'ShipmentCreated'"
+    url: "'http://127.0.0.1:19877/webhook'"
+    secret: "hmac-example-secret-do-not-use-in-prod"
+    payload:
+      shipmentId: "${event.aggregateId}"
+      trackingRef: "${event.payload.trackingRef}"
+      event: "${event.type}"
+    retry:
+      maxAttempts: 3
+      delayMs: 50

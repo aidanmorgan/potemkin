@@ -1,0 +1,28 @@
+# op: increment — add `by` to the numeric field at `path`.
+# The `by` field is explicit (not defaulted) so the caller controls step size.
+# Increments accumulate across events: calling twice by:5 yields score += 10.
+boundary: ItemIncrementScore
+contract_path: /items/{id}/increment-score
+fallback_override: false
+
+event_catalog:
+  - type: ItemScoreIncremented
+    payload_template: {}
+
+behaviors:
+  - name: incrementScore
+    match:
+      operationId: incrementScore
+      condition: "true"
+    emit: ItemScoreIncremented
+
+reducers:
+  - on: ItemScoreIncremented
+    patches:
+      # op: increment — add 5 to /score (explicit literal operand; `by` is always a literal number).
+      # The step size of 5 is documented in the fixture; callers know the contract.
+      - op: increment
+        path: /score
+        by: 5
+
+initialization: []

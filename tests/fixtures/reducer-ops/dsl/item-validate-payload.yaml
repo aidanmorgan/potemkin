@@ -1,0 +1,34 @@
+# schema_ref runtime payload validation.
+# When `schema_ref` is set on an event catalog entry, the engine validates the
+# hydrated payload against the referenced OpenAPI schema using AJV at runtime.
+# A conforming payload projects normally; a payload violating the schema aborts
+# the Unit of Work with SCHEMA_TYPE_MISMATCH (HTTP 500).
+boundary: ItemValidatePayload
+contract_path: /items/{id}/validate-payload
+fallback_override: false
+
+event_catalog:
+  - type: ItemPayloadValidated
+    # schema_ref resolves to StrictPayload: { amount: number (required) }
+    # Sending amount as a string triggers SCHEMA_TYPE_MISMATCH at runtime.
+    schema_ref: "#/components/schemas/StrictPayload"
+    payload_template:
+      amount: "command.payload.amount"
+      # has() + ternary: bare CEL in payload_template (no ${} needed here)
+      label: "has(command.payload.label) ? command.payload.label : ''"
+
+behaviors:
+  - name: validatePayload
+    match:
+      operationId: validatePayload
+      condition: "true"
+    emit: ItemPayloadValidated
+
+reducers:
+  - on: ItemPayloadValidated
+    patches:
+      - op: replace
+        path: /lastPayload
+        value: "${ {'amount': event.payload.amount, 'label': event.payload.label} }"
+
+initialization: []

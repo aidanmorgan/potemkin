@@ -1,0 +1,28 @@
+# op: add (field-creation) — creates a field that did not previously exist.
+# addedNote is absent after ItemCreated; this reducer is the first writer.
+# Contrast with replace, which assumes the field already exists.
+boundary: ItemAddField
+contract_path: /items/{id}/add-field
+fallback_override: false
+
+event_catalog:
+  - type: ItemFieldAdded
+    payload_template:
+      note: "command.payload.note"
+
+behaviors:
+  - name: addField
+    match:
+      operationId: addField
+      condition: "true"
+    emit: ItemFieldAdded
+
+reducers:
+  - on: ItemFieldAdded
+    patches:
+      # op: add — create the previously-absent /addedNote field
+      - op: add
+        path: /addedNote
+        value: "${event.payload.note}"
+
+initialization: []

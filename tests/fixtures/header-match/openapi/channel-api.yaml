@@ -1,0 +1,82 @@
+openapi: 3.0.3
+info:
+  title: Channel API (behavior header-match fixture)
+  version: "1.0.0"
+# Single operation — submitOrder — used by two behaviors discriminated by x-channel.
+# This OpenAPI file is intentionally minimal; behavior routing is the system under test.
+paths:
+  /orders:
+    post:
+      operationId: submitOrder
+      summary: Submit an order; behavior selection depends on x-channel request header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [productId, quantity]
+              properties:
+                productId:
+                  type: string
+                quantity:
+                  type: integer
+      responses:
+        "201":
+          description: Order submitted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+  /orders/{id}:
+    get:
+      operationId: getOrder
+      summary: Retrieve an order by id
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Order found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+components:
+  schemas:
+    Order:
+      type: object
+      additionalProperties: false
+      required: [id, productId, quantity, channel, priority]
+      properties:
+        id:
+          type: string
+        productId:
+          type: string
+        quantity:
+          type: integer
+        # channel records which behavior path fired — the key observable for assertions.
+        channel:
+          type: string
+        # priority is set differently by each behavior so tests have a second assertion.
+        priority:
+          type: string
+    # OrderById is the schema the engine resolves for the OrderById boundary.
+    # It must share the same shape as Order so state reads work correctly.
+    OrderById:
+      $ref: "#/components/schemas/Order"
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string

@@ -1,0 +1,11 @@
+# Contrast boundary — same aggregate as Job but the GET by-id path has no
+# latency config. Demonstrates that latency is boundary-scoped: a delay
+# configured on /jobs does not affect /jobs/{id}.
+boundary: JobById
+contract_path: /jobs/{id}
+fallback_override: true
+
+event_catalog: []
+behaviors: []
+reducers: []
+initialization: []

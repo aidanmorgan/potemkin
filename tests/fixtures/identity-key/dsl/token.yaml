@@ -1,0 +1,61 @@
+# Canonical example: identity.key.from: header — aggregate id from a request header.
+#
+# identity.key configures WHERE the engine reads the entity key on an inbound request.
+# Here: from: header, name: x-token-id — the engine reads the lowercased header
+# "x-token-id" and uses its value as the aggregate id instead of a URL path param.
+#
+# identity.creation.generate provides the fallback when the header is absent:
+# a fresh UUIDv7 is minted automatically (same as the standard creation path).
+#
+# Implementation note — the key extraction runs in both the HTTP gateway
+# (src/http/gateway.ts) and the forwarding handler (src/forwarding/handler.ts)
+# via extractEntityKey() (src/engine/keyExtractor.ts) BEFORE the Command is built,
+# so targetId on the command already carries the header-derived value and the rest
+# of the CQRS/ES pipeline (PatternMatcher → reducer → StateGraph) is unaffected.
+
+boundary: Token
+contract_path: /tokens
+fallback_override: false
+
+identity:
+  # Key extraction: read the aggregate id from the X-Token-Id request header.
+  # Lowercased name matches the forwarding contract (plugin sends lowercase headers).
+  key:
+    from: header
+    name: x-token-id
+  # Fallback when X-Token-Id is absent: auto-generate a UUIDv7.
+  creation:
+    generate: "$uuidv7()"
+
+event_catalog:
+  - type: TokenIssued
+    payload_template:
+      id: "command.targetId"
+      owner: "command.payload.owner"
+      scope: "command.payload.scope"
+      status: "'ACTIVE'"
+
+behaviors:
+  - name: issueToken
+    match:
+      operationId: issueToken
+      condition: "true"
+    emit: TokenIssued
+
+reducers:
+  - on: TokenIssued
+    patches:
+      - op: replace
+        path: /id
+        value: "${event.payload.id}"
+      - op: replace
+        path: /owner
+        value: "${event.payload.owner}"
+      - op: replace
+        path: /scope
+        value: "${event.payload.scope}"
+      - op: replace
+        path: /status
+        value: "${event.payload.status}"
+
+initialization: []

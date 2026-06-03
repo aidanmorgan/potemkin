@@ -1,0 +1,60 @@
+# Canonical reducer patch-op examples.
+# This file is the definitive illustrative reference for every Potemkin
+# reducer patch op. Each event/reducer pair is annotated with the op it
+# demonstrates and why.
+
+boundary: Item
+contract_path: /items
+fallback_override: false
+
+identity:
+  creation:
+    generate: $uuidv7()
+
+event_catalog:
+  - type: ItemCreated
+    payload_template:
+      id: "command.targetId"
+      name: "command.payload.name"
+      status: "'DRAFT'"
+      # has() + ternary: plain CEL (no ${} needed in payload_template)
+      score: "has(command.payload.initialScore) ? command.payload.initialScore : 0"
+      tags: "[]"
+
+behaviors:
+  - name: createItem
+    match:
+      operationId: createItem
+      condition: "true"
+    emit: ItemCreated
+
+# ── op: add ────────────────────────────────────────────────────────────────────
+# Creates a field that did not previously exist on the aggregate.
+# Contrast with replace, which requires the field to already be present.
+reducers:
+  - on: ItemCreated
+    patches:
+      - op: add
+        path: /id
+        value: "${event.payload.id}"
+      - op: add
+        path: /name
+        value: "${event.payload.name}"
+      - op: add
+        path: /status
+        value: "${event.payload.status}"
+      - op: add
+        path: /score
+        value: "${event.payload.score}"
+      - op: add
+        path: /tags
+        value: "${event.payload.tags}"
+      - op: add
+        path: /metadata
+        value: "${{}}"
+      - op: add
+        path: /members
+        value: "${[]}"
+
+
+initialization: []

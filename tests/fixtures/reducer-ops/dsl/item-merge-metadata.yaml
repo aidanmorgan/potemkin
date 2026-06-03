@@ -1,0 +1,29 @@
+# op: merge — shallow-merge an object into the target path.
+# Keys present in the incoming object overwrite; keys NOT present are preserved.
+# This makes merge safe for partial updates to nested state.
+boundary: ItemMergeMetadata
+contract_path: /items/{id}/merge-metadata
+fallback_override: false
+
+event_catalog:
+  - type: ItemMetadataMerged
+    payload_template:
+      changes: "command.payload.changes"
+
+behaviors:
+  - name: mergeMetadata
+    match:
+      operationId: mergeMetadata
+      condition: "true"
+    emit: ItemMetadataMerged
+
+reducers:
+  - on: ItemMetadataMerged
+    patches:
+      # op: merge — shallow-merge event.payload.changes into /metadata
+      # Keys not present in `changes` survive untouched.
+      - op: merge
+        path: /metadata
+        value: "${event.payload.changes}"
+
+initialization: []

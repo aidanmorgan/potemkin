@@ -1,0 +1,32 @@
+# op: move — move the value at `from` to `path`; source field is REMOVED.
+# Here /draftBody is moved to /publishedBody, atomically promoting the draft
+# and removing it from the draft slot in one reducer step.
+boundary: ItemPublish
+contract_path: /items/{id}/publish
+fallback_override: false
+
+event_catalog:
+  - type: ItemPublished
+    payload_template:
+      draftBody: "command.payload.draftBody"
+
+behaviors:
+  - name: publishItem
+    match:
+      operationId: publishItem
+      condition: "true"
+    emit: ItemPublished
+
+reducers:
+  - on: ItemPublished
+    patches:
+      # op: add — write /draftBody from the event payload so move has a source
+      - op: add
+        path: /draftBody
+        value: "${event.payload.draftBody}"
+      # op: move — move /draftBody → /publishedBody; /draftBody is removed
+      - op: move
+        from: /draftBody
+        path: /publishedBody
+
+initialization: []

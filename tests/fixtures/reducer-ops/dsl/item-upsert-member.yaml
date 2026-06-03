@@ -1,0 +1,34 @@
+# op: upsert — insert-or-replace an array element matched by a key field.
+# The key field (`memberId`) is compared against existing elements; if a match
+# is found the element is replaced in-place; otherwise the new element is appended.
+# This prevents duplicates and enables idempotent array maintenance.
+boundary: ItemUpsertMember
+contract_path: /items/{id}/upsert-member
+fallback_override: false
+
+event_catalog:
+  - type: ItemMemberUpserted
+    payload_template:
+      memberId: "command.payload.memberId"
+      role: "command.payload.role"
+
+behaviors:
+  - name: upsertMember
+    match:
+      operationId: upsertMember
+      condition: "true"
+    emit: ItemMemberUpserted
+
+reducers:
+  - on: ItemMemberUpserted
+    patches:
+      # op: upsert — insert or replace in /members, matched by `memberId`.
+      # value must be a whole-string CEL expression (${...}) that evaluates to the
+      # element object — nested object literals with ${} are not individually evaluated.
+      # The CEL map literal {'k': v} constructs the element from event payload fields.
+      - op: upsert
+        path: /members
+        key: memberId
+        value: "${ {'memberId': event.payload.memberId, 'role': event.payload.role} }"
+
+initialization: []

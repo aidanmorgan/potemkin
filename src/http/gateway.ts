@@ -37,6 +37,7 @@ import { registerAdminRoutes } from './adminRoutes.js';
 import { extractFaultSignal } from '../engine/faultSim.js';
 import { matchRoute, resolveVersion } from '../contract/router.js';
 import { translateIntent } from '../engine/router.js';
+import { extractEntityKey } from '../engine/keyExtractor.js';
 import { executeUnitOfWork } from '../engine/uow.js';
 import { createSideEffectQueue } from '../engine/sideEffects.js';
 import { nextUuidv7 } from '../ids/uuidv7.js';
@@ -544,7 +545,24 @@ async function handleContractRequest(
     // Use effectiveMethod so HEAD commands are translated the same as GET.
     const intent: Intent = translateIntent({ method: effectiveMethod, boundary });
 
-    let targetId: string | null = route.pathParams['id'] ?? null;
+    // Build the lowercased-header snapshot early so identity.key extraction
+    // (which may read a request header) has access to it before targetId is resolved.
+    const requestHeaders: Record<string, string> = {};
+    for (const [k, v] of Object.entries(req.headers)) {
+      if (typeof v === 'string') requestHeaders[k.toLowerCase()] = v;
+      else if (Array.isArray(v)) requestHeaders[k.toLowerCase()] = v[0] ?? '';
+    }
+
+    // Resolve targetId: when the boundary declares identity.key, delegate to
+    // extractEntityKey (reads from header/payload/query/path/CEL); otherwise
+    // fall back to the {id} path parameter (backwards-compatible default).
+    let targetId: string | null = extractEntityKey({
+      boundary,
+      pathParams: route.pathParams,
+      queryParams: req.query as Record<string, string | string[]>,
+      headers: requestHeaders,
+      body: req.body as unknown,
+    });
     if (intent === 'creation' && targetId === null) {
       const genRule = boundary.identity?.creation?.generate;
       if (genRule === '$uuidv7()') {
@@ -619,13 +637,6 @@ async function handleContractRequest(
     if (adminOverride) {
       const [id, scopesStr] = adminOverride.split(':', 2);
       actor = { id: id ?? 'unknown', scopes: (scopesStr ?? '').split(',').filter(Boolean) };
-    }
-
-    // Build a lowercased-header snapshot for command and reducer chaining.
-    const requestHeaders: Record<string, string> = {};
-    for (const [k, v] of Object.entries(req.headers)) {
-      if (typeof v === 'string') requestHeaders[k.toLowerCase()] = v;
-      else if (Array.isArray(v)) requestHeaders[k.toLowerCase()] = v[0] ?? '';
     }
 
     // If-Match may carry a quoted ETag value ("1") or an unquoted integer (1).

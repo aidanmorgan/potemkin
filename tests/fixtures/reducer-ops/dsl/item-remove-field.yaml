@@ -1,0 +1,25 @@
+# op: remove — delete a field from the aggregate.
+# After this reducer runs /addedNote will be absent from projected state.
+boundary: ItemRemoveField
+contract_path: /items/{id}/remove-field
+fallback_override: false
+
+event_catalog:
+  - type: ItemFieldRemoved
+    payload_template: {}
+
+behaviors:
+  - name: removeField
+    match:
+      operationId: removeField
+      condition: "true"
+    emit: ItemFieldRemoved
+
+reducers:
+  - on: ItemFieldRemoved
+    patches:
+      # op: remove — delete /addedNote; the field is absent from state afterwards
+      - op: remove
+        path: /addedNote
+
+initialization: []

@@ -1,0 +1,430 @@
+openapi: 3.0.3
+info:
+  title: Reducer Patch Ops (illustrative fixture)
+  version: "1.0.0"
+
+# One aggregate — Item — exercises every patch op in its lifecycle.
+# Fields are declared explicitly so boot-time path validation passes.
+# additionalProperties is NOT false, giving reducers room to auto-vivify
+# intermediate containers without boot rejection.
+
+paths:
+  /items:
+    post:
+      operationId: createItem
+      summary: Create a new item (bootstraps aggregate state)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                initialScore:
+                  type: number
+      responses:
+        "201":
+          description: Item created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+
+  /items/{id}:
+    get:
+      operationId: getItem
+      summary: Read item state
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+
+  /items/{id}/rename:
+    post:
+      operationId: renameItem
+      summary: op:replace — overwrite the name field
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+      responses:
+        "200":
+          description: Renamed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+
+  /items/{id}/add-field:
+    post:
+      operationId: addField
+      summary: op:add — create a previously-absent field (addedNote)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [note]
+              properties:
+                note:
+                  type: string
+      responses:
+        "200":
+          description: Field added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+
+  /items/{id}/remove-field:
+    post:
+      operationId: removeField
+      summary: op:remove — delete the addedNote field
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Field removed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+
+  /items/{id}/append-tag:
+    post:
+      operationId: appendTag
+      summary: op:append — push a tag to the end of /tags
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tag]
+              properties:
+                tag:
+                  type: string
+      responses:
+        "200":
+          description: Tag appended
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+
+  /items/{id}/prepend-tag:
+    post:
+      operationId: prependTag
+      summary: op:prepend — push a tag to the front of /tags
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tag]
+              properties:
+                tag:
+                  type: string
+      responses:
+        "200":
+          description: Tag prepended
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+
+  /items/{id}/increment-score:
+    post:
+      operationId: incrementScore
+      summary: op:increment — advance /score by the fixed step declared in the DSL (by:5)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Score incremented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+
+  /items/{id}/merge-metadata:
+    post:
+      operationId: mergeMetadata
+      summary: op:merge — shallow-merge payload into /metadata, preserving unmentioned keys
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                changes:
+                  type: object
+      responses:
+        "200":
+          description: Metadata merged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+
+  /items/{id}/upsert-member:
+    post:
+      operationId: upsertMember
+      summary: op:upsert — insert-or-replace a /members element by key field `memberId`
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [memberId, role]
+              properties:
+                memberId:
+                  type: string
+                role:
+                  type: string
+      responses:
+        "200":
+          description: Member upserted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+
+  /items/{id}/promote:
+    post:
+      operationId: promoteItem
+      summary: op:copy — copy /status to /previousStatus (source retained)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [newStatus]
+              properties:
+                newStatus:
+                  type: string
+      responses:
+        "200":
+          description: Promoted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+
+  /items/{id}/publish:
+    post:
+      operationId: publishItem
+      summary: op:move — move /draftBody to /publishedBody (source removed)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [draftBody]
+              properties:
+                draftBody:
+                  type: string
+      responses:
+        "200":
+          description: Published
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+
+  /items/{id}/validate-payload:
+    post:
+      operationId: validatePayload
+      # The request body intentionally accepts any object — type enforcement is
+      # delegated entirely to the schema_ref on the event catalog entry. This is
+      # the canonical pattern: the HTTP layer is loose, the event schema is strict.
+      summary: schema_ref validation — payload validated against StrictPayload schema at event hydration time
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Payload accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+
+components:
+  schemas:
+    Item:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+        previousStatus:
+          type: string
+        score:
+          type: number
+        tags:
+          type: array
+          items:
+            type: string
+        addedNote:
+          type: string
+        draftBody:
+          type: string
+        publishedBody:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        members:
+          type: array
+          items:
+            type: object
+            properties:
+              memberId:
+                type: string
+              role:
+                type: string
+        lastPayload:
+          type: object
+          additionalProperties: true
+
+    # Sub-path boundary schemas — each mutation boundary uses $ref to Item
+    # because all ops mutate the same aggregate type.
+    ItemRename:
+      $ref: "#/components/schemas/Item"
+    ItemAddField:
+      $ref: "#/components/schemas/Item"
+    ItemRemoveField:
+      $ref: "#/components/schemas/Item"
+    ItemAppendTag:
+      $ref: "#/components/schemas/Item"
+    ItemPrependTag:
+      $ref: "#/components/schemas/Item"
+    ItemIncrementScore:
+      $ref: "#/components/schemas/Item"
+    ItemMergeMetadata:
+      $ref: "#/components/schemas/Item"
+    ItemUpsertMember:
+      $ref: "#/components/schemas/Item"
+    ItemPromote:
+      $ref: "#/components/schemas/Item"
+    ItemPublish:
+      $ref: "#/components/schemas/Item"
+    ItemValidatePayload:
+      $ref: "#/components/schemas/Item"
+
+    # Strict schema used by schema_ref validation.
+    # amount must be a number — sending a string triggers SCHEMA_TYPE_MISMATCH.
+    StrictPayload:
+      type: object
+      required: [amount]
+      properties:
+        amount:
+          type: number
+        label:
+          type: string
+      additionalProperties: false

@@ -1,0 +1,108 @@
+# Canonical example: behavior-level match.headers (behavior header-match fixture).
+#
+# Two behaviors are registered for the SAME operationId (submitOrder). They are
+# discriminated by match.headers — the engine evaluates behaviors top-to-bottom
+# and selects the FIRST one whose header predicates and condition both pass
+# (first-match-wins, §5.1 of docs/dsl.md).
+#
+# Behavior A — "mobile channel": fires when x-channel: mobile is present.
+#   Emits MobileOrderPlaced → reducer sets channel=mobile, priority=EXPRESS.
+#
+# Behavior B — "default channel": fires when x-channel is absent or any other
+#   value (no match.headers constraint → always passes the header check).
+#   Emits OrderPlaced → reducer sets channel=standard, priority=NORMAL.
+#
+# Header match semantics (src/engine/headerMatch.ts):
+#   - Name lookup is case-insensitive (x-channel == X-Channel == X-CHANNEL).
+#   - Value comparison is exact (equality); '*' and 'present' are wildcard sentinels.
+#   - AND semantics: all declared headers must match.
+#   - A missing header fails the match → behavior is skipped.
+
+boundary: Order
+contract_path: /orders
+fallback_override: false
+
+identity:
+  creation:
+    generate: "$uuidv7()"
+
+event_catalog:
+  # Emitted when x-channel: mobile selects the mobile behavior.
+  - type: MobileOrderPlaced
+    payload_template:
+      id: "command.targetId"
+      productId: "command.payload.productId"
+      quantity: "command.payload.quantity"
+      channel: "'mobile'"
+      priority: "'EXPRESS'"
+
+  # Emitted when no discriminating header is present (default behavior).
+  - type: OrderPlaced
+    payload_template:
+      id: "command.targetId"
+      productId: "command.payload.productId"
+      quantity: "command.payload.quantity"
+      channel: "'standard'"
+      priority: "'NORMAL'"
+
+behaviors:
+  # Behavior A — mobile channel.
+  # match.headers declares x-channel: mobile — ONLY fires when that header is
+  # present with the exact value "mobile". If absent or different, the engine
+  # skips this behavior and falls through to behavior B below.
+  - name: submitOrder.mobile
+    match:
+      operationId: submitOrder
+      headers:
+        x-channel: mobile
+      condition: "true"
+    emit: MobileOrderPlaced
+
+  # Behavior B — default channel.
+  # No match.headers constraint — header check always passes (vacuously true).
+  # Because behaviors are evaluated top-to-bottom, this only fires when behavior
+  # A was skipped (i.e. x-channel is absent, empty, or a non-mobile value).
+  - name: submitOrder.default
+    match:
+      operationId: submitOrder
+      condition: "true"
+    emit: OrderPlaced
+
+reducers:
+  - on: MobileOrderPlaced
+    patches:
+      - op: replace
+        path: /id
+        value: "${event.payload.id}"
+      - op: replace
+        path: /productId
+        value: "${event.payload.productId}"
+      - op: replace
+        path: /quantity
+        value: "${event.payload.quantity}"
+      - op: replace
+        path: /channel
+        value: "${event.payload.channel}"
+      - op: replace
+        path: /priority
+        value: "${event.payload.priority}"
+
+  - on: OrderPlaced
+    patches:
+      - op: replace
+        path: /id
+        value: "${event.payload.id}"
+      - op: replace
+        path: /productId
+        value: "${event.payload.productId}"
+      - op: replace
+        path: /quantity
+        value: "${event.payload.quantity}"
+      - op: replace
+        path: /channel
+        value: "${event.payload.channel}"
+      - op: replace
+        path: /priority
+        value: "${event.payload.priority}"
+
+initialization: []

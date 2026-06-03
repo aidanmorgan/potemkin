@@ -1,0 +1,62 @@
+# Canonical saga-compensation global config.
+#
+# OrderFulfillmentSaga demonstrates the SagaStepFailed → SagaCompensated →
+# SagaFailed lifecycle:
+#
+#   Step 1 — reserveInventory (Reservation boundary, intent: creation)
+#     • Always succeeds; produces a ReservationCreated event.
+#     • Compensation: cancelReservation (mutation on the same Reservation
+#       aggregate) — dispatched only if a later step fails.
+#
+#   Step 2 — notifyWarehouse (Warehouse boundary, intent: mutation)
+#     • Deterministically fails: the Warehouse boundary has no seeded
+#       aggregates and mutation against an absent entity throws
+#       EntityAbsenceError. No warehouse is ever created before the saga
+#       runs, so this failure is unconditional.
+#
+# Failure path:
+#   Step 2 fails → SagaStepFailed recorded → compensation for step 1 runs
+#   (cancelReservation targeting steps.reserveInventory.body.id) →
+#   SagaCompensated recorded → SagaFailed recorded.
+#
+# The primary OrderPlaced event committed before the saga started remains
+# durable throughout.
+sagas:
+  - name: OrderFulfillmentSaga
+    trigger:
+      boundary: Order
+      intent: creation
+      condition: "event.type == 'OrderPlaced'"
+    steps:
+      - name: reserveInventory
+        boundary: Reservation
+        intent: creation
+        operationId: createReservation
+        target_id: "$uuidv7()"
+        payload:
+          orderId: "event.aggregateId"
+          itemId: "event.payload.itemId"
+          quantity: "event.payload.quantity"
+        # Compensation: cancel the reservation when a later step fails.
+        # target_id references the id returned in step 1's response body,
+        # available via the stepsAccumulator as steps.reserveInventory.body.id.
+        compensation:
+          intent: mutation
+          operationId: cancelReservation
+          target_id: "string(steps.reserveInventory.body.id)"
+          payload:
+            reason: "'saga-compensation: warehouse notification failed'"
+
+      - name: notifyWarehouse
+        boundary: Warehouse
+        intent: mutation
+        operationId: notifyWarehouse
+        # A hardcoded warehouse ID that is never seeded — the Warehouse boundary
+        # has no initialization entries. The mutation against this absent
+        # aggregate throws EntityAbsenceError, which the orchestrator catches
+        # and converts into SagaStepFailed + compensation chain + SagaFailed.
+        target_id: "'00000000-0000-7000-8000-dead00000002'"
+        payload:
+          orderId: "event.aggregateId"
+          itemId: "event.payload.itemId"
+          quantity: "event.payload.quantity"

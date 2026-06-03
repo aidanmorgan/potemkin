@@ -1,0 +1,32 @@
+# op: copy — copy the value at `from` to `path`; source field is RETAINED.
+# Here /status is copied to /previousStatus before the new status is written,
+# creating an audit trail of the prior state.
+boundary: ItemPromote
+contract_path: /items/{id}/promote
+fallback_override: false
+
+event_catalog:
+  - type: ItemPromoted
+    payload_template:
+      newStatus: "command.payload.newStatus"
+
+behaviors:
+  - name: promoteItem
+    match:
+      operationId: promoteItem
+      condition: "true"
+    emit: ItemPromoted
+
+reducers:
+  - on: ItemPromoted
+    patches:
+      # op: copy — copy /status → /previousStatus; source /status is retained
+      - op: copy
+        from: /status
+        path: /previousStatus
+      # op: replace — then overwrite /status with the new value
+      - op: replace
+        path: /status
+        value: "${event.payload.newStatus}"
+
+initialization: []

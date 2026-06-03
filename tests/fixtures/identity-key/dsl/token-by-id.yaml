@@ -1,0 +1,12 @@
+# GET /tokens/{id} — reads back the token stored under the header-derived key.
+# No identity.key is needed here: the path param {id} IS the key (standard lookup).
+# This boundary exists so the e2e test can verify the entity was stored under the
+# correct id by reading it back via the normal path-param route.
+
+boundary: TokenById
+contract_path: /tokens/{id}
+fallback_override: true
+
+behaviors: []
+reducers: []
+initialization: []

@@ -1,0 +1,9 @@
+# Read side: GET /orders/{id} resolves the order state for assertions.
+boundary: OrderById
+contract_path: /orders/{id}
+fallback_override: true
+
+event_catalog: []
+behaviors: []
+reducers: []
+initialization: []

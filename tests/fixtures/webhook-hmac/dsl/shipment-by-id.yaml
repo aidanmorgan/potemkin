@@ -1,0 +1,9 @@
+# Read side: GET /shipments/{id} resolves the shipment state for assertions.
+boundary: ShipmentById
+contract_path: /shipments/{id}
+fallback_override: true
+
+event_catalog: []
+behaviors: []
+reducers: []
+initialization: []

@@ -1,0 +1,27 @@
+# op: append — push a value onto the END of an array.
+# The array grows at the tail; compare with prepend which grows at the front.
+boundary: ItemAppendTag
+contract_path: /items/{id}/append-tag
+fallback_override: false
+
+event_catalog:
+  - type: ItemTagAppended
+    payload_template:
+      tag: "command.payload.tag"
+
+behaviors:
+  - name: appendTag
+    match:
+      operationId: appendTag
+      condition: "true"
+    emit: ItemTagAppended
+
+reducers:
+  - on: ItemTagAppended
+    patches:
+      # op: append — push tag onto the END of /tags
+      - op: append
+        path: /tags
+        value: "${event.payload.tag}"
+
+initialization: []

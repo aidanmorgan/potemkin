@@ -1,0 +1,87 @@
+openapi: 3.0.3
+info:
+  title: Token API (identity-key fixture)
+  version: "1.0.0"
+# Canonical example: identity.key with from: header.
+#
+# POST /tokens — the aggregate key is read from the X-Token-Id request header
+# instead of the URL path (identity.key.from: header, name: x-token-id). The
+# caller supplies the token id in the header; the engine stores the entity under
+# that id so a subsequent GET /tokens/{id} retrieves it by the same value.
+#
+# If the caller omits X-Token-Id, identity.creation.generate: $uuidv7() mints
+# a fresh id as the fallback — proving identity.key and identity.creation
+# coexist gracefully.
+paths:
+  /tokens:
+    post:
+      operationId: issueToken
+      summary: Issue a new token; aggregate id is taken from X-Token-Id header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [owner, scope]
+              properties:
+                owner:
+                  type: string
+                scope:
+                  type: string
+      responses:
+        "201":
+          description: Token issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Token"
+  /tokens/{id}:
+    get:
+      operationId: getToken
+      summary: Retrieve a token by id
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Token found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Token"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+components:
+  schemas:
+    Token:
+      type: object
+      additionalProperties: false
+      required: [id, owner, scope, status]
+      properties:
+        id:
+          type: string
+        owner:
+          type: string
+        scope:
+          type: string
+        # status records that the reducer ran — the key observable for assertions.
+        status:
+          type: string
+    TokenById:
+      $ref: "#/components/schemas/Token"
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        message:
+          type: string

@@ -1,0 +1,39 @@
+# Warehouse boundary — saga step 2 target.
+# notifyWarehouse is a mutation (intent: mutation) that requires the Warehouse
+# aggregate to already exist. Since no Warehouse is seeded in initialization
+# and none is created before the saga runs, dispatching this step against any
+# warehouseId produces a deterministic EntityAbsenceError — the trigger for
+# compensation of all prior completed saga steps.
+boundary: Warehouse
+contract_path: /warehouses/{id}/notify
+fallback_override: false
+
+event_catalog:
+  - type: WarehouseNotified
+    payload_template:
+      orderId: "command.payload.orderId"
+      itemId: "command.payload.itemId"
+      quantity: "command.payload.quantity"
+      notifiedAt: "$now()"
+
+behaviors:
+  - name: notifyWarehouse
+    match:
+      operationId: notifyWarehouse
+      condition: "true"
+    emit: WarehouseNotified
+
+reducers:
+  - on: WarehouseNotified
+    patches:
+      - op: replace
+        path: /lastNotifiedOrderId
+        value: "${event.payload.orderId}"
+      - op: replace
+        path: /status
+        value: "${'NOTIFIED'}"
+
+# No initialization — the absence of any Warehouse aggregate ensures that a
+# mutation step targeting warehouseId always throws EntityAbsenceError,
+# making the step-2 failure deterministic without any test-side fault injection.
+initialization: []

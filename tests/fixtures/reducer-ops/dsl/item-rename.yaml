@@ -1,0 +1,29 @@
+# op: replace — overwrite an existing field.
+# The field MUST already exist in state. In autoVivify/reducer mode replace
+# upserts even if absent, but the semantic intent is "I know this field
+# exists — overwrite it."
+boundary: ItemRename
+contract_path: /items/{id}/rename
+fallback_override: false
+
+event_catalog:
+  - type: ItemRenamed
+    payload_template:
+      name: "command.payload.name"
+
+behaviors:
+  - name: renameItem
+    match:
+      operationId: renameItem
+      condition: "true"
+    emit: ItemRenamed
+
+reducers:
+  - on: ItemRenamed
+    patches:
+      # op: replace — overwrite the existing /name field with the new value
+      - op: replace
+        path: /name
+        value: "${event.payload.name}"
+
+initialization: []

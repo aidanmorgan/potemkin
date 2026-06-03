@@ -21,6 +21,13 @@ const engineOnlySuites = [
   '38-security-headers',
   '45-polish-features',
   '47-api-versioning',
+  // Feature-example suites (one illustrative YAML example per framework feature).
+  '60-reducer-patch-ops',
+  '61-identity-key',
+  '62-behavior-header-match',
+  '63-saga-compensation',
+  '64-webhook-hmac',
+  '65-latency',
 ];
 
 /** @type {import('ts-jest').JestConfigWithTsJest} */

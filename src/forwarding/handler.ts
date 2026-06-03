@@ -23,6 +23,7 @@ import { deriveFixtures } from './fixtures.js';
 import type { Actor, Command, Intent, JsonObject, JsonValue } from '../types.js';
 import { matchRoute } from '../contract/router.js';
 import { translateIntent } from '../engine/router.js';
+import { extractEntityKey } from '../engine/keyExtractor.js';
 import { executeUnitOfWork } from '../engine/uow.js';
 import { createSideEffectQueue } from '../engine/sideEffects.js';
 import { extractFaultSignal } from '../engine/faultSim.js';
@@ -373,7 +374,16 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
     }
     const faultHeaderRaw = readForwardedHeader(fwd.headers, 'x-specmatic-fault');
 
-    let targetId: string | null = route.pathParams['id'] ?? null;
+    // Resolve targetId: when the boundary declares identity.key, delegate to
+    // extractEntityKey (reads from header/payload/query/path/CEL); otherwise
+    // fall back to the {id} path parameter (backwards-compatible default).
+    let targetId: string | null = extractEntityKey({
+      boundary,
+      pathParams: route.pathParams,
+      queryParams: fwd.query,
+      headers: lc,
+      body: fwd.body as unknown,
+    });
     if (intent === 'creation' && targetId === null) {
       const genRule = boundary.identity?.creation?.generate;
       if (genRule === '$uuidv7()') targetId = nextUuidv7();
@@ -723,7 +733,14 @@ async function runBulkCreate(args: {
       }
     }
 
-    let itemTargetId: string | null = route.pathParams['id'] ?? null;
+    const itemLc = lowercaseHeaders(fwd.headers);
+    let itemTargetId: string | null = extractEntityKey({
+      boundary,
+      pathParams: route.pathParams,
+      queryParams: fwd.query,
+      headers: itemLc,
+      body: item as unknown,
+    });
     if (intent === 'creation' && itemTargetId === null) {
       const genRule = boundary.identity?.creation?.generate;
       if (genRule === '$uuidv7()') itemTargetId = nextUuidv7();
@@ -740,7 +757,7 @@ async function runBulkCreate(args: {
       path,
       origin: 'inbound',
       depth: 0,
-      headers: lowercaseHeaders(fwd.headers),
+      headers: itemLc,
       ...(actor !== undefined ? { actor } : {}),
     };
 

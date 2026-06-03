@@ -1,0 +1,68 @@
+# Reservation boundary — saga step 1 target.
+# createReservation is the forward command; cancelReservation is the
+# compensating command dispatched when a later saga step fails.
+boundary: Reservation
+contract_path: /reservations
+fallback_override: true
+identity:
+  creation:
+    generate: $uuidv7()
+
+event_catalog:
+  - type: ReservationCreated
+    payload_template:
+      id: "command.targetId"
+      orderId: "command.payload.orderId"
+      itemId: "command.payload.itemId"
+      quantity: "command.payload.quantity"
+      status: "'RESERVED'"
+      reservedAt: "$now()"
+
+  - type: ReservationCancelled
+    payload_template:
+      reason: "command.payload.reason"
+      cancelledAt: "$now()"
+
+behaviors:
+  - name: createReservation
+    match:
+      operationId: createReservation
+      condition: "true"
+    emit: ReservationCreated
+
+  # Compensation target: called by OrderFulfillmentSaga when step 2 fails.
+  - name: cancelReservation
+    match:
+      operationId: cancelReservation
+      condition: "true"
+    emit: ReservationCancelled
+
+reducers:
+  - on: ReservationCreated
+    patches:
+      - op: replace
+        path: /id
+        value: "${event.payload.id}"
+      - op: replace
+        path: /orderId
+        value: "${event.payload.orderId}"
+      - op: replace
+        path: /itemId
+        value: "${event.payload.itemId}"
+      - op: replace
+        path: /quantity
+        value: "${event.payload.quantity}"
+      - op: replace
+        path: /status
+        value: "${'RESERVED'}"
+
+  - on: ReservationCancelled
+    patches:
+      - op: replace
+        path: /status
+        value: "${'CANCELLED'}"
+      - op: replace
+        path: /cancelReason
+        value: "${event.payload.reason}"
+
+initialization: []

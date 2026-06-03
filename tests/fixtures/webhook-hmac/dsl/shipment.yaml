@@ -1,0 +1,49 @@
+# Canonical example: Shipment boundary for the webhook-hmac fixture.
+#
+# POST /shipments creates a Shipment and emits ShipmentCreated. The global
+# config (global.yaml) subscribes a webhook to that event — the engine will
+# POST a HMAC-signed JSON body to the local receiver URL on every ShipmentCreated.
+#
+# This boundary file is intentionally minimal. Webhook config lives in
+# global.yaml to match the pattern used by the CRM fixture and to demonstrate
+# that webhooks are a cross-cutting concern, not per-boundary config.
+
+boundary: Shipment
+contract_path: /shipments
+fallback_override: false
+
+identity:
+  creation:
+    generate: "$uuidv7()"
+
+event_catalog:
+  - type: ShipmentCreated
+    payload_template:
+      id: "command.targetId"
+      trackingRef: "command.payload.trackingRef"
+      destination: "command.payload.destination"
+
+behaviors:
+  - name: createShipment
+    match:
+      operationId: createShipment
+      condition: "true"
+    emit: ShipmentCreated
+
+reducers:
+  - on: ShipmentCreated
+    patches:
+      - op: replace
+        path: /id
+        value: "${event.payload.id}"
+      - op: replace
+        path: /trackingRef
+        value: "${event.payload.trackingRef}"
+      - op: replace
+        path: /destination
+        value: "${event.payload.destination}"
+      - op: replace
+        path: /status
+        value: "${'CREATED'}"
+
+initialization: []

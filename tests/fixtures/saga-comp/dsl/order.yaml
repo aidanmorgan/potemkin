@@ -1,0 +1,67 @@
+# Order boundary — canonical saga-compensation example.
+# POST /orders places an order and triggers OrderFulfillmentSaga.
+# PATCH /orders/{id} cancels an order (used as compensating target when needed).
+boundary: Order
+contract_path: /orders
+fallback_override: true
+identity:
+  creation:
+    generate: $uuidv7()
+
+event_catalog:
+  - type: OrderPlaced
+    payload_template:
+      id: "command.targetId"
+      customerId: "command.payload.customerId"
+      itemId: "command.payload.itemId"
+      quantity: "command.payload.quantity"
+      status: "'PENDING'"
+      placedAt: "$now()"
+
+  - type: OrderCancelled
+    payload_template:
+      reason: "command.payload.reason"
+      cancelledAt: "$now()"
+
+behaviors:
+  - name: placeOrder
+    match:
+      operationId: placeOrder
+      condition: "true"
+    emit: OrderPlaced
+
+  - name: cancelOrder
+    match:
+      operationId: cancelOrder
+      condition: "true"
+    emit: OrderCancelled
+
+reducers:
+  - on: OrderPlaced
+    patches:
+      - op: replace
+        path: /id
+        value: "${event.payload.id}"
+      - op: replace
+        path: /customerId
+        value: "${event.payload.customerId}"
+      - op: replace
+        path: /itemId
+        value: "${event.payload.itemId}"
+      - op: replace
+        path: /quantity
+        value: "${event.payload.quantity}"
+      - op: replace
+        path: /status
+        value: "${'PENDING'}"
+
+  - on: OrderCancelled
+    patches:
+      - op: replace
+        path: /status
+        value: "${'CANCELLED'}"
+      - op: replace
+        path: /cancelReason
+        value: "${event.payload.reason}"
+
+initialization: []

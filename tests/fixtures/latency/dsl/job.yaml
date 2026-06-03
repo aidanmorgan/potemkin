@@ -1,0 +1,42 @@
+# Canonical example of per-boundary latency injection.
+#
+# The `latency:` block configures a deterministic fixed delay applied to every
+# response on this boundary, regardless of intent. `fixed_ms` is additive with
+# any header-driven chaos latency (`X-Potemkin-Force-Latency`). A `min_ms` /
+# `max_ms` range may also be used for uniform-random sampling; both can be
+# combined with `fixed_ms`.
+boundary: Job
+contract_path: /jobs
+fallback_override: false
+
+latency:
+  fixed_ms: 60
+
+identity:
+  creation:
+    generate: $uuidv7()
+
+event_catalog:
+  - type: JobSubmitted
+    payload_template:
+      id: "command.targetId"
+      name: "command.payload.name"
+
+behaviors:
+  - name: submitJob
+    match:
+      operationId: submitJob
+      condition: "true"
+    emit: JobSubmitted
+
+reducers:
+  - on: JobSubmitted
+    patches:
+      - op: replace
+        path: /id
+        value: "${event.payload.id}"
+      - op: replace
+        path: /name
+        value: "${event.payload.name}"
+
+initialization: []

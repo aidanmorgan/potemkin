@@ -1,0 +1,27 @@
+# op: prepend — push a value onto the FRONT of an array.
+# Contrast with append: a tag prepended after an append ends up at index 0.
+boundary: ItemPrependTag
+contract_path: /items/{id}/prepend-tag
+fallback_override: false
+
+event_catalog:
+  - type: ItemTagPrepended
+    payload_template:
+      tag: "command.payload.tag"
+
+behaviors:
+  - name: prependTag
+    match:
+      operationId: prependTag
+      condition: "true"
+    emit: ItemTagPrepended
+
+reducers:
+  - on: ItemTagPrepended
+    patches:
+      # op: prepend — push tag onto the FRONT of /tags
+      - op: prepend
+        path: /tags
+        value: "${event.payload.tag}"
+
+initialization: []
