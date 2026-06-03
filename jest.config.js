@@ -26,9 +26,11 @@ module.exports = {
   // Per-test process.env isolation (snapshot/restore) so env mutations don't
   // leak across files sharing a worker process (potemkin-1ef).
   setupFilesAfterEnv: ['<rootDir>/tests/setupAfterEnv.ts'],
-  // Cap worker count: matches() spawns Node Worker threads for ReDoS protection,
-  // and excessive jest worker parallelism caused intermittent socket-hang-up failures
-  // in supertest-driven integration tests under load.
+  // Cap worker count to bound file-descriptor and CPU pressure. Higher
+  // parallelism, especially with a cold ts-jest cache under concurrent external
+  // load, has produced intermittent socket-hang-up and "Cannot find module"
+  // (EMFILE-class) failures in the supertest-driven suites. 4 workers keeps the
+  // full run deterministically green.
   maxWorkers: 4,
   // Map .js imports to .ts sources so ts-jest can resolve them in CommonJS mode.
   moduleNameMapper: {

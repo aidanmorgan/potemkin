@@ -1085,3 +1085,571 @@ Behaviors are evaluated in the order they appear in the YAML file. The engine st
 - Place more specific conditions before more general ones.
 - Use `requires[]` guards for domain invariants that should always be checked, regardless of which behavior would otherwise match.
 - Be aware that a `requires[]` failure terminates the evaluation entirely; it does not fall through.
+
+---
+
+## 18. Response generation
+
+The keys in this section shape the HTTP response the gateway returns, independent of domain-event logic. They are all optional. Each is schema-validated at boot; unknown or misspelled keys halt with `BOOT_ERR_DSL_SYNTAX` or `BOOT_ERR_UNKNOWN_KEY`.
+
+**Where each key lives:**
+
+| Key | File | Scope |
+|-----|------|-------|
+| `hateoas` (static array) | boundary file | per-boundary, per-response |
+| `mask` | boundary file | per-boundary, per-response |
+| `deprecated` | boundary file | per-boundary, per-response |
+| `latency` | boundary file | per-boundary, every response |
+| `fault_rules` (boundary) | boundary file | boundary-scoped chaos |
+| `link_name` / `link_condition` | behavior inside a boundary file | per-behavior action link |
+| `hateoas` (global block) | global config file | cross-boundary dynamic links |
+| `security_headers` | global config file | every response |
+| `fault_rules` (global) | global config file | global chaos rules |
+| `versioning` | global config file | URL prefix routing + response tag |
+| `webhooks` | global config file | post-commit outbound HTTP |
+
+Pagination shape, ETag/conditional caching, and the `X-Potemkin-*` control headers are **runtime behaviors of the gateway pipeline** — they are not configured with YAML keys. They are documented in sub-sections 18.8–18.11 below.
+
+---
+
+### 18.1 Static HATEOAS links (`hateoas:` on a boundary)
+
+Injects a fixed `_links` map into every successful 2xx response body from that boundary. Applied to single entities, bare arrays, and pagination envelopes (each `items[]` entry receives its own `_links`).
+
+```yaml
+# tests/fixtures/governance/dsl/document.yaml
+boundary: Document
+contract_path: /documents
+hateoas:
+  - rel: self
+    href: /documents
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `rel` | string | yes | Relation name (key in `_links`, e.g. `self`, `collection`) |
+| `href` | string | yes | Link href (literal path) |
+
+**HTTP effect:** the response body gains `_links: { "<rel>": { "href": "<href>" } }`. The boundary-level static list **overrides** any `links:` entries from the OpenAPI document for that operation.
+
+See: [`tests/fixtures/governance/dsl/document.yaml`](../tests/fixtures/governance/dsl/document.yaml), [`tests/fixtures/governance/dsl/document-by-id.yaml`](../tests/fixtures/governance/dsl/document-by-id.yaml), [`tests/e2e/56-response-mutations.e2e-test.ts`](../tests/e2e/56-response-mutations.e2e-test.ts)
+
+---
+
+### 18.2 Dynamic HATEOAS links (`hateoas:` in global config + per-behavior `link_name` / `link_condition`)
+
+The global `hateoas:` block enables automatic `_links` generation on every query (GET) response. The engine scans all sub-path boundaries for behaviors that declare `link_name`; each qualifying link is injected when its gate condition holds for the entity.
+
+**Global config block** (in the global config YAML file):
+
+```yaml
+# tests/fixtures/crm/dsl/global.yaml
+hateoas:
+  enabled: true
+  self_links: true
+  # base_url: "https://api.example.com"   # optional — prefixes all hrefs
+```
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `enabled` | `false` | Master switch. Must be `true` for any dynamic links to be injected. |
+| `self_links` | `true` | Inject a `self` link pointing at the entity's canonical GET path (resolved via `{id}` path template). |
+| `base_url` | absent | When set, every generated href is prefixed with this value (e.g. `https://api.example.com/leads/abc`). |
+
+**Per-behavior fields** (on any behavior in any boundary):
+
+```yaml
+# Sub-path boundary — e.g. lead-convert.yaml
+behaviors:
+  - name: convertLead
+    match:
+      operationId: convertLead
+      condition: "state.status == 'QUALIFIED'"
+    link_name: convert
+    link_condition: "state.status == 'QUALIFIED'"
+    emit: LeadConverted
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `link_name` | string | The relation key emitted in `_links` (e.g. `convert` → `_links.convert`). When set and the gate passes, the link is added to entities served from the parent boundary. |
+| `link_condition` | CEL boolean | Independent gate for link visibility. Evaluated against `state`. When absent, `match.condition` is used as the gate. |
+
+**HTTP effect:** query responses from the parent collection boundary receive `_links` per entity. Example:
+
+```json
+{
+  "id": "abc",
+  "status": "QUALIFIED",
+  "_links": {
+    "self":    { "href": "/leads/abc",         "method": "GET" },
+    "convert": { "href": "/leads/abc/convert", "method": "POST" }
+  }
+}
+```
+
+`_links` is suppressed when `?fields=` is present (sparse-fieldset requests are explicit projections).
+
+See: [`tests/e2e/44-hateoas.e2e-test.ts`](../tests/e2e/44-hateoas.e2e-test.ts)
+
+---
+
+### 18.3 Field masking (`mask:`)
+
+Removes named fields from the response body before the response is sent. Applied to every entity in the response (single objects, bare arrays, and `items[]` in pagination envelopes). Does not affect event payloads or state.
+
+```yaml
+# tests/fixtures/governance/dsl/document.yaml
+boundary: Document
+contract_path: /documents
+mask:
+  - internalNotes
+```
+
+- Values are bare field names (`internalNotes`) or RFC 6901 JSON Pointers (`/address/street`).
+- A field that is already absent is silently skipped (no error).
+- `mask:` removes the field entirely. The runtime `X-Potemkin-Mask` header (§18.11) is a different operation — it replaces the field value with the `"[MASKED]"` sentinel rather than removing it.
+
+**HTTP effect:** `internalNotes` is absent from every response body on this boundary.
+
+See: [`tests/fixtures/governance/dsl/document.yaml`](../tests/fixtures/governance/dsl/document.yaml), [`tests/e2e/56-response-mutations.e2e-test.ts`](../tests/e2e/56-response-mutations.e2e-test.ts)
+
+---
+
+### 18.4 Deprecation headers (`deprecated:`)
+
+Emits HTTP `Deprecation`, `Sunset`, and `Link` headers on every successful 2xx response from that boundary, signalling to clients that the API is scheduled for retirement.
+
+```yaml
+# tests/fixtures/crm/dsl/lead-add-note.yaml
+deprecated:
+  date: "2025-01-01"
+  sunset: "2025-06-01"
+  replacement: "/v2/leads/{id}/notes"
+```
+
+```yaml
+# tests/fixtures/governance/dsl/document-by-id.yaml
+deprecated:
+  sunset: "2027-01-01T00:00:00Z"
+  replacement: /v2/documents
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `date` | ISO-8601 string | no | Deprecation date. Becomes the `Deprecation` header value formatted as an HTTP-date per RFC 8594 (e.g. `Wed, 01 Jan 2025 00:00:00 GMT`). When omitted the header value is the literal string `true`. |
+| `sunset` | ISO-8601 string | no | When present, emits `Sunset: <HTTP-date>` (RFC 8594). |
+| `replacement` | string | no | When present, emits `Link: <replacement>; rel="successor-version"`. |
+
+**HTTP effect (with all three fields):**
+
+```
+Deprecation: Wed, 01 Jan 2025 00:00:00 GMT
+Sunset:      Sun, 01 Jun 2025 00:00:00 GMT
+Link:        </v2/leads/{id}/notes>; rel="successor-version"
+```
+
+When `deprecated:` is absent but the OpenAPI operation carries `deprecated: true`, the engine falls back to `Deprecation: true` with no Sunset or Link header.
+
+See: [`tests/fixtures/crm/dsl/lead-add-note.yaml`](../tests/fixtures/crm/dsl/lead-add-note.yaml), [`tests/fixtures/governance/dsl/document-by-id.yaml`](../tests/fixtures/governance/dsl/document-by-id.yaml), [`tests/e2e/56-response-mutations.e2e-test.ts`](../tests/e2e/56-response-mutations.e2e-test.ts)
+
+---
+
+### 18.5 Per-boundary response latency (`latency:`)
+
+Injects a pre-response delay on every request handled by the boundary, regardless of intent. Useful for simulating slow dependencies or exercising client retry/timeout logic without injecting chaos headers.
+
+```yaml
+# tests/fixtures/latency/dsl/job.yaml
+boundary: Job
+contract_path: /jobs
+latency:
+  fixed_ms: 60
+```
+
+```yaml
+# tests/fixtures/crm/dsl/lead-add-note.yaml
+latency:
+  min_ms: 20
+  max_ms: 200
+  fixed_ms: 50
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `fixed_ms` | number | absent | Fixed additional delay in milliseconds, applied on every response. |
+| `min_ms` | number | absent | Lower bound (ms) of a uniform-random delay range. |
+| `max_ms` | number | absent | Upper bound (ms) of a uniform-random delay range. |
+
+All present fields are additive: `fixed_ms` adds its value first, then a uniform-random sample from `[min_ms, max_ms]` is added on top. The combined delay is capped at **30 000 ms**. Latency is also additive with `X-Potemkin-Force-Latency` / `X-Potemkin-Slow-Response` chaos headers.
+
+Latency is boundary-scoped: configuring `latency:` on `/jobs` does not affect `/jobs/{id}`.
+
+See: [`tests/fixtures/latency/dsl/job.yaml`](../tests/fixtures/latency/dsl/job.yaml), [`tests/e2e/65-latency.e2e-test.ts`](../tests/e2e/65-latency.e2e-test.ts)
+
+---
+
+### 18.6 Security headers (`security_headers:`)
+
+Injects HTTP security response headers on **every** response from the gateway (applied as Express middleware before any route handler). Declared in the global config file.
+
+```yaml
+# tests/fixtures/crm/dsl/global.yaml
+security_headers:
+  enabled: true
+  hsts: true
+  nosniff: true
+  frame_deny: true
+  referrer_policy: "strict-origin-when-cross-origin"
+  custom_headers:
+    X-Custom-Sim-Header: "potemkin-sim"
+```
+
+| Field | Type | Default | Emitted header |
+|-------|------|---------|----------------|
+| `enabled` | boolean | `true` | Master switch. Set to `false` to disable all headers without removing the block. |
+| `hsts` | boolean | absent | `Strict-Transport-Security: max-age=31536000; includeSubDomains` |
+| `nosniff` | boolean | absent | `X-Content-Type-Options: nosniff` |
+| `frame_deny` | boolean | absent | `X-Frame-Options: DENY` |
+| `referrer_policy` | string | absent | `Referrer-Policy: <value>` |
+| `custom_headers` | `map<string, string>` | absent | Each entry emitted verbatim as `<name>: <value>` |
+
+See: [`tests/fixtures/crm/dsl/global.yaml`](../tests/fixtures/crm/dsl/global.yaml), [`tests/e2e/38-security-headers.e2e-test.ts`](../tests/e2e/38-security-headers.e2e-test.ts)
+
+---
+
+### 18.7 Fault rules / chaos injection (`fault_rules:`)
+
+Declarative chaos rules evaluated before any behavior logic on every inbound request. A matching rule short-circuits the Unit of Work and returns a canned error response — no state is mutated.
+
+`fault_rules:` may be declared at two scopes:
+
+- **Global** (in the global config file): evaluated for every request.
+- **Boundary** (in a boundary file): evaluated only for requests on that boundary, before global rules.
+
+Within each scope, rules are evaluated in document order; the **first match wins**.
+
+```yaml
+# tests/fixtures/crm/dsl/global.yaml — global fault rules
+fault_rules:
+  - name: rate-limit-via-header
+    match:
+      condition: "true"
+      potemkin:
+        rate_limit: "*"
+    response:
+      status: 429
+      body:
+        error: RATE_LIMITED
+        message: Simulated rate limit (header-triggered)
+      headers:
+        Retry-After: "30"
+
+  - name: dnc-registry-slow
+    match:
+      boundary: LeadDNC
+      intent: mutation
+      condition: "command.payload.reason == 'REGISTRY_CHECK'"
+    response:
+      status: 504
+      body:
+        error: DNC_REGISTRY_TIMEOUT
+        message: External DNC registry check timed out
+      delay_ms: 100
+
+  - name: call-logging-intermittent
+    match:
+      boundary: Call
+      intent: creation
+      condition: "command.payload.outcome == 'NOT_INTERESTED'"
+      probability: 0.1
+    response:
+      status: 503
+      body:
+        error: CALL_LOGGING_UNAVAILABLE
+```
+
+```yaml
+# tests/fixtures/crm/dsl/lead.yaml — boundary-scoped fault rule
+fault_rules:
+  - name: duplicate-check-slow
+    match:
+      intent: creation
+      condition: "command.payload.checkDuplicates == true"
+    response:
+      status: 504
+      body:
+        error: DUPLICATE_CHECK_TIMEOUT
+      delay_ms: 50
+```
+
+**`match` fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `boundary` | string | Restrict to a specific boundary name. Ignored on boundary-scoped rules (they are already scoped). |
+| `intent` | string | `creation`, `mutation`, or `query`. |
+| `condition` | CEL boolean | Guard expression evaluated against `command` and `state`. Default: `"true"`. |
+| `headers` | `map<string, string>` | Header name → expected value. `"*"` matches any non-empty value (presence check). AND semantics. |
+| `potemkin` | `map<string, string>` | Convenience aliases expanding to `X-Potemkin-*` headers (see §18.11). Equivalent to `headers:` with the expanded names. |
+| `probability` | number (0..1) | Probabilistic gate. When present, the rule fires only when `random() > probability`. |
+
+**`response` fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `status` | integer | HTTP status code to return. |
+| `body` | JSON value | Response body. |
+| `headers` | `map<string, string>` | Response headers to set. |
+| `delay_ms` | number | Pre-response delay in milliseconds (stacks with `latency:`). |
+
+**Precedence (highest first):** boundary fault rules → global fault rules → chaos headers (§18.11). The `X-Potemkin-Skip-Dispatch: true` control header bypasses fault injection for a single request.
+
+See: [`tests/fixtures/crm/dsl/global.yaml`](../tests/fixtures/crm/dsl/global.yaml), [`tests/fixtures/crm/dsl/lead.yaml`](../tests/fixtures/crm/dsl/lead.yaml), [`tests/e2e/46-chaos-headers.e2e-test.ts`](../tests/e2e/46-chaos-headers.e2e-test.ts)
+
+---
+
+### 18.8 Pagination envelope and `Link` headers
+
+The engine automatically wraps collection query results in a metadata envelope when `?limit` is present in the request. No YAML configuration is required — this is a built-in gateway behaviour.
+
+**Request:** `GET /leads?limit=2&offset=0`
+
+**Response body:**
+
+```json
+{
+  "items": [ { "id": "...", ... }, { "id": "...", ... } ],
+  "totalCount": 5,
+  "offset": 0,
+  "limit": 2,
+  "hasMore": true
+}
+```
+
+**Cursor-based pagination** is also supported. When `?cursor=<opaque>` is supplied (in place of or alongside `?offset`), the engine uses the cursor for positioning and emits `nextCursor` in the envelope when `hasMore` is `true`.
+
+**`X-Potemkin-Pagination-Style` control header** (Tier 5, §18.11) overrides the default style per request:
+
+| Value | Effect |
+|-------|--------|
+| `envelope` | Always wrap in `{ items, totalCount, offset, limit, hasMore }`. |
+| `raw` | Always return a bare array (unwrap any envelope). |
+| `link-header` | Bare array body + RFC 5988 `Link:` header with `rel="next"` and `rel="prev"` when more pages exist. |
+
+The `Link:` header preserves all original query parameters (filters, sort) and only overrides `offset`/`limit`.
+
+**Multi-sort:** `?sort=field1,-field2` sorts by `field1` ascending then `field2` descending. Backward-compatible with the legacy `?sort=field&order=desc` form.
+
+**Array operators:** `?callIds:contains=<value>` tests membership/substring in the `callIds` field. `?callIds:arrayContains=<value>` applies strict array-only membership (non-arrays evaluate to false).
+
+**Sparse fieldsets:** `?fields=id,companyName,score` returns only the named fields per entity. `id` is always preserved. Applied after derived properties, before relationship expansion.
+
+See: [`tests/e2e/36-pagination-envelope.e2e-test.ts`](../tests/e2e/36-pagination-envelope.e2e-test.ts), [`tests/e2e/39-multisort-array-operators.e2e-test.ts`](../tests/e2e/39-multisort-array-operators.e2e-test.ts), [`tests/e2e/43-query-extensions.e2e-test.ts`](../tests/e2e/43-query-extensions.e2e-test.ts)
+
+---
+
+### 18.9 ETag and conditional requests
+
+The gateway automatically manages ETags and conditional-request semantics for single-entity GET responses. No YAML configuration is required.
+
+**ETag generation:**
+
+- **Mutation / creation (POST/PUT/PATCH):** the `ETag` response header is set to `"<sequenceVersion>"` (quoted integer, RFC 7232) reflecting the final event's `sequenceVersion` for the primary aggregate.
+- **Single-entity GET:** `ETag` is `"<currentSequenceVersion>"`. When the entity carries an `updatedAt` field, `Last-Modified` is also emitted as an HTTP-date.
+
+**Conditional request handling (single-entity GET only):**
+
+| Request header | Engine behaviour |
+|----------------|-----------------|
+| `If-None-Match: "<n>"` | Returns **304 Not Modified** (empty body) when the ETag matches. `*` always matches. |
+| `If-Modified-Since: <http-date>` | Returns **304 Not Modified** when `Last-Modified ≤ If-Modified-Since`. Malformed dates are ignored. |
+| `If-Match: "<n>"` (on mutations) | Returns **412 Precondition Failed** when the supplied value does not match the stored `sequenceVersion`. Returns **428 Precondition Required** when the header is absent but required. |
+
+Weak validators (`W/"5"`) on `If-Match` are rejected with HTTP 400.
+
+304 responses carry `ETag` and `Last-Modified` headers but no body.
+
+See: [`tests/e2e/37-conditional-requests.e2e-test.ts`](../tests/e2e/37-conditional-requests.e2e-test.ts)
+
+---
+
+### 18.10 API versioning (`versioning:`)
+
+Strips a URL version prefix from every inbound request path before contract route matching, and tags the response with `X-Potemkin-Version`. Declared in the global config file.
+
+```yaml
+# tests/fixtures/crm-versioned/dsl/global.yaml
+versioning:
+  enabled: true
+  versions:
+    - version: "v1"
+      prefix: "/v1"
+    - version: "v2"
+      prefix: "/v2"
+      default: true
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `enabled` | boolean | no (default `false`) | Master switch. |
+| `versions[].version` | string | yes | Version label (e.g. `"v1"`). Echoed in the `X-Potemkin-Version` response header. |
+| `versions[].prefix` | string | yes | URL prefix that selects this version (e.g. `"/v1"`). Stripped before contract matching. |
+| `versions[].default` | boolean | no | When `true`, requests without a recognised version prefix are routed to this version. At most one version may be the default. |
+
+**HTTP effect:** `POST /v2/leads` → contract is matched against `/leads`; response carries `X-Potemkin-Version: v2`. Requests to un-prefixed paths route to the `default` version when one is declared.
+
+`/_engine` and `/_admin` paths are excluded from version resolution.
+
+See: [`tests/fixtures/crm-versioned/dsl/global.yaml`](../tests/fixtures/crm-versioned/dsl/global.yaml), [`tests/e2e/47-api-versioning.e2e-test.ts`](../tests/e2e/47-api-versioning.e2e-test.ts)
+
+---
+
+### 18.11 Outbound webhooks (`webhooks:`)
+
+Declares HTTP POST callbacks dispatched after a Unit of Work commits. The POST body is HMAC-SHA256-signed. Declared in the global config file.
+
+```yaml
+# tests/fixtures/webhook-hmac/dsl/global.yaml
+webhooks:
+  - name: shipment-created-webhook
+    trigger:
+      boundary: Shipment
+      condition: "event.type == 'ShipmentCreated'"
+    url: "'http://127.0.0.1:19877/webhook'"
+    secret: "hmac-example-secret-do-not-use-in-prod"
+    payload:
+      shipmentId: "${event.aggregateId}"
+      trackingRef: "${event.payload.trackingRef}"
+      event: "${event.type}"
+    retry:
+      maxAttempts: 3
+      delayMs: 50
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | yes | Unique webhook name. |
+| `trigger.boundary` | string | no | Restrict to events emitted by this boundary. |
+| `trigger.intent` | string | no | `creation`, `mutation`, or `query`. |
+| `trigger.condition` | CEL boolean | yes | Evaluated against the emitted event context (`event.type`, `event.aggregateId`, `event.payload`). |
+| `url` | CEL string expression | yes | Destination URL. Must be a CEL expression (wrap a literal in single quotes: `"'https://...'"`) |
+| `secret` | string | no | Shared secret for HMAC-SHA256 signing. When present, the POST carries `x-potemkin-signature: sha256=<hex>`. |
+| `payload` | `map<string, CEL>` | no | Template for the POST body. Each key's value is a CEL expression evaluated against event context. When absent, the full event is delivered. |
+| `retry.maxAttempts` | integer | no | Maximum delivery attempts on transient failures (default: 1). |
+| `retry.delayMs` | integer | no | Delay between retry attempts in milliseconds. |
+
+**Delivery pipeline:**
+
+1. Evaluate `trigger.condition` — skip when false.
+2. Resolve `url` CEL expression.
+3. Evaluate each `payload` template field.
+4. Serialise the payload to canonical JSON (the same bytes that are HMAC-signed).
+5. Compute `HMAC-SHA256(secret, canonicalJSON)` and set `x-potemkin-signature: sha256=<hex>`.
+6. POST the signed body; retry on transient HTTP errors up to `maxAttempts`.
+
+Webhooks fire **after** the primary Unit of Work commits. The `X-Potemkin-Skip-Webhooks: true` request header suppresses all webhook dispatch for a single request.
+
+See: [`tests/fixtures/webhook-hmac/dsl/global.yaml`](../tests/fixtures/webhook-hmac/dsl/global.yaml), [`tests/e2e/64-webhook-hmac.e2e-test.ts`](../tests/e2e/64-webhook-hmac.e2e-test.ts)
+
+---
+
+### 18.12 Chaos / `X-Potemkin-*` control headers
+
+In addition to the YAML `fault_rules:` block, clients can drive chaos-engineering scenarios by sending `X-Potemkin-*` request headers. Every chaos header has a default built-in behaviour; a YAML fault rule can override the response body by matching the same header in its `match.headers:` or `match.potemkin:` block.
+
+All constants live in `src/http/potemkinHeaders.ts`.
+
+#### Chaos and fault headers
+
+| Header | Value | Default effect |
+|--------|-------|----------------|
+| `x-potemkin-use-fault` | `<rule-name>` | Invoke the named YAML fault rule verbatim (highest precedence). |
+| `x-potemkin-force-status` | `<100..599>` | Short-circuit with the given HTTP status and a generic `FORCED_STATUS` body. |
+| `x-potemkin-error-class` | `timeout\|throttle\|outage\|bad_gateway\|conflict\|auth\|forbidden` | Map to canonical HTTP status (504/429/503/502/409/401/403) with a standard error body. |
+| `x-potemkin-force-latency` | `<int ms>` | Add a fixed delay before the response. Additive with `latency:`. |
+| `x-potemkin-slow-response` | `<int ms>` | Synonym for `x-potemkin-force-latency`. |
+| `x-potemkin-jitter` | `<max>` or `<min>:<max>` | Add uniform-random jitter in the given range. |
+| `x-potemkin-drop-connection` | `<int ms>` | Sleep then close the socket; no response body. |
+| `x-potemkin-success-rate` | `<0..1>` or `<0..100>` | Probabilistic gate: fails with 503 when `random() >= rate`. |
+| `x-potemkin-retry-after` | `<int seconds>` | Attach `Retry-After:` to any chaos response. |
+| `x-potemkin-body-truncate` | `<int bytes>` | Serialise the normal body then slice to N bytes (network shaping). |
+
+Chaos header precedence (highest first): `use-fault` → `force-status` → `error-class` → `drop-connection` → `success-rate`. Latency headers stack additively. `body-truncate` and `retry-after` are applied to whichever response wins.
+
+#### Tier 1 — Test transparency
+
+| Header | Effect |
+|--------|--------|
+| `x-potemkin-dry-run: true` | Execute the full UoW but do not commit events. Response carries `X-Potemkin-Dry-Run: true`. |
+| `x-potemkin-include-events: true` | Append `_events: [...]` to the response body showing events produced. |
+| `x-potemkin-echo: true` | Append `_debug: { boundary, intent, targetId, dryRun, method, path }` to the response. |
+| `x-potemkin-seed: <int>` | Deterministic seed for `$fake()` / `$uuidv7()` in this request. |
+| `x-potemkin-clock-offset: <ms>` | Per-request `$now()` offset (signed ms). Additive to the admin clock. |
+
+#### Tier 2 — Side-effect control
+
+| Header | Effect |
+|--------|--------|
+| `x-potemkin-skip-sagas: true` | Commit primary events but skip saga triggers. |
+| `x-potemkin-skip-webhooks: true` | Commit primary events but skip outbound webhook dispatch. |
+| `x-potemkin-skip-projections: true` | Commit events but skip derived projection application. |
+| `x-potemkin-skip-dispatch: true` | Block secondary command cascading (depth-0 only). Also bypasses `fault_rules:` injection. |
+| `x-potemkin-max-cascade-depth: <n>` | Override UoW max cascade depth for this request. |
+| `x-potemkin-bulk-transactional: true` | Make an array-body request all-or-nothing (atomic batch). |
+
+#### Tier 3 — Identity override (admin-gated)
+
+| Header | Effect |
+|--------|--------|
+| `x-potemkin-actor: <id>:<scope1>,<scope2>` | Override actor identity for this request. Requires the caller to hold `admin` scope. |
+| `x-potemkin-impersonate: <id>:<scopes>` | Run as another actor; logs both original and impersonated actors. Admin-gated. |
+| `x-potemkin-caused-by: <eventId>` | Set the `causedBy` field on emitted events. |
+
+#### Tier 4 — Event-sourcing time travel
+
+| Header | Effect |
+|--------|--------|
+| `x-potemkin-read-at-version: <n>` | Query the entity's state as of sequence version `n`. |
+| `x-potemkin-replay-event: <eventId>` | Re-emit a historic event by ID. |
+
+#### Tier 5 — Response format control
+
+| Header | Values | Effect |
+|--------|--------|--------|
+| `x-potemkin-response-format` | `hal` \| `jsonapi` \| `plain` | Reshape response body to HAL+JSON, JSON:API, or plain (default). |
+| `x-potemkin-pagination-style` | `envelope` \| `raw` \| `link-header` | Override collection response shape (see §18.8). |
+| `x-potemkin-mask` | comma-separated field names | Replace named fields with `"[MASKED]"` sentinel in the response body. |
+
+#### Tier 6 — Observability injection
+
+| Header | Effect |
+|--------|--------|
+| `x-potemkin-trace-id: <id>` | Echo the supplied trace ID in the response header `X-Potemkin-Trace-Id`. |
+| `x-potemkin-span-name: <name>` | Name the `http.request` OTel span; echoed in `X-Potemkin-Span-Name`. |
+| `x-potemkin-log-level: debug\|info\|warn\|error` | Per-request log level. |
+| `x-potemkin-metric-tag: <key>=<value>` | Attach a custom tag to metrics emitted by this request. |
+
+#### Tier 7 — Validation control (admin-gated)
+
+| Header | Effect |
+|--------|--------|
+| `x-potemkin-skip-request-validation: true` | Skip OpenAPI request validation. Admin-gated. |
+| `x-potemkin-skip-response-validation: true` | Skip OpenAPI response validation. Admin-gated. |
+| `x-potemkin-allow-additional-properties: true` | Relax `additionalProperties: false` for this request. Admin-gated. |
+
+**`potemkin:` convenience block** — in `fault_rules[].match`, the shorthand `potemkin:` block expands alias names to the full `X-Potemkin-*` header names. The full alias table is in `src/http/potemkinHeaders.ts` (`POTEMKIN_SIGNAL_ALIASES`).
+
+```yaml
+# Expand rate_limit → x-potemkin-rate-limit
+fault_rules:
+  - name: rate-limit-via-header
+    match:
+      condition: "true"
+      potemkin:
+        rate_limit: "*"
+    response:
+      status: 429
+```
+
+See: [`tests/e2e/46-chaos-headers.e2e-test.ts`](../tests/e2e/46-chaos-headers.e2e-test.ts), [`tests/e2e/48-control-headers.e2e-test.ts`](../tests/e2e/48-control-headers.e2e-test.ts)
