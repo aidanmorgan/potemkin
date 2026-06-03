@@ -4,9 +4,8 @@
  */
 
 import { extractEntityKey } from '../../src/engine/keyExtractor';
+import { validateBoundaryConfig } from '../../src/dsl/schema';
 import type { BoundaryConfig, IdentityKeyConfig } from '../../src/dsl/types';
-import type { CelEvaluator } from '../../src/cel/evaluator';
-import { createCelEvaluator } from '../../src/cel/evaluator';
 
 const base: BoundaryConfig = {
   boundary: 'Foo',
@@ -42,60 +41,6 @@ describe('identity.key — declarative key extraction', () => {
     expect(key).toBe('c-42');
   });
 
-  it('uses CEL expression as escape hatch', () => {
-    const cel: CelEvaluator = createCelEvaluator();
-    const key = extractEntityKey({
-      boundary: withKey({ cel: 'command.path' }),
-      pathParams: {},
-      queryParams: {},
-      headers: {},
-      body: null,
-      cel,
-      command: {
-        commandId: 'cmd-1', boundary: 'X', intent: 'creation', targetId: null,
-        payload: {}, queryParams: {}, httpMethod: 'POST', path: '/from-cel',
-        origin: 'inbound', depth: 0,
-      },
-    });
-    expect(key).toBe('/from-cel');
-  });
-
-  it('precedence: cel wins over from when both set', () => {
-    const cel = createCelEvaluator();
-    const key = extractEntityKey({
-      boundary: withKey({ cel: '"cel-wins"', from: 'header', name: 'x-tenant' }),
-      pathParams: {},
-      queryParams: {},
-      headers: { 'x-tenant': 'header-loses' },
-      body: null,
-      cel,
-      command: {
-        commandId: 'cmd-1', boundary: 'X', intent: 'query', targetId: null,
-        payload: {}, queryParams: {}, httpMethod: 'GET', path: '/x',
-        origin: 'inbound', depth: 0,
-      },
-    });
-    expect(key).toBe('cel-wins');
-  });
-
-  it('cel evaluation failure falls through to declarative source', () => {
-    const cel = createCelEvaluator();
-    const key = extractEntityKey({
-      boundary: withKey({ cel: 'this.does.not.exist', from: 'header', name: 'x-tenant' }),
-      pathParams: {},
-      queryParams: {},
-      headers: { 'x-tenant': 'fallback' },
-      body: null,
-      cel,
-      command: {
-        commandId: 'cmd-1', boundary: 'X', intent: 'query', targetId: null,
-        payload: {}, queryParams: {}, httpMethod: 'GET', path: '/x',
-        origin: 'inbound', depth: 0,
-      },
-    });
-    expect(key).toBe('fallback');
-  });
-
   it('reads from `name` when used with `from: payload` (alias for pointer)', () => {
     const key = extractEntityKey({
       boundary: withKey({ from: 'payload', name: 'lookupId' }),
@@ -116,5 +61,38 @@ describe('identity.key — declarative key extraction', () => {
       body: null,
     });
     expect(key).toBe('legacy-id');
+  });
+});
+
+describe('identity.key — boot validation (fail fast)', () => {
+  const boundaryWith = (key: Record<string, unknown>) => ({
+    boundary: 'Foo',
+    contract_path: '/foo',
+    identity: { key },
+  });
+
+  it('rejects identity.key.cel (CEL-based key extraction is unsupported)', () => {
+    expect(() => validateBoundaryConfig(boundaryWith({ cel: 'command.path' })))
+      .toThrow(/identity\.key\.cel.*not supported/);
+  });
+
+  it('rejects identity.key with no `from`', () => {
+    expect(() => validateBoundaryConfig(boundaryWith({ name: 'x-tenant' })))
+      .toThrow(/identity\.key\.from.*required/);
+  });
+
+  it('rejects from: header without a `name`', () => {
+    expect(() => validateBoundaryConfig(boundaryWith({ from: 'header' })))
+      .toThrow(/from: header requires "name"/);
+  });
+
+  it('rejects from: payload without `name` or `pointer`', () => {
+    expect(() => validateBoundaryConfig(boundaryWith({ from: 'payload' })))
+      .toThrow(/from: payload requires "pointer"/);
+  });
+
+  it('accepts a well-formed from: header key config', () => {
+    const result = validateBoundaryConfig(boundaryWith({ from: 'header', name: 'x-token-id' }));
+    expect(result.identity?.key).toEqual({ from: 'header', name: 'x-token-id' });
   });
 });

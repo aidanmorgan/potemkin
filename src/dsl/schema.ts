@@ -696,22 +696,49 @@ function validateIdentityKeyConfig(raw: unknown, ctx: string): IdentityKeyConfig
       { field: 'identity.key', context: ctx },
     );
   }
-  const from = optionalString(raw, 'from', ctx);
-  if (from !== undefined && !['path', 'query', 'header', 'payload'].includes(from)) {
+  // CEL-based key extraction is not supported: key resolution runs during
+  // command assembly (the key IS the targetId), so a CEL context referencing
+  // the command would be circular. Reject it at boot rather than silently
+  // returning null at runtime.
+  if (optionalString(raw, 'cel', ctx) !== undefined) {
     throw new BootError(
       'BOOT_ERR_DSL_SYNTAX',
-      `${ctx}: "identity.key.from" must be one of: path, query, header, payload (got "${from}")`,
+      `${ctx}: "identity.key.cel" is not supported; use "from" with one of: path, query, header, payload`,
+      { field: 'identity.key.cel', context: ctx },
+    );
+  }
+
+  const from = optionalString(raw, 'from', ctx);
+  if (from === undefined || !['path', 'query', 'header', 'payload'].includes(from)) {
+    throw new BootError(
+      'BOOT_ERR_DSL_SYNTAX',
+      `${ctx}: "identity.key.from" is required and must be one of: path, query, header, payload (got "${String(from)}")`,
       { field: 'identity.key.from', context: ctx },
     );
   }
   const name = optionalString(raw, 'name', ctx);
   const pointer = optionalString(raw, 'pointer', ctx);
-  const cel = optionalString(raw, 'cel', ctx);
+  // Each source needs a locator so the key cannot silently resolve to null at
+  // runtime: path/query/header require `name`; payload requires `name`/`pointer`.
+  if (from === 'payload') {
+    if (name === undefined && pointer === undefined) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `${ctx}: "identity.key" with from: payload requires "pointer" (or "name")`,
+        { field: 'identity.key.pointer', context: ctx },
+      );
+    }
+  } else if (name === undefined) {
+    throw new BootError(
+      'BOOT_ERR_DSL_SYNTAX',
+      `${ctx}: "identity.key" with from: ${from} requires "name"`,
+      { field: 'identity.key.name', context: ctx },
+    );
+  }
   return {
-    ...(from !== undefined ? { from: from as IdentityKeyConfig['from'] } : {}),
+    from: from as IdentityKeyConfig['from'],
     ...(name !== undefined ? { name } : {}),
     ...(pointer !== undefined ? { pointer } : {}),
-    ...(cel !== undefined ? { cel } : {}),
   };
 }
 

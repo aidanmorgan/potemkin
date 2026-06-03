@@ -3,17 +3,15 @@
  *
  * Implements the YAML `identity.key:` policy that lets boundaries declare
  * where to read the entity key from on the request (URL path params, query
- * string, headers, body, or arbitrary CEL).
+ * string, headers, or body). The boot validator guarantees a usable `from` and
+ * locator, so each source either resolves a key or the request is treated as
+ * having no `{id}` (the caller decides: 404 on mutation, generate on creation).
  *
  * When no `key:` policy is set, callers fall back to the `{id}` OpenAPI path
  * parameter (backwards-compatible behaviour).
  */
 
 import type { IdentityKeyConfig, BoundaryConfig } from '../dsl/types.js';
-import type { Command } from '../types.js';
-import type { CelEvaluator } from '../cel/evaluator.js';
-import { CelPhase } from '../cel/phases.js';
-import { rootLogger } from '../observability/logger.js';
 
 export interface ExtractKeyInput {
   readonly boundary: BoundaryConfig;
@@ -21,9 +19,6 @@ export interface ExtractKeyInput {
   readonly queryParams: Record<string, string | string[]>;
   readonly headers: Record<string, string>;
   readonly body: unknown;
-  /** When supplied, used for the CEL escape hatch (`identity.key.cel`). */
-  readonly cel?: CelEvaluator;
-  readonly command?: Command;
 }
 
 function pickQuery(q: Record<string, string | string[]>, name: string): string | undefined {
@@ -54,24 +49,6 @@ export function extractEntityKey(input: ExtractKeyInput): string | null {
     // Default behaviour: read the {id} path param.
     const id = input.pathParams['id'];
     return id !== undefined ? id : null;
-  }
-
-  // CEL escape hatch wins when set.
-  if (cfg.cel && input.cel && input.command) {
-    try {
-      const result = input.cel.evaluateDslValue(
-        cfg.cel,
-        { command: input.command as unknown as Record<string, unknown> },
-        CelPhase.Behavior,
-      );
-      if (typeof result === 'string' && result.length > 0) return result;
-    } catch (err) {
-      rootLogger().warn(
-        { boundary: input.boundary.boundary, keyCel: cfg.cel, err },
-        'identity.key.cel evaluation failed — falling through to declarative key sources',
-      );
-      // fall through to declarative sources
-    }
   }
 
   switch (cfg.from) {

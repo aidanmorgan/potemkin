@@ -554,7 +554,7 @@ async function handleContractRequest(
     }
 
     // Resolve targetId: when the boundary declares identity.key, delegate to
-    // extractEntityKey (reads from header/payload/query/path/CEL); otherwise
+    // extractEntityKey (reads from header/payload/query/path); otherwise
     // fall back to the {id} path parameter (backwards-compatible default).
     let targetId: string | null = extractEntityKey({
       boundary,
