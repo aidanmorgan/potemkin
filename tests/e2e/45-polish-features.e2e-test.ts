@@ -140,8 +140,8 @@ describe('45 — Stage 6 Polish Features (engine-only)', () => {
         text: 'A note for deprecation testing', author: 'Tester',
       });
       expect(res.status).toBe(200);
-      // RFC 8594: the engine emits Deprecation: true for deprecated boundaries.
-      expect(res.headers['deprecation']).toBe('true');
+      // RFC 8594: a `deprecated.date` is emitted as an HTTP-date (IMF-fixdate).
+      expect(res.headers['deprecation']).toBe(new Date('2025-01-01').toUTCString());
     }, 60_000);
 
     it('Sunset header is present with the configured date', async () => {
@@ -149,7 +149,8 @@ describe('45 — Stage 6 Polish Features (engine-only)', () => {
         text: 'Sunset header test', author: 'Tester',
       });
       expect(res.status).toBe(200);
-      expect(res.headers['sunset']).toBe('2025-06-01');
+      // RFC 8594 §3: Sunset is an HTTP-date (IMF-fixdate), not a raw ISO date.
+      expect(res.headers['sunset']).toBe(new Date('2025-06-01').toUTCString());
     }, 60_000);
 
     it('Link header points at the successor version', async () => {
