@@ -1,0 +1,56 @@
+# Canonical example: identity.key.from: query — aggregate id from a query parameter.
+#
+# identity.key.from: query, name: sessionId reads the query parameter "sessionId"
+# as the aggregate key.  The caller passes the session id in the URL query string
+# (POST /session-events?sessionId=<id>) rather than in a path segment or header.
+#
+# The corresponding read-back boundary (SessionEventById) at /session-events/{id}
+# uses the standard {id} path-param lookup so the test can confirm that the entity
+# was stored under the query-derived key.
+
+boundary: SessionEvent
+contract_path: /session-events
+fallback_override: false
+
+identity:
+  # Key extraction: read the aggregate id from the query parameter named "sessionId".
+  # e.g. POST /session-events?sessionId=sess_abc → entity stored under "sess_abc".
+  key:
+    from: query
+    name: sessionId
+  # Fallback when sessionId query param is absent: auto-generate a UUIDv7.
+  creation:
+    generate: "$uuidv7()"
+
+event_catalog:
+  - type: SessionEventRecorded
+    payload_template:
+      id: "command.targetId"
+      eventType: "command.payload.eventType"
+      userId: "command.payload.userId"
+      status: "'RECORDED'"
+
+behaviors:
+  - name: recordSessionEvent
+    match:
+      operationId: recordSessionEvent
+      condition: "true"
+    emit: SessionEventRecorded
+
+reducers:
+  - on: SessionEventRecorded
+    patches:
+      - op: replace
+        path: /id
+        value: "${event.payload.id}"
+      - op: replace
+        path: /eventType
+        value: "${event.payload.eventType}"
+      - op: replace
+        path: /userId
+        value: "${event.payload.userId}"
+      - op: replace
+        path: /status
+        value: "${event.payload.status}"
+
+initialization: []

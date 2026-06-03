@@ -1,0 +1,39 @@
+version: 1
+specmatic: ./specmatic.yaml
+modules:
+  - "dsl/**/*.yaml"
+
+# Seeds forward block — validated + compiled by the TS seedCompiler (no JVM
+# needed). At plugin time these become Specmatic expectations; in the engine-only
+# path the test asserts at the seedCompiler level, proving the full TS pipeline.
+seeds:
+  - description: seed-widget-from-empty
+    request:
+      method: GET
+      path: /widgets/seeded-1
+    base: empty
+    patches:
+      - op: add
+        path: /id
+        value: seeded-1
+      - op: add
+        path: /kind
+        value: ALPHA
+      - op: add
+        path: /label
+        value: from-empty-seed
+  - description: seed-widget-from-contract
+    request:
+      method: GET
+      path: /gadgets/seeded-2
+    base: contract
+    patches:
+      - op: add
+        path: /id
+        value: seeded-2
+      - op: add
+        path: /kind
+        value: BETA
+      - op: add
+        path: /label
+        value: from-contract-seed

@@ -2,16 +2,16 @@ openapi: 3.0.3
 info:
   title: Token API (identity-key fixture)
   version: "1.0.0"
-# Canonical example: identity.key with from: header.
+# identity-key fixture — exercises every identity.key source.
 #
-# POST /tokens — the aggregate key is read from the X-Token-Id request header
-# instead of the URL path (identity.key.from: header, name: x-token-id). The
-# caller supplies the token id in the header; the engine stores the entity under
-# that id so a subsequent GET /tokens/{id} retrieves it by the same value.
+# /tokens          — from: header (X-Token-Id)
+# /orders/{ref}    — from: path (path param named "ref", not the default "id")
+# /session-events  — from: query (?sessionId=...)
+# /subscriptions   — from: payload (body field "accountId")
 #
-# If the caller omits X-Token-Id, identity.creation.generate: $uuidv7() mints
-# a fresh id as the fallback — proving identity.key and identity.creation
-# coexist gracefully.
+# Each POST creates an entity keyed by the declared source.  The paired GET
+# (or fallback_override read-back boundary) retrieves it by that key to prove
+# the aggregate id was correctly derived and stored.
 paths:
   /tokens:
     post:
@@ -59,6 +59,169 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  # ── from: path ────────────────────────────────────────────────────────────────
+  # identity.key.from: path, name: ref — aggregate id from a named path parameter.
+  # The path param is named "ref" (not the default "id") to show the engine is not
+  # limited to {id}.  fallback_override: true on the boundary means GET also works
+  # without an explicit GET behavior.
+  /orders/{ref}:
+    post:
+      operationId: placeOrder
+      summary: Place an order; aggregate id is taken from the {ref} path parameter
+      parameters:
+        - name: ref
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [product, quantity]
+              properties:
+                product:
+                  type: string
+                quantity:
+                  type: integer
+      responses:
+        "201":
+          description: Order placed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+    get:
+      operationId: getOrder
+      summary: Retrieve an order by its ref path parameter
+      parameters:
+        - name: ref
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Order found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  # ── from: query ───────────────────────────────────────────────────────────────
+  # identity.key.from: query, name: sessionId — aggregate id from a query parameter.
+  # The caller passes ?sessionId=<id> on the POST; the engine stores the entity
+  # under that value without any path segment encoding the id.
+  /session-events:
+    post:
+      operationId: recordSessionEvent
+      summary: Record a session event; aggregate id is taken from the ?sessionId query parameter
+      parameters:
+        - name: sessionId
+          in: query
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [eventType, userId]
+              properties:
+                eventType:
+                  type: string
+                userId:
+                  type: string
+      responses:
+        "201":
+          description: Session event recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionEvent"
+  /session-events/{id}:
+    get:
+      operationId: getSessionEvent
+      summary: Retrieve a session event by id (standard path-param lookup)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Session event found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionEvent"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  # ── from: payload ─────────────────────────────────────────────────────────────
+  # identity.key.from: payload, pointer: accountId — aggregate id from a body field.
+  # The caller includes "accountId" in the JSON body; the engine uses its value as
+  # the aggregate key via a dot-path pointer.
+  /subscriptions:
+    post:
+      operationId: createSubscription
+      summary: Create a subscription; aggregate id is taken from body.accountId
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              # accountId is optional: when absent, identity.creation.generate mints a UUIDv7.
+              required: [plan]
+              properties:
+                accountId:
+                  type: string
+                plan:
+                  type: string
+      responses:
+        "201":
+          description: Subscription created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Subscription"
+  /subscriptions/{id}:
+    get:
+      operationId: getSubscription
+      summary: Retrieve a subscription by id (standard path-param lookup)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Subscription found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Subscription"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 components:
   schemas:
     Token:
@@ -77,6 +240,53 @@ components:
           type: string
     TokenById:
       $ref: "#/components/schemas/Token"
+    # Alias schemas for the read-back boundaries — the engine resolves schemas
+    # by boundary name, so each boundary needs a matching entry in components.schemas.
+    SessionEventById:
+      $ref: "#/components/schemas/SessionEvent"
+    SubscriptionById:
+      $ref: "#/components/schemas/Subscription"
+    Order:
+      type: object
+      additionalProperties: false
+      required: [id, product, quantity, status]
+      properties:
+        id:
+          type: string
+        product:
+          type: string
+        quantity:
+          type: integer
+        status:
+          type: string
+    SessionEvent:
+      type: object
+      additionalProperties: false
+      required: [id, eventType, userId, status]
+      properties:
+        id:
+          type: string
+        eventType:
+          type: string
+        userId:
+          type: string
+        status:
+          type: string
+    Subscription:
+      type: object
+      additionalProperties: false
+      # id is the aggregate key — derived from body.accountId when provided, or
+      # auto-generated via identity.creation.generate.  The response carries id,
+      # plan, and status; accountId is intentionally omitted so the schema is
+      # stable regardless of whether the caller supplied it.
+      required: [id, plan, status]
+      properties:
+        id:
+          type: string
+        plan:
+          type: string
+        status:
+          type: string
     Error:
       type: object
       required: [error]

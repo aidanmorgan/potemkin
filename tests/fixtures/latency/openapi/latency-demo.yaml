@@ -24,6 +24,48 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Job"
+  /jobs/ranged:
+    post:
+      operationId: submitRangedJob
+      summary: Submit a job (uniform-random latency, min_ms=40 max_ms=80)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+      responses:
+        "201":
+          description: Job submitted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+  /jobs/stacked:
+    post:
+      operationId: submitStackedJob
+      summary: Submit a job (stacked latency, fixed_ms=20 + min_ms=30..max_ms=60)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+      responses:
+        "201":
+          description: Job submitted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
   /jobs/{id}:
     get:
       operationId: getJob
@@ -59,6 +101,10 @@ components:
         name:
           type: string
     JobById:
+      $ref: "#/components/schemas/Job"
+    JobRanged:
+      $ref: "#/components/schemas/Job"
+    JobStacked:
       $ref: "#/components/schemas/Job"
     Error:
       type: object

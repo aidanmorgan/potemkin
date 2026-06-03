@@ -82,19 +82,17 @@ export interface ReducerPatchOp {
 
 /** Identity key extraction policy: where to find the entity key on an incoming request. */
 export interface IdentityKeyConfig {
-  /** Source of the key value. Optional only when `cel` is provided. */
+  /** Source of the key value. */
   readonly from?: 'path' | 'query' | 'header' | 'payload';
   /** Parameter / header name (lowercased for headers) — used by path/query/header sources. */
   readonly name?: string;
   /** Dot-path within the JSON body — used by payload source. Defaults to `name` if omitted. */
   readonly pointer?: string;
-  /** CEL escape hatch — when provided, evaluated against ctx with `request`, `state`, `payload`. */
-  readonly cel?: string;
 }
 
 export interface IdentityConfig {
   readonly creation?: { readonly generate?: string }; // e.g. '$uuidv7()'
-  /** DSL-driven key extraction (path/query/header/payload + optional CEL). */
+  /** DSL-driven key extraction (path/query/header/payload). */
   readonly key?: IdentityKeyConfig;
 }
 

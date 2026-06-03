@@ -22,6 +22,7 @@ event_catalog:
       id:         "command.targetId"
       customerId: "command.payload.customerId"
       productId:  "command.payload.productId"
+      qty:        "command.payload.qty != null ? command.payload.qty : 0"
       status:     "'PLACED'"
 
 behaviors:
@@ -43,6 +44,9 @@ reducers:
       - op: add
         path: /productId
         value: "${event.payload.productId}"
+      - op: add
+        path: /qty
+        value: "${event.payload.qty}"
       - op: add
         path: /status
         value: "${event.payload.status}"

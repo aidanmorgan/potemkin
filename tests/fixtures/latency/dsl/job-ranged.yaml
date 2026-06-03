@@ -1,0 +1,39 @@
+# Demonstrates uniform-random latency: every response on this boundary is delayed
+# by a sample drawn uniformly from [min_ms, max_ms].  No fixed_ms here — the
+# range alone controls the delay.
+boundary: JobRanged
+contract_path: /jobs/ranged
+fallback_override: false
+
+latency:
+  min_ms: 40
+  max_ms: 80
+
+identity:
+  creation:
+    generate: $uuidv7()
+
+event_catalog:
+  - type: RangedJobSubmitted
+    payload_template:
+      id: "command.targetId"
+      name: "command.payload.name"
+
+behaviors:
+  - name: submitRangedJob
+    match:
+      operationId: submitRangedJob
+      condition: "true"
+    emit: RangedJobSubmitted
+
+reducers:
+  - on: RangedJobSubmitted
+    patches:
+      - op: replace
+        path: /id
+        value: "${event.payload.id}"
+      - op: replace
+        path: /name
+        value: "${event.payload.name}"
+
+initialization: []

@@ -1,0 +1,9 @@
+# Read-only fallback boundary for GET /order-items/{id}.
+boundary: OrderItemById
+contract_path: /order-items/{id}
+fallback_override: true
+
+event_catalog: []
+behaviors: []
+reducers: []
+initialization: []

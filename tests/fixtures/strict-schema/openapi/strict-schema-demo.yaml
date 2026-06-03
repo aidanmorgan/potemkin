@@ -1,0 +1,80 @@
+openapi: 3.0.3
+info:
+  title: Strict Schema Demo API
+  version: "1.0.0"
+paths:
+  /order-items:
+    post:
+      operationId: createOrderItem
+      summary: Create an order item (strict_schema:false boundary — incomplete depends_on demoed)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [description, quantity, unitPrice]
+              properties:
+                description:
+                  type: string
+                quantity:
+                  type: number
+                unitPrice:
+                  type: number
+      responses:
+        "201":
+          description: Order item created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderItem"
+  /order-items/{id}:
+    get:
+      operationId: getOrderItem
+      summary: Get an order item by id
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Order item found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderItem"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+components:
+  schemas:
+    OrderItem:
+      type: object
+      additionalProperties: false
+      required: [id, description, quantity, unitPrice]
+      properties:
+        id:
+          type: string
+        description:
+          type: string
+        quantity:
+          type: number
+        unitPrice:
+          type: number
+        lineTotal:
+          type: number
+    OrderItemById:
+      $ref: "#/components/schemas/OrderItem"
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        message:
+          type: string

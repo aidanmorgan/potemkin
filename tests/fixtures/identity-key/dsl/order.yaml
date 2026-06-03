@@ -1,0 +1,60 @@
+# Canonical example: identity.key.from: path — aggregate id from a named path parameter.
+#
+# identity.key.from: path, name: ref reads the path parameter named "ref" as the
+# aggregate key.  This demonstrates that from: path is NOT limited to the default
+# "{id}" parameter — any path segment can be the key so long as the OpenAPI
+# operation exposes it and `name` matches the parameter name exactly.
+#
+# The corresponding read-back boundary (OrderByRef) uses fallback_override: true
+# so that GET /orders/{ref} returns the stored entity without a mutation behavior.
+
+boundary: Order
+contract_path: /orders/{ref}
+# fallback_override: true — GET /orders/{ref} returns the stored state directly
+# without needing an explicit GET behavior.  Keeps the DSL minimal so the
+# identity.key.from: path example is not obscured by boilerplate.
+fallback_override: true
+
+identity:
+  # Key extraction: read the aggregate id from the path parameter named "ref".
+  # Without identity.key the engine would look for "{id}" and find nothing.
+  key:
+    from: path
+    name: ref
+  # Fallback when the path param is absent (not possible for a required path param,
+  # but declared here for completeness — mirrors the header/query pattern).
+  creation:
+    generate: "$uuidv7()"
+
+event_catalog:
+  - type: OrderPlaced
+    payload_template:
+      id: "command.targetId"
+      product: "command.payload.product"
+      quantity: "command.payload.quantity"
+      status: "'PLACED'"
+
+behaviors:
+  - name: placeOrder
+    match:
+      operationId: placeOrder
+      condition: "true"
+    emit: OrderPlaced
+
+reducers:
+  - on: OrderPlaced
+    patches:
+      - op: replace
+        path: /id
+        value: "${event.payload.id}"
+      - op: replace
+        path: /product
+        value: "${event.payload.product}"
+      - op: replace
+        path: /quantity
+        value: "${event.payload.quantity}"
+      - op: replace
+        path: /status
+        value: "${event.payload.status}"
+
+initialization: []

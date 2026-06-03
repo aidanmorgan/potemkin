@@ -1,0 +1,163 @@
+openapi: 3.0.3
+info:
+  title: Seeds + Engine-Only Composition Example
+  version: "1.0.0"
+
+# Minimal spec for the seeds-engine fixture.
+#
+# Two paths are live after the use: mapping resolves the component:
+#   /widgets — Widget boundary (initialKind: WIDGET)
+#   /gadgets — Gadget boundary (initialKind: GADGET)
+#
+# The seeds: block in potemkin.yaml declares two expectations targeting
+# /widgets/seeded-1 and /gadgets/seeded-2; these are asserted at the
+# seedCompiler level in the engine-only test (no JVM required).
+
+paths:
+  /widgets:
+    post:
+      operationId: createWidget
+      summary: Create a widget
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [label]
+              properties:
+                label:
+                  type: string
+      responses:
+        "201":
+          description: Widget created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Widget"
+
+  /widgets/{id}:
+    get:
+      operationId: getWidget
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Widget"
+    patch:
+      operationId: updateWidget
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label:
+                  type: string
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Widget"
+
+  /gadgets:
+    post:
+      operationId: createGadget
+      summary: Create a gadget
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [label]
+              properties:
+                label:
+                  type: string
+      responses:
+        "201":
+          description: Gadget created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Gadget"
+
+  /gadgets/{id}:
+    get:
+      operationId: getGadget
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Gadget"
+    patch:
+      operationId: updateGadget
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label:
+                  type: string
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Gadget"
+
+components:
+  schemas:
+    Widget:
+      type: object
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+        label:
+          type: string
+
+    Gadget:
+      type: object
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+        label:
+          type: string

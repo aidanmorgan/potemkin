@@ -1,0 +1,12 @@
+# GET /session-events/{id} — reads back the session event stored under the
+# query-param-derived key.  No identity.key needed: the path param {id} IS the key
+# (standard lookup).  This boundary exists so the e2e test can verify the entity
+# was stored under the correct id by reading it back via the normal path-param route.
+
+boundary: SessionEventById
+contract_path: /session-events/{id}
+fallback_override: true
+
+behaviors: []
+reducers: []
+initialization: []

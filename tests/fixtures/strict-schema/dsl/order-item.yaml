@@ -1,0 +1,67 @@
+# Canonical example of strict_schema: false (non-strict mode).
+#
+# The computed field `lineTotal` has a formula that references both
+# `state.quantity` and `state.unitPrice`, but depends_on only declares
+# `unitPrice`. In strict mode (the default) this mismatch throws
+# BOOT_ERR_COMPUTED_FIELD_INCOMPLETE_DEPS and boot fails. With
+# strict_schema: false, the engine downgrades the check to a WARN and
+# continues booting — the missing dependency is logged, not fatal.
+#
+# This pattern is useful when you are incrementally building out a boundary
+# and want the engine to stay bootable while the schema is incomplete.
+boundary: OrderItem
+contract_path: /order-items
+fallback_override: false
+
+# strict_schema: false downgrades the INCOMPLETE_DEPS check from a boot error
+# to a boot-time warning. The boundary boots successfully even though
+# lineTotal's formula references state.quantity which is absent from depends_on.
+strict_schema: false
+
+identity:
+  creation:
+    generate: $uuidv7()
+
+event_catalog:
+  - type: OrderItemCreated
+    payload_template:
+      id: "command.targetId"
+      description: "command.payload.description"
+      quantity: "command.payload.quantity"
+      unitPrice: "command.payload.unitPrice"
+
+state:
+  computed:
+    # lineTotal formula references state.quantity AND state.unitPrice.
+    # depends_on intentionally omits `quantity` — this is the incomplete-dep
+    # that triggers the INCOMPLETE_DEPS check. With strict_schema: false the
+    # engine logs a WARN and boots successfully instead of rejecting the config.
+    - name: lineTotal
+      formula: "state.quantity * state.unitPrice"
+      depends_on:
+        - unitPrice
+
+behaviors:
+  - name: createOrderItem
+    match:
+      operationId: createOrderItem
+      condition: "true"
+    emit: OrderItemCreated
+
+reducers:
+  - on: OrderItemCreated
+    patches:
+      - op: replace
+        path: /id
+        value: "${event.payload.id}"
+      - op: replace
+        path: /description
+        value: "${event.payload.description}"
+      - op: replace
+        path: /quantity
+        value: "${event.payload.quantity}"
+      - op: replace
+        path: /unitPrice
+        value: "${event.payload.unitPrice}"
+
+initialization: []

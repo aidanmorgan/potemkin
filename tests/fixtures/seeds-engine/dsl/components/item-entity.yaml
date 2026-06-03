@@ -1,0 +1,72 @@
+# ItemEntity — reusable component (kind: component, no contract_path).
+#
+# Canonical define-once / map-many example: this file carries no contract_path.
+# A use-mapping file (simulation.yaml) instantiates it twice with distinct
+# names and contract_paths — Widget (/widgets) and Gadget (/gadgets).
+#
+# Parameters:
+#   initialKind — the kind value set on ItemCreated (e.g. "WIDGET", "GADGET")
+#   createOp    — operationId for the create behavior
+#   updateOp    — operationId for the update behavior
+
+kind: component
+name: ItemEntity
+
+parameters:
+  initialKind:
+    type: string
+    required: true
+  createOp:
+    type: string
+    required: true
+  updateOp:
+    type: string
+    required: true
+
+identity:
+  creation:
+    generate: "$uuidv7()"
+
+event_catalog:
+  - type: ItemCreated
+    payload_template:
+      id:    "command.targetId"
+      kind:  "'{{initialKind}}'"
+      label: "command.payload.label"
+
+  - type: ItemUpdated
+    payload_template:
+      id:    "command.targetId"
+      label: "command.payload.label"
+
+behaviors:
+  - name: create-item
+    match:
+      operationId: "{{createOp}}"
+      condition: "true"
+    emit: ItemCreated
+
+  - name: update-item
+    match:
+      operationId: "{{updateOp}}"
+      condition: "true"
+    emit: ItemUpdated
+
+reducers:
+  - on: ItemCreated
+    patches:
+      - op: add
+        path: /id
+        value: "${event.payload.id}"
+      - op: add
+        path: /kind
+        value: "${event.payload.kind}"
+      - op: add
+        path: /label
+        value: "${event.payload.label}"
+
+  - on: ItemUpdated
+    patches:
+      - op: replace
+        path: /label
+        value: "${event.payload.label}"

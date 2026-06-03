@@ -1,0 +1,12 @@
+# GET /subscriptions/{id} — reads back the subscription stored under the
+# payload-derived key.  No identity.key needed: the path param {id} IS the key
+# (standard lookup).  This boundary exists so the e2e test can verify the entity
+# was stored under the correct id by reading it back via the normal path-param route.
+
+boundary: SubscriptionById
+contract_path: /subscriptions/{id}
+fallback_override: true
+
+behaviors: []
+reducers: []
+initialization: []

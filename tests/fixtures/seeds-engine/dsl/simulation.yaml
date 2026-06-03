@@ -1,0 +1,26 @@
+# Simulation mapping file — instantiates ItemEntity twice from one definition.
+#
+# This is the use:-mapping path exercised by the engine-only test:
+# the component file has no contract_path; this file maps each instance
+# to a concrete name + contract_path. Two boundaries are live after boot:
+#   Widget  — /widgets  (initialKind: WIDGET)
+#   Gadget  — /gadgets  (initialKind: GADGET)
+#
+# The component file itself is never registered as a live boundary.
+
+use:
+  - component: ItemEntity
+    as: Widget
+    contract_path: /widgets
+    with:
+      initialKind: "WIDGET"
+      createOp: createWidget
+      updateOp: updateWidget
+
+  - component: ItemEntity
+    as: Gadget
+    contract_path: /gadgets
+    with:
+      initialKind: "GADGET"
+      createOp: createGadget
+      updateOp: updateGadget

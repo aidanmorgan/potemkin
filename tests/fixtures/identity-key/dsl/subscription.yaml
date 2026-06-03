@@ -1,0 +1,56 @@
+# Canonical example: identity.key.from: payload — aggregate id from a request body field.
+#
+# identity.key.from: payload, pointer: accountId reads the field "accountId" from
+# the JSON request body as the aggregate key.  The caller supplies the id in the
+# payload (POST /subscriptions with body { accountId: "acc_xyz", ... }) rather than
+# in the URL path or a header.
+#
+# `pointer` is a dot-path into the parsed body (e.g. "accountId" for a top-level
+# field, or "billing.accountId" for a nested field — see keyExtractor.ts readDotPath).
+#
+# The corresponding read-back boundary (SubscriptionById) at /subscriptions/{id}
+# uses the standard {id} path-param lookup so the test can confirm that the entity
+# was stored under the payload-derived key.
+
+boundary: Subscription
+contract_path: /subscriptions
+fallback_override: false
+
+identity:
+  # Key extraction: read the aggregate id from the "accountId" field in the request body.
+  # e.g. POST /subscriptions { "accountId": "acc_xyz", ... } → entity stored under "acc_xyz".
+  key:
+    from: payload
+    pointer: accountId
+  # Fallback when accountId is absent from the payload: auto-generate a UUIDv7.
+  creation:
+    generate: "$uuidv7()"
+
+event_catalog:
+  - type: SubscriptionCreated
+    payload_template:
+      id: "command.targetId"
+      plan: "command.payload.plan"
+      status: "'ACTIVE'"
+
+behaviors:
+  - name: createSubscription
+    match:
+      operationId: createSubscription
+      condition: "true"
+    emit: SubscriptionCreated
+
+reducers:
+  - on: SubscriptionCreated
+    patches:
+      - op: replace
+        path: /id
+        value: "${event.payload.id}"
+      - op: replace
+        path: /plan
+        value: "${event.payload.plan}"
+      - op: replace
+        path: /status
+        value: "${event.payload.status}"
+
+initialization: []

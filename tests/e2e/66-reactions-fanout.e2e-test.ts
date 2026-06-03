@@ -33,7 +33,7 @@
  *     ├── Notification  reacts  →  NotificationQueued    (hop 1) [fan-out leg 2]
  *     └── Audit         reacts  →  AuditRecorded         (hop 1) [fan-out leg 3]
  *
- * Total: 9 events in a single atomic UoW.
+ * Total: 9 events in a single atomic UoW (when qty is absent/0 — warehouse gate is false).
  *
  * Fixture: tests/fixtures/reactions/
  *   - dsl/order.yaml         — source boundary (ZERO reactions)
@@ -45,11 +45,12 @@
  *   - dsl/tracking.yaml      — chain hop 4
  *   - dsl/dispatch.yaml      — chain hop 5
  *   - dsl/analytics.yaml     — chain hop 6 (depth > 5 proof)
+ *   - dsl/warehouse.yaml     — when:/target:/payload:/intent:mutation grammar example
  */
 
 import { startEngineOnlyApp } from './_harness/engine-only-app';
 import type { EngineOnlyApp } from './_harness/engine-only-app';
-import { fwd, getAllEvents, getAllEntities } from './_harness/crm-e2e-helpers';
+import { fwd, getAllEvents, getAllEntities, getGraphNode } from './_harness/crm-e2e-helpers';
 import type { JsonObject, DomainEvent } from './_harness/crm-e2e-helpers';
 
 describe('66 — Multi-boundary reactions: fan-out to >=3 boundaries, depth >5 (engine-only)', () => {
@@ -219,6 +220,109 @@ describe('66 — Multi-boundary reactions: fan-out to >=3 boundaries, depth >5 (
       // One POST creates 9 aggregates: Order + Inventory + Notification + Audit +
       // Fulfillment + Shipping + Tracking + Dispatch + Analytics.
       expect(countAfter - countBefore).toBe(9);
+    }, 60_000);
+  });
+
+  // ── when:/target:/payload:/intent:mutation grammar example ────────────────────
+  //
+  // Demonstrates the four previously-unexercised reaction fields using the
+  // Warehouse boundary declared in dsl/warehouse.yaml:
+  //
+  //   when:    event.payload.qty > 0     — CEL gate on trigger event payload
+  //   intent:  mutation                  — update an existing aggregate
+  //   target:  'warehouse-main'          — CEL literal resolving to the seeded id
+  //   payload: { orderId, allocatedQty } — CEL override map merged over the template
+  //
+  // The warehouse aggregate is seeded in beforeAll so the mutation has an existing
+  // target. When the gate is false (qty absent or <= 0) the warehouse is unchanged.
+  // When the gate is true (qty > 0) the warehouse state reflects the override values.
+
+  describe('gated mutation reaction: when:/target:/payload:/intent:mutation', () => {
+    const WAREHOUSE_ID = 'warehouse-main';
+
+    beforeAll(async () => {
+      // Seed the warehouse aggregate so the mutation reaction has an existing target.
+      const res = await fwd(app.engineUrl, 'POST', '/warehouses', {
+        id:         WAREHOUSE_ID,
+        location:   'Sydney',
+        totalStock: 1000,
+      });
+      expect([200, 201]).toContain(res.status);
+    }, 30_000);
+
+    it('when gate is FALSE (no qty): warehouse aggregate is unchanged after the order', async () => {
+      const warehouseBefore = await getGraphNode(app.engineUrl, WAREHOUSE_ID);
+      expect(warehouseBefore).toBeTruthy();
+      const allocatedBefore = warehouseBefore!['allocatedQty'];
+      const lastOrderBefore  = warehouseBefore!['lastOrderId'];
+
+      const res = await fwd(app.engineUrl, 'POST', '/orders', {
+        customerId: 'cust-gate-false',
+        productId:  'prod-no-qty',
+        // qty intentionally absent — event.payload.qty is null → gate is false
+      });
+      expect([200, 201]).toContain(res.status);
+
+      const warehouseAfter = await getGraphNode(app.engineUrl, WAREHOUSE_ID);
+      // Gate false: warehouse must be IDENTICAL — allocatedQty and lastOrderId are unchanged.
+      expect(warehouseAfter!['allocatedQty']).toBe(allocatedBefore);
+      expect(warehouseAfter!['lastOrderId']).toBe(lastOrderBefore);
+    }, 60_000);
+
+    it('when gate is FALSE (qty = 0): warehouse aggregate is unchanged after the order', async () => {
+      const warehouseBefore = await getGraphNode(app.engineUrl, WAREHOUSE_ID);
+      const allocatedBefore = warehouseBefore!['allocatedQty'];
+
+      const res = await fwd(app.engineUrl, 'POST', '/orders', {
+        customerId: 'cust-gate-zero',
+        productId:  'prod-zero-qty',
+        qty:        0,
+      });
+      expect([200, 201]).toContain(res.status);
+
+      const warehouseAfter = await getGraphNode(app.engineUrl, WAREHOUSE_ID);
+      // qty = 0 → gate false → warehouse unchanged.
+      expect(warehouseAfter!['allocatedQty']).toBe(allocatedBefore);
+    }, 60_000);
+
+    it('when gate is TRUE (qty > 0): StockAllocated is committed on the warehouse aggregate', async () => {
+      const res = await fwd(app.engineUrl, 'POST', '/orders', {
+        customerId: 'cust-gate-true',
+        productId:  'prod-with-qty',
+        qty:        5,
+      });
+      expect([200, 201]).toContain(res.status);
+      const orderId = (res.body as JsonObject)['id'] as string;
+
+      const events = await getAllEvents(app.engineUrl);
+      const warehouseEvents = events.filter(
+        (e) => e.boundary === 'Warehouse' && e.aggregateId === WAREHOUSE_ID,
+      );
+
+      // StockAllocated must have been emitted on the warehouse aggregate.
+      const allocated = warehouseEvents.filter((e) => e.type === 'StockAllocated');
+      expect(allocated.length).toBeGreaterThanOrEqual(1);
+
+      // The most recent StockAllocated must carry the payload overrides from the reaction.
+      const last = allocated[allocated.length - 1]!;
+      expect(last.payload['orderId']).toBe(orderId);
+      expect(last.payload['allocatedQty']).toBe(5);
+    }, 60_000);
+
+    it('when gate is TRUE (qty > 0): warehouse state reflects the payload: override values', async () => {
+      const res = await fwd(app.engineUrl, 'POST', '/orders', {
+        customerId: 'cust-state-check',
+        productId:  'prod-state-qty',
+        qty:        7,
+      });
+      expect([200, 201]).toContain(res.status);
+      const orderId = (res.body as JsonObject)['id'] as string;
+
+      const warehouse = await getGraphNode(app.engineUrl, WAREHOUSE_ID);
+      // Reducer applied the payload: overrides: lastOrderId is the triggering order id
+      // and allocatedQty is the qty from the payload override map.
+      expect(warehouse!['lastOrderId']).toBe(orderId);
+      expect(warehouse!['allocatedQty']).toBe(7);
     }, 60_000);
   });
 });

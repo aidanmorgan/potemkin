@@ -1,0 +1,40 @@
+# Demonstrates additive stacking: fixed_ms + uniform-random([min_ms, max_ms]).
+# Every response is delayed by at least fixed_ms + min_ms and at most
+# fixed_ms + max_ms.
+boundary: JobStacked
+contract_path: /jobs/stacked
+fallback_override: false
+
+latency:
+  fixed_ms: 20
+  min_ms: 30
+  max_ms: 60
+
+identity:
+  creation:
+    generate: $uuidv7()
+
+event_catalog:
+  - type: StackedJobSubmitted
+    payload_template:
+      id: "command.targetId"
+      name: "command.payload.name"
+
+behaviors:
+  - name: submitStackedJob
+    match:
+      operationId: submitStackedJob
+      condition: "true"
+    emit: StackedJobSubmitted
+
+reducers:
+  - on: StackedJobSubmitted
+    patches:
+      - op: replace
+        path: /id
+        value: "${event.payload.id}"
+      - op: replace
+        path: /name
+        value: "${event.payload.name}"
+
+initialization: []

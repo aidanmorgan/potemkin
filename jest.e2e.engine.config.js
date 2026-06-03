@@ -31,6 +31,8 @@ const engineOnlySuites = [
   '66-reactions-fanout',
   '67-annotation-script',
   '68-composition',
+  '69-strict-schema',
+  '70-seeds-engine-only',
 ];
 
 /** @type {import('ts-jest').JestConfigWithTsJest} */

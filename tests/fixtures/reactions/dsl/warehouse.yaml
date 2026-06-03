@@ -1,0 +1,79 @@
+# Warehouse boundary — demonstrates when:/target:/payload:/intent:mutation grammar.
+#
+# StockInitialised: created via POST /warehouses (creation, caller supplies id).
+# StockAllocated:   emitted by a gated mutation reaction on Order:OrderPlaced.
+#
+# Reaction grammar fields exercised:
+#   when:    fires only when event.payload.qty > 0 (CEL gate)
+#   intent:  mutation  — updates an existing Warehouse aggregate, not a new one
+#   target:  "'warehouse-main'" — CEL literal resolving to the seeded aggregate id
+#   payload: override map — stamps orderId and allocatedQty from the trigger event
+
+boundary: Warehouse
+contract_path: /warehouses
+fallback_override: false
+
+identity:
+  creation:
+    generate: "command.payload.id"
+
+event_catalog:
+  - type: StockInitialised
+    payload_template:
+      id:            "command.payload.id"
+      location:      "command.payload.location"
+      totalStock:    "command.payload.totalStock"
+      allocatedQty:  "0"
+      lastOrderId:   "''"
+
+  - type: StockAllocated
+    payload_template:
+      id:           "state.id"
+      orderId:      "event.aggregateId"
+      allocatedQty: "event.payload.qty"
+
+behaviors:
+  - name: initialise-warehouse
+    match:
+      operationId: createWarehouse
+      condition: "true"
+    emit: StockInitialised
+
+reducers:
+  - on: StockInitialised
+    patches:
+      - op: add
+        path: /id
+        value: "${event.payload.id}"
+      - op: add
+        path: /location
+        value: "${event.payload.location}"
+      - op: add
+        path: /totalStock
+        value: "${event.payload.totalStock}"
+      - op: add
+        path: /allocatedQty
+        value: "${event.payload.allocatedQty}"
+      - op: add
+        path: /lastOrderId
+        value: "${event.payload.lastOrderId}"
+
+  - on: StockAllocated
+    patches:
+      - op: replace
+        path: /allocatedQty
+        value: "${event.payload.allocatedQty}"
+      - op: replace
+        path: /lastOrderId
+        value: "${event.payload.orderId}"
+
+reactions:
+  - name: allocate-stock-on-order-placed
+    on: "Order:OrderPlaced"
+    when: "event.payload.qty > 0"
+    intent: mutation
+    target: "'warehouse-main'"
+    emit: StockAllocated
+    payload:
+      orderId:      "event.aggregateId"
+      allocatedQty: "event.payload.qty"
