@@ -143,6 +143,7 @@ When('I test missing precondition via direct UoW', async function (this: SimWorl
       events: this.sys.events,
       cel: this.sys.cel,
       validator: this.sys.validator,
+      openapi: this.sys.openapi,
       schemaRegistry: this.sys.schemaRegistry,
       requiresPrecondition: () => true, // Force precondition required
     });
@@ -235,6 +236,7 @@ When('I trigger a self-referential cascade that exceeds max depth', async functi
       events: this.sys.events,
       cel: this.sys.cel,
       validator: this.sys.validator,
+      openapi: this.sys.openapi,
       maxDepth: 5,
     });
     this.ctx['infiniteLoopError'] = null;
