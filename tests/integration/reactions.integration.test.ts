@@ -1320,3 +1320,614 @@ reactions:
     expect(result.events).toHaveLength(8);
   });
 });
+
+// ---------------------------------------------------------------------------
+// R5 Suite 10: CEL context — event.aggregateId and event.payload.* in target/payload
+// ---------------------------------------------------------------------------
+//
+// A reaction uses event.aggregateId as its target and event.payload.productId as a
+// payload field. Proves the CEL context { event, payload } exposes the trigger
+// domain event correctly and that payload aliases event.payload.
+
+describe('reactions R5: event.aggregateId and event.payload.* resolve in target and payload', () => {
+  // StockReserved on Inventory: target = event.payload.productId (a string id from the order),
+  // payload override: orderId = event.aggregateId (the Order aggregate id).
+  const R5_OPENAPI_YAML = `
+openapi: "3.0.3"
+info:
+  title: R5 CEL Context Test
+  version: "1.0.0"
+paths:
+  /r5-orders:
+    post:
+      operationId: createR5Order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/R5Order"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/R5Order"
+  /r5-products/{id}:
+    get:
+      operationId: getR5Product
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/R5Product"
+components:
+  schemas:
+    R5Order:
+      type: object
+      properties:
+        id:        { type: string }
+        productId: { type: string }
+      required: [id, productId]
+    R5Product:
+      type: object
+      properties:
+        id:      { type: string }
+        orderId: { type: string }
+      required: [id, orderId]
+`;
+
+  const R5_ORDER_DSL = `
+boundary: R5Order
+contract_path: /r5-orders
+fallback_override: false
+identity:
+  creation:
+    generate: "$uuidv7()"
+event_catalog:
+  - type: R5OrderPlaced
+    payload_template:
+      id:        "command.targetId"
+      productId: "command.payload.productId"
+behaviors:
+  - name: place-r5-order
+    match:
+      operationId: createR5Order
+      condition: "true"
+    emit: R5OrderPlaced
+reducers:
+  - on: R5OrderPlaced
+    patches:
+      - { op: replace, path: /id,        value: "\${event.payload.id}" }
+      - { op: replace, path: /productId, value: "\${event.payload.productId}" }
+`;
+
+  const R5_PRODUCT_DSL = `
+boundary: R5Product
+contract_path: /r5-products/{id}
+fallback_override: false
+event_catalog:
+  - type: R5ProductLinked
+    payload_template:
+      id:      "event.aggregateId"
+      orderId: "event.payload.orderId"
+behaviors: []
+reducers:
+  - on: R5ProductLinked
+    patches:
+      - { op: replace, path: /id,      value: "\${event.payload.id}" }
+      - { op: replace, path: /orderId, value: "\${event.payload.orderId}" }
+`;
+
+  const PRODUCT_ID = nextUuidv7();
+
+  // Reaction: target = event.payload.productId (from the trigger event's payload)
+  //           payload.orderId = event.aggregateId (the trigger event's aggregateId)
+  const R5_GLOBAL_YAML = `
+reactions:
+  - name: link-product-on-order
+    on: "R5Order:R5OrderPlaced"
+    boundary: R5Product
+    emit: R5ProductLinked
+    intent: mutation
+    target: "event.payload.productId"
+    payload:
+      orderId: "event.aggregateId"
+`;
+
+  let sys: BootedSystem;
+
+  beforeEach(async () => {
+    const openapi = await loadOpenApi(R5_OPENAPI_YAML);
+    const compiledDsl = await compileDsl(
+      [
+        { name: 'r5Order', yaml: R5_ORDER_DSL },
+        { name: 'r5Product', yaml: R5_PRODUCT_DSL },
+      ],
+      R5_GLOBAL_YAML,
+    );
+    sys = await bootSystem({ openapi, compiledDsl });
+    sys.graph.set(PRODUCT_ID, { id: PRODUCT_ID, orderId: '' });
+  });
+
+  afterEach(() => resetSystem(sys));
+
+  it('target expression event.payload.productId resolves to the correct product id', async () => {
+    const orderId = nextUuidv7();
+    const cmd: Command = {
+      commandId: nextUuidv7(),
+      boundary: 'R5Order',
+      intent: 'creation',
+      targetId: orderId,
+      payload: { productId: PRODUCT_ID },
+      queryParams: {},
+      httpMethod: 'POST',
+      path: '/r5-orders',
+      origin: 'inbound',
+      depth: 0,
+    };
+
+    const result = await executeUnitOfWork({
+      command: cmd,
+      dsl: sys.dsl,
+      openapi: sys.openapi,
+      graph: sys.graph,
+      events: sys.events,
+      cel: sys.cel,
+      validator: sys.validator,
+    });
+
+    expect(result.events).toHaveLength(2);
+    const reactionEvt = result.events[1]!;
+    expect(reactionEvt.boundary).toBe('R5Product');
+    expect(reactionEvt.aggregateId).toBe(PRODUCT_ID);
+  });
+
+  it('payload field event.aggregateId resolves to the trigger event aggregateId (orderId)', async () => {
+    const orderId = nextUuidv7();
+    const cmd: Command = {
+      commandId: nextUuidv7(),
+      boundary: 'R5Order',
+      intent: 'creation',
+      targetId: orderId,
+      payload: { productId: PRODUCT_ID },
+      queryParams: {},
+      httpMethod: 'POST',
+      path: '/r5-orders',
+      origin: 'inbound',
+      depth: 0,
+    };
+
+    const result = await executeUnitOfWork({
+      command: cmd,
+      dsl: sys.dsl,
+      openapi: sys.openapi,
+      graph: sys.graph,
+      events: sys.events,
+      cel: sys.cel,
+      validator: sys.validator,
+    });
+
+    const reactionEvt = result.events[1]!;
+    // orderId in the emitted event payload must equal the trigger event's aggregateId
+    expect(reactionEvt.payload['orderId']).toBe(orderId);
+  });
+
+  it('the R5Product state graph reflects orderId = trigger aggregateId after reaction', async () => {
+    const orderId = nextUuidv7();
+    const cmd: Command = {
+      commandId: nextUuidv7(),
+      boundary: 'R5Order',
+      intent: 'creation',
+      targetId: orderId,
+      payload: { productId: PRODUCT_ID },
+      queryParams: {},
+      httpMethod: 'POST',
+      path: '/r5-orders',
+      origin: 'inbound',
+      depth: 0,
+    };
+
+    await executeUnitOfWork({
+      command: cmd,
+      dsl: sys.dsl,
+      openapi: sys.openapi,
+      graph: sys.graph,
+      events: sys.events,
+      cel: sys.cel,
+      validator: sys.validator,
+    });
+
+    const product = sys.graph.get(PRODUCT_ID);
+    expect(product).not.toBeNull();
+    expect(product!['orderId']).toBe(orderId);
+  });
+
+  it('payload alias: event.payload.productId equals payload.productId in the CEL context', async () => {
+    // Prove that `payload` aliases `event.payload` by using both in a when gate.
+    // We build a variant with when: "payload.productId == event.payload.productId"
+    // If the alias is wrong, the gate would fail and no reaction would fire.
+    const R5_ALIAS_GLOBAL_YAML = `
+reactions:
+  - name: link-product-alias-check
+    on: "R5Order:R5OrderPlaced"
+    when: "payload.productId == event.payload.productId"
+    boundary: R5Product
+    emit: R5ProductLinked
+    intent: mutation
+    target: "event.payload.productId"
+    payload:
+      orderId: "event.aggregateId"
+`;
+    const openapi = await loadOpenApi(R5_OPENAPI_YAML);
+    const compiledDsl = await compileDsl(
+      [
+        { name: 'r5Order', yaml: R5_ORDER_DSL },
+        { name: 'r5Product', yaml: R5_PRODUCT_DSL },
+      ],
+      R5_ALIAS_GLOBAL_YAML,
+    );
+    const aliasSys = await bootSystem({ openapi, compiledDsl });
+    aliasSys.graph.set(PRODUCT_ID, { id: PRODUCT_ID, orderId: '' });
+
+    const orderId = nextUuidv7();
+    const cmd: Command = {
+      commandId: nextUuidv7(),
+      boundary: 'R5Order',
+      intent: 'creation',
+      targetId: orderId,
+      payload: { productId: PRODUCT_ID },
+      queryParams: {},
+      httpMethod: 'POST',
+      path: '/r5-orders',
+      origin: 'inbound',
+      depth: 0,
+    };
+
+    const result = await executeUnitOfWork({
+      command: cmd,
+      dsl: aliasSys.dsl,
+      openapi: aliasSys.openapi,
+      graph: aliasSys.graph,
+      events: aliasSys.events,
+      cel: aliasSys.cel,
+      validator: aliasSys.validator,
+    });
+
+    // Gate passed (payload alias works) — reaction fired
+    expect(result.events).toHaveLength(2);
+    resetSystem(aliasSys);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// R5 Suite 11: $uuidv7()/$now() in payload_template work (EventHydration phase)
+// ---------------------------------------------------------------------------
+//
+// The Journal boundary's payload_template already uses $uuidv7() for the journal id.
+// This suite proves that a reaction that emits JournalEntryCreated (which has
+// $uuidv7() in its payload_template) succeeds — i.e. EventHydration phase permits
+// non-deterministic builtins.
+
+describe('reactions R5: $uuidv7() in reaction-emitted payload_template succeeds (EventHydration)', () => {
+  const GLOBAL_WITH_JOURNAL_REACTION = `
+reactions:
+  - name: journal-on-order-r5
+    on: "Order:OrderPlaced"
+    boundary: Journal
+    emit: JournalEntryCreated
+    intent: creation
+`;
+
+  let sys: BootedSystem;
+
+  beforeEach(async () => {
+    sys = await buildSystem(GLOBAL_WITH_JOURNAL_REACTION);
+  });
+
+  afterEach(() => resetSystem(sys));
+
+  it('reaction emits JournalEntryCreated with a $uuidv7()-generated id in the payload', async () => {
+    const cmd = makePlaceOrderCommand();
+    const result = await executeUnitOfWork({
+      command: cmd,
+      dsl: sys.dsl,
+      openapi: sys.openapi,
+      graph: sys.graph,
+      events: sys.events,
+      cel: sys.cel,
+      validator: sys.validator,
+    });
+
+    expect(result.events).toHaveLength(2);
+    const journalEvt = result.events[1]!;
+    expect(journalEvt.type).toBe('JournalEntryCreated');
+    // The id field comes from $uuidv7() in JournalEntryCreated payload_template
+    expect(typeof journalEvt.payload['id']).toBe('string');
+    expect((journalEvt.payload['id'] as string).length).toBeGreaterThan(0);
+  });
+
+  it('the journal entry id is distinct from the aggregate id (not a copy)', async () => {
+    const cmd = makePlaceOrderCommand();
+    const result = await executeUnitOfWork({
+      command: cmd,
+      dsl: sys.dsl,
+      openapi: sys.openapi,
+      graph: sys.graph,
+      events: sys.events,
+      cel: sys.cel,
+      validator: sys.validator,
+    });
+
+    const journalEvt = result.events[1]!;
+    // $uuidv7() generates a fresh uuid, different from the aggregateId
+    expect(journalEvt.payload['id']).not.toBe(journalEvt.aggregateId);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// R5 Suite 12: Determinism — Alpha and Bravo fire in boundary-name-ascending order
+// ---------------------------------------------------------------------------
+//
+// Two boundaries (Alpha, Bravo) both react to the same Order:OrderPlaced event.
+// Reactions are declared Bravo-first in the global YAML. The spec mandates
+// boundary-name-ascending order, so Alpha must always fire before Bravo.
+// Identical ordering is asserted across two UoW executions (two runs, same
+// ordering each time).
+
+describe('reactions R5: Alpha/Bravo multi-boundary ordering is stable and documented', () => {
+  const AB_OPENAPI_YAML = `
+openapi: "3.0.3"
+info:
+  title: R5 Alpha-Bravo Ordering Test
+  version: "1.0.0"
+paths:
+  /ab-orders:
+    post:
+      operationId: createAbOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AbOrder"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AbOrder"
+  /alphas/{id}:
+    get:
+      operationId: getAlpha
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Alpha"
+  /bravos/{id}:
+    get:
+      operationId: getBravo
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bravo"
+components:
+  schemas:
+    AbOrder:
+      type: object
+      properties:
+        id: { type: string }
+      required: [id]
+    Alpha:
+      type: object
+      properties:
+        id:      { type: string }
+        orderId: { type: string }
+      required: [id, orderId]
+    Bravo:
+      type: object
+      properties:
+        id:      { type: string }
+        orderId: { type: string }
+      required: [id, orderId]
+`;
+
+  const AB_ORDER_DSL = `
+boundary: AbOrder
+contract_path: /ab-orders
+fallback_override: false
+identity:
+  creation:
+    generate: "$uuidv7()"
+event_catalog:
+  - type: AbOrderPlaced
+    payload_template:
+      id: "command.targetId"
+behaviors:
+  - name: place-ab-order
+    match:
+      operationId: createAbOrder
+      condition: "true"
+    emit: AbOrderPlaced
+reducers:
+  - on: AbOrderPlaced
+    patches:
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
+`;
+
+  const ALPHA_DSL = `
+boundary: Alpha
+contract_path: /alphas/{id}
+fallback_override: false
+event_catalog:
+  - type: AlphaNotified
+    payload_template:
+      id:      "event.aggregateId"
+      orderId: "event.aggregateId"
+behaviors: []
+reducers:
+  - on: AlphaNotified
+    patches:
+      - { op: replace, path: /id,      value: "\${event.payload.id}" }
+      - { op: replace, path: /orderId, value: "\${event.payload.orderId}" }
+`;
+
+  const BRAVO_DSL = `
+boundary: Bravo
+contract_path: /bravos/{id}
+fallback_override: false
+event_catalog:
+  - type: BravoNotified
+    payload_template:
+      id:      "event.aggregateId"
+      orderId: "event.aggregateId"
+behaviors: []
+reducers:
+  - on: BravoNotified
+    patches:
+      - { op: replace, path: /id,      value: "\${event.payload.id}" }
+      - { op: replace, path: /orderId, value: "\${event.payload.orderId}" }
+`;
+
+  const ALPHA_ID = 'alpha-agg-r5';
+  const BRAVO_ID = 'bravo-agg-r5';
+
+  // Reactions declared Bravo-first, then Alpha — sort must override declaration order.
+  const AB_GLOBAL_YAML = `
+reactions:
+  - name: bravo-reaction
+    on: "AbOrder:AbOrderPlaced"
+    boundary: Bravo
+    emit: BravoNotified
+    intent: mutation
+    target: '"${BRAVO_ID}"'
+  - name: alpha-reaction
+    on: "AbOrder:AbOrderPlaced"
+    boundary: Alpha
+    emit: AlphaNotified
+    intent: mutation
+    target: '"${ALPHA_ID}"'
+`;
+
+  async function buildAbSystem(): Promise<BootedSystem> {
+    const openapi = await loadOpenApi(AB_OPENAPI_YAML);
+    const compiledDsl = await compileDsl(
+      [
+        { name: 'abOrder', yaml: AB_ORDER_DSL },
+        { name: 'alpha', yaml: ALPHA_DSL },
+        { name: 'bravo', yaml: BRAVO_DSL },
+      ],
+      AB_GLOBAL_YAML,
+    );
+    return bootSystem({ openapi, compiledDsl });
+  }
+
+  it('Alpha fires before Bravo even when Bravo is declared first in the YAML', async () => {
+    const sys = await buildAbSystem();
+    sys.graph.set(ALPHA_ID, { id: ALPHA_ID, orderId: '' });
+    sys.graph.set(BRAVO_ID, { id: BRAVO_ID, orderId: '' });
+
+    const cmd: Command = {
+      commandId: nextUuidv7(),
+      boundary: 'AbOrder',
+      intent: 'creation',
+      targetId: nextUuidv7(),
+      payload: {},
+      queryParams: {},
+      httpMethod: 'POST',
+      path: '/ab-orders',
+      origin: 'inbound',
+      depth: 0,
+    };
+
+    const result = await executeUnitOfWork({
+      command: cmd,
+      dsl: sys.dsl,
+      openapi: sys.openapi,
+      graph: sys.graph,
+      events: sys.events,
+      cel: sys.cel,
+      validator: sys.validator,
+    });
+
+    expect(result.events).toHaveLength(3);
+    expect(result.events[0]!.type).toBe('AbOrderPlaced');
+    // Alpha (boundary name < Bravo) must come first
+    expect(result.events[1]!.boundary).toBe('Alpha');
+    expect(result.events[1]!.type).toBe('AlphaNotified');
+    expect(result.events[2]!.boundary).toBe('Bravo');
+    expect(result.events[2]!.type).toBe('BravoNotified');
+
+    resetSystem(sys);
+  });
+
+  it('ordering is identical across two independent UoW executions (determinism)', async () => {
+    async function runOnce(): Promise<string[]> {
+      const sys = await buildAbSystem();
+      sys.graph.set(ALPHA_ID, { id: ALPHA_ID, orderId: '' });
+      sys.graph.set(BRAVO_ID, { id: BRAVO_ID, orderId: '' });
+
+      const cmd: Command = {
+        commandId: nextUuidv7(),
+        boundary: 'AbOrder',
+        intent: 'creation',
+        targetId: nextUuidv7(),
+        payload: {},
+        queryParams: {},
+        httpMethod: 'POST',
+        path: '/ab-orders',
+        origin: 'inbound',
+        depth: 0,
+      };
+
+      const result = await executeUnitOfWork({
+        command: cmd,
+        dsl: sys.dsl,
+        openapi: sys.openapi,
+        graph: sys.graph,
+        events: sys.events,
+        cel: sys.cel,
+        validator: sys.validator,
+      });
+
+      resetSystem(sys);
+      return result.events.map(e => e.boundary);
+    }
+
+    const run1 = await runOnce();
+    const run2 = await runOnce();
+
+    // Both runs must produce identical boundary ordering
+    expect(run1).toEqual(run2);
+    // And the ordering must be: AbOrder → Alpha → Bravo
+    expect(run1).toEqual(['AbOrder', 'Alpha', 'Bravo']);
+  });
+});

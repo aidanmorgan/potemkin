@@ -1,14 +1,29 @@
 /**
- * In-UoW reaction firing engine — R3 + R4.
+ * In-UoW reaction firing engine — R3 + R4 + R5.
  *
  * Consults the reaction registry for rules matching a just-staged event, evaluates
  * each rule's `when` gate, hydrates the emitted event from the reacting boundary's
  * event_catalog (same path as behaviour-emitted events), and returns the new events
  * so the UoW can stage + project them through the same queue.
  *
- * Deterministic ordering (R5 will finalise): reactions for a single trigger event
- * are sorted by reacting boundary name ascending, then by declaration index.
- * This is noted here for replay correctness; see TODO potemkin-atbe.
+ * CEL context and phase (R5 — locked spec):
+ *  - `when` / `target` / `payload` evaluate against { event, payload } where `event`
+ *    is the trigger domain event (type, aggregateId, payload, sequenceVersion, boundary)
+ *    and `payload` aliases event.payload. Phase: CelPhase.Behavior.
+ *  - The emitted event's `payload_template` hydrates in CelPhase.EventHydration
+ *    ($uuidv7()/$now() permitted). This is the same path as behaviour-emitted events.
+ *  - Reducers for the emitted event run in CelPhase.Reducer (enforced by projectEvent /
+ *    the existing reducer evaluation path). $uuidv7()/$now() in reducers throw
+ *    CEL_PHASE_BANNED — determinism is preserved.
+ *
+ * Deterministic ordering (R5 — locked spec):
+ *  Trigger events are processed in staging (FIFO) order (the caller's work queue).
+ *  For a single trigger event, matching reactions fire in a stable, replay-safe order:
+ *    1. Reacting boundary name ascending (locale-independent string comparison).
+ *    2. Declaration index within that boundary (their order in the combined registry
+ *       array, which preserves the original YAML declaration order).
+ *  This is enforced by an explicit two-key sort using the original array index as
+ *  the tiebreaker — no reliance on sort-stability assumptions.
  *
  * Termination (R4 — fired-set dedup + event budget):
  *  - firedReactions: a per-UoW Set of "<reactionId>@<aggregateId>" keys maintained by
@@ -146,17 +161,23 @@ export function fireReactions(input: FireReactionsInput): readonly DomainEvent[]
 
   if (allMatchingReactions.length === 0) return [];
 
-  // Deterministic ordering: sort by reacting boundary name ascending, then by
-  // original declaration index within each boundary bucket.
-  // NOTE(R5/potemkin-atbe): R5 will finalise the ordering spec. For now we sort
-  // the union by boundary name, then preserve the registry insertion order within
-  // each boundary group (which corresponds to declaration order — guaranteed by
-  // buildReactionRegistry in parser.ts).
-  const sorted = [...allMatchingReactions].sort((a, b) => {
-    const ba = a.boundary ?? '';
-    const bb = b.boundary ?? '';
-    return ba < bb ? -1 : ba > bb ? 1 : 0;
-  });
+  // Deterministic ordering (R5 locked spec):
+  //   Primary:   reacting boundary name ascending (locale-independent).
+  //   Secondary: declaration index — the reaction's position in the combined
+  //              registry array, which mirrors original YAML declaration order
+  //              (guaranteed by buildReactionRegistry in parser.ts).
+  // The original index is captured before sorting so the tiebreaker is explicit
+  // and does not rely on Array.sort stability.
+  const sorted = allMatchingReactions
+    .map((r, i) => ({ r, i }))
+    .sort((a, b) => {
+      const ba = a.r.boundary ?? '';
+      const bb = b.r.boundary ?? '';
+      if (ba < bb) return -1;
+      if (ba > bb) return 1;
+      return a.i - b.i;
+    })
+    .map(({ r }) => r);
 
   const emittedEvents: DomainEvent[] = [];
   const budget = input.maxUowEvents ?? MAX_UOW_REACTION_EVENTS;
