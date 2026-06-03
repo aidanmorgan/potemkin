@@ -130,7 +130,11 @@ export function matchRoute(
     if (match.groups) {
       for (const [key, value] of Object.entries(match.groups)) {
         if (typeof value === 'string') {
-          pathParams[key] = value;
+          try {
+            pathParams[key] = decodeURIComponent(value);
+          } catch {
+            pathParams[key] = value;
+          }
         }
       }
     }

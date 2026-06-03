@@ -528,7 +528,7 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
         );
         const resolvedTargetId = typeof targetIdVal === 'string' ? targetIdVal : null;
 
-        if (spec.intent === 'mutation' && resolvedTargetId === null) {
+        if (spec.intent === 'mutation' && (typeof targetIdVal !== 'string' || !targetIdVal)) {
           throw new InternalExecutionError(
             `dispatch_commands entry for operation "${spec.operationId}" has intent "mutation" but target_id did not resolve to a non-empty string`,
             { code: 'REACTION_TARGET_ERROR', operationId: spec.operationId, got: String(targetIdVal) },

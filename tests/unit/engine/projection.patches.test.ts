@@ -105,6 +105,19 @@ describe('projection runtime — patches: ops', () => {
     expect(state['score']).toBe(15);
   });
 
+  it('bare increment (no by/value) defaults to incrementing by exactly 1', () => {
+    const state = projectLeadCreated([
+      {
+        on: 'LeadCreated',
+        patches: [
+          { op: 'replace', path: '/count', value: 7 },
+          { op: 'increment', path: '/count' } as unknown as import('../../../src/dsl/types').ReducerPatchOp,
+        ],
+      },
+    ]);
+    expect(state['count']).toBe(8);
+  });
+
   it('merge patch shallow-merges into an object field', () => {
     const state = projectLeadCreated([
       {

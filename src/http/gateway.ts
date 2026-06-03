@@ -577,12 +577,24 @@ async function handleContractRequest(
         const ttComputedArgs = ttInferred && ttInferred.computedOrder.length > 0
           ? { computed: sys.dsl.byBoundaryName[boundary.boundary]?.state?.computed ?? [], computedOrder: ttInferred.computedOrder }
           : {};
-        const rebuilt = rebuildEntityAtVersion(
-          targetId, controls.timeTravel.readAtVersion, boundary, sys.events, reqCel, logger,
-          sys.tsReducerRegistry,
-          ttComputedArgs.computed,
-          ttComputedArgs.computedOrder,
-        );
+        let rebuilt: ReturnType<typeof rebuildEntityAtVersion>;
+        try {
+          rebuilt = rebuildEntityAtVersion(
+            targetId, controls.timeTravel.readAtVersion, boundary, sys.events, reqCel, logger,
+            sys.tsReducerRegistry,
+            ttComputedArgs.computed,
+            ttComputedArgs.computedOrder,
+          );
+        } catch (err) {
+          res.setHeader('X-Specmatic-Result', 'failure');
+          if (err instanceof InternalExecutionError) {
+            res.status(500).json(err.toJSON());
+          } else {
+            const message = err instanceof Error ? err.message : String(err);
+            res.status(500).json({ error: 'INTERNAL', message });
+          }
+          return;
+        }
         const headers = { 'X-Potemkin-Read-At-Version': String(controls.timeTravel.readAtVersion) };
         if (rebuilt === null) {
           res.status(404).set(headers).json({ error: 'ENTITY_ABSENCE', message: `entity ${targetId} not found at version ${controls.timeTravel.readAtVersion}` });

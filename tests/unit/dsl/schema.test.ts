@@ -363,16 +363,10 @@ describe('dsl/schema', () => {
         },
       );
 
-      it('rejects op:increment with neither "by" nor "value" with BOOT_ERR_DSL_SYNTAX', () => {
-        let caught: unknown;
-        try {
-          validateBoundaryConfig(makePatch({ op: 'increment', path: '/count' }));
-        } catch (e) {
-          caught = e;
-        }
-        expect(caught).toBeInstanceOf(BootError);
-        expect((caught as BootError).code).toBe('BOOT_ERR_DSL_SYNTAX');
-        expect((caught as BootError).message).toMatch(/increment/);
+      it('accepts op:increment with neither "by" nor "value" (default-1 shorthand)', () => {
+        expect(() =>
+          validateBoundaryConfig(makePatch({ op: 'increment', path: '/count' })),
+        ).not.toThrow();
       });
 
       it('accepts op:remove with only path', () => {
@@ -605,6 +599,26 @@ describe('dsl/schema', () => {
           match: { operationId: 'createThing', condition: 'true', headers: { 'x-my-header': 123 } },
           emit: 'Created',
         }))).toThrow(BootError);
+      });
+    });
+
+    describe('deprecated.date validation', () => {
+      it('rejects an unparseable date string with BOOT_ERR_DSL_SYNTAX', () => {
+        let caught: unknown;
+        try {
+          validateBoundaryConfig({ ...minimalValid, deprecated: { date: 'soon' } });
+        } catch (e) {
+          caught = e;
+        }
+        expect(caught).toBeInstanceOf(BootError);
+        expect((caught as BootError).code).toBe('BOOT_ERR_DSL_SYNTAX');
+        expect((caught as BootError).message).toMatch(/date/);
+      });
+
+      it('accepts a valid ISO-8601 deprecated.date without throwing', () => {
+        expect(() =>
+          validateBoundaryConfig({ ...minimalValid, deprecated: { date: '2025-01-01T00:00:00.000Z' } }),
+        ).not.toThrow();
       });
     });
   });

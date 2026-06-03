@@ -520,6 +520,19 @@ describe('engine/patternMatcher', () => {
       ).toThrow(InternalExecutionError);
     });
 
+    it('throws InternalExecutionError when dispatch_commands mutation target_id resolves to an empty string', () => {
+      const boundary = makeBoundaryWithDispatch('null_target');
+      const cel = makeCelWithTargetResult('');
+
+      expect(() =>
+        runPatternMatch(makeInput({
+          boundary,
+          cel: cel as any,
+          projectToShadow: jest.fn(),
+        })),
+      ).toThrow(InternalExecutionError);
+    });
+
     it('throws InternalExecutionError when dispatch_commands mutation target_id resolves to a non-string (number)', () => {
       const boundary = makeBoundaryWithDispatch('null_target');
       const cel = makeCelWithTargetResult(42);

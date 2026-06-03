@@ -1,10 +1,11 @@
 /**
- * Forwarding/gateway parity tests for four bug-fix beads:
+ * Forwarding/gateway parity tests for bug-fix beads:
  *
- *   mh29 — boundary-scoped chaos fault rules resolve on the forwarding path
- *   5m9o — time-travel (X-Potemkin-Read-At-Version) works with non-path identity.key
- *   q4v1 — idempotency replay incurs configured boundary latency
- *   viyn — security_headers block appears in ForwardedResponse headers
+ *   mh29  — boundary-scoped chaos fault rules resolve on the forwarding path
+ *   5m9o  — time-travel (X-Potemkin-Read-At-Version) works with non-path identity.key
+ *   q4v1  — idempotency replay incurs configured boundary latency
+ *   viyn  — security_headers block appears in ForwardedResponse headers
+ *   3wfd  — time-travel replay failure returns identical structured 500 body on gateway and forwarding
  *
  * Each block drives the engine exclusively through POST /_engine/forward using
  * an inline fixture so assertions are against the forwarding handler directly.
@@ -16,6 +17,7 @@ import { loadOpenApi } from '../../src/contract/loader.js';
 import { compileDsl } from '../../src/dsl/parser.js';
 import type { ForwardedRequest, ForwardedResponse } from '../../src/forwarding/types.js';
 import { nextUuidv7 } from '../../src/ids/uuidv7.js';
+import { InternalExecutionError } from '../../src/errors.js';
 import {
   withPersistentServer,
   type PersistentAgent,
@@ -477,4 +479,209 @@ describe('viyn — security_headers block appears in ForwardedResponse headers',
     expect(gwRes.headers['x-frame-options']).toBe('DENY');
     expect(gwRes.headers['x-custom-security']).toBe('enforced');
   });
+});
+
+// ---------------------------------------------------------------------------
+// 3wfd — time-travel replay failure returns identical structured 500 body
+// ---------------------------------------------------------------------------
+
+const TT3WFD_OPENAPI = `
+openapi: "3.0.3"
+info: { title: 3wfd Time Travel Error Parity, version: "1.0.0" }
+paths:
+  /widgets/{id}:
+    post:
+      operationId: createWidget
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, additionalProperties: true } } }
+      responses: { "201": { description: created } }
+    get:
+      operationId: getWidget
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: ok }, "404": { description: missing }, "500": { description: error } }
+components:
+  schemas:
+    Widget:
+      type: object
+      additionalProperties: true
+      properties:
+        id: { type: string }
+        name: { type: string }
+`;
+
+const TT3WFD_DSL = `
+boundary: Widget
+contract_path: /widgets/{id}
+fallback_override: true
+identity: { creation: { generate: "$uuidv7()" } }
+event_catalog:
+  - type: WidgetCreated
+    payload_template: { id: "command.targetId", name: "command.payload.name" }
+behaviors:
+  - name: create-widget
+    match: { operationId: createWidget, condition: "true" }
+    emit: WidgetCreated
+reducers:
+  - on: WidgetCreated
+    patches:
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
+      - { op: replace, path: /name, value: "\${event.payload.name}" }
+`;
+
+describe('3wfd — time-travel replay failure returns identical structured 500 body on gateway and forwarding', () => {
+  let sys: BootedSystem;
+  let server: PersistentServer;
+  let agent: PersistentAgent;
+
+  beforeAll(async () => {
+    const openapi = await loadOpenApi(TT3WFD_OPENAPI);
+    const compiledDsl = await compileDsl([{ name: 'widget', yaml: TT3WFD_DSL }], '');
+    sys = await bootSystem({ openapi, compiledDsl });
+    server = await withPersistentServer(createGateway(sys));
+    agent = server.agent;
+  });
+  afterAll(async () => { await server.close(); });
+
+  async function fwd(r: ForwardedRequest): Promise<ForwardedResponse> {
+    const res = await agent.post('/_engine/forward').send(r).expect(200);
+    return res.body as ForwardedResponse;
+  }
+
+  it('a time-travel read-at-version whose replay throws returns the same structured error code and body shape on gateway and forwarding', async () => {
+    // Create a widget so there are events to replay.
+    const id = nextUuidv7();
+    const createRes = await agent.post(`/widgets/${id}`).send({ name: 'Gadget' }).expect(201);
+    expect(createRes.status).toBe(201);
+
+    // Inject a TS reducer that throws InternalExecutionError during replay.
+    sys.tsReducerRegistry.swap([{
+      boundary: 'Widget',
+      event: 'WidgetCreated',
+      source: 'test-inline',
+      fn: (_state: unknown, _event: unknown) => {
+        throw new InternalExecutionError('Reducer exploded during replay', { code: 'TEST_REDUCER_ERROR' });
+      },
+    }]);
+
+    // Gateway path — time-travel GET with X-Potemkin-Read-At-Version.
+    const gwRes = await agent
+      .get(`/widgets/${id}`)
+      .set('x-potemkin-read-at-version', '1')
+      .expect(500);
+
+    // Forwarding path — same request via /_engine/forward.
+    const fwdRes = await fwd(f(
+      'GET', `/widgets/${id}`, null,
+      { 'x-potemkin-read-at-version': '1' },
+    ));
+
+    // Restore registry so later tests are not affected.
+    sys.tsReducerRegistry.swap([]);
+
+    // Both must return 500.
+    expect(gwRes.status).toBe(500);
+    expect(fwdRes.status).toBe(500);
+
+    // Both must carry the structured INTERNAL_EXECUTION_ERROR code (not 'INTERNAL').
+    expect((gwRes.body as { code: string }).code).toBe('INTERNAL_EXECUTION_ERROR');
+    expect((fwdRes.body as { code: string }).code).toBe('INTERNAL_EXECUTION_ERROR');
+
+    // Body shapes must be identical (same keys and values).
+    expect(gwRes.body).toEqual(fwdRes.body);
+  });
+
+  it('a successful time-travel read still returns 200 with correct body on the gateway path after the fix', async () => {
+    const id = nextUuidv7();
+    await agent.post(`/widgets/${id}`).send({ name: 'Gadget' }).expect(201);
+
+    const res = await agent
+      .get(`/widgets/${id}`)
+      .set('x-potemkin-read-at-version', '1')
+      .expect(200);
+
+    expect((res.body as { name: string }).name).toBe('Gadget');
+    expect(res.headers['x-potemkin-read-at-version']).toBe('1');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// y9z7 — percent-encoded path parameters are URL-decoded before entity matching
+// ---------------------------------------------------------------------------
+
+const Y9Z7_OPENAPI = `
+openapi: "3.0.3"
+info: { title: y9z7 Path Decode, version: "1.0.0" }
+paths:
+  /widgets/{id}:
+    post:
+      operationId: createWidget
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, additionalProperties: true } } }
+      responses: { "201": { description: created } }
+    get:
+      operationId: getWidget
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: ok }, "404": { description: missing } }
+components:
+  schemas:
+    Widget:
+      type: object
+      additionalProperties: true
+      properties:
+        id: { type: string }
+        name: { type: string }
+`;
+
+// Path-keyed boundary (identity.key defaults to the {id} path param) so the
+// decoded path value IS the aggregate key.
+const Y9Z7_DSL = `
+boundary: Widget
+contract_path: /widgets/{id}
+fallback_override: true
+identity: { creation: { generate: "$uuidv7()" } }
+event_catalog:
+  - type: WidgetCreated
+    payload_template: { id: "command.targetId", name: "command.payload.name" }
+behaviors:
+  - name: create-widget
+    match: { operationId: createWidget, condition: "true" }
+    emit: WidgetCreated
+reducers:
+  - on: WidgetCreated
+    patches:
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
+      - { op: replace, path: /name, value: "\${event.payload.name}" }
+`;
+
+describe('y9z7 — percent-encoded path params resolve to the decoded entity key (end-to-end gateway)', () => {
+  let server: PersistentServer;
+  let agent: PersistentAgent;
+
+  beforeAll(async () => {
+    const openapi = await loadOpenApi(Y9Z7_OPENAPI);
+    const compiledDsl = await compileDsl([{ name: 'widget', yaml: Y9Z7_DSL }], '');
+    const sys = await bootSystem({ openapi, compiledDsl });
+    server = await withPersistentServer(createGateway(sys));
+    agent = server.agent;
+  });
+  afterAll(async () => { await server.close(); });
+
+  it('creates an entity at a space-containing id and reads it back via a percent-encoded GET (200, correct body)', async () => {
+    // The path segment "a%20b" decodes to "a b"; the aggregate is keyed "a b".
+    const createRes = await agent.post('/widgets/a%20b').send({ name: 'Spacey' }).expect(201);
+    expect((createRes.body as { id: string }).id).toBe('a b');
+
+    const getRes = await agent.get('/widgets/a%20b').expect(200);
+    expect((getRes.body as { id: string }).id).toBe('a b');
+    expect((getRes.body as { name: string }).name).toBe('Spacey');
+  });
+
+  // Malformed percent-sequences (e.g. "%zz") falling back to the raw value
+  // without throwing is covered at the router layer — where the decode + fallback
+  // lives — by tests/unit/contract/router.test.ts. Driving a malformed sequence
+  // through the full HTTP stack exercises Express's own URL handling, not ours.
 });

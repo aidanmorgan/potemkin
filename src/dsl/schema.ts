@@ -646,15 +646,6 @@ function optionalPatchList(raw: Record<string, unknown>, ctx: string): readonly 
         );
       }
     }
-    if (op === 'increment') {
-      if (!Object.prototype.hasOwnProperty.call(p, 'by') && !Object.prototype.hasOwnProperty.call(p, 'value')) {
-        throw new BootError(
-          'BOOT_ERR_DSL_SYNTAX',
-          `${ctx}.patches[${i}]: op "increment" requires "by" (or "value" as alias)`,
-          { context: ctx, op, field: 'by' },
-        );
-      }
-    }
     // Reducer-phase values are CEL only — reject ts: script sentinels.
     const patchValue = p['value'];
     if (typeof patchValue === 'string' && patchValue.startsWith(TS_SENTINEL)) {
@@ -1811,6 +1802,13 @@ function validateDeprecationConfig(raw: unknown, ctx: string): DeprecationConfig
     throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.deprecated must be a mapping`, { field: 'deprecated' });
   }
   const date = optionalString(raw, 'date', `${ctx}.deprecated`);
+  if (date !== undefined && !Number.isFinite(new Date(date).getTime())) {
+    throw new BootError(
+      'BOOT_ERR_DSL_SYNTAX',
+      `${ctx}.deprecated.date: "${date}" is not a parseable date — use an ISO-8601 or RFC-2822 date string`,
+      { field: `${ctx}.deprecated.date`, value: date },
+    );
+  }
   const sunset = optionalString(raw, 'sunset', `${ctx}.deprecated`);
   const replacement = optionalString(raw, 'replacement', `${ctx}.deprecated`);
   return {

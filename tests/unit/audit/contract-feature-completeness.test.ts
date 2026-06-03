@@ -268,10 +268,10 @@ describe('Contract router – matchRoute', () => {
   });
 
   it('handles URL-encoded characters in path parameter values', () => {
-    // %20 is a valid path segment character; [^/]+ should match it
+    // %20 is decoded to a space so the param matches the logical entity id "hello world"
     const result = matchRoute(doc, 'GET', '/items/hello%20world');
     expect(result).not.toBeNull();
-    expect(result?.pathParams['id']).toBe('hello%20world');
+    expect(result?.pathParams['id']).toBe('hello world');
   });
 
   it('handles plus sign in path parameter value', () => {

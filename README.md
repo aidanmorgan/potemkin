@@ -285,7 +285,7 @@ See [`tests/e2e/68-composition.e2e-test.ts`](tests/e2e/68-composition.e2e-test.t
 
 ### Sharing events and reducers across entities
 
-If you want a slice of behavior — an audit trail, a status lifecycle, a set of computed fields — to appear in several boundaries without copying it, extract it into a fragment component and `include:` it from each host. The host's own declarations win on any key clash, so local customisation always takes precedence.
+If you want a slice of behavior — an audit trail, a status lifecycle, a set of computed fields — to appear in several boundaries without copying it, extract it into a fragment component and `include:` it from each host. Host event types and behavior names win over identically-named included entries; reducers are additive — both host and included reducers for the same event type run.
 
 Create the fragment (no `contract_path`, no `behaviors` required):
 
@@ -330,7 +330,7 @@ event_catalog:
 
 After linking, `Document` carries both `DocumentCreated` (local) and `AuditLogged` + its reducer (from the mixin). A second boundary that includes the same mixin gets identical audit behavior independently.
 
-Merge rules: local event types, behavior names, and reducer `on` values all shadow the mixin's entry of the same key. Two included fragments that both contribute the same event type or behavior name with no local override cause `BOOT_ERR_DSL_SYNTAX`. Multiple reducers with the same `on` are not a clash — all matching reducers run.
+Merge rules: local event types and behavior names shadow the mixin's entry of the same key. Reducer `on` is not a unique key — a host reducer and an included reducer on the same event both run; there is no shadowing and no clash error for `on`. Two included fragments that both contribute the same event type or behavior name with no local override cause `BOOT_ERR_DSL_SYNTAX`.
 
 `include:` on a component file is also supported; every boundary instantiated from that component inherits the mixin automatically.
 
@@ -491,6 +491,8 @@ If you want to patch a field inside a nested object, write the path as a full JS
 ```
 
 For running totals across a collection, use a computed field. Computed state is derived after every projection pass — for example, `totalValue` can be expressed as `sum(lineItems.*.lineTotal)` and will reflect the current array contents without any explicit accumulator patch. See [`54-computed-totals-end-to-end`](tests/e2e/54-computed-totals-end-to-end.e2e-test.ts) for a full worked example, and [`51-object-graph-evolution`](tests/e2e/51-object-graph-evolution.e2e-test.ts) for a long mutation sequence that exercises nested paths across many events.
+
+By default, the engine validates at boot that every state reference inside a computed field's formula is listed in its `depends_on`. Set `strict_schema: false` on the boundary to downgrade this check to a warning while formulas are still evolving (see `docs/dsl.md §2`).
 
 ---
 

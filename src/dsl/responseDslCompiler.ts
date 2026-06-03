@@ -46,7 +46,8 @@ const EPOCH_SENTINEL = new Date(0).toISOString();
 
 function deprecationHeaderValue(date: string | undefined): string {
   if (!date || date === EPOCH_SENTINEL) return 'true';
-  return new Date(date).toUTCString();
+  const d = new Date(date);
+  return Number.isFinite(d.getTime()) ? d.toUTCString() : date;
 }
 
 export function compileResponseDeprecation(config: DeprecationConfig | undefined): Patch[] {

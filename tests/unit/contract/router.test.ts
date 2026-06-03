@@ -99,5 +99,51 @@ describe('contract/router', () => {
       const doc = makeDoc({});
       expect(matchRoute(doc, 'GET', '/loans')).toBeNull();
     });
+
+    it('decodes a percent-encoded path parameter (a%20b resolves to "a b")', () => {
+      const doc = makeDoc({
+        '/customers/{id}': { get: {} },
+      });
+      const result = matchRoute(doc, 'GET', '/customers/a%20b');
+      expect(result).not.toBeNull();
+      expect(result?.pathParams).toEqual({ id: 'a b' });
+    });
+
+    it('decodes multiple percent-encoded path parameters', () => {
+      const doc = makeDoc({
+        '/customers/{id}/orders/{orderId}': { get: {} },
+      });
+      const result = matchRoute(doc, 'GET', '/customers/a%20b/orders/order%2F1');
+      expect(result).not.toBeNull();
+      expect(result?.pathParams).toEqual({ id: 'a b', orderId: 'order/1' });
+    });
+
+    it('falls back to the raw value when a path parameter contains a malformed percent-sequence (%ZZ)', () => {
+      const doc = makeDoc({
+        '/customers/{id}': { get: {} },
+      });
+      const result = matchRoute(doc, 'GET', '/customers/a%ZZb');
+      expect(result).not.toBeNull();
+      expect(result?.pathParams).toEqual({ id: 'a%ZZb' });
+    });
+
+    it('does not throw for a malformed percent-sequence — falls back gracefully', () => {
+      const doc = makeDoc({
+        '/items/{id}': { get: {} },
+      });
+      expect(() => matchRoute(doc, 'GET', '/items/%zz')).not.toThrow();
+      const result = matchRoute(doc, 'GET', '/items/%zz');
+      expect(result?.pathParams).toEqual({ id: '%zz' });
+    });
+
+    it('plain UUIDs (no percent-encoding) are unaffected by the decode step', () => {
+      const doc = makeDoc({
+        '/loans/{id}': { get: {} },
+      });
+      const uuid = '01234567-89ab-cdef-0123-456789abcdef';
+      const result = matchRoute(doc, 'GET', `/loans/${uuid}`);
+      expect(result).not.toBeNull();
+      expect(result?.pathParams).toEqual({ id: uuid });
+    });
   });
 });

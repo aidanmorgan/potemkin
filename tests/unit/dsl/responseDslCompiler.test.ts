@@ -86,6 +86,14 @@ describe('compileResponseDeprecation (REQ-RESP-002)', () => {
     expect(dep.value).toBe('true');
   });
 
+  it('falls back to the raw string (not "Invalid Date") when date is unparseable', () => {
+    const patches = compileResponseDeprecation({ date: 'soon' });
+    const dep = patches.find((p) => p.path === '/headers/Deprecation') as any;
+    expect(dep).toBeDefined();
+    expect(dep.value).toBe('soon');
+    expect(dep.value).not.toBe('Invalid Date');
+  });
+
   it('emits HTTP-date Deprecation alongside sunset and successor Link', () => {
     const patches = compileResponseDeprecation({
       date: '2025-06-01T00:00:00.000Z',

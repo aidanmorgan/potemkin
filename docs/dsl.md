@@ -63,13 +63,17 @@ A boundary file is a YAML mapping. The top-level keys are:
 | `boundary` | `boundary` | `string` | yes | Logical namespace for this aggregate (e.g. `Opportunity`). Used in event routing and cross-boundary dispatch. |
 | `contract_path` | `contractPath` | `string` | yes | The OpenAPI route this boundary handles (e.g. `/opportunities`). |
 | `fallback_override` | `fallbackOverride` | `boolean` | no (default `false`) | When `true`, unmatched commands use a generic CRUD fallback instead of returning an error. |
-| `identity` | `identity` | object | no | Identity generation config for creation intents. |
+| `identity` | `identity` | object | no | Identity generation and key extraction config. |
 | `identity.creation.generate` | `identity.creation.generate` | CEL string | no | Expression producing the aggregate ID on creation. Typically `"$uuidv7()"`. |
+| `identity.key.from` | `identity.key.from` | `path\|query\|header\|payload` | no | Source from which the aggregate key is read on each request. Defaults to the `{id}` path parameter when absent. |
+| `identity.key.name` | `identity.key.name` | string | no | Parameter name (path/query) or header name (lowercased) to read the key from. |
+| `identity.key.pointer` | `identity.key.pointer` | string | no | Dot-path into the JSON body for `from: payload`. Defaults to `name` when omitted. |
 | `query_mapping` | `queryMapping` | `map<string, string>` | no | Maps URL query parameter names to CEL filter expressions. |
 | `event_catalog` | `eventCatalog` | array | no | Defines named event types and their payload templates. |
 | `behaviors` | `behaviors` | array | no | Rules matching commands to events. |
 | `reducers` | `reducers` | array | no | Rules projecting events onto aggregate state. |
 | `initialization` | `initialization` | array | no | Seed records loaded at boot as baseline state. |
+| `strict_schema` | `strictSchema` | boolean | no (default `true`) | When `false`, downgrades the computed-field `INCOMPLETE_DEPS` check from a boot error to a warning. See [`strict_schema`](#strict_schema) below. |
 | `typescript` | — | scan config in `potemkin.yaml` | — | Script discovery is declared in `potemkin.yaml` (`typescript.scan`), not in boundary files. See [Section 10](#10-typescript-scripts-script-tier-1). |
 
 > ⚠️ All YAML keys use `snake_case`. The schema validator (`src/dsl/schema.ts`) maps them to `camelCase` TypeScript fields. Do not use camelCase in YAML.
@@ -92,6 +96,54 @@ identity:
   creation:
     generate: "$uuidv7()"
 ```
+
+### `identity.key`
+
+When the aggregate key is not carried in the standard `{id}` URL path parameter, declare `identity.key` to tell the engine where to find it. Without this block the engine always reads `{id}` from the path.
+
+| Sub-field | Values | Required | Description |
+|-----------|--------|----------|-------------|
+| `from` | `path` \| `query` \| `header` \| `payload` | yes | Source of the key value |
+| `name` | string | yes (for `path`/`query`/`header`) | Path-param name, query-param name, or header name (lowercased) |
+| `pointer` | string | no | Dot-path into the JSON body for `from: payload`. Defaults to `name` when omitted. |
+
+```yaml
+identity:
+  key:
+    from: header
+    name: x-token-id
+```
+
+```yaml
+identity:
+  key:
+    from: payload
+    name: accountId        # used as dot-path when pointer is absent
+```
+
+```yaml
+identity:
+  key:
+    from: payload
+    pointer: nested.accountId   # explicit dot-path overrides name
+```
+
+The `from: payload` source reads via a dot-notation path into the JSON request body. All other sources (`path`, `query`, `header`) use the `name` field as the parameter or header key.
+
+### `strict_schema`
+
+Controls whether an undeclared dependency in a computed field formula is a hard boot error or a warning.
+
+When a boundary declares `state.computed` fields, the engine checks at boot that every `state.<name>` reference in each formula appears in the field's `depends_on` list. If a reference is missing:
+
+- `strict_schema: true` (default) — boot halts with `BOOT_ERR_COMPUTED_FIELD_INCOMPLETE_DEPS`.
+- `strict_schema: false` — the check is downgraded to a `WARN` logged at startup; boot continues.
+
+```yaml
+strict_schema: false   # permit incomplete depends_on during iterative development
+```
+
+Set this to `false` only during iterative development when formulas are still evolving. Leave it at the default (`true`) for production fixtures to catch schema drift at boot.
 
 ### `query_mapping`
 
@@ -356,7 +408,7 @@ Each patch has `op`, `path` (a JSON Pointer like `/status` or `/address/city`), 
 | `increment` | Add the numeric `value` (default `1`) to the number at `path` |
 | `merge` | Shallow-merge the object `value` into the object at `path` |
 | `upsert` | Insert-or-replace an array element matched by a key field |
-| `copy` / `move` | Copy/move from a `from` pointer to `path` |
+| `copy` / `move` | Copy/move from a `from` pointer to `path`; `from` is required (boot rejects if absent) |
 
 **`value` interpolation:** a bare string is a **literal**; only `${...}` is evaluated as CEL (with type preservation — `value: "${0}"` is the number `0`, `value: "ACTIVE"` is the string `"ACTIVE"`). This is why the examples above wrap CEL in `${…}` (e.g. `"${event.payload.id}"`, `"${'NEW'}"`, `"${[]}"`).
 
@@ -393,6 +445,8 @@ patches:
 ```
 
 The projection engine (`src/engine/projection.ts`) auto-vivifies missing intermediate objects/arrays.
+
+**Boot-time path validation.** At boot, every `path` is validated as a well-formed RFC 6901 JSON Pointer. A path that does not start with `/` (or is not the empty string) halts boot with `BOOT_ERR_DSL_SYNTAX`. Paths containing `${...}` are also rejected at boot with `BOOT_ERR_DSL_SYNTAX` — patch paths are never CEL-interpolated. A `${...}` expression in a path would create a literal key with that text rather than evaluating a dynamic expression, silently corrupting state; the boot rejection prevents this. If you need a dynamic target, write separate patch ops for each concrete path.
 
 ---
 
@@ -765,7 +819,7 @@ This is the mechanism that ensures `GET /leads` returns the same seed data after
 |------|-------|
 | `BOOT_ERR_DSL_SYNTAX` | YAML parse failure, invalid field type, `emit` + `emit_when` co-presence, `ts:` in reducer, malformed CEL expression |
 | `BOOT_ERR_DSL_REFERENCE` | `emit` or `on` references an event type not in `event_catalog`; or a `ts:<id>` sentinel resolves to no scanned `@Script` id |
-| `BOOT_ERR_DSL_SCHEMA_VIOLATION` | `assign`/`append` path references unknown field in OpenAPI schema; `schema_ref` cannot be resolved |
+| `BOOT_ERR_DSL_SCHEMA_VIOLATION` | patches `path` references an unknown field in the OpenAPI schema; `schema_ref` cannot be resolved |
 | `BOOT_ERR_DSL_EMIT_REQUIRED` | Behavior has neither `emit` nor `emit_when` |
 | `BOOT_ERR_REMOVED_SYNTAX` | `scripts[].code` (inline TypeScript) present — this form is removed; migrate to `@Script` annotation |
 | `BOOT_ERR_SCRIPT_IN_REDUCER` | `ts:` sentinel found in a reducer-phase field |
@@ -982,7 +1036,7 @@ Poll `GET /_admin/derived/LeadSummary` to retrieve the aggregated map.
 
 ### Avoiding common pitfalls
 
-**Reducer phase ban**: Do not call `$now()`, `$uuidv7()`, or `now()` in `assign`/`append` expressions. Use `event.payload.someTimestamp` instead, computed during event hydration.
+**Reducer phase ban**: Do not call `$now()`, `$uuidv7()`, or `now()` in reducer `patches[].value` expressions. Use `event.payload.someTimestamp` instead, computed during event hydration.
 
 **Secondary command `target_id` resolution**: The `target_id` expression is evaluated against the post-projection shadow graph. If the primary event modifies state that `target_id` depends on, the projection happens first. Verify the expression against the expected shadow state.
 
@@ -1033,7 +1087,7 @@ The schema validator (`src/dsl/schema.ts`) accepts both `snake_case` and `camelC
 - `typescript` (scan globs declared in `potemkin.yaml`, not boundary files)
 
 **Behavior `match` (required):**
-- `intent`
+- `operationId`
 - `condition`
 
 **Behavior (required — one of):**
@@ -1060,11 +1114,11 @@ The boot sequence performs the following validation steps in order:
 
 4. **Cross-reference validation** — Every `emit` value and every `on` value must match an event type key in the boundary's `event_catalog`. `ts:` sentinels must resolve to a `@Script(id)` class discovered via the `typescript.scan` globs. Failures produce `BOOT_ERR_DSL_REFERENCE`.
 
-5. **Reducer phase check** — `ts:` sentinels in `reducers[].assign` or `reducers[].append` produce `BOOT_ERR_SCRIPT_IN_REDUCER`.
+5. **Reducer phase check** — `ts:` sentinels in `reducers[].patches[].value` produce `BOOT_ERR_SCRIPT_IN_REDUCER`.
 
 6. **Contract binding** — `contract_path` values are validated against the loaded OpenAPI document. `schema_ref` values are resolved against `#/components/schemas/`. Failures produce `BOOT_ERR_DSL_SCHEMA_VIOLATION`.
 
-7. **Object-Graph Schema Registry** — `assign`/`append` dot-paths are validated against the entity schema derived from the OpenAPI components. Unknown paths produce `BOOT_ERR_DSL_SCHEMA_VIOLATION`.
+7. **Object-Graph Schema Registry** — RFC 6901 `path` pointers in `reducers[].patches` are validated against the entity schema derived from the OpenAPI components. Unknown paths produce `BOOT_ERR_DSL_SCHEMA_VIOLATION`.
 
 8. **Script discovery** — files matching the `typescript.scan` globs are imported; each `@Script(id)` class registers itself. `ts:<id>` sentinels are resolved against the registry. Unknown ids produce `BOOT_ERR_DSL_REFERENCE`. Presence of the removed `scripts[].code` field produces `BOOT_ERR_REMOVED_SYNTAX`.
 
@@ -1974,7 +2028,7 @@ event_catalog:
 
 **Merge precedence:**
 
-- **Local wins** — a host-declared event type, reducer `on`, or behavior name overrides any identically-keyed included entry (the included entry is silently dropped).
+- **Local wins** — a host-declared event type or behavior name overrides any identically-keyed included entry (the included entry is silently dropped).
 - **Included fragments coexist** — when no local override exists, included entries are appended after the host's own declarations, in the order the `include:` array is listed.
 - **Clash between two included fragments** — if two included components contribute the same event `type` or behavior `name` and neither is locally overridden, boot fails with `BOOT_ERR_DSL_SYNTAX` naming both sources.
 - **Reducer `on` is not a unique key** — multiple included reducers with the same `on` value all coexist and all run when the event fires. No clash error is raised for `on` collisions.
