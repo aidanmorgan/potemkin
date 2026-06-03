@@ -1,0 +1,40 @@
+# Analytics boundary — hop 6 in the deep chain (depth > 5).
+#
+# Reacts to Dispatch:DispatchConfirmed and records an AnalyticsRecorded aggregate.
+# This is the terminal node proving 6 hops from source without hitting any depth cap.
+
+boundary: Analytics
+contract_path: /analytics/{id}
+fallback_override: false
+
+identity:
+  creation:
+    generate: "$uuidv7()"
+
+event_catalog:
+  - type: AnalyticsRecorded
+    payload_template:
+      id:         "$uuidv7()"
+      dispatchId: "event.aggregateId"
+      recorded:   "true"
+
+behaviors: []
+
+reducers:
+  - on: AnalyticsRecorded
+    patches:
+      - op: add
+        path: /id
+        value: "${event.payload.id}"
+      - op: add
+        path: /dispatchId
+        value: "${event.payload.dispatchId}"
+      - op: add
+        path: /recorded
+        value: "${event.payload.recorded}"
+
+reactions:
+  - name: record-analytics-on-dispatch-confirmed
+    on: "Dispatch:DispatchConfirmed"
+    intent: creation
+    emit: AnalyticsRecorded

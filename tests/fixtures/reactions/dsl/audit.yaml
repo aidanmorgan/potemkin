@@ -1,0 +1,40 @@
+# Audit boundary — fan-out leg 3 (hop 1, independent terminal leg).
+#
+# Reacts to Order:OrderPlaced and records an AuditRecorded aggregate.
+# Terminal: nothing reacts to AuditRecorded.
+
+boundary: Audit
+contract_path: /audits/{id}
+fallback_override: false
+
+identity:
+  creation:
+    generate: "$uuidv7()"
+
+event_catalog:
+  - type: AuditRecorded
+    payload_template:
+      id:      "$uuidv7()"
+      orderId: "event.aggregateId"
+      action:  "'ORDER_PLACED'"
+
+behaviors: []
+
+reducers:
+  - on: AuditRecorded
+    patches:
+      - op: add
+        path: /id
+        value: "${event.payload.id}"
+      - op: add
+        path: /orderId
+        value: "${event.payload.orderId}"
+      - op: add
+        path: /action
+        value: "${event.payload.action}"
+
+reactions:
+  - name: record-audit-on-order-placed
+    on: "Order:OrderPlaced"
+    intent: creation
+    emit: AuditRecorded

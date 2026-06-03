@@ -1,0 +1,39 @@
+# Fulfillment boundary — hop 2 in the deep chain.
+#
+# Reacts to Inventory:InventoryReserved and creates a FulfillmentScheduled aggregate.
+
+boundary: Fulfillment
+contract_path: /fulfillments/{id}
+fallback_override: false
+
+identity:
+  creation:
+    generate: "$uuidv7()"
+
+event_catalog:
+  - type: FulfillmentScheduled
+    payload_template:
+      id:      "$uuidv7()"
+      orderId: "event.payload.orderId"
+      status:  "'SCHEDULED'"
+
+behaviors: []
+
+reducers:
+  - on: FulfillmentScheduled
+    patches:
+      - op: add
+        path: /id
+        value: "${event.payload.id}"
+      - op: add
+        path: /orderId
+        value: "${event.payload.orderId}"
+      - op: add
+        path: /status
+        value: "${event.payload.status}"
+
+reactions:
+  - name: schedule-fulfillment-on-inventory-reserved
+    on: "Inventory:InventoryReserved"
+    intent: creation
+    emit: FulfillmentScheduled

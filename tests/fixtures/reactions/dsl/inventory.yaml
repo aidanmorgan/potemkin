@@ -1,0 +1,40 @@
+# Inventory boundary — fan-out leg 1 (hop 1 in the deep chain).
+#
+# Reacts to Order:OrderPlaced and emits InventoryReserved on a new aggregate.
+# InventoryReserved in turn triggers Fulfillment (hop 2 in the chain).
+
+boundary: Inventory
+contract_path: /inventory/{id}
+fallback_override: false
+
+identity:
+  creation:
+    generate: "$uuidv7()"
+
+event_catalog:
+  - type: InventoryReserved
+    payload_template:
+      id:      "$uuidv7()"
+      orderId: "event.aggregateId"
+      status:  "'RESERVED'"
+
+behaviors: []
+
+reducers:
+  - on: InventoryReserved
+    patches:
+      - op: add
+        path: /id
+        value: "${event.payload.id}"
+      - op: add
+        path: /orderId
+        value: "${event.payload.orderId}"
+      - op: add
+        path: /status
+        value: "${event.payload.status}"
+
+reactions:
+  - name: reserve-inventory-on-order-placed
+    on: "Order:OrderPlaced"
+    intent: creation
+    emit: InventoryReserved

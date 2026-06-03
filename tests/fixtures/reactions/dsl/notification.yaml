@@ -1,0 +1,41 @@
+# Notification boundary — fan-out leg 2 (hop 1, independent of the chain).
+#
+# Reacts to Order:OrderPlaced and creates a NotificationQueued aggregate.
+# This is a terminal reaction (nothing reacts to NotificationQueued),
+# proving fan-out breadth independent of chain depth.
+
+boundary: Notification
+contract_path: /notifications/{id}
+fallback_override: false
+
+identity:
+  creation:
+    generate: "$uuidv7()"
+
+event_catalog:
+  - type: NotificationQueued
+    payload_template:
+      id:      "$uuidv7()"
+      orderId: "event.aggregateId"
+      channel: "'EMAIL'"
+
+behaviors: []
+
+reducers:
+  - on: NotificationQueued
+    patches:
+      - op: add
+        path: /id
+        value: "${event.payload.id}"
+      - op: add
+        path: /orderId
+        value: "${event.payload.orderId}"
+      - op: add
+        path: /channel
+        value: "${event.payload.channel}"
+
+reactions:
+  - name: queue-notification-on-order-placed
+    on: "Order:OrderPlaced"
+    intent: creation
+    emit: NotificationQueued

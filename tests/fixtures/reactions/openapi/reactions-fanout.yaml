@@ -1,0 +1,291 @@
+openapi: 3.0.3
+info:
+  title: Reactions Fan-Out Example
+  version: "1.0.0"
+
+# Canonical example: one inbound operation fans out to >=3 boundaries via reactions,
+# with a chain 6 hops deep. Reactions are declared ONLY in the reacting boundaries'
+# files — the source boundary (Order) contains zero reactions.
+#
+# Chain:
+#   POST /orders  →  OrderPlaced (Order, hop 0)
+#     ├── Inventory reacts     →  InventoryReserved (hop 1) [fan-out leg 1]
+#     │     └── Fulfillment reacts  →  FulfillmentScheduled (hop 2)
+#     │           └── Shipping reacts    →  ShippingLabelCreated (hop 3)
+#     │                 └── Tracking reacts   →  TrackingStarted (hop 4)
+#     │                       └── Dispatch reacts  →  DispatchConfirmed (hop 5)
+#     │                             └── Analytics reacts  →  AnalyticsRecorded (hop 6)
+#     ├── Notification reacts  →  NotificationQueued (hop 1) [fan-out leg 2]
+#     └── Audit reacts         →  AuditRecorded (hop 1) [fan-out leg 3]
+#
+# Total: 9 events in a single UoW. Hop depth 6 > 5 proves the depth cap does not apply.
+
+paths:
+  /orders:
+    post:
+      operationId: createOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                customerId:
+                  type: string
+                productId:
+                  type: string
+      responses:
+        "201":
+          description: Order created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+
+  /orders/{id}:
+    get:
+      operationId: getOrder
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+
+  /inventory/{id}:
+    get:
+      operationId: getInventory
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Inventory"
+
+  /notifications/{id}:
+    get:
+      operationId: getNotification
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Notification"
+
+  /audits/{id}:
+    get:
+      operationId: getAudit
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Audit"
+
+  /fulfillments/{id}:
+    get:
+      operationId: getFulfillment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Fulfillment"
+
+  /shipping/{id}:
+    get:
+      operationId: getShipping
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Shipping"
+
+  /tracking/{id}:
+    get:
+      operationId: getTracking
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tracking"
+
+  /dispatch/{id}:
+    get:
+      operationId: getDispatch
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dispatch"
+
+  /analytics/{id}:
+    get:
+      operationId: getAnalytics
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Analytics"
+
+components:
+  schemas:
+    Order:
+      type: object
+      properties:
+        id:
+          type: string
+        customerId:
+          type: string
+        productId:
+          type: string
+        status:
+          type: string
+
+    Inventory:
+      type: object
+      properties:
+        id:
+          type: string
+        orderId:
+          type: string
+        status:
+          type: string
+
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+        orderId:
+          type: string
+        channel:
+          type: string
+
+    Audit:
+      type: object
+      properties:
+        id:
+          type: string
+        orderId:
+          type: string
+        action:
+          type: string
+
+    Fulfillment:
+      type: object
+      properties:
+        id:
+          type: string
+        orderId:
+          type: string
+        status:
+          type: string
+
+    Shipping:
+      type: object
+      properties:
+        id:
+          type: string
+        fulfillmentId:
+          type: string
+        labelRef:
+          type: string
+
+    Tracking:
+      type: object
+      properties:
+        id:
+          type: string
+        shippingId:
+          type: string
+        status:
+          type: string
+
+    Dispatch:
+      type: object
+      properties:
+        id:
+          type: string
+        trackingId:
+          type: string
+        confirmed:
+          type: boolean
+
+    Analytics:
+      type: object
+      properties:
+        id:
+          type: string
+        dispatchId:
+          type: string
+        recorded:
+          type: boolean

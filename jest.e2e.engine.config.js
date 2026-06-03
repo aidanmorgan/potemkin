@@ -28,6 +28,7 @@ const engineOnlySuites = [
   '63-saga-compensation',
   '64-webhook-hmac',
   '65-latency',
+  '66-reactions-fanout',
 ];
 
 /** @type {import('ts-jest').JestConfigWithTsJest} */

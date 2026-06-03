@@ -1,0 +1,39 @@
+# Dispatch boundary — hop 5 in the deep chain.
+#
+# Reacts to Tracking:TrackingStarted and creates a DispatchConfirmed aggregate.
+
+boundary: Dispatch
+contract_path: /dispatch/{id}
+fallback_override: false
+
+identity:
+  creation:
+    generate: "$uuidv7()"
+
+event_catalog:
+  - type: DispatchConfirmed
+    payload_template:
+      id:         "$uuidv7()"
+      trackingId: "event.aggregateId"
+      confirmed:  "true"
+
+behaviors: []
+
+reducers:
+  - on: DispatchConfirmed
+    patches:
+      - op: add
+        path: /id
+        value: "${event.payload.id}"
+      - op: add
+        path: /trackingId
+        value: "${event.payload.trackingId}"
+      - op: add
+        path: /confirmed
+        value: "${event.payload.confirmed}"
+
+reactions:
+  - name: confirm-dispatch-on-tracking-started
+    on: "Tracking:TrackingStarted"
+    intent: creation
+    emit: DispatchConfirmed

@@ -1,0 +1,39 @@
+# Shipping boundary — hop 3 in the deep chain.
+#
+# Reacts to Fulfillment:FulfillmentScheduled and creates a ShippingLabelCreated aggregate.
+
+boundary: Shipping
+contract_path: /shipping/{id}
+fallback_override: false
+
+identity:
+  creation:
+    generate: "$uuidv7()"
+
+event_catalog:
+  - type: ShippingLabelCreated
+    payload_template:
+      id:            "$uuidv7()"
+      fulfillmentId: "event.aggregateId"
+      labelRef:      "'LABEL-PENDING'"
+
+behaviors: []
+
+reducers:
+  - on: ShippingLabelCreated
+    patches:
+      - op: add
+        path: /id
+        value: "${event.payload.id}"
+      - op: add
+        path: /fulfillmentId
+        value: "${event.payload.fulfillmentId}"
+      - op: add
+        path: /labelRef
+        value: "${event.payload.labelRef}"
+
+reactions:
+  - name: create-shipping-label-on-fulfillment-scheduled
+    on: "Fulfillment:FulfillmentScheduled"
+    intent: creation
+    emit: ShippingLabelCreated

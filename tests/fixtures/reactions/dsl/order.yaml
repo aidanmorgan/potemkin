@@ -1,0 +1,48 @@
+# Source boundary: Order.
+#
+# This file declares ONLY the create operation and its event + reducer.
+# There are ZERO reactions here — zero knowledge of Inventory, Notification,
+# Audit, Fulfillment, Shipping, Tracking, Dispatch, or Analytics.
+#
+# Every downstream effect is declared entirely in the reacting boundaries'
+# own files. This is the choreography property: the source never names its
+# subscribers.
+
+boundary: Order
+contract_path: /orders
+fallback_override: false
+
+identity:
+  creation:
+    generate: "$uuidv7()"
+
+event_catalog:
+  - type: OrderPlaced
+    payload_template:
+      id:         "command.targetId"
+      customerId: "command.payload.customerId"
+      productId:  "command.payload.productId"
+      status:     "'PLACED'"
+
+behaviors:
+  - name: place-order
+    match:
+      operationId: createOrder
+      condition: "true"
+    emit: OrderPlaced
+
+reducers:
+  - on: OrderPlaced
+    patches:
+      - op: add
+        path: /id
+        value: "${event.payload.id}"
+      - op: add
+        path: /customerId
+        value: "${event.payload.customerId}"
+      - op: add
+        path: /productId
+        value: "${event.payload.productId}"
+      - op: add
+        path: /status
+        value: "${event.payload.status}"

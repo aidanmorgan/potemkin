@@ -1,0 +1,39 @@
+# Tracking boundary — hop 4 in the deep chain.
+#
+# Reacts to Shipping:ShippingLabelCreated and creates a TrackingStarted aggregate.
+
+boundary: Tracking
+contract_path: /tracking/{id}
+fallback_override: false
+
+identity:
+  creation:
+    generate: "$uuidv7()"
+
+event_catalog:
+  - type: TrackingStarted
+    payload_template:
+      id:         "$uuidv7()"
+      shippingId: "event.aggregateId"
+      status:     "'IN_TRANSIT'"
+
+behaviors: []
+
+reducers:
+  - on: TrackingStarted
+    patches:
+      - op: add
+        path: /id
+        value: "${event.payload.id}"
+      - op: add
+        path: /shippingId
+        value: "${event.payload.shippingId}"
+      - op: add
+        path: /status
+        value: "${event.payload.status}"
+
+reactions:
+  - name: start-tracking-on-shipping-label-created
+    on: "Shipping:ShippingLabelCreated"
+    intent: creation
+    emit: TrackingStarted
