@@ -17,11 +17,22 @@
  *  9. Two use: entries for the same component yield two DISTINCT BoundaryConfigs.
  * 10. Parameter substitution is applied ({{token}} resolved in event catalog).
  * 11. Linked boundary is registered in both byBoundaryName and byContractPath.
+ *
+ * C5 coverage (cross-component reference rewriting):
+ * 12. Self reaction.on ("ComponentName:Event") rewrites to "as:Event".
+ * 13. Self reaction.boundary rewrites to as.
+ * 14. Bare reaction.on ("Event" with no boundary prefix) is left unchanged.
+ * 15. dispatch_commands.boundary targeting sibling alias rewrites to bind-mapped name.
+ * 16. dispatch_commands.boundary targeting self (component name) rewrites to as.
+ * 17. Unbound sibling alias in dispatch_commands throws BOOT_ERR_DSL_REFERENCE.
+ * 18. Unbound sibling alias in reaction.on throws BOOT_ERR_DSL_REFERENCE.
+ * 19. Two instantiations of the same component with different bind maps wire to
+ *     different concrete sibling targets (the core reuse property).
  */
 
 import { linkComponents } from '../../../src/dsl/componentLinker';
 import { BootError } from '../../../src/errors';
-import type { BoundaryConfig, ComponentDefinition, UseEntry } from '../../../src/dsl/types';
+import type { BoundaryConfig, ComponentDefinition, ReactionRule, SecondaryCommandSpec, UseEntry } from '../../../src/dsl/types';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -348,5 +359,375 @@ describe('linkComponents — parameter substitution', () => {
     );
 
     expect(result[0]!.reducers[0]!.patches![0]!.path).toBe('/status');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C5 tests: cross-component reference rewriting
+// ---------------------------------------------------------------------------
+
+// Helper: a component with a reaction using a qualified on trigger and a
+// boundary field (both referencing the component's own name = SELF).
+function makeComponentWithSelfReaction(componentName: string = 'OrderEntity'): ComponentDefinition {
+  const reaction: ReactionRule = {
+    on: `${componentName}:OrderPlaced`,
+    boundary: componentName,
+    emit: 'OrderConfirmed',
+  };
+  return {
+    kind: 'component',
+    name: componentName,
+    eventCatalog: [
+      { type: 'OrderPlaced', payloadTemplate: {} },
+      { type: 'OrderConfirmed', payloadTemplate: {} },
+    ],
+    reducers: [],
+    behaviors: [],
+    reactions: [reaction],
+  };
+}
+
+// Helper: a component whose behavior dispatches a secondary command to a sibling.
+function makeComponentWithSiblingDispatch(
+  componentName: string = 'OrderEntity',
+  siblingAlias: string = 'Inventory',
+): ComponentDefinition {
+  const dispatchCmd: SecondaryCommandSpec = {
+    boundary: siblingAlias,
+    intent: 'mutation',
+    operationId: 'reserveStock',
+    targetId: 'event.payload.itemId',
+  };
+  return {
+    kind: 'component',
+    name: componentName,
+    eventCatalog: [{ type: 'OrderPlaced', payloadTemplate: {} }],
+    reducers: [],
+    behaviors: [
+      {
+        name: 'place-order',
+        match: { operationId: 'placeOrder', condition: 'true' },
+        emit: 'OrderPlaced',
+        dispatchCommands: [dispatchCmd],
+      },
+    ],
+  };
+}
+
+// Helper: a component whose behavior dispatches a secondary command to SELF.
+function makeComponentWithSelfDispatch(componentName: string = 'OrderEntity'): ComponentDefinition {
+  const dispatchCmd: SecondaryCommandSpec = {
+    boundary: componentName,
+    intent: 'mutation',
+    operationId: 'confirmOrder',
+    targetId: 'event.payload.orderId',
+  };
+  return {
+    kind: 'component',
+    name: componentName,
+    eventCatalog: [{ type: 'OrderPlaced', payloadTemplate: {} }],
+    reducers: [],
+    behaviors: [
+      {
+        name: 'place-order',
+        match: { operationId: 'placeOrder', condition: 'true' },
+        emit: 'OrderPlaced',
+        dispatchCommands: [dispatchCmd],
+      },
+    ],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// C5.1: Self reaction.on and reaction.boundary rewrite to `as`
+// ---------------------------------------------------------------------------
+
+describe('C5 — self reaction.on rewrites to as:Event', () => {
+  it('rewrites "ComponentName:Event" in reaction.on to "as:Event"', () => {
+    const component = makeComponentWithSelfReaction('OrderEntity');
+    const { byBoundaryName, byContractPath } = emptyMaps();
+
+    const result = linkComponents(
+      [makeUseEntry({ component: 'OrderEntity', as: 'Order', contractPath: '/orders' })],
+      { OrderEntity: component },
+      byBoundaryName,
+      byContractPath,
+    );
+
+    expect(result[0]!.reactions).toHaveLength(1);
+    expect(result[0]!.reactions![0]!.on).toBe('Order:OrderPlaced');
+  });
+
+  it('rewrites reaction.boundary from component name to as', () => {
+    const component = makeComponentWithSelfReaction('OrderEntity');
+    const { byBoundaryName, byContractPath } = emptyMaps();
+
+    const result = linkComponents(
+      [makeUseEntry({ component: 'OrderEntity', as: 'Order', contractPath: '/orders' })],
+      { OrderEntity: component },
+      byBoundaryName,
+      byContractPath,
+    );
+
+    expect(result[0]!.reactions![0]!.boundary).toBe('Order');
+  });
+
+  it('applies the correct as name for each of two instantiations', () => {
+    const component = makeComponentWithSelfReaction('OrderEntity');
+    const { byBoundaryName, byContractPath } = emptyMaps();
+
+    const result = linkComponents(
+      [
+        makeUseEntry({ component: 'OrderEntity', as: 'DomesticOrder', contractPath: '/domestic-orders' }),
+        makeUseEntry({ component: 'OrderEntity', as: 'InternationalOrder', contractPath: '/international-orders' }),
+      ],
+      { OrderEntity: component },
+      byBoundaryName,
+      byContractPath,
+    );
+
+    expect(result[0]!.reactions![0]!.on).toBe('DomesticOrder:OrderPlaced');
+    expect(result[0]!.reactions![0]!.boundary).toBe('DomesticOrder');
+    expect(result[1]!.reactions![0]!.on).toBe('InternationalOrder:OrderPlaced');
+    expect(result[1]!.reactions![0]!.boundary).toBe('InternationalOrder');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C5.2: Bare reaction.on (no boundary prefix) is left unchanged
+// ---------------------------------------------------------------------------
+
+describe('C5 — bare reaction.on is left unchanged', () => {
+  it('leaves "Event" (no colon) in reaction.on unchanged', () => {
+    const component: ComponentDefinition = {
+      kind: 'component',
+      name: 'OrderEntity',
+      eventCatalog: [{ type: 'OrderPlaced', payloadTemplate: {} }],
+      reducers: [],
+      behaviors: [],
+      reactions: [{ on: 'OrderPlaced', boundary: 'OrderEntity', emit: 'OrderConfirmed' }],
+    };
+    const { byBoundaryName, byContractPath } = emptyMaps();
+
+    const result = linkComponents(
+      [makeUseEntry({ component: 'OrderEntity', as: 'Order', contractPath: '/orders' })],
+      { OrderEntity: component },
+      byBoundaryName,
+      byContractPath,
+    );
+
+    expect(result[0]!.reactions![0]!.on).toBe('OrderPlaced');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C5.3: dispatch_commands.boundary rewrites via self and bind
+// ---------------------------------------------------------------------------
+
+describe('C5 — dispatch_commands.boundary rewrites to as (self)', () => {
+  it('rewrites a self-targeting dispatch_commands.boundary to as', () => {
+    const component = makeComponentWithSelfDispatch('OrderEntity');
+    const { byBoundaryName, byContractPath } = emptyMaps();
+
+    const result = linkComponents(
+      [makeUseEntry({ component: 'OrderEntity', as: 'Order', contractPath: '/orders' })],
+      { OrderEntity: component },
+      byBoundaryName,
+      byContractPath,
+    );
+
+    expect(result[0]!.behaviors[0]!.dispatchCommands![0]!.boundary).toBe('Order');
+  });
+});
+
+describe('C5 — dispatch_commands.boundary rewrites sibling alias via bind', () => {
+  it('rewrites a sibling alias to the concrete name from bind', () => {
+    const component = makeComponentWithSiblingDispatch('OrderEntity', 'Inventory');
+    const { byBoundaryName, byContractPath } = emptyMaps();
+
+    const result = linkComponents(
+      [makeUseEntry({
+        component: 'OrderEntity',
+        as: 'Order',
+        contractPath: '/orders',
+        bind: { Inventory: 'WarehouseInventory' },
+      })],
+      { OrderEntity: component },
+      byBoundaryName,
+      byContractPath,
+    );
+
+    expect(result[0]!.behaviors[0]!.dispatchCommands![0]!.boundary).toBe('WarehouseInventory');
+  });
+});
+
+describe('C5 — two instantiations with different bind maps wire to different concrete siblings', () => {
+  it('each instance dispatches to its own bound sibling', () => {
+    const component = makeComponentWithSiblingDispatch('OrderEntity', 'Inventory');
+    const { byBoundaryName, byContractPath } = emptyMaps();
+
+    const result = linkComponents(
+      [
+        makeUseEntry({
+          component: 'OrderEntity',
+          as: 'DomesticOrder',
+          contractPath: '/domestic-orders',
+          bind: { Inventory: 'DomesticInventory' },
+        }),
+        makeUseEntry({
+          component: 'OrderEntity',
+          as: 'InternationalOrder',
+          contractPath: '/international-orders',
+          bind: { Inventory: 'InternationalInventory' },
+        }),
+      ],
+      { OrderEntity: component },
+      byBoundaryName,
+      byContractPath,
+    );
+
+    expect(result[0]!.behaviors[0]!.dispatchCommands![0]!.boundary).toBe('DomesticInventory');
+    expect(result[1]!.behaviors[0]!.dispatchCommands![0]!.boundary).toBe('InternationalInventory');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C5.4: Unbound sibling alias → BOOT_ERR_DSL_REFERENCE
+// ---------------------------------------------------------------------------
+
+describe('C5 — unbound sibling in dispatch_commands throws BOOT_ERR_DSL_REFERENCE', () => {
+  it('throws BOOT_ERR_DSL_REFERENCE when dispatch boundary alias is not in bind', () => {
+    const component = makeComponentWithSiblingDispatch('OrderEntity', 'Inventory');
+    const { byBoundaryName, byContractPath } = emptyMaps();
+
+    expect(() =>
+      linkComponents(
+        [makeUseEntry({
+          component: 'OrderEntity',
+          as: 'Order',
+          contractPath: '/orders',
+          // bind is omitted — Inventory is unbound
+        })],
+        { OrderEntity: component },
+        byBoundaryName,
+        byContractPath,
+      ),
+    ).toThrow(expect.objectContaining({ code: 'BOOT_ERR_DSL_REFERENCE' }));
+  });
+
+  it('error message names the unbound alias', () => {
+    const component = makeComponentWithSiblingDispatch('OrderEntity', 'Inventory');
+    const { byBoundaryName, byContractPath } = emptyMaps();
+
+    try {
+      linkComponents(
+        [makeUseEntry({ component: 'OrderEntity', as: 'Order', contractPath: '/orders' })],
+        { OrderEntity: component },
+        byBoundaryName,
+        byContractPath,
+      );
+      fail('expected BootError');
+    } catch (e) {
+      expect(e).toBeInstanceOf(BootError);
+      expect((e as BootError).message).toContain('Inventory');
+    }
+  });
+});
+
+describe('C5 — unbound sibling in reaction.on throws BOOT_ERR_DSL_REFERENCE', () => {
+  it('throws BOOT_ERR_DSL_REFERENCE when a reaction.on boundary prefix is not self and not in bind', () => {
+    const component: ComponentDefinition = {
+      kind: 'component',
+      name: 'OrderEntity',
+      eventCatalog: [{ type: 'StockReserved', payloadTemplate: {} }],
+      reducers: [],
+      behaviors: [],
+      reactions: [
+        // Trigger from sibling "Inventory" — but no bind supplied
+        { on: 'Inventory:StockReserved', boundary: 'OrderEntity', emit: 'StockReserved' },
+      ],
+    };
+    const { byBoundaryName, byContractPath } = emptyMaps();
+
+    expect(() =>
+      linkComponents(
+        [makeUseEntry({ component: 'OrderEntity', as: 'Order', contractPath: '/orders' })],
+        { OrderEntity: component },
+        byBoundaryName,
+        byContractPath,
+      ),
+    ).toThrow(expect.objectContaining({ code: 'BOOT_ERR_DSL_REFERENCE' }));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C5.8: a bind alias that shadows the component's own name is rejected
+// ---------------------------------------------------------------------------
+
+describe('C5 — bind alias shadowing the component self-name is rejected', () => {
+  it('throws BOOT_ERR_DSL_SYNTAX when a bind key equals the component name', () => {
+    const component = makeComponentWithSelfReaction('OrderEntity');
+    const { byBoundaryName, byContractPath } = emptyMaps();
+
+    expect(() =>
+      linkComponents(
+        [
+          makeUseEntry({
+            component: 'OrderEntity',
+            as: 'Order',
+            contractPath: '/orders',
+            bind: { OrderEntity: 'SomethingElse' },
+          }),
+        ],
+        { OrderEntity: component },
+        byBoundaryName,
+        byContractPath,
+      ),
+    ).toThrow(expect.objectContaining({ code: 'BOOT_ERR_DSL_SYNTAX' }));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C5.9: parameter substitution runs BEFORE reference rewriting
+// (a parameterised sibling boundary name is resolved by C2, then rewritten via bind)
+// ---------------------------------------------------------------------------
+
+describe('C5 — parameterised boundary reference is substituted then rewritten', () => {
+  it('resolves {{sib}} via parameters, then rewrites the resulting alias via bind', () => {
+    const component: ComponentDefinition = {
+      kind: 'component',
+      name: 'OrderEntity',
+      parameters: { sib: { type: 'string', required: true } },
+      eventCatalog: [{ type: 'OrderPlaced', payloadTemplate: {} }],
+      reducers: [],
+      behaviors: [
+        {
+          name: 'place-order',
+          match: { operationId: 'placeOrder', condition: 'true' },
+          emit: 'OrderPlaced',
+          dispatchCommands: [
+            { boundary: '{{sib}}', intent: 'mutation', operationId: 'reserveStock', targetId: 'event.payload.itemId' },
+          ],
+        },
+      ],
+    };
+    const { byBoundaryName, byContractPath } = emptyMaps();
+
+    const result = linkComponents(
+      [
+        makeUseEntry({
+          component: 'OrderEntity',
+          as: 'Order',
+          contractPath: '/orders',
+          with: { sib: 'Warehouse' },        // {{sib}} -> "Warehouse" (C2)
+          bind: { Warehouse: 'ConcreteWarehouse' }, // "Warehouse" -> "ConcreteWarehouse" (C5)
+        }),
+      ],
+      { OrderEntity: component },
+      byBoundaryName,
+      byContractPath,
+    );
+
+    expect(result[0]!.behaviors![0]!.dispatchCommands![0]!.boundary).toBe('ConcreteWarehouse');
   });
 });
