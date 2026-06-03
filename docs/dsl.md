@@ -26,7 +26,7 @@ The engine is a CQRS/Event Sourcing runtime. The DSL never directly mutates stat
 
 ### What the DSL is not
 
-- It is **not** a programming language. Complex logic should be expressed in CEL or, as a last resort, inline TypeScript scripts (see [Section 10](#10-inline-typescript-scripts-tier-1)).
+- It is **not** a programming language. Complex logic should be expressed in CEL or, as a last resort, a `@Script`-annotated TypeScript class discovered at boot (see [Section 10](#10-typescript-scripts-script-tier-1)).
 - It is **not** a database schema. Structural shape is owned by the OpenAPI contract (`contract_path`).
 - It is **not** executed at request time by an interpreter. All DSL expressions are compiled at boot and validated against the contract before the server accepts traffic.
 
@@ -47,7 +47,7 @@ Multiple boundary files may coexist; the engine merges them into a single execut
 
 | Phase | What happens |
 |-------|-------------|
-| **Boot** | YAML parsed, CEL compiled, cross-references validated, scripts transpiled, OpenAPI bound, initialization data seeded |
+| **Boot** | YAML parsed, CEL compiled, cross-references validated, `@Script` classes discovered via scan, OpenAPI bound, initialization data seeded |
 | **Runtime** | HTTP request arrives, command assembled, pattern matcher evaluates behaviors, events staged, projected, committed |
 
 Any error in a boot-time concern halts startup with a `BOOT_ERR_*` code (see [Section 12](#12-error-reference)).
@@ -70,7 +70,7 @@ A boundary file is a YAML mapping. The top-level keys are:
 | `behaviors` | `behaviors` | array | no | Rules matching commands to events. |
 | `reducers` | `reducers` | array | no | Rules projecting events onto aggregate state. |
 | `initialization` | `initialization` | array | no | Seed records loaded at boot as baseline state. |
-| `scripts` | `scripts` | array | no | Named TypeScript modules (Tier 1 escape hatch). |
+| `typescript` | — | scan config in `potemkin.yaml` | — | Script discovery is declared in `potemkin.yaml` (`typescript.scan`), not in boundary files. See [Section 10](#10-typescript-scripts-script-tier-1). |
 
 > ⚠️ All YAML keys use `snake_case`. The schema validator (`src/dsl/schema.ts`) maps them to `camelCase` TypeScript fields. Do not use camelCase in YAML.
 
@@ -374,7 +374,7 @@ Reducers **must not** use non-deterministic functions. The following are banned 
 
 - `$uuidv7()` / `$now()` / `now()` / `timestamp()`
 
-The `ts:` script sentinel is also banned in reducer fields at boot time (`BOOT_ERR_DSL_SYNTAX` / `BOOT_ERR_SCRIPT_IN_REDUCER`).
+The `ts:` script sentinel is also banned in reducer fields at boot time (`BOOT_ERR_SCRIPT_IN_REDUCER`).
 
 This restriction preserves event-sourcing determinism: replaying the event log from epoch must always produce identical state.
 
@@ -622,36 +622,62 @@ See `src/projections/engine.ts` for the implementation.
 
 ---
 
-## 10. Inline TypeScript scripts (Tier 1)
+## 10. TypeScript scripts (`@Script`) (Tier 1)
 
-When CEL is not expressive enough for a particular computation, you may declare named TypeScript modules in the `scripts[]` block and reference them with a `ts:<name>` sentinel anywhere a CEL expression is accepted.
+When CEL is not expressive enough for a particular computation, write a `@Script`-annotated TypeScript class in a scanned `.ts` file and reference it with a `ts:<id>` sentinel anywhere a CEL expression is accepted.
 
-### Declaration
+> ⚠️ The legacy inline `scripts[].code` form is **removed**. Using it halts boot with `BOOT_ERR_REMOVED_SYNTAX`. Migrate to the `@Script` annotation approach described here.
 
-```yaml
-scripts:
-  - name: computeScore
-    code: |
-      export default function(ctx) {
-        const source = ctx.command.payload.source;
-        const baseScore = { REFERRAL: 80, PARTNER: 70, WEBSITE: 50, COLD_LIST: 20 };
-        return baseScore[source] ?? 30;
-      }
+### Authoring a script
+
+Scripts live in `.ts` files that are discovered at boot via the `typescript.scan` glob in `potemkin.yaml`. Import `Script` and `ScriptContext` from `@potemkin/sdk`, decorate the class with `@Script('id')`, and implement a `run(ctx)` method:
+
+```typescript
+// scripts/computeScore.ts  (picked up by typescript.scan)
+import { Script, type ScriptContext } from '@potemkin/sdk';
+
+@Script('computeScore')
+export class ComputeScore {
+  run(ctx: ScriptContext): number {
+    const base: Record<string, number> = { REFERRAL: 80, WEBSITE: 50, PARTNER: 70, COLD_LIST: 20 };
+    return base[ctx.command.payload['source'] as string] ?? 30;
+  }
+}
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | yes | Unique identifier within the boundary. Referenced as `ts:<name>`. |
-| `code` | string | yes | TypeScript source. Must have a default-exported function. |
+A functional helper is also available for parity with the `reducer()` helper:
+
+```typescript
+import { defineScript, type ScriptContext } from '@potemkin/sdk';
+
+export const computeScore = defineScript('computeScore', (ctx: ScriptContext) => {
+  const base: Record<string, number> = { REFERRAL: 80, WEBSITE: 50, PARTNER: 70, COLD_LIST: 20 };
+  return base[ctx.command.payload['source'] as string] ?? 30;
+});
+```
+
+Declare the scan glob in `potemkin.yaml` so the scanner finds the file at boot:
+
+```yaml
+typescript:
+  scan:
+    - include:
+        - "scripts/**/*.ts"
+      exclude:
+        - "**/*.test.ts"
+        - "**/*.d.ts"
+```
 
 ### `ts:` sentinel
 
-Use `ts:<name>` in place of a CEL expression string:
+Reference the id in the YAML with `ts:<id>`. No `scripts:` block is required in the boundary file — the YAML holds only the sentinel:
 
 ```yaml
 event_catalog:
   - type: LeadCreated
     payload_template:
+      id: "command.targetId"
+      companyName: "command.payload.companyName"
       score: "ts:computeScore"
 ```
 
@@ -664,25 +690,15 @@ The sentinel is permitted in:
 - `dispatch_commands[].condition`
 - `behaviors[].emit_when[].when`
 
-> ⚠️ The `ts:` sentinel is **banned** in all reducer-phase fields (`reducers[].assign`, `reducers[].append`). Presence halts boot with `BOOT_ERR_DSL_SYNTAX`.
+> ⚠️ The `ts:` sentinel is **banned** in all reducer-phase fields. Presence halts boot with `BOOT_ERR_SCRIPT_IN_REDUCER`.
 
-### Boot-time compilation
+### Boot-time discovery
 
-At boot, each `scripts[].code` is transpiled from TypeScript to JavaScript using `esbuild.transformSync`. This is transpile-only — no TypeScript type-checking is performed. The compiled JavaScript is cached in the execution matrix.
+At boot, the TypeScript scanner (`src/dsl/typescriptScanner.ts`) imports every file matching the `typescript.scan` globs. Each `@Script(id)` class self-registers into the script registry on import. The scanner drains the registry and makes all discovered scripts available for resolution.
 
-- Syntax error → `BOOT_ERR_SCRIPT_SYNTAX` (boot halt)
-- `ts:` sentinel referencing an id that matches neither an inline script nor a scanned `@Script` → `BOOT_ERR_DSL_REFERENCE` (boot halt)
+- `ts:<id>` sentinel referencing an unknown id → `BOOT_ERR_DSL_REFERENCE` (boot halt)
 
-### Runtime execution
-
-Scripts run inside a `node:vm` sandbox with a stripped context:
-
-```
-Allowed: console.log (no-op), ScriptContext argument
-Blocked: fs, net, process, require, __dirname, global
-```
-
-CPU timeout: **50 ms** per invocation (configurable at boundary level). Exceeding it returns HTTP 500 `SCRIPT_TIMEOUT`.
+Scanned scripts are **trusted code** — the source is authored and version-controlled in the same repository as the rest of the simulation. The scanner loads each `.ts` file in a restricted `node:vm` context (with `fs`, `net`, `process`, and `require` blocked) so a stray import cannot reach the host, but there is **no per-call 50 ms budget**: at request time the resolved `run(ctx)` function is invoked as a direct host call, the same way a scanned `@Reducer` is. (The 50 ms budget that applied to the removed inline `scripts[].code` form no longer applies.) Because there is no time limit, keep scanned scripts fast — see [Section 14](#14-advanced-patterns-and-idioms).
 
 ### ScriptContext shape
 
@@ -704,11 +720,12 @@ Every script receives a single `ctx` argument of the following shape (see `src/s
 
 | Condition | Code | HTTP status |
 |-----------|------|-------------|
-| `esbuild.transformSync` fails | `BOOT_ERR_SCRIPT_SYNTAX` | boot halt |
-| `ts:<id>` resolves to neither an inline script nor a scanned `@Script` | `BOOT_ERR_DSL_REFERENCE` | boot halt |
-| `ts:` in reducer-phase field | `BOOT_ERR_DSL_SYNTAX` | boot halt |
-| Script CPU timeout (50 ms) | `SCRIPT_TIMEOUT` | 500 |
+| `ts:<id>` sentinel with no matching `@Script` id | `BOOT_ERR_DSL_REFERENCE` | boot halt |
+| `scripts[].code` present (removed syntax) | `BOOT_ERR_REMOVED_SYNTAX` | boot halt |
+| `ts:` in reducer-phase field | `BOOT_ERR_SCRIPT_IN_REDUCER` | boot halt |
 | Script throws unhandled exception | `INTERNAL_EXECUTION_FAILURE` | 500 |
+
+See [`tests/fixtures/ts-script/`](../tests/fixtures/ts-script/) for the canonical fixture and [`tests/e2e/67-annotation-script.e2e-test.ts`](../tests/e2e/67-annotation-script.e2e-test.ts) for the engine-only e2e example.
 
 ---
 
@@ -747,11 +764,11 @@ This is the mechanism that ensures `GET /leads` returns the same seed data after
 | Code | Cause |
 |------|-------|
 | `BOOT_ERR_DSL_SYNTAX` | YAML parse failure, invalid field type, `emit` + `emit_when` co-presence, `ts:` in reducer, malformed CEL expression |
-| `BOOT_ERR_DSL_REFERENCE` | `emit` or `on` references an event type not in `event_catalog`; or a `ts:<id>` sentinel resolves to neither an inline script nor a scanned `@Script` id |
+| `BOOT_ERR_DSL_REFERENCE` | `emit` or `on` references an event type not in `event_catalog`; or a `ts:<id>` sentinel resolves to no scanned `@Script` id |
 | `BOOT_ERR_DSL_SCHEMA_VIOLATION` | `assign`/`append` path references unknown field in OpenAPI schema; `schema_ref` cannot be resolved |
 | `BOOT_ERR_DSL_EMIT_REQUIRED` | Behavior has neither `emit` nor `emit_when` |
-| `BOOT_ERR_SCRIPT_SYNTAX` | `esbuild.transformSync` failed for a `scripts[]` entry |
-| `BOOT_ERR_SCRIPT_IN_REDUCER` | `ts:` sentinel found in `reducers[].assign` or `reducers[].append` |
+| `BOOT_ERR_REMOVED_SYNTAX` | `scripts[].code` (inline TypeScript) present — this form is removed; migrate to `@Script` annotation |
+| `BOOT_ERR_SCRIPT_IN_REDUCER` | `ts:` sentinel found in a reducer-phase field |
 
 ### Runtime errors
 
@@ -765,7 +782,7 @@ This is the mechanism that ensures `GET /leads` returns the same seed data after
 | `POSTCONDITION_VIOLATED` | 500 | `postcondition` expression evaluated to `false` |
 | `SCHEMA_TYPE_MISMATCH` | 500 | reducer `patches` value violates OpenAPI schema; event payload violates `schema_ref` |
 | `INTERNAL_EXECUTION_FAILURE` | 500 | Uncaught exception in CEL or script during UoW |
-| `SCRIPT_TIMEOUT` | 500 | Inline TypeScript script exceeded 50 ms CPU budget |
+| `SCRIPT_TIMEOUT` | 500 | Reserved (was: inline TypeScript script exceeded 50 ms; inline form is removed) |
 | `AUTH_MISSING` | 401 | `required_scopes` declared, but no `Authorization` header present |
 | `AUTH_INSUFFICIENT_SCOPES` | 403 | Actor present but scopes are not a superset of `required_scopes` |
 | `IDEMPOTENCY_KEY_CONFLICT` | 409 | Idempotency key reused with a different request body |
@@ -781,7 +798,7 @@ This example uses both boundary files from `docs/_examples/dsl/` and the global 
 
 ### The boundaries
 
-**Lead** (`docs/_examples/dsl/lead.yaml`): Manages CRM leads with lifecycle transitions (NEW → CONTACTED → QUALIFIED → CONVERTED). `fallback_override: true` so GET requests work without explicit query behaviors. Uses an inline TypeScript script for lead scoring.
+**Lead** (`docs/_examples/dsl/lead.yaml`): Manages CRM leads with lifecycle transitions (NEW → CONTACTED → QUALIFIED → CONVERTED). `fallback_override: true` so GET requests work without explicit query behaviors. Lead scoring uses a `@Script`-annotated TypeScript class referenced via `ts:computeScore`.
 
 **Opportunity** (`docs/_examples/dsl/opportunity.yaml`): Manages sales opportunities with three behaviors: `createOpportunity`, `advanceOpportunity`, and `closeWon`/`closeLost`. The `closeLost` behavior uses `emit_when` to emit `OpportunityLost` from either PROPOSED or NEGOTIATING stage.
 
@@ -957,7 +974,7 @@ Poll `GET /_admin/derived/LeadSummary` to retrieve the aggregated map.
 
 ### Long-running scripts (caution)
 
-The 50 ms script timeout is a hard ceiling. Scripts that iterate large arrays or perform complex numeric derivations can exceed it easily. If a computation is too slow:
+`@Script` classes run as trusted host code without an enforced time limit. Scripts that iterate large arrays or perform complex numeric derivations can slow down the request cycle. If a computation is too slow:
 
 1. Pre-compute and store partial results in aggregate state via reducers.
 2. Simplify the logic in CEL (which is typically faster for straightforward expressions).
@@ -1013,7 +1030,7 @@ The schema validator (`src/dsl/schema.ts`) accepts both `snake_case` and `camelC
 - `behaviors` (default `[]`)
 - `reducers` (default `[]`)
 - `initialization` (default absent)
-- `scripts` (default absent)
+- `typescript` (scan globs declared in `potemkin.yaml`, not boundary files)
 
 **Behavior `match` (required):**
 - `intent`
@@ -1041,7 +1058,7 @@ The boot sequence performs the following validation steps in order:
 
 3. **CEL pre-compilation** — All CEL expressions in `match.condition`, `match.requires[].condition`, `postcondition`, `emit_when[].when`, `dispatch_commands[].condition`, and `payload_template` field values are compiled with `celEvaluator.compile()`. Parse errors produce `BOOT_ERR_DSL_SYNTAX`.
 
-4. **Cross-reference validation** — Every `emit` value and every `on` value must match an event type key in the boundary's `event_catalog`. `ts:` sentinels must resolve to a `scripts[].name` in the same boundary. Failures produce `BOOT_ERR_DSL_REFERENCE`.
+4. **Cross-reference validation** — Every `emit` value and every `on` value must match an event type key in the boundary's `event_catalog`. `ts:` sentinels must resolve to a `@Script(id)` class discovered via the `typescript.scan` globs. Failures produce `BOOT_ERR_DSL_REFERENCE`.
 
 5. **Reducer phase check** — `ts:` sentinels in `reducers[].assign` or `reducers[].append` produce `BOOT_ERR_SCRIPT_IN_REDUCER`.
 
@@ -1049,7 +1066,7 @@ The boot sequence performs the following validation steps in order:
 
 7. **Object-Graph Schema Registry** — `assign`/`append` dot-paths are validated against the entity schema derived from the OpenAPI components. Unknown paths produce `BOOT_ERR_DSL_SCHEMA_VIOLATION`.
 
-8. **Script transpilation** — `scripts[].code` entries are transpiled via `esbuild.transformSync`. Syntax failures produce `BOOT_ERR_SCRIPT_SYNTAX`.
+8. **Script discovery** — files matching the `typescript.scan` globs are imported; each `@Script(id)` class registers itself. `ts:<id>` sentinels are resolved against the registry. Unknown ids produce `BOOT_ERR_DSL_REFERENCE`. Presence of the removed `scripts[].code` field produces `BOOT_ERR_REMOVED_SYNTAX`.
 
 9. **Initialization ingestion** — Seed records are projected into the initial state graph. Projection errors abort boot.
 
@@ -1061,7 +1078,7 @@ The boot sequence performs the following validation steps in order:
 |-------|-------|----------------|
 | `max_uow_depth` | 5 levels of secondary command recursion (`dispatch_commands`) | HTTP 508 `INFINITE_LOOP_DETECTED` |
 | Reaction event budget | 1000 events per UoW (reactions only; separate from depth) | HTTP 508 `ReactionBudgetExceeded` |
-| Script CPU timeout | 50 ms per invocation | HTTP 500 `SCRIPT_TIMEOUT` |
+| Script error | Unhandled exception from a `@Script` class | HTTP 500 `INTERNAL_EXECUTION_FAILURE` |
 | Pattern-match priority | First-match-wins, source document order | n/a |
 | Reducer determinism | `$uuidv7`/`$now`/`now`/`timestamp` banned | `CEL_PHASE_BANNED` |
 | `emit` + `emit_when` co-presence | Mutually exclusive | `BOOT_ERR_DSL_SYNTAX` (boot halt) |
@@ -1083,11 +1100,12 @@ The schema validator accepts the following legacy field name aliases for backwar
 
 | Canonical (preferred) | Legacy (accepted) | Location |
 |---|---|---|
-| `scripts[].code` | `scripts[].source` | `scripts[]` block |
 | `requires[].condition` | `requires[].expression` | `match.requires[]` block |
 | `postcondition: "<expr>"` | `postcondition: {expression: "<expr>"}` | `behaviors[]` |
 
 New DSL files should use the canonical names. Legacy names will continue to be accepted indefinitely but may be removed in a future major version.
+
+> ⚠️ `scripts[].code` and `scripts[].source` are **not** legacy aliases — they are removed syntax. Using either halts boot with `BOOT_ERR_REMOVED_SYNTAX`.
 
 ### Reducer determinism guarantee
 

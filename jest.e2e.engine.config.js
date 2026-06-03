@@ -29,6 +29,7 @@ const engineOnlySuites = [
   '64-webhook-hmac',
   '65-latency',
   '66-reactions-fanout',
+  '67-annotation-script',
 ];
 
 /** @type {import('ts-jest').JestConfigWithTsJest} */

@@ -4,6 +4,9 @@ modules:
   - "dsl/**/*.yaml"
 typescript:
   scan:
-    - include: ["scripts/**/*.ts"]
-      exclude: ["**/*.test.ts", "**/*.d.ts"]
+    - include:
+        - "scripts/**/*.ts"
+      exclude:
+        - "**/*.test.ts"
+        - "**/*.d.ts"
   watch: false

@@ -562,23 +562,47 @@ derived_projections:
 
 ### Running custom logic that CEL can't express
 
-If you want to compute something — a scoring algorithm, a lookup table, a transformation — that goes beyond what CEL supports, write an inline TypeScript script. Declare it under `scripts:` with a name, then reference it as `ts:<name>` anywhere a CEL expression is accepted (reducers excepted). The script runs in a sandboxed `node:vm` context with a 50 ms budget and receives the full command context.
+If you want to compute something — a scoring algorithm, a lookup table, a transformation — that goes beyond what CEL supports, author a `@Script`-annotated TypeScript class in a scanned `.ts` file and reference it as `ts:<id>` anywhere a CEL expression is accepted (reducers excepted). The YAML holds only the id; there is no inline code in the boundary file.
+
+First, declare the scan glob in `potemkin.yaml`:
 
 ```yaml
-scripts:
-  - name: computeScore
-    code: |
-      export default function(ctx) {
-        const base = { REFERRAL: 80, WEBSITE: 50 };
-        return base[ctx.command.payload.source] ?? 30;
-      }
+typescript:
+  scan:
+    - include:
+        - "scripts/**/*.ts"
+      exclude:
+        - "**/*.test.ts"
+        - "**/*.d.ts"
+```
+
+Then author the class in the scanned directory:
+
+```typescript
+// scripts/computeScore.ts
+import { Script, type ScriptContext } from '@potemkin/sdk';
+
+@Script('computeScore')
+export class ComputeScore {
+  run(ctx: ScriptContext): number {
+    const base: Record<string, number> = { REFERRAL: 80, WEBSITE: 50 };
+    return base[ctx.command.payload['source'] as string] ?? 30;
+  }
+}
+```
+
+Then reference the id in the YAML — no `scripts:` block required:
+
+```yaml
 event_catalog:
   - type: LeadCreated
     payload_template:
       score: "ts:computeScore"
 ```
 
-[`11-inline-typescript`](tests/e2e/11-inline-typescript.e2e-test.ts) shows the script setting a score on lead creation.
+Scanned scripts execute as trusted host code. An unknown `ts:<id>` halts boot with `BOOT_ERR_DSL_REFERENCE`. The removed inline `scripts[].code` form halts boot with `BOOT_ERR_REMOVED_SYNTAX`.
+
+[`67-annotation-script`](tests/e2e/67-annotation-script.e2e-test.ts) shows the scanned `@Script` setting a score on lead creation end-to-end using the [`tests/fixtures/ts-script/`](tests/fixtures/ts-script/) fixture.
 
 ### Owning an event's projection in TypeScript
 

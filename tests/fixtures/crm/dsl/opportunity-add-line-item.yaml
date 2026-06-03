@@ -9,10 +9,12 @@ state:
   computed:
     - name: totalValue
       formula: "sum(state.lineItems.map(i, i.lineTotal))"
-      depends_on: [lineItems]
+      depends_on:
+        - lineItems
     - name: itemCount
       formula: "length(state.lineItems)"
-      depends_on: [lineItems]
+      depends_on:
+        - lineItems
 
 event_catalog:
   - type: LineItemAdded

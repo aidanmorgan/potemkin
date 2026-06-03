@@ -31,10 +31,18 @@ behaviors:
 reducers:
   - on: DocumentCreated
     patches:
-      - { op: replace, path: /id, value: "${event.payload.id}" }
-      - { op: replace, path: /title, value: "${event.payload.title}" }
-      - { op: replace, path: /internalNotes, value: "${event.payload.internalNotes}" }
-      - { op: replace, path: /status, value: "${'DRAFT'}" }
+      - op: replace
+        path: /id
+        value: "${event.payload.id}"
+      - op: replace
+        path: /title
+        value: "${event.payload.title}"
+      - op: replace
+        path: /internalNotes
+        value: "${event.payload.internalNotes}"
+      - op: replace
+        path: /status
+        value: "${'DRAFT'}"
 
 initialization:
   - id: "11111111-1111-7000-8000-000000000001"

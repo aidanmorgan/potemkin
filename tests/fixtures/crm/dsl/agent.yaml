@@ -124,29 +124,37 @@ initialization:
   - id: "00000000-0000-7000-8000-000000000003"
     name: "Alice Thompson"
     email: "alice@nuisance-bureau.com"
-    skills: ["B2B", "SaaS"]
+    skills:
+      - "B2B"
+      - "SaaS"
     dailyCallQuota: 40
     dailyCallCount: 0
     currentStatus: "AVAILABLE"
-    assignedCampaignIds: ["00000000-0000-7000-8000-000000000001"]
+    assignedCampaignIds:
+      - "00000000-0000-7000-8000-000000000001"
     totalConversions: 12
     lastActiveAt: "1970-01-01T00:00:00.000Z"
 
   - id: "00000000-0000-7000-8000-000000000004"
     name: "Bob Martinez"
     email: "bob@nuisance-bureau.com"
-    skills: ["Enterprise", "Finance"]
+    skills:
+      - "Enterprise"
+      - "Finance"
     dailyCallQuota: 35
     dailyCallCount: 0
     currentStatus: "AVAILABLE"
-    assignedCampaignIds: ["00000000-0000-7000-8000-000000000001"]
+    assignedCampaignIds:
+      - "00000000-0000-7000-8000-000000000001"
     totalConversions: 8
     lastActiveAt: "1970-01-01T00:00:00.000Z"
 
   - id: "00000000-0000-7000-8000-000000000005"
     name: "Carla Nguyen"
     email: "carla@nuisance-bureau.com"
-    skills: ["SMB", "Retail"]
+    skills:
+      - "SMB"
+      - "Retail"
     dailyCallQuota: 50
     dailyCallCount: 0
     currentStatus: "OFFLINE"

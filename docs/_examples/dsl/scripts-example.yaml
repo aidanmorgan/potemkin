@@ -4,25 +4,27 @@ fallback_override: false
 identity:
   creation:
     generate: "$uuidv7()"
-scripts:
-  - name: computeScore
-    code: |
-      export default function(ctx) {
-        const source = ctx.command.payload.source ?? 'COLD_LIST';
-        const baseScore = { REFERRAL: 80, PARTNER: 70, WEBSITE: 50, COLD_LIST: 20 };
-        const multiplier = ctx.command.payload.scoreMultiplier ?? 1.0;
-        return Math.round((baseScore[source] ?? 30) * multiplier);
-      }
-  - name: buildAuditTrail
-    code: |
-      export default function(ctx) {
-        return {
-          actor: ctx.command.actor?.id ?? 'system',
-          action: ctx.command.intent,
-          at: ctx.helpers.now(),
-          requestId: ctx.command.commandId,
-        };
-      }
+
+# Scripts are NOT declared inline here. Author a @Script-annotated TypeScript class
+# in a scanned .ts file (see typescript.scan in potemkin.yaml) and reference it with
+# ts:<id> in any CEL-accepting field below.
+#
+# Example scanned script (scripts/computeScore.ts):
+#
+#   import { Script, type ScriptContext } from '@potemkin/sdk';
+#
+#   @Script('computeScore')
+#   export class ComputeScore {
+#     run(ctx: ScriptContext): number {
+#       const source = ctx.command.payload['source'] as string ?? 'COLD_LIST';
+#       const base: Record<string, number> = { REFERRAL: 80, PARTNER: 70, WEBSITE: 50, COLD_LIST: 20 };
+#       const multiplier = (ctx.command.payload['scoreMultiplier'] as number) ?? 1.0;
+#       return Math.round((base[source] ?? 30) * multiplier);
+#     }
+#   }
+#
+# See docs/dsl.md Section 10 and tests/fixtures/ts-script/ for the canonical fixture.
+
 event_catalog:
   - type: LeadScoreCreated
     payload_template:
@@ -33,8 +35,8 @@ event_catalog:
   - type: LeadScoreUpdated
     payload_template:
       score: "ts:computeScore"
-      audit: "ts:buildAuditTrail"
       updatedAt: "$now()"
+
 behaviors:
   - name: createScore
     match:
@@ -46,6 +48,7 @@ behaviors:
       operationId: updateLeadScore
       condition: "command.payload.scoreMultiplier != null"
     emit: LeadScoreUpdated
+
 reducers:
   - on: LeadScoreCreated
     patches:
@@ -66,4 +69,5 @@ reducers:
       - op: replace
         path: /score
         value: "${event.payload.score}"
+
 initialization: []

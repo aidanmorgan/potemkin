@@ -1040,25 +1040,37 @@ If you want numeric addition, ensure both sides are numbers first.
 
 ---
 
-## 13. Inline TypeScript Fallback
+## 13. TypeScript Script Fallback (`@Script`)
 
-When a CEL expression becomes unreasonably complex, the engine supports an inline TypeScript escape hatch. Any DSL field that accepts a CEL string also accepts `ts:<scriptName>` to delegate evaluation to a named TypeScript module declared in the top-level `scripts:` block.
+When a CEL expression becomes unreasonably complex, the engine supports a TypeScript escape hatch. Any DSL field that accepts a CEL string also accepts `ts:<id>` to delegate evaluation to a `@Script`-annotated TypeScript class discovered at boot via the `typescript.scan` globs in `potemkin.yaml`.
 
-See `docs/dsl.md#inline-typescript-scripts` for the full API.
+See [`docs/dsl.md` Section 10](./dsl.md#10-typescript-scripts-script-tier-1) for the full API, including the `@Script` class shape, scan configuration, and `ScriptContext`.
 
 > ⚠️ TypeScript scripts (`ts:`) are **banned in all Reducer-phase fields** by the DSL schema, for the same determinism reasons as `now()` and `$uuidv7()`.
 
 Example: a CEL expression that computes a running IRR would require iterative numeric methods not available in CEL. A TypeScript script handles this cleanly:
 
-```yaml
-scripts:
-  computeIrr: ./scripts/compute-irr.ts
+```typescript
+// scripts/computeIrr.ts  (picked up by typescript.scan)
+import { Script, type ScriptContext } from '@potemkin/sdk';
 
-reducers:
-  - on: LoanRepaid
-    assign:
-      irr: "ts:computeIrr"   # NOT valid in reducers; shown for illustration only
+@Script('computeIrr')
+export class ComputeIrr {
+  run(ctx: ScriptContext): number {
+    // ... iterative IRR calculation ...
+    return 0.12;
+  }
+}
 ```
+
+```yaml
+event_catalog:
+  - type: LoanRepaid
+    payload_template:
+      irr: "ts:computeIrr"
+```
+
+> Note: `ts:computeIrr` in a reducer field would halt boot with `BOOT_ERR_SCRIPT_IN_REDUCER`.
 
 ---
 
