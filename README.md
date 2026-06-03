@@ -132,9 +132,9 @@ One boundary, one file is the natural grain, though nothing prevents you from sp
 boundary: Lead
 contract_path: /leads
 fallback_override: false
-event_catalog: [ ... ]
-behaviors: [ ... ]
-reducers: [ ... ]
+event_catalog: []
+behaviors: []
+reducers: []
 ```
 
 The [`13-crm-smoke`](tests/e2e/13-crm-smoke.e2e-test.ts) test drives all five CRM boundaries through the full Specmatic stack and is a good first read if you want to see a realistic multi-boundary setup.
@@ -207,7 +207,8 @@ If you want a hard guarantee that an event's payload conforms to a schema you've
 event_catalog:
   - type: PaymentRecorded
     schema_ref: "#/components/schemas/StrictPayload"
-    payload_template: { amount: "command.payload.amount" }
+    payload_template:
+      amount: "command.payload.amount"
 ```
 
 The `schema_ref` describe block in [`60-reducer-patch-ops`](tests/e2e/60-reducer-patch-ops.e2e-test.ts) demonstrates both the happy path and the validation failure.
@@ -225,7 +226,9 @@ If you want a behaviour to fire only for a specific OpenAPI `operationId`, set `
 ```yaml
 behaviors:
   - name: createLead
-    match: { operationId: createLead, condition: "true" }
+    match:
+      operationId: createLead
+      condition: "true"
     emit: LeadCreated
 ```
 
@@ -266,10 +269,15 @@ If you want two behaviours bound to the same `operationId` to diverge based on a
 ```yaml
 behaviors:
   - name: submitOrder.mobile
-    match: { operationId: submitOrder, headers: { x-channel: mobile } }
+    match:
+      operationId: submitOrder
+      headers:
+        x-channel: mobile
     emit: MobileOrderPlaced
   - name: submitOrder.default
-    match: { operationId: submitOrder, condition: "true" }
+    match:
+      operationId: submitOrder
+      condition: "true"
     emit: OrderPlaced
 ```
 
@@ -300,7 +308,8 @@ dispatch_commands:
     intent: mutation
     operationId: patchLead
     target_id: "command.payload.leadId"
-    payload: { opportunityId: "command.targetId" }
+    payload:
+      opportunityId: "command.targetId"
     condition: "command.payload.leadId != null"
 ```
 
@@ -451,7 +460,8 @@ If you want to gate a behaviour on the caller's permissions, add `required_scope
 ```yaml
 match:
   operationId: markLeadDNC
-  required_scopes: [manager]
+  required_scopes:
+    - manager
 ```
 
 The simulation bearer format is `Authorization: Bearer alice:manager,lead:write`, which lets you test different role combinations without issuing real tokens.
@@ -506,17 +516,22 @@ Lifecycle events (`SagaStarted`, `SagaStepCompleted`, `SagaStepFailed`, `SagaCom
 ```yaml
 sagas:
   - name: OrderFulfillmentSaga
-    trigger: { boundary: Order, intent: mutation, condition: "event.type == 'OrderPlaced'" }
+    trigger:
+      boundary: Order
+      intent: mutation
+      condition: "event.type == 'OrderPlaced'"
     steps:
       - name: reserveInventory
         boundary: Reservation
         intent: creation
         target_id: "$uuidv7()"
-        payload: { orderId: "event.aggregateId" }
+        payload:
+          orderId: "event.aggregateId"
         compensation:
           intent: mutation
           operationId: cancelReservation
-          payload: { reason: "'saga-failed'" }
+          payload:
+            reason: "'saga-failed'"
 ```
 
 [`63-saga-compensation`](tests/e2e/63-saga-compensation.e2e-test.ts) forces a step failure and asserts the compensation chain; the happy path is in [`12-saga-compensation`](tests/e2e/12-saga-compensation.e2e-test.ts).
@@ -531,11 +546,15 @@ The `key` field is a CEL expression evaluated on each event to determine which p
 derived_projections:
   - name: CampaignDashboard
     key: "event.payload.campaignId"
-    subscribe: ["Lead:LeadCreated", "Opportunity:OpportunityCreated"]
+    subscribe:
+      - "Lead:LeadCreated"
+      - "Opportunity:OpportunityCreated"
     reduce:
       - on: "Lead:LeadCreated"
         patches:
-          - { op: add, path: /leads, value: "${0}" }
+          - op: add
+            path: /leads
+            value: "${0}"
 ```
 
 [`10-full-crm-flow`](tests/e2e/10-full-crm-flow.e2e-test.ts) updates and verifies the dashboard projection.
@@ -554,7 +573,8 @@ scripts:
       }
 event_catalog:
   - type: LeadCreated
-    payload_template: { score: "ts:computeScore" }
+    payload_template:
+      score: "ts:computeScore"
 ```
 
 [`11-inline-typescript`](tests/e2e/11-inline-typescript.e2e-test.ts) shows the script setting a score on lead creation.
@@ -574,13 +594,17 @@ The `url` and `payload` fields are CEL expressions, so you can construct the des
 ```yaml
 webhooks:
   - name: shipment-created-webhook
-    trigger: { boundary: Shipment, condition: "event.type == 'ShipmentCreated'" }
+    trigger:
+      boundary: Shipment
+      condition: "event.type == 'ShipmentCreated'"
     url: "'http://127.0.0.1:19877/webhook'"
     secret: "your-webhook-secret"
     payload:
       shipmentId: "${event.aggregateId}"
       event: "${event.type}"
-    retry: { maxAttempts: 3, delayMs: 100 }
+    retry:
+      maxAttempts: 3
+      delayMs: 100
 ```
 
 [`64-webhook-hmac`](tests/e2e/64-webhook-hmac.e2e-test.ts) stands up a local receiver and verifies the signature.
@@ -593,17 +617,26 @@ webhooks:
 
 If you want responses to carry discoverable action links alongside data, enable HATEOAS in your global config and annotate each behaviour that should surface a link. The engine adds `_links.self` automatically; conditional action links appear only when their predicate is true for the current state.
 
+In the global config:
+
 ```yaml
-# global config
-hateoas: { enabled: true, self_links: true }
-# behaviour
+hateoas:
+  enabled: true
+  self_links: true
+```
+
+On each behaviour that should surface an action link:
+
+```yaml
 - name: qualifyLead
   link_name: qualify
   link_condition: "state.status == 'CONTACTED'"
-  match: { operationId: qualifyLead, method: POST }
+  match:
+    operationId: qualifyLead
+    method: POST
 ```
 
-Per-boundary static links (a list of `{ rel, href }` under `hateoas:`) are also available when you just need fixed URLs that do not depend on state. [`44-hateoas`](tests/e2e/44-hateoas.e2e-test.ts) verifies both the self link and the state-dependent action links.
+Per-boundary static links (a list of `rel`/`href` pairs under `hateoas:`) are also available when you just need fixed URLs that do not depend on state. [`44-hateoas`](tests/e2e/44-hateoas.e2e-test.ts) verifies both the self link and the state-dependent action links.
 
 ### Hiding a field from a response
 
@@ -665,8 +698,11 @@ If you want requests under `/v1/...` and `/v2/...` to resolve to the same bounda
 versioning:
   enabled: true
   versions:
-    - { version: "v1", prefix: "/v1" }
-    - { version: "v2", prefix: "/v2", default: true }
+    - version: "v1"
+      prefix: "/v1"
+    - version: "v2"
+      prefix: "/v2"
+      default: true
 ```
 
 [`47-api-versioning`](tests/e2e/47-api-versioning.e2e-test.ts) checks that each prefix routes to the right version label.
@@ -688,7 +724,8 @@ fault_rules:
       condition: "command.payload.reason == 'REGISTRY_CHECK'"
     response:
       status: 504
-      body: { error: DNC_REGISTRY_TIMEOUT }
+      body:
+        error: DNC_REGISTRY_TIMEOUT
       delay_ms: 100
 ```
 
@@ -696,8 +733,14 @@ You can also target requests by header. The `potemkin:` shorthand in a `match` b
 
 ```yaml
   - name: rate-limit-via-header
-    match: { condition: "true", potemkin: { rate_limit: "*" } }
-    response: { status: 429, body: { error: RATE_LIMITED } }
+    match:
+      condition: "true"
+      potemkin:
+        rate_limit: "*"
+    response:
+      status: 429
+      body:
+        error: RATE_LIMITED
 ```
 
 [`30-fault-injection`](tests/e2e/30-fault-injection.e2e-test.ts) is the main example; resilience and cascade tolerance are in [`25-fault-resilience`](tests/e2e/25-fault-resilience.e2e-test.ts), and header/method matching in [`40-header-matching`](tests/e2e/40-header-matching.e2e-test.ts).

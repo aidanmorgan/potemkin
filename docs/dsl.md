@@ -224,7 +224,9 @@ List of scope strings that the caller's actor must possess. Evaluated before `re
 ```yaml
 match:
   operationId: createLead
-  required_scopes: [admin, lead:write]
+  required_scopes:
+    - admin
+    - "lead:write"
   condition: "true"
 ```
 
@@ -538,7 +540,8 @@ behaviors:
   - name: markLeadDNC
     match:
       operationId: markLeadDNC
-      required_scopes: [manager]
+      required_scopes:
+        - manager
       condition: "state.status != 'DNC'"
     emit: LeadMarkedDNC
 ```

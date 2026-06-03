@@ -38,11 +38,16 @@ optional `parameters:` block, and an optional set of local boundary aliases it r
 kind: component
 name: DocumentEntity
 parameters:
-  initialStatus: { type: string, required: true }
-  statusField:   { type: string, default: "status" }
+  initialStatus:
+    type: string
+    required: true
+  statusField:
+    type: string
+    default: "status"
 event_catalog:
   - type: DocumentArchived
-    payload_template: { archivedAt: "$now()" }
+    payload_template:
+      archivedAt: "$now()"
 reducers:
   - on: DocumentArchived
     patches:
@@ -60,12 +65,14 @@ use:
   - component: DocumentEntity
     as: Document
     contract_path: /documents
-    with: { initialStatus: "DRAFT" }
+    with:
+      initialStatus: "DRAFT"
   - component: DocumentEntity
     as: ArchivedDocument
     contract_path: /archived-documents
-    with: { initialStatus: "ARCHIVED" }
-    bind: { }                              # map component-local sibling refs -> concrete names
+    with:
+      initialStatus: "ARCHIVED"
+    bind: {}                              # map component-local sibling refs -> concrete names
 ```
 
 Each `use` produces a distinct concrete `BoundaryConfig` (name = `as`, the bound `contract_path`,
@@ -82,9 +89,12 @@ boundary: Document
 contract_path: /documents
 include:
   - component: AuditMixin
-    with: { actorField: "modifiedBy" }
-event_catalog: [ ...local... ]
-reducers:    [ ...local... ]
+    with:
+      actorField: "modifiedBy"
+event_catalog:
+  # ...local entries...
+reducers:
+  # ...local entries...
 ```
 
 Merge precedence: local declarations win on a key clash; a clash between two included fragments on
