@@ -414,6 +414,19 @@ export interface EventResponseSnapshot {
   readonly headers?: Record<string, string>;
 }
 
+/**
+ * Reaction registry keyed by trigger event string.
+ *
+ * Each key is either a qualified "<Boundary>:<EventType>" or a bare "<EventType>".
+ * At runtime, for a given emitted event, look up both the qualified key and the
+ * bare key to find all reactions that should fire.
+ *
+ * Built at compile time from all reactions (boundary files + global config) and
+ * attached to the CompiledDsl so boot-time cross-reference validation and the
+ * runtime UoW (R3) can share a single pre-built index.
+ */
+export type ReactionsByTrigger = ReadonlyMap<string, readonly ReactionRule[]>;
+
 export interface CompiledDsl {
   readonly boundaries: readonly BoundaryConfig[];
   readonly byContractPath: Record<string, BoundaryConfig>;
@@ -437,6 +450,13 @@ export interface CompiledDsl {
   readonly webhooks?: readonly WebhookConfig[];
   /** Choreography reaction rules from all boundary files and the global config. */
   readonly reactions?: readonly ReactionRule[];
+  /**
+   * Reaction registry keyed by trigger event string.
+   * Keys are either "<Boundary>:<EventType>" (qualified) or "<EventType>" (bare).
+   * At runtime, consult both the qualified key and the bare key for a given event.
+   * Built at compile time; absent when there are no reactions.
+   */
+  readonly reactionsByTrigger?: ReactionsByTrigger;
 }
 
 // JsonValue is used transitively by SagaStep consumers
