@@ -15,14 +15,6 @@ deprecated:
 latency:
   fixed_ms: 50
 
-# Inline TypeScript helper: generate a unique note id.
-scripts:
-  - name: generateNoteId
-    code: |
-      export default function(ctx) {
-        return ctx.helpers.uuid();
-      }
-
 event_catalog:
   - type: NoteAppended
     payload_template:

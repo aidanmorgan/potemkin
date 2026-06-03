@@ -60,7 +60,7 @@ describe('potemkinConfigPath boot equals inline compileDsl boot', () => {
       potemkinConfigPath: CRM_CONFIG,
     });
     const inMemory = await bootSystem({
-      openapi: inline.openapi,
+      ...inline,
       compiledDsl: requireCompiled(inline.compiledDsl),
     });
 
@@ -75,7 +75,7 @@ describe('potemkinConfigPath boot equals inline compileDsl boot', () => {
       potemkinConfigPath: CRM_CONFIG,
     });
     const inMemory = await bootSystem({
-      openapi: inline.openapi,
+      ...inline,
       compiledDsl: requireCompiled(inline.compiledDsl),
     });
 
@@ -100,7 +100,7 @@ describe('potemkinConfigPath boot equals inline compileDsl boot', () => {
   it('still accepts an in-memory compiledDsl (BootInput.compiledDsl)', async () => {
     const inline = await loadFixtureWithGlobal();
     const sys = await bootSystem({
-      openapi: inline.openapi,
+      ...inline,
       compiledDsl: requireCompiled(inline.compiledDsl),
     });
     expect(sys.dsl.boundaries.length).toBe(requireCompiled(inline.compiledDsl).boundaries.length);

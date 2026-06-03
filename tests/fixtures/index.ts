@@ -3,6 +3,13 @@ import * as path from 'node:path';
 import type { BootInput } from '../../src';
 import { loadOpenApi } from '../../src';
 import { compileDsl } from '../../src/dsl/parser';
+import type { TypescriptConfig } from '../../src/dsl/typescriptScanner';
+
+/** Typescript scan config used by every fixture that ships scripts/. */
+const SCRIPTS_SCAN: TypescriptConfig = {
+  scan: [{ include: ['scripts/**/*.ts'], exclude: ['**/*.test.ts', '**/*.d.ts'] }],
+  watch: false,
+};
 
 export async function loadFixture(fixtureName: string = 'crm'): Promise<BootInput> {
   const dir = path.join(__dirname, fixtureName);
@@ -42,7 +49,7 @@ export async function loadFixture(fixtureName: string = 'crm'): Promise<BootInpu
     { name: 'callAddTranscript', yaml: read('dsl/call-add-transcript.yaml') },
   ];
   const compiledDsl = await compileDsl(dslModules);
-  return { openapi, compiledDsl };
+  return { openapi, compiledDsl, typescript: SCRIPTS_SCAN, typescriptCwd: dir };
 }
 
 // Returns the BootInput plus the raw global YAML, scripts dir, and the raw
@@ -88,7 +95,7 @@ export async function loadFixtureWithGlobal(
   const globalYaml = fs.existsSync(globalPath) ? fs.readFileSync(globalPath, 'utf8') : '';
   const scriptsDir = path.join(dir, 'scripts');
   const compiledDsl = await compileDsl(dslModules, globalYaml || undefined);
-  return { openapi, compiledDsl, globalYaml, scriptsDir, dslModules };
+  return { openapi, compiledDsl, globalYaml, scriptsDir, dslModules, typescript: SCRIPTS_SCAN, typescriptCwd: dir };
 }
 
 /** Resolve the single OpenAPI document for a fixture's `openapi/` directory. */

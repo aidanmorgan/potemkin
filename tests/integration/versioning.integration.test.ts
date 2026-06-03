@@ -27,8 +27,8 @@ describe('API versioning — full integration', () => {
   let agent: PersistentAgent;
 
   beforeAll(async () => {
-    const { openapi, compiledDsl } = await loadFixtureWithGlobal('crm-versioned');
-    sys = await bootSystem({ openapi, compiledDsl: compiledDsl! });
+    const fixture = await loadFixtureWithGlobal('crm-versioned');
+    sys = await bootSystem({ ...fixture, compiledDsl: fixture.compiledDsl! });
     expandByContractPath(sys);
     const app = createGateway(sys);
     const persistent = await withPersistentServer(app);

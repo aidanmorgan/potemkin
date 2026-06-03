@@ -2,22 +2,6 @@ boundary: OpportunityAddLineItem
 contract_path: /opportunities/{id}/line-items
 fallback_override: false
 
-# Inline TypeScript helpers: generate a line-item id and compute
-# the per-line total (quantity * unitPrice) server-side.
-scripts:
-  - name: generateLineItemId
-    code: |
-      export default function(ctx) {
-        return ctx.helpers.uuid();
-      }
-  - name: computeLineTotal
-    code: |
-      export default function(ctx) {
-        const qty = ctx.command.payload.quantity ?? 0;
-        const price = ctx.command.payload.unitPrice ?? 0;
-        return qty * price;
-      }
-
 # Computed fields on the Opportunity aggregate. totalValue sums each
 # line's lineTotal; itemCount counts the line items. Both recompute after the
 # LineItemAdded reducer appends to /lineItems.

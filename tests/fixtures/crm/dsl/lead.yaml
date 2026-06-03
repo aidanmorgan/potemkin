@@ -27,16 +27,6 @@ query_mapping:
   campaignId: "state.assignedCampaignId == param"
   agentId: "state.assignedAgentId == param"
 
-# Inline TypeScript script for lead scoring
-scripts:
-  - name: computeScore
-    code: |
-      export default function({ command, helpers }) {
-        const source = command.payload.source;
-        const baseScore = { REFERRAL: 80, PARTNER: 70, WEBSITE: 50, COLD_LIST: 20 };
-        return baseScore[source] ?? 30;
-      }
-
 event_catalog:
   # schema_ref on LeadCreated event
   - type: LeadCreated
