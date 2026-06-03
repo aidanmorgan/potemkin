@@ -68,48 +68,15 @@ import { evaluateFaultRules } from '../faults/index.js';
 import { applyResponseMutations, buildOperationLookup } from './responseMutations.js';
 import type { OpenApiOperation } from '../contract/loader.js';
 import { rebuildEntityAtVersion, findEventById } from '../engine/timeTravel.js';
-import { resolveBoundaryLatencyMs, delay } from '../forwarding/responsePipeline.js';
+import { resolveBoundaryLatencyMs, delay, shouldReturnNotModified, lastModifiedFromBody, isSingleEntityBody, applyHateoasToQueryBody } from '../forwarding/responsePipeline.js';
 import { resolveChaosHeaders, truncateBody } from './chaosHeaders.js';
+import { getAllowedOrigin, isOriginAdmitted } from './cors.js';
 
 /** Node.js normalises header names to lowercase; this is the lowercased If-Match header. */
 const IF_MATCH_HEADER_LC = 'if-match';
 
 /** Request property key under which the resolved API version is stashed by the versioning middleware. */
 const RESOLVED_VERSION_KEY = '__potemkinResolvedVersion';
-
-/**
- * Resolve the CORS allowed-origin value.
- *  - ALLOWED_ORIGINS env var: comma-separated list of allowed origins (e.g. "https://app.com,https://dev.com")
- *  - Default: '*' (allow all origins — appropriate for a local simulation server)
- * In production, set ALLOWED_ORIGINS to a specific origin to restrict access.
- */
-function getAllowedOrigin(requestOrigin: string | undefined): string {
-  const raw = process.env['ALLOWED_ORIGINS'] ?? '*';
-  if (raw === '*') return '*';
-  const allowed = raw.split(',').map((s) => s.trim());
-  if (requestOrigin && allowed.includes(requestOrigin)) return requestOrigin;
-  return allowed[0] ?? '*';
-}
-
-/**
- * Returns true when the given requestOrigin is admitted by the ALLOWED_ORIGINS
- * allowlist for purposes of credentialed-request reflection.
- *
- * Two cases are admitted:
- *  - ALLOWED_ORIGINS is '*' (the sim default): any specific origin is allowed.
- *    Browsers reject `Access-Control-Allow-Origin: *` with credentials, so we
- *    must reflect the specific origin in this case.
- *  - ALLOWED_ORIGINS is a restricted list and requestOrigin is in it.
- *
- * When requestOrigin is undefined, there is no origin to reflect regardless.
- */
-function isOriginAdmitted(requestOrigin: string | undefined): boolean {
-  if (!requestOrigin) return false;
-  const raw = process.env['ALLOWED_ORIGINS'] ?? '*';
-  if (raw === '*') return true;
-  const allowed = raw.split(',').map((s) => s.trim());
-  return allowed.includes(requestOrigin);
-}
 
 /**
  * Returns true when the request carries credentials: a Cookie header (session
@@ -364,7 +331,9 @@ async function handleContractRequest(
       }
       const isAdmin = (callerActor?.scopes ?? []).includes('admin');
       if (!isAdmin) {
-        res.status(401).json({ error: 'ADMIN_REQUIRED', message: 'admin scope required for this X-Potemkin-* header' });
+        // RFC 7235: 401 = not authenticated; 403 = authenticated but forbidden.
+        const status = callerActor === null ? 401 : 403;
+        res.status(status).json({ error: 'ADMIN_REQUIRED', message: 'admin scope required for this X-Potemkin-* header' });
         return;
       }
     }
@@ -744,7 +713,7 @@ async function handleContractRequest(
       }
       if (cr.headers) res.set(cr.headers);
       if (isHead) res.status(cr.status).end();
-      else res.status(cr.status).json(chaosBody);
+      else sendBody(res.status(cr.status), chaosBody);
       return;
     }
 
@@ -877,6 +846,38 @@ async function handleContractRequest(
       }
     }
 
+    // Single-entity GET (RFC 7232): emit ETag + Last-Modified and honour
+    // If-None-Match / If-Modified-Since → 304. Mirrors forwarding handler.
+    const isSingleEntityGet =
+      intent === 'query' && command.targetId !== null &&
+      result.status >= 200 && result.status < 300 &&
+      isSingleEntityBody(result.body);
+    let lastModified: string | undefined;
+    if (isSingleEntityGet && command.targetId !== null) {
+      const seq = sys.events.currentSequenceVersion(command.targetId);
+      if (seq > 0) responseHeaders['ETag'] = '"' + String(seq) + '"';
+      lastModified = lastModifiedFromBody(result.body);
+      if (lastModified !== undefined) responseHeaders['Last-Modified'] = lastModified;
+    }
+
+    if (isSingleEntityGet) {
+      const notModified = shouldReturnNotModified({
+        ...(responseHeaders['ETag'] !== undefined ? { etag: responseHeaders['ETag'] } : {}),
+        ...(lastModified !== undefined ? { lastModified } : {}),
+        ...(req.headers['if-none-match'] !== undefined
+          ? { ifNoneMatch: req.headers['if-none-match'] as string } : {}),
+        ...(req.headers['if-modified-since'] !== undefined
+          ? { ifModifiedSince: req.headers['if-modified-since'] as string } : {}),
+      });
+      if (notModified) {
+        const condHeaders: Record<string, string> = {};
+        if (responseHeaders['ETag'] !== undefined) condHeaders['ETag'] = responseHeaders['ETag'];
+        if (responseHeaders['Last-Modified'] !== undefined) condHeaders['Last-Modified'] = responseHeaders['Last-Modified'];
+        res.status(304).set(condHeaders).end();
+        return;
+      }
+    }
+
     // Attach response snapshot to the committed events for reducer chaining.
     if (!controls.transparency.dryRun && result.events.length > 0) {
       sys.events.attachResponse(
@@ -905,6 +906,12 @@ async function handleContractRequest(
       });
       outBody = mutation.body;
       Object.assign(responseHeaders, mutation.headers);
+    }
+
+    // HATEOAS — dynamic CEL-conditioned self + action links (global hateoas: block).
+    // Applied after static boundary mutations so both link sets are present.
+    if (intent === 'query' && result.status >= 200 && result.status < 300) {
+      outBody = applyHateoasToQueryBody(outBody, boundary, sys.dsl, reqCel, req.query as Record<string, string | string[]>);
     }
 
     // Tier 5: the X-Potemkin-Mask control header REPLACES named fields with the
@@ -1023,7 +1030,26 @@ async function handleContractRequest(
     if (isHead) {
       res.status(result.status).set(responseHeaders).end();
     } else {
-      res.status(result.status).set(responseHeaders).json(outBody);
+      sendBody(res.status(result.status).set(responseHeaders), outBody);
     }
   }, { 'http.method': req.method, 'http.path': req.path, requestId });
+}
+
+/**
+ * Write a response body without double-serializing a chaos-truncated string.
+ *
+ * truncateBody() returns a raw string (a slice of JSON.stringify(body)) to
+ * simulate a partial byte stream. Passing that string to res.json() would
+ * JSON.stringify it again, wrapping it in quotes and escape characters.
+ * When the body is already a string (i.e. it was truncated), write the raw
+ * bytes directly with Content-Type: application/json. Otherwise delegate to
+ * the standard res.json() path which handles serialisation.
+ */
+function sendBody(res: Response, body: JsonValue | null | undefined): void {
+  if (typeof body === 'string') {
+    res.setHeader('Content-Type', 'application/json');
+    res.end(body);
+  } else {
+    res.json(body);
+  }
 }

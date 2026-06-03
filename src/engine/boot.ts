@@ -642,6 +642,17 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
     // ── Step 9: Derived projection registry ───────────────────────────────────
     const derivedProjections = createDerivedProjectionRegistry();
 
+    // Pre-register every declared projection with an empty map so that
+    // GET /_admin/derived/<name> returns 200 {} for a declared-but-empty
+    // projection rather than 404 (which is reserved for unknown names).
+    if (dsl.derivedProjections) {
+      for (const proj of dsl.derivedProjections) {
+        if (!derivedProjections.has(proj.name)) {
+          derivedProjections.set(proj.name, new Map());
+        }
+      }
+    }
+
     // Hydrate derived projections from baseline
     if (dsl.derivedProjections && dsl.derivedProjections.length > 0) {
       for (const event of frozenBaseline) {

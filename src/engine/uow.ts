@@ -429,9 +429,9 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
         while (pendingCommands.length > 0) {
           const cmd = pendingCommands.shift()!;
 
-          // Use >= so that depth === maxDepth is the last rejected level.
-          // With MAX_UOW_DEPTH=5, depth 5 throws (depth 4 is the last allowed).
-          if (cmd.depth >= maxDepth) {
+          // Use > so that depth === maxDepth is the last allowed level.
+          // With MAX_UOW_DEPTH=5, depths 0–5 execute (5 secondary levels); depth 6 throws.
+          if (cmd.depth > maxDepth) {
             throw new InfiniteLoopError(
               `Cascade depth ${cmd.depth} exceeds maxDepth ${maxDepth} at boundary ${cmd.boundary}`,
               { depth: cmd.depth, maxDepth, boundary: cmd.boundary },
@@ -577,7 +577,7 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
           // compensating, not pre-staged alongside the primary event.
           if (!skipSagas && dsl.sagas && dsl.sagas.length > 0) {
             for (const evt of stagedEvents) {
-              const triggeredSagas = findTriggeredSagas(dsl.sagas, command, evt, cel);
+              const triggeredSagas = findTriggeredSagas(dsl.sagas, command, evt, cel, logger);
               for (const saga of triggeredSagas) {
                 sideEffects.push(() =>
                   runSaga({

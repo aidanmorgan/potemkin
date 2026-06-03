@@ -46,7 +46,7 @@ This implementation does **not** support comments inside CEL expressions. The `/
 
 ### 2.3 Identifiers
 
-An identifier starts with `[a-zA-Z_$]` and continues with `[a-zA-Z0-9_$]`. The `$` prefix is used exclusively for engine-provided builtins (`$uuidv7`, `$now`, `$concat`).
+An identifier starts with `[a-zA-Z_$]` and continues with `[a-zA-Z0-9_$]`. The `$` prefix is used exclusively for engine-provided builtins (`$uuidv7`, `$now`, `$concat`, `$fake`, `$fakeSeed`, `$fakeFromFormat`).
 
 Reserved words that cannot be used as identifiers: `true`, `false`, `null`, `in`.
 
@@ -149,10 +149,10 @@ CEL does not coerce types. A number is never equal to its string representation.
 
 ```cel
 1 == "1"      // false — different types
-1 == 1.0      // false — int vs double (different Number.isInteger result)
+1 == 1.0      // true  — numeric equality is value-based; int/double distinction is type() only
 ```
 
-> ⚠️ `1 == 1.0` evaluates to `false`. Both sides must be the same numeric type. Use `double(1) == 1.0` or `int(1.0) == 1` to compare across numeric kinds.
+> ℹ️ Numeric equality (`==`, `!=`) is **value-based**: `1 == 1.0` is `true`. The `type()` function still distinguishes `"int"` from `"double"`, but comparison operators treat all numbers by value. This differs from upstream Google CEL, which uses a typed int/double distinction.
 
 The single exception: the `+` operator concatenates strings when **either** operand is a string:
 
@@ -214,7 +214,7 @@ The `==` and `!=` operators implement deep structural equality. See [Section 4](
 [1, 2] == [1, 2]         // true
 {"a": 1} == {"a": 1}     // true
 {"a": 1} != {"a": 2}     // true
-1 == 1.0                 // false — int vs double
+1 == 1.0                 // true — numeric equality is value-based
 ```
 
 ### 4.5 The `in` Operator
@@ -465,20 +465,22 @@ Source: `src/cel/builtins.ts`
 |---|---|---|---|---|
 | `int` | `int(x)` | `int` | B, H, R | Truncates doubles; parses strings; `bool` → 0/1. Throws `CEL_TYPE_ERROR` for unconvertible input. |
 | `double` | `double(x)` | `double` | B, H, R | Converts number or parses string. `bool` → 0/1. |
-| `string` | `string(x)` | `string` | B, H, R | Converts any value. `null` → `"null"`. |
+| `string` | `string(x)` | `string` | B, H, R | Converts any value. `null` → `"null"`. Lists and maps are serialised as JSON. |
 | `bool` | `bool(x)` | `bool` | B, H, R | Parses `"true"`/`"false"` strings; number `0` → `false`, non-zero → `true`. Throws on other strings. |
 | `bytes` | `bytes(x)` | `list[int]` | B, H, R | Returns UTF-16 code units (0–255) for each character. Throws if not a string. |
 
 ```cel
-int("42")        // 42
-int(3.7)         // 3  (truncated)
-int(true)        // 1
-double("3.14")   // 3.14
-string(42)       // "42"
-string(null)     // "null"
-bool("true")     // true
-bool(0)          // false
-bytes("abc")     // [97, 98, 99]
+int("42")             // 42
+int(3.7)              // 3  (truncated)
+int(true)             // 1
+double("3.14")        // 3.14
+string(42)            // "42"
+string(null)          // "null"
+string({"a": 1})      // '{"a":1}'    (JSON)
+string([1, 2])        // '[1,2]'      (JSON)
+bool("true")          // true
+bool(0)               // false
+bytes("abc")          // [97, 98, 99]
 ```
 
 ### 8.2 Math
@@ -488,8 +490,8 @@ Source: `src/cel/builtins.ts`
 | Function | Signature | Returns | Phases | Notes |
 |---|---|---|---|---|
 | `abs` | `abs(x)` | `number` | B, H, R | Absolute value. |
-| `min` | `min(a, b, ...)` or `min(list)` | `number` | B, H, R | Minimum of arguments or a single list. |
-| `max` | `max(a, b, ...)` or `max(list)` | `number` | B, H, R | Maximum of arguments or a single list. |
+| `min` | `min(a, b, ...)` or `min(list)` | `number` | B, H, R | Minimum of arguments or a single list. Throws `CEL_RUNTIME_ERROR` on empty list. |
+| `max` | `max(a, b, ...)` or `max(list)` | `number` | B, H, R | Maximum of arguments or a single list. Throws `CEL_RUNTIME_ERROR` on empty list. |
 | `floor` | `floor(x)` | `int` | B, H, R | Floor toward negative infinity. |
 | `ceil` | `ceil(x)` | `int` | B, H, R | Ceiling toward positive infinity. |
 | `round` | `round(x)` | `int` | B, H, R | Round to nearest integer (half-up). |
@@ -514,6 +516,8 @@ Source: `src/cel/builtins.ts`
 | Function | Signature | Returns | Phases | Notes |
 |---|---|---|---|---|
 | `size` | `size(x)` | `int` | B, H, R | Length of string, list, or key count of map. |
+| `length` | `length(x)` | `int` | B, H, R | Alias for `size()`. |
+| `sum` | `sum(list)` or `sum(a, b, ...)` | `number` | B, H, R | Sum of a numeric list (or spread args). `null` elements counted as 0. Throws `CEL_TYPE_ERROR` for non-number elements. |
 | `keys` | `keys(m)` | `list[string]` | B, H, R | Keys of map `m` as a list. |
 | `values` | `values(m)` | `list` | B, H, R | Values of map `m` as a list. |
 | `range` | `range(end)` | `list[int]` | B, H, R | `[0, 1, ..., end-1]`. |
@@ -523,6 +527,9 @@ Source: `src/cel/builtins.ts`
 size("hello")           // 5
 size([1, 2, 3])         // 3
 size({"a": 1, "b": 2}) // 2
+length([1, 2, 3])       // 3  (alias for size)
+sum([1, 2, 3])          // 6
+sum(10, 20, 30)         // 60
 keys({"a": 1, "b": 2}) // ["a", "b"]
 values({"a": 1})        // [1]
 range(5)                // [0, 1, 2, 3, 4]
@@ -559,15 +566,15 @@ Source: `src/cel/evaluator.ts` (`evalStringMethod`)
 
 **Regex format for `matches`**: the `pattern` argument is passed directly to JavaScript's `RegExp` constructor. Use standard JS regex syntax without delimiters (`[0-9]+`, not `/[0-9]+/`). Use raw strings (`r"..."`) to avoid double-escaping backslashes in YAML.
 
-**ReDoS protection (Option A — worker-thread timeout)**: `matches()` runs the regex in a dedicated `worker_threads` Worker with a hard **50 ms** regex execution timeout (plus a 200 ms OS scheduling headroom for a total wall-clock budget of ~250 ms). If the worker does not return a result within the budget, the worker is terminated and the call throws:
+**ReDoS protection — synchronous shape-based guard**: `matches()` runs entirely on the calling thread with no Worker threads, no Atomics, and no runtime timeout. Before constructing the `RegExp`, the pattern is checked for catastrophic-backtracking shapes (nested/overlapping unbounded quantifiers such as `(a+)+`). If a dangerous shape is detected, the call throws immediately:
 
 ```
-CEL_RUNTIME_ERROR: REGEX_TIMEOUT — regex /<pattern>/ timed out after 50ms. Possible ReDoS-vulnerable pattern.
+CEL_TYPE_ERROR: REGEX_REJECTED — regex /(a+)+/ has a nested-quantifier shape ...
 ```
 
-This prevents adversarial backtracking patterns such as `(a+)+$` from hanging the Node.js event loop. A 50 ms timeout is generous for any valid matching pattern; legitimate patterns on production-realistic inputs complete in microseconds. The timeout is a hard safety valve, not a performance budget.
+There is no wall-clock timeout. The shape check is O(pattern length) so an adversarial pattern is rejected in constant time. Legitimate patterns always pass the shape check and execute synchronously via the native JS engine.
 
-> ⚠️ **Performance note**: each `matches()` call spawns a worker thread (~5–15 ms startup overhead). For high-frequency use, prefer `startsWith`, `endsWith`, `contains`, or `indexOf` which run inline without overhead.
+> ℹ️ Because `matches()` is synchronous and runs inline, there is no per-call startup overhead. The shape check adds negligible cost.
 
 ```cel
 "LOAN-12345".matches("^LOAN-[0-9]+")        // true
@@ -729,13 +736,21 @@ Source: `src/cel/builtins.ts`; phase rules in `src/cel/phases.ts`
 |---|---|---|---|---|
 | `$uuidv7` | `$uuidv7()` | `string` | B, H | Generates a time-ordered UUIDv7. **Banned in Reducer.** |
 | `$now` | `$now()` | `string` | B, H | Current UTC time as ISO-8601. Alias for `now()`. **Banned in Reducer.** |
-| `$concat` | `$concat(a, b, ...)` | `string` | B, H, R | Concatenates all arguments as strings. `null`/`undefined` arguments become `""`. |
+| `$concat` | `$concat(a, b, ...)` | `string` | B, H, R | Concatenates all arguments as strings. `null`/`undefined` → `""`. Lists and maps → JSON. |
+| `$fake` | `$fake(spec)` | `string` | B, H | Generate fake data. `spec` is `"module.method"` (e.g. `"person.firstName"`, `"internet.email"`). **Banned in Reducer.** |
+| `$fakeSeed` | `$fakeSeed(n)` | `number` | B, H | Seed the per-request faker RNG with integer `n` for deterministic output. Returns `n`. **Banned in Reducer.** |
+| `$fakeFromFormat` | `$fakeFromFormat(fmt)` | `string` | B, H | Generate a fake value for a JSON Schema format string: `"email"`, `"uuid"`, `"date"`, `"date-time"`, `"uri"`, `"url"`, `"hostname"`, `"ipv4"`. Others → random alphanumeric. **Banned in Reducer.** |
 
 ```cel
-$uuidv7()                    // "0190abcd-1234-7xxx-xxxx-xxxxxxxxxxxx"
-$now()                       // "2024-01-15T10:00:00.123Z"
-$concat("LEAD-", id)         // "LEAD-abc123"
+$uuidv7()                              // "0190abcd-1234-7xxx-xxxx-xxxxxxxxxxxx"
+$now()                                 // "2024-01-15T10:00:00.123Z"
+$concat("LEAD-", id)                   // "LEAD-abc123"
 $concat('/leads/', command.targetId, '/qualify')
+$fake("person.firstName")              // "Jordan"
+$fake("internet.email")                // "ab3xyz12@example.com"
+$fakeSeed(42)                          // 42 (seeds the RNG)
+$fakeFromFormat("uuid")                // "a1b2c3d4-..."
+$fakeFromFormat("date")                // "2031-07-14"
 ```
 
 `$concat` is safe to use in reducers. It is especially useful for constructing path-matching strings in behavior conditions:
@@ -743,6 +758,18 @@ $concat('/leads/', command.targetId, '/qualify')
 ```cel
 command.path == $concat('/leads/', command.targetId, '/qualify')
 ```
+
+**`$fake` supported categories and methods:**
+
+| Category | Methods |
+|---|---|
+| `person` | `firstName`, `lastName`, `fullName` |
+| `internet` | `email`, `url`, `domainName` |
+| `phone` | `number` |
+| `company` | `name` |
+| `address` | `city`, `streetAddress` |
+
+**Faker RNG seeding**: each request has its own isolated RNG. Supply the `X-Potemkin-Seed` request header to make all `$fake*` calls deterministic and reproducible for that request. `$fakeSeed(n)` seeds the same per-request RNG from within an expression. The seed does not persist across requests.
 
 ---
 
@@ -774,9 +801,12 @@ Non-deterministic functions are allowed in **Behavior** and **EventHydration** p
 | `$now` | allowed | allowed | **BANNED** |
 | `now` | allowed | allowed | **BANNED** |
 | `timestamp` | allowed | allowed | **BANNED** |
+| `$fake` | allowed | allowed | **BANNED** |
+| `$fakeSeed` | allowed | allowed | **BANNED** |
+| `$fakeFromFormat` | allowed | allowed | **BANNED** |
 | All other builtins | allowed | allowed | allowed |
 
-Source: `REDUCER_BANNED` set in `src/cel/builtins.ts:11`.
+Source: `REDUCER_BANNED` set in `src/cel/builtins.ts`.
 
 ### 9.4 Phase Ban Error
 
@@ -808,7 +838,7 @@ All errors from the CEL evaluator are JavaScript `Error` instances whose message
 | `CEL_TYPE_ERROR` | Type mismatch in builtin arguments |
 | `CEL_UNKNOWN_BUILTIN` | Call to an unrecognised top-level function name |
 | `CEL_PHASE_BANNED` | Non-deterministic function called in Reducer phase |
-| `CEL_RUNTIME_ERROR: REGEX_TIMEOUT` | `matches()` regex did not complete within 50 ms (ReDoS protection) |
+| `CEL_TYPE_ERROR: REGEX_REJECTED` | `matches()` pattern has a catastrophic-backtracking shape (synchronous shape guard) |
 
 ### Error Propagation
 
@@ -913,18 +943,13 @@ state.status.matches("new|qualified|converted|lost")
 
 ## 12. Common Pitfalls
 
-### 12.1 `1 == 1.0` Is `false`
+### 12.1 Numeric equality is value-based
 
 ```cel
-1 == 1.0      // false — int vs double
+1 == 1.0      // true — numeric equality is value-based
 ```
 
-**Workaround**: coerce both sides to the same type before comparing.
-
-```cel
-double(state.balance) == 1.0
-int(event.payload.amount) == 100
-```
+This engine uses JavaScript numbers throughout, so `1` and `1.0` are the same underlying value. The `type()` function still distinguishes `"int"` from `"double"` (based on `Number.isInteger`), but `==` and `!=` compare by value, not by type. This diverges from upstream Google CEL (which treats them as distinct types). If you need type-aware checks, use `type(x) == "int"` or `type(x) == "double"`.
 
 ### 12.2 Map Literal Keys Must Be Quoted
 
@@ -962,22 +987,21 @@ reducers:
       lastDisbursedAt: "event.payload.at"   # safe: reading, not generating
 ```
 
-### 12.5 `matches()` Uses a 50 ms Worker-Thread Timeout (ReDoS Protection)
+### 12.5 `matches()` Uses a Synchronous Shape-Based ReDoS Guard
 
-The `matches()` method runs the regex in a worker thread with a 50 ms timeout.
-JavaScript's `RegExp` uses a backtracking NFA, which is vulnerable to
-ReDoS (Regular Expression Denial of Service) on adversarial patterns such as
-`(a+)+$`. The timeout ensures that a malicious or accidentally catastrophic
-pattern cannot hang the engine.
+The `matches()` method runs **synchronously** on the calling thread. There are no Worker threads and no wall-clock timeout. Before constructing the `RegExp`, the engine checks the pattern's shape for known catastrophic-backtracking structures (nested/overlapping unbounded quantifiers). If the shape is dangerous, the call throws:
+
+```
+CEL_TYPE_ERROR: REGEX_REJECTED — regex /(a+)+/ has a nested-quantifier shape ...
+```
 
 **What this means for you:**
-- Legitimate patterns on real-world inputs complete in microseconds — the 50 ms limit is never reached.
-- Adversarial patterns that do not complete within 50 ms throw `CEL_RUNTIME_ERROR: REGEX_TIMEOUT`.
+- Legitimate patterns always pass the shape check and execute inline with no overhead.
+- Patterns with dangerous shapes (e.g. `(a+)+$`, `(\d+)+`) are rejected at expression evaluation time with `CEL_TYPE_ERROR: REGEX_REJECTED`.
+- There is **no** runtime timeout — patterns are either pre-rejected by shape, or they run to completion inline.
 - Lookahead `(?=...)`, non-capturing groups `(?:...)`, and other JS-specific features are supported.
 - RE2 possessive quantifiers are not supported (Node.js `RegExp` limitation).
 - Patterns are **not anchored** by default — use `^...$` for full-string matching.
-
-> ⚠️ Worker startup adds ~5–15 ms overhead per `matches()` call. For performance-critical conditions (called on every request), prefer `startsWith`, `endsWith`, `contains`, or `indexOf`.
 
 ### 12.6 `in` Is Not Iteration
 
@@ -1149,12 +1173,18 @@ ident          = [a-zA-Z_$] [a-zA-Z0-9_$]*
 | `$uuidv7()` | Engine-provided UUIDv7 generator |
 | `$now()` | Engine-provided wall-clock alias |
 | `$concat(...)` | Variadic string concatenation |
+| `$fake(spec)` | Synthetic data generation |
+| `$fakeSeed(n)` | Deterministic faker seeding |
+| `$fakeFromFormat(fmt)` | JSON-Schema-format-aware fake generation |
 | `duration()` shorthand | `"30s"`, `"1m"`, `"2h"`, `"3d"` formats |
+| `length()` | Alias of `size()` |
+| `sum()` | Numeric list summation |
 | Extended string methods | `replace`, `split`, `substring`, `indexOf`, `lastIndexOf`, `lowerAscii`, `upperAscii`, `trim`, `trimStart`, `trimEnd`, `charAt` |
 | Extended list methods | `indexOf`, `lastIndexOf`, `sort`, `reverse`, `join`, `flatten`, `distinct` |
 | Map receiver methods | `has`, `keys`, `values`, `size` as receiver methods |
 | `exists_one` macro | Not in all upstream implementations |
 | Null-safe comprehensions `?.macro(...)` | Short-circuit to null on null receiver |
+| Value-based numeric equality | `1 == 1.0` is `true`; upstream CEL treats int/double as distinct |
 
 ### 15.3 Omissions (Present in Upstream, Not Here)
 

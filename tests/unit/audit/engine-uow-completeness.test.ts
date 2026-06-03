@@ -300,42 +300,52 @@ it('secondary command referencing unknown boundary name throws InternalExecution
   ).rejects.toThrow('"NonExistentBoundary"');
 });
 
-// ── AUDIT GAP: max depth check is > not >= ───────────────────────────────────
+// ── Cascade depth: depth > maxDepth guard ────────────────────────────────────
 
-it('CONTRACT: command at depth equal to maxDepth IS rejected (depth > maxDepth means depth=maxDepth+1 throws)', async () => {
-  // uow.ts line 321: if (cmd.depth > maxDepth) → throws InfiniteLoopError
-  // With maxDepth=5, a command at depth 6 throws; depth 5 is still allowed.
-  // Design says max_depth = 5, so depth 6 should throw.
-  // This test verifies the off-by-one: depth === maxDepth should NOT throw.
-
-  // We can't directly inject a deep command easily via bootSystem, so we test the boundary:
-  // Verify that a command at depth=0 with maxDepth=0 DOES throw (0 > 0 is false, so NO throw expected).
-  // Wait: depth > maxDepth: if maxDepth=0 and depth=0, 0>0=false → no throw.
-  // If maxDepth=0 and depth=1, 1>0=true → throws.
-  // The design says max_depth=5, meaning depth 5 is the LAST allowed. depth 6 throws.
-  // This confirms the check is INCLUSIVE of maxDepth (allows up to maxDepth, throws at maxDepth+1).
-
-  // We verify by creating a normal command (depth=0, default maxDepth=5) — should succeed.
-  const id = await createItem('depth-test');
-  expect(sys.graph.get(id)).not.toBeNull();
-});
-
-it('depth === maxDepth throws (>= check) — off-by-one boundary is correctly handled', async () => {
-  // The `>` check was changed to `>=` so depth=maxDepth (5) throws InfiniteLoopError.
-  // A command at depth=maxDepth is rejected; depth=maxDepth-1 is the last allowed slot.
+it('CONTRACT: depth === maxDepth (5) is the last allowed level — does not throw', async () => {
+  // docs §17: max_uow_depth = 5 levels of secondary command recursion.
+  // The guard is `depth > maxDepth`, so depth 5 is allowed; depth 6 throws.
+  // Inject a command at depth 5 directly — it should succeed (not InfiniteLoopError).
   await expect(
     executeUnitOfWork({
       command: {
-        commandId: 'depth-test',
+        commandId: 'depth-test-allowed',
         boundary: 'Item',
         intent: 'creation',
-        targetId: 'depth-target',
+        targetId: 'depth-allowed-target',
         payload: { name: 'x' },
         queryParams: {},
         httpMethod: 'POST',
         path: '/items',
         origin: 'secondary',
-        depth: 5, // depth === MAX_UOW_DEPTH (5) should now throw with >= check
+        depth: 5,
+      },
+      dsl: sys.dsl,
+      graph: sys.graph,
+      events: sys.events,
+      cel: sys.cel,
+      validator: sys.validator,
+      openapi: sys.openapi,
+      maxDepth: 5,
+    }),
+  ).resolves.toBeDefined();
+});
+
+it('depth > maxDepth (depth=6) throws InfiniteLoopError', async () => {
+  // depth 6 with maxDepth 5: 6 > 5 → InfiniteLoopError.
+  await expect(
+    executeUnitOfWork({
+      command: {
+        commandId: 'depth-test-over',
+        boundary: 'Item',
+        intent: 'creation',
+        targetId: 'depth-over-target',
+        payload: { name: 'x' },
+        queryParams: {},
+        httpMethod: 'POST',
+        path: '/items',
+        origin: 'secondary',
+        depth: 6,
       },
       dsl: sys.dsl,
       graph: sys.graph,

@@ -432,7 +432,7 @@ describe('X-Potemkin-* control headers — full integration', () => {
   // ── Tier 3 — Identity & audit override (admin-gated) ────────────────────
 
   describe('Tier 3: identity', () => {
-    it('X-Potemkin-Actor without admin returns 401', async () => {
+    it('X-Potemkin-Actor without any auth token (no actor) returns 401', async () => {
       const res = await agent
         .post('/leads')
         .set('X-Potemkin-Actor', 'alice:agent')
@@ -442,6 +442,20 @@ describe('X-Potemkin-* control headers — full integration', () => {
         });
 
       expect(res.status).toBe(401);
+      expect(res.body.error).toBe('ADMIN_REQUIRED');
+    });
+
+    it('X-Potemkin-Actor with a non-admin auth token returns 403', async () => {
+      const res = await agent
+        .post('/leads')
+        .set('Authorization', 'Bearer user-1:agent')
+        .set('X-Potemkin-Actor', 'alice:agent')
+        .send({
+          companyName: 'Actor Corp', contactName: 'A',
+          phone: '+61 0', email: 'a@t.com', source: 'WEBSITE',
+        });
+
+      expect(res.status).toBe(403);
       expect(res.body.error).toBe('ADMIN_REQUIRED');
     });
 

@@ -67,7 +67,7 @@ describe('applyResponseMutations — Deprecation/Sunset', () => {
       operationLookup: noLookup,
     });
     expect(r.headers['Deprecation']).toBe('true');
-    expect(r.headers['Sunset']).toBe('2026-12-31');
+    expect(r.headers['Sunset']).toBe(new Date('2026-12-31').toUTCString());
     expect(r.headers['Link']).toContain('rel="successor-version"');
   });
 

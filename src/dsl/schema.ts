@@ -1,6 +1,7 @@
 import { BootError } from '../errors.js';
 import { assertNoRemovedReducerKeys } from './removedSyntax.js';
 import { firstBareCelReference } from './celInterpolation.js';
+import { lexTemplate } from '../cel/grammar/templateLexer.js';
 import type { JsonObject, JsonValue, Intent } from '../types.js';
 import { POTEMKIN_SIGNAL_ALIASES } from '../http/potemkinHeaders.js';
 import type {
@@ -155,6 +156,29 @@ function validateCelOrScript(
       `${fieldCtx}: not a valid CEL expression: ${err instanceof Error ? err.message : String(err)}`,
       { field: fieldCtx, expression: value },
     );
+  }
+}
+
+/**
+ * Boot-time compile check for a DSL template value that may contain ${expr}
+ * interpolations. Each EXPR token is extracted and compiled via celEvaluator so
+ * a malformed expression causes a BOOT_ERR_DSL_SYNTAX halt instead of a runtime
+ * 500. Non-string values and strings without ${} are safe to skip.
+ */
+function validatePatchValueCel(value: unknown, fieldCtx: string): void {
+  if (typeof value !== 'string') return;
+  if (!value.includes('${')) return;
+  for (const tok of lexTemplate(value)) {
+    if (tok.type !== 'EXPR') continue;
+    try {
+      celEvaluator.compile(tok.src);
+    } catch (err) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `${fieldCtx}: invalid CEL in \${...}: ${err instanceof Error ? err.message : String(err)}`,
+        { field: fieldCtx, expression: tok.src },
+      );
+    }
   }
 }
 
@@ -586,6 +610,20 @@ function optionalPatchList(raw: Record<string, unknown>, ctx: string): readonly 
         );
       }
     }
+    // Boot-compile any ${...} CEL expressions in string values so a malformed
+    // expression halts boot rather than producing a runtime 500.
+    if (typeof patchValue === 'string') {
+      validatePatchValueCel(patchValue, `${ctx}.patches[${i}].value`);
+    }
+    // Object-valued ops (merge, upsert) may contain ${...} in their nested
+    // string fields — compile each leaf string value.
+    if (typeof patchValue === 'object' && patchValue !== null && !Array.isArray(patchValue)) {
+      for (const [k, v] of Object.entries(patchValue as Record<string, unknown>)) {
+        if (typeof v === 'string') {
+          validatePatchValueCel(v, `${ctx}.patches[${i}].value.${k}`);
+        }
+      }
+    }
     // Guard: Infinity/NaN would round-trip through JSON.stringify to null,
     // silently corrupting the field.
     if (typeof patchValue === 'number' && !Number.isFinite(patchValue)) {
@@ -595,13 +633,25 @@ function optionalPatchList(raw: Record<string, unknown>, ctx: string): readonly 
         { field: `${ctx}.patches[${i}].value`, path },
       );
     }
-    // Same guard for increment `by`: non-finite becomes null via JSON.stringify.
+    // Guard for increment operand: `by` is the canonical field; `value` is accepted
+    // as an alias. Non-finite numbers become null via JSON.stringify, silently
+    // corrupting the field — reject them early.
     const patchBy = p['by'];
     if (typeof patchBy === 'number' && !Number.isFinite(patchBy)) {
       throw new BootError(
         'BOOT_ERR_DSL_SYNTAX',
         `${ctx}.patches[${i}].by: increment operand must be finite (got ${String(patchBy)}) — YAML .inf/.nan are not allowed`,
         { field: `${ctx}.patches[${i}].by`, path },
+      );
+    }
+    // When `value` is used as the alias for `by` on an increment op, it is
+    // numeric — apply the same non-finite guard (string values are covered by
+    // the ${...} CEL compile above).
+    if (op === 'increment' && typeof patchValue === 'number' && !Number.isFinite(patchValue)) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `${ctx}.patches[${i}].value: increment operand must be finite (got ${String(patchValue)}) — YAML .inf/.nan are not allowed`,
+        { field: `${ctx}.patches[${i}].value`, path },
       );
     }
     return {
@@ -1277,14 +1327,13 @@ function validateDerivedProjectionReduceEntry(raw: unknown, idx: number): Derive
   if (!isRecord(raw)) {
     throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}: must be an object`, { context: ctx });
   }
+  // The legacy assign:/append: reducer map form was removed. Reject it here so
+  // derived-projection reduce entries are consistent with boundary reducers.
+  assertNoRemovedReducerKeys(raw, ctx);
   const on = requireString(raw, 'on', ctx);
-  const assign = requireStringStringMap(raw, 'assign', ctx);
-  const append = requireStringStringMap(raw, 'append', ctx);
   const patches = optionalPatchList(raw, ctx);
   return {
     on,
-    ...(assign !== undefined ? { assign } : {}),
-    ...(append !== undefined ? { append } : {}),
     ...(patches !== undefined ? { patches } : {}),
   };
 }

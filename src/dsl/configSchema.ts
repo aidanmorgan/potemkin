@@ -119,6 +119,29 @@ export interface GlobalModule {
   readonly hateoas?: Record<string, unknown>;
 }
 
+/**
+ * Validate a global module (sagas/idempotency/derived_projections/etc) for
+ * removed syntax.  The full semantic validation is done later by
+ * validateGlobalConfig (schema.ts); this pass runs earlier on the raw parsed
+ * object so the configSchema.ts path is consistent with boundary validation.
+ */
+export function validateGlobalModuleRemovedKeys(raw: unknown, source: string): void {
+  if (!isObject(raw)) return;
+  // Validate reduce entries within derived_projections for removed assign/append keys.
+  const derived = raw['derived_projections'];
+  if (Array.isArray(derived)) {
+    for (const proj of derived) {
+      if (!isObject(proj)) continue;
+      const reduce = proj['reduce'];
+      if (!Array.isArray(reduce)) continue;
+      for (const entry of reduce) {
+        if (!isObject(entry)) continue;
+        assertNoRemovedReducerKeys(entry, `${source}: derived_projections[].reduce`);
+      }
+    }
+  }
+}
+
 
 export const PLUGIN_SUB_KEYS = [
   'engine',

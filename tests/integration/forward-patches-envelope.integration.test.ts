@@ -86,7 +86,7 @@ describe('D4: /_engine/forward _patches envelope', () => {
 
     // Deprecation headers are in the envelope headers, not _patches.
     expect(res.body.headers['deprecation']).toBe(new Date('2026-01-01').toUTCString());
-    expect(res.body.headers['sunset']).toBe('2026-12-31');
+    expect(res.body.headers['sunset']).toBe(new Date('2026-12-31').toUTCString());
   });
 
   it('a forward with no response mutations omits _patches (or returns empty)', async () => {

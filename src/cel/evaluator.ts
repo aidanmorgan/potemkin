@@ -237,7 +237,9 @@ function evalExpr(expr: Expr, ctx: CelContext, builtinCtx: BuiltinContext, scope
       const obj = evalExpr(expr.obj, ctx, builtinCtx, scopes);
       const key = evalExpr(expr.key, ctx, builtinCtx, scopes);
       if (typeof key === 'string' && isRecord(obj)) {
-        return obj[key];
+        const val = obj[key];
+        // Normalise absent keys to CEL null — never leak JS undefined.
+        return val === undefined ? null : val;
       }
       if (typeof key === 'number' && Array.isArray(obj)) {
         if (key < 0 || key >= obj.length) {
@@ -333,7 +335,12 @@ function evalExpr(expr: Expr, ctx: CelContext, builtinCtx: BuiltinContext, scope
         case '>=': return (left as number) >= (right as number);
         case '+': {
           if (typeof left === 'string' || typeof right === 'string') {
-            return String(left) + String(right);
+            const toStr = (v: unknown): string => {
+              if (v === null || v === undefined) return 'null';
+              if (typeof v === 'object') return JSON.stringify(v);
+              return String(v);
+            };
+            return toStr(left) + toStr(right);
           }
           return (left as number) + (right as number);
         }

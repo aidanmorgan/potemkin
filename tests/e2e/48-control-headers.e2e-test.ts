@@ -87,12 +87,24 @@ describeWithJava('48 — X-Potemkin-* control headers (full Specmatic stack)', (
   // ── Tier 3 — Identity & audit override ──────────────────────────────────
 
   describe('Tier 3: identity', () => {
-    it('Actor override without admin → 401', async () => {
+    it('Actor override without any auth token (no actor) → 401', async () => {
       const res = await fwd(app.engineUrl, 'POST', '/leads', {
         companyName: 'Identity', contactName: 'I',
         phone: '+61 0', email: 'i@t.com', source: 'WEBSITE',
       }, { 'x-potemkin-actor': 'alice:agent' });
       expect(res.status).toBe(401);
+      expect((res.body as JsonObject)['error']).toBe('ADMIN_REQUIRED');
+    }, 60_000);
+
+    it('Actor override with non-admin auth token → 403', async () => {
+      const res = await fwd(app.engineUrl, 'POST', '/leads', {
+        companyName: 'Identity403', contactName: 'I',
+        phone: '+61 0', email: 'i403@t.com', source: 'WEBSITE',
+      }, {
+        'x-potemkin-actor': 'alice:agent',
+        'authorization': 'Bearer user-1:agent',
+      });
+      expect(res.status).toBe(403);
       expect((res.body as JsonObject)['error']).toBe('ADMIN_REQUIRED');
     }, 60_000);
 

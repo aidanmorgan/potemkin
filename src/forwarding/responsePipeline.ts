@@ -13,6 +13,7 @@ import type { CelEvaluator } from '../cel/evaluator.js';
 import type { Intent, JsonObject, JsonValue } from '../types.js';
 import { applyHateoasLinks } from '../engine/hateoas.js';
 import { POTEMKIN_REQUEST_HEADERS } from '../http/potemkinHeaders.js';
+import { getAllowedOrigin, isOriginAdmitted } from '../http/cors.js';
 
 const CORS_ALLOW_METHODS = 'GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS';
 const CORS_ALLOW_HEADERS = [
@@ -23,33 +24,6 @@ const CORS_ALLOW_HEADERS = [
   'x-specmatic-fault',
   ...POTEMKIN_REQUEST_HEADERS,
 ].join(', ');
-
-/**
- * Resolve the CORS allowed-origin value for a request. Replicates
- * getAllowedOrigin in gateway.ts (the source of truth): with ALLOWED_ORIGINS
- * unset or '*' every origin is allowed; otherwise the request Origin is
- * reflected when it is in the list, falling back to the first entry.
- */
-function resolveAllowedOrigin(requestOrigin: string | undefined): string {
-  const raw = process.env['ALLOWED_ORIGINS'] ?? '*';
-  if (raw === '*') return '*';
-  const allowed = raw.split(',').map((s) => s.trim());
-  if (requestOrigin && allowed.includes(requestOrigin)) return requestOrigin;
-  return allowed[0] ?? '*';
-}
-
-/**
- * Returns true when the given requestOrigin is admitted by the ALLOWED_ORIGINS
- * allowlist for purposes of credentialed-request reflection. Mirrors
- * isOriginAdmitted in gateway.ts.
- */
-function isOriginAdmitted(requestOrigin: string | undefined): boolean {
-  if (!requestOrigin) return false;
-  const raw = process.env['ALLOWED_ORIGINS'] ?? '*';
-  if (raw === '*') return true;
-  const allowed = raw.split(',').map((s) => s.trim());
-  return allowed.includes(requestOrigin);
-}
 
 /**
  * CORS response headers (lowercased keys) for a forwarded OPTIONS preflight.
@@ -63,7 +37,7 @@ function isOriginAdmitted(requestOrigin: string | undefined): boolean {
  */
 export function corsPreflightHeaders(requestOrigin?: string, credentialed = false): Record<string, string> {
   const admitted = credentialed && isOriginAdmitted(requestOrigin);
-  const origin = admitted ? requestOrigin! : resolveAllowedOrigin(requestOrigin);
+  const origin = admitted ? requestOrigin! : getAllowedOrigin(requestOrigin);
   const headers: Record<string, string> = {
     'access-control-allow-origin': origin,
     'access-control-allow-methods': CORS_ALLOW_METHODS,

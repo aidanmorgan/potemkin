@@ -71,6 +71,16 @@ export function resetSystem(sys: BootedSystem): void {
       // ── Step 5: Reset derived projections ──────────────────────────────────
       if (sys.derivedProjections) {
         sys.derivedProjections.clear();
+        // Re-register every declared projection with an empty map (mirrors the
+        // boot-time pre-registration) so declared-but-empty projections return
+        // 200 {} rather than 404 after a reset.
+        if (sys.dsl.derivedProjections) {
+          for (const proj of sys.dsl.derivedProjections) {
+            if (!sys.derivedProjections.has(proj.name)) {
+              sys.derivedProjections.set(proj.name, new Map());
+            }
+          }
+        }
         if (sys.dsl.derivedProjections && sys.dsl.derivedProjections.length > 0) {
           for (const event of rehydratedEvents) {
             applyEventToDerivedProjections(

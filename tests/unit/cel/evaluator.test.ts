@@ -114,8 +114,8 @@ describe('cel/evaluator', () => {
       expect(eval_('obj["key"]', { obj: { key: 'val' } })).toBe('val');
     });
 
-    it('returns undefined for missing property', () => {
-      expect(eval_('a.b', { a: {} })).toBeUndefined();
+    it('returns null for missing property (absent key normalised to CEL null)', () => {
+      expect(eval_('a.b', { a: {} })).toBeNull();
     });
 
     it('throws when accessing property on non-object/array', () => {
@@ -400,6 +400,63 @@ describe('cel/evaluator', () => {
       // empty string produces eof token which means nothing to parse
       // different evaluator behavior but shouldn't silently succeed
       expect(() => cel.compile('')).toThrow();
+    });
+  });
+
+  // ── potemkin-s74e: + operator with objects/arrays uses JSON ───────────────
+  describe('string + with list or map operand uses JSON (potemkin-s74e)', () => {
+    it('"prefix:" + list produces valid JSON concatenation', () => {
+      expect(eval_('"items:" + [1, 2]')).toBe('items:[1,2]');
+    });
+
+    it('"prefix:" + map produces valid JSON concatenation', () => {
+      expect(eval_('"data:" + {"k": 1}')).toBe('data:{"k":1}');
+    });
+
+    it('list + " suffix" produces valid JSON concatenation', () => {
+      expect(eval_('[1, 2] + " end"')).toBe('[1,2] end');
+    });
+  });
+
+  // ── potemkin-9m5y: missing map keys return null, not undefined ─────────────
+  describe('absent map key access returns CEL null (potemkin-9m5y)', () => {
+    it('absent key returns null', () => {
+      expect(eval_('obj.missing', { obj: { present: 1 } })).toBeNull();
+    });
+
+    it('absent key string-concatenated via + produces "null..." not "undefined..."', () => {
+      expect(eval_('"x:" + obj.missing', { obj: {} })).toBe('x:null');
+    });
+
+    it('absent key compared with > returns false cleanly (null < 0 is false)', () => {
+      expect(eval_('obj.missing > 0', { obj: {} })).toBe(false);
+    });
+
+    it('absent key compared with < returns false cleanly (null > 0 is false)', () => {
+      expect(eval_('obj.missing < 0', { obj: {} })).toBe(false);
+    });
+
+    it('present key is unaffected and still returns its value', () => {
+      expect(eval_('obj.x', { obj: { x: 42 } })).toBe(42);
+    });
+  });
+
+  // ── potemkin-mn6e: numeric equality is value-based, ignores int/double ─────
+  describe('numeric equality is value-based (potemkin-mn6e)', () => {
+    it('1 == 1.0 is true (value-based, not type-tagged)', () => {
+      expect(eval_('1 == 1.0')).toBe(true);
+    });
+
+    it('int(1) == 1.0 is true', () => {
+      expect(eval_('int(1) == 1.0')).toBe(true);
+    });
+
+    it('double(1) == 1 is true', () => {
+      expect(eval_('double(1) == 1')).toBe(true);
+    });
+
+    it('1 != 2.0 is true', () => {
+      expect(eval_('1 != 2.0')).toBe(true);
     });
   });
 });

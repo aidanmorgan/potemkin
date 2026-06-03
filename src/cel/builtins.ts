@@ -212,6 +212,10 @@ function parseDuration(s: string): number {
   const isoMatch = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$/.exec(s);
   if (isoMatch) {
     const [, d, h, m, sec] = isoMatch;
+    // Reject degenerate inputs like "P" or "PT" where no component was captured.
+    if (!d && !h && !m && !sec) {
+      throw new Error(`CEL_RUNTIME_ERROR: invalid duration string: ${JSON.stringify(s)}`);
+    }
     return (
       (d ? parseInt(d, 10) * 86400000 : 0) +
       (h ? parseInt(h, 10) * 3600000 : 0) +
@@ -251,7 +255,11 @@ export const BUILTINS: Record<string, (...args: unknown[]) => unknown> = {
   $now: (..._args: unknown[]): unknown => new Date().toISOString(),
 
   $concat: (...args: unknown[]): unknown =>
-    args.map(a => (a === null || a === undefined ? '' : String(a))).join(''),
+    args.map(a => {
+      if (a === null || a === undefined) return '';
+      if (typeof a === 'object') return JSON.stringify(a);
+      return String(a);
+    }).join(''),
 
   // ── Type conversions ──────────────────────────────────────────────────────
   int: (...args: unknown[]): unknown => {
@@ -281,6 +289,7 @@ export const BUILTINS: Record<string, (...args: unknown[]) => unknown> = {
   string: (...args: unknown[]): unknown => {
     const [x] = args;
     if (x === null || x === undefined) return 'null';
+    if (typeof x === 'object') return JSON.stringify(x);
     return String(x);
   },
 
@@ -317,6 +326,7 @@ export const BUILTINS: Record<string, (...args: unknown[]) => unknown> = {
     if (args.length === 0) throw new Error(`CEL_RUNTIME_ERROR: min() requires at least one argument`);
     let flat: unknown[] = args;
     if (args.length === 1 && Array.isArray(args[0])) flat = args[0];
+    if (flat.length === 0) throw new Error(`CEL_RUNTIME_ERROR: min() of empty list`);
     if (!flat.every(a => typeof a === 'number'))
       throw new Error(`CEL_TYPE_ERROR: min() requires number arguments`);
     return Math.min(...(flat as number[]));
@@ -326,6 +336,7 @@ export const BUILTINS: Record<string, (...args: unknown[]) => unknown> = {
     if (args.length === 0) throw new Error(`CEL_RUNTIME_ERROR: max() requires at least one argument`);
     let flat: unknown[] = args;
     if (args.length === 1 && Array.isArray(args[0])) flat = args[0];
+    if (flat.length === 0) throw new Error(`CEL_RUNTIME_ERROR: max() of empty list`);
     if (!flat.every(a => typeof a === 'number'))
       throw new Error(`CEL_TYPE_ERROR: max() requires number arguments`);
     return Math.max(...(flat as number[]));

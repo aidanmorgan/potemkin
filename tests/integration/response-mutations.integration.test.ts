@@ -119,7 +119,7 @@ describe('D1/D2/D3 response mutations via the gateway', () => {
     await createWidget(agent, id);
     const res = await agent.get(`/widgets/${id}`).expect(200);
     expect(res.headers['deprecation']).toBe(new Date('2026-01-01').toUTCString());
-    expect(res.headers['sunset']).toBe('2026-12-31');
+    expect(res.headers['sunset']).toBe(new Date('2026-12-31').toUTCString());
     expect(res.headers['link']).toContain('rel="successor-version"');
   });
 

@@ -100,4 +100,79 @@ describe('cel/builtins', () => {
       ).toThrow(CelPhase.Reducer);
     });
   });
+
+  // ── potemkin-s74e: string() / $concat coerce objects/arrays to JSON ────────
+  describe('string() coerces objects and arrays to JSON (potemkin-s74e)', () => {
+    it('string() of a map produces valid JSON', () => {
+      expect(BUILTINS['string']!({ a: 1 })).toBe('{"a":1}');
+    });
+
+    it('string() of a list produces valid JSON', () => {
+      expect(BUILTINS['string']!([1, 2, 3])).toBe('[1,2,3]');
+    });
+
+    it('string() of an empty map produces {}', () => {
+      expect(BUILTINS['string']!({})).toBe('{}');
+    });
+
+    it('string() of an empty list produces []', () => {
+      expect(BUILTINS['string']!([])).toBe('[]');
+    });
+  });
+
+  describe('$concat coerces objects and arrays to JSON (potemkin-s74e)', () => {
+    it('$concat with a list arg produces JSON, not comma-joined', () => {
+      expect(BUILTINS['$concat']!('prefix-', [1, 2])).toBe('prefix-[1,2]');
+    });
+
+    it('$concat with a map arg produces JSON, not [object Object]', () => {
+      expect(BUILTINS['$concat']!('data:', { x: 1 })).toBe('data:{"x":1}');
+    });
+  });
+
+  // ── potemkin-7u9l: min([]) and max([]) throw a runtime error ───────────────
+  describe('min/max on empty list throw CEL_RUNTIME_ERROR (potemkin-7u9l)', () => {
+    it('min([]) throws CEL_RUNTIME_ERROR', () => {
+      expect(() => BUILTINS['min']!([])).toThrow('CEL_RUNTIME_ERROR: min() of empty list');
+    });
+
+    it('max([]) throws CEL_RUNTIME_ERROR', () => {
+      expect(() => BUILTINS['max']!([])).toThrow('CEL_RUNTIME_ERROR: max() of empty list');
+    });
+
+    it('min on non-empty list still works', () => {
+      expect(BUILTINS['min']!([3, 1, 2])).toBe(1);
+    });
+
+    it('max on non-empty list still works', () => {
+      expect(BUILTINS['max']!([3, 1, 2])).toBe(3);
+    });
+  });
+
+  // ── potemkin-4huj: duration("P") and duration("PT") throw ─────────────────
+  describe('duration() rejects degenerate ISO strings (potemkin-4huj)', () => {
+    it('duration("P") throws the unparseable-duration error', () => {
+      expect(() => BUILTINS['duration']!('P')).toThrow('CEL_RUNTIME_ERROR: invalid duration string');
+    });
+
+    it('duration("PT") throws the unparseable-duration error', () => {
+      expect(() => BUILTINS['duration']!('PT')).toThrow('CEL_RUNTIME_ERROR: invalid duration string');
+    });
+
+    it('duration("P1D") still parses correctly', () => {
+      expect(BUILTINS['duration']!('P1D')).toBe(86400000);
+    });
+
+    it('duration("PT2H") still parses correctly', () => {
+      expect(BUILTINS['duration']!('PT2H')).toBe(7200000);
+    });
+
+    it('duration("P1DT2H3M4S") still parses correctly', () => {
+      expect(BUILTINS['duration']!('P1DT2H3M4S')).toBe(93784000);
+    });
+
+    it('duration shorthand "30s" still parses correctly', () => {
+      expect(BUILTINS['duration']!('30s')).toBe(30000);
+    });
+  });
 });

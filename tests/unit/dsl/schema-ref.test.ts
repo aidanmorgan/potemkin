@@ -126,7 +126,7 @@ describe('schema_ref runtime validation', () => {
     } catch (err) {
       expect(err instanceof InternalExecutionError).toBe(true);
       const details = (err as InternalExecutionError).details as Record<string, unknown>;
-      expect(details['code']).toBe('EVENT_PAYLOAD_VIOLATES_SCHEMA');
+      expect(details['code']).toBe('SCHEMA_TYPE_MISMATCH');
       expect(details['eventType']).toBe('LoanOpened');
       expect(details['schemaRef']).toBe('#/components/schemas/LoanOpenedEvent');
     }

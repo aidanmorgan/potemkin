@@ -11,14 +11,13 @@
  * as a plain JSON object.
  */
 
-import type { DomainEvent, JsonObject, JsonValue } from '../types.js';
+import type { DomainEvent, JsonObject } from '../types.js';
 import type { DerivedProjectionConfig, DerivedProjectionReduceEntry, ReducerPatchOp } from '../dsl/types.js';
 import type { CelEvaluator } from '../cel/evaluator.js';
 import type { Logger } from '../observability/logger.js';
 import type { DerivedStateMap, DerivedProjectionRegistry } from './types.js';
 import { CelPhase } from '../cel/phases.js';
 import { deepClone } from '../stategraph/graph.js';
-import { setByDotPath, getByDotPath } from '../engine/projection.js';
 import { applyPatches } from '../dsl/patches.js';
 import { resolveReducerPatch } from '../engine/reducerPatches.js';
 
@@ -145,41 +144,6 @@ function applyReduceEntry(
     payload: event.payload,
     state: buf,
   };
-
-  if (entry.assign) {
-    for (const [dotPath, expr] of Object.entries(entry.assign)) {
-      try {
-        const value = cel.evaluateDslValue(expr, celCtx, CelPhase.Reducer) as JsonValue;
-        if (value !== undefined) {
-          setByDotPath(buf, dotPath, value);
-        }
-      } catch (err) {
-        logger?.warn(
-          { projName, eventType, dotPath, expr, err },
-          'Derived projection assign CEL failed — skipping field',
-        );
-      }
-    }
-  }
-
-  if (entry.append) {
-    for (const [dotPath, expr] of Object.entries(entry.append)) {
-      try {
-        const value = cel.evaluateDslValue(expr, celCtx, CelPhase.Reducer) as JsonValue;
-        if (value !== undefined) {
-          const existing = getByDotPath(buf, dotPath);
-          const arr: JsonValue[] = Array.isArray(existing) ? [...existing] : [];
-          arr.push(value);
-          setByDotPath(buf, dotPath, arr);
-        }
-      } catch (err) {
-        logger?.warn(
-          { projName, eventType, dotPath, expr, err },
-          'Derived projection append CEL failed — skipping field',
-        );
-      }
-    }
-  }
 
   if (entry.patches) {
     for (const patch of entry.patches) {

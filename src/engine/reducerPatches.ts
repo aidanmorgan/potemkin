@@ -15,8 +15,9 @@ import { applyPatches, type Patch, type JournalEntry } from '../dsl/patches.js';
  * are evaluated in the Reducer phase (so `event.payload.x` / `state.y` /
  * `${...}` references resolve); a value that is not valid CEL falls back to its
  * literal string. Non-string values (numbers, booleans, objects, arrays) pass
- * through unchanged. The boundary validator rejects ill-formed CEL at boot, so
- * the fallback only ever sees genuine string literals at runtime.
+ * through unchanged. The boundary validator (optionalPatchList in schema.ts)
+ * boot-compiles every ${...} body, so ill-formed expressions halt boot rather
+ * than surfacing at runtime.
  */
 export function resolveReducerPatch(
   patch: ReducerPatchOp,
@@ -37,7 +38,8 @@ export function resolveReducerPatch(
     case 'copy':
       return { op: patch.op, from: patch.from ?? patch.path, path: patch.path };
     case 'increment':
-      return { op: 'increment', path: patch.path, by: patch.by ?? 0 };
+      // Accept `value` as an alias for `by`; default to 1 (documented behaviour).
+      return { op: 'increment', path: patch.path, by: patch.by ?? (patch.value as number | undefined) ?? 1 };
     case 'merge':
       return {
         op: 'merge',

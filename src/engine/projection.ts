@@ -76,7 +76,7 @@ function validatePayloadAgainstSchemaRef(
   if (!schema || typeof schema !== 'object') {
     throw new InternalExecutionError(
       `schema_ref "${schemaRef}" could not be resolved for event "${eventType}"`,
-      { code: 'EVENT_PAYLOAD_VIOLATES_SCHEMA', eventType, schemaRef, errors: [] },
+      { code: 'SCHEMA_TYPE_MISMATCH', eventType, schemaRef, errors: [] },
     );
   }
 
@@ -86,7 +86,7 @@ function validatePayloadAgainstSchemaRef(
     throw new InternalExecutionError(
       `Event payload for "${eventType}" violates schema_ref "${schemaRef}"`,
       {
-        code: 'EVENT_PAYLOAD_VIOLATES_SCHEMA',
+        code: 'SCHEMA_TYPE_MISMATCH',
         eventType,
         schemaRef,
         errors: (validate as { errors?: unknown }).errors as JsonValue,

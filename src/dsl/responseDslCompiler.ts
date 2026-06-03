@@ -55,7 +55,11 @@ export function compileResponseDeprecation(config: DeprecationConfig | undefined
     { op: 'add', path: '/headers/Deprecation', value: deprecationHeaderValue(config.date) },
   ];
   if (config.sunset) {
-    out.push({ op: 'add', path: '/headers/Sunset', value: config.sunset });
+    const sunsetDate = new Date(config.sunset);
+    const sunsetValue = Number.isFinite(sunsetDate.getTime())
+      ? sunsetDate.toUTCString()
+      : config.sunset;
+    out.push({ op: 'add', path: '/headers/Sunset', value: sunsetValue });
   }
   if (config.replacement) {
     out.push({

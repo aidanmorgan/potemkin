@@ -550,3 +550,213 @@ describe('http/gateway — chaos headers applied on gateway (direct) path', () =
     expect(res.body.error).toBe('TOO_MANY_REQUESTS');
   });
 });
+
+// ── kp3y: ETag + 304 on direct gateway single-entity GET ─────────────────────
+//
+// The direct gateway path must emit ETag on single-entity GET and honour
+// If-None-Match to return 304 with an empty body — mirroring the forwarding
+// handler.
+
+const COND_OPENAPI = `
+openapi: "3.0.3"
+info: { title: Conditional Gateway Test, version: "1.0.0" }
+paths:
+  /items:
+    get:
+      operationId: listItems
+      responses: { "200": { description: ok } }
+    post:
+      operationId: createItem
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/Item" } } }
+      responses: { "201": { description: created } }
+  /items/{id}:
+    get:
+      operationId: getItem
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: ok }, "404": { description: missing } }
+components:
+  schemas:
+    Item:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        updatedAt: { type: string }
+      additionalProperties: true
+    ItemById:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        updatedAt: { type: string }
+      additionalProperties: true
+`;
+
+const COND_DSL = `
+boundary: Item
+contract_path: /items
+fallback_override: true
+identity: { creation: { generate: "$uuidv7()" } }
+event_catalog:
+  - type: ItemCreated
+    payload_template: { id: "command.targetId", name: "command.payload.name" }
+behaviors:
+  - name: create-item
+    match: { operationId: createItem, condition: "true" }
+    emit: ItemCreated
+reducers:
+  - on: ItemCreated
+    patches:
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
+      - { op: replace, path: /name, value: "\${event.payload.name}" }
+`;
+
+const COND_BY_ID_DSL = `
+boundary: ItemById
+contract_path: /items/{id}
+fallback_override: true
+behaviors: []
+reducers: []
+event_catalog: []
+`;
+
+describe('http/gateway — ETag and 304 on direct single-entity GET (kp3y)', () => {
+  let agent: PersistentAgent;
+
+  beforeAll(async () => {
+    const openapi = await loadOpenApi(COND_OPENAPI);
+    const compiledDsl = await compileDsl([
+      { name: 'item', yaml: COND_DSL },
+      { name: 'item-by-id', yaml: COND_BY_ID_DSL },
+    ]);
+    const sys = await bootSystem({ openapi, compiledDsl });
+    const app = createGateway(sys);
+    const { agent: a, close } = await withPersistentServer(app);
+    agent = a;
+    registerFileTeardown(close);
+  });
+
+  it('single-entity GET emits a quoted ETag', async () => {
+    const create = await agent.post('/items').send({ name: 'etag-item' }).expect(201);
+    const id = create.body.id;
+    const res = await agent.get(`/items/${id}`).expect(200);
+    expect(res.headers['etag']).toMatch(/^"\d+"$/);
+  });
+
+  it('matching If-None-Match returns 304 with empty body', async () => {
+    const create = await agent.post('/items').send({ name: 'inm-item' }).expect(201);
+    const id = create.body.id;
+    const first = await agent.get(`/items/${id}`).expect(200);
+    const etag = first.headers['etag'];
+    expect(etag).toBeDefined();
+
+    const cond = await agent.get(`/items/${id}`).set('If-None-Match', etag).expect(304);
+    expect(cond.text).toBe('');
+    expect(cond.headers['etag']).toBe(etag);
+  });
+
+  it('non-matching If-None-Match returns 200 with body', async () => {
+    const create = await agent.post('/items').send({ name: 'inm-nomatch' }).expect(201);
+    const id = create.body.id;
+    const res = await agent.get(`/items/${id}`).set('If-None-Match', '"9999"').expect(200);
+    expect(res.body.id).toBe(id);
+  });
+});
+
+// ── 1mwu: dynamic HATEOAS on direct gateway query path ───────────────────────
+//
+// The direct gateway path must apply global hateoas.enabled self-links to
+// single-entity GET responses, just as the forwarding handler does.
+
+const HATEOAS_GLOBAL = `
+hateoas:
+  enabled: true
+  self_links: true
+`;
+
+describe('http/gateway — dynamic HATEOAS on direct query path (1mwu)', () => {
+  let agent: PersistentAgent;
+
+  beforeAll(async () => {
+    const openapi = await loadOpenApi(COND_OPENAPI);
+    const compiledDsl = await compileDsl(
+      [
+        { name: 'item', yaml: COND_DSL },
+        { name: 'item-by-id', yaml: COND_BY_ID_DSL },
+      ],
+      HATEOAS_GLOBAL,
+    );
+    const sys = await bootSystem({ openapi, compiledDsl });
+    const app = createGateway(sys);
+    const { agent: a, close } = await withPersistentServer(app);
+    agent = a;
+    registerFileTeardown(close);
+  });
+
+  it('single-entity GET includes _links.self in the response body', async () => {
+    const create = await agent.post('/items').send({ name: 'hateoas-item' }).expect(201);
+    const id = create.body.id;
+    const res = await agent.get(`/items/${id}`).expect(200);
+    expect(res.body._links).toBeDefined();
+    expect(res.body._links.self).toBeDefined();
+    expect(res.body._links.self.href).toContain(id);
+  });
+});
+
+// ── wnre: chaos-truncated body is raw bytes, not double-quoted ────────────────
+//
+// When X-Potemkin-Body-Truncate is applied, the gateway must write the raw
+// truncated bytes with Content-Type: application/json and NOT re-quote them
+// via res.json(). A truncated body like `[{"i` must arrive as those exact bytes,
+// not as the JSON string `"[{\"i"`.
+
+describe('http/gateway — body-truncate writes raw bytes on direct path (wnre)', () => {
+  let agent: PersistentAgent;
+
+  beforeAll(async () => {
+    const openapi = await loadOpenApi(COND_OPENAPI);
+    const compiledDsl = await compileDsl([
+      { name: 'item', yaml: COND_DSL },
+      { name: 'item-by-id', yaml: COND_BY_ID_DSL },
+    ]);
+    const sys = await bootSystem({ openapi, compiledDsl });
+    const app = createGateway(sys);
+    const { agent: a, close } = await withPersistentServer(app);
+    agent = a;
+    registerFileTeardown(close);
+  });
+
+  it('truncated response body is raw bytes (not a re-quoted JSON string)', async () => {
+    const res = await agent
+      .get('/items')
+      .set('X-Potemkin-Body-Truncate', '5')
+      .expect(200);
+
+    // The raw HTTP body must be at most 5 bytes.
+    // If double-serialized, a 5-byte truncation of `[{"id` would become `"[{\""` (7+ chars with quotes).
+    const rawBody = res.text;
+    expect(rawBody.length).toBeLessThanOrEqual(5);
+    // Must not be a JSON-quoted string (no surrounding quotes from re-serialization).
+    expect(rawBody.startsWith('"')).toBe(false);
+  });
+
+  it('chaos-forced status with truncated body writes raw bytes', async () => {
+    const res = await agent
+      .get('/items')
+      .set('X-Potemkin-Force-Status', '503')
+      .set('X-Potemkin-Body-Truncate', '5')
+      .buffer(true)
+      .parse((res, callback) => {
+        let data = '';
+        res.on('data', (chunk: Buffer) => { data += chunk.toString(); });
+        res.on('end', () => callback(null, data));
+      })
+      .expect(503);
+
+    const rawBody = res.body as string;
+    expect(rawBody.length).toBeLessThanOrEqual(5);
+    expect(rawBody.startsWith('"')).toBe(false);
+  });
+});

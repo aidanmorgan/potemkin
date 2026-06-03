@@ -53,7 +53,7 @@ describe('compileResponseDeprecation (REQ-RESP-002)', () => {
     expect(patches).toContainEqual({
       op: 'add',
       path: '/headers/Sunset',
-      value: '2026-12-31',
+      value: new Date('2026-12-31').toUTCString(),
     });
   });
 
@@ -96,7 +96,7 @@ describe('compileResponseDeprecation (REQ-RESP-002)', () => {
     const sunset = patches.find((p) => p.path === '/headers/Sunset') as any;
     const link = patches.find((p) => p.path === '/headers/Link') as any;
     expect(dep.value).toBe(new Date('2025-06-01T00:00:00.000Z').toUTCString());
-    expect(sunset.value).toBe('2025-12-31');
+    expect(sunset.value).toBe(new Date('2025-12-31').toUTCString());
     expect(String(link.value)).toContain('rel="successor-version"');
   });
 });

@@ -242,7 +242,9 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       }
       const isAdmin = (callerActor?.scopes ?? []).includes('admin');
       if (!isAdmin) {
-        send({ status: 401, headers: {}, body: { error: 'ADMIN_REQUIRED', message: 'admin scope required for this X-Potemkin-* header' } });
+        // RFC 7235: 401 = not authenticated; 403 = authenticated but forbidden.
+        const status = callerActor === null ? 401 : 403;
+        send({ status, headers: {}, body: { error: 'ADMIN_REQUIRED', message: 'admin scope required for this X-Potemkin-* header' } });
         return;
       }
     }

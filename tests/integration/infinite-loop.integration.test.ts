@@ -2,7 +2,7 @@
  * infinite-loop.integration.test.ts
  *
  * Integration test: synthesise a DSL with mutually recursive secondary commands;
- * assert InfiniteLoopError at depth > 5.
+ * assert InfiniteLoopError at depth > 5 (depth 6 and above).
  *
  * We build a minimal inline DSL entirely within this test — no fixture file required.
  *
@@ -256,8 +256,8 @@ describe('infinite-loop.integration: mutually recursive secondary commands', () 
     expect(sys.events.size()).toBe(initialSize);
   });
 
-  it('a command with depth already at maxDepth triggers the error immediately', async () => {
-    // Start with a command whose depth is already 6 (above maxDepth=5)
+  it('a command at depth > maxDepth triggers the error immediately', async () => {
+    // maxDepth=5 allows depths 0–5; depth 6 is the first rejected level.
     const cmd = {
       commandId: nextUuidv7(),
       boundary: 'PingBoundary',

@@ -1,5 +1,7 @@
 /**
  * Derived projection engine
+ *
+ * assign/append forms were removed; all reduce entries now use patches.
  */
 import {
   createDerivedProjectionRegistry,
@@ -33,18 +35,18 @@ const customerSummaryProjection: DerivedProjectionConfig = {
   reduce: [
     {
       on: 'LeadCreated',
-      assign: {
-        customer_id: 'event.aggregateId',
-        name: 'event.payload.name',
-        total_loans: '0',
-      },
+      patches: [
+        { op: 'add', path: '/customer_id', value: '${event.aggregateId}' },
+        { op: 'add', path: '/name', value: '${event.payload.name}' },
+        { op: 'add', path: '/total_loans', value: 0 },
+      ],
     },
     {
       on: 'OpportunityCreated',
-      assign: {
-        // Use coalesce so null/undefined state.total_loans defaults to 0
-        total_loans: 'coalesce(state.total_loans, 0) + 1',
-      },
+      patches: [
+        // increment with default (1) increments total_loans
+        { op: 'increment', path: '/total_loans', by: 1 },
+      ],
     },
   ],
 };
@@ -57,7 +59,7 @@ describe('projections/engine - derived projections', () => {
       key: 'event.aggregateId',
       subscribe: ['Lead:LeadCreated'],
       reduce: [
-        { on: 'LeadCreated', assign: { total: '${coalesce(state.total, 0) + 1}' } },
+        { on: 'LeadCreated', patches: [{ op: 'add', path: '/total', value: '${coalesce(state.total, 0) + 1}' }] },
       ],
     };
     applyEventToDerivedProjections(makeEvent(), [proj], registry, cel);
@@ -115,7 +117,7 @@ describe('projections/engine - derived projections', () => {
       name: 'OtherSummary',
       key: 'event.aggregateId',
       subscribe: ['Lead:LeadCreated'],
-      reduce: [{ on: 'LeadCreated', assign: { id: 'event.aggregateId' } }],
+      reduce: [{ on: 'LeadCreated', patches: [{ op: 'add', path: '/id', value: '${event.aggregateId}' }] }],
     };
 
     const registry = createDerivedProjectionRegistry();
@@ -134,7 +136,7 @@ describe('projections/engine - derived projections', () => {
       name: 'SimpleSummary',
       key: 'event.aggregateId',
       subscribe: ['LeadCreated'],   // no boundary prefix
-      reduce: [{ on: 'LeadCreated', assign: { id: 'event.aggregateId' } }],
+      reduce: [{ on: 'LeadCreated', patches: [{ op: 'add', path: '/id', value: '${event.aggregateId}' }] }],
     };
     const registry = createDerivedProjectionRegistry();
     applyEventToDerivedProjections(makeEvent(), [proj], registry, cel);
