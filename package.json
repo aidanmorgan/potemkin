@@ -23,6 +23,7 @@
     "test:e2e": "jest --config jest.e2e.config.js --runInBand",
     "test:e2e:engine": "jest --config jest.e2e.engine.config.js --runInBand",
     "test:e2e:build": "cd plugin && ./gradlew shadowJar && cd .. && jest --config jest.e2e.config.js --runInBand",
+    "lint:sim": "tsx src/cli/lint.ts",
     "test:examples": "jest --config jest.examples.config.js --runInBand",
     "test:examples:build": "cd plugin && ./gradlew shadowJar && cd .. && jest --config jest.examples.config.js --runInBand"
   },
