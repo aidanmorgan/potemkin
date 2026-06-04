@@ -2,6 +2,7 @@ import { coverageCheck } from '../../../src/lint/checks/coverage';
 import { identityCheck } from '../../../src/lint/checks/identity';
 import { referencesCheck } from '../../../src/lint/checks/references';
 import { requiredFieldsCheck } from '../../../src/lint/checks/requiredFields';
+import { celReferencesCheck } from '../../../src/lint/checks/celReferences';
 import type { LintContext } from '../../../src/lint/types';
 
 function ctx(partial: { boundaries?: unknown[]; byContractPath?: Record<string, unknown>; paths?: Record<string, unknown>; schemas?: Record<string, unknown> }): LintContext {
@@ -151,5 +152,30 @@ describe('requiredFieldsCheck', () => {
       }],
     }));
     expect(findings).toHaveLength(0);
+  });
+});
+
+describe('celReferencesCheck', () => {
+  function boundary(reducerValue: string) {
+    return {
+      boundary: 'cust', contractPath: '/c', behaviors: [],
+      eventCatalog: [{ type: 'CustomerUpdated', payloadTemplate: { email: 'x', name: 'y' } }],
+      reducers: [{ on: 'CustomerUpdated', patches: [{ op: 'replace', path: '/email', value: reducerValue }] }],
+    };
+  }
+
+  it('errors on an event.payload reference the event does not declare', () => {
+    const findings = celReferencesCheck(ctx({ boundaries: [boundary('${event.payload.emial}')] }));
+    expect(findings).toHaveLength(1);
+    expect(findings[0].code).toBe('CEL_EVENT_PAYLOAD_REF_UNKNOWN');
+    expect(findings[0].message).toContain('emial');
+  });
+
+  it('passes when the reference names a declared payload field', () => {
+    expect(celReferencesCheck(ctx({ boundaries: [boundary('${event.payload.email}')] }))).toHaveLength(0);
+  });
+
+  it('ignores references with no event.payload (e.g. constants, state)', () => {
+    expect(celReferencesCheck(ctx({ boundaries: [boundary('${true}')] }))).toHaveLength(0);
   });
 });
