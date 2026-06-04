@@ -2,7 +2,7 @@ import type { Command, DomainEvent, JsonObject, JsonValue } from '../types.js';
 import type { BoundaryConfig } from '../dsl/types.js';
 import type { ShadowGraph } from '../stategraph/shadow.js';
 import type { CelEvaluator } from '../cel/evaluator.js';
-import type { Logger } from '../observability/logger.js';
+import { createLogger, type Logger } from '../observability/logger.js';
 import type { Tracer } from '../observability/tracing.js';
 import type { ObjectGraphSchemaRegistry } from '../schema/types.js';
 import type { ScriptRegistry, ScriptContext } from '../scripts/types.js';
@@ -111,9 +111,12 @@ export function resolveCreationTargetId(input: {
   readonly cel: CelEvaluator;
   readonly scriptRegistry: ScriptRegistry | undefined;
   readonly now: () => string;
-  readonly logger: Logger;
+  readonly logger: Logger | undefined;
 }): string {
-  const { generate, payload, boundary, cel, scriptRegistry, now, logger } = input;
+  const { generate, payload, boundary, cel, scriptRegistry, now } = input;
+  // A ts:<id> generator needs a real Logger in the ScriptContext; the engine
+  // pipeline may hand us none, so fall back to a fresh one (only built lazily).
+  const logger = input.logger ?? createLogger({ name: 'patternMatcher' });
   const celCtx = { command: { boundary, intent: 'creation', payload }, payload, state: {} };
   const buildScriptCtx = (): ScriptContext => ({
     command: {
@@ -391,13 +394,18 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
     } else if (command.intent === 'creation') {
       const generateExpr = boundary.identity?.creation?.generate;
       if (generateExpr) {
-        const generated = cel.evaluate(generateExpr, celCtx, CelPhase.EventHydration);
-        if (typeof generated !== 'string' || !generated) {
-          throw new InternalExecutionError('Identity generation expression did not produce a non-empty string', {
-            generateExpr,
-          });
-        }
-        aggregateId = generated;
+        // Route through the same resolver as the inbound creation path so a
+        // ts:<id> script generator works here too (a target-less secondary /
+        // saga creation), not only bare CEL.
+        aggregateId = resolveCreationTargetId({
+          generate: generateExpr,
+          payload: command.payload as JsonObject,
+          boundary: command.boundary,
+          cel,
+          scriptRegistry,
+          now,
+          logger,
+        });
       } else {
         aggregateId = nextEventId();
       }

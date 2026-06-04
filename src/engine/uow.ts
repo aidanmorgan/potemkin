@@ -866,7 +866,9 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
             status,
             body,
             scriptRegistry: input.dsl.scriptRegistry,
-            now: () => new Date().toISOString(),
+            // Clock-aware, matching event hydration, so a response script that
+            // mints a timestamp honors X-Potemkin-Clock-Offset / the admin clock.
+            now: () => new Date(Date.now() + cel.getClockOffset()).toISOString(),
             logger,
           });
           status = shaped.status;

@@ -25,6 +25,7 @@ import { matchRoute } from '../contract/router.js';
 import { translateIntent } from '../engine/router.js';
 import { extractEntityKey } from '../engine/keyExtractor.js';
 import { resolveCreationTargetId } from '../engine/patternMatcher.js';
+import { POTEMKIN_DROPPED, POTEMKIN_IDEMPOTENCY_REPLAY } from '../http/potemkinHeaders.js';
 import { executeUnitOfWork } from '../engine/uow.js';
 import { createSideEffectQueue } from '../engine/sideEffects.js';
 import { extractFaultSignal } from '../engine/faultSim.js';
@@ -510,7 +511,7 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       if (chaos.dropConnection === true) {
         // The forwarding layer cannot destroy the upstream socket, so it surfaces
         // a synthetic 504 + marker for the Kotlin plugin to treat as a dropped connection.
-        send({ status: 504, headers: { 'x-potemkin-dropped': 'true' }, body: null });
+        send({ status: 504, headers: { [POTEMKIN_DROPPED]: 'true' }, body: null });
         return;
       }
       const cr = chaos.response!;
@@ -543,7 +544,7 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
         // on replay (the plugin applies the patches to the base body).
         send({
           status: cached.status,
-          headers: { ...(cached.headers ?? {}), 'x-idempotency-replay': 'true' },
+          headers: { ...(cached.headers ?? {}), [POTEMKIN_IDEMPOTENCY_REPLAY]: 'true' },
           body: isHead ? null : (cached.body ?? null),
           ...(cached.patches !== undefined && !isHead ? { _patches: cached.patches } : {}),
         });

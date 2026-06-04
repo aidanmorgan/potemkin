@@ -229,7 +229,10 @@ class JwtVerifier(
     }
 
     private fun verifyHs256(signingInput: ByteArray, signature: ByteArray): Boolean {
-        val secret = config.secret ?: return false
+        // A blank/whitespace secret is forgeable, so reject it outright — parity
+        // with the engine validator, which refuses to validate on a blank secret.
+        val secret = config.secret
+        if (secret.isNullOrBlank()) return false
         val mac = Mac.getInstance("HmacSHA256")
         mac.init(SecretKeySpec(secret.toByteArray(Charsets.UTF_8), "HmacSHA256"))
         val expected = mac.doFinal(signingInput)

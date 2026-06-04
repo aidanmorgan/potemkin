@@ -355,7 +355,6 @@ function mergeFragment(
   fragmentReducers: readonly ReducerRule[] | undefined,
   fragmentBehaviors: readonly BehaviorRule[] | undefined,
   localEventTypes: ReadonlySet<string>,
-  localReducerOns: ReadonlySet<string>,
   localBehaviorNames: ReadonlySet<string>,
   includedEventTypes: Map<string, string>,   // key → source component name
   includedReducerOns: Map<string, string>,   // tracked for informational purposes only (no clash error)
@@ -449,7 +448,6 @@ export function mergeIncludes(
 
     // Pre-compute local key sets (the host's own declarations win unconditionally).
     const localEventTypes = new Set(host.eventCatalog.map((e) => e.type));
-    const localReducerOns = new Set(host.reducers.map((r) => r.on));
     const localBehaviorNames = new Set(host.behaviors.map((b) => b.name));
 
     // Accumulate included entries in order of the include: array.
@@ -533,7 +531,6 @@ export function mergeIncludes(
         substituted.reducers,
         substituted.behaviors,
         localEventTypes,
-        localReducerOns,
         localBehaviorNames,
         includedEventTypes,
         includedReducerOns,

@@ -184,6 +184,17 @@ export const POTEMKIN_SKIP_RESPONSE_VALIDATION = 'x-potemkin-skip-response-valid
 /** Relax `additionalProperties: false` per request. Admin-gated. */
 export const POTEMKIN_ALLOW_ADDITIONAL_PROPERTIES = 'x-potemkin-allow-additional-properties';
 
+// --- Response (engine-emitted) headers ---------------------------------------
+
+/** Emitted on a replayed (idempotent) response so a consumer can tell a cached
+ *  retry from a fresh write. */
+export const POTEMKIN_IDEMPOTENCY_REPLAY = 'x-idempotency-replay';
+
+/** Emitted on the synthetic 504 the forward path returns for drop-connection
+ *  chaos (a Specmatic RequestHandler cannot reset the socket). Mirrors the
+ *  plugin's PotemkinHeaders.DROPPED. */
+export const POTEMKIN_DROPPED = 'x-potemkin-dropped';
+
 /**
  * Convenience field name → underlying header name.
  *

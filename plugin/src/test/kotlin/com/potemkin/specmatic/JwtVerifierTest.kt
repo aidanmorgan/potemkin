@@ -87,4 +87,14 @@ class JwtVerifierTest {
         assertTrue(result is JwtResult.Invalid)
         assertTrue((result as JwtResult.Invalid).reason.contains("algorithm"))
     }
+
+    @Test
+    fun `verifier configured with a blank secret rejects every token`() {
+        // A blank/whitespace configured secret is forgeable, so the verifier must
+        // reject outright (parity with the engine's blank-secret guard). The token
+        // is signed with a real secret; the blank-secret verifier still rejects it.
+        val token = mintHs256("topsecret", mapOf("sub" to "x"))
+        assertTrue(verifier("").verify(token) is JwtResult.Invalid)
+        assertTrue(verifier("   ").verify(token) is JwtResult.Invalid)
+    }
 }

@@ -2107,6 +2107,16 @@ function validateAuthConfig(raw: unknown): AuthConfig {
       throw new BootError('BOOT_ERR_DSL_SYNTAX', 'auth.jwt.secret is required');
     }
     const requiredClaims = requireStringStringMap(jwtRaw, 'required_claims', 'auth.jwt');
+    // The engine's own gateway validator only implements HS256. Reject any other
+    // value loudly rather than silently casting it — RS256/JWKS is handled by the
+    // Specmatic plugin (the canonical auth front door), not the standalone engine.
+    if (jwtRaw['algorithm'] !== undefined && jwtRaw['algorithm'] !== 'HS256') {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `auth.jwt.algorithm: only "HS256" is supported by the engine (got ${JSON.stringify(jwtRaw['algorithm'])}) — RS256/JWKS is enforced by the Specmatic plugin`,
+        { field: 'auth.jwt.algorithm' },
+      );
+    }
     jwt = {
       secret,
       ...(typeof jwtRaw['algorithm'] === 'string' ? { algorithm: jwtRaw['algorithm'] as 'HS256' } : {}),
