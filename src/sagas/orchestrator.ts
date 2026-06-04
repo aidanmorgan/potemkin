@@ -350,8 +350,21 @@ export async function runSaga(input: SagaRunInput): Promise<void> {
 }
 
 /**
- * Check whether any sagas are triggered by the given primary event and command.
+ * Check whether any sagas are triggered by the given committed event.
  * Returns matching sagas.
+ *
+ * Matching is keyed on the COMMITTED EVENT's boundary, not the triggering
+ * command's boundary. A reaction (or dispatched secondary command) emits on a
+ * DIFFERENT boundary than the originating command, so a saga subscribed to the
+ * reaction's boundary must still fire when that reaction event commits. Matching
+ * on the command boundary would make such sagas permanently invisible.
+ *
+ * The event carries no intent of its own, so the producing intent is derived:
+ * when the event is on the command's own boundary it is a behaviour-emitted
+ * event and inherits the command's intent (preserving prior behaviour); when the
+ * event is on another boundary it was produced by a reaction or dispatched
+ * secondary command, whose write intent is 'mutation' (reactions default to the
+ * mutation intent).
  */
 export function findTriggeredSagas(
   sagas: readonly SagaConfig[] | undefined,
@@ -370,10 +383,16 @@ export function findTriggeredSagas(
     payload: triggerCommand.payload,
   };
 
+  const eventBoundary = triggerEvent.boundary;
+  const eventIntent: Intent =
+    triggerEvent.boundary === triggerCommand.boundary
+      ? triggerCommand.intent
+      : 'mutation';
+
   for (const saga of sagas) {
     const { trigger } = saga;
-    if (trigger.boundary !== triggerCommand.boundary) continue;
-    if (trigger.intent !== triggerCommand.intent) continue;
+    if (trigger.boundary !== eventBoundary) continue;
+    if (trigger.intent !== eventIntent) continue;
 
     try {
       const result = cel.evaluate(trigger.condition, celCtx, CelPhase.Behavior);

@@ -62,6 +62,15 @@ import { parseTemplate } from './grammar/template.js';
  *   - nested quantifier:        (a+)+   (a*)*   (a+)*   (\d+)+
  *   - quantified, open-repeat:  (a+){2,}
  *   - overlapping alternation:  (a|a)+  (a|ab)+
+ *   - sequential unbounded:     a*a*a*  (>= 3 adjacent unbounded quantifiers)
+ *
+ * The sequential-quantifier check catches patterns like `'a*'.repeat(N) + 'b'`
+ * which backtrack catastrophically but contain no nested groups. The threshold
+ * of 3 is chosen so that normal patterns such as `a+b+c+` or `[A-Z]+@[a-z]+`
+ * (two adjacent unbounded quantifiers, always anchored to disjoint character
+ * classes that the engine resolves without backtracking) are unaffected, while
+ * the pathological `a*a*a*...b` shape (same character class repeated, no
+ * progress guarantee) is rejected.
  *
  * @returns a human-readable reason when the pattern looks ReDoS-prone, else null.
  */
@@ -98,6 +107,57 @@ function detectCatastrophicRegexShape(pattern: string): string | null {
   if (groupRepeat.test(pattern) && /\([^)]*[+*]/.test(pattern)) {
     return 'nested-quantifier shape (nested groups)';
   }
+
+  // Sequential-unbounded-quantifier check.
+  // Patterns like `a*a*a*b` have no nested groups but backtrack catastrophically:
+  // the engine tries all ways to split the input among the adjacent `*` groups
+  // before concluding no match. The pathological shape is the *same* atom
+  // repeated with an unbounded quantifier 3+ times consecutively — the overlapping
+  // match ranges cause exponential backtracking.
+  //
+  // `a+b+c+` is safe (distinct atoms, engine can split unambiguously).
+  // `a*a*a*b` is unsafe (same atom `a` repeated — splits are ambiguous).
+  // `[a-z]*[a-z]*[a-z]*b` is equally unsafe (same character class).
+  //
+  // Approach: normalise character classes to a canonical token, then scan for
+  // the same normalised atom token appearing with an unbounded quantifier 3+
+  // times in a row without an intervening different literal.
+  //
+  // We use a token-walk rather than a single regex to avoid false positives on
+  // patterns like `^[a-z]+@[a-z]+\.[a-z]+$` (same class, but different
+  // separator literals `@` and `\.` between the runs).
+  const tokenRe = /(\[[^\]]*\]|\\.|[^\\])/g;
+  let seqAtom: string | null = null;
+  let seqCount = 0;
+  const tokensArr: string[] = [];
+  let tokM: RegExpExecArray | null;
+  while ((tokM = tokenRe.exec(pattern)) !== null) {
+    tokensArr.push(tokM[1] ?? '');
+  }
+  for (let i = 0; i < tokensArr.length; i++) {
+    const tok = tokensArr[i] ?? '';
+    const next = tokensArr[i + 1] ?? '';
+    const isUnboundedQuant = next === '+' || next === '*' || /^\{\d+,\d*\}$/.test(next);
+    if (isUnboundedQuant) {
+      // Normalise character classes to 'CLS' so [a-z] and [a-z] match each other.
+      const norm = /^\[/.test(tok) ? 'CLS' : tok;
+      if (norm === seqAtom) {
+        seqCount++;
+        if (seqCount >= 3) {
+          return 'sequential-unbounded-quantifier shape (>= 3 adjacent unbounded quantifiers on overlapping atoms)';
+        }
+      } else {
+        seqAtom = norm;
+        seqCount = 1;
+      }
+      i++; // consume the quantifier token
+    } else {
+      // A non-quantified token resets the run — it acts as a separator.
+      seqAtom = null;
+      seqCount = 0;
+    }
+  }
+
   return null;
 }
 

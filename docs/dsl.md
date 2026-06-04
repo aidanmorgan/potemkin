@@ -752,7 +752,9 @@ At boot, the TypeScript scanner (`src/dsl/typescriptScanner.ts`) imports every f
 
 - `ts:<id>` sentinel referencing an unknown id → `BOOT_ERR_DSL_REFERENCE` (boot halt)
 
-Scanned scripts are **trusted code** — the source is authored and version-controlled in the same repository as the rest of the simulation. The scanner loads each `.ts` file in a restricted `node:vm` context (with `fs`, `net`, `process`, and `require` blocked) so a stray import cannot reach the host, but there is **no per-call 50 ms budget**: at request time the resolved `run(ctx)` function is invoked as a direct host call, the same way a scanned `@Reducer` is. (The 50 ms budget that applied to the removed inline `scripts[].code` form no longer applies.) Because there is no time limit, keep scanned scripts fast — see [Section 14](#14-advanced-patterns-and-idioms).
+Scanned scripts are **trusted code** — the source is authored and version-controlled in the same repository as the rest of the simulation. The scanner loads each `.ts` file in a `node:vm` context whose `require()` blocks accidental imports of `fs`, `net`, `process`, and similar modules. This is convenience isolation against developer mistakes, not a security boundary: a malicious or untrusted file can still reach the host process via prototype-chain access (`Object.constructor('return process')()`). Only load `.ts` files you own and control. Do not point `typescript.scan` at directories containing untrusted code.
+
+There is **no per-call time budget**: at request time the resolved `run(ctx)` function is invoked as a direct host call, the same way a scanned `@Reducer` is. (The 50 ms budget that applied to the removed inline `scripts[].code` form no longer applies.) Because there is no time limit, keep scanned scripts fast — see [Section 14](#14-advanced-patterns-and-idioms).
 
 ### ScriptContext shape
 
@@ -1740,6 +1742,14 @@ fault_rules:
 ```
 
 See: [`tests/e2e/46-chaos-headers.e2e-test.ts`](../tests/e2e/46-chaos-headers.e2e-test.ts), [`tests/e2e/48-control-headers.e2e-test.ts`](../tests/e2e/48-control-headers.e2e-test.ts)
+
+### Admin surface access model
+
+The `/_admin/*` endpoints are **fail-open by default**: when `ADMIN_TOKEN` is not set, all admin routes are open to any caller — including `/_admin/reset`, clock manipulation, fault injection, and the full state/event dumps. This is intentional for local development and CI.
+
+Set `ADMIN_TOKEN` in any environment reachable from an untrusted network. All admin routes then require `Authorization: Bearer <token>`. Without it, anyone who can reach the server can reset state, inject faults, or read raw event payloads.
+
+`/_admin/state` and `/_admin/events` return raw, unmasked state and event payloads. Do not expose these endpoints on an untrusted network even with `ADMIN_TOKEN` set if the simulated state contains sensitive data.
 
 ---
 

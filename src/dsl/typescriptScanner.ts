@@ -9,9 +9,25 @@ import { BootError } from '../errors.js';
 import { registry as sdkRegistry, scriptRegistry as sdkScriptRegistry, type RegisteredReducer, type RegisteredScript } from '../sdk/index.js';
 
 // Scans typescript.scan[].include/exclude, transpiles each .ts via esbuild,
-// loads each module into a tiny vm sandbox whose require() resolves only
+// loads each module into a node:vm context whose require() resolves only
 // `@potemkin/sdk` and sibling .ts files inside the same include directory.
 // Returns the registered reducers drained from the SDK registry.
+//
+// TRUST MODEL — read before modifying the vm context or adding imports.
+//
+// Scanned @Script and @Reducer files execute as TRUSTED host code. The vm
+// context is NOT a security boundary and must not be treated as one. The
+// static checks (FORBIDDEN_BUILTINS, ENV_WRITE_PATTERNS) guard against
+// accidental mistakes — a developer stray import or an inadvertent
+// process.env write — not against a malicious or untrusted .ts file.
+//
+// In particular: `Object.constructor('return process')()` or similar
+// prototype-chain walks CAN reach the host process from inside the vm context
+// because the vm shares the host's JavaScript heap. The node:vm isolation is
+// convenience isolation, not a security sandbox.
+//
+// Only load .ts files that are version-controlled in the same repository as
+// the rest of the simulation. Do NOT load untrusted .ts files.
 
 export interface ScanEntry {
   readonly include: readonly string[];

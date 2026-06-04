@@ -69,6 +69,8 @@ import { evaluateFaultRules } from '../faults/index.js';
 import { applyResponseMutations, buildOperationLookup } from './responseMutations.js';
 import type { OpenApiOperation } from '../contract/loader.js';
 import { rebuildEntityAtVersion, findEventById } from '../engine/timeTravel.js';
+import { checkScopes } from '../identity/scopeChecker.js';
+import { lookupOperationId } from '../contract/loader.js';
 import { resolveBoundaryLatencyMs, delay, shouldReturnNotModified, lastModifiedFromBody, isSingleEntityBody, applyHateoasToQueryBody } from '../forwarding/responsePipeline.js';
 import { resolveChaosHeaders, truncateBody } from './chaosHeaders.js';
 import { getAllowedOrigin, isOriginAdmitted } from './cors.js';
@@ -357,6 +359,10 @@ async function handleContractRequest(
         );
       } catch (err) {
         if (err instanceof ContractViolationError) {
+          // X-Specmatic-Result: a request contract violation is a contract-test
+          // failure — set the header uniformly (matches the forwarding path) so
+          // Specmatic does not read the 400 as a success.
+          res.setHeader('X-Specmatic-Result', 'failure');
           res.status(400).json({ error: 'CONTRACT_VIOLATION', details: err.details ?? err.message });
           return;
         }
@@ -570,8 +576,55 @@ async function handleContractRequest(
       }
     }
 
+    // Resolve actor per auth mode BEFORE any GET short-circuit (time-travel) so
+    // RBAC is enforced uniformly. Time-travel reads previously bypassed scope
+    // enforcement by short-circuiting ahead of this block.
+    //  - session mode: the session middleware already resolved the actor from
+    //    the cookie (when present) onto the request; we use that and do NOT fall
+    //    back to the Authorization header.
+    //  - jwt mode: validateJwt; simple/no-auth: legacy bearer shortcut.
+    let actor: Actor | undefined;
+    const reqProps = req as unknown as Record<string, unknown>;
+    const sessionHandled = reqProps[SESSION_HANDLED_KEY] === true;
+    if (sessionHandled) {
+      actor = reqProps[SESSION_ACTOR_KEY] as Actor | undefined;
+    } else {
+      try {
+        actor = resolveActor(req.headers['authorization'] as string | undefined, sys.dsl.auth) ?? undefined;
+      } catch (e) {
+        if (e instanceof JwtValidationError) {
+          res.status(401).set('WWW-Authenticate', 'Bearer').json({ error: 'UNAUTHENTICATED', message: e.message, details: { code: e.code } });
+          return;
+        }
+        throw e;
+      }
+    }
+    // Tier 3: actor override / impersonate (admin-gated above) — format `<id>:<scope1>,<scope2>`.
+    // Parsed with indexOf/slice so resource:action scopes (e.g. vault:write) survive.
+    const adminOverride = controls.identity.actorOverride ?? controls.identity.impersonate;
+    if (adminOverride) {
+      actor = parseActorOverride(adminOverride);
+    }
+
     // Tier 4: time-travel intercepts for GET requests (read-at-version / replay-event).
     if (effectiveMethod === 'GET') {
+      // RBAC gate: enforce the matched GET operation's required_scopes BEFORE the
+      // time-travel branch so an unscoped actor cannot read a protected entity by
+      // appending a time-travel header.
+      try {
+        enforceGetReadScopes(sys, boundary, route.contractPath, actor);
+      } catch (err) {
+        res.setHeader('X-Specmatic-Result', 'failure');
+        if (err instanceof AuthenticationRequiredError) {
+          res.status(401).json(err.toJSON());
+          return;
+        }
+        if (err instanceof AuthorizationDeniedError) {
+          res.status(403).json(err.toJSON());
+          return;
+        }
+        throw err;
+      }
       if (controls.timeTravel.readAtVersion !== undefined && targetId !== null) {
         const ttInferred = sys.inferredSchemas?.[boundary.boundary];
         const ttComputedArgs = ttInferred && ttInferred.computedOrder.length > 0
@@ -621,34 +674,6 @@ async function handleContractRequest(
         }
         return;
       }
-    }
-
-    // Resolve actor per auth mode.
-    //  - session mode: the session middleware already resolved the actor from
-    //    the cookie (when present) onto the request; we use that and do NOT fall
-    //    back to the Authorization header.
-    //  - jwt mode: validateJwt; simple/no-auth: legacy bearer shortcut.
-    let actor: Actor | undefined;
-    const reqProps = req as unknown as Record<string, unknown>;
-    const sessionHandled = reqProps[SESSION_HANDLED_KEY] === true;
-    if (sessionHandled) {
-      actor = reqProps[SESSION_ACTOR_KEY] as Actor | undefined;
-    } else {
-      try {
-        actor = resolveActor(req.headers['authorization'] as string | undefined, sys.dsl.auth) ?? undefined;
-      } catch (e) {
-        if (e instanceof JwtValidationError) {
-          res.status(401).set('WWW-Authenticate', 'Bearer').json({ error: 'UNAUTHENTICATED', message: e.message, details: { code: e.code } });
-          return;
-        }
-        throw e;
-      }
-    }
-    // Tier 3: actor override / impersonate (admin-gated above) — format `<id>:<scope1>,<scope2>`.
-    const adminOverride = controls.identity.actorOverride ?? controls.identity.impersonate;
-    if (adminOverride) {
-      const [id, scopesStr] = adminOverride.split(':', 2);
-      actor = { id: id ?? 'unknown', scopes: (scopesStr ?? '').split(',').filter(Boolean) };
     }
 
     // If-Match may carry a quoted ETag value ("1") or an unquoted integer (1).
@@ -744,37 +769,66 @@ async function handleContractRequest(
     }
 
     // 6b. Idempotency check.
+    //
+    // The idempotency key is scoped to the resolved actor id so a different actor
+    // cannot replay another actor's cached response (cross-actor cache poisoning).
+    // `check` atomically reserves a pending slot on a miss; a concurrent second
+    // request with the same key WAITS for the in-flight request's response rather
+    // than executing a duplicate (TOCTOU). We hold the reservation across the UoW
+    // and resolve it via record() on success / release() on error.
     const idempotencyKey = req.headers['idempotency-key'] as string | undefined;
     const idempotencyCfg = sys.dsl.idempotency;
     const idempotencyEnabled = idempotencyCfg?.enabled ?? false;
+    const idempotencyActorId = actor?.id ?? '';
+    let idempotencyReserved = false;
 
     if (idempotencyEnabled && idempotencyKey && intent !== 'query') {
       const store = sys.idempotencyStore;
       const requestBody: JsonValue = (req.body as JsonValue | null | undefined) ?? {};
       const hashIncludesBody = idempotencyCfg?.hashIncludesBody ?? true;
+      const checkParams = {
+        actorId: idempotencyActorId,
+        method: effectiveMethod,
+        path: req.path,
+        idempotencyKey,
+        body: requestBody,
+        hashIncludesBody,
+      };
+
+      const replay = (cached: { status: number; body: JsonValue; headers?: Record<string, string> }): void => {
+        logger.debug({ idempotencyKey }, 'Idempotency replay — returning cached response');
+        const replayHeaders: Record<string, string> = {
+          ...(cached.headers ?? {}),
+          'X-Idempotency-Replay': 'true',
+        };
+        if (isHead) {
+          res.status(cached.status).set(replayHeaders).end();
+        } else {
+          res.status(cached.status).set(replayHeaders).json(cached.body ?? null);
+        }
+      };
 
       try {
-        const checkResult = store.check({
-          method: effectiveMethod,
-          path: req.path,
-          idempotencyKey,
-          body: requestBody,
-          hashIncludesBody,
-        });
-
-        if (checkResult.hit) {
-          const cached = checkResult.response;
-          logger.debug({ idempotencyKey }, 'Idempotency replay — returning cached response');
-          const replayHeaders: Record<string, string> = {
-            ...(cached.headers ?? {}),
-            'X-Idempotency-Replay': 'true',
-          };
-          if (isHead) {
-            res.status(cached.status).set(replayHeaders).end();
-          } else {
-            res.status(cached.status).set(replayHeaders).json(cached.body ?? null);
+        // Loop so a waiter whose in-flight request released without recording
+        // (errored) re-checks and either replays a hit or reserves the slot itself.
+        for (;;) {
+          const checkResult = store.check(checkParams);
+          if (checkResult.kind === 'hit') {
+            replay(checkResult.response);
+            return;
           }
-          return;
+          if (checkResult.kind === 'wait') {
+            const waited = await checkResult.wait;
+            if (waited !== null) {
+              replay(waited);
+              return;
+            }
+            // In-flight request released without a response — re-check.
+            continue;
+          }
+          // miss → we hold the reservation; proceed to execute.
+          idempotencyReserved = true;
+          break;
         }
       } catch (err) {
         if (err instanceof IdempotencyConflictError) {
@@ -784,6 +838,21 @@ async function handleContractRequest(
         throw err;
       }
     }
+
+    /** Release the idempotency reservation (if held) so concurrent waiters re-execute. */
+    const releaseIdempotency = (): void => {
+      if (idempotencyReserved && idempotencyKey) {
+        idempotencyReserved = false;
+        sys.idempotencyStore.release({
+          actorId: idempotencyActorId,
+          method: effectiveMethod,
+          path: req.path,
+          idempotencyKey,
+          body: (req.body as JsonValue | null | undefined) ?? {},
+          hashIncludesBody: idempotencyCfg?.hashIncludesBody ?? true,
+        });
+      }
+    };
 
     // Apply any chaos latency stacked with the already-applied boundary latency.
     if (chaos.extraLatencyMs > 0) await delay(chaos.extraLatencyMs);
@@ -818,6 +887,9 @@ async function handleContractRequest(
         }),
       );
     } catch (err) {
+      // Release any idempotency reservation so concurrent waiters re-execute
+      // rather than blocking on a request that never recorded a response.
+      releaseIdempotency();
       logger.error({ err }, 'UoW execution error');
       // X-Specmatic-Result: every UoW error path is a contract-test failure.
       res.setHeader('X-Specmatic-Result', 'failure');
@@ -985,13 +1057,17 @@ async function handleContractRequest(
           ? { ...(outBody as Record<string, unknown>) }
           : { value: outBody };
       if (controls.transparency.includeEvents === true) {
+        // Apply the boundary mask removes to echoed event payloads so masked
+        // fields do not leak via _events on a normal (non-admin) response.
+        // /_admin/* surfaces expose raw payloads and are unaffected (separate route).
+        const maskFields = boundary.mask ?? [];
         base['_events'] = (result.events ?? []).map(e => ({
           eventId: e.eventId,
           type: e.type,
           aggregateId: e.aggregateId,
           sequenceVersion: e.sequenceVersion,
           timestamp: e.timestamp,
-          payload: e.payload,
+          payload: maskEventPayload(e.payload, maskFields),
           causedBy: e.causedBy,
         }));
       }
@@ -1026,7 +1102,9 @@ async function handleContractRequest(
 
     // 6c. Record idempotency entry after the full pipeline (HATEOAS, mask, format,
     // trace headers) so the cached body+headers match what the caller actually
-    // received, and replays are identical to the original response.
+    // received, and replays are identical to the original response. Recording
+    // resolves the pending reservation placed at check time. A dry-run never
+    // persists an entry, so it RELEASES the reservation instead of recording.
     if (idempotencyEnabled && idempotencyKey && intent !== 'query' && controls.transparency.dryRun !== true) {
       const store = sys.idempotencyStore;
       const requestBody: JsonValue = (req.body as JsonValue | null | undefined) ?? {};
@@ -1034,6 +1112,7 @@ async function handleContractRequest(
       const ttlMs = (idempotencyCfg?.ttlSeconds ?? 86400) * 1000;
       try {
         store.record({
+          actorId: idempotencyActorId,
           method: effectiveMethod,
           path: req.path,
           idempotencyKey,
@@ -1046,10 +1125,14 @@ async function handleContractRequest(
           },
           ttlMs,
         });
+        idempotencyReserved = false;
       } catch {
         // Non-fatal: log but don't fail the response
         logger.warn({ idempotencyKey }, 'Failed to record idempotency entry');
       }
+    } else {
+      // Dry-run (or otherwise not recording): drop the reservation so waiters proceed.
+      releaseIdempotency();
     }
 
     // X-Potemkin-Body-Truncate — unconditionally slice the serialised body to N
@@ -1084,5 +1167,61 @@ function sendBody(res: Response, body: JsonValue | null | undefined): void {
     res.end(body);
   } else {
     res.json(body);
+  }
+}
+
+/**
+ * Parse an admin actor-override / impersonate header value of the form
+ * `<id>:<scope1>,<scope2>,...` into an Actor.
+ *
+ * Splits on the FIRST colon only (indexOf/slice) so that resource:action scope
+ * names — which themselves contain colons, e.g. `vault:write` — survive intact.
+ * Mirrors src/identity/actorExtractor.ts.
+ */
+export function parseActorOverride(value: string): Actor {
+  const colonIdx = value.indexOf(':');
+  if (colonIdx === -1) {
+    return { id: value || 'unknown', scopes: [] };
+  }
+  const id = value.slice(0, colonIdx);
+  const scopesStr = value.slice(colonIdx + 1);
+  return { id: id || 'unknown', scopes: scopesStr.split(',').map(s => s.trim()).filter(Boolean) };
+}
+
+/**
+ * Remove the boundary `mask:` field names from an echoed event payload so masked
+ * fields cannot leak through the X-Potemkin-Include-Events `_events` envelope.
+ * A shallow top-level removal mirrors the response-body mask (boundary.mask
+ * removes named top-level fields).
+ */
+function maskEventPayload(payload: JsonValue, maskFields: readonly string[]): JsonValue {
+  if (maskFields.length === 0) return payload;
+  if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) return payload;
+  const out: Record<string, JsonValue> = { ...(payload as Record<string, JsonValue>) };
+  for (const field of maskFields) delete out[field];
+  return out;
+}
+
+/**
+ * Enforce the matched GET operation's required_scopes against the resolved actor
+ * BEFORE any time-travel / read short-circuit. Mirrors the RBAC gate that the
+ * pattern matcher applies on the normal read path (behaviour match → checkScopes),
+ * so a time-travel read cannot bypass scope enforcement.
+ *
+ * @throws {AuthenticationRequiredError} (401) / {AuthorizationDeniedError} (403)
+ */
+function enforceGetReadScopes(
+  sys: BootedSystem,
+  boundary: BootedSystem['dsl']['byContractPath'][string],
+  contractPath: string,
+  actor: Actor | undefined,
+): void {
+  const operationId = lookupOperationId(sys.openapi, contractPath, 'GET');
+  if (operationId === undefined) return;
+  for (const behavior of boundary.behaviors) {
+    if (behavior.match.operationId !== operationId) continue;
+    if (behavior.match.requiredScopes && behavior.match.requiredScopes.length > 0) {
+      checkScopes(actor, behavior.match.requiredScopes, behavior.name);
+    }
   }
 }

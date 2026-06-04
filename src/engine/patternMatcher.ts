@@ -565,6 +565,7 @@ function _runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
           path: '',
           origin: 'secondary',
           depth: command.depth + 1,
+          ...(command.actor !== undefined ? { actor: command.actor } : {}),
         };
 
         secondaryCommands.push(secondaryCommand);

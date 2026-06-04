@@ -41,9 +41,9 @@ describe('rebuildEntityAtVersion — YAML reducer', () => {
     });
     const evt = makeEvt({ sequenceVersion: 1 });
 
-    // Live path
+    // Live path — seed with {} to match the live projection engine (deepClone(current ?? {}))
     const liveGraph = createStateGraph();
-    liveGraph.set('agg-1', { id: 'agg-1' });
+    liveGraph.set('agg-1', {});
     projectEvent({ event: evt, boundary, graph: liveGraph, cel });
     const liveState = liveGraph.get('agg-1');
 
@@ -109,9 +109,9 @@ describe('rebuildEntityAtVersion — TS reducer', () => {
 
     const evt = makeEvt({ sequenceVersion: 1, payload: { name: 'Gadget', score: 7 } });
 
-    // Live path
+    // Live path — seed with {} to match the live projection engine (deepClone(current ?? {}))
     const liveGraph = createStateGraph();
-    liveGraph.set('agg-1', { id: 'agg-1' });
+    liveGraph.set('agg-1', {});
     projectEvent({ event: evt, boundary, graph: liveGraph, cel, tsReducerRegistry: tsRegistry });
     const liveState = liveGraph.get('agg-1');
 
@@ -150,9 +150,9 @@ describe('rebuildEntityAtVersion — computed fields', () => {
 
     const evt = makeEvt({ sequenceVersion: 1, payload: { score: 7 } });
 
-    // Live path — projectEvent with computed fields
+    // Live path — seed with {} to match the live projection engine (deepClone(current ?? {}))
     const liveGraph = createStateGraph();
-    liveGraph.set('agg-1', { id: 'agg-1' });
+    liveGraph.set('agg-1', {});
     projectEvent({ event: evt, boundary, graph: liveGraph, cel, computed, computedOrder });
     const liveState = liveGraph.get('agg-1');
 
@@ -188,9 +188,9 @@ describe('rebuildEntityAtVersion — auditFields', () => {
       request: { method: 'PATCH', path: '/test/agg-1', headers: {}, payload: {}, actorId: 'user-9' },
     });
 
-    // Live path
+    // Live path — seed with {} to match the live projection engine (deepClone(current ?? {}))
     const liveGraph = createStateGraph();
-    liveGraph.set('agg-1', { id: 'agg-1' });
+    liveGraph.set('agg-1', {});
     projectEvent({ event: evt, boundary, graph: liveGraph, cel });
     const liveState = liveGraph.get('agg-1');
 
@@ -277,5 +277,58 @@ describe('rebuildEntityAtVersion — all-or-nothing replay', () => {
 
     const stateAtV2 = rebuildEntityAtVersion('agg-1', 2, boundary, events, cel);
     expect((stateAtV2 as { score?: number })?.score).toBe(20);
+  });
+});
+
+// ── pykc regression — no phantom id field ────────────────────────────────────
+
+describe('rebuildEntityAtVersion — pykc regression: no phantom id field', () => {
+  it('does not inject a phantom id field for a boundary whose reducers never write /id', () => {
+    const boundary = makeBoundary({
+      reducers: [
+        {
+          on: 'WidgetUpdated',
+          patches: [
+            { op: 'replace', path: '/score', value: '${event.payload.score}' },
+          ],
+        },
+      ],
+    });
+
+    const evt = makeEvt({ sequenceVersion: 1, payload: { score: 42 } });
+    const events = createEventStore();
+    events.append([evt]);
+
+    const rebuilt = rebuildEntityAtVersion('agg-1', 1, boundary, events, cel);
+
+    expect(rebuilt).not.toBeNull();
+    expect(rebuilt).not.toHaveProperty('id');
+    expect((rebuilt as { score?: number })?.score).toBe(42);
+  });
+
+  it('rebuilt state matches live projection state for a boundary that never writes /id', () => {
+    const boundary = makeBoundary({
+      reducers: [
+        {
+          on: 'WidgetUpdated',
+          patches: [
+            { op: 'replace', path: '/tally', value: '${event.payload.score}' },
+          ],
+        },
+      ],
+    });
+
+    const evt = makeEvt({ sequenceVersion: 1, payload: { score: 7 } });
+
+    const liveGraph = createStateGraph();
+    liveGraph.set('agg-1', {});
+    projectEvent({ event: evt, boundary, graph: liveGraph, cel });
+    const liveState = liveGraph.get('agg-1');
+
+    const events = createEventStore();
+    events.append([evt]);
+    const rebuilt = rebuildEntityAtVersion('agg-1', 1, boundary, events, cel);
+
+    expect(rebuilt).toEqual(liveState);
   });
 });

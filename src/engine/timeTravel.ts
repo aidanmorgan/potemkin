@@ -43,8 +43,10 @@ export function rebuildEntityAtVersion(
   if (stream.length === 0) return null;
 
   // Transient graph: isolated from the live state graph so replay never mutates it.
+  // Seed with {} to match the live projection path (projection.ts deepClone(current ?? {})),
+  // so a boundary whose reducers never write /id does not gain a phantom id field.
   const graph = createStateGraph();
-  graph.set(aggregateId, { id: aggregateId });
+  graph.set(aggregateId, {});
   let applied = 0;
 
   for (const evt of stream) {

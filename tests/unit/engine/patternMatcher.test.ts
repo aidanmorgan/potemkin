@@ -577,5 +577,103 @@ describe('engine/patternMatcher', () => {
       expect(result.secondaryCommands[0]?.targetId).toBe('valid-agg-id');
       expect(result.secondaryCommands[0]?.intent).toBe('mutation');
     });
+
+    it('h00a regression — secondary command carries originating actor when primary has one', () => {
+      const boundary = makeBoundaryWithDispatch('null_target');
+      const cel = makeCelWithTargetResult('ledger-99');
+      const actor = { id: 'user-originator-7', scopes: ['loans:write'] };
+
+      const result = runPatternMatch(makeInput({
+        boundary,
+        cel: cel as any,
+        projectToShadow: jest.fn(),
+        command: makeCreateCommand({ actor }),
+      }));
+
+      expect(result.secondaryCommands).toHaveLength(1);
+      expect(result.secondaryCommands[0]?.actor).toEqual(actor);
+    });
+
+    it('h00a regression — secondary command has no actor when primary has none', () => {
+      const boundary = makeBoundaryWithDispatch('null_target');
+      const cel = makeCelWithTargetResult('ledger-99');
+
+      const result = runPatternMatch(makeInput({
+        boundary,
+        cel: cel as any,
+        projectToShadow: jest.fn(),
+        command: makeCreateCommand({ actor: undefined }),
+      }));
+
+      expect(result.secondaryCommands).toHaveLength(1);
+      expect(result.secondaryCommands[0]?.actor).toBeUndefined();
+    });
+  });
+
+  describe('requires[] — strict-boolean guard (8uu7 regression)', () => {
+    function makeBoundaryWithRequires(conditionExpr: string, errorCode = 'PRECONDITION_FAILED') {
+      return makeBoundary({
+        behaviors: [
+          {
+            name: 'b1',
+            match: {
+              operationId: 'createTest',
+              condition: 'true',
+              requires: [
+                {
+                  name: 'must-be-exactly-true',
+                  condition: conditionExpr,
+                  errorCode,
+                  errorMessage: 'Precondition must return boolean true, not a truthy value',
+                },
+              ],
+            },
+            emit: 'Created',
+          },
+        ],
+        eventCatalog: [{ type: 'Created', payloadTemplate: {} }],
+      });
+    }
+
+    it('requires[] condition returning a non-empty string ("yes") fails the guard (422)', () => {
+      const boundary = makeBoundaryWithRequires('truthy_string');
+      const cel = {
+        compile: (e: string) => ({ source: e, _ast: {} as any }),
+        evaluate: (_expr: string) => {
+          if (_expr === 'truthy_string') return 'yes';
+          return true;
+        },
+      };
+
+      expect(() =>
+        runPatternMatch(makeInput({ boundary, cel: cel as any })),
+      ).toThrow(UnhandledOperationError);
+    });
+
+    it('requires[] condition returning the number 1 fails the guard (422)', () => {
+      const boundary = makeBoundaryWithRequires('truthy_number');
+      const cel = {
+        compile: (e: string) => ({ source: e, _ast: {} as any }),
+        evaluate: (_expr: string) => {
+          if (_expr === 'truthy_number') return 1;
+          return true;
+        },
+      };
+
+      expect(() =>
+        runPatternMatch(makeInput({ boundary, cel: cel as any })),
+      ).toThrow(UnhandledOperationError);
+    });
+
+    it('requires[] condition returning exactly true passes the guard', () => {
+      const boundary = makeBoundaryWithRequires('exactly_true');
+      const cel = {
+        compile: (e: string) => ({ source: e, _ast: {} as any }),
+        evaluate: () => true,
+      };
+
+      const result = runPatternMatch(makeInput({ boundary, cel: cel as any }));
+      expect(result.events).toHaveLength(1);
+    });
   });
 });

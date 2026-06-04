@@ -520,3 +520,123 @@ describe('sagas/orchestrator - aggregateLocks forwarded to executeUnitOfWork', (
     expect(calls[0]![0].aggregateLocks).toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Compensation ORDER (hyz5): with >=2 completed steps before a forced failure,
+// SagaCompensated events MUST come back in DESCENDING (LIFO / reverse) step
+// index. A single-completed-step saga cannot distinguish LIFO from FIFO, so
+// these tests pin the order with two completed steps so a forward-order
+// (FIFO) regression of the compensation loop fails.
+// ---------------------------------------------------------------------------
+
+describe('sagas/orchestrator - runSaga compensation order', () => {
+  beforeEach(() => {
+    executeUnitOfWork.mockReset();
+  });
+
+  it('compensates completed steps in reverse (descending step index) order', async () => {
+    // step0 ok, step1 ok, step2 FAILS → compensate step1 then step0 (descending).
+    executeUnitOfWork
+      .mockResolvedValueOnce({ status: 201, body: { id: 'a-1' }, events: [] }) // step0
+      .mockResolvedValueOnce({ status: 201, body: { id: 'b-1' }, events: [] }) // step1
+      .mockRejectedValueOnce(new Error('step2 failed'))                        // step2 fails
+      .mockResolvedValueOnce({ status: 200, body: {}, events: [] })            // compensate step1
+      .mockResolvedValueOnce({ status: 200, body: {}, events: [] });           // compensate step0
+
+    const saga: SagaConfig = {
+      name: 'OrderedCompensationSaga',
+      trigger: { boundary: 'Lead', intent: 'creation', condition: 'true' },
+      steps: [
+        {
+          name: 'createA',
+          boundary: 'A',
+          intent: 'creation',
+          operationId: 'createA',
+          targetId: '"a-1"',
+          payload: {},
+          compensation: { intent: 'deletion' as never, operationId: 'deleteA', targetId: '"a-1"' },
+        },
+        {
+          name: 'createB',
+          boundary: 'B',
+          intent: 'creation',
+          operationId: 'createB',
+          targetId: '"b-1"',
+          payload: {},
+          compensation: { intent: 'deletion' as never, operationId: 'deleteB', targetId: '"b-1"' },
+        },
+        {
+          name: 'failStep',
+          boundary: 'C',
+          intent: 'mutation',
+          operationId: 'doC',
+          targetId: '"c-1"',
+          payload: {},
+        },
+      ],
+    };
+
+    const input = makeRunSagaInput(saga);
+    await runSaga(input);
+
+    const compensated = input.events
+      .all()
+      .filter((e) => e.boundary === '__saga__' && e.type === 'SagaCompensated')
+      .map((e) => e.payload['compensatedStepIndex'] as number);
+
+    // Both completed steps compensated, in DESCENDING index order (LIFO).
+    expect(compensated).toEqual([1, 0]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Compensation targetId fallback: when a compensation omits targetId it must
+// reuse the completed step's own targetId expression.
+// ---------------------------------------------------------------------------
+
+describe('sagas/orchestrator - compensation targetId fallback', () => {
+  beforeEach(() => {
+    executeUnitOfWork.mockReset();
+  });
+
+  it('compensation without targetId reuses the original step targetId', async () => {
+    executeUnitOfWork
+      .mockResolvedValueOnce({ status: 200, body: {}, events: [] }) // step0 ok
+      .mockRejectedValueOnce(new Error('step1 failed'))             // step1 fails
+      .mockResolvedValueOnce({ status: 200, body: {}, events: [] }); // compensate step0
+
+    const saga: SagaConfig = {
+      name: 'FallbackTargetSaga',
+      trigger: { boundary: 'Lead', intent: 'creation', condition: 'true' },
+      steps: [
+        {
+          name: 'reserve',
+          boundary: 'X',
+          intent: 'mutation',
+          operationId: 'reserveX',
+          targetId: '"x-original"',
+          payload: {},
+          // Compensation OMITS targetId → must fall back to the step's '"x-original"'.
+          compensation: { intent: 'mutation', operationId: 'releaseX' },
+        },
+        {
+          name: 'failStep',
+          boundary: 'Y',
+          intent: 'mutation',
+          operationId: 'doY',
+          targetId: '"y-1"',
+          payload: {},
+        },
+      ],
+    };
+
+    const input = makeRunSagaInput(saga);
+    await runSaga(input);
+
+    const calls = executeUnitOfWork.mock.calls as Array<[{ command: Command }]>;
+    // step0 + step1(fails) + compensation = 3 calls.
+    expect(calls).toHaveLength(3);
+    // The compensation (3rd call) targets the original step's aggregate.
+    expect(calls[2]![0].command.targetId).toBe('x-original');
+  });
+});

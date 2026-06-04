@@ -112,10 +112,39 @@ describe('detectCatastrophicRegexShape — benign shapes are accepted', () => {
     ['\\d{4}-\\d{2}-\\d{2}'],
     ['(abc)+'],          // single repeated group with no inner quantifier/alternation
     ['(abc){2,5}'],      // bounded outer repeat
-    ['a+b+c+'],          // sequential, not nested
+    ['a+b+c+'],          // two adjacent unbounded quantifiers — below the threshold
     ['[A-Z]+@[a-z]+'],
+    ['^[a-z]+@[a-z]+\\.[a-z]+$'],  // typical email-like pattern: two + quantifiers separated by literals
   ])('accepts %s', (pattern) => {
     expect(detectCatastrophicRegexShape(pattern)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sequential-unbounded-quantifier shapes: a*a*a*...b
+// ---------------------------------------------------------------------------
+describe('detectCatastrophicRegexShape — sequential-unbounded-quantifier shapes are rejected', () => {
+  it('rejects a*a*a*b (three adjacent * quantifiers, the minimal pathological case)', () => {
+    expect(detectCatastrophicRegexShape('a*a*a*b')).not.toBeNull();
+  });
+
+  it('rejects the pathological a*.repeat(20) + b shape', () => {
+    const pattern = 'a*'.repeat(20) + 'b';
+    expect(detectCatastrophicRegexShape(pattern)).not.toBeNull();
+  });
+
+  it('rejects a+a+a+b (three adjacent + quantifiers)', () => {
+    expect(detectCatastrophicRegexShape('a+a+a+b')).not.toBeNull();
+  });
+
+  it('matches() throws REGEX_REJECTED for the sequential-quantifier pattern', () => {
+    const pattern = 'a*'.repeat(20) + 'b';
+    expect(() => evaluate(`"aaaa".matches("${pattern}")`)).toThrow(/REGEX_REJECTED/);
+  });
+
+  it('matches() still works normally for a legitimate email-like pattern', () => {
+    expect(evaluate('"user@example.com".matches("^[a-z]+@[a-z]+\\\\.[a-z]+$")')).toBe(true);
+    expect(evaluate('"notanemail".matches("^[a-z]+@[a-z]+\\\\.[a-z]+$")')).toBe(false);
   });
 });
 

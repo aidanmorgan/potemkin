@@ -15,6 +15,19 @@
  * If ADMIN_TOKEN is not set, open access.
  *
  * Each route is wrapped in withSpan for distributed-trace visibility.
+ *
+ * ACCESS MODEL — the admin surface is fail-open by default.
+ *
+ * When ADMIN_TOKEN is not set, all /_admin routes are open to any caller on
+ * the network — including reset, clock manipulation, and fault injection.
+ * This is intentional for local development and CI, where the engine runs
+ * in a trusted-only environment. Set ADMIN_TOKEN in production-like
+ * environments or any deployment reachable from an untrusted network.
+ *
+ * /_admin/state and /_admin/events return RAW, unmasked state and event
+ * payloads by design — they are debugging surfaces. Do not expose these
+ * endpoints on an untrusted network even with ADMIN_TOKEN set if the state
+ * contains sensitive data, unless you understand what is in scope.
  */
 
 import type { Express, Request, Response, NextFunction } from 'express';

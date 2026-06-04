@@ -171,6 +171,22 @@ const IF_MATCH_HEADER = 'If-Match';
 const GLOBAL_LOCK_KEY = '__global__';
 
 /**
+ * Sentinel key serializing every write-UoW in a system whose DSL can cascade
+ * writes into aggregates OTHER than the command's primary target (reactions and
+ * dispatch_commands). The per-target lock only guards the primary aggregate, so
+ * two UoWs on DIFFERENT primaries that both cascade into the SAME third
+ * aggregate would otherwise run concurrently, each reading the same base
+ * sequenceVersion for that shared aggregate and assigning duplicates — the
+ * second commit then throws "Non-monotonic sequence version" (a lost update).
+ *
+ * When a system can cascade, every write-UoW additionally holds this shared lock
+ * so cascading and direct writes against any shared aggregate are serialized.
+ * Acquired together with the primary lock in deterministic (sorted) order, which
+ * makes multi-lock acquisition provably deadlock-free.
+ */
+const CASCADE_LOCK_KEY = '__cascade__';
+
+/**
  * Per-aggregateId mutex chain. Each entry is the tail of a promise chain; new
  * UoWs targeting the same key append themselves via .then() so they run serially.
  *
@@ -209,6 +225,61 @@ function acquireLock(
   };
 
   return { release, acquired };
+}
+
+/**
+ * Acquire several serialization slots at once and return a single release that
+ * frees them all.
+ *
+ * Deadlock-freedom: keys are de-duplicated and acquired in a fixed lexicographic
+ * order. Because every caller acquires its lock set in the SAME global order,
+ * no two UoWs can hold one lock while waiting on another in a cycle (the classic
+ * resource-ordering argument), so multi-lock acquisition cannot deadlock.
+ *
+ * Slots are released in reverse acquisition order (does not affect correctness;
+ * matches conventional nested-lock release).
+ */
+function acquireLocks(
+  locks: Map<string, Promise<void>>,
+  keys: readonly string[],
+): { release: () => void; acquired: Promise<void> } {
+  const ordered = [...new Set(keys)].sort();
+  const releases: Array<() => void> = [];
+
+  const acquired = (async (): Promise<void> => {
+    for (const key of ordered) {
+      const slot = acquireLock(locks, key);
+      releases.push(slot.release);
+      await slot.acquired;
+    }
+  })();
+
+  const release = (): void => {
+    for (let i = releases.length - 1; i >= 0; i--) {
+      releases[i]!();
+    }
+  };
+
+  return { release, acquired };
+}
+
+/**
+ * True when this DSL can produce writes to aggregates OTHER than a command's
+ * primary target within a single UoW — i.e. it declares any reaction or any
+ * behaviour that dispatches secondary commands. Such systems must serialize
+ * write-UoWs on CASCADE_LOCK_KEY so concurrent cascades into a shared aggregate
+ * cannot interleave their sequence-version assignment.
+ */
+function dslCanCascade(dsl: CompiledDsl): boolean {
+  if (dsl.reactionsByTrigger && dsl.reactionsByTrigger.size > 0) return true;
+  for (const boundary of dsl.boundaries) {
+    for (const behavior of boundary.behaviors) {
+      if (behavior.dispatchCommands && behavior.dispatchCommands.length > 0) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -381,7 +452,17 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
       // forwarding handler pass the per-system map so concurrent same-aggregate
       // requests serialize within that one system only.
       const locks = input.aggregateLocks ?? new Map<string, Promise<void>>();
-      const { release, acquired } = acquireLock(locks, lockKey);
+      // A write-UoW in a system whose DSL can cascade (reactions / dispatch)
+      // ALSO holds the shared cascade lock, so two UoWs on different primaries
+      // that both cascade into the same third aggregate cannot interleave their
+      // sequence-version assignment (xgyh lost-update). Queries never write, so
+      // they take only the primary lock. acquireLocks sorts the keys, making the
+      // two-lock acquisition deadlock-free.
+      const lockKeys =
+        command.intent !== 'query' && dslCanCascade(dsl)
+          ? [lockKey, CASCADE_LOCK_KEY]
+          : [lockKey];
+      const { release, acquired } = acquireLocks(locks, lockKeys);
       await acquired;
 
       let outcome: 'success' | 'abort' | 'error' = 'error';
@@ -653,6 +734,9 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
 
           // Sagas run after commit so compensation events are truly
           // compensating, not pre-staged alongside the primary event.
+          // Every committed event is offered — including reaction/dispatch events
+          // on OTHER boundaries — and findTriggeredSagas matches on the event's
+          // own boundary, so a saga keyed to a reaction's boundary fires too.
           if (!skipSagas && dsl.sagas && dsl.sagas.length > 0) {
             for (const evt of stagedEvents) {
               const triggeredSagas = findTriggeredSagas(dsl.sagas, command, evt, cel, logger);

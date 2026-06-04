@@ -36,6 +36,9 @@ import { resolveChaosHeaders, truncateBody } from '../http/chaosHeaders.js';
 import { buildSecurityHeaders } from '../http/securityHeaders.js';
 import { evaluateFaultRules } from '../faults/index.js';
 import { rebuildEntityAtVersion, findEventById } from '../engine/timeTravel.js';
+import { checkScopes } from '../identity/scopeChecker.js';
+import { lookupOperationId } from '../contract/loader.js';
+import type { CachedResponse } from '../idempotency/store.js';
 import {
   corsPreflightHeaders,
   resolveBoundaryLatencyMs,
@@ -295,11 +298,12 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       }
       throw e;
     }
-    // Tier 3: actor override / impersonate (admin-gated above).
+    // Tier 3: actor override / impersonate (admin-gated above). Parse with
+    // indexOf/slice (split on the FIRST colon only) so resource:action scopes
+    // (e.g. vault:write) survive intact — mirrors src/identity/actorExtractor.ts.
     const adminOverride = controls.identity.actorOverride ?? controls.identity.impersonate;
     if (adminOverride) {
-      const [id, scopesStr] = adminOverride.split(':', 2);
-      actor = { id: id ?? 'unknown', scopes: (scopesStr ?? '').split(',').filter(Boolean) };
+      actor = parseActorOverride(adminOverride);
     }
 
     // 8b. Chaos headers — resolve X-Potemkin-* chaos primitives.
@@ -376,6 +380,16 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
     // mirroring gateway.ts:559-574 which resolves targetId before the time-travel
     // block at line 575.
     if (method === 'GET') {
+      // RBAC gate: enforce the matched GET operation's required_scopes BEFORE the
+      // time-travel branch so an unscoped actor cannot read a protected entity by
+      // appending a time-travel header.
+      try {
+        enforceGetReadScopes(sys, boundary, route.contractPath, actor);
+      } catch (err) {
+        const mapped = mapErrorToStatus(err);
+        send({ status: mapped.status, headers: { ...(mapped.headers ?? {}), 'x-specmatic-result': 'failure' }, body: mapped.body });
+        return;
+      }
       if (controls.timeTravel.readAtVersion !== undefined && targetId !== null) {
         const ttInferred = sys.inferredSchemas?.[boundary.boundary];
         const ttComputedArgs = ttInferred && ttInferred.computedOrder.length > 0
@@ -497,20 +511,50 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       return;
     }
 
+    // Idempotency check. Key is scoped to the resolved actor id (no cross-actor
+    // replay). `check` atomically reserves a pending slot on a miss so a
+    // concurrent second request with the same key WAITS rather than double-
+    // executing (TOCTOU). The reservation is resolved via record()/release().
     const idempotencyKey = readForwardedHeader(fwd.headers, 'idempotency-key');
     const idempotencyCfg = sys.dsl.idempotency;
     const idempotencyEnabled = idempotencyCfg?.enabled ?? false;
+    const idempotencyActorId = actor?.id ?? '';
+    let idempotencyReserved = false;
 
     if (idempotencyEnabled && idempotencyKey && intent !== 'query') {
       const store = sys.idempotencyStore;
       const requestBody: JsonValue = fwd.body ?? {};
       const hashIncludesBody = idempotencyCfg?.hashIncludesBody ?? true;
+      const checkParams = { actorId: idempotencyActorId, method, path, idempotencyKey, body: requestBody, hashIncludesBody };
+
+      const replay = (cached: CachedResponse): void => {
+        // Re-emit the recorded _patches so a masked/hateoas response stays masked
+        // on replay (the plugin applies the patches to the base body).
+        send({
+          status: cached.status,
+          headers: { ...(cached.headers ?? {}), 'x-idempotency-replay': 'true' },
+          body: isHead ? null : (cached.body ?? null),
+          ...(cached.patches !== undefined && !isHead ? { _patches: cached.patches } : {}),
+        });
+      };
+
       try {
-        const checkResult = store.check({ method, path, idempotencyKey, body: requestBody, hashIncludesBody });
-        if (checkResult.hit) {
-          const cached = checkResult.response;
-          send({ status: cached.status, headers: { ...(cached.headers ?? {}), 'x-idempotency-replay': 'true' }, body: isHead ? null : (cached.body ?? null) });
-          return;
+        for (;;) {
+          const checkResult = store.check(checkParams);
+          if (checkResult.kind === 'hit') {
+            replay(checkResult.response);
+            return;
+          }
+          if (checkResult.kind === 'wait') {
+            const waited = await checkResult.wait;
+            if (waited !== null) {
+              replay(waited);
+              return;
+            }
+            continue;
+          }
+          idempotencyReserved = true;
+          break;
         }
       } catch (err) {
         if (err instanceof IdempotencyConflictError) {
@@ -520,6 +564,21 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
         throw err;
       }
     }
+
+    /** Release the idempotency reservation (if held) so concurrent waiters re-execute. */
+    const releaseIdempotency = (): void => {
+      if (idempotencyReserved && idempotencyKey) {
+        idempotencyReserved = false;
+        sys.idempotencyStore.release({
+          actorId: idempotencyActorId,
+          method,
+          path,
+          idempotencyKey,
+          body: fwd.body ?? {},
+          hashIncludesBody: idempotencyCfg?.hashIncludesBody ?? true,
+        });
+      }
+    };
 
     // Apply chaos extra latency on the normal (non-short-circuit) path.
     // Boundary latency was already applied above.
@@ -560,6 +619,8 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       deferred?.flush(logger);
     } catch (err) {
       deferred?.discard();
+      // Release the idempotency reservation so concurrent waiters re-execute.
+      releaseIdempotency();
       logger.error({ err }, 'UoW execution error in forwarding handler');
       const mapped = mapErrorToStatus(err);
       send({ status: mapped.status, headers: { ...(mapped.headers ?? {}), 'x-specmatic-result': 'failure' }, body: mapped.body });
@@ -677,7 +738,9 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       events: (result.events ?? []).map(e => ({
         eventId: e.eventId, type: e.type, aggregateId: e.aggregateId,
         sequenceVersion: e.sequenceVersion, timestamp: e.timestamp,
-        payload: e.payload as JsonValue, causedBy: e.causedBy,
+        // Apply the boundary mask removes so masked fields do not leak via
+        // _events on a normal (non-admin) response.
+        payload: maskEventPayload(e.payload as JsonValue, boundary.mask ?? []), causedBy: e.causedBy,
       })),
       boundary: boundary.boundary,
       intent,
@@ -702,7 +765,11 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
     }
 
     // Record idempotency entry after the full pipeline so the cached response
-    // matches exactly what the caller received (HATEOAS, mask, format, trace headers applied).
+    // matches exactly what the caller received (HATEOAS, mask, format, trace headers
+    // applied). The _patches envelope is recorded too so a replay re-emits the same
+    // mask/HATEOAS patches — otherwise the plugin would serialize the unmasked base
+    // body on replay, leaking masked fields. Recording resolves the pending
+    // reservation; a dry-run releases it instead (it never persists an entry).
     if (idempotencyEnabled && idempotencyKey && intent !== 'query' && controls.transparency.dryRun !== true) {
       const store = sys.idempotencyStore;
       const requestBody: JsonValue = fwd.body ?? {};
@@ -710,13 +777,23 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       const ttlMs = (idempotencyCfg?.ttlSeconds ?? 86400) * 1000;
       try {
         store.record({
+          actorId: idempotencyActorId,
           method, path, idempotencyKey, body: requestBody, hashIncludesBody,
-          response: { status: result.status, body: outBody ?? null, headers: responseHeaders },
+          response: {
+            status: result.status,
+            body: outBody ?? null,
+            headers: responseHeaders,
+            ...(patches !== undefined ? { patches } : {}),
+          },
           ttlMs,
         });
+        idempotencyReserved = false;
       } catch {
         logger.warn({ idempotencyKey }, 'Failed to record idempotency entry in forwarding handler');
       }
+    } else {
+      // Dry-run (or otherwise not recording): drop the reservation so waiters proceed.
+      releaseIdempotency();
     }
 
     send({
@@ -727,6 +804,56 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
       ...(patches !== undefined && !isHead ? { _patches: patches } : {}),
     });
   };
+}
+
+/**
+ * Parse an admin actor-override / impersonate header value of the form
+ * `<id>:<scope1>,<scope2>,...` into an Actor. Splits on the FIRST colon only so
+ * resource:action scopes (e.g. `vault:write`) survive. Mirrors actorExtractor.ts.
+ */
+function parseActorOverride(value: string): Actor {
+  const colonIdx = value.indexOf(':');
+  if (colonIdx === -1) {
+    return { id: value || 'unknown', scopes: [] };
+  }
+  const id = value.slice(0, colonIdx);
+  const scopesStr = value.slice(colonIdx + 1);
+  return { id: id || 'unknown', scopes: scopesStr.split(',').map(s => s.trim()).filter(Boolean) };
+}
+
+/**
+ * Enforce the matched GET operation's required_scopes against the resolved actor
+ * BEFORE any time-travel read short-circuit. Mirrors the pattern matcher's RBAC
+ * gate so a time-travel read cannot bypass scope enforcement.
+ *
+ * @throws {AuthenticationRequiredError} (401) / {AuthorizationDeniedError} (403)
+ */
+function enforceGetReadScopes(
+  sys: BootedSystem,
+  boundary: BoundaryConfig,
+  contractPath: string,
+  actor: Actor | undefined,
+): void {
+  const operationId = lookupOperationId(sys.openapi, contractPath, 'GET');
+  if (operationId === undefined) return;
+  for (const behavior of boundary.behaviors) {
+    if (behavior.match.operationId !== operationId) continue;
+    if (behavior.match.requiredScopes && behavior.match.requiredScopes.length > 0) {
+      checkScopes(actor, behavior.match.requiredScopes, behavior.name);
+    }
+  }
+}
+
+/**
+ * Remove the boundary `mask:` field names from an echoed event payload so masked
+ * fields cannot leak through the X-Potemkin-Include-Events `_events` envelope.
+ */
+function maskEventPayload(payload: JsonValue, maskFields: readonly string[]): JsonValue {
+  if (maskFields.length === 0) return payload;
+  if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) return payload;
+  const out: Record<string, JsonValue> = { ...(payload as Record<string, JsonValue>) };
+  for (const field of maskFields) delete out[field];
+  return out;
 }
 
 /** Lowercase the keys of an optional header map (chaos/fault responses use mixed casing). */

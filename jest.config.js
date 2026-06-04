@@ -20,6 +20,9 @@ module.exports = {
     '/node_modules/',
     '/tests/integration/specmatic-cli/',
     '/tests/e2e/',
+    // Adversarial red-team repros: failing-by-design until their bug is fixed,
+    // kept as evidence and converted into proper regression tests per fix.
+    '/tests/redteam/',
   ],
   moduleFileExtensions: ['ts', 'js', 'json'],
   setupFiles: ['<rootDir>/tests/setup.ts'],

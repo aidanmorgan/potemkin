@@ -749,7 +749,7 @@ event_catalog:
       score: "ts:computeScore"
 ```
 
-Scanned scripts execute as trusted host code. An unknown `ts:<id>` halts boot with `BOOT_ERR_DSL_REFERENCE`. The removed inline `scripts[].code` form halts boot with `BOOT_ERR_REMOVED_SYNTAX`.
+Scanned scripts execute as trusted host code. The `node:vm` context used during boot-time scanning prevents accidental imports of `fs`, `net`, `process`, and similar modules, but it is not a security sandbox — it does not prevent a malicious or untrusted file from reaching the host process via prototype-chain access. Only load `.ts` files that are version-controlled in the same repository as the rest of the simulation. An unknown `ts:<id>` halts boot with `BOOT_ERR_DSL_REFERENCE`. The removed inline `scripts[].code` form halts boot with `BOOT_ERR_REMOVED_SYNTAX`.
 
 [`67-annotation-script`](tests/e2e/67-annotation-script.e2e-test.ts) shows the scanned `@Script` setting a score on lead creation end-to-end using the [`tests/fixtures/ts-script/`](tests/fixtures/ts-script/) fixture.
 
@@ -998,6 +998,14 @@ Two common ones:
 - `X-Potemkin-Dry-Run: true` — run the full evaluation pipeline including guards, conditions, and event hydration, then discard the result without writing to the event log.
 
 These headers are how you build test assertions around idempotency, version history, and speculative execution without spinning up separate engine instances. [`48-control-headers`](tests/e2e/48-control-headers.e2e-test.ts) drives every tier through the stack.
+
+### Admin surface access model
+
+The `/_admin/*` endpoints are fail-open by default: when `ADMIN_TOKEN` is not set, all admin routes — including `/_admin/reset`, `/_admin/state`, `/_admin/events`, clock manipulation, and fault injection — are open to any caller on the network. This is intentional for local development and CI where the engine runs in a trusted environment.
+
+For any deployment reachable from an untrusted network, set the `ADMIN_TOKEN` environment variable. All admin routes then require `Authorization: Bearer <token>`.
+
+`/_admin/state` and `/_admin/events` return raw, unmasked state and event payloads by design — they are debugging surfaces. Do not expose them on an untrusted network, even with `ADMIN_TOKEN` set, if the state contains sensitive data.
 
 ---
 

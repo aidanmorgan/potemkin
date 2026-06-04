@@ -286,3 +286,129 @@ describe('infinite-loop.integration: mutually recursive secondary commands', () 
     ).rejects.toBeInstanceOf(InfiniteLoopError);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Cascade-depth cap EXACT boundary (ng5u): the guard is `cmd.depth > maxDepth`,
+// so depth === maxDepth is the LAST allowed level and maxDepth+1 is rejected.
+// A `>=` regression would wrongly reject depth === maxDepth; these two tests
+// pin both sides of the boundary so that regression fails.
+//
+// A standalone non-dispatching Leaf boundary is used so the command entering at
+// a given depth does NOT itself cascade — isolating the depth check from any
+// follow-on cascade level.
+// ---------------------------------------------------------------------------
+
+const LEAF_OPENAPI = `
+openapi: "3.0.3"
+info:
+  title: Leaf Depth Test
+  version: "1.0.0"
+paths:
+  /leaves:
+    post:
+      operationId: createLeaf
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "201":
+          description: Leaf created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeafBoundary"
+components:
+  schemas:
+    LeafBoundary:
+      type: object
+      properties:
+        id:
+          type: string
+`;
+
+const LEAF_DSL = `
+boundary: LeafBoundary
+contract_path: /leaves
+fallback_override: false
+identity:
+  creation:
+    generate: "$uuidv7()"
+event_catalog:
+  - type: LeafCreated
+    payload_template:
+      id: "command.targetId"
+behaviors:
+  - name: create-leaf
+    match:
+      operationId: createLeaf
+      condition: "true"
+    emit: LeafCreated
+reducers:
+  - on: LeafCreated
+    patches:
+      - { op: replace, path: /id, value: "\${event.payload.id}" }
+`;
+
+describe('infinite-loop.integration: cascade-depth cap exact boundary', () => {
+  let leafSys: BootedSystem;
+  const MAX_DEPTH = 3;
+
+  beforeEach(async () => {
+    const openapi = await loadOpenApi(LEAF_OPENAPI);
+    leafSys = await bootSystem({
+      openapi,
+      compiledDsl: await compileDsl([{ name: 'leaf', yaml: LEAF_DSL }]),
+    });
+  });
+
+  function leafCmd(depth: number) {
+    return {
+      commandId: nextUuidv7(),
+      boundary: 'LeafBoundary',
+      intent: 'creation' as const,
+      targetId: nextUuidv7(),
+      payload: {},
+      queryParams: {},
+      httpMethod: 'POST',
+      path: '/leaves',
+      origin: depth === 0 ? ('inbound' as const) : ('secondary' as const),
+      depth,
+    };
+  }
+
+  it('a command at depth === maxDepth executes (last allowed level)', async () => {
+    const result = await executeUnitOfWork({
+      command: leafCmd(MAX_DEPTH),
+      dsl: leafSys.dsl,
+      openapi: leafSys.openapi,
+      graph: leafSys.graph,
+      events: leafSys.events,
+      cel: leafSys.cel,
+      validator: leafSys.validator,
+      schemaRegistry: leafSys.schemaRegistry,
+      maxDepth: MAX_DEPTH,
+    });
+
+    expect(result.status).toBe(201);
+    expect(result.events).toHaveLength(1);
+  });
+
+  it('a command at depth === maxDepth + 1 is rejected with InfiniteLoopError', async () => {
+    await expect(
+      executeUnitOfWork({
+        command: leafCmd(MAX_DEPTH + 1),
+        dsl: leafSys.dsl,
+        openapi: leafSys.openapi,
+        graph: leafSys.graph,
+        events: leafSys.events,
+        cel: leafSys.cel,
+        validator: leafSys.validator,
+        schemaRegistry: leafSys.schemaRegistry,
+        maxDepth: MAX_DEPTH,
+      }),
+    ).rejects.toBeInstanceOf(InfiniteLoopError);
+  });
+});
