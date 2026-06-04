@@ -195,3 +195,98 @@ describe('Stripe simulation — Prices', () => {
     expect(((body['data'] as Record<string, unknown>[])[0])['object']).toBe('price');
   });
 });
+
+describe('Stripe simulation — PaymentIntents (state machine)', () => {
+  let server: PersistentServer;
+  let agent: PersistentAgent;
+
+  beforeAll(async () => {
+    const openapi = await loadOpenApi(path.join(STRIPE_DIR, 'openapi', 'stripe-core.yaml'));
+    const sys = await bootSystem({
+      openapi,
+      potemkinConfigPath: path.join(STRIPE_DIR, 'potemkin.yaml'),
+    });
+    expandByContractPath(sys);
+    server = await withPersistentServer(createGateway(sys));
+    agent = server.agent;
+  });
+  afterAll(async () => { await server.close(); });
+
+  async function createPI(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return (await agent.post('/v1/payment_intents').send(body).expect(200)).body as Record<string, unknown>;
+  }
+
+  it('POST /v1/payment_intents (no payment_method) starts in requires_payment_method', async () => {
+    const pi = await createPI({ amount: 2000, currency: 'usd' });
+    expect(pi['object']).toBe('payment_intent');
+    expect((pi['id'] as string).startsWith('pi_')).toBe(true);
+    expect(pi['status']).toBe('requires_payment_method');
+    expect(pi['amount']).toBe(2000);
+    expect(pi['amount_received']).toBe(0);
+    expect(pi['capture_method']).toBe('automatic');
+    expect((pi['client_secret'] as string).startsWith(`${pi['id'] as string}_secret_`)).toBe(true);
+  });
+
+  it('POST /v1/payment_intents with payment_method starts in requires_confirmation', async () => {
+    const pi = await createPI({ amount: 500, currency: 'usd', payment_method: 'pm_card_visa' });
+    expect(pi['status']).toBe('requires_confirmation');
+    expect(pi['payment_method']).toBe('pm_card_visa');
+  });
+
+  it('confirm advances an automatic-capture intent to succeeded with full amount_received', async () => {
+    const pi = await createPI({ amount: 2000, currency: 'usd', payment_method: 'pm_card_visa' });
+    const id = pi['id'] as string;
+    const confirmed = (await agent.post(`/v1/payment_intents/${id}/confirm`).send({}).expect(200)).body as Record<string, unknown>;
+    expect(confirmed['status']).toBe('succeeded');
+    expect(confirmed['amount_received']).toBe(2000);
+  });
+
+  it('manual capture flow: confirm -> requires_capture, capture -> succeeded', async () => {
+    const pi = await createPI({ amount: 1000, currency: 'usd', payment_method: 'pm_card_visa', capture_method: 'manual' });
+    const id = pi['id'] as string;
+    const confirmed = (await agent.post(`/v1/payment_intents/${id}/confirm`).send({}).expect(200)).body as Record<string, unknown>;
+    expect(confirmed['status']).toBe('requires_capture');
+    expect(confirmed['amount_received']).toBe(0);
+    const captured = (await agent.post(`/v1/payment_intents/${id}/capture`).send({}).expect(200)).body as Record<string, unknown>;
+    expect(captured['status']).toBe('succeeded');
+    expect(captured['amount_received']).toBe(1000);
+  });
+
+  it('cancel moves a non-terminal intent to canceled with a reason', async () => {
+    const pi = await createPI({ amount: 700, currency: 'usd' });
+    const id = pi['id'] as string;
+    const canceled = (await agent.post(`/v1/payment_intents/${id}/cancel`).send({ cancellation_reason: 'abandoned' }).expect(200)).body as Record<string, unknown>;
+    expect(canceled['status']).toBe('canceled');
+    expect(canceled['cancellation_reason']).toBe('abandoned');
+  });
+
+  it('confirming a succeeded intent is rejected by the state-machine guard', async () => {
+    const pi = await createPI({ amount: 300, currency: 'usd', payment_method: 'pm_card_visa' });
+    const id = pi['id'] as string;
+    await agent.post(`/v1/payment_intents/${id}/confirm`).send({}).expect(200);
+    const res = await agent.post(`/v1/payment_intents/${id}/confirm`).send({});
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.status).toBeLessThan(500);
+    const details = (res.body as Record<string, unknown>)['details'] as Record<string, unknown>;
+    expect(details['code']).toBe('PAYMENT_INTENT_UNEXPECTED_STATE');
+  });
+
+  it('canceling a succeeded intent is rejected by the state-machine guard', async () => {
+    const pi = await createPI({ amount: 300, currency: 'usd', payment_method: 'pm_card_visa' });
+    const id = pi['id'] as string;
+    await agent.post(`/v1/payment_intents/${id}/confirm`).send({}).expect(200);
+    const res = await agent.post(`/v1/payment_intents/${id}/cancel`).send({});
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.status).toBeLessThan(500);
+  });
+
+  it('GET /v1/payment_intents/{id} retrieves the intent; GET /v1/payment_intents lists the envelope', async () => {
+    const pi = await createPI({ amount: 1234, currency: 'usd' });
+    const id = pi['id'] as string;
+    const got = (await agent.get(`/v1/payment_intents/${id}`).expect(200)).body as Record<string, unknown>;
+    expect(got['id']).toBe(id);
+    const list = (await agent.get('/v1/payment_intents').expect(200)).body as Record<string, unknown>;
+    expect(list['object']).toBe('list');
+    expect(((list['data'] as Record<string, unknown>[])[0])['object']).toBe('payment_intent');
+  });
+});

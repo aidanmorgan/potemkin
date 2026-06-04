@@ -1,0 +1,62 @@
+# PaymentIntent — collection boundary (POST create, GET list).
+# Stripe ids are `pi_<token>`. A new intent starts in requires_confirmation when
+# a payment_method is supplied, otherwise requires_payment_method.
+boundary: PaymentIntent
+contract_path: /v1/payment_intents
+fallback_override: true
+
+response: "ts:paymentIntentResponse"
+
+identity:
+  creation:
+    generate: "ts:paymentIntentId"
+
+query_mapping:
+  customer: "state.customer == param"
+
+event_catalog:
+  - type: PaymentIntentCreated
+    payload_template:
+      id: "command.targetId"
+      object: "'payment_intent'"
+      created: "ts:unixNow"
+      livemode: "false"
+      amount: "command.payload.amount"
+      currency: "command.payload.currency"
+      status: "has(command.payload.payment_method) ? 'requires_confirmation' : 'requires_payment_method'"
+      customer: "has(command.payload.customer) ? command.payload.customer : null"
+      payment_method: "has(command.payload.payment_method) ? command.payload.payment_method : null"
+      capture_method: "has(command.payload.capture_method) ? command.payload.capture_method : 'automatic'"
+      amount_received: "0"
+      latest_charge: "null"
+      cancellation_reason: "null"
+      description: "has(command.payload.description) ? command.payload.description : null"
+      client_secret: "command.targetId + '_secret_' + $uuidv7()"
+      metadata: "has(command.payload.metadata) ? command.payload.metadata : {}"
+
+behaviors:
+  - name: createPaymentIntent
+    match:
+      operationId: createPaymentIntent
+      condition: "true"
+    emit: PaymentIntentCreated
+
+reducers:
+  - on: PaymentIntentCreated
+    patches:
+      - { op: replace, path: /id, value: "${event.payload.id}" }
+      - { op: replace, path: /object, value: "${event.payload.object}" }
+      - { op: replace, path: /created, value: "${event.payload.created}" }
+      - { op: replace, path: /livemode, value: "${event.payload.livemode}" }
+      - { op: replace, path: /amount, value: "${event.payload.amount}" }
+      - { op: replace, path: /currency, value: "${event.payload.currency}" }
+      - { op: replace, path: /status, value: "${event.payload.status}" }
+      - { op: replace, path: /customer, value: "${event.payload.customer}" }
+      - { op: replace, path: /payment_method, value: "${event.payload.payment_method}" }
+      - { op: replace, path: /capture_method, value: "${event.payload.capture_method}" }
+      - { op: replace, path: /amount_received, value: "${event.payload.amount_received}" }
+      - { op: replace, path: /latest_charge, value: "${event.payload.latest_charge}" }
+      - { op: replace, path: /cancellation_reason, value: "${event.payload.cancellation_reason}" }
+      - { op: replace, path: /description, value: "${event.payload.description}" }
+      - { op: replace, path: /client_secret, value: "${event.payload.client_secret}" }
+      - { op: replace, path: /metadata, value: "${event.payload.metadata}" }

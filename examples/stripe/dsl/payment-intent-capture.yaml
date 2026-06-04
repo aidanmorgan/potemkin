@@ -1,0 +1,36 @@
+# PaymentIntent capture action — POST /v1/payment_intents/{id}/capture.
+# Captures a manually-authorized intent (requires_capture → succeeded).
+boundary: PaymentIntentCapture
+contract_path: /v1/payment_intents/{id}/capture
+fallback_override: false
+
+response: "ts:paymentIntentResponse"
+
+identity:
+  key:
+    from: path
+    name: id
+
+event_catalog:
+  - type: PaymentIntentCaptured
+    payload_template:
+      amount_received: "state.amount"
+
+behaviors:
+  - name: capturePaymentIntent
+    match:
+      operationId: capturePaymentIntent
+      method: POST
+      condition: "true"
+      requires:
+        - name: must-require-capture
+          condition: "state.status == 'requires_capture'"
+          error_code: PAYMENT_INTENT_UNEXPECTED_STATE
+          error_message: "You cannot capture this PaymentIntent because it is not awaiting capture"
+    emit: PaymentIntentCaptured
+
+reducers:
+  - on: PaymentIntentCaptured
+    patches:
+      - { op: replace, path: /status, value: "${'succeeded'}" }
+      - { op: replace, path: /amount_received, value: "${event.payload.amount_received}" }

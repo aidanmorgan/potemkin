@@ -1,0 +1,37 @@
+# PaymentIntent cancel action — POST /v1/payment_intents/{id}/cancel.
+# Cancels a non-terminal intent (→ canceled). Succeeded/canceled intents cannot
+# be canceled.
+boundary: PaymentIntentCancel
+contract_path: /v1/payment_intents/{id}/cancel
+fallback_override: false
+
+response: "ts:paymentIntentResponse"
+
+identity:
+  key:
+    from: path
+    name: id
+
+event_catalog:
+  - type: PaymentIntentCanceled
+    payload_template:
+      cancellation_reason: "has(command.payload.cancellation_reason) ? command.payload.cancellation_reason : 'requested_by_customer'"
+
+behaviors:
+  - name: cancelPaymentIntent
+    match:
+      operationId: cancelPaymentIntent
+      method: POST
+      condition: "true"
+      requires:
+        - name: not-terminal
+          condition: "state.status != 'succeeded' && state.status != 'canceled'"
+          error_code: PAYMENT_INTENT_UNEXPECTED_STATE
+          error_message: "You cannot cancel this PaymentIntent because it has succeeded or is already canceled"
+    emit: PaymentIntentCanceled
+
+reducers:
+  - on: PaymentIntentCanceled
+    patches:
+      - { op: replace, path: /status, value: "${'canceled'}" }
+      - { op: replace, path: /cancellation_reason, value: "${event.payload.cancellation_reason}" }

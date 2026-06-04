@@ -270,6 +270,138 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/price" }
 
+  # ── PaymentIntents ──────────────────────────────────────────────────────────
+  # A PaymentIntent is a state machine: created in requires_payment_method /
+  # requires_confirmation, advanced by confirm (→ succeeded, or → requires_capture
+  # when capture_method=manual), captured (→ succeeded), or canceled (→ canceled).
+  /v1/payment_intents:
+    post:
+      operationId: createPaymentIntent
+      summary: Create a payment intent
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                amount: { type: integer }
+                currency: { type: string }
+                customer: { type: string }
+                payment_method: { type: string }
+                capture_method: { type: string, enum: [automatic, manual] }
+                description: { type: string }
+                metadata: { type: object, additionalProperties: { type: string } }
+              required: [amount, currency]
+      responses:
+        "200":
+          description: The created payment intent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/payment_intent" }
+    get:
+      operationId: listPaymentIntents
+      summary: List payment intents
+      parameters:
+        - { name: customer, in: query, required: false, schema: { type: string } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100 } }
+      responses:
+        "200":
+          description: A list of payment intents (Stripe list envelope)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/payment_intent_list" }
+  /v1/payment_intents/{id}:
+    get:
+      operationId: getPaymentIntent
+      summary: Retrieve a payment intent
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The payment intent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/payment_intent" }
+        "404":
+          description: No such payment intent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/error" }
+    post:
+      operationId: updatePaymentIntent
+      summary: Update a payment intent
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: false
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                amount: { type: integer }
+                description: { type: string }
+                metadata: { type: object, additionalProperties: { type: string } }
+      responses:
+        "200":
+          description: The updated payment intent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/payment_intent" }
+  /v1/payment_intents/{id}/confirm:
+    post:
+      operationId: confirmPaymentIntent
+      summary: Confirm a payment intent
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: false
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                payment_method: { type: string }
+      responses:
+        "200":
+          description: The confirmed payment intent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/payment_intent" }
+  /v1/payment_intents/{id}/capture:
+    post:
+      operationId: capturePaymentIntent
+      summary: Capture an authorized payment intent
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The captured payment intent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/payment_intent" }
+  /v1/payment_intents/{id}/cancel:
+    post:
+      operationId: cancelPaymentIntent
+      summary: Cancel a payment intent
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: false
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                cancellation_reason: { type: string }
+      responses:
+        "200":
+          description: The canceled payment intent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/payment_intent" }
+
 components:
   schemas:
     # ── Shared ────────────────────────────────────────────────────────────────
@@ -398,6 +530,43 @@ components:
           items: { $ref: "#/components/schemas/price" }
       required: [object, data, has_more, url]
 
+    # ── PaymentIntent ───────────────────────────────────────────────────────────
+    payment_intent:
+      type: object
+      additionalProperties: true
+      properties:
+        id: { type: string }
+        object: { type: string, enum: [payment_intent] }
+        created: { type: integer }
+        livemode: { type: boolean }
+        amount: { type: integer }
+        currency: { type: string }
+        status:
+          type: string
+          enum: [requires_payment_method, requires_confirmation, requires_action, requires_capture, processing, succeeded, canceled]
+        customer: { type: string, nullable: true }
+        payment_method: { type: string, nullable: true }
+        capture_method: { type: string, enum: [automatic, manual] }
+        amount_received: { type: integer }
+        latest_charge: { type: string, nullable: true }
+        cancellation_reason: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        client_secret: { type: string }
+        metadata: { $ref: "#/components/schemas/metadata" }
+      required: [id, object, created, livemode, amount, currency, status, capture_method, amount_received]
+
+    payment_intent_list:
+      type: object
+      additionalProperties: false
+      properties:
+        object: { type: string, enum: [list] }
+        url: { type: string }
+        has_more: { type: boolean }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/payment_intent" }
+      required: [object, data, has_more, url]
+
     # Per-boundary state schemas. The engine derives each boundary's state shape
     # from components.schemas.<BoundaryName>; both Customer boundaries (the
     # collection and the {customer} by-id boundary) share the customer shape.
@@ -413,3 +582,13 @@ components:
       $ref: "#/components/schemas/price"
     PriceById:
       $ref: "#/components/schemas/price"
+    PaymentIntent:
+      $ref: "#/components/schemas/payment_intent"
+    PaymentIntentById:
+      $ref: "#/components/schemas/payment_intent"
+    PaymentIntentConfirm:
+      $ref: "#/components/schemas/payment_intent"
+    PaymentIntentCapture:
+      $ref: "#/components/schemas/payment_intent"
+    PaymentIntentCancel:
+      $ref: "#/components/schemas/payment_intent"

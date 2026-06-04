@@ -1,0 +1,40 @@
+# PaymentIntent confirm action — POST /v1/payment_intents/{id}/confirm.
+# Advances a confirmable intent to succeeded (automatic capture) or
+# requires_capture (manual capture). Mutates the same pi_ aggregate by path id.
+boundary: PaymentIntentConfirm
+contract_path: /v1/payment_intents/{id}/confirm
+fallback_override: false
+
+response: "ts:paymentIntentResponse"
+
+identity:
+  key:
+    from: path
+    name: id
+
+event_catalog:
+  - type: PaymentIntentConfirmed
+    payload_template:
+      status: "state.capture_method == 'manual' ? 'requires_capture' : 'succeeded'"
+      amount_received: "state.capture_method == 'manual' ? state.amount_received : state.amount"
+      payment_method: "has(command.payload.payment_method) ? command.payload.payment_method : state.payment_method"
+
+behaviors:
+  - name: confirmPaymentIntent
+    match:
+      operationId: confirmPaymentIntent
+      method: POST
+      condition: "true"
+      requires:
+        - name: must-be-confirmable
+          condition: "state.status == 'requires_payment_method' || state.status == 'requires_confirmation' || state.status == 'requires_action'"
+          error_code: PAYMENT_INTENT_UNEXPECTED_STATE
+          error_message: "You cannot confirm this PaymentIntent because it is not in a confirmable state"
+    emit: PaymentIntentConfirmed
+
+reducers:
+  - on: PaymentIntentConfirmed
+    patches:
+      - { op: replace, path: /status, value: "${event.payload.status}" }
+      - { op: replace, path: /amount_received, value: "${event.payload.amount_received}" }
+      - { op: replace, path: /payment_method, value: "${event.payload.payment_method}" }
