@@ -1,85 +1,49 @@
 /**
- * The Nuisance Bureau CRM simulation example entry point.
+ * Run the Nuisance Bureau CRM simulation as it is meant to run: the FULL
+ * Specmatic + plugin + engine stack. Potemkin is a Specmatic EXTENSION — the
+ * canonical way to use a simulation is to launch the Specmatic stub with the
+ * plugin pointed at the contract, which forwards stateful paths to the engine.
+ * (The engine-only gateway exists only as an internal framework-test convenience,
+ * not a user-facing way to run a simulation.)
  *
- * Lifecycle wiring:
- *  1. Boot the engine (loads CRM DSL + OpenAPI, hydrates state graph).
- *     - If PLUGIN_CONTROL_URL is set, a POST /ready notification is sent
- *       fire-and-forget to the Specmatic-side plugin immediately after boot.
- *  2. Create the Express HTTP gateway.
- *  3. Call `installGracefulShutdown` on the http.Server returned by app.listen.
- *     - On SIGTERM or SIGINT, terminus will:
- *         a. Wait BEFORE_SHUTDOWN_DELAY_MS ms (default 0) for load-balancer drain.
- *         b. POST /shutdown to the plugin control server (500 ms budget).
- *         c. Drain in-flight HTTP connections within 10 s.
- *         d. Exit with code 0.
+ * Requires Java 17+ and the plugin JAR:
+ *   cd plugin && ./gradlew shadowJar && cd ..
+ *   npm run start:example
  *
- * Domain: The Nuisance Bureau CRM — 5 boundaries: Lead, Campaign, Agent, Call, Opportunity.
+ * Then drive requests at the printed STUB URL (Specmatic enforces the contract):
+ *   curl -s -XPOST <stubUrl>/leads -H 'Content-Type: application/json' \
+ *        -d '{"companyName":"Acme","contactName":"A","phone":"+61...","email":"a@x","source":"WEBSITE"}'
  */
 
-import { bootSystem, createGateway, installGracefulShutdown } from '../../src/index.js';
-import { loadFixture } from '../../tests/fixtures/index.js';
+import { startExampleStack } from '../_harness/example-stack.js';
 import { createLogger } from '../../src/observability/logger.js';
-
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const version: string = (require('../../package.json') as { version: string }).version;
 
 const log = createLogger({ name: 'nuisance-bureau-sim' });
 
-const PORT = Number(process.env['PORT'] ?? 3001);
-
 async function main(): Promise<void> {
-  // --- Boot ----------------------------------------------------------------
-  const fixture = await loadFixture('crm');
-
-  const sys = await bootSystem({
-    ...fixture,
-    logger: log,
-    // Wire the plugin control URL from the environment.
-    // After successful boot, a POST /ready notification is sent fire-and-forget.
-    pluginControl: {
-      url: process.env['PLUGIN_CONTROL_URL'] ?? 'http://localhost:9090',
-    },
-  });
+  log.info('Booting the full Specmatic + plugin + engine stack for the CRM example…');
+  const stack = await startExampleStack({ exampleName: 'crm' });
 
   log.info(
     {
-      boundaries: sys.dsl.boundaries.map(b => b.boundary),
-      seededEntities: sys.graph.size(),
+      stubUrl: stack.stubUrl,
+      engineUrl: stack.engineUrl,
+      boundaries: stack.system.dsl.boundaries.map((b) => b.boundary),
+      seededEntities: stack.system.graph.size(),
     },
-    'nuisance-bureau-sim: CRM system booted',
+    'CRM simulation running — send requests to the STUB URL (Specmatic-validated). ' +
+      'The engine URL exposes /_admin/* and /_engine/* for introspection.',
   );
 
-  // --- HTTP gateway --------------------------------------------------------
-  const app = createGateway(sys);
-
-  const server = app.listen(PORT, () => {
-    log.info({ port: PORT }, 'nuisance-bureau-sim: listening');
-  });
-
-  // --- Graceful shutdown ---------------------------------------------------
-  // installGracefulShutdown wraps the server with @godaddy/terminus.
-  // On SIGTERM/SIGINT it will:
-  //   1. Optionally pause (BEFORE_SHUTDOWN_DELAY_MS env var, default 0).
-  //   2. POST /shutdown to the plugin control server via sys.pluginControl.
-  //   3. Drain open connections within 10 s then call process.exit(0).
-  installGracefulShutdown({
-    server,
-    pluginControl: sys.pluginControl,
-    shutdownPayload: () => ({
-      engine: 'potemkin-stateful',
-      domain: 'nuisance-bureau',
-      version,
-      reason: 'SIGTERM',
-      stoppedAt: new Date().toISOString(),
-    }),
-    // Close the TypeScript reducer file-watcher (when typescript.watch is on) so
-    // chokidar's inotify/kqueue descriptors are released before process.exit(0).
-    afterDrain: () => sys.tsWatcher?.stop(),
-    logger: log,
-  });
+  const shutdown = (): void => {
+    log.info('Shutting down the CRM simulation stack…');
+    void stack.shutdown().then(() => process.exit(0));
+  };
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
 }
 
 main().catch((err) => {
-  log.error({ err }, 'nuisance-bureau-sim: failed to start');
+  log.error({ err }, 'nuisance-bureau-sim: failed to start (is the plugin JAR built? cd plugin && ./gradlew shadowJar)');
   process.exit(1);
 });

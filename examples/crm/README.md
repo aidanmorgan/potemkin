@@ -27,23 +27,22 @@ examples/crm/
 
 ## Run it
 
+Potemkin runs **as a Specmatic extension** — a simulation is launched by starting
+the Specmatic stub with the plugin, which enforces the OpenAPI contract and
+forwards stateful paths to the engine. `start:example` boots that full stack
+(engine + Specmatic stub + plugin) and prints the stub URL to hit.
+
 ```sh
-# Boot the engine + HTTP gateway on :3001 (no Java required)
-npm run start:example
-# then: curl -s -XPOST localhost:3001/leads -d '{"companyName":"Acme",...}'
+cd plugin && ./gradlew shadowJar && cd ..   # build the plugin JAR (Java 17+)
+npm run start:example                        # boots Specmatic + plugin + engine
+# then drive requests at the printed STUB URL (Specmatic-validated):
+#   curl -s -XPOST <stubUrl>/leads -H 'Content-Type: application/json' \
+#        -d '{"companyName":"Acme","contactName":"A","phone":"+61...","email":"a@x","source":"WEBSITE"}'
 ```
 
-## Where the tests live
-
-The CRM simulation is the system-under-test for a large share of the suite:
-
-- **Engine-only** (no Java): `tests/e2e/*` engine suites and many
-  `tests/integration/*` tests boot this example via the fixture loader
-  (`resolveFixtureDir('crm')` → this directory) and assert behaviour + state
-  through the admin endpoints.
-- **Full Specmatic stack** (needs Java 17+): the Java-gated `tests/e2e/*`
-  suites boot a real Specmatic JVM with the Kotlin plugin pointed at this
-  contract and drive requests through the complete wire.
+> The engine also exposes an Express gateway directly (`bootSystem` +
+> `createGateway`), but that is an internal framework-test convenience — Potemkin
+> is not meant to be used standalone, only as a Specmatic plugin.
 
 ## Consumer-side testing (how to use Potemkin + Specmatic)
 
