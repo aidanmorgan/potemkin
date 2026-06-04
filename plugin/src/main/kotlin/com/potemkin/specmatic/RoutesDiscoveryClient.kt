@@ -110,7 +110,7 @@ open class RoutesDiscoveryClient(
     }
 
     /** Returns the current cached list of discovered route paths. */
-    fun routes(): List<String> = lock.read { cache.paths }
+    open fun routes(): List<String> = lock.read { cache.paths }
 
     /**
      * Shuts down the background-refresh executor. Any in-flight refresh task is

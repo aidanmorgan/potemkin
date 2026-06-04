@@ -107,7 +107,41 @@ internal fun Application.configure(
         // Exposed at both /health (legacy) and /_potemkin/health (canonical).
         get("/health") { respondHealth(call, healthMonitor) }
         get("/_potemkin/health") { respondHealth(call, healthMonitor) }
+
+        // Forwarding-readiness endpoint — distinct from /health. Reports 200 only
+        // once the engine is UP *and* the route-discovery cache is populated, so a
+        // request to an engine-owned path will forward through the stub instead of
+        // falling through to Specmatic. It self-heals: when the engine is up but
+        // routes are not yet cached, it drives a synchronous forceRefresh(), so a
+        // caller polling this endpoint deterministically warms forwarding without a
+        // timing sleep (see the consumer-test harness gate).
+        get("/ready") { respondReady(call, healthMonitor, routes) }
+        get("/_potemkin/ready") { respondReady(call, healthMonitor, routes) }
     }
+}
+
+private suspend fun respondReady(
+    call: io.ktor.server.application.ApplicationCall,
+    healthMonitor: com.potemkin.specmatic.reliability.HealthMonitor,
+    routes: RoutesDiscoveryClient?,
+) {
+    val up = healthMonitor.currentState() != HealthState.Down
+    var routeCount = routes?.routes()?.size ?: 0
+    // Self-heal: if the engine is reachable but discovery hasn't populated yet
+    // (the engine's POST /ready may not have landed), drive it synchronously here.
+    if (up && routeCount == 0 && routes != null) {
+        runCatching { routes.forceRefresh() }
+        routeCount = routes.routes().size
+    }
+    val ready = up && routeCount > 0
+    call.respond(
+        if (ready) HttpStatusCode.OK else HttpStatusCode.ServiceUnavailable,
+        ReadyResponse(
+            ready = ready,
+            state = healthMonitor.currentState().toString(),
+            routesDiscovered = routeCount,
+        ),
+    )
 }
 
 private suspend fun respondHealth(
@@ -152,4 +186,10 @@ data class ReadyNotification(
 data class HealthStatusResponse(
     val state: String,
     val since: String,
+)
+
+data class ReadyResponse(
+    val ready: Boolean,
+    val state: String,
+    val routesDiscovered: Int,
 )

@@ -186,6 +186,58 @@ class ControlServerTest {
         }
     }
 
+    // ---- GET /ready (forwarding readiness) ----------------------------------------------
+
+    private class FakeRoutes(
+        private val discovered: List<String>,
+    ) : com.potemkin.specmatic.RoutesDiscoveryClient(backendUrl = "http://unused") {
+        override fun routes(): List<String> = discovered
+    }
+
+    @Test
+    fun `GET ready returns 200 when engine UP and routes discovered`() {
+        val spy = SpyHealthMonitor()
+
+        testApplication {
+            application {
+                configure(spy, FakeRoutes(listOf("/leads", "/leads/{id}")), null, org.slf4j.LoggerFactory.getLogger("test"))
+            }
+            val response = client.get("/ready")
+            assertEquals(HttpStatusCode.OK, response.status)
+            val body = response.bodyAsText()
+            assertTrue(body.contains("\"ready\":true"), "Response should report ready=true: $body")
+            assertTrue(body.contains("\"routesDiscovered\":2"), "Response should report the route count: $body")
+        }
+    }
+
+    @Test
+    fun `GET ready returns 503 when engine UP but no routes discovered yet`() {
+        val spy = SpyHealthMonitor()
+
+        testApplication {
+            application {
+                configure(spy, FakeRoutes(emptyList()), null, org.slf4j.LoggerFactory.getLogger("test"))
+            }
+            val response = client.get("/_potemkin/ready")
+            assertEquals(HttpStatusCode.ServiceUnavailable, response.status)
+            assertTrue(response.bodyAsText().contains("\"ready\":false"))
+        }
+    }
+
+    @Test
+    fun `GET ready returns 503 when engine is DOWN`() {
+        val spy = SpyHealthMonitor()
+        spy.markDownExternal()
+
+        testApplication {
+            application {
+                configure(spy, FakeRoutes(listOf("/leads")), null, org.slf4j.LoggerFactory.getLogger("test"))
+            }
+            val response = client.get("/ready")
+            assertEquals(HttpStatusCode.ServiceUnavailable, response.status)
+        }
+    }
+
     // ---- Concurrent POST tests ----------------------------------------------------------
 
     @Test
