@@ -62,6 +62,7 @@ import { resolveActor, JwtValidationError } from '../identity/actorResolver.js';
 import { createSessionAuthMiddleware, SESSION_ACTOR_KEY, SESSION_HANDLED_KEY } from './sessionAuth.js';
 import type { Actor } from '../types.js';
 import { createForwardingHandler, healthHandler, createRoutesHandler, createFixturesHandler } from '../forwarding/handler.js';
+import { createFormFieldsHandler } from '../contract/formFields.js';
 import { parseControlHeaders, applyMask } from './controlHeaders.js';
 import { POTEMKIN_REQUEST_HEADERS } from './potemkinHeaders.js';
 import { applyPaginationStyle, applyResponseFormat } from './responseFormat.js';
@@ -219,6 +220,9 @@ export function createGateway(sys: BootedSystem): Express {
   app.get('/_engine/health', healthHandler);
   app.get('/_engine/routes', createRoutesHandler(sys));
   app.get('/_engine/fixtures', createFixturesHandler(sys));
+  // Form-field type metadata so the plugin can coerce x-www-form-urlencoded
+  // requests to typed JSON before forwarding (engine stays JSON-only).
+  app.get('/_engine/form-fields', createFormFieldsHandler(sys));
 
   // POST /_engine/dsl (install/replay) + GET /_engine/state/:boundary/:id
   // for the new plugin↔engine wire contract.

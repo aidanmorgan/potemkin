@@ -39,6 +39,9 @@ open class CqrsBackendClient(
         .writeTimeout(timeoutMs, TimeUnit.MILLISECONDS)
         .build()
 
+    /** Resolves declared form-field types so form requests forward as typed JSON. */
+    protected open val formFieldIndex: FormFieldIndex = FormFieldIndex(backendUrl, http)
+
     /**
      * Serialises [httpRequest] as a [ForwardedRequest] JSON body, POSTs it to `<backendUrl>/_engine/forward`,
      * and converts the [ForwardedResponse] back into an [HttpStubResponse].
@@ -177,15 +180,25 @@ open class CqrsBackendClient(
     // ---- private helpers ----------------------------------------------------------------
 
     private fun buildForwardedRequest(req: HttpRequest): ForwardedRequest {
-        val rawBody = req.body.toStringLiteral().ifBlank { null }
-        val bodyValue: Any? = if (rawBody != null) {
-            try {
-                mapper.readValue<Any>(rawBody)
-            } catch (_: Exception) {
-                rawBody  // fall back to plain string if not valid JSON
-            }
+        val method = req.method ?: "GET"
+        val path = req.path ?: "/"
+
+        // x-www-form-urlencoded: Specmatic parses the body into formFields (a string
+        // map). Convert it to a typed JSON object — coercing integer/number/boolean
+        // fields per the contract — so the engine receives JSON, not a form string.
+        val bodyValue: Any? = if (req.formFields.isNotEmpty()) {
+            buildFormBody(method, path, req.formFields)
         } else {
-            null
+            val rawBody = req.body.toStringLiteral().ifBlank { null }
+            if (rawBody != null) {
+                try {
+                    mapper.readValue<Any>(rawBody)
+                } catch (_: Exception) {
+                    rawBody  // fall back to plain string if not valid JSON
+                }
+            } else {
+                null
+            }
         }
 
         // Build query map preserving multi-value params. paramPairs holds all (key, value)
@@ -204,6 +217,28 @@ open class CqrsBackendClient(
             body = bodyValue,
             query = query,
         )
+    }
+
+    /**
+     * Convert Specmatic's parsed form fields into a typed JSON object. Flat fields
+     * are coerced to their contract type; one level of bracket notation
+     * (`metadata[key]=v`) becomes a nested object of strings (Stripe metadata).
+     */
+    private fun buildFormBody(method: String, path: String, formFields: Map<String, String>): Map<String, Any?> {
+        val obj = LinkedHashMap<String, Any?>()
+        for ((rawKey, value) in formFields) {
+            val m = BRACKET.matchEntire(rawKey)
+            if (m != null) {
+                val base = m.groupValues[1]
+                val sub = m.groupValues[2]
+                @Suppress("UNCHECKED_CAST")
+                val nested = obj.getOrPut(base) { LinkedHashMap<String, Any?>() } as MutableMap<String, Any?>
+                nested[sub] = value
+            } else {
+                obj[rawKey] = formFieldIndex.coerce(method, path, rawKey, value)
+            }
+        }
+        return obj
     }
 
     private fun buildHttpStubResponse(resp: ForwardedResponse): HttpStubResponse {
@@ -268,6 +303,9 @@ open class CqrsBackendClient(
 
     companion object {
         private const val JSON_MEDIA_TYPE = "application/json; charset=utf-8"
+
+        /** One level of form bracket notation: `metadata[key]`. */
+        private val BRACKET = Regex("""^([^\[]+)\[([^\]]+)\]$""")
 
         /** Framing/hop-by-hop headers OkHttp sets itself; never copy these on a proxied request. */
         private val HOP_BY_HOP_HEADERS = setOf(
