@@ -360,8 +360,8 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
     const faultHeaderRaw = readForwardedHeader(fwd.headers, 'x-specmatic-fault');
 
     // Resolve targetId: when the boundary declares identity.key, delegate to
-    // extractEntityKey (reads from header/payload/query/path); otherwise
-    // fall back to the {id} path parameter (backwards-compatible default).
+    // extractEntityKey (reads from header/payload/query/path); otherwise it uses
+    // the conventional {id} path parameter (REST /resource/{id} default).
     let targetId: string | null = extractEntityKey({
       boundary,
       pathParams: route.pathParams,

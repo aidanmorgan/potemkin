@@ -7,8 +7,10 @@
  * locator, so each source either resolves a key or the request is treated as
  * having no `{id}` (the caller decides: 404 on mutation, generate on creation).
  *
- * When no `key:` policy is set, callers fall back to the `{id}` OpenAPI path
- * parameter (backwards-compatible behaviour).
+ * When no `key:` policy is set, the extractor reads the `{id}` OpenAPI path
+ * parameter — the conventional default for the REST `/resource/{id}` shape, so
+ * the common case needs no `identity.key` boilerplate. Declare `identity.key`
+ * only when the key lives somewhere other than a path param named `id`.
  */
 
 import type { IdentityKeyConfig, BoundaryConfig } from '../dsl/types.js';
@@ -46,7 +48,7 @@ export function extractEntityKey(input: ExtractKeyInput): string | null {
   const cfg: IdentityKeyConfig | undefined = input.boundary.identity?.key;
 
   if (cfg === undefined) {
-    // Default behaviour: read the {id} path param.
+    // Conventional default: read the {id} path param (REST /resource/{id}).
     const id = input.pathParams['id'];
     return id !== undefined ? id : null;
   }
