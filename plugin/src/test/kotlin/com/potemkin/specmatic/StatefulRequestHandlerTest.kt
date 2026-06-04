@@ -41,9 +41,17 @@ class StatefulRequestHandlerTest {
      */
     private class FakeClient(private val response: HttpStubResponse?) : CqrsBackendClient("http://unused") {
         var called = false
+        var proxyCalled = false
+        var proxiedPath: String? = null
 
         override fun forward(httpRequest: HttpRequest): HttpStubResponse? {
             called = true
+            return response
+        }
+
+        override fun proxyRaw(httpRequest: HttpRequest): HttpStubResponse? {
+            proxyCalled = true
+            proxiedPath = httpRequest.path
             return response
         }
     }
@@ -66,6 +74,34 @@ class StatefulRequestHandlerTest {
 
     private fun request(method: String = "GET", path: String = "/loans/123") =
         HttpRequest(method = method, path = path, body = StringValue(""))
+
+    // ---- admin proxy --------------------------------------------------------------------
+
+    @Test
+    fun `admin path is raw-proxied to the engine even when not a stateful route`() {
+        val client = FakeClient(cannedResponse(204))
+        // discovery says NOT stateful — admin paths must be claimed before the discovery check
+        val handler = StatefulRequestHandler(FixedDiscoveryClient(false), client)
+
+        val result = handler.handleRequest(request(method = "POST", path = "/_admin/reset"))
+
+        assertNotNull(result)
+        assertEquals(204, result.response.status)
+        assertTrue(client.proxyCalled, "admin path should be raw-proxied")
+        assertEquals("/_admin/reset", client.proxiedPath)
+        assertFalse(client.called, "admin path must NOT go through the /_engine/forward path")
+    }
+
+    @Test
+    fun `admin proxy failure falls through to Specmatic`() {
+        val client = FakeClient(null) // proxy returns null (engine unreachable)
+        val handler = StatefulRequestHandler(FixedDiscoveryClient(false), client)
+
+        val result = handler.handleRequest(request(method = "POST", path = "/_admin/faults"))
+
+        assertNull(result)
+        assertTrue(client.proxyCalled)
+    }
 
     // ---- original tests (unchanged) -----------------------------------------------------
 

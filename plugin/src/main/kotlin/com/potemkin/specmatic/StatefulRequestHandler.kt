@@ -64,6 +64,17 @@ class StatefulRequestHandler(
                 return unauthorized(challenge)
             }
 
+            // Admin control surface: proxy requests under /_admin/ straight to the engine's
+            // admin routes (reset, clock, faults, state). These are NOT contract paths and not
+            // handled via /_engine/forward — a raw passthrough lets a consumer force state
+            // THROUGH the stub URL (the Authorization admin token is preserved by the header copy).
+            if (path.startsWith("/_admin/")) {
+                val adminResp = client.proxyRaw(httpRequest)
+                if (adminResp != null) return adminResp
+                log.warn("Admin proxy for '{} {}' failed; falling through to Specmatic", method, path)
+                return null
+            }
+
             // If this (method, path) was registered as a Specmatic fixture stub, let Specmatic
             // serve it directly. The plugin must not intercept it.
             if (fixtures != null && fixtures.excludedPaths().contains(method to path)) {

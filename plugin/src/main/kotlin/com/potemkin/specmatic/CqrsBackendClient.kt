@@ -6,6 +6,7 @@ import com.fasterxml.jackson.module.kotlin.readValue
 import io.specmatic.core.HttpRequest
 import io.specmatic.core.HttpResponse
 import io.specmatic.stub.HttpStubResponse
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -120,6 +121,59 @@ open class CqrsBackendClient(
         }
     }
 
+    /**
+     * Raw passthrough proxy to the engine for NON-contract control paths under `/_admin/`.
+     *
+     * Unlike [forward], this does NOT wrap the request in a ForwardedRequest envelope or post
+     * to `/_engine/forward` — admin endpoints live directly on the engine's Express app
+     * ([registerAdminRoutes]). It replays method/path/query/body/headers verbatim to
+     * `<backendUrl><path>` and returns the engine's response as-is, so a consumer can
+     * reset/advance-clock/register-faults THROUGH the Specmatic stub. The Authorization
+     * header (admin token) is preserved by the header copy.
+     *
+     * Returns `null` on any transport error so Specmatic falls through rather than break.
+     */
+    open fun proxyRaw(httpRequest: HttpRequest): HttpStubResponse? {
+        val method = (httpRequest.method ?: "GET").uppercase()
+        val path = httpRequest.path ?: "/"
+        val base = "$backendUrl$path".toHttpUrlOrNull() ?: return null
+        val urlBuilder = base.newBuilder()
+        httpRequest.queryParams.paramPairs.forEach { (k, v) -> urlBuilder.addQueryParameter(k, v) }
+
+        val rawBody = httpRequest.body.toStringLiteral()
+        val outBody = if (rawBody.isNotBlank()) rawBody.toRequestBody(json) else null
+        val builder = Request.Builder().url(urlBuilder.build())
+        // Copy request headers, dropping hop-by-hop / framing headers OkHttp manages itself.
+        httpRequest.headers.forEach { (k, v) ->
+            if (k.lowercase() !in HOP_BY_HOP_HEADERS) builder.header(k, v)
+        }
+        when (method) {
+            "GET" -> builder.get()
+            "HEAD" -> builder.head()
+            "DELETE" -> if (outBody != null) builder.delete(outBody) else builder.delete()
+            "POST" -> builder.post(outBody ?: ByteArray(0).toRequestBody(json))
+            "PUT" -> builder.put(outBody ?: ByteArray(0).toRequestBody(json))
+            "PATCH" -> builder.patch(outBody ?: ByteArray(0).toRequestBody(json))
+            else -> builder.method(method, outBody)
+        }
+
+        return try {
+            http.newCall(builder.build()).execute().use { response ->
+                val bodyString = response.body?.string() ?: ""
+                HttpStubResponse(
+                    response = HttpResponse(
+                        status = response.code,
+                        headers = response.headers.toMap(),
+                        body = io.specmatic.core.value.StringValue(bodyString),
+                    ),
+                )
+            }
+        } catch (e: Exception) {
+            log.warn("Admin proxy error for '{}': {}; falling through to Specmatic", path, e.message)
+            null
+        }
+    }
+
     // ---- private helpers ----------------------------------------------------------------
 
     private fun buildForwardedRequest(req: HttpRequest): ForwardedRequest {
@@ -214,5 +268,11 @@ open class CqrsBackendClient(
 
     companion object {
         private const val JSON_MEDIA_TYPE = "application/json; charset=utf-8"
+
+        /** Framing/hop-by-hop headers OkHttp sets itself; never copy these on a proxied request. */
+        private val HOP_BY_HOP_HEADERS = setOf(
+            "host", "content-length", "connection", "transfer-encoding", "keep-alive",
+            "proxy-authenticate", "proxy-authorization", "te", "trailer", "upgrade",
+        )
     }
 }
