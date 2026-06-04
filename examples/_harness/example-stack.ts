@@ -54,7 +54,7 @@ const REPO_ROOT = path.resolve(__dirname, '..', '..');
 /** Resolve the single OpenAPI contract file in examples/<name>/openapi/. */
 function resolveContractPath(exampleDir: string): string {
   const openapiDir = path.join(exampleDir, 'openapi');
-  const files = fs.readdirSync(openapiDir).filter((f) => f.endsWith('.yaml') || f.endsWith('.yml'));
+  const files = fs.readdirSync(openapiDir).filter((f) => f.endsWith('.yaml') || f.endsWith('.yml') || f.endsWith('.json'));
   if (files.length === 0) {
     throw new Error(`No OpenAPI contract found in ${openapiDir}`);
   }

@@ -1,0 +1,45 @@
+# Refund — a single resource aggregate spanning the collection + by-id paths.
+# Stripe ids are `re_<token>`. Creating a refund triggers an in-UoW reaction that
+# updates the target charge's amount_refunded/refunded (see charge.resource.yaml).
+resource: refund
+schema: refund
+
+identity:
+  creation:
+    generate: "ts:refundId"
+
+response: "ts:refundResponse"
+
+query_mapping:
+  charge: "state.charge == param"
+
+event_catalog:
+  - type: RefundCreated
+    payload_template:
+      id: "command.targetId"
+      object: "'refund'"
+      created: "ts:unixNow"
+      livemode: "false"
+      amount: "has(command.payload.amount) ? command.payload.amount : 0"
+      currency: "has(command.payload.currency) ? command.payload.currency : 'usd'"
+      charge: "command.payload.charge"
+      payment_intent: "null"
+      status: "'succeeded'"
+      reason: "has(command.payload.reason) ? command.payload.reason : null"
+      metadata: "has(command.payload.metadata) ? command.payload.metadata : {}"
+  - type: RefundUpdated
+    payload_template:
+      metadata: "has(command.payload.metadata) ? command.payload.metadata : state.metadata"
+
+reducers:
+  - on: RefundCreated
+    replace_state: true
+  - on: RefundUpdated
+    patches:
+      - { op: replace, path: /metadata, value: "${event.payload.metadata}" }
+
+operations:
+  - { op: PostRefunds, emit: RefundCreated }
+  - { op: GetRefunds, query: true }
+  - { op: GetRefundsRefund, query: true }
+  - { op: PostRefundsRefund, emit: RefundUpdated }

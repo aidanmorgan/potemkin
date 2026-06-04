@@ -1,0 +1,82 @@
+# Charge — a single resource aggregate spanning the collection + by-id paths.
+# Charges are never POST-created; they materialise atomically as an in-UoW
+# reaction when a PaymentIntent is confirmed, are marked captured when a
+# manually-authorised intent is captured, and accrue refunds when a Refund is
+# created. Stripe ids are `ch_<token>`. The real schema also requires
+# billing_details/disputed/metadata, so the create event materialises them.
+resource: charge
+schema: charge
+
+response: "ts:chargeResponse"
+
+query_mapping:
+  payment_intent: "state.payment_intent == param"
+  customer: "state.customer == param"
+
+event_catalog:
+  # Emitted by the confirm reaction — context is the triggering PaymentIntentConfirmed.
+  - type: ChargeCreated
+    payload_template:
+      id: "event.payload.chargeId"
+      object: "'charge'"
+      created: "ts:unixNow"
+      livemode: "false"
+      amount: "event.payload.amount"
+      currency: "event.payload.currency"
+      paid: "true"
+      captured: "event.payload.captured"
+      status: "'succeeded'"
+      payment_intent: "event.aggregateId"
+      payment_method: "event.payload.payment_method"
+      customer: "event.payload.customer"
+      amount_captured: "event.payload.captured ? event.payload.amount : 0"
+      amount_refunded: "0"
+      refunded: "false"
+      disputed: "false"
+      billing_details: "{}"
+      metadata: "{}"
+  # Emitted by the capture reaction — marks a previously-authorised charge captured.
+  - type: ChargeCaptured
+    payload_template:
+      amount: "event.payload.amount"
+  # Emitted by the refund reaction — accrues the refunded amount on the charge.
+  - type: ChargeRefunded
+    payload_template:
+      amount: "event.payload.amount"
+
+reducers:
+  - on: ChargeCreated
+    replace_state: true
+  - on: ChargeCaptured
+    patches:
+      - { op: replace, path: /captured, value: "${true}" }
+      - { op: replace, path: /amount_captured, value: "${event.payload.amount}" }
+  # Cumulative: the first patch updates amount_refunded; the second sees that new
+  # value (patches apply sequentially) to decide whether the charge is fully refunded.
+  - on: ChargeRefunded
+    patches:
+      - { op: replace, path: /amount_refunded, value: "${state.amount_refunded + event.payload.amount}" }
+      - { op: replace, path: /refunded, value: "${state.amount_refunded >= state.amount}" }
+
+reactions:
+  - name: create-charge-on-confirm
+    on: "PaymentIntentConfirmed"
+    intent: creation
+    emit: ChargeCreated
+    target: "event.payload.chargeId"
+  - name: capture-charge-on-pi-capture
+    on: "PaymentIntentCaptured"
+    intent: mutation
+    emit: ChargeCaptured
+    target: "event.payload.chargeId"
+  - name: accrue-refund-on-charge
+    on: "RefundCreated"
+    intent: mutation
+    emit: ChargeRefunded
+    target: "event.payload.charge"
+    payload:
+      amount: "event.payload.amount"
+
+operations:
+  - { op: GetCharges, query: true }
+  - { op: GetChargesCharge, query: true }

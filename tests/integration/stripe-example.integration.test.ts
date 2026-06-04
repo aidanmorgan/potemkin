@@ -20,7 +20,7 @@ describe('Stripe simulation — Customers', () => {
   let agent: PersistentAgent;
 
   beforeAll(async () => {
-    const openapi = await loadOpenApi(path.join(STRIPE_DIR, 'openapi', 'stripe-core.yaml'));
+    const openapi = await loadOpenApi(path.join(STRIPE_DIR, 'openapi', 'stripe-official.json'));
     const sys = await bootSystem({
       openapi,
       potemkinConfigPath: path.join(STRIPE_DIR, 'potemkin.yaml'),
@@ -94,7 +94,7 @@ describe('Stripe simulation — Products', () => {
   let agent: PersistentAgent;
 
   beforeAll(async () => {
-    const openapi = await loadOpenApi(path.join(STRIPE_DIR, 'openapi', 'stripe-core.yaml'));
+    const openapi = await loadOpenApi(path.join(STRIPE_DIR, 'openapi', 'stripe-official.json'));
     const sys = await bootSystem({
       openapi,
       potemkinConfigPath: path.join(STRIPE_DIR, 'potemkin.yaml'),
@@ -147,7 +147,7 @@ describe('Stripe simulation — Prices', () => {
   let agent: PersistentAgent;
 
   beforeAll(async () => {
-    const openapi = await loadOpenApi(path.join(STRIPE_DIR, 'openapi', 'stripe-core.yaml'));
+    const openapi = await loadOpenApi(path.join(STRIPE_DIR, 'openapi', 'stripe-official.json'));
     const sys = await bootSystem({
       openapi,
       potemkinConfigPath: path.join(STRIPE_DIR, 'potemkin.yaml'),
@@ -210,7 +210,7 @@ describe('Stripe simulation — PaymentIntents (state machine)', () => {
   let agent: PersistentAgent;
 
   beforeAll(async () => {
-    const openapi = await loadOpenApi(path.join(STRIPE_DIR, 'openapi', 'stripe-core.yaml'));
+    const openapi = await loadOpenApi(path.join(STRIPE_DIR, 'openapi', 'stripe-official.json'));
     const sys = await bootSystem({
       openapi,
       potemkinConfigPath: path.join(STRIPE_DIR, 'potemkin.yaml'),
@@ -305,7 +305,7 @@ describe('Stripe simulation — Charges (created by reaction)', () => {
   let agent: PersistentAgent;
 
   beforeAll(async () => {
-    const openapi = await loadOpenApi(path.join(STRIPE_DIR, 'openapi', 'stripe-core.yaml'));
+    const openapi = await loadOpenApi(path.join(STRIPE_DIR, 'openapi', 'stripe-official.json'));
     const sys = await bootSystem({
       openapi,
       potemkinConfigPath: path.join(STRIPE_DIR, 'potemkin.yaml'),
@@ -366,7 +366,7 @@ describe('Stripe simulation — Refunds (accrue against a charge)', () => {
   let agent: PersistentAgent;
 
   beforeAll(async () => {
-    const openapi = await loadOpenApi(path.join(STRIPE_DIR, 'openapi', 'stripe-core.yaml'));
+    const openapi = await loadOpenApi(path.join(STRIPE_DIR, 'openapi', 'stripe-official.json'));
     const sys = await bootSystem({
       openapi,
       potemkinConfigPath: path.join(STRIPE_DIR, 'potemkin.yaml'),
