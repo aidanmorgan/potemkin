@@ -70,7 +70,7 @@ describe('postcondition DSL parsing', () => {
           name: 'repay',
           match: { operationId: 'updateTest', condition: 'true' },
           emit: 'LoanRepaid',
-          postcondition: { expression: 'state.balance >= 0', message: 'Balance cannot go negative' },
+          postcondition: 'state.balance >= 0',
         },
       ],
       reducers: [],

@@ -43,7 +43,7 @@ function makeInput(overrides: Partial<PatternMatchInput> = {}): PatternMatchInpu
 // ── Schema parsing tests ───────────────────────────────────────────────────────
 
 describe('match.requires[] DSL parsing', () => {
-  it('parses a requires array with expression/message style (design.md)', () => {
+  it('parses a requires array with condition/message style', () => {
     const config = validateBoundaryConfig({
       boundary: 'Loan',
       contract_path: '/loans',
@@ -54,7 +54,7 @@ describe('match.requires[] DSL parsing', () => {
             operationId: 'updateTest',
             condition: 'true',
             requires: [
-              { name: 'loan-active', expression: "state.status != 'FROZEN'", message: 'Loan is frozen' },
+              { name: 'loan-active', condition: "state.status != 'FROZEN'", error_message: 'Loan is frozen' },
             ],
           },
           emit: 'LoanDisbursed',
@@ -118,7 +118,7 @@ describe('match.requires[] DSL parsing', () => {
     })).toThrow(BootError);
   });
 
-  it('throws BootError when requires entry has no condition or expression field', () => {
+  it('throws BootError when requires entry has no condition field', () => {
     expect(() => validateBoundaryConfig({
       boundary: 'Loan',
       contract_path: '/loans',

@@ -1,22 +1,17 @@
 /**
- * DSL canonical vs legacy field-name acceptance tests.
+ * DSL canonical field-name acceptance tests.
  *
  * Verifies that:
  *  1. scripts: is removed — any boundary YAML containing scripts: halts boot with
  *     BOOT_ERR_REMOVED_SYNTAX (both code: and source: forms were removed together).
- *  2. requires[].condition (canonical) and requires[].expression (legacy) parse identically.
- *  3. postcondition: "<string>" (canonical) and postcondition: {expression: "..."} (legacy)
- *     parse identically.
- *
- * Both forms must produce the same TypeScript object — no information lost or gained.
+ *  2. requires[] accepts only the canonical "condition" field (the legacy
+ *     "expression" alias was removed).
+ *  3. postcondition accepts only the canonical plain CEL string (the legacy
+ *     {expression: "..."} object form was removed).
  */
 
 import { validateBoundaryConfig } from '../../../src/dsl/schema';
 import { BootError } from '../../../src/errors';
-
-// ---------------------------------------------------------------------------
-// Minimal valid boundary config factory
-// ---------------------------------------------------------------------------
 
 function makeBase() {
   return {
@@ -83,10 +78,10 @@ describe('DSL removed syntax: scripts: key (B3)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 2. requires[].condition vs requires[].expression
+// 2. requires[].condition (canonical only; legacy "expression" removed)
 // ---------------------------------------------------------------------------
 
-describe('DSL canonical field: requires[].condition vs requires[].expression', () => {
+describe('DSL canonical field: requires[].condition', () => {
   const celExpr = "state.status == 'ACTIVE'";
 
   function makeRequiresBehavior(requiresEntry: Record<string, unknown>) {
@@ -95,11 +90,7 @@ describe('DSL canonical field: requires[].condition vs requires[].expression', (
       behaviors: [
         {
           name: 'b',
-          match: {
-            operationId: 'updateThing',
-            condition: 'true',
-            requires: [requiresEntry],
-          },
+          match: { operationId: 'updateThing', condition: 'true', requires: [requiresEntry] },
           emit: 'Evt',
         },
       ],
@@ -118,48 +109,24 @@ describe('DSL canonical field: requires[].condition vs requires[].expression', (
     expect(req.errorCode).toBe('NOT_ACTIVE');
   });
 
-  it('legacy form "expression" parses to the same result as "condition"', () => {
-    const config = validateBoundaryConfig(makeRequiresBehavior({
+  it('the removed legacy alias "expression" is rejected — only "condition" is accepted', () => {
+    expect(() => validateBoundaryConfig(makeRequiresBehavior({
       name: 'isActive',
       expression: celExpr,
       error_code: 'NOT_ACTIVE',
-      error_message: 'Must be active',
-    }));
-    const req = config.behaviors[0].match.requires![0];
-    // Regardless of YAML field name, the TypeScript field is always "condition"
-    expect(req.condition).toBe(celExpr);
-  });
-
-  it('"condition" and "expression" both produce identical RequiresGuard objects', () => {
-    const conditionConfig = validateBoundaryConfig(makeRequiresBehavior({
-      name: 'isActive',
-      condition: celExpr,
-      error_code: 'E',
-      message: 'M',
-    }));
-    const expressionConfig = validateBoundaryConfig(makeRequiresBehavior({
-      name: 'isActive',
-      expression: celExpr,
-      error_code: 'E',
-      message: 'M',
-    }));
-    expect(conditionConfig.behaviors[0].match.requires![0]).toEqual(
-      expressionConfig.behaviors[0].match.requires![0],
-    );
-  });
-
-  it('throws BootError when neither "condition" nor "expression" is provided', () => {
-    expect(() => validateBoundaryConfig(makeRequiresBehavior({
-      name: 'isActive',
     }))).toThrow(BootError);
+  });
+
+  it('throws BootError when "condition" is not provided', () => {
+    expect(() => validateBoundaryConfig(makeRequiresBehavior({ name: 'isActive' }))).toThrow(BootError);
   });
 });
 
 // ---------------------------------------------------------------------------
-// 3. postcondition string vs postcondition {expression: ...}
+// 3. postcondition: canonical plain string (legacy {expression} object removed)
 // ---------------------------------------------------------------------------
 
-describe('DSL canonical field: postcondition string vs {expression} object', () => {
+describe('DSL canonical field: postcondition (plain string only)', () => {
   const celExpr = 'state.balance >= 0';
 
   function makeBehaviorWithPostcondition(postconditionValue: unknown) {
@@ -181,23 +148,11 @@ describe('DSL canonical field: postcondition string vs {expression} object', () 
     expect(config.behaviors[0].postcondition).toBe(celExpr);
   });
 
-  it('legacy form ({expression: ...}) parses to the same result as plain string', () => {
-    const config = validateBoundaryConfig(makeBehaviorWithPostcondition({ expression: celExpr }));
-    // Regardless of YAML form, the TypeScript field is always a string
-    expect(config.behaviors[0].postcondition).toBe(celExpr);
+  it('the removed legacy object form ({expression: ...}) is rejected', () => {
+    expect(() => validateBoundaryConfig(makeBehaviorWithPostcondition({ expression: celExpr }))).toThrow(BootError);
   });
 
-  it('plain string and {expression: ...} both produce identical postcondition values', () => {
-    const stringConfig = validateBoundaryConfig(makeBehaviorWithPostcondition(celExpr));
-    const objectConfig = validateBoundaryConfig(makeBehaviorWithPostcondition({ expression: celExpr }));
-    expect(stringConfig.behaviors[0].postcondition).toEqual(objectConfig.behaviors[0].postcondition);
-  });
-
-  it('throws BootError when postcondition is an object without "expression" key', () => {
-    expect(() => validateBoundaryConfig(makeBehaviorWithPostcondition({ wrongKey: celExpr }))).toThrow(BootError);
-  });
-
-  it('throws BootError when postcondition is neither string nor object', () => {
+  it('throws BootError when postcondition is not a string', () => {
     expect(() => validateBoundaryConfig(makeBehaviorWithPostcondition(42))).toThrow(BootError);
   });
 });

@@ -202,16 +202,11 @@ function validateRequiresGuard(raw: unknown, ctx: string): RequiresGuard {
     );
   }
   const name = requireString(raw, 'name', ctx);
-  // Canonical field: "condition".  Legacy alias: "expression".
-  // Both are accepted for backward compatibility; prefer "condition".
-  const conditionRaw = raw['condition'] ?? raw['expression'];
-  if (raw['condition'] === undefined && raw['expression'] !== undefined) {
-    dslLogger.debug(`DSL: deprecated field 'expression' in ${ctx}, use 'condition' instead`);
-  }
+  const conditionRaw = raw['condition'];
   if (typeof conditionRaw !== 'string' || conditionRaw.trim() === '') {
     throw new BootError(
       'BOOT_ERR_DSL_SYNTAX',
-      `${ctx}: requires entry must have a non-empty "condition" (or "expression") field`,
+      `${ctx}: requires entry must have a non-empty "condition" field`,
       { context: ctx },
     );
   }
@@ -437,32 +432,18 @@ function validateBehaviorRule(raw: unknown, index: number): BehaviorRule {
     );
   }
 
-  // postcondition: canonical form is a plain string; legacy object { expression: "..." }
-  // is still accepted for backward compatibility.
+  // postcondition: a plain CEL string.
   const postconditionRaw = raw['postcondition'];
   let postcondition: string | undefined;
   if (postconditionRaw !== undefined && postconditionRaw !== null) {
-    if (typeof postconditionRaw === 'string') {
-      postcondition = postconditionRaw;
-    } else if (isRecord(postconditionRaw)) {
-      // Legacy object form: { expression: "..." }
-      dslLogger.debug(`DSL: deprecated object form for 'postcondition' in ${ctx}, use a plain string instead`);
-      const exprRaw = postconditionRaw['expression'];
-      if (typeof exprRaw !== 'string' || exprRaw.trim() === '') {
-        throw new BootError(
-          'BOOT_ERR_DSL_SYNTAX',
-          `${ctx}.postcondition: "expression" must be a non-empty string`,
-          { field: 'postcondition.expression', context: ctx },
-        );
-      }
-      postcondition = exprRaw;
-    } else {
+    if (typeof postconditionRaw !== 'string') {
       throw new BootError(
         'BOOT_ERR_DSL_SYNTAX',
-        `${ctx}: "postcondition" must be a string or object with "expression" field`,
+        `${ctx}: "postcondition" must be a CEL string`,
         { field: 'postcondition', context: ctx },
       );
     }
+    postcondition = postconditionRaw;
     validateCelOrScript(postcondition, `${ctx}.postcondition`, 'behavior');
   }
 
