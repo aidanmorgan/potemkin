@@ -7,7 +7,7 @@
  *
  * These tests exercise the UoW execution path to verify audit field injection.
  *
- * wifc: reaction-emitted events must also carry the originating actor's id so
+ * Reaction-emitted events must also carry the originating actor's id so
  * that audit boundaries record updatedBy correctly (not null).
  */
 
@@ -313,10 +313,10 @@ describe('audit fields — updatedAt / updatedBy', () => {
 });
 
 // ---------------------------------------------------------------------------
-// wifc — reaction-emitted events carry originating actor for audit boundaries
+// reaction-emitted events carry originating actor for audit boundaries
 // ---------------------------------------------------------------------------
 
-describe('wifc: reaction-emitted event records updatedBy = originating actor', () => {
+describe('reaction-emitted event on an audit_fields boundary records updatedBy from the originating actor', () => {
   const cel = createCelEvaluator();
 
   it('reaction-emitted event on an audit_fields boundary records updatedBy from originating actor', () => {

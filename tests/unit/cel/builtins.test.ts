@@ -101,8 +101,8 @@ describe('cel/builtins', () => {
     });
   });
 
-  // ── potemkin-s74e: string() / $concat coerce objects/arrays to JSON ────────
-  describe('string() coerces objects and arrays to JSON (potemkin-s74e)', () => {
+  // ── string() / $concat coerce objects/arrays to JSON ─────────────────────
+  describe('string() coerces objects and arrays to JSON', () => {
     it('string() of a map produces valid JSON', () => {
       expect(BUILTINS['string']!({ a: 1 })).toBe('{"a":1}');
     });
@@ -120,7 +120,7 @@ describe('cel/builtins', () => {
     });
   });
 
-  describe('$concat coerces objects and arrays to JSON (potemkin-s74e)', () => {
+  describe('$concat coerces objects and arrays to JSON', () => {
     it('$concat with a list arg produces JSON, not comma-joined', () => {
       expect(BUILTINS['$concat']!('prefix-', [1, 2])).toBe('prefix-[1,2]');
     });
@@ -130,8 +130,8 @@ describe('cel/builtins', () => {
     });
   });
 
-  // ── potemkin-7u9l: min([]) and max([]) throw a runtime error ───────────────
-  describe('min/max on empty list throw CEL_RUNTIME_ERROR (potemkin-7u9l)', () => {
+  // ── min([]) and max([]) throw a runtime error ───────────────────────────────
+  describe('min/max on an empty list throw CEL_RUNTIME_ERROR', () => {
     it('min([]) throws CEL_RUNTIME_ERROR', () => {
       expect(() => BUILTINS['min']!([])).toThrow('CEL_RUNTIME_ERROR: min() of empty list');
     });
@@ -149,8 +149,8 @@ describe('cel/builtins', () => {
     });
   });
 
-  // ── potemkin-4huj: duration("P") and duration("PT") throw ─────────────────
-  describe('duration() rejects degenerate ISO strings (potemkin-4huj)', () => {
+  // ── duration("P") and duration("PT") throw ─────────────────────────────────
+  describe('duration() rejects degenerate ISO strings', () => {
     it('duration("P") throws the unparseable-duration error', () => {
       expect(() => BUILTINS['duration']!('P')).toThrow('CEL_RUNTIME_ERROR: invalid duration string');
     });

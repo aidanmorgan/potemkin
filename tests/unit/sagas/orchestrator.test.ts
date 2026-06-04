@@ -522,7 +522,7 @@ describe('sagas/orchestrator - aggregateLocks forwarded to executeUnitOfWork', (
 });
 
 // ---------------------------------------------------------------------------
-// Compensation ORDER (hyz5): with >=2 completed steps before a forced failure,
+// Compensation ORDER: with >=2 completed steps before a forced failure,
 // SagaCompensated events MUST come back in DESCENDING (LIFO / reverse) step
 // index. A single-completed-step saga cannot distinguish LIFO from FIFO, so
 // these tests pin the order with two completed steps so a forward-order

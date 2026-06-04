@@ -403,8 +403,8 @@ describe('cel/evaluator', () => {
     });
   });
 
-  // ── potemkin-s74e: + operator with objects/arrays uses JSON ───────────────
-  describe('string + with list or map operand uses JSON (potemkin-s74e)', () => {
+  // ── + operator with objects/arrays uses JSON ─────────────────────────────
+  describe('string + with a list or map operand uses JSON', () => {
     it('"prefix:" + list produces valid JSON concatenation', () => {
       expect(eval_('"items:" + [1, 2]')).toBe('items:[1,2]');
     });
@@ -418,8 +418,8 @@ describe('cel/evaluator', () => {
     });
   });
 
-  // ── potemkin-9m5y: missing map keys return null, not undefined ─────────────
-  describe('absent map key access returns CEL null (potemkin-9m5y)', () => {
+  // ── missing map keys return null, not undefined ─────────────────────────────
+  describe('absent map key access returns CEL null', () => {
     it('absent key returns null', () => {
       expect(eval_('obj.missing', { obj: { present: 1 } })).toBeNull();
     });
@@ -441,8 +441,8 @@ describe('cel/evaluator', () => {
     });
   });
 
-  // ── potemkin-mn6e: numeric equality is value-based, ignores int/double ─────
-  describe('numeric equality is value-based (potemkin-mn6e)', () => {
+  // ── numeric equality is value-based, ignores int/double ─────────────────────
+  describe('numeric equality is value-based', () => {
     it('1 == 1.0 is true (value-based, not type-tagged)', () => {
       expect(eval_('1 == 1.0')).toBe(true);
     });

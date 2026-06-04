@@ -1,10 +1,9 @@
 /**
- * Regression tests derived from red-team repros (converted to assert the FIXED
- * behaviour):
- *   - potemkin-h0sd: forwarding idempotency REPLAY re-emits _patches so masked
- *     fields stay masked (parity with the gateway, which records the masked body).
- *   - potemkin-7l44: X-Specmatic-Result is set uniformly — gateway request-
- *     validation 400 sets `failure`, matching the forwarding path.
+ * Verifies forwarding idempotency replay stays masked and X-Specmatic-Result parity:
+ *   - forwarding idempotency REPLAY re-emits _patches so masked fields stay masked
+ *     (parity with the gateway, which records the masked body).
+ *   - X-Specmatic-Result is set uniformly — gateway request-validation 400 sets
+ *     `failure`, matching the forwarding path.
  */
 
 import { createGateway } from '../../src/http/gateway.js';
@@ -48,7 +47,7 @@ const CREATE = {
   authorEmail: 'analyst@corp.internal',
 };
 
-describe('potemkin-h0sd — forwarding idempotency replay stays masked', () => {
+describe('forwarding idempotency replay stays masked', () => {
   it('forward REPLAY re-emits _patches so masked fields are not leaked', async () => {
     const key = 'idem-fwd-' + Date.now();
     const reqEnvelope = {
@@ -94,7 +93,7 @@ describe('potemkin-h0sd — forwarding idempotency replay stays masked', () => {
   });
 });
 
-describe('potemkin-7l44 — X-Specmatic-Result parity on request contract violation', () => {
+describe('X-Specmatic-Result parity on request contract violation', () => {
   // Body missing required summary/internalNotes/authorEmail → contract violation.
   const BAD_BODY = { title: 'only a title' };
 

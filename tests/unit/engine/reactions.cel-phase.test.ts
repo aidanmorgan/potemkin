@@ -1,7 +1,7 @@
 /**
- * reactions.cel-phase.test.ts — R5: CEL context/phase and deterministic ordering.
+ * reactions.cel-phase.test.ts — CEL context/phase and deterministic ordering.
  *
- * Acceptance criteria (potemkin-atbe / R5):
+ * Acceptance criteria:
  *  1. when/target/payload evaluate against { event, payload } where event carries
  *     type, aggregateId, payload, sequenceVersion, boundary; payload aliases event.payload.
  *  2. $now()/$uuidv7() are permitted in the emitted event's payload_template
@@ -19,12 +19,12 @@ import { projectEvent } from '../../../src/engine/projection';
 import { makeBoundary, makeDomainEvent } from '../_helpers';
 
 // ---------------------------------------------------------------------------
-// AC2 — reducer-phase ban for $uuidv7 and $now
+// reducer-phase ban for $uuidv7 and $now
 // ---------------------------------------------------------------------------
 // The emitted event's reducers run via projectEvent (CelPhase.Reducer).
 // Prove that using $uuidv7() or $now() in a reducer patch value throws CEL_PHASE_BANNED.
 
-describe('R5 AC2: non-deterministic builtins throw CEL_PHASE_BANNED in reducer phase', () => {
+describe('non-deterministic builtins throw CEL_PHASE_BANNED in the reducer phase', () => {
   const cel = createCelEvaluator();
 
   it('$uuidv7() in a reducer patch value throws CEL_PHASE_BANNED', () => {
@@ -92,7 +92,7 @@ describe('R5 AC2: non-deterministic builtins throw CEL_PHASE_BANNED in reducer p
 });
 
 // ---------------------------------------------------------------------------
-// AC3 — deterministic sort order: boundary name ascending, then declaration index
+// deterministic sort order: boundary name ascending, then declaration index
 // ---------------------------------------------------------------------------
 // Test the sort logic indirectly by checking that the exported sort behaviour in
 // fireReactions produces a stable two-key order, using a minimal mock setup.
@@ -151,7 +151,7 @@ function makeMinimalDsl(reactions: Array<{ boundary: string; name: string }>): C
   } as unknown as CompiledDsl;
 }
 
-describe('R5 AC3: reactions for a single trigger fire in boundary-name-ascending order', () => {
+describe('reactions for a single trigger fire in boundary-name-ascending order', () => {
   const cel = createCelEvaluator();
 
   /**

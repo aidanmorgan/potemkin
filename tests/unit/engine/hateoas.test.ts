@@ -2,8 +2,8 @@
  * Unit tests for engine/hateoas: computeLinks and applyHateoasLinks.
  *
  * Covers:
- *   - baseUrl set → absolute hrefs (potemkin-cngj)
- *   - baseUrl unset → relative hrefs (potemkin-cngj)
+ *   - baseUrl set → absolute hrefs
+ *   - baseUrl unset → relative hrefs
  *   - baseUrl with trailing slash → single slash between base and path
  *   - HATEOAS disabled → null / no-op
  *   - self link generation
@@ -58,7 +58,7 @@ function makeDsl(
 }
 
 // ---------------------------------------------------------------------------
-// computeLinks — baseUrl (potemkin-cngj)
+// computeLinks — baseUrl
 // ---------------------------------------------------------------------------
 
 describe('engine/hateoas computeLinks — baseUrl', () => {

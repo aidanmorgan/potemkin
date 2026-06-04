@@ -1,11 +1,11 @@
 /**
- * Forwarding/gateway parity tests for bug-fix beads:
+ * Forwarding/gateway parity tests:
  *
- *   mh29  — boundary-scoped chaos fault rules resolve on the forwarding path
- *   5m9o  — time-travel (X-Potemkin-Read-At-Version) works with non-path identity.key
- *   q4v1  — idempotency replay incurs configured boundary latency
- *   viyn  — security_headers block appears in ForwardedResponse headers
- *   3wfd  — time-travel replay failure returns identical structured 500 body on gateway and forwarding
+ *   - boundary-scoped chaos fault rules resolve on the forwarding path
+ *   - time-travel (X-Potemkin-Read-At-Version) works with non-path identity.key
+ *   - idempotency replay incurs configured boundary latency
+ *   - security_headers block appears in ForwardedResponse headers
+ *   - time-travel replay failure returns identical structured 500 body on gateway and forwarding
  *
  * Each block drives the engine exclusively through POST /_engine/forward using
  * an inline fixture so assertions are against the forwarding handler directly.
@@ -41,7 +41,7 @@ function f(
 }
 
 // ---------------------------------------------------------------------------
-// mh29 — boundary-scoped chaos fault rules on the forwarding path
+// boundary-scoped chaos fault rules on the forwarding path
 // ---------------------------------------------------------------------------
 
 const MH29_OPENAPI = `
@@ -101,7 +101,7 @@ reducers:
 // Global YAML has NO fault_rules (only boundary-level fault is defined in the DSL).
 const MH29_GLOBAL = '';
 
-describe('mh29 — boundary-scoped chaos fault rules resolve on the forwarding path', () => {
+describe('boundary-scoped chaos fault rules resolve on the forwarding path', () => {
   let sys: BootedSystem;
   let server: PersistentServer;
   let agent: PersistentAgent;
@@ -157,12 +157,12 @@ describe('mh29 — boundary-scoped chaos fault rules resolve on the forwarding p
 });
 
 // ---------------------------------------------------------------------------
-// 5m9o — time-travel with non-path identity.key (from: query)
+// time-travel with non-path identity.key (from: query)
 // ---------------------------------------------------------------------------
 
 const TT_OPENAPI = `
 openapi: "3.0.3"
-info: { title: 5m9o Time Travel, version: "1.0.0" }
+info: { title: Time Travel Parity, version: "1.0.0" }
 paths:
   /accounts:
     post:
@@ -217,7 +217,7 @@ reducers:
 
 const TT_GLOBAL = '';
 
-describe('5m9o — time-travel with non-path identity.key resolves correctly on the forwarding path', () => {
+describe('time-travel with non-path identity.key resolves correctly on the forwarding path', () => {
   let server: PersistentServer;
   let agent: PersistentAgent;
 
@@ -268,12 +268,12 @@ describe('5m9o — time-travel with non-path identity.key resolves correctly on 
 });
 
 // ---------------------------------------------------------------------------
-// q4v1 — idempotency replay incurs configured boundary latency
+// idempotency replay incurs configured boundary latency
 // ---------------------------------------------------------------------------
 
 const IDEM_OPENAPI = `
 openapi: "3.0.3"
-info: { title: q4v1 Latency, version: "1.0.0" }
+info: { title: Latency Parity, version: "1.0.0" }
 paths:
   /payments/{id}:
     post:
@@ -320,7 +320,7 @@ idempotency:
   ttlSeconds: 3600
 `;
 
-describe('q4v1 — idempotency replay on the forwarding path incurs configured boundary latency', () => {
+describe('idempotency replay on the forwarding path incurs configured boundary latency', () => {
   let server: PersistentServer;
   let agent: PersistentAgent;
 
@@ -366,12 +366,12 @@ describe('q4v1 — idempotency replay on the forwarding path incurs configured b
 });
 
 // ---------------------------------------------------------------------------
-// viyn — security_headers block appears in ForwardedResponse headers
+// security_headers block appears in ForwardedResponse headers
 // ---------------------------------------------------------------------------
 
 const VIYN_OPENAPI = `
 openapi: "3.0.3"
-info: { title: viyn Security Headers, version: "1.0.0" }
+info: { title: Security Headers Parity, version: "1.0.0" }
 paths:
   /items/{id}:
     post:
@@ -421,7 +421,7 @@ security_headers:
     X-Custom-Security: "enforced"
 `;
 
-describe('viyn — security_headers block appears in ForwardedResponse headers', () => {
+describe('security_headers block appears in ForwardedResponse headers', () => {
   let server: PersistentServer;
   let agent: PersistentAgent;
 
@@ -482,7 +482,7 @@ describe('viyn — security_headers block appears in ForwardedResponse headers',
 });
 
 // ---------------------------------------------------------------------------
-// 3wfd — time-travel replay failure returns identical structured 500 body
+// time-travel replay failure returns identical structured 500 body
 // ---------------------------------------------------------------------------
 
 const TT3WFD_OPENAPI = `
@@ -530,7 +530,7 @@ reducers:
       - { op: replace, path: /name, value: "\${event.payload.name}" }
 `;
 
-describe('3wfd — time-travel replay failure returns identical structured 500 body on gateway and forwarding', () => {
+describe('time-travel replay failure returns identical structured 500 body on gateway and forwarding', () => {
   let sys: BootedSystem;
   let server: PersistentServer;
   let agent: PersistentAgent;
@@ -607,7 +607,7 @@ describe('3wfd — time-travel replay failure returns identical structured 500 b
 });
 
 // ---------------------------------------------------------------------------
-// y9z7 — percent-encoded path parameters are URL-decoded before entity matching
+// percent-encoded path parameters are URL-decoded before entity matching
 // ---------------------------------------------------------------------------
 
 const Y9Z7_OPENAPI = `
@@ -657,7 +657,7 @@ reducers:
       - { op: replace, path: /name, value: "\${event.payload.name}" }
 `;
 
-describe('y9z7 — percent-encoded path params resolve to the decoded entity key (end-to-end gateway)', () => {
+describe('percent-encoded path params resolve to the decoded entity key (end-to-end gateway)', () => {
   let server: PersistentServer;
   let agent: PersistentAgent;
 

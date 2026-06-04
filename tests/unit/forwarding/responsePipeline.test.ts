@@ -153,7 +153,7 @@ describe('responsePipeline helpers', () => {
       expect(h['access-control-allow-credentials']).toBeUndefined();
     });
 
-    it('includes representative X-Potemkin-* request headers in access-control-allow-headers (potemkin-hqgo)', () => {
+    it('includes representative X-Potemkin-* request headers in access-control-allow-headers', () => {
       const h = corsPreflightHeaders('https://browser.example.com');
       const allowHeaders = h['access-control-allow-headers'];
       expect(allowHeaders).toContain('x-potemkin-dry-run');
@@ -162,7 +162,7 @@ describe('responsePipeline helpers', () => {
       expect(allowHeaders).toContain('x-potemkin-read-at-version');
     });
 
-    it('does not include x-potemkin-signature (outbound-only header) in access-control-allow-headers (potemkin-hqgo)', () => {
+    it('does not include x-potemkin-signature (outbound-only header) in access-control-allow-headers', () => {
       const h = corsPreflightHeaders('https://browser.example.com');
       expect(h['access-control-allow-headers']).not.toContain('x-potemkin-signature');
     });

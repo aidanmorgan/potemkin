@@ -1,15 +1,15 @@
 /**
- * Tests for three composition-validation fixes.
+ * Tests for three composition-validation contracts.
  *
- * rhma — Component reaction omitting boundary defaults to the component name
- *   (and C5 self-rewrites it to `as` at instantiation).
+ * Component reaction omitting boundary defaults to the component name
+ *   (and self-rewrites it to `as` at instantiation).
  *
- * kqs5 — include: of a component rejects unsupported sections (reactions /
+ * include: of a component rejects unsupported sections (reactions /
  *   identity / state / nested include:) with loud BOOT_ERR_DSL_SYNTAX errors,
  *   and rejects included behaviours whose dispatchCommands.boundary is not a
  *   concrete known boundary name.
  *
- * niuu — parameters: default is type-checked; required+default is mutually
+ * parameters: default is type-checked; required+default is mutually
  *   exclusive; required is validated as boolean.
  */
 
@@ -51,11 +51,11 @@ function stubBoundary(name: string, contractPath: string): BoundaryConfig {
 }
 
 // ---------------------------------------------------------------------------
-// rhma — Component reaction with no explicit boundary
+// Component reaction with no explicit boundary
 // ---------------------------------------------------------------------------
 
-describe('rhma — component reaction omitting boundary defaults to the component name', () => {
-  it('a component reaction with no boundary: boots clean (no misleading global-config error)', () => {
+describe('component reaction omitting boundary defaults to the component name', () => {
+  it('a component reaction with no boundary: boots clean without a misleading global-config error', () => {
     expect(() =>
       validateComponentConfig({
         kind: 'component',
@@ -93,7 +93,7 @@ describe('rhma — component reaction omitting boundary defaults to the componen
     expect(def.reactions![0]!.boundary).toBe('WidgetEntity');
   });
 
-  it('C5 rewrites the defaulted boundary to as when instantiated via use:', () => {
+  it('the defaulted boundary is rewritten to the as alias when instantiated via use:', () => {
     const component: ComponentDefinition = {
       kind: 'component',
       name: 'WidgetEntity',
@@ -160,10 +160,10 @@ reactions:
 });
 
 // ---------------------------------------------------------------------------
-// kqs5 — include: rejects unsupported sections with loud errors
+// include: rejects unsupported sections with loud errors
 // ---------------------------------------------------------------------------
 
-describe('kqs5 — include: rejects included component with reactions', () => {
+describe('include: rejects an included component that has reactions', () => {
   it('throws BOOT_ERR_DSL_SYNTAX naming "reactions"', () => {
     const mixin: ComponentDefinition = {
       kind: 'component',
@@ -220,7 +220,7 @@ describe('kqs5 — include: rejects included component with reactions', () => {
   });
 });
 
-describe('kqs5 — include: rejects included component with identity', () => {
+describe('include: rejects an included component that has identity', () => {
   it('throws BOOT_ERR_DSL_SYNTAX naming "identity"', () => {
     const mixin: ComponentDefinition = {
       kind: 'component',
@@ -248,7 +248,7 @@ describe('kqs5 — include: rejects included component with identity', () => {
   });
 });
 
-describe('kqs5 — include: rejects included component with state', () => {
+describe('include: rejects an included component that has state', () => {
   it('throws BOOT_ERR_DSL_SYNTAX naming "state"', () => {
     const mixin: ComponentDefinition = {
       kind: 'component',
@@ -276,7 +276,7 @@ describe('kqs5 — include: rejects included component with state', () => {
   });
 });
 
-describe('kqs5 — include: rejects included component with nested include:', () => {
+describe('include: rejects an included component that has nested include:', () => {
   it('throws BOOT_ERR_DSL_SYNTAX naming the nested "include"', () => {
     const mixin: ComponentDefinition = {
       kind: 'component',
@@ -304,7 +304,7 @@ describe('kqs5 — include: rejects included component with nested include:', ()
   });
 });
 
-describe('kqs5 — include: rejects included behavior with non-concrete dispatch boundary', () => {
+describe('include: rejects an included behavior whose dispatch boundary is not a known concrete boundary', () => {
   it('throws BOOT_ERR_DSL_SYNTAX when dispatch boundary is not in byBoundaryName', () => {
     const mixin: ComponentDefinition = {
       kind: 'component',
@@ -429,11 +429,11 @@ describe('kqs5 — include: rejects included behavior with non-concrete dispatch
 });
 
 // ---------------------------------------------------------------------------
-// niuu — parameters: default type-check, required+default mutual exclusion,
+// parameters: default type-check, required+default mutual exclusion,
 //        required must be boolean
 // ---------------------------------------------------------------------------
 
-describe('niuu — parameter default type mismatch halts boot', () => {
+describe('parameter default type mismatch halts boot', () => {
   it('throws BOOT_ERR_DSL_SYNTAX when default is string but type is number', () => {
     expect(() =>
       validateComponentConfig({
@@ -522,7 +522,7 @@ describe('niuu — parameter default type mismatch halts boot', () => {
   });
 });
 
-describe('niuu — required: true and default are mutually exclusive', () => {
+describe('required: true and default are mutually exclusive', () => {
   it('throws BOOT_ERR_DSL_SYNTAX when both required: true and default are present', () => {
     expect(() =>
       validateComponentConfig({
@@ -605,7 +605,7 @@ describe('niuu — required: true and default are mutually exclusive', () => {
   });
 });
 
-describe('niuu — required must be a boolean', () => {
+describe('required must be a boolean', () => {
   it('throws BOOT_ERR_DSL_SYNTAX when required is a string', () => {
     expect(() =>
       validateComponentConfig({

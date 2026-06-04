@@ -1,7 +1,7 @@
 /**
  * Integration tests for C6: three-phase validation reorg.
  *
- * Acceptance criteria (potemkin-po0b):
+ * Verifies:
  *  1. A component reducer that is intra-valid but binding-dependent passes Phase 1
  *     (no OpenAPI/object-graph error at parse time). The inert component file compiles
  *     cleanly even though it references a JSON-Pointer path that can only be validated

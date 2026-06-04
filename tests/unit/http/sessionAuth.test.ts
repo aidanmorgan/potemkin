@@ -1,7 +1,7 @@
 /**
  * Unit tests for http/sessionAuth: createSessionAuthMiddleware.
  *
- * Covers CSRF enforcement toggle (potemkin-1vu7):
+ * Covers CSRF enforcement toggle:
  *   - csrf: false disables CSRF enforcement even when csrfHeader is set
  *   - csrf: true (explicit) enforces CSRF when csrfHeader is set
  *   - csrf absent (defaults to true) enforces CSRF when csrfHeader is set
@@ -79,10 +79,10 @@ function makeAuth(sessionOverrides: Record<string, unknown> = {}): AuthConfig {
 }
 
 // ---------------------------------------------------------------------------
-// CSRF toggle: potemkin-1vu7
+// CSRF toggle
 // ---------------------------------------------------------------------------
 
-describe('http/sessionAuth — CSRF toggle (potemkin-1vu7)', () => {
+describe('http/sessionAuth — CSRF toggle', () => {
   it('csrf: false disables enforcement even when csrfHeader is set', () => {
     const store = createSessionStore();
     const auth = makeAuth({ csrf: false, csrfHeader: 'x-csrf-token' });
@@ -204,11 +204,11 @@ describe('http/sessionAuth — CSRF toggle (potemkin-1vu7)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Cookie parsing — potemkin-qvgc
+// Cookie parsing
 // ---------------------------------------------------------------------------
 
-describe('http/sessionAuth — cookie parsing (potemkin-qvgc)', () => {
-  it('resolves session from a percent-encoded cookie value that the old hand-rolled parser mishandled', () => {
+describe('http/sessionAuth — cookie parsing', () => {
+  it('resolves session from a percent-encoded cookie value', () => {
     const store = createSessionStore();
     const auth = makeAuth();
     const middleware = createSessionAuthMiddleware(auth, store)!;

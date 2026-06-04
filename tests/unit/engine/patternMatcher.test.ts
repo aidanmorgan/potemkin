@@ -578,7 +578,7 @@ describe('engine/patternMatcher', () => {
       expect(result.secondaryCommands[0]?.intent).toBe('mutation');
     });
 
-    it('h00a regression — secondary command carries originating actor when primary has one', () => {
+    it('secondary command carries the originating actor when the primary command has one', () => {
       const boundary = makeBoundaryWithDispatch('null_target');
       const cel = makeCelWithTargetResult('ledger-99');
       const actor = { id: 'user-originator-7', scopes: ['loans:write'] };
@@ -594,7 +594,7 @@ describe('engine/patternMatcher', () => {
       expect(result.secondaryCommands[0]?.actor).toEqual(actor);
     });
 
-    it('h00a regression — secondary command has no actor when primary has none', () => {
+    it('secondary command has no actor when the primary command has none', () => {
       const boundary = makeBoundaryWithDispatch('null_target');
       const cel = makeCelWithTargetResult('ledger-99');
 
@@ -610,7 +610,7 @@ describe('engine/patternMatcher', () => {
     });
   });
 
-  describe('requires[] — strict-boolean guard (8uu7 regression)', () => {
+  describe('requires[] — strict-boolean guard', () => {
     function makeBoundaryWithRequires(conditionExpr: string, errorCode = 'PRECONDITION_FAILED') {
       return makeBoundary({
         behaviors: [

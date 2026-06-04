@@ -229,7 +229,7 @@ describe('mergeGlobalConfig — preserves global fields on boundary-only push', 
     expect(merged.reactionsByTrigger).toBe(freshTrigger);
   });
 
-  it('preserves ALL global fields simultaneously (regression)', () => {
+  it('preserves ALL global fields simultaneously', () => {
     const existing: CompiledDsl = {
       ...compiledDslFrom([boundary('Lead', '/leads')]),
       sagas: [SAGA],

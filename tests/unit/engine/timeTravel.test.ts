@@ -280,9 +280,9 @@ describe('rebuildEntityAtVersion — all-or-nothing replay', () => {
   });
 });
 
-// ── pykc regression — no phantom id field ────────────────────────────────────
+// ── no phantom id field injected for boundaries that never write /id ──────────
 
-describe('rebuildEntityAtVersion — pykc regression: no phantom id field', () => {
+describe('rebuildEntityAtVersion — does not inject a phantom id field for boundaries that never write /id', () => {
   it('does not inject a phantom id field for a boundary whose reducers never write /id', () => {
     const boundary = makeBoundary({
       reducers: [

@@ -1,21 +1,17 @@
 /**
  * shared-aggregate-concurrency.integration.test.ts
  *
- * Regression for bug xgyh: the per-aggregate serialization lock in
- * executeUnitOfWork is keyed on command.targetId (the PRIMARY aggregate only).
- * Two UoWs on DIFFERENT primary aggregates that both fire a reaction into the
- * SAME third aggregate previously acquired DIFFERENT locks and ran concurrently,
- * each computing nextSequenceVersion for the shared aggregate from the same
- * uncommitted base. On commit the second append violated the monotonic-sequence
- * invariant — a lost update that 500s the request.
+ * The per-aggregate serialization lock guarantees that two UoWs on DIFFERENT
+ * primary aggregates that both fire a reaction into the SAME third (shared)
+ * aggregate are serialized — not allowed to run concurrently and compute
+ * nextSequenceVersion from the same uncommitted base, which would produce a
+ * non-monotonic sequence and a lost update.
  *
- * The fix serializes every write-UoW in a cascade-capable system on a shared
+ * The system serializes every write-UoW in a cascade-capable system on a shared
  * cascade lock (acquired together with the primary lock in deterministic order,
  * so it is deadlock-free). This test drives two concurrent orders that each
  * reserve stock on one shared Inventory aggregate and asserts BOTH succeed with
  * a clean monotonic sequence and the reserved count reflects both increments.
- *
- * Converted from tests/redteam/shared-aggregate-concurrency.redteam.test.ts.
  */
 
 import { bootSystem, type BootedSystem } from '../../src/engine/boot.js';
@@ -145,7 +141,7 @@ function order(): Command {
   };
 }
 
-describe('shared-aggregate concurrency via reactions (xgyh)', () => {
+describe('shared-aggregate concurrency via reactions', () => {
   it('two concurrent orders each reserve stock; shared Inventory ends at reserved=2 with monotonic seq', async () => {
     const sys = await build();
     sys.graph.set(INVENTORY_ID, { id: INVENTORY_ID, reserved: 0 });

@@ -247,8 +247,8 @@ describe('dsl/schema', () => {
       }
     });
 
-    // ── iuh1: patch path RFC 6901 and dollar-brace validation ───────────────
-    describe('patch path validation (iuh1)', () => {
+    // ── patch path RFC 6901 and dollar-brace validation ───────────────────
+    describe('patch path validation', () => {
       function makeWithPath(path: string, op = 'replace', extra: Record<string, unknown> = {}) {
         return {
           boundary: 'B',
@@ -296,8 +296,8 @@ describe('dsl/schema', () => {
       });
     });
 
-    // ── 2d2o: per-op required-field validation ───────────────────────────────
-    describe('patch op required-field validation (2d2o)', () => {
+    // ── per-op required-field validation ───────────────────────────────────
+    describe('patch op required-field validation', () => {
       function makePatch(patch: Record<string, unknown>) {
         return {
           boundary: 'B',

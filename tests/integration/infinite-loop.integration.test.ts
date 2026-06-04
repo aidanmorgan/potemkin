@@ -288,7 +288,7 @@ describe('infinite-loop.integration: mutually recursive secondary commands', () 
 });
 
 // ---------------------------------------------------------------------------
-// Cascade-depth cap EXACT boundary (ng5u): the guard is `cmd.depth > maxDepth`,
+// Cascade-depth cap EXACT boundary: the guard is `cmd.depth > maxDepth`,
 // so depth === maxDepth is the LAST allowed level and maxDepth+1 is rejected.
 // A `>=` regression would wrongly reject depth === maxDepth; these two tests
 // pin both sides of the boundary so that regression fails.

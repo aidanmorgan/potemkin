@@ -241,7 +241,7 @@ describe('gateway — CORS credentialed requests', () => {
     expect(res.headers['access-control-allow-headers']).toContain('Idempotency-Key');
   });
 
-  // ── X-Potemkin-* simulation-control headers in OPTIONS preflight (potemkin-hqgo) ──
+  // ── X-Potemkin-* simulation-control headers in OPTIONS preflight ─────────────
 
   it('OPTIONS preflight includes representative X-Potemkin-* request headers in Access-Control-Allow-Headers', async () => {
     const res = await agent

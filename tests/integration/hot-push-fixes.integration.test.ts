@@ -1,16 +1,14 @@
 /**
- * hot-push-fixes.integration.test.ts — potemkin-xuix
+ * Integration tests verifying all three hot-push path contracts:
  *
- * Integration tests verifying all three hot-push path fixes:
- *
- * Fix 1 (reactions): After a hot push of reaction-bearing DSL,
+ * Reactions: After a hot push of reaction-bearing DSL,
  *   sys.dsl.reactionsByTrigger is populated and reactions fire normally.
  *
- * Fix 2 (derived projection pre-registration): After a hot push declaring a
+ * Derived projection pre-registration: After a hot push declaring a
  *   new derived_projection, GET /_admin/derived/<name> returns 200 {}
  *   immediately — not 404.
  *
- * Fix 3 (push-time validation): A hot push with an invalid behavior
+ * Push-time validation: A hot push with an invalid behavior
  *   operationId is rejected 400 at push time. A hot push with a
  *   schema-violating reducer patch is also rejected 400 at push time.
  */

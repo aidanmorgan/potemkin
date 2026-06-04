@@ -557,7 +557,7 @@ describe('forwarding/handler — idempotency replay serves post-pipeline respons
   });
 });
 
-// ── ez5t: dry-run + Idempotency-Key does NOT write to the forwarding store ────
+// ── dry-run + Idempotency-Key does NOT write to the forwarding store ──────────
 //
 // A forwarded dry-run request executes the full UoW but does not commit events.
 // The idempotency store must NOT record a dry-run response; a subsequent real
@@ -577,7 +577,7 @@ describe('forwarding/handler — dry-run requests are not cached in the idempote
   });
 
   it('forwarded dry-run + Idempotency-Key does not cache the response; subsequent real request is processed fresh', async () => {
-    const KEY = `fwd-ez5t-${Date.now()}`;
+    const KEY = `fwd-dryrun-${Date.now()}`;
 
     // Dry-run forwarded request — must NOT write to the idempotency store.
     const dryRun = await agent

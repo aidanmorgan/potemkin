@@ -1,7 +1,7 @@
 /**
- * reactions.integration.test.ts  —  R3 + R4: In-UoW reaction firing engine + termination
+ * reactions.integration.test.ts  —  In-UoW reaction firing engine + termination
  *
- * Acceptance criteria (potemkin-g4ku / R3):
+ * Covers:
  *  1. A single request produces BOTH boundary mutations committed in one eventStore.append.
  *  2. reaction intent: creation creates a new aggregate.
  *  3. reaction intent: mutation mutates an existing aggregate.
@@ -9,8 +9,6 @@
  *  5. Recursive fan-out: a reaction-emitted event itself triggers a further reaction.
  *  6. when gate = false: reaction does not fire.
  *  7. Existing dispatch_commands / saga tests remain green (covered by their own suites).
- *
- * Acceptance criteria (potemkin-gpdk / R4):
  *  8. A reaction chain across 7 DISTINCT aggregates completes — depth-5 cap does not apply.
  *  9. A cyclic reaction (same reaction + same aggregate re-triggered) terminates silently
  *     with NO error and NO hang; the aggregate reflects exactly one application.
@@ -260,7 +258,7 @@ function makePlaceOrderCommand(overrides: Partial<Command> = {}): Command {
 // Suite 1: Basic mutation reaction
 // ---------------------------------------------------------------------------
 
-describe('reactions R3: mutation reaction fires atomically', () => {
+describe('reactions: mutation reaction fires atomically', () => {
   const INVENTORY_ID = nextUuidv7();
 
   const GLOBAL_WITH_MUTATION_REACTION = `
@@ -355,12 +353,12 @@ reactions:
 });
 
 // ---------------------------------------------------------------------------
-// Suite 1b (xaze): two DISTINCT reactions sharing a name, same target aggregate,
+// Suite 1b: two DISTINCT reactions sharing a name, same target aggregate,
 // both fire — the fired-set key disambiguates by shape, not by name, so neither
-// is silently suppressed (the original missed-fire bug).
+// is silently suppressed.
 // ---------------------------------------------------------------------------
 
-describe('reactions xaze: two distinct same-named reactions on one aggregate both fire', () => {
+describe('reactions: two distinct same-named reactions on one aggregate both fire', () => {
   const INVENTORY_ID = nextUuidv7();
 
   // Both reactions share the name "audit-inventory" and target the SAME Inventory
@@ -431,7 +429,7 @@ reactions:
 // Suite 2: Creation reaction
 // ---------------------------------------------------------------------------
 
-describe('reactions R3: creation reaction creates a new aggregate', () => {
+describe('reactions: creation reaction creates a new aggregate', () => {
   const GLOBAL_WITH_CREATION_REACTION = `
 reactions:
   - name: journal-on-order
@@ -509,7 +507,7 @@ reactions:
 // Suite 3: Throwing reaction aborts UoW atomically
 // ---------------------------------------------------------------------------
 
-describe('reactions R3: a throwing reaction aborts the UoW (no events committed)', () => {
+describe('reactions: a throwing reaction aborts the UoW (no events committed)', () => {
   const INVENTORY_ID = nextUuidv7();
 
   // Bad target expression — will throw CEL eval error
@@ -557,7 +555,7 @@ reactions:
 // Suite 4: when gate suppresses the reaction
 // ---------------------------------------------------------------------------
 
-describe('reactions R3: when gate suppresses the reaction when false', () => {
+describe('reactions: when gate suppresses the reaction when false', () => {
   const INVENTORY_ID = nextUuidv7();
 
   const GLOBAL_WITH_GATED_REACTION = `
@@ -618,7 +616,7 @@ reactions:
 // Suite 5: Recursive fan-out
 // ---------------------------------------------------------------------------
 
-describe('reactions R3: recursive fan-out (reaction triggers further reaction)', () => {
+describe('reactions: recursive fan-out (reaction triggers further reaction)', () => {
   const INVENTORY_ID = nextUuidv7();
 
   // OrderPlaced → StockReserved (Inventory, mutation) → ReservationIncremented (Inventory, mutation)
@@ -704,7 +702,7 @@ reactions:
 // Suite 6: payload overrides in the reaction
 // ---------------------------------------------------------------------------
 
-describe('reactions R3: reaction payload overrides merge over payload_template', () => {
+describe('reactions: reaction payload overrides merge over payload_template', () => {
   const INVENTORY_ID = nextUuidv7();
 
   const GLOBAL_WITH_PAYLOAD_REACTION = `
@@ -756,7 +754,7 @@ reactions:
 // on 7 distinct aggregates, which would exceed the depth-5 cap if reactions were
 // governed by cmd.depth. Proves they are not.
 
-describe('reactions R4: chain across 7 distinct aggregates completes (depth-5 cap bypassed)', () => {
+describe('reactions: chain across 7 distinct aggregates completes (depth-5 cap bypassed)', () => {
   const NODE_IDS = Array.from({ length: 7 }, (_, i) => `node-r4-${i}`);
 
   // OpenAPI for the 7-node relay test (isolated from the shared OPENAPI_YAML)
@@ -1002,7 +1000,7 @@ reactions:
 // Aggregate reflects exactly two StockReserved applications (reserved stays 0
 // because StockReserved reducer sets reserved=0 unconditionally).
 
-describe('reactions R4: cyclic reaction terminates via fired-set dedup (no error, no hang)', () => {
+describe('reactions: cyclic reaction terminates via fired-set dedup (no error, no hang)', () => {
   const INVENTORY_ID = nextUuidv7();
 
   const GLOBAL_WITH_CYCLE = `
@@ -1105,7 +1103,7 @@ reactions:
 // reaction-emitted events). The chain of 7 NodeVisited reactions exceeds 3,
 // so ReactionBudgetExceededError (HTTP 508) is thrown naming the offending reaction.
 
-describe('reactions R4: reaction event budget exceeded throws ReactionBudgetExceededError (508)', () => {
+describe('reactions: reaction event budget exceeded throws ReactionBudgetExceededError (508)', () => {
   const NODE_IDS_BUDGET = Array.from({ length: 7 }, (_, i) => `node-budget-${i}`);
 
   const BUDGET_OPENAPI_YAML = `
@@ -1407,7 +1405,7 @@ reactions:
 // payload field. Proves the CEL context { event, payload } exposes the trigger
 // domain event correctly and that payload aliases event.payload.
 
-describe('reactions R5: event.aggregateId and event.payload.* resolve in target and payload', () => {
+describe('reactions: event.aggregateId and event.payload.* resolve in target and payload', () => {
   // StockReserved on Inventory: target = event.payload.productId (a string id from the order),
   // payload override: orderId = event.aggregateId (the Order aggregate id).
   const R5_OPENAPI_YAML = `
@@ -1696,7 +1694,7 @@ reactions:
 // $uuidv7() in its payload_template) succeeds — i.e. EventHydration phase permits
 // non-deterministic builtins.
 
-describe('reactions R5: $uuidv7() in reaction-emitted payload_template succeeds (EventHydration)', () => {
+describe('reactions: $uuidv7() in reaction-emitted payload_template succeeds (EventHydration)', () => {
   const GLOBAL_WITH_JOURNAL_REACTION = `
 reactions:
   - name: journal-on-order-r5
@@ -1762,7 +1760,7 @@ reactions:
 // Identical ordering is asserted across two UoW executions (two runs, same
 // ordering each time).
 
-describe('reactions R5: Alpha/Bravo multi-boundary ordering is stable and documented', () => {
+describe('reactions: Alpha/Bravo multi-boundary ordering is stable and documented', () => {
   const AB_OPENAPI_YAML = `
 openapi: "3.0.3"
 info:
@@ -2032,7 +2030,7 @@ reactions:
 //  Under the OLD per-command scoping, the fired-set would have been reset between cascade
 //  commands and count would be 2. The per-UoW scoping makes it 1.
 
-describe('reactions R-dedup: fired-set dedup suppresses duplicate across dispatch_commands boundary', () => {
+describe('reactions: fired-set dedup suppresses duplicate across dispatch_commands boundary', () => {
   const DEDUP_COUNTER_ID = 'dedup-counter-fixed';
 
   const DEDUP_OPENAPI_YAML = `
@@ -2308,7 +2306,7 @@ reactions:
 });
 
 // ---------------------------------------------------------------------------
-// potemkin-u06n: reaction payload_template ts: sentinel resolves via scriptRegistry
+// Reaction payload_template ts: sentinel resolves via scriptRegistry
 // ---------------------------------------------------------------------------
 //
 // Verifies that hydrateReactionEvent routes ts:<id> sentinels through evaluateExpr /
@@ -2345,7 +2343,7 @@ const U06N_SCRIPT_REGISTRY: ScriptRegistryT = {
 };
 
 // ---------------------------------------------------------------------------
-// Minimal CompiledDsl for the u06n scenario:
+// Minimal CompiledDsl for the ts: sentinel scenario:
 //   ScoreTrigger:ScoreRequested → ScoreCalc:ScoreComputed (ts:computeScore)
 // ---------------------------------------------------------------------------
 
@@ -2381,7 +2379,7 @@ function makeU06nDsl(): CompiledDslT {
     boundary: 'ScoreCalc',
     emit: 'ScoreComputed',
     intent: 'mutation' as const,
-    target: '"score-calc-agg-u06n"',
+    target: '"score-calc-agg-tsreaction"',
   };
 
   return {
@@ -2393,19 +2391,19 @@ function makeU06nDsl(): CompiledDslT {
   } as unknown as CompiledDslT;
 }
 
-describe('potemkin-u06n: reaction payload_template ts: sentinel resolves via scriptRegistry', () => {
-  const SCORE_CALC_ID = 'score-calc-agg-u06n';
+describe('reaction payload_template ts: sentinel resolves via the script registry', () => {
+  const SCORE_CALC_ID = 'score-calc-agg-tsreaction';
 
   function makeTriggerEvent(quantity: number): DomainEvent {
     return {
-      eventId: 'evt-trigger-u06n',
+      eventId: 'evt-trigger-tsreaction',
       boundary: 'ScoreTrigger',
-      aggregateId: 'agg-trigger-u06n',
+      aggregateId: 'agg-trigger-tsreaction',
       type: 'ScoreRequested',
       payload: { quantity },
       timestamp: '2024-01-01T00:00:00.000Z',
       sequenceVersion: 1,
-      causedBy: 'cmd-u06n',
+      causedBy: 'cmd-tsreaction',
     };
   }
 
@@ -2423,7 +2421,7 @@ describe('potemkin-u06n: reaction payload_template ts: sentinel resolves via scr
       dsl,
       shadowGraph,
       cel,
-      nextEventId: () => `evt-u06n-${++seq}`,
+      nextEventId: () => `evt-tsreaction-${++seq}`,
       now: () => '2024-01-01T00:00:00.000Z',
       nextSequenceVersion: () => 1,
       firedReactions: new Set(),

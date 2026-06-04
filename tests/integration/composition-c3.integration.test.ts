@@ -1,7 +1,7 @@
 /**
  * Integration tests for C3: whole-boundary instantiation linker.
  *
- * Acceptance criteria (potemkin-df3e):
+ * Verifies:
  *  1. A single component instantiated by two use: entries produces two live
  *     boundaries with the `as` names and the bound contract_paths; both appear
  *     in the compiled byBoundaryName.

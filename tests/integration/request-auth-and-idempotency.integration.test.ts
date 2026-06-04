@@ -1,11 +1,10 @@
 /**
- * Regression tests derived from red-team repros (converted to assert the FIXED
- * behaviour):
- *   - potemkin-uwuu: time-travel reads enforce required_scopes (no RBAC bypass).
- *   - potemkin-u6vw: idempotency key is actor-scoped (no cross-actor replay) and
+ * Verifies auth and idempotency contracts:
+ *   - time-travel reads enforce required_scopes (no RBAC bypass).
+ *   - idempotency key is actor-scoped (no cross-actor replay) and
  *     same-key/different-body returns 409.
- *   - potemkin-j0u4: concurrent same-key requests collapse to one execution.
- *   - potemkin-a60y: actor-override/impersonate preserves colon-bearing scopes.
+ *   - concurrent same-key requests collapse to one execution.
+ *   - actor-override/impersonate preserves colon-bearing scopes.
  */
 
 import { bootSystem } from '../../src/engine/boot.js';
@@ -120,7 +119,7 @@ async function seedVault(agent: PersistentAgent, scopesHeader: string): Promise<
   return id;
 }
 
-describe('potemkin-uwuu — time-travel reads enforce RBAC', () => {
+describe('time-travel reads enforce RBAC', () => {
   it('read-at-version time-travel on a scope-protected entity is rejected for an unscoped actor', async () => {
     const agent = await bootWith(SIMPLE);
     const id = await seedVault(agent, 'Bearer writer:vault:write');
@@ -147,7 +146,7 @@ describe('potemkin-uwuu — time-travel reads enforce RBAC', () => {
   });
 });
 
-describe('potemkin-u6vw — idempotency is actor-scoped', () => {
+describe('idempotency is actor-scoped', () => {
   it('a different actor replaying another actor key+body is denied (no cached-response leak)', async () => {
     const agent = await bootWith(IDEMPOTENT_GLOBAL);
     const id = nextUuidv7();
@@ -218,7 +217,7 @@ describe('potemkin-u6vw — idempotency is actor-scoped', () => {
   });
 });
 
-describe('potemkin-j0u4 — idempotency TOCTOU race collapses to one execution', () => {
+describe('idempotency TOCTOU race collapses to one execution', () => {
   it('two concurrent requests with the same idempotency key produce exactly one effect', async () => {
     const agent = await bootWith(IDEMPOTENT_GLOBAL);
     const id = nextUuidv7();
@@ -241,7 +240,7 @@ describe('potemkin-j0u4 — idempotency TOCTOU race collapses to one execution',
   });
 });
 
-describe('potemkin-a60y — actor-override preserves colon-bearing scopes', () => {
+describe('actor-override preserves colon-bearing scopes', () => {
   it('admin impersonate grants a resource:action scope (vault:write) intact', async () => {
     const agent = await bootWith(SIMPLE);
     const id = nextUuidv7();

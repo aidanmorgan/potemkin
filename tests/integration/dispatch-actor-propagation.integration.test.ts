@@ -1,11 +1,9 @@
 /**
- * h00a regression — dispatch_commands actor propagation.
+ * dispatch_commands actor propagation.
  *
- * Before the fix in patternMatcher.ts, secondary commands built from a
- * dispatch_commands spec had no `actor` field (it was never spread onto the
- * secondary Command object). When the secondary boundary had `audit_fields:
- * true`, the resulting entity's `updatedBy` was null even though the
- * originating caller was identified.
+ * Secondary commands built from a dispatch_commands spec must carry the
+ * originating actor field. When the secondary boundary has `audit_fields: true`,
+ * the resulting entity's `updatedBy` must equal the originating caller's id.
  *
  * This test drives a real dispatch_commands cascade through executeUnitOfWork:
  *   - Primary boundary (Order): behaviour emits OrderCreated and dispatches a
@@ -14,8 +12,7 @@
  *   - The inbound command carries `actor: { id: 'alice', scopes: [] }`.
  *
  * After the cascade, the secondary (Audit) entity in the state graph must have
- * `updatedBy === 'alice'`. Without the fix the secondary command carries no
- * actor, so updatedBy is null and this assertion fails.
+ * `updatedBy === 'alice'`.
  */
 
 import { bootSystem, type BootedSystem } from '../../src/engine/boot.js';
@@ -137,7 +134,7 @@ components:
 
 // ---------------------------------------------------------------------------
 
-describe('h00a: dispatch_commands actor propagation — cascaded entity updatedBy', () => {
+describe('dispatch_commands actor propagation — cascaded entity updatedBy', () => {
   let sys: BootedSystem;
 
   beforeEach(async () => {

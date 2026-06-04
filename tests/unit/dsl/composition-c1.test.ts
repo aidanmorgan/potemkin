@@ -48,7 +48,7 @@ behaviors: []
 // 1. A kind: component file yields zero live boundaries
 // ---------------------------------------------------------------------------
 
-describe('C1 — component file classification', () => {
+describe('component file classification', () => {
   it('a kind: component module produces no entry in byBoundaryName', async () => {
     const compiled = await compileDsl(
       [],  // no live boundary modules
@@ -90,7 +90,7 @@ describe('C1 — component file classification', () => {
 // 2. parameters: block parsing
 // ---------------------------------------------------------------------------
 
-describe('C1 — parameters block', () => {
+describe('parameters block', () => {
   it('parses a component with typed parameters into ComponentDefinition', () => {
     const yaml = `
 kind: component
@@ -144,7 +144,7 @@ parameters:
 // 3. use: grammar
 // ---------------------------------------------------------------------------
 
-describe('C1 — use: grammar', () => {
+describe('use: grammar', () => {
   // The component that the use: entries reference — must be supplied so the C3
   // linker can resolve and instantiate it. Parameters are not required here so
   // no `with:` values need to match declared required parameters.
@@ -230,7 +230,7 @@ use:
     );
   });
 
-  it('throws BOOT_ERR_DSL_SYNTAX for unknown key on use: entry (p7k9)', () => {
+  it('throws BOOT_ERR_DSL_SYNTAX for unknown key on use: entry', () => {
     expect(() =>
       validateUseEntries(
         [{ component: 'DocEntity', as: 'Doc', contract_path: '/docs', binds: { x: 'y' } }],
@@ -255,7 +255,7 @@ use:
 // 4. include: grammar
 // ---------------------------------------------------------------------------
 
-describe('C1 — include: grammar', () => {
+describe('include: grammar', () => {
   it('parses include: entries on a live boundary config', () => {
     const cfg = validateBoundaryConfig({
       boundary: 'Document',
@@ -301,7 +301,7 @@ event_catalog: []
     expect(def.include![0]).toMatchObject({ component: 'AuditMixin', with: { actorField: 'updatedBy' } });
   });
 
-  it('throws BOOT_ERR_DSL_SYNTAX for unknown key on include: entry (p7k9)', () => {
+  it('throws BOOT_ERR_DSL_SYNTAX for unknown key on include: entry', () => {
     expect(() =>
       validateIncludeEntries(
         [{ component: 'AuditMixin', bind: { x: 'y' } }],
@@ -326,7 +326,7 @@ event_catalog: []
 // 5. Unknown kind value
 // ---------------------------------------------------------------------------
 
-describe('C1 — unknown kind value', () => {
+describe('unknown kind value', () => {
   it('throws BOOT_ERR_DSL_SYNTAX for a file with an unrecognised kind', () => {
     expect(() =>
       parseComponentYaml(`
@@ -343,7 +343,7 @@ name: Foo
 // 6. Intra-component cross-reference validation (Phase-1)
 // ---------------------------------------------------------------------------
 
-describe('C1 — intra-component cross-reference validation', () => {
+describe('intra-component cross-reference validation', () => {
   it('throws BOOT_ERR_DSL_REFERENCE when a component reducer references an unknown event', () => {
     expect(() =>
       parseComponentYaml(`
@@ -377,7 +377,7 @@ reducers:
 // 7. parseUseMappingYaml direct tests
 // ---------------------------------------------------------------------------
 
-describe('C1 — parseUseMappingYaml', () => {
+describe('parseUseMappingYaml', () => {
   it('parses a standalone use-mapping YAML into UseEntry array', () => {
     const entries = parseUseMappingYaml(`
 use:

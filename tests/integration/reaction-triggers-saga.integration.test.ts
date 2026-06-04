@@ -1,17 +1,15 @@
 /**
  * reaction-triggers-saga.integration.test.ts
  *
- * Regression for bug miaf: sagas were blind to reaction-emitted events. The UoW
- * offers every committed event to findTriggeredSagas, but matching was keyed on
- * the TRIGGER COMMAND's boundary/intent rather than the committed EVENT's. A
- * reaction emits on a different boundary than the originating command, so a saga
- * subscribed to the reaction's boundary could never fire.
+ * Sagas must fire when triggered by a reaction-emitted event, not just by
+ * behaviour-emitted events on the originating command boundary. The UoW offers
+ * every committed event to findTriggeredSagas, matching on the committed EVENT's
+ * boundary/intent — so a saga subscribed to a reaction boundary fires even when
+ * the originating command was on a different boundary.
  *
- * The fix matches sagas on the committed event's boundary (and a derived intent:
+ * Saga matching uses the committed event's boundary and a derived intent:
  * the command's intent for behaviour-emitted events on the command boundary,
- * 'mutation' for reaction/dispatch events on another boundary).
- *
- * Converted from tests/redteam/reaction-triggers-saga.redteam.test.ts.
+ * 'mutation' for reaction/dispatch events on another boundary.
  */
 
 import { bootSystem, type BootedSystem } from '../../src/engine/boot.js';
@@ -128,7 +126,7 @@ async function flushSideEffects(): Promise<void> {
   }
 }
 
-describe('saga triggers on a reaction-emitted event (miaf)', () => {
+describe('saga triggers on a reaction-emitted event', () => {
   let sys: BootedSystem;
   const INVENTORY_ID = nextUuidv7();
 

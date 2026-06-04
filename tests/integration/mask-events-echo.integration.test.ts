@@ -1,8 +1,6 @@
 /**
- * Regression test derived from a red-team repro (mask-leak channel c), converted
- * to assert the FIXED behaviour:
- *   - potemkin-n0fa: masked (DSL `mask:`) fields do NOT leak through the
- *     X-Potemkin-Include-Events `_events[].payload` envelope on a normal response.
+ * Verifies that masked (DSL `mask:`) fields do NOT leak through the
+ * X-Potemkin-Include-Events `_events[].payload` envelope on a normal response.
  *
  * /_admin/* surfaces still expose raw state/events (trusted-only) and are not
  * asserted here.
@@ -90,7 +88,7 @@ beforeAll(async () => {
   registerFileTeardown(persistent.close);
 });
 
-describe('potemkin-n0fa — X-Potemkin-Include-Events does not leak masked fields', () => {
+describe('X-Potemkin-Include-Events does not leak masked fields', () => {
   it('the _events envelope on a normal response has the masked field removed from payloads', async () => {
     const id = nextUuidv7();
     const res = await agent

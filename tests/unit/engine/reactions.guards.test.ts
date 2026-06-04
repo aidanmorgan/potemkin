@@ -1,15 +1,16 @@
 /**
  * reactions.guards.test.ts — mutation-kill tests for two strict guards in fireReactions.
  *
- * bead 8uu7 (reaction half): the `when` gate uses strict boolean equality (`=== true`).
- *   A truthy-non-true CEL result (non-empty string, number 1, etc.) must NOT fire the
- *   reaction. A mutation to loose truthiness (`!gateResult` inverted, or `if (gateResult)`)
- *   would let these through silently.
+ * Strict boolean `when` gate (reaction half): the `when` gate uses strict boolean
+ *   equality (`=== true`). A truthy-non-true CEL result (non-empty string, number 1,
+ *   etc.) must NOT fire the reaction. A mutation to loose truthiness (`!gateResult`
+ *   inverted, or `if (gateResult)`) would let these through silently.
  *
- * bead ng5u (budget half): the per-UoW budget check uses `>= budget` (not `> budget`).
- *   Exactly `budget` events emitted in a single fireReactions call must succeed (no throw),
- *   and exactly `budget + 1` must throw ReactionBudgetExceededError. A `>=` → `>` mutation
- *   would allow the budget+1 case to pass silently.
+ * Exact `>= budget` check (budget half): the per-UoW budget check uses `>= budget`
+ *   (not `> budget`). Exactly `budget` events emitted in a single fireReactions call
+ *   must succeed (no throw), and exactly `budget + 1` must throw
+ *   ReactionBudgetExceededError. A `>=` → `>` mutation would allow the budget+1 case
+ *   to pass silently.
  */
 
 import { createCelEvaluator } from '../../../src/cel/evaluator';
@@ -123,7 +124,7 @@ function makeFanOutDsl(count: number): { dsl: CompiledDsl; aggregateIds: string[
 }
 
 // ---------------------------------------------------------------------------
-// bead 8uu7 (reaction half): strict === true gate
+// Strict === true gate: when gate must be exactly boolean true, not truthy
 // ---------------------------------------------------------------------------
 //
 // The `when` guard at reactions.ts ~233 is:
@@ -133,7 +134,7 @@ function makeFanOutDsl(count: number): { dsl: CompiledDsl; aggregateIds: string[
 // non-empty string or the number 1 pass the gate and fire the reaction.
 // These tests would fail under that mutation.
 
-describe('8uu7 reaction gate: truthy-non-true when result must NOT fire the reaction', () => {
+describe('reaction gate: truthy-non-true when result must NOT fire the reaction', () => {
   const cel = createCelEvaluator();
 
   function fireWithGate(whenExpr: string): readonly DomainEvent[] {
@@ -186,7 +187,7 @@ describe('8uu7 reaction gate: truthy-non-true when result must NOT fire the reac
 });
 
 // ---------------------------------------------------------------------------
-// bead ng5u (budget half): exact boundary for >= budget check
+// Exact >= budget boundary: budget events pass, budget+1 throws
 // ---------------------------------------------------------------------------
 //
 // The budget check at reactions.ts ~318 is:
@@ -204,7 +205,7 @@ describe('8uu7 reaction gate: truthy-non-true when result must NOT fire the reac
 // A `>=` → `>` mutation would allow the budget+1 case to pass silently.
 // These two tests kill that mutation:
 
-describe('ng5u reaction budget: >= boundary — exactly budget events allowed, budget+1 throws', () => {
+describe('reaction budget: >= boundary — exactly budget events allowed, budget+1 throws', () => {
   const cel = createCelEvaluator();
 
   function fireWithBudget(reactionCount: number, budget: number): readonly DomainEvent[] {

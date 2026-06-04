@@ -13,7 +13,7 @@
  *  - BOOT_ERR_DSL_REFERENCE: qualified trigger names an unknown trigger boundary
  *  - BOOT_ERR_DSL_REFERENCE: qualified trigger event not in that boundary's catalog
  *  - Existing boundaries with no reactions compile without error (empty registry)
- *  - xaze: fired-set id disambiguation — distinct reactions never collide on the
+ *  - fired-set id disambiguation — distinct reactions never collide on the
  *    fired-set key (the key is the (boundary,on,emit,target,when) tuple, not the name),
  *    so a reused reaction name (legal under composition) does not silently miss-fire
  */
@@ -322,14 +322,14 @@ event_catalog:
   });
 });
 
-// ── xaze: fired-set id disambiguation (collision-free across distinct reactions) ──
+// ── fired-set id disambiguation (collision-free across distinct reactions) ──
 //
 // deriveReactionId keys the per-UoW fired-set off the reaction's distinguishing
 // shape (boundary, on, emit, target, when), NOT its name. Two genuinely distinct
 // reactions therefore never collide — even when they share a name, which happens
 // legitimately when a named component reaction is instantiated more than once.
 
-describe('xaze: deriveReactionId — distinct reactions never collide on the fired-set key', () => {
+describe('deriveReactionId — distinct reactions never collide on the fired-set key', () => {
   it('gives two reactions that share a name but differ in trigger distinct ids', () => {
     const r1 = makeReaction({ name: 'notify', on: 'Document:DocumentCreated', emit: 'NotificationCreated', boundary: 'Notification' });
     const r2 = makeReaction({ name: 'notify', on: 'Draft:DocumentCreated', emit: 'NotificationCreated', boundary: 'Notification' });

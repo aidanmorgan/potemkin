@@ -1,5 +1,5 @@
 /**
- * potemkin-j1iw — Script runtime errors in match.condition / requires[] / emit_when
+ * Script runtime errors in match.condition / requires[] / emit_when.
  *
  * A scanned @Script that throws a genuine runtime error must surface as
  * InternalExecutionError (HTTP 500), not be silently swallowed as no-match
@@ -8,7 +8,7 @@
  * The postcondition path (~lines 445-449) already re-throws InternalExecutionError
  * correctly; these tests verify the three other catch blocks now behave the same.
  *
- * AC4 regression: genuine CEL false / type-mismatch remains a no-match/skip.
+ * Genuine CEL false / type-mismatch remains a no-match/skip.
  */
 
 import { runPatternMatch } from '../../../src/engine/patternMatcher';
@@ -63,13 +63,13 @@ const fakeCelTrue = {
   evaluate: () => true,
 };
 
-/** Cel stub that always returns false (used for AC4 genuine-CEL-false regression). */
+/** Cel stub that always returns false (drives the genuine-CEL-false no-match path). */
 const fakeCelFalse = {
   compile: (e: string) => ({ source: e, _ast: {} as any }),
   evaluate: () => false,
 };
 
-/** Cel stub that throws (used for AC4 genuine-CEL-throw regression). */
+/** Cel stub that throws (drives the genuine-CEL-evaluation-error no-match path). */
 const fakeCelThrows = {
   compile: (e: string) => ({ source: e, _ast: {} as any }),
   evaluate: () => { throw new Error('CEL type error'); },
@@ -90,9 +90,9 @@ function makeInput(overrides: Partial<PatternMatchInput> = {}): PatternMatchInpu
   };
 }
 
-// ── AC1: match.condition @Script throws → InternalExecutionError (500) ─────────
+// ── match.condition @Script throws → InternalExecutionError (500) ─────────────
 
-describe('AC1: throwing @Script in match.condition surfaces as InternalExecutionError', () => {
+describe('throwing @Script in match.condition surfaces as InternalExecutionError', () => {
   it('re-throws as InternalExecutionError when the condition script throws TypeError', () => {
     const scriptErr = new TypeError('cannot read property of null');
     const registry = makeThrowingRegistry('checkCondition', scriptErr);
@@ -159,9 +159,9 @@ describe('AC1: throwing @Script in match.condition surfaces as InternalExecution
   });
 });
 
-// ── AC2: requires[] @Script throws → InternalExecutionError (500), not 422 ────
+// ── requires[] @Script throws → InternalExecutionError (500), not 422 ─────────
 
-describe('AC2: throwing @Script in requires[] condition surfaces as InternalExecutionError', () => {
+describe('throwing @Script in requires[] condition surfaces as InternalExecutionError', () => {
   it('re-throws as InternalExecutionError when a requires condition script throws TypeError', () => {
     const scriptErr = new TypeError('cannot compute balance');
     const registry = makeThrowingRegistry('checkBalance', scriptErr);
@@ -261,9 +261,9 @@ describe('AC2: throwing @Script in requires[] condition surfaces as InternalExec
   });
 });
 
-// ── AC3: emit_when.when @Script throws → InternalExecutionError (500) ──────────
+// ── emit_when.when @Script throws → InternalExecutionError (500) ───────────────
 
-describe('AC3: throwing @Script in emit_when.when surfaces as InternalExecutionError', () => {
+describe('throwing @Script in emit_when.when surfaces as InternalExecutionError', () => {
   it('re-throws as InternalExecutionError when the emit_when condition script throws TypeError', () => {
     const scriptErr = new TypeError('cannot access state property');
     const registry = makeThrowingRegistry('checkEmit', scriptErr);
@@ -336,9 +336,9 @@ describe('AC3: throwing @Script in emit_when.when surfaces as InternalExecutionE
   });
 });
 
-// ── AC4: genuine CEL no-match / type-mismatch remains unchanged ────────────────
+// ── genuine CEL no-match / type-mismatch remains unchanged ─────────────────────
 
-describe('AC4: genuine CEL false / type-mismatch is still treated as no-match (unchanged)', () => {
+describe('genuine CEL false / type-mismatch is still treated as no-match', () => {
   it('CEL match.condition returning false produces UnhandledOperationError (not 500)', () => {
     const boundary = makeBoundary({
       behaviors: [
@@ -430,9 +430,9 @@ describe('AC4: genuine CEL false / type-mismatch is still treated as no-match (u
   });
 });
 
-// ── AC5: dispatch_commands condition @Script throws → InternalExecutionError ──────
+// ── dispatch_commands condition @Script throws → InternalExecutionError ────────
 
-describe('AC5: throwing @Script in dispatch_commands condition surfaces as InternalExecutionError', () => {
+describe('throwing @Script in dispatch_commands condition surfaces as InternalExecutionError', () => {
   it('re-throws as InternalExecutionError when a ts: dispatch condition script throws (not silently skipped)', () => {
     const scriptErr = new TypeError('dispatch condition runtime failure');
     const registry = makeThrowingRegistry('checkDispatch', scriptErr);

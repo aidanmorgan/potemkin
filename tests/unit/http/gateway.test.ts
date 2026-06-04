@@ -467,7 +467,7 @@ describe('http/gateway — time-travel with computed fields', () => {
   });
 });
 
-// ── ez5t: dry-run + Idempotency-Key does NOT write to the store ───────────────
+// ── dry-run + Idempotency-Key does NOT write to the store ────────────────────
 //
 // A dry-run request executes the full UoW but does not commit events. The
 // idempotency store must NOT record a dry-run response; a subsequent real
@@ -487,7 +487,7 @@ describe('http/gateway — dry-run requests are not cached in the idempotency st
   });
 
   it('dry-run + Idempotency-Key does not cache the response; subsequent real request is processed fresh', async () => {
-    const KEY = `gw-ez5t-${Date.now()}`;
+    const KEY = `gw-dryrun-${Date.now()}`;
 
     // Dry-run request — should NOT write to the idempotency store.
     const dryRun = await agent
@@ -512,7 +512,7 @@ describe('http/gateway — dry-run requests are not cached in the idempotency st
   });
 });
 
-// ── aahe: chaos headers are applied on the gateway path ──────────────────────
+// ── chaos headers are applied on the gateway path ────────────────────────────
 //
 // The gateway advertises chaos headers in CORS_ALLOW_HEADERS and applies DSL
 // fault_rules, so chaos header resolution must also run on the gateway path.
@@ -551,7 +551,7 @@ describe('http/gateway — chaos headers applied on gateway (direct) path', () =
   });
 });
 
-// ── kp3y: ETag + 304 on direct gateway single-entity GET ─────────────────────
+// ── ETag + 304 on direct gateway single-entity GET ───────────────────────────
 //
 // The direct gateway path must emit ETag on single-entity GET and honour
 // If-None-Match to return 304 with an empty body — mirroring the forwarding
@@ -622,7 +622,7 @@ reducers: []
 event_catalog: []
 `;
 
-describe('http/gateway — ETag and 304 on direct single-entity GET (kp3y)', () => {
+describe('http/gateway — ETag and 304 on direct single-entity GET', () => {
   let agent: PersistentAgent;
 
   beforeAll(async () => {
@@ -665,7 +665,7 @@ describe('http/gateway — ETag and 304 on direct single-entity GET (kp3y)', () 
   });
 });
 
-// ── 1mwu: dynamic HATEOAS on direct gateway query path ───────────────────────
+// ── dynamic HATEOAS on direct gateway query path ─────────────────────────────
 //
 // The direct gateway path must apply global hateoas.enabled self-links to
 // single-entity GET responses, just as the forwarding handler does.
@@ -676,7 +676,7 @@ hateoas:
   self_links: true
 `;
 
-describe('http/gateway — dynamic HATEOAS on direct query path (1mwu)', () => {
+describe('http/gateway — dynamic HATEOAS on direct query path', () => {
   let agent: PersistentAgent;
 
   beforeAll(async () => {
@@ -705,14 +705,14 @@ describe('http/gateway — dynamic HATEOAS on direct query path (1mwu)', () => {
   });
 });
 
-// ── wnre: chaos-truncated body is raw bytes, not double-quoted ────────────────
+// ── chaos-truncated body is raw bytes, not double-quoted ─────────────────────
 //
 // When X-Potemkin-Body-Truncate is applied, the gateway must write the raw
 // truncated bytes with Content-Type: application/json and NOT re-quote them
 // via res.json(). A truncated body like `[{"i` must arrive as those exact bytes,
 // not as the JSON string `"[{\"i"`.
 
-describe('http/gateway — body-truncate writes raw bytes on direct path (wnre)', () => {
+describe('http/gateway — body-truncate writes raw bytes on the direct path', () => {
   let agent: PersistentAgent;
 
   beforeAll(async () => {
@@ -761,7 +761,7 @@ describe('http/gateway — body-truncate writes raw bytes on direct path (wnre)'
   });
 });
 
-// ── potemkin-25xb fix (a): fault_rule delay_ms applied on gateway path ────────
+// ── fault_rule delay_ms applied on the gateway path ──────────────────────────
 //
 // A YAML fault_rule with delay_ms must delay the gateway response by at least
 // that many ms. Boundary latency was already applied before the fault-hit branch,
@@ -778,7 +778,7 @@ fault_rules:
     delay_ms: 200
 `;
 
-describe('http/gateway — fault_rule delay_ms applied on gateway path (potemkin-25xb-a)', () => {
+describe('http/gateway — fault_rule delay_ms is applied on the gateway path', () => {
   let agent: PersistentAgent;
 
   beforeAll(async () => {
@@ -807,13 +807,13 @@ describe('http/gateway — fault_rule delay_ms applied on gateway path (potemkin
   });
 });
 
-// ── potemkin-25xb fix (b): X-Potemkin-Body-Truncate alone truncates normal path
+// ── X-Potemkin-Body-Truncate alone truncates the normal-path response ─────────
 //
 // Sending only X-Potemkin-Body-Truncate (no force-status or other chaos header)
 // must still truncate the final response body, matching the forwarding handler
 // which applies truncation unconditionally after the full pipeline.
 
-describe('http/gateway — X-Potemkin-Body-Truncate alone truncates normal path (potemkin-25xb-b)', () => {
+describe('http/gateway — X-Potemkin-Body-Truncate alone truncates the normal-path response', () => {
   let agent: PersistentAgent;
 
   beforeAll(async () => {

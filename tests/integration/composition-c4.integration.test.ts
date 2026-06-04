@@ -1,7 +1,7 @@
 /**
  * Integration tests for C4: fragment inclusion (include:) merge.
  *
- * Acceptance criteria (potemkin-rcuc):
+ * Verifies:
  *  1. A boundary that includes an AuditMixin gains the mixin's event types and
  *     reducers; an event defined only in the mixin projects correctly on the
  *     host boundary's state (via executeUnitOfWork).
@@ -422,9 +422,9 @@ describe('C4 — boundary including AuditMixin gains mixin event and reducer', (
     }
   });
 
-  it('mixin-only AuditLogged event projects lastActor onto host boundary state (AC1 end-to-end)', async () => {
-    // This test proves AC1: emit an event defined ONLY in the mixin (AuditLogged),
-    // then assert the MIXIN reducer ran and set /lastActor on the host boundary state.
+  it('mixin-only AuditLogged event projects lastActor onto host boundary state', async () => {
+    // Emit an event defined ONLY in the mixin (AuditLogged), then assert the
+    // mixin reducer ran and set /lastActor on the host boundary state.
     const openapi = await loadOpenApi(OPENAPI_YAML);
     const dsl = await compileDsl(
       [{ name: 'document.yaml', yaml: DOCUMENT_WITH_MIXIN_YAML }],
@@ -506,7 +506,7 @@ describe('C4 — local declaration wins over included entry on key clash', () =>
 });
 
 // ---------------------------------------------------------------------------
-// Suite 2b: Both local and included reducer run on the same event (3kwi)
+// Suite 2b: Both local and included reducer run on the same event
 // ---------------------------------------------------------------------------
 
 // Boundary with a local reducer for AuditLogged AND an included mixin reducer for

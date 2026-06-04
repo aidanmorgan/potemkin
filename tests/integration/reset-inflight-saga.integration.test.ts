@@ -1,24 +1,23 @@
 /**
  * reset-inflight-saga.integration.test.ts
  *
- * Regression for bug cjyf: reset orphans in-flight post-commit side-effects.
+ * A post-commit side-effect (saga, webhook) that was scheduled before a
+ * resetSystem() call must be silently discarded; it must not append orphan events
+ * into the freshly-reset store and corrupt the deterministic baseline.
  *
  * Sagas (and webhooks) run AFTER commit, fire-and-forget. resetSystem() is
  * synchronous and purges the event store + state graph + locks back to the
  * frozen baseline, under the documented assumption that it is called quiescently
- * (no in-flight UoW). But a post-commit saga thunk can still be pending when a
- * reset lands; if it then runs it appends orphan saga/step events into the
- * freshly-reset store, corrupting the deterministic baseline.
+ * (no in-flight UoW). A post-commit saga thunk can still be pending when a reset
+ * lands; the reset epoch mechanism ensures it no-ops.
  *
- * The fix carries a monotonic reset epoch on the BootedSystem. resetSystem
+ * The system carries a monotonic reset epoch on BootedSystem. resetSystem
  * increments it; each post-commit side-effect thunk captures the epoch in force
  * when it is scheduled and no-ops if the epoch has advanced by the time it runs.
  *
  * Invariant: after a reset, the event store contains ONLY the frozen baseline —
  * no orphaned events from a side-effect scheduled before but executed after the
  * reset. A side-effect with NO intervening reset must still fire fully.
- *
- * Converted from tests/redteam/reset-inflight-saga.redteam.test.ts.
  */
 
 import { bootSystem, type BootedSystem } from '../../src/engine/boot.js';
@@ -171,7 +170,7 @@ function openLoan(): Command {
   };
 }
 
-describe('reset epoch suppresses in-flight side-effects (cjyf)', () => {
+describe('reset epoch suppresses in-flight side-effects', () => {
   let sys: BootedSystem;
 
   beforeEach(async () => {
