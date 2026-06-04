@@ -15,6 +15,10 @@ event_catalog:
   - type: PaymentIntentCaptured
     payload_template:
       amount_received: "state.amount"
+      # Carry the charge id (minted at confirm) + amount so the Charge boundary
+      # reacts and marks the previously-authorised charge as captured.
+      chargeId: "state.latest_charge"
+      amount: "state.amount"
 
 behaviors:
   - name: capturePaymentIntent

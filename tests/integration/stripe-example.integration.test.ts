@@ -290,3 +290,64 @@ describe('Stripe simulation — PaymentIntents (state machine)', () => {
     expect(((list['data'] as Record<string, unknown>[])[0])['object']).toBe('payment_intent');
   });
 });
+
+describe('Stripe simulation — Charges (created by reaction)', () => {
+  let server: PersistentServer;
+  let agent: PersistentAgent;
+
+  beforeAll(async () => {
+    const openapi = await loadOpenApi(path.join(STRIPE_DIR, 'openapi', 'stripe-core.yaml'));
+    const sys = await bootSystem({
+      openapi,
+      potemkinConfigPath: path.join(STRIPE_DIR, 'potemkin.yaml'),
+    });
+    expandByContractPath(sys);
+    server = await withPersistentServer(createGateway(sys));
+    agent = server.agent;
+  });
+  afterAll(async () => { await server.close(); });
+
+  it('confirming an automatic-capture intent materialises a captured charge linked to the intent', async () => {
+    const pi = (await agent.post('/v1/payment_intents').send({ amount: 2000, currency: 'usd', payment_method: 'pm_card_visa' }).expect(200)).body as Record<string, unknown>;
+    const confirmed = (await agent.post(`/v1/payment_intents/${pi['id'] as string}/confirm`).send({}).expect(200)).body as Record<string, unknown>;
+    const chargeId = confirmed['latest_charge'] as string;
+    expect(chargeId.startsWith('ch_')).toBe(true);
+
+    const charge = (await agent.get(`/v1/charges/${chargeId}`).expect(200)).body as Record<string, unknown>;
+    expect(charge['object']).toBe('charge');
+    expect(charge['amount']).toBe(2000);
+    expect(charge['currency']).toBe('usd');
+    expect(charge['paid']).toBe(true);
+    expect(charge['captured']).toBe(true);
+    expect(charge['status']).toBe('succeeded');
+    expect(charge['amount_captured']).toBe(2000);
+    expect(charge['payment_intent']).toBe(pi['id']);
+    expect(charge['refunded']).toBe(false);
+  });
+
+  it('a manual-capture intent yields an authorised-but-uncaptured charge that is captured on capture', async () => {
+    const pi = (await agent.post('/v1/payment_intents').send({ amount: 1000, currency: 'usd', payment_method: 'pm_card_visa', capture_method: 'manual' }).expect(200)).body as Record<string, unknown>;
+    const id = pi['id'] as string;
+    const confirmed = (await agent.post(`/v1/payment_intents/${id}/confirm`).send({}).expect(200)).body as Record<string, unknown>;
+    const chargeId = confirmed['latest_charge'] as string;
+
+    const before = (await agent.get(`/v1/charges/${chargeId}`).expect(200)).body as Record<string, unknown>;
+    expect(before['captured']).toBe(false);
+    expect(before['amount_captured']).toBe(0);
+
+    await agent.post(`/v1/payment_intents/${id}/capture`).send({}).expect(200);
+    const after = (await agent.get(`/v1/charges/${chargeId}`).expect(200)).body as Record<string, unknown>;
+    expect(after['captured']).toBe(true);
+    expect(after['amount_captured']).toBe(1000);
+  });
+
+  it('GET /v1/charges?payment_intent= filters charges by intent', async () => {
+    const pi = (await agent.post('/v1/payment_intents').send({ amount: 42, currency: 'usd', payment_method: 'pm_card_visa' }).expect(200)).body as Record<string, unknown>;
+    await agent.post(`/v1/payment_intents/${pi['id'] as string}/confirm`).send({}).expect(200);
+    const res = (await agent.get('/v1/charges').query({ payment_intent: pi['id'] as string }).expect(200)).body as Record<string, unknown>;
+    expect(res['object']).toBe('list');
+    const data = res['data'] as Record<string, unknown>[];
+    expect(data.length).toBe(1);
+    expect(data[0]['payment_intent']).toBe(pi['id']);
+  });
+});

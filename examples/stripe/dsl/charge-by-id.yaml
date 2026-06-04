@@ -1,0 +1,15 @@
+# Charge — by-id boundary (GET retrieve only).
+boundary: ChargeById
+contract_path: /v1/charges/{id}
+fallback_override: true
+
+response: "ts:chargeResponse"
+
+identity:
+  key:
+    from: path
+    name: id
+
+event_catalog: []
+behaviors: []
+reducers: []

@@ -18,6 +18,14 @@ event_catalog:
       status: "state.capture_method == 'manual' ? 'requires_capture' : 'succeeded'"
       amount_received: "state.capture_method == 'manual' ? state.amount_received : state.amount"
       payment_method: "has(command.payload.payment_method) ? command.payload.payment_method : state.payment_method"
+      # Confirming a PaymentIntent always materialises a Charge (the Charge
+      # boundary reacts to this event). The ch_ id is minted here so it can be
+      # recorded on the intent (latest_charge) and used as the Charge's id.
+      chargeId: "ts:chargeId"
+      amount: "state.amount"
+      currency: "state.currency"
+      customer: "state.customer"
+      captured: "state.capture_method != 'manual'"
 
 behaviors:
   - name: confirmPaymentIntent
@@ -38,3 +46,4 @@ reducers:
       - { op: replace, path: /status, value: "${event.payload.status}" }
       - { op: replace, path: /amount_received, value: "${event.payload.amount_received}" }
       - { op: replace, path: /payment_method, value: "${event.payload.payment_method}" }
+      - { op: replace, path: /latest_charge, value: "${event.payload.chargeId}" }

@@ -402,6 +402,42 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/payment_intent" }
 
+  # ── Charges ─────────────────────────────────────────────────────────────────
+  # Charges are not created directly via the API — they materialise as a side
+  # effect of confirming a PaymentIntent (an in-UoW reaction). Only list/retrieve
+  # are exposed, exactly as the modern Stripe API.
+  /v1/charges:
+    get:
+      operationId: listCharges
+      summary: List charges
+      parameters:
+        - { name: payment_intent, in: query, required: false, schema: { type: string } }
+        - { name: customer, in: query, required: false, schema: { type: string } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100 } }
+      responses:
+        "200":
+          description: A list of charges (Stripe list envelope)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/charge_list" }
+  /v1/charges/{id}:
+    get:
+      operationId: getCharge
+      summary: Retrieve a charge
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The charge
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/charge" }
+        "404":
+          description: No such charge
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/error" }
+
 components:
   schemas:
     # ── Shared ────────────────────────────────────────────────────────────────
@@ -567,6 +603,40 @@ components:
           items: { $ref: "#/components/schemas/payment_intent" }
       required: [object, data, has_more, url]
 
+    # ── Charge ──────────────────────────────────────────────────────────────────
+    charge:
+      type: object
+      additionalProperties: true
+      properties:
+        id: { type: string }
+        object: { type: string, enum: [charge] }
+        created: { type: integer }
+        livemode: { type: boolean }
+        amount: { type: integer }
+        currency: { type: string }
+        paid: { type: boolean }
+        captured: { type: boolean }
+        status: { type: string, enum: [succeeded, pending, failed] }
+        payment_intent: { type: string, nullable: true }
+        payment_method: { type: string, nullable: true }
+        customer: { type: string, nullable: true }
+        amount_captured: { type: integer }
+        amount_refunded: { type: integer }
+        refunded: { type: boolean }
+      required: [id, object, created, livemode, amount, currency, paid, captured, status, amount_captured, amount_refunded, refunded]
+
+    charge_list:
+      type: object
+      additionalProperties: false
+      properties:
+        object: { type: string, enum: [list] }
+        url: { type: string }
+        has_more: { type: boolean }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/charge" }
+      required: [object, data, has_more, url]
+
     # Per-boundary state schemas. The engine derives each boundary's state shape
     # from components.schemas.<BoundaryName>; both Customer boundaries (the
     # collection and the {customer} by-id boundary) share the customer shape.
@@ -592,3 +662,7 @@ components:
       $ref: "#/components/schemas/payment_intent"
     PaymentIntentCancel:
       $ref: "#/components/schemas/payment_intent"
+    Charge:
+      $ref: "#/components/schemas/charge"
+    ChargeById:
+      $ref: "#/components/schemas/charge"

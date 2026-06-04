@@ -97,3 +97,8 @@ export class PriceResponse {
 export class PaymentIntentResponse {
   run(ctx: ScriptContext): ResponseScriptResult { return stripeResponse('payment_intent', '/v1/payment_intents', ctx); }
 }
+
+@Script('chargeResponse')
+export class ChargeResponse {
+  run(ctx: ScriptContext): ResponseScriptResult { return stripeResponse('charge', '/v1/charges', ctx); }
+}
