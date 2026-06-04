@@ -1,0 +1,168 @@
+openapi: "3.0.3"
+info:
+  title: Stripe API (Potemkin stateful simulation — core payments)
+  version: "2024-06-20"
+  description: |
+    A curated, behaviourally-equivalent slice of the Stripe API implemented
+    statefully by Potemkin. Object shapes, ids (cus_/prod_/price_/pi_/ch_/re_),
+    the `object`/`created`/`livemode` envelope, and the PaymentIntent state
+    machine follow the real Stripe API. Requests are form-encoded and responses
+    are JSON, exactly as Stripe.
+
+    Derived from the official Stripe OpenAPI specification
+    (https://github.com/stripe/openapi) — trimmed to the core payments resources.
+
+servers:
+  - url: https://api.stripe.com
+
+paths:
+  # ── Customers ───────────────────────────────────────────────────────────────
+  /v1/customers:
+    post:
+      operationId: createCustomer
+      summary: Create a customer
+      requestBody:
+        required: false
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                email: { type: string }
+                name: { type: string }
+                description: { type: string }
+                phone: { type: string }
+                balance: { type: integer }
+                metadata: { type: object, additionalProperties: { type: string } }
+      responses:
+        "200":
+          description: The created customer
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/customer" }
+    get:
+      operationId: listCustomers
+      summary: List customers
+      parameters:
+        - { name: email, in: query, required: false, schema: { type: string } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100 } }
+      responses:
+        "200":
+          description: |
+            A list of customers. NOTE: Potemkin's collection queries return the
+            raw array of objects rather than Stripe's `{object:"list", data, ...}`
+            envelope (the one documented deviation; see examples/stripe/README.md).
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/customer" }
+  /v1/customers/{customer}:
+    get:
+      operationId: getCustomer
+      summary: Retrieve a customer
+      parameters:
+        - { name: customer, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The customer
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/customer" }
+        "404":
+          description: No such customer
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/error" }
+    post:
+      operationId: updateCustomer
+      summary: Update a customer
+      parameters:
+        - { name: customer, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: false
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                email: { type: string }
+                name: { type: string }
+                description: { type: string }
+                phone: { type: string }
+                balance: { type: integer }
+                metadata: { type: object, additionalProperties: { type: string } }
+      responses:
+        "200":
+          description: The updated customer
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/customer" }
+    delete:
+      operationId: deleteCustomer
+      summary: Delete a customer
+      parameters:
+        - { name: customer, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The deleted customer
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/deleted_customer" }
+
+components:
+  schemas:
+    # ── Shared ────────────────────────────────────────────────────────────────
+    error:
+      type: object
+      additionalProperties: true
+      properties:
+        error:
+          type: object
+          additionalProperties: true
+          properties:
+            type: { type: string }
+            code: { type: string }
+            message: { type: string }
+            param: { type: string }
+      required: [error]
+
+    metadata:
+      type: object
+      additionalProperties: { type: string }
+
+    # ── Customer ──────────────────────────────────────────────────────────────
+    customer:
+      type: object
+      additionalProperties: true
+      properties:
+        id: { type: string }
+        object: { type: string, enum: [customer] }
+        created: { type: integer }
+        livemode: { type: boolean }
+        email: { type: string, nullable: true }
+        name: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        balance: { type: integer }
+        currency: { type: string, nullable: true }
+        delinquent: { type: boolean, nullable: true }
+        metadata: { $ref: "#/components/schemas/metadata" }
+      required: [id, object, created, livemode]
+
+    deleted_customer:
+      type: object
+      additionalProperties: true
+      properties:
+        id: { type: string }
+        object: { type: string, enum: [customer] }
+        deleted: { type: boolean, enum: [true] }
+      required: [id, object, deleted]
+
+    # Per-boundary state schemas. The engine derives each boundary's state shape
+    # from components.schemas.<BoundaryName>; both Customer boundaries (the
+    # collection and the {customer} by-id boundary) share the customer shape.
+    Customer:
+      $ref: "#/components/schemas/customer"
+    CustomerById:
+      $ref: "#/components/schemas/customer"

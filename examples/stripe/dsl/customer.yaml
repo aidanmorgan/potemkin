@@ -1,0 +1,52 @@
+# Customer — collection boundary (POST create, GET list).
+# Stripe ids are `cus_<token>`; every object carries object/created/livemode.
+boundary: Customer
+contract_path: /v1/customers
+fallback_override: false
+
+identity:
+  creation:
+    # Custom Stripe-shaped id (cus_…) injected via a registered @Script extension.
+    generate: "ts:customerId"
+
+query_mapping:
+  email: "state.email == param"
+
+event_catalog:
+  - type: CustomerCreated
+    payload_template:
+      id: "command.targetId"
+      object: "'customer'"
+      created: "ts:unixNow"
+      livemode: "false"
+      email: "has(command.payload.email) ? command.payload.email : null"
+      name: "has(command.payload.name) ? command.payload.name : null"
+      description: "has(command.payload.description) ? command.payload.description : null"
+      phone: "has(command.payload.phone) ? command.payload.phone : null"
+      balance: "has(command.payload.balance) ? command.payload.balance : 0"
+      currency: "null"
+      delinquent: "false"
+      metadata: "has(command.payload.metadata) ? command.payload.metadata : {}"
+
+behaviors:
+  - name: createCustomer
+    match:
+      operationId: createCustomer
+      condition: "true"
+    emit: CustomerCreated
+
+reducers:
+  - on: CustomerCreated
+    patches:
+      - { op: replace, path: /id, value: "${event.payload.id}" }
+      - { op: replace, path: /object, value: "${event.payload.object}" }
+      - { op: replace, path: /created, value: "${event.payload.created}" }
+      - { op: replace, path: /livemode, value: "${event.payload.livemode}" }
+      - { op: replace, path: /email, value: "${event.payload.email}" }
+      - { op: replace, path: /name, value: "${event.payload.name}" }
+      - { op: replace, path: /description, value: "${event.payload.description}" }
+      - { op: replace, path: /phone, value: "${event.payload.phone}" }
+      - { op: replace, path: /balance, value: "${event.payload.balance}" }
+      - { op: replace, path: /currency, value: "${event.payload.currency}" }
+      - { op: replace, path: /delinquent, value: "${event.payload.delinquent}" }
+      - { op: replace, path: /metadata, value: "${event.payload.metadata}" }

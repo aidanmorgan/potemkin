@@ -90,6 +90,57 @@ export function runPatternMatch(input: PatternMatchInput): PatternMatchOutcome {
 }
 
 // ---------------------------------------------------------------------------
+// Extension point: creation id generation
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve the aggregate id for a creation from `identity.creation.generate`.
+ *
+ * `generate` is an ordinary DSL expression, evaluated through the same shared
+ * pipeline as every other expression slot — so it supports CEL builtins (e.g.
+ * `$uuidv7()`) AND registered `ts:<id>` @Script extensions on equal footing,
+ * with no special-casing. This is the extension point a framework user reaches
+ * for to mint a domain-shaped id (e.g. a Stripe `cus_…` id from a registered
+ * `ts:customerId` @Script) without changing the framework. The expression must
+ * produce a non-empty string.
+ */
+export function resolveCreationTargetId(input: {
+  readonly generate: string;
+  readonly payload: JsonObject;
+  readonly boundary: string;
+  readonly cel: CelEvaluator;
+  readonly scriptRegistry: ScriptRegistry | undefined;
+  readonly now: () => string;
+  readonly logger: Logger;
+}): string {
+  const { generate, payload, boundary, cel, scriptRegistry, now, logger } = input;
+  const celCtx = { command: { boundary, intent: 'creation', payload }, payload, state: {} };
+  const buildScriptCtx = (): ScriptContext => ({
+    command: {
+      commandId: '', boundary, intent: 'creation', targetId: '', payload,
+      queryParams: {}, httpMethod: 'POST', path: '', origin: 'inbound', depth: 0,
+    } as Command,
+    state: null,
+    payload,
+    helpers: {
+      uuid: () => nextUuidv7(),
+      now,
+      deepClone: <T>(v: T) => deepClone(v as JsonValue) as unknown as T,
+      deepMerge: (a: JsonObject, b: JsonObject) => deepMerge(a, b),
+    },
+    logger,
+  });
+  const value = evaluateExpr(generate, celCtx, CelPhase.Behavior, cel, scriptRegistry, boundary, buildScriptCtx);
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new InternalExecutionError(
+      `identity.creation.generate for boundary "${boundary}" must produce a non-empty string id (got ${typeof value})`,
+      { code: 'GENERATE_INVALID', boundary },
+    );
+  }
+  return value;
+}
+
+// ---------------------------------------------------------------------------
 // Helper: evaluate a CEL or ts: expression
 // ---------------------------------------------------------------------------
 

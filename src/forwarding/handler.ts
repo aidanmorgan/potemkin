@@ -24,6 +24,7 @@ import type { Actor, Command, Intent, JsonObject, JsonValue } from '../types.js'
 import { matchRoute } from '../contract/router.js';
 import { translateIntent } from '../engine/router.js';
 import { extractEntityKey } from '../engine/keyExtractor.js';
+import { resolveCreationTargetId } from '../engine/patternMatcher.js';
 import { executeUnitOfWork } from '../engine/uow.js';
 import { createSideEffectQueue } from '../engine/sideEffects.js';
 import { extractFaultSignal } from '../engine/faultSim.js';
@@ -370,7 +371,17 @@ export function createForwardingHandler(sys: BootedSystem): RequestHandler {
     });
     if (intent === 'creation' && targetId === null) {
       const genRule = boundary.identity?.creation?.generate;
-      if (genRule === '$uuidv7()') targetId = nextUuidv7();
+      if (genRule) {
+        targetId = resolveCreationTargetId({
+          generate: genRule,
+          payload: (fwd.body ?? {}) as JsonObject,
+          boundary: boundary.boundary,
+          cel: reqCel,
+          scriptRegistry: sys.dsl.scriptRegistry,
+          now: () => new Date().toISOString(),
+          logger: sys.logger,
+        });
+      }
     }
 
     // Tier 4: time-travel intercepts for GET requests — projects transient state
@@ -927,7 +938,17 @@ async function runBulkCreate(args: {
     });
     if (intent === 'creation' && itemTargetId === null) {
       const genRule = boundary.identity?.creation?.generate;
-      if (genRule === '$uuidv7()') itemTargetId = nextUuidv7();
+      if (genRule) {
+        itemTargetId = resolveCreationTargetId({
+          generate: genRule,
+          payload: (item ?? {}) as JsonObject,
+          boundary: boundary.boundary,
+          cel: reqCel,
+          scriptRegistry: sys.dsl.scriptRegistry,
+          now: () => new Date().toISOString(),
+          logger: sys.logger,
+        });
+      }
     }
 
     const itemCommand: Command = {

@@ -1,0 +1,9 @@
+version: 3
+systemUnderTest:
+  service:
+    definitions:
+      - source: { fileSystem: { directory: ./openapi } }
+        specs:
+          - id: stripe-core
+            path: stripe-core.yaml
+            urlPathPrefix: /

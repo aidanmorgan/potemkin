@@ -38,6 +38,7 @@ import { extractFaultSignal } from '../engine/faultSim.js';
 import { matchRoute, resolveVersion } from '../contract/router.js';
 import { translateIntent } from '../engine/router.js';
 import { extractEntityKey } from '../engine/keyExtractor.js';
+import { resolveCreationTargetId } from '../engine/patternMatcher.js';
 import { executeUnitOfWork } from '../engine/uow.js';
 import { createSideEffectQueue } from '../engine/sideEffects.js';
 import { nextUuidv7 } from '../ids/uuidv7.js';
@@ -454,7 +455,17 @@ async function handleContractRequest(
         let itemTargetId: string | null = route.pathParams['id'] ?? null;
         if (bulkIntent === 'creation' && itemTargetId === null) {
           const genRule = bulkBoundary.identity?.creation?.generate;
-          if (genRule === '$uuidv7()') itemTargetId = nextUuidv7();
+          if (genRule) {
+            itemTargetId = resolveCreationTargetId({
+              generate: genRule,
+              payload: (item ?? {}) as JsonObject,
+              boundary: bulkBoundary.boundary,
+              cel: reqCel,
+              scriptRegistry: sys.dsl.scriptRegistry,
+              now: () => new Date().toISOString(),
+              logger: sys.logger,
+            });
+          }
         }
 
         const itemCommand: Command = {
@@ -571,8 +582,16 @@ async function handleContractRequest(
     });
     if (intent === 'creation' && targetId === null) {
       const genRule = boundary.identity?.creation?.generate;
-      if (genRule === '$uuidv7()') {
-        targetId = nextUuidv7();
+      if (genRule) {
+        targetId = resolveCreationTargetId({
+          generate: genRule,
+          payload: (req.body ?? {}) as JsonObject,
+          boundary: boundary.boundary,
+          cel: reqCel,
+          scriptRegistry: sys.dsl.scriptRegistry,
+          now: () => new Date().toISOString(),
+          logger: sys.logger,
+        });
       }
     }
 
