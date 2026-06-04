@@ -129,6 +129,13 @@ export interface LatencyConfig {
 export interface BoundaryConfig {
   readonly boundary: string;                          // logical namespace
   readonly contractPath: string;                      // OpenAPI route
+  /**
+   * Name of the `components.schemas.<name>` entry that defines this boundary's
+   * state shape. Decouples the state schema from the boundary NAME so multiple
+   * boundaries (collection, by-id, sub-actions) can share one schema — e.g. the
+   * real Stripe `customer` schema. Defaults to the boundary name when omitted.
+   */
+  readonly schema?: string;
   readonly fallbackOverride: boolean;
   readonly identity?: IdentityConfig;
   readonly queryMapping?: Record<string, string>;

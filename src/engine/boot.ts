@@ -274,7 +274,7 @@ function collectStateSurfaceNames(
   const rawDoc = openapi.raw as Record<string, unknown>;
   const components = rawDoc['components'] as Record<string, unknown> | undefined;
   const schemas = components?.['schemas'] as Record<string, unknown> | undefined;
-  let schema = schemas?.[boundary.boundary] as Record<string, unknown> | undefined;
+  let schema = schemas?.[boundary.schema ?? boundary.boundary] as Record<string, unknown> | undefined;
   // Follow one level of local $ref (sub-path boundaries mirror their parent).
   const ref = schema?.['$ref'];
   if (typeof ref === 'string') {
@@ -338,7 +338,7 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       // Lazy import to keep the loader's tinyglobby/fs deps off the cold path
       // when callers supply `compiledDsl` directly.
       const { loadPotemkinConfig } = await import('../dsl/configLoader.js');
-      loadedConfig = await loadPotemkinConfig(input.potemkinConfigPath);
+      loadedConfig = await loadPotemkinConfig(input.potemkinConfigPath, { openapi: input.openapi });
       const pathMod = await import('node:path');
       configDir = pathMod.dirname(pathMod.resolve(input.potemkinConfigPath));
       // The loader compiles the resolved DSL modules through the SAME

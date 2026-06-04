@@ -214,12 +214,15 @@ export function deriveSchemasFromOpenApi(
 
   for (const b of boundaries) {
     const boundaryName = b.boundary;
-    const rawSchema = schemas[boundaryName];
+    // The state schema may be named independently of the boundary (the `schema:`
+    // field) so multiple boundaries can share one schema (e.g. Stripe `customer`).
+    const schemaName = b.schema ?? boundaryName;
+    const rawSchema = schemas[schemaName];
     if (!rawSchema) {
       throw new BootError(
         'BOOT_ERR_SCHEMA_MISSING',
-        `OpenAPI components.schemas.${boundaryName} not found`,
-        { boundary: boundaryName },
+        `OpenAPI components.schemas.${schemaName} not found (boundary '${boundaryName}')`,
+        { boundary: boundaryName, schema: schemaName },
       );
     }
 

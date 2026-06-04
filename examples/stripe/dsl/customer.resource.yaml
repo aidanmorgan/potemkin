@@ -1,0 +1,82 @@
+# Customer — a single resource aggregate spanning the collection + by-id paths.
+# The engine expands this into the per-path boundaries (one schema, shared
+# events/reducers/identity), replacing the hand-written customer.yaml +
+# customer-by-id.yaml. Stripe ids are `cus_<token>`.
+resource: customer
+schema: customer
+
+identity:
+  creation:
+    generate: "ts:customerId"
+
+# Stripe-faithful response shaping (200-on-create, list envelope, deleted object).
+response: "ts:customerResponse"
+
+query_mapping:
+  email: "state.email == param"
+
+# A seeded customer so consumer tests can read a known, deterministic entity.
+initialization:
+  - id: "cus_seed000000000000000001"
+    object: "customer"
+    created: 1700000000
+    livemode: false
+    email: "seeded@example.com"
+    name: "Seeded Customer"
+    description: null
+    phone: null
+    balance: 0
+    currency: null
+    delinquent: false
+    metadata: {}
+
+event_catalog:
+  - type: CustomerCreated
+    payload_template:
+      id: "command.targetId"
+      object: "'customer'"
+      created: "ts:unixNow"
+      livemode: "false"
+      email: "has(command.payload.email) ? command.payload.email : null"
+      name: "has(command.payload.name) ? command.payload.name : null"
+      description: "has(command.payload.description) ? command.payload.description : null"
+      phone: "has(command.payload.phone) ? command.payload.phone : null"
+      balance: "has(command.payload.balance) ? command.payload.balance : 0"
+      currency: "null"
+      delinquent: "false"
+      metadata: "has(command.payload.metadata) ? command.payload.metadata : {}"
+  # Stripe update semantics: only supplied params change; the rest are preserved.
+  - type: CustomerUpdated
+    payload_template:
+      email: "has(command.payload.email) ? command.payload.email : state.email"
+      name: "has(command.payload.name) ? command.payload.name : state.name"
+      description: "has(command.payload.description) ? command.payload.description : state.description"
+      phone: "has(command.payload.phone) ? command.payload.phone : state.phone"
+      balance: "has(command.payload.balance) ? command.payload.balance : state.balance"
+      metadata: "has(command.payload.metadata) ? command.payload.metadata : state.metadata"
+  - type: CustomerDeleted
+    payload_template:
+      deletedAt: "ts:unixNow"
+
+reducers:
+  # The create event carries the full object, so replace state wholesale.
+  - on: CustomerCreated
+    replace_state: true
+  - on: CustomerUpdated
+    patches:
+      - { op: replace, path: /email, value: "${event.payload.email}" }
+      - { op: replace, path: /name, value: "${event.payload.name}" }
+      - { op: replace, path: /description, value: "${event.payload.description}" }
+      - { op: replace, path: /phone, value: "${event.payload.phone}" }
+      - { op: replace, path: /balance, value: "${event.payload.balance}" }
+      - { op: replace, path: /metadata, value: "${event.payload.metadata}" }
+  - on: CustomerDeleted
+    patches:
+      - { op: replace, path: /deleted, value: "${true}" }
+
+operations:
+  - { op: createCustomer, emit: CustomerCreated }
+  - { op: listCustomers, query: true }
+  - { op: getCustomer, query: true }
+  - { op: updateCustomer, emit: CustomerUpdated }
+  - { op: deleteCustomer, emit: CustomerDeleted }

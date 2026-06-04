@@ -1427,7 +1427,7 @@ const KNOWN_BOUNDARY_KEYS: ReadonlySet<string> = new Set([
   // not fire before assertNoInlineScripts can emit BOOT_ERR_REMOVED_SYNTAX.
   'scripts',
   'deprecated', 'hateoas', 'mask', 'state', 'strict_schema', 'latency',
-  'audit_fields', 'fault_rules', 'reactions', 'response',
+  'audit_fields', 'fault_rules', 'reactions', 'response', 'schema',
   // Cross-file composition keys (C1)
   'include',
   // Spec-endpoint cross-check keys consumed by configLoader (camelCase + snake_case).
@@ -1702,11 +1702,20 @@ export function validateBoundaryConfig(raw: unknown): BoundaryConfig {
 
   const include = validateIncludeEntries(raw['include'], 'root');
 
+  let schema: string | undefined;
+  if (raw['schema'] !== undefined && raw['schema'] !== null) {
+    if (typeof raw['schema'] !== 'string' || raw['schema'].length === 0) {
+      throw new BootError('BOOT_ERR_DSL_SYNTAX', `root: "schema" must be a non-empty string (a components.schemas name)`, { field: 'schema' });
+    }
+    schema = raw['schema'];
+  }
+
   crossValidate({ behaviors, reducers, eventCatalog, boundary });
 
   return {
     boundary,
     contractPath,
+    ...(schema !== undefined ? { schema } : {}),
     fallbackOverride,
     ...(identity !== undefined ? { identity } : {}),
     ...(queryMapping !== undefined ? { queryMapping } : {}),

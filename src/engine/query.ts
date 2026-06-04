@@ -423,7 +423,7 @@ function applyDerivedProperties(
   const raw = openapi.raw as Record<string, unknown>;
   const components = raw?.['components'] as Record<string, unknown> | undefined;
   const schemas = components?.['schemas'] as Record<string, unknown> | undefined;
-  const boundarySchema = schemas?.[boundary.boundary] as Record<string, unknown> | undefined;
+  const boundarySchema = schemas?.[boundary.schema ?? boundary.boundary] as Record<string, unknown> | undefined;
 
   if (!boundarySchema) {
     return entity;

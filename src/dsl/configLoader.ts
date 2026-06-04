@@ -12,6 +12,8 @@ import { glob } from 'tinyglobby';
 import { BootError } from '../errors.js';
 import { compileDsl } from './parser.js';
 import type { CompiledDsl } from './types.js';
+import type { OpenApiDoc } from '../contract/loader.js';
+import { expandResourceModules } from './resourceExpander.js';
 import {
   validatePotemkinConfig,
   type PotemkinConfig,
@@ -52,6 +54,12 @@ export interface LoadOptions {
   // When omitted, contract-path cross-check is skipped; standalone callers
   // must either supply this or mark every boundary outOfContract:true.
   readonly specEndpoints?: readonly SpecEndpoint[];
+  /**
+   * The OpenAPI contract, required to expand `resource:` files (each operation's
+   * contract path/method is resolved from it). A resource file without this
+   * fails boot with a clear error.
+   */
+  readonly openapi?: OpenApiDoc;
 }
 
 interface ResolvedModule {
@@ -104,6 +112,7 @@ export async function loadPotemkinConfig(
   const componentModules: ResolvedModule[] = [];
   const useMappingModules: ResolvedModule[] = [];
   const globalModules: ResolvedModule[] = [];
+  const resourceModules: ResolvedModule[] = [];
   for (const filePath of resolvedFiles) {
     let text: string;
     try {
@@ -136,6 +145,9 @@ export async function loadPotemkinConfig(
         componentModules.push({ path: filePath, text, parsed });
       } else if (rec['boundary'] !== undefined) {
         boundaryModules.push({ path: filePath, text, parsed });
+      } else if (rec['resource'] !== undefined) {
+        // Resource-aggregate file: expanded into per-path boundary modules below.
+        resourceModules.push({ path: filePath, text, parsed });
       } else if (rec['use'] !== undefined && Array.isArray(rec['use'])) {
         // Use-mapping file: only `use:` entries, no boundary, no kind.
         useMappingModules.push({ path: filePath, text, parsed });
@@ -143,6 +155,20 @@ export async function loadPotemkinConfig(
         globalModules.push({ path: filePath, text, parsed });
       }
     }
+  }
+
+  // Expand resource-aggregate files into ordinary boundary modules so they flow
+  // through the same validation + compilation path. Needs the OpenAPI to resolve
+  // each operation's contract path/method.
+  if (resourceModules.length > 0) {
+    if (!opts.openapi) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `resource: file(s) present but no OpenAPI was provided to resolve operations: ${resourceModules.map((m) => m.path).join(', ')}`,
+        { sources: resourceModules.map((m) => m.path) },
+      );
+    }
+    boundaryModules.push(...expandResourceModules(resourceModules, opts.openapi));
   }
 
   // Cross-check runs against raw fields before the compiler validates bodies,

@@ -297,9 +297,10 @@ function _projectEvent(input: ProjectionInput): ProjectionResult {
       buf['updatedBy'] = actorId ?? null;
     }
 
-    // Step 4: Integrity Validation
+    // Step 4: Integrity Validation. Validate against the boundary's declared state
+    // schema (which may differ from the boundary name when `schema:` is set).
     if (validator) {
-      validator.validateEntity(event.boundary, buf);
+      validator.validateEntity(boundary.schema ?? event.boundary, buf);
     }
 
     // Step 5: Atomic Swap
