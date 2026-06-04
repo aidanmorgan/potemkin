@@ -5,5 +5,10 @@
  * list against the fully-composed model.
  */
 import type { LintCheck } from '../types.js';
+import { coverageCheck } from './coverage.js';
+import { identityCheck } from './identity.js';
 
-export const ALL_CHECKS: readonly LintCheck[] = [];
+export const ALL_CHECKS: readonly LintCheck[] = [
+  identityCheck,
+  coverageCheck,
+];
