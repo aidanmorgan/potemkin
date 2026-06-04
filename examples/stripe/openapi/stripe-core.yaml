@@ -369,6 +369,11 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/payment_intent" }
+        "402":
+          description: The card was declined
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/error" }
   /v1/payment_intents/{id}/capture:
     post:
       operationId: capturePaymentIntent

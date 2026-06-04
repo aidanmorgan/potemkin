@@ -36,11 +36,13 @@ function stripeResponse(objectName: string, listUrl: string, ctx: ScriptContext)
   return {};
 }
 
-/** Current time as integer Unix seconds — the format of every Stripe `created`. */
+/** Current time as integer Unix seconds — the format of every Stripe `created`.
+ *  Uses the engine clock (ctx.helpers.now) so the admin clock and the
+ *  X-Potemkin-Clock-Offset control header shift `created` deterministically. */
 @Script('unixNow')
 export class UnixNow {
-  run(_ctx: ScriptContext): number {
-    return Math.floor(Date.now() / 1000);
+  run(ctx: ScriptContext): number {
+    return Math.floor(new Date(ctx.helpers.now()).getTime() / 1000);
   }
 }
 

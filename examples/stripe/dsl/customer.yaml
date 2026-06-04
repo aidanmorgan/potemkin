@@ -40,6 +40,23 @@ behaviors:
       condition: "true"
     emit: CustomerCreated
 
+# A seeded customer so consumer tests can start from a known, deterministic
+# state (read it back after a reset). Stripe ids are opaque, so a fixed cus_ id
+# is a valid stand-in for a pre-existing customer.
+initialization:
+  - id: "cus_seed000000000000000001"
+    object: "customer"
+    created: 1700000000
+    livemode: false
+    email: "seeded@example.com"
+    name: "Seeded Customer"
+    description: null
+    phone: null
+    balance: 0
+    currency: null
+    delinquent: false
+    metadata: {}
+
 reducers:
   - on: CustomerCreated
     patches:

@@ -1,0 +1,27 @@
+# Global configuration for the Stripe simulation.
+# (No `boundary:` key — this file contributes engine-wide settings.)
+
+# Stripe honours the Idempotency-Key header on POSTs so a retried create does not
+# duplicate the resource. Enabling it here lets a consumer prove its retry logic
+# is safe against the simulation.
+idempotency:
+  enabled: true
+  ttl_seconds: 86400
+  hash_includes_body: true
+
+# Fault injection: confirming a PaymentIntent with Stripe's decline test token
+# (pm_card_chargeDeclined) returns the faithful 402 card_error, so a consumer can
+# exercise its decline-handling path deterministically.
+fault_rules:
+  - name: card-declined
+    match:
+      boundary: PaymentIntentConfirm
+      condition: "has(command.payload.payment_method) && command.payload.payment_method == 'pm_card_chargeDeclined'"
+    response:
+      status: 402
+      body:
+        error:
+          type: "card_error"
+          code: "card_declined"
+          decline_code: "generic_decline"
+          message: "Your card was declined."
