@@ -75,4 +75,39 @@ describe('expandResourceModules', () => {
     const noSchema = { ...baseResource, schema: undefined };
     expect(() => expandResourceModules(resourceModule(noSchema), openapi)).toThrow(/schema/);
   });
+
+  it('rejects unknown resource keys (no silent drop)', () => {
+    expect(() => expandResourceModules(resourceModule({ ...baseResource, computd: [] }), openapi)).toThrow(/unknown resource key "computd"/);
+  });
+
+  it('rejects unknown operation keys', () => {
+    const bad = { ...baseResource, operations: [{ op: 'PostCustomers', emit: 'CustomerCreated', conditon: 'x' }] };
+    expect(() => expandResourceModules(resourceModule(bad), openapi)).toThrow(/unknown key "conditon"/);
+  });
+
+  it('carries per-operation guards (condition + requires) into the behavior', () => {
+    const guarded = {
+      ...baseResource,
+      operations: [
+        { op: 'PostCustomersCustomer', emit: 'CustomerUpdated', condition: "state.status == 'active'",
+          requires: [{ name: 'must-be-active', condition: "state.status == 'active'", error_code: 'INACTIVE' }] },
+        { op: 'GetCustomersCustomer', query: true },
+      ],
+    };
+    const out = expandResourceModules(resourceModule(guarded), openapi);
+    const byId = out.find((m) => (m.parsed as Record<string, unknown>)['contract_path'] === '/v1/customers/{customer}')!;
+    const behavior = ((byId.parsed as Record<string, unknown>)['behaviors'] as Record<string, unknown>[])[0];
+    const match = behavior['match'] as Record<string, unknown>;
+    expect(match['condition']).toBe("state.status == 'active'");
+    expect(match['requires']).toEqual([{ name: 'must-be-active', condition: "state.status == 'active'", error_code: 'INACTIVE' }]);
+  });
+
+  it('threads boundary-level config (mask) onto every generated boundary', () => {
+    const withMask = { ...baseResource, mask: ['email'] };
+    const out = expandResourceModules(resourceModule(withMask), openapi);
+    expect(out.length).toBeGreaterThan(0);
+    for (const m of out) {
+      expect((m.parsed as Record<string, unknown>)['mask']).toEqual(['email']);
+    }
+  });
 });

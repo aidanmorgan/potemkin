@@ -205,8 +205,9 @@ export function deriveFixtures(sys: BootedSystem): readonly FixtureStub[] {
         continue;
       }
 
-      // Apply derived properties to match what a live GET would return.
-      const entity = applyDerivedProperties(rawEntity, boundary.boundary, sys.openapi, sys);
+      // Apply derived properties to match what a live GET would return. Use the
+      // boundary's declared state schema (which may differ from the boundary name).
+      const entity = applyDerivedProperties(rawEntity, boundary.schema ?? boundary.boundary, sys.openapi, sys);
 
       const boundPath = getByIdTemplate.replace(`{${paramName}}`, aggregateId);
 

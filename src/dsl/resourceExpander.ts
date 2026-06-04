@@ -66,7 +66,26 @@ interface OperationEntry {
   readonly op: string;
   readonly emit?: string;
   readonly query?: boolean;
+  /** CEL gate for the synthesized behavior (defaults to "true"). */
+  readonly condition?: string;
+  /** Precondition guards for the behavior (state-machine transitions). */
+  readonly requires?: unknown;
+  /** Conditional multi-emit (passed through to the behavior). */
+  readonly emit_when?: unknown;
 }
+
+const KNOWN_OPERATION_KEYS = new Set(['op', 'emit', 'query', 'condition', 'requires', 'emit_when']);
+
+/** Top-level keys a `resource:` file may declare. Unknown keys fail fast (no silent drop). */
+const KNOWN_RESOURCE_KEYS = new Set([
+  'resource', 'schema', 'identity', 'response', 'query_mapping', 'event_catalog',
+  'reducers', 'reactions', 'initialization', 'operations',
+  // boundary-level config threaded onto every generated boundary:
+  'mask', 'audit_fields', 'hateoas', 'state', 'deprecated', 'latency', 'strict_schema', 'fault_rules',
+]);
+
+/** Boundary-level keys copied verbatim onto each generated boundary. */
+const THREADED_KEYS = ['mask', 'audit_fields', 'hateoas', 'state', 'deprecated', 'latency', 'strict_schema', 'fault_rules'] as const;
 
 function readOperations(raw: Record<string, unknown>, ctx: string): OperationEntry[] {
   const opsRaw = raw['operations'];
@@ -77,6 +96,11 @@ function readOperations(raw: Record<string, unknown>, ctx: string): OperationEnt
     if (!isRecord(entry) || typeof entry['op'] !== 'string') {
       throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.operations[${i}]: requires a string "op" (operationId)`, { context: ctx });
     }
+    for (const k of Object.keys(entry)) {
+      if (!KNOWN_OPERATION_KEYS.has(k)) {
+        throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.operations[${i}] (${entry['op']}): unknown key "${k}" — expected ${[...KNOWN_OPERATION_KEYS].join(', ')}`, { context: ctx });
+      }
+    }
     const query = entry['query'] === true;
     const emit = typeof entry['emit'] === 'string' ? entry['emit'] : undefined;
     if (!query && emit === undefined) {
@@ -85,7 +109,14 @@ function readOperations(raw: Record<string, unknown>, ctx: string): OperationEnt
     if (query && emit !== undefined) {
       throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.operations[${i}] (${entry['op'] as string}): a query operation must not declare "emit"`, { context: ctx });
     }
-    return { op: entry['op'], ...(emit !== undefined ? { emit } : {}), query };
+    return {
+      op: entry['op'],
+      ...(emit !== undefined ? { emit } : {}),
+      query,
+      ...(typeof entry['condition'] === 'string' ? { condition: entry['condition'] } : {}),
+      ...(entry['requires'] !== undefined ? { requires: entry['requires'] } : {}),
+      ...(entry['emit_when'] !== undefined ? { emit_when: entry['emit_when'] } : {}),
+    };
   });
 }
 
@@ -103,6 +134,12 @@ function expandOne(raw: Record<string, unknown>, sourcePath: string, opIndex: Ma
   if (!Array.isArray(raw['event_catalog']) || !Array.isArray(raw['reducers'])) {
     throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}: "event_catalog" and "reducers" arrays are required`, { context: ctx });
   }
+  // Fail fast on unknown top-level keys so nothing is silently dropped.
+  for (const k of Object.keys(raw)) {
+    if (!KNOWN_RESOURCE_KEYS.has(k)) {
+      throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}: unknown resource key "${k}" — supported: ${[...KNOWN_RESOURCE_KEYS].sort().join(', ')}`, { context: ctx, key: k });
+    }
+  }
 
   const identity = isRecord(raw['identity']) ? raw['identity'] : undefined;
   const operations = readOperations(raw, ctx);
@@ -119,6 +156,7 @@ function expandOne(raw: Record<string, unknown>, sourcePath: string, opIndex: Ma
     byPath.set(resolved.path, arr);
   }
 
+  const hasCollectionPath = [...byPath.keys()].some((p) => !hasPathParam(p));
   const out: ResolvedModule[] = [];
   let attachedReactions = false;
   let attachedInit = false;
@@ -137,6 +175,10 @@ function expandOne(raw: Record<string, unknown>, sourcePath: string, opIndex: Ma
     };
     if (typeof raw['response'] === 'string') record['response'] = raw['response'];
     if (isRecord(raw['query_mapping'])) record['query_mapping'] = raw['query_mapping'];
+    // Boundary-level config declared on the resource applies to every generated boundary.
+    for (const k of THREADED_KEYS) {
+      if (raw[k] !== undefined) record[k] = raw[k];
+    }
 
     // Identity: collection paths create (generator); param paths key off the path.
     if (isCollection) {
@@ -145,19 +187,29 @@ function expandOne(raw: Record<string, unknown>, sourcePath: string, opIndex: Ma
       record['identity'] = { key: { from: 'path', name: lastPathParam(path) } };
     }
 
-    // Seed entities ride on the collection boundary (which owns creation).
-    if (!attachedInit && isCollection && Array.isArray(raw['initialization']) && raw['initialization'].length > 0) {
+    // Seed entities ride on the collection boundary (which owns creation); if the
+    // resource has no collection path (e.g. reaction-materialized), the first
+    // generated boundary carries them so seeds are never silently dropped.
+    if (!attachedInit && Array.isArray(raw['initialization']) && raw['initialization'].length > 0 && (isCollection || (!hasCollectionPath && out.length === 0))) {
       record['initialization'] = raw['initialization'];
       attachedInit = true;
     }
 
-    // One behavior per non-query operation.
+    // One behavior per non-query operation, carrying any per-operation guard
+    // (condition / requires / emit_when) so guarded state-machine transitions
+    // (e.g. confirm only when requires_confirmation) are expressible.
     const behaviors = ops
       .filter((o) => !o.query)
       .map((o) => ({
         name: o.op,
-        match: { operationId: o.op, method: o.method, condition: 'true' },
+        match: {
+          operationId: o.op,
+          method: o.method,
+          condition: o.condition ?? 'true',
+          ...(o.requires !== undefined ? { requires: o.requires } : {}),
+        },
         emit: o.emit,
+        ...(o.emit_when !== undefined ? { emit_when: o.emit_when } : {}),
       }));
     if (behaviors.length > 0) record['behaviors'] = behaviors;
 

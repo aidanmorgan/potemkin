@@ -6,7 +6,7 @@
 import type { LintCheck, LintContext, LintFinding } from '../types.js';
 import { lintWarning } from '../types.js';
 
-const HTTP_METHODS = ['get', 'put', 'post', 'delete', 'patch'] as const;
+const HTTP_METHODS = ['get', 'put', 'post', 'delete', 'patch', 'options', 'head'] as const;
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
