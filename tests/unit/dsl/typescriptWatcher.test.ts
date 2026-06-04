@@ -226,8 +226,8 @@ describe('typescriptWatcher — in-flight guard (no concurrent rescans)', () => 
 // These tests exercise the mutable holder directly (no real chokidar watcher
 // needed).  The mechanism used in boot.ts is:
 //
-//   1. createTsScriptRegistry(inlineRegistry, initialScripts) returns a holder
-//      that implements ScriptRegistry and is placed into dsl.scriptRegistry.
+//   1. createTsScriptRegistry(initialScripts) returns a holder that implements
+//      ScriptRegistry and is placed into dsl.scriptRegistry.
 //   2. The onSwap callback calls tsScriptRegistry.swap(result.scripts).
 //   3. Every subsequent call to dsl.scriptRegistry.get(boundary, name) resolves
 //      against the NEW @Script functions because the holder's `current` pointer
@@ -243,7 +243,7 @@ describe('TsScriptRegistry — swap updates get() to the new @Script function', 
 
   it('get() returns the initial function before any swap', () => {
     const initial = makeScript('computeScore', 42);
-    const reg = createTsScriptRegistry(undefined, [initial]);
+    const reg = createTsScriptRegistry([initial]);
 
     const handle = reg.get('Lead', 'computeScore');
     expect(handle).toBeDefined();
@@ -252,7 +252,7 @@ describe('TsScriptRegistry — swap updates get() to the new @Script function', 
 
   it('get() returns the NEW function immediately after swap()', () => {
     const initial = makeScript('computeScore', 42);
-    const reg = createTsScriptRegistry(undefined, [initial]);
+    const reg = createTsScriptRegistry([initial]);
 
     const updated = makeScript('computeScore', 99);
     reg.swap([updated]);
@@ -264,7 +264,7 @@ describe('TsScriptRegistry — swap updates get() to the new @Script function', 
 
   it('get() returns undefined for an id removed from the snapshot after swap()', () => {
     const initial = makeScript('computeScore', 42);
-    const reg = createTsScriptRegistry(undefined, [initial]);
+    const reg = createTsScriptRegistry([initial]);
 
     reg.swap([]); // empty snapshot — script no longer present
 
@@ -272,29 +272,20 @@ describe('TsScriptRegistry — swap updates get() to the new @Script function', 
   });
 
   it('size() reflects the number of scripts after swap()', () => {
-    const reg = createTsScriptRegistry(undefined, [makeScript('s1', 1), makeScript('s2', 2)]);
+    const reg = createTsScriptRegistry([makeScript('s1', 1), makeScript('s2', 2)]);
     expect(reg.size()).toBe(2);
 
     reg.swap([makeScript('s1', 10), makeScript('s2', 20), makeScript('s3', 30)]);
     expect(reg.size()).toBe(3);
   });
 
-  it('inline registry entries are preserved across swap()', () => {
-    const inlineHandle = { name: 'legacyScript', boundary: 'Orders', source: 'inline', fn: () => 'legacy' };
-    const inlineRegistry = {
-      get: (b: string, n: string) => (b === 'Orders' && n === 'legacyScript' ? inlineHandle : undefined),
-      has: (b: string, n: string) => b === 'Orders' && n === 'legacyScript',
-      size: () => 1,
-    };
-
-    const reg = createTsScriptRegistry(inlineRegistry, [makeScript('scannedFn', 'original')]);
+  it('an id present before swap but absent after resolves to the new snapshot only', () => {
+    const reg = createTsScriptRegistry([makeScript('scannedFn', 'original'), makeScript('dropped', 'gone')]);
 
     reg.swap([makeScript('scannedFn', 'updated')]);
 
-    // Scanned script updated.
     expect(reg.get('Lead', 'scannedFn')!.fn({} as never)).toBe('updated');
-    // Inline script still resolvable.
-    expect(reg.get('Orders', 'legacyScript')).toBe(inlineHandle);
+    expect(reg.get('Lead', 'dropped')).toBeUndefined();
   });
 });
 

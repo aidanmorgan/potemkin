@@ -13,27 +13,19 @@ import type { RegisteredScript } from '../sdk/index.js';
 import { buildCompositeScriptRegistry } from '../scripts/registry.js';
 
 export interface TsScriptRegistry extends ScriptRegistry {
-  /**
-   * Atomically replace the scanned-script snapshot.  The inline registry (from
-   * YAML scripts[].code, kept for legacy unit tests) is fixed at construction
-   * time and is never replaced.
-   */
+  /** Atomically replace the scanned-script snapshot on hot-reload. */
   swap(scripts: readonly RegisteredScript[]): void;
 }
 
 /**
- * Create a TsScriptRegistry backed by an initial composite registry.
+ * Create a TsScriptRegistry backed by an initial scanned-script registry.
  *
- * `inlineRegistry`   — the pre-boot inline ScriptRegistry (may be undefined
- *                       when no YAML scripts[].code entries exist, which is the
- *                       post-B3 production case).
  * `initialScripts`   — the @Script entries discovered by the initial scan.
  */
 export function createTsScriptRegistry(
-  inlineRegistry: ScriptRegistry | undefined,
   initialScripts: readonly RegisteredScript[],
 ): TsScriptRegistry {
-  let current: ScriptRegistry = buildCompositeScriptRegistry(inlineRegistry, initialScripts);
+  let current: ScriptRegistry = buildCompositeScriptRegistry(initialScripts);
 
   return {
     get(boundary: string, name: string) {
@@ -47,8 +39,8 @@ export function createTsScriptRegistry(
     },
     swap(scripts: readonly RegisteredScript[]) {
       // Build the replacement fully before swapping so concurrent reads see
-      // either the old or the new composite registry, never a partial state.
-      current = buildCompositeScriptRegistry(inlineRegistry, scripts);
+      // either the old or the new registry, never a partial state.
+      current = buildCompositeScriptRegistry(scripts);
     },
   };
 }

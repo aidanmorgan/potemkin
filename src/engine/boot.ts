@@ -411,25 +411,22 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       validateBoundaryTsRefs(boundary, scannedScriptIds);
     }
 
-    // ── Step 2b-iii: Build composite script registry ──────────────────────────
+    // ── Step 2b-iii: Build the scanned-script registry ────────────────────────
     // Scanned @Script functions execute as direct host calls (no sandbox).
-    // After B3 the inline scripts[].code form is removed; dsl.scriptRegistry
-    // will always be undefined here, but buildCompositeScriptRegistry handles
-    // undefined gracefully so the branch is retained for scanned-only usage.
     //
-    // When watch mode is active the composite registry is wrapped in a
-    // TsScriptRegistry mutable holder (same pattern as TsReducerRegistry) so
-    // the onSwap callback below can rebuild it from the new @Script snapshot
-    // without touching any UoW call site.  The holder itself is placed into
-    // dsl.scriptRegistry, so all existing reads of input.dsl.scriptRegistry
-    // automatically see the latest functions after each hot reload.
+    // When watch mode is active the registry is wrapped in a TsScriptRegistry
+    // mutable holder (same pattern as TsReducerRegistry) so the onSwap callback
+    // below can rebuild it from the new @Script snapshot without touching any
+    // UoW call site.  The holder is placed into dsl.scriptRegistry, so all
+    // reads of input.dsl.scriptRegistry automatically see the latest functions
+    // after each hot reload.
     let tsScriptRegistry: ReturnType<typeof createTsScriptRegistry> | undefined;
-    if (scannedScripts.length > 0 || dsl.scriptRegistry) {
+    if (scannedScripts.length > 0) {
       if (tsConfig?.watch === true) {
-        tsScriptRegistry = createTsScriptRegistry(dsl.scriptRegistry, scannedScripts);
+        tsScriptRegistry = createTsScriptRegistry(scannedScripts);
         dsl = { ...dsl, scriptRegistry: tsScriptRegistry };
       } else {
-        const compositeRegistry = buildCompositeScriptRegistry(dsl.scriptRegistry, scannedScripts);
+        const compositeRegistry = buildCompositeScriptRegistry(scannedScripts);
         dsl = { ...dsl, scriptRegistry: compositeRegistry };
       }
     }
