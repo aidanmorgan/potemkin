@@ -317,7 +317,7 @@ event_catalog: []
 });
 
 describe('Reducer assign:/append: rejection (REQ-PATCH-003)', () => {
-  it('throws BOOT_ERR_REMOVED_SYNTAX when a reducer uses assign:', async () => {
+  it('throws BOOT_ERR_DSL_SYNTAX when a reducer uses assign:', async () => {
     const root = await makeTmpFixture({
       'specmatic.yaml': MINIMAL_SPECMATIC,
       'potemkin.yaml': `
@@ -339,11 +339,11 @@ reducers:
     });
     await expectBootCode(
       () => loadPotemkinConfig(path.join(root, 'potemkin.yaml')),
-      'BOOT_ERR_REMOVED_SYNTAX',
+      'BOOT_ERR_DSL_SYNTAX',
     );
   });
 
-  it('throws BOOT_ERR_REMOVED_SYNTAX when a reducer uses append:', async () => {
+  it('throws BOOT_ERR_DSL_SYNTAX when a reducer uses append:', async () => {
     const root = await makeTmpFixture({
       'specmatic.yaml': MINIMAL_SPECMATIC,
       'potemkin.yaml': `
@@ -365,7 +365,7 @@ reducers:
     });
     await expectBootCode(
       () => loadPotemkinConfig(path.join(root, 'potemkin.yaml')),
-      'BOOT_ERR_REMOVED_SYNTAX',
+      'BOOT_ERR_DSL_SYNTAX',
     );
   });
 });

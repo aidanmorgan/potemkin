@@ -215,7 +215,7 @@ describe('dsl/schema', () => {
       });
     });
 
-    it('rejects removed reducer key assign with BOOT_ERR_REMOVED_SYNTAX', () => {
+    it('rejects removed reducer key assign with BOOT_ERR_DSL_SYNTAX', () => {
       const raw = {
         boundary: 'B',
         contract_path: '/b',
@@ -227,11 +227,11 @@ describe('dsl/schema', () => {
       try {
         validateBoundaryConfig(raw);
       } catch (e) {
-        expect((e as BootError).code).toBe('BOOT_ERR_REMOVED_SYNTAX');
+        expect((e as BootError).code).toBe('BOOT_ERR_DSL_SYNTAX');
       }
     });
 
-    it('rejects removed reducer key append with BOOT_ERR_REMOVED_SYNTAX', () => {
+    it('rejects removed reducer key append with BOOT_ERR_DSL_SYNTAX', () => {
       const raw = {
         boundary: 'B',
         contract_path: '/b',
@@ -243,7 +243,7 @@ describe('dsl/schema', () => {
       try {
         validateBoundaryConfig(raw);
       } catch (e) {
-        expect((e as BootError).code).toBe('BOOT_ERR_REMOVED_SYNTAX');
+        expect((e as BootError).code).toBe('BOOT_ERR_DSL_SYNTAX');
       }
     });
 

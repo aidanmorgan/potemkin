@@ -4,7 +4,7 @@
  * Validates that:
  * - Derived projection state is updated after domain events (patches form)
  * - GET /_admin/derived/:name returns the current state
- * - assign/append legacy form is rejected at boot (BOOT_ERR_REMOVED_SYNTAX)
+ * - assign/append legacy form is rejected at boot (BOOT_ERR_DSL_SYNTAX)
  */
 import { compileDsl } from '../../../src/dsl/parser.js';
 import {
@@ -84,7 +84,7 @@ derived_projections:
     expect(dsl.derivedProjections![0].reduce[0].patches![0].op).toBe('add');
   });
 
-  it('rejects derived_projections with legacy assign form (BOOT_ERR_REMOVED_SYNTAX)', async () => {
+  it('rejects derived_projections with legacy assign form (BOOT_ERR_DSL_SYNTAX)', async () => {
     const GLOBAL_YAML_ASSIGN = `
 derived_projections:
   - name: LegacyProj
@@ -100,7 +100,7 @@ derived_projections:
     try {
       await compileDsl([], GLOBAL_YAML_ASSIGN);
     } catch (err) {
-      expect((err as BootError).code).toBe('BOOT_ERR_REMOVED_SYNTAX');
+      expect((err as BootError).code).toBe('BOOT_ERR_DSL_SYNTAX');
     }
   });
 });

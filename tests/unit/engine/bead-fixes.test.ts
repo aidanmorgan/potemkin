@@ -214,21 +214,21 @@ describe('nm9n: derived-projection reduce[] rejects assign/append', () => {
     ],
   };
 
-  it('throws BOOT_ERR_REMOVED_SYNTAX for assign in reduce entry', () => {
+  it('throws BOOT_ERR_DSL_SYNTAX for assign in reduce entry', () => {
     expect(() => validateGlobalConfig(globalWithAssign)).toThrow(BootError);
     try {
       validateGlobalConfig(globalWithAssign);
     } catch (err) {
-      expect((err as BootError).code).toBe('BOOT_ERR_REMOVED_SYNTAX');
+      expect((err as BootError).code).toBe('BOOT_ERR_DSL_SYNTAX');
     }
   });
 
-  it('throws BOOT_ERR_REMOVED_SYNTAX for append in reduce entry', () => {
+  it('throws BOOT_ERR_DSL_SYNTAX for append in reduce entry', () => {
     expect(() => validateGlobalConfig(globalWithAppend)).toThrow(BootError);
     try {
       validateGlobalConfig(globalWithAppend);
     } catch (err) {
-      expect((err as BootError).code).toBe('BOOT_ERR_REMOVED_SYNTAX');
+      expect((err as BootError).code).toBe('BOOT_ERR_DSL_SYNTAX');
     }
   });
 

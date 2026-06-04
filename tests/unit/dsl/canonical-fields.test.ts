@@ -3,7 +3,7 @@
  *
  * Verifies that:
  *  1. scripts: is removed — any boundary YAML containing scripts: halts boot with
- *     BOOT_ERR_REMOVED_SYNTAX (both code: and source: forms were removed together).
+ *     BOOT_ERR_DSL_SYNTAX (both code: and source: forms were removed together).
  *  2. requires[] accepts only the canonical "condition" field (the legacy
  *     "expression" alias was removed).
  *  3. postcondition accepts only the canonical plain CEL string (the legacy
@@ -23,13 +23,13 @@ function makeBase() {
 }
 
 // ---------------------------------------------------------------------------
-// 1. scripts: key is removed — all forms throw BOOT_ERR_REMOVED_SYNTAX
+// 1. scripts: key is removed — all forms throw BOOT_ERR_DSL_SYNTAX
 // ---------------------------------------------------------------------------
 
 describe('DSL removed syntax: scripts: key (B3)', () => {
   const scriptBody = 'export default function(ctx) { return ctx.state.x; }';
 
-  it('throws BOOT_ERR_REMOVED_SYNTAX when scripts: block is present with code:', () => {
+  it('throws BOOT_ERR_DSL_SYNTAX when scripts: block is present with code:', () => {
     let caught: BootError | undefined;
     try {
       validateBoundaryConfig({
@@ -41,11 +41,11 @@ describe('DSL removed syntax: scripts: key (B3)', () => {
       caught = e as BootError;
     }
     expect(caught).toBeInstanceOf(BootError);
-    expect(caught!.code).toBe('BOOT_ERR_REMOVED_SYNTAX');
-    expect(caught!.message).toContain('@Script');
+    expect(caught!.code).toBe('BOOT_ERR_DSL_SYNTAX');
+    expect(caught!.message).toContain('Unknown boundary key "scripts"');
   });
 
-  it('throws BOOT_ERR_REMOVED_SYNTAX when scripts: block is present with source:', () => {
+  it('throws BOOT_ERR_DSL_SYNTAX when scripts: block is present with source:', () => {
     let caught: BootError | undefined;
     try {
       validateBoundaryConfig({
@@ -57,11 +57,11 @@ describe('DSL removed syntax: scripts: key (B3)', () => {
       caught = e as BootError;
     }
     expect(caught).toBeInstanceOf(BootError);
-    expect(caught!.code).toBe('BOOT_ERR_REMOVED_SYNTAX');
-    expect(caught!.message).toContain('ts:<id>');
+    expect(caught!.code).toBe('BOOT_ERR_DSL_SYNTAX');
+    expect(caught!.message).toContain('Unknown boundary key "scripts"');
   });
 
-  it('throws BOOT_ERR_REMOVED_SYNTAX when scripts: block is present with no code field', () => {
+  it('throws BOOT_ERR_DSL_SYNTAX when scripts: block is present with no code field', () => {
     let caught: BootError | undefined;
     try {
       validateBoundaryConfig({
@@ -73,7 +73,7 @@ describe('DSL removed syntax: scripts: key (B3)', () => {
       caught = e as BootError;
     }
     expect(caught).toBeInstanceOf(BootError);
-    expect(caught!.code).toBe('BOOT_ERR_REMOVED_SYNTAX');
+    expect(caught!.code).toBe('BOOT_ERR_DSL_SYNTAX');
   });
 });
 

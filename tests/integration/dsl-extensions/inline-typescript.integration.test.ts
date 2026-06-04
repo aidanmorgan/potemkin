@@ -9,7 +9,7 @@
  * Tests that exercised sandbox isolation (throws, timeout, fs/process blocked)
  * are covered by unit tests for sandbox/transpile. Those cases are replaced
  * here with removed-syntax assertions — verifying that a boundary YAML
- * containing `scripts:` or `code:` halts boot with BOOT_ERR_REMOVED_SYNTAX.
+ * containing `scripts:` or `code:` halts boot with BOOT_ERR_DSL_SYNTAX.
  *
  * Covered:
  *   A  ts: boolean in match.condition (scanned @Script)
@@ -230,14 +230,14 @@ reducers:
 });
 
 // ---------------------------------------------------------------------------
-// Tests D, E, F, G: inline scripts: form is removed — BOOT_ERR_REMOVED_SYNTAX
+// Tests D, E, F, G: inline scripts: form is removed — BOOT_ERR_DSL_SYNTAX
 //
 // Sandbox behavior (throws, timeout, fs/process blocking) is tested in
 // tests/unit/scripts/sandbox.test.ts — retained unchanged.
 // ---------------------------------------------------------------------------
 
-describe('inline scripts: is removed — BOOT_ERR_REMOVED_SYNTAX (B3)', () => {
-  it('halts boot with BOOT_ERR_REMOVED_SYNTAX when scripts: block is present (D: throws case)', async () => {
+describe('inline scripts: is removed — BOOT_ERR_DSL_SYNTAX (B3)', () => {
+  it('halts boot with BOOT_ERR_DSL_SYNTAX when scripts: block is present (D: throws case)', async () => {
     const bootError = await expectBootError({
       boundaryName: 'Widget',
       contractPath: '/widgets/{id}',
@@ -271,11 +271,11 @@ reducers:
 `,
     });
     expect(bootError).toBeInstanceOf(BootError);
-    expect(bootError.code).toBe('BOOT_ERR_REMOVED_SYNTAX');
-    expect(bootError.message).toContain('@Script');
+    expect(bootError.code).toBe('BOOT_ERR_DSL_SYNTAX');
+    expect(bootError.message).toContain('Unknown boundary key "scripts"');
   });
 
-  it('halts boot with BOOT_ERR_REMOVED_SYNTAX when scripts: block is present (E: timeout case)', async () => {
+  it('halts boot with BOOT_ERR_DSL_SYNTAX when scripts: block is present (E: timeout case)', async () => {
     const bootError = await expectBootError({
       boundaryName: 'Widget',
       contractPath: '/widgets/{id}',
@@ -309,11 +309,11 @@ reducers:
 `,
     });
     expect(bootError).toBeInstanceOf(BootError);
-    expect(bootError.code).toBe('BOOT_ERR_REMOVED_SYNTAX');
-    expect(bootError.message).toContain('ts:<id>');
+    expect(bootError.code).toBe('BOOT_ERR_DSL_SYNTAX');
+    expect(bootError.message).toContain('Unknown boundary key "scripts"');
   });
 
-  it('halts boot with BOOT_ERR_REMOVED_SYNTAX when scripts: block is present (F: sandbox case)', async () => {
+  it('halts boot with BOOT_ERR_DSL_SYNTAX when scripts: block is present (F: sandbox case)', async () => {
     const bootError = await expectBootError({
       boundaryName: 'Widget',
       contractPath: '/widgets/{id}',
@@ -351,10 +351,10 @@ reducers:
 `,
     });
     expect(bootError).toBeInstanceOf(BootError);
-    expect(bootError.code).toBe('BOOT_ERR_REMOVED_SYNTAX');
+    expect(bootError.code).toBe('BOOT_ERR_DSL_SYNTAX');
   });
 
-  it('halts boot with BOOT_ERR_REMOVED_SYNTAX when scripts: block is present (G: syntax-error case)', async () => {
+  it('halts boot with BOOT_ERR_DSL_SYNTAX when scripts: block is present (G: syntax-error case)', async () => {
     const bootError = await expectBootError({
       boundaryName: 'Widget',
       contractPath: '/widgets/{id}',
@@ -387,7 +387,7 @@ reducers:
 `,
     });
     expect(bootError).toBeInstanceOf(BootError);
-    expect(bootError.code).toBe('BOOT_ERR_REMOVED_SYNTAX');
+    expect(bootError.code).toBe('BOOT_ERR_DSL_SYNTAX');
   });
 });
 

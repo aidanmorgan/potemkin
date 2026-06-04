@@ -70,7 +70,7 @@ describe('dsl/schema — additional branch coverage', () => {
   // ── requireStringMixedMap ───────────────────────────────────────────────────
 
   describe('reducer patch validation', () => {
-    it('rejects the removed append key with BOOT_ERR_REMOVED_SYNTAX', () => {
+    it('rejects the removed append key with BOOT_ERR_DSL_SYNTAX', () => {
       const raw = {
         ...minimalBase,
         behaviors: [],
@@ -81,7 +81,7 @@ describe('dsl/schema — additional branch coverage', () => {
       try {
         validateBoundaryConfig(raw);
       } catch (e) {
-        expect((e as BootError).code).toBe('BOOT_ERR_REMOVED_SYNTAX');
+        expect((e as BootError).code).toBe('BOOT_ERR_DSL_SYNTAX');
       }
     });
 

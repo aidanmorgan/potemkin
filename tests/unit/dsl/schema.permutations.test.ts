@@ -173,7 +173,7 @@ describe('dsl/schema — permutations', () => {
     });
 
     it.each(['creation', 'mutation', 'query', 'invalid'])(
-      'throws BOOT_ERR_REMOVED_SYNTAX when behavior declares removed match.intent "%s"',
+      'throws BOOT_ERR_DSL_SYNTAX when behavior declares removed match.intent "%s"',
       (intent) => {
         expect(() =>
           validateBoundaryConfig(minimalValid({
@@ -367,7 +367,7 @@ describe('dsl/schema — permutations', () => {
       expect(result.reducers[0]?.patches?.[0]).toEqual({ op: 'replace', path: '/status', value: '${event.payload.status}' });
     });
 
-    it('rejects reducer with removed assign key (BOOT_ERR_REMOVED_SYNTAX)', () => {
+    it('rejects reducer with removed assign key (BOOT_ERR_DSL_SYNTAX)', () => {
       let caught: BootError | undefined;
       try {
         validateBoundaryConfig({
@@ -381,7 +381,7 @@ describe('dsl/schema — permutations', () => {
         caught = e as BootError;
       }
       expect(caught).toBeInstanceOf(BootError);
-      expect(caught?.code).toBe('BOOT_ERR_REMOVED_SYNTAX');
+      expect(caught?.code).toBe('BOOT_ERR_DSL_SYNTAX');
     });
 
     it('throws when a patch op is invalid', () => {
@@ -419,7 +419,7 @@ describe('dsl/schema — permutations', () => {
       expect(result.reducers[0]?.patches?.[0]).toEqual({ op: 'append', path: '/items', value: '${event.payload.item}' });
     });
 
-    it('rejects reducer with removed append key (BOOT_ERR_REMOVED_SYNTAX)', () => {
+    it('rejects reducer with removed append key (BOOT_ERR_DSL_SYNTAX)', () => {
       let caught: BootError | undefined;
       try {
         validateBoundaryConfig({
@@ -433,7 +433,7 @@ describe('dsl/schema — permutations', () => {
         caught = e as BootError;
       }
       expect(caught).toBeInstanceOf(BootError);
-      expect(caught?.code).toBe('BOOT_ERR_REMOVED_SYNTAX');
+      expect(caught?.code).toBe('BOOT_ERR_DSL_SYNTAX');
     });
 
     it('throws when a patch entry is not an object', () => {

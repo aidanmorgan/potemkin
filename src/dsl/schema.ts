@@ -1,5 +1,4 @@
 import { BootError } from '../errors.js';
-import { assertNoRemovedReducerKeys, assertNoInlineScripts } from './removedSyntax.js';
 import { firstBareCelReference } from './celInterpolation.js';
 import { parsePointer } from './patches.js';
 import { lexTemplate } from '../cel/grammar/templateLexer.js';
@@ -304,6 +303,11 @@ function validateSecondaryCommandSpec(raw: unknown, ctx: string): SecondaryComma
   };
 }
 
+/** Keys allowed inside a behavior `match:` block. */
+const KNOWN_BEHAVIOR_MATCH_KEYS: ReadonlySet<string> = new Set([
+  'operationId', 'condition', 'method', 'headers', 'requires', 'required_scopes',
+]);
+
 function validateBehaviorRule(raw: unknown, index: number): BehaviorRule {
   const ctx = `behaviors[${index}]`;
   if (!isRecord(raw)) {
@@ -318,13 +322,16 @@ function validateBehaviorRule(raw: unknown, index: number): BehaviorRule {
       { field: 'match', context: ctx },
     );
   }
-  // `intent` was removed from behavior match in favour of operationId.
-  if (matchRaw['intent'] !== undefined) {
-    throw new BootError(
-      'BOOT_ERR_REMOVED_SYNTAX',
-      `${ctx}.match.intent is no longer supported — use match.operationId (the OpenAPI operationId this behavior handles)`,
-      { field: 'match.intent', context: ctx },
-    );
+  // Fail-fast on unknown match keys so typos (and dropped syntax like the former
+  // `intent`) are rejected at boot rather than silently ignored.
+  for (const key of Object.keys(matchRaw)) {
+    if (!KNOWN_BEHAVIOR_MATCH_KEYS.has(key)) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `${ctx}.match: unknown key "${key}" — supported keys: ${[...KNOWN_BEHAVIOR_MATCH_KEYS].sort().join(', ')}`,
+        { field: `match.${key}`, context: ctx },
+      );
+    }
   }
   if (matchRaw['operationId'] === undefined) {
     throw new BootError(
@@ -526,16 +533,29 @@ function validateBehaviorRule(raw: unknown, index: number): BehaviorRule {
   };
 }
 
+/** Keys allowed in a reducer rule (boundary + component reducers). */
+const KNOWN_REDUCER_KEYS: ReadonlySet<string> = new Set([
+  'on', 'patches', 'replace_state', 'implementation',
+]);
+
 function validateReducerRule(raw: unknown, index: number): ReducerRule {
   const ctx = `reducers[${index}]`;
   if (!isRecord(raw)) {
     throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}: must be an object`, { context: ctx });
   }
+  // Reducers express state mutation exclusively via `patches:`. Fail-fast on
+  // unknown keys so typos and dropped map-forms (assign/append/assignAll) are
+  // rejected at boot rather than silently ignored.
+  for (const key of Object.keys(raw)) {
+    if (!KNOWN_REDUCER_KEYS.has(key)) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `${ctx}: unknown key "${key}" — supported keys: ${[...KNOWN_REDUCER_KEYS].sort().join(', ')}`,
+        { key, context: ctx },
+      );
+    }
+  }
   const on = requireString(raw, 'on', ctx);
-
-  // Reducers express state mutation exclusively via `patches:`.
-  // Legacy assign:/append:/assignAll: keys are rejected at boot.
-  assertNoRemovedReducerKeys(raw, ctx);
 
   const patches = optionalPatchList(raw, ctx);
 
@@ -1409,9 +1429,6 @@ export function validateUseMappingConfig(raw: unknown): readonly UseEntry[] {
 const KNOWN_BOUNDARY_KEYS: ReadonlySet<string> = new Set([
   'boundary', 'contract_path', 'fallback_override', 'identity', 'query_mapping',
   'behaviors', 'reducers', 'event_catalog', 'initialization',
-  // 'scripts' is retained in the allowed-key set so the unknown-key guard does
-  // not fire before assertNoInlineScripts can emit BOOT_ERR_REMOVED_SYNTAX.
-  'scripts',
   'deprecated', 'hateoas', 'mask', 'state', 'strict_schema', 'latency',
   'audit_fields', 'fault_rules', 'reactions', 'response', 'schema',
   // Cross-file composition keys (C1)
@@ -1616,9 +1633,6 @@ export function validateBoundaryConfig(raw: unknown): BoundaryConfig {
   if (raw['initialization'] !== undefined && raw['initialization'] !== null) {
     initialization = validateInitialization(raw['initialization'], 'root');
   }
-
-  // Inline scripts are removed — halt boot immediately if the key is present.
-  assertNoInlineScripts(raw, 'root');
 
   const deprecated = validateDeprecationConfig(raw['deprecated'], 'root');
   const hateoas = validateHateoasEntries(raw['hateoas'], 'root');
@@ -1993,9 +2007,17 @@ function validateDerivedProjectionReduceEntry(raw: unknown, idx: number): Derive
   if (!isRecord(raw)) {
     throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}: must be an object`, { context: ctx });
   }
-  // The legacy assign:/append: reducer map form was removed. Reject it here so
-  // derived-projection reduce entries are consistent with boundary reducers.
-  assertNoRemovedReducerKeys(raw, ctx);
+  // Fail-fast on unknown keys, consistent with boundary reducers — derived
+  // reduce entries support only on + patches.
+  for (const key of Object.keys(raw)) {
+    if (key !== 'on' && key !== 'patches') {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `${ctx}: unknown key "${key}" — supported keys: on, patches`,
+        { key, context: ctx },
+      );
+    }
+  }
   const on = requireString(raw, 'on', ctx);
   const patches = optionalPatchList(raw, ctx);
   return {

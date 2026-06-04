@@ -148,7 +148,7 @@ describe('DSL §7.2 – Behaviors Block', () => {
     }
   });
 
-  it('throws BootError (BOOT_ERR_REMOVED_SYNTAX) when match.intent is used', () => {
+  it('throws BootError (BOOT_ERR_DSL_SYNTAX) when match.intent is used', () => {
     try {
       validateBoundaryConfig({
         ...minimalRaw,
@@ -157,7 +157,7 @@ describe('DSL §7.2 – Behaviors Block', () => {
       throw new Error('expected BootError');
     } catch (e) {
       expect(e).toBeInstanceOf(BootError);
-      expect((e as BootError).code).toBe('BOOT_ERR_REMOVED_SYNTAX');
+      expect((e as BootError).code).toBe('BOOT_ERR_DSL_SYNTAX');
     }
   });
 
@@ -352,7 +352,7 @@ describe('DSL §7.3 – Reducers Block', () => {
     expect(cfg.reducers[0].patches?.[0]).toEqual({ op: 'append', path: '/items', value: '${event.payload.item}' });
   });
 
-  it('rejects a reducer that carries the removed assign key with BOOT_ERR_REMOVED_SYNTAX', () => {
+  it('rejects a reducer that carries the removed assign key with BOOT_ERR_DSL_SYNTAX', () => {
     let caught: BootError | undefined;
     try {
       validateBoundaryConfig({
@@ -363,10 +363,10 @@ describe('DSL §7.3 – Reducers Block', () => {
       caught = e as BootError;
     }
     expect(caught).toBeInstanceOf(BootError);
-    expect(caught?.code).toBe('BOOT_ERR_REMOVED_SYNTAX');
+    expect(caught?.code).toBe('BOOT_ERR_DSL_SYNTAX');
   });
 
-  it('rejects a reducer that carries the removed append key with BOOT_ERR_REMOVED_SYNTAX', () => {
+  it('rejects a reducer that carries the removed append key with BOOT_ERR_DSL_SYNTAX', () => {
     let caught: BootError | undefined;
     try {
       validateBoundaryConfig({
@@ -377,7 +377,7 @@ describe('DSL §7.3 – Reducers Block', () => {
       caught = e as BootError;
     }
     expect(caught).toBeInstanceOf(BootError);
-    expect(caught?.code).toBe('BOOT_ERR_REMOVED_SYNTAX');
+    expect(caught?.code).toBe('BOOT_ERR_DSL_SYNTAX');
   });
 
   it('throws BootError when reducer references event not in event_catalog', () => {
