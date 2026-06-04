@@ -215,6 +215,13 @@ function _projectEvent(input: ProjectionInput): ProjectionResult {
         const matchingReducers = boundary.reducers.filter(r => r.on === event.type);
 
         for (const reducer of matchingReducers) {
+          // Whole-payload replace: state := the event payload object, before any
+          // patches refine it. Cuts per-field boilerplate when the event carries
+          // the full next state. Ignored when the payload is not an object.
+          if (reducer.replaceState && event.payload !== null && typeof event.payload === 'object' && !Array.isArray(event.payload)) {
+            replaceInPlace(buf, event.payload as JsonObject);
+          }
+
           const celCtx = {
             event: event as unknown as Record<string, unknown>,
             state: buf as Record<string, unknown>,

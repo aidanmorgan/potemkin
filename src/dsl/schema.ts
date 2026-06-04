@@ -558,6 +558,15 @@ function validateReducerRule(raw: unknown, index: number): ReducerRule {
 
   const patches = optionalPatchList(raw, ctx);
 
+  let replaceState: boolean | undefined;
+  if (raw['replace_state'] !== undefined) {
+    const v = raw['replace_state'];
+    if (typeof v !== 'boolean') {
+      throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.replace_state: must be a boolean`, { context: ctx });
+    }
+    replaceState = v;
+  }
+
   const implRaw = raw['implementation'];
   if (implRaw !== undefined && implRaw !== 'typescript') {
     throw new BootError(
@@ -571,6 +580,7 @@ function validateReducerRule(raw: unknown, index: number): ReducerRule {
   return {
     on,
     ...(patches !== undefined ? { patches } : {}),
+    ...(replaceState !== undefined ? { replaceState } : {}),
     ...(implementation !== undefined ? { implementation } : {}),
   };
 }

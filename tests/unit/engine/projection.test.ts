@@ -38,6 +38,38 @@ describe('engine/projection', () => {
     });
   });
 
+  describe('projectEvent — reducer replace_state', () => {
+    it('replaces state with the event payload wholesale', () => {
+      const graph = createStateGraph();
+      graph.set('agg-1', { stale: 'gone', status: 'old' });
+      const boundary = makeBoundary({
+        reducers: [{ on: 'ChargeCreated', replaceState: true }],
+      });
+      const event = makeDomainEvent({
+        type: 'ChargeCreated',
+        payload: { id: 'agg-1', object: 'charge', amount: 2000, captured: true },
+      });
+      projectEvent({ event, boundary, graph, cel });
+      expect(graph.get('agg-1')).toEqual({ id: 'agg-1', object: 'charge', amount: 2000, captured: true });
+      expect(graph.get('agg-1')).not.toHaveProperty('stale');
+    });
+
+    it('applies patches AFTER the wholesale replace', () => {
+      const graph = createStateGraph();
+      graph.set('agg-1', { old: true });
+      const boundary = makeBoundary({
+        reducers: [{
+          on: 'Created',
+          replaceState: true,
+          patches: [{ op: 'replace', path: '/status', value: '${"succeeded"}' }],
+        }],
+      });
+      const event = makeDomainEvent({ type: 'Created', payload: { id: 'agg-1', status: 'pending' } });
+      projectEvent({ event, boundary, graph, cel });
+      expect(graph.get('agg-1')).toEqual({ id: 'agg-1', status: 'succeeded' });
+    });
+  });
+
   describe('projectEvent — reducer replace patch', () => {
     it('applies a replace patch to state', () => {
       const graph = createStateGraph();

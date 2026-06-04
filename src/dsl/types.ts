@@ -65,6 +65,12 @@ export interface ReducerRule {
   readonly on: string;                                // event catalog key
   /** Patch list: { op, path, value }[]. Values are CEL expressions. */
   readonly patches?: readonly ReducerPatchOp[];
+  /**
+   * Whole-payload replace: set state := the event payload object wholesale,
+   * before any `patches:` apply. Cuts per-field boilerplate when an event carries
+   * the full next state (common for create events on large schemas).
+   */
+  readonly replaceState?: boolean;
   /** When 'typescript', the reducer logic lives in a registered TS file — no patches needed. */
   readonly implementation?: 'typescript';
 }
