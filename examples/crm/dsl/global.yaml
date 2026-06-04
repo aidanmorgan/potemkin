@@ -225,9 +225,13 @@ derived_projections:
     key: "has(event.payload.campaignId) && event.payload.campaignId != null ? event.payload.campaignId : event.payload.assignedCampaignId"
     subscribe:
       - "Lead:LeadCreated"
-      - "Lead:LeadConverted"
+      # LeadConverted is emitted by the LeadConvert sub-action boundary
+      # (/leads/{id}/convert), not Lead — the projection matcher is exact on
+      # boundary, so the subscription must name the emitting boundary.
+      - "LeadConvert:LeadConverted"
       - "Call:CallLogged"
-      - "Opportunity:OpportunityWon"
+      # OpportunityWon is emitted by the OpportunityClose sub-action boundary.
+      - "OpportunityClose:OpportunityWon"
     reduce:
       - on: "Lead:LeadCreated"
         patches:
@@ -237,7 +241,7 @@ derived_projections:
           - op: replace
             path: /totalConversions
             value: "${coalesce(state.totalConversions, 0)}"
-      - on: "Lead:LeadConverted"
+      - on: "LeadConvert:LeadConverted"
         patches:
           - op: replace
             path: /totalConversions
@@ -247,7 +251,7 @@ derived_projections:
           - op: replace
             path: /totalCalls
             value: "${coalesce(state.totalCalls, 0) + 1}"
-      - on: "Opportunity:OpportunityWon"
+      - on: "OpportunityClose:OpportunityWon"
         patches:
           - op: replace
             path: /wonCount
