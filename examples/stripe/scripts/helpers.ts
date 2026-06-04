@@ -82,3 +82,8 @@ export class RefundId {
 export class CustomerResponse {
   run(ctx: ScriptContext): ResponseScriptResult { return stripeResponse('customer', '/v1/customers', ctx); }
 }
+
+@Script('productResponse')
+export class ProductResponse {
+  run(ctx: ScriptContext): ResponseScriptResult { return stripeResponse('product', '/v1/products', ctx); }
+}

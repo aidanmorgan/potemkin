@@ -79,3 +79,56 @@ describe('Stripe simulation — Customers', () => {
     expect(res.body).toEqual({ id, object: 'customer', deleted: true });
   });
 });
+
+describe('Stripe simulation — Products', () => {
+  let server: PersistentServer;
+  let agent: PersistentAgent;
+
+  beforeAll(async () => {
+    const openapi = await loadOpenApi(path.join(STRIPE_DIR, 'openapi', 'stripe-core.yaml'));
+    const sys = await bootSystem({
+      openapi,
+      potemkinConfigPath: path.join(STRIPE_DIR, 'potemkin.yaml'),
+    });
+    expandByContractPath(sys);
+    server = await withPersistentServer(createGateway(sys));
+    agent = server.agent;
+  });
+  afterAll(async () => { await server.close(); });
+
+  it('POST /v1/products returns a product object (HTTP 200, prod_ id, active defaults true)', async () => {
+    const res = await agent.post('/v1/products').send({ name: 'Widget' }).expect(200);
+    const body = res.body as Record<string, unknown>;
+    expect(body['object']).toBe('product');
+    expect((body['id'] as string).startsWith('prod_')).toBe(true);
+    expect(typeof body['created']).toBe('number');
+    expect(body['livemode']).toBe(false);
+    expect(body['name']).toBe('Widget');
+    expect(body['active']).toBe(true);
+  });
+
+  it('POST /v1/products/{id} updates only the supplied fields', async () => {
+    const created = (await agent.post('/v1/products').send({ name: 'Before' }).expect(200)).body as Record<string, unknown>;
+    const id = created['id'] as string;
+    const res = await agent.post(`/v1/products/${id}`).send({ active: false }).expect(200);
+    const body = res.body as Record<string, unknown>;
+    expect(body['active']).toBe(false);
+    expect(body['name']).toBe('Before'); // preserved
+  });
+
+  it('GET /v1/products returns a Stripe list envelope', async () => {
+    await agent.post('/v1/products').send({ name: 'Listed' }).expect(200);
+    const res = await agent.get('/v1/products').expect(200);
+    const body = res.body as Record<string, unknown>;
+    expect(body['object']).toBe('list');
+    expect(Array.isArray(body['data'])).toBe(true);
+    expect(((body['data'] as Record<string, unknown>[])[0])['object']).toBe('product');
+  });
+
+  it('DELETE /v1/products/{id} returns exactly the Stripe deleted object', async () => {
+    const created = (await agent.post('/v1/products').send({ name: 'Doomed' }).expect(200)).body as Record<string, unknown>;
+    const id = created['id'] as string;
+    const res = await agent.delete(`/v1/products/${id}`).expect(200);
+    expect(res.body).toEqual({ id, object: 'product', deleted: true });
+  });
+});
