@@ -220,8 +220,8 @@ describe('include: rejects an included component that has reactions', () => {
   });
 });
 
-describe('include: rejects an included component that has identity', () => {
-  it('throws BOOT_ERR_DSL_SYNTAX naming "identity"', () => {
+describe('include: composes identity from a fragment when the host has none', () => {
+  it('merges the fragment identity onto the host boundary', () => {
     const mixin: ComponentDefinition = {
       kind: 'component',
       name: 'IdentityMixin',
@@ -240,6 +240,31 @@ describe('include: rejects an included component that has identity', () => {
     const byBoundaryName = { HostBoundary: hostWithInclude };
     const byContractPath = { '/hosts': hostWithInclude };
 
+    mergeIncludes(boundaries, { IdentityMixin: mixin }, byBoundaryName, byContractPath);
+
+    expect(boundaries[0]!.identity).toEqual({ creation: { generate: 'uuid' } });
+  });
+
+  it('clashes when both the host and a fragment declare identity', () => {
+    const mixin: ComponentDefinition = {
+      kind: 'component',
+      name: 'IdentityMixin',
+      eventCatalog: [],
+      reducers: [],
+      behaviors: [],
+      identity: { creation: { generate: 'uuid' } },
+    };
+
+    const host = stubBoundary('HostBoundary', '/hosts');
+    const hostWithInclude: BoundaryConfig = {
+      ...host,
+      identity: { creation: { generate: 'uuid' } },
+      include: [{ component: 'IdentityMixin' }],
+    };
+    const boundaries = [hostWithInclude];
+    const byBoundaryName = { HostBoundary: hostWithInclude };
+    const byContractPath = { '/hosts': hostWithInclude };
+
     expect(() =>
       mergeIncludes(boundaries, { IdentityMixin: mixin }, byBoundaryName, byContractPath),
     ).toThrow(
@@ -248,8 +273,61 @@ describe('include: rejects an included component that has identity', () => {
   });
 });
 
-describe('include: rejects an included component that has state', () => {
-  it('throws BOOT_ERR_DSL_SYNTAX naming "state"', () => {
+describe('include: composes the schema name from a fragment', () => {
+  it('merges the fragment schema name onto the host boundary', () => {
+    const mixin: ComponentDefinition = {
+      kind: 'component',
+      name: 'SchemaMixin',
+      eventCatalog: [],
+      reducers: [],
+      behaviors: [],
+      schema: 'sharedCustomer',
+    };
+
+    const host = stubBoundary('HostBoundary', '/hosts');
+    const hostWithInclude: BoundaryConfig = {
+      ...host,
+      include: [{ component: 'SchemaMixin' }],
+    };
+    const boundaries = [hostWithInclude];
+    const byBoundaryName = { HostBoundary: hostWithInclude };
+    const byContractPath = { '/hosts': hostWithInclude };
+
+    mergeIncludes(boundaries, { SchemaMixin: mixin }, byBoundaryName, byContractPath);
+
+    expect(boundaries[0]!.schema).toBe('sharedCustomer');
+  });
+
+  it('clashes when both the host and a fragment declare a schema name', () => {
+    const mixin: ComponentDefinition = {
+      kind: 'component',
+      name: 'SchemaMixin',
+      eventCatalog: [],
+      reducers: [],
+      behaviors: [],
+      schema: 'sharedCustomer',
+    };
+
+    const host = stubBoundary('HostBoundary', '/hosts');
+    const hostWithInclude: BoundaryConfig = {
+      ...host,
+      schema: 'localCustomer',
+      include: [{ component: 'SchemaMixin' }],
+    };
+    const boundaries = [hostWithInclude];
+    const byBoundaryName = { HostBoundary: hostWithInclude };
+    const byContractPath = { '/hosts': hostWithInclude };
+
+    expect(() =>
+      mergeIncludes(boundaries, { SchemaMixin: mixin }, byBoundaryName, byContractPath),
+    ).toThrow(
+      expect.objectContaining({ code: 'BOOT_ERR_DSL_SYNTAX' }),
+    );
+  });
+});
+
+describe('include: composes state fields from a fragment', () => {
+  it('unions the fragment state fields onto the host boundary', () => {
     const mixin: ComponentDefinition = {
       kind: 'component',
       name: 'StateMixin',
@@ -262,6 +340,31 @@ describe('include: rejects an included component that has state', () => {
     const host = stubBoundary('HostBoundary', '/hosts');
     const hostWithInclude: BoundaryConfig = {
       ...host,
+      include: [{ component: 'StateMixin' }],
+    };
+    const boundaries = [hostWithInclude];
+    const byBoundaryName = { HostBoundary: hostWithInclude };
+    const byContractPath = { '/hosts': hostWithInclude };
+
+    mergeIncludes(boundaries, { StateMixin: mixin }, byBoundaryName, byContractPath);
+
+    expect(boundaries[0]!.state?.computed).toEqual([{ name: 'total', formula: '0', dependsOn: [] }]);
+  });
+
+  it('clashes when two sources declare the same state field name', () => {
+    const mixin: ComponentDefinition = {
+      kind: 'component',
+      name: 'StateMixin',
+      eventCatalog: [],
+      reducers: [],
+      behaviors: [],
+      state: { computed: [{ name: 'total', formula: '0', dependsOn: [] }] },
+    };
+
+    const host = stubBoundary('HostBoundary', '/hosts');
+    const hostWithInclude: BoundaryConfig = {
+      ...host,
+      state: { computed: [{ name: 'total', formula: '1', dependsOn: [] }] },
       include: [{ component: 'StateMixin' }],
     };
     const boundaries = [hostWithInclude];

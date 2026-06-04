@@ -1257,7 +1257,7 @@ const KNOWN_COMPONENT_KEYS: ReadonlySet<string> = new Set([
   'kind', 'name',
   'parameters',
   'event_catalog', 'reducers', 'behaviors',
-  'identity', 'state', 'reactions', 'include',
+  'identity', 'state', 'schema', 'reactions', 'include',
 ]);
 
 /**
@@ -1329,6 +1329,11 @@ export function validateComponentConfig(raw: unknown): ComponentDefinition {
 
   const state = validateDeclaredState(raw['state'], 'component');
 
+  let schema: string | undefined;
+  if (raw['schema'] !== undefined && raw['schema'] !== null) {
+    schema = requireString(raw, 'schema', 'component');
+  }
+
   const reactionsRaw = raw['reactions'];
   let reactions: readonly ReactionRule[] | undefined;
   if (reactionsRaw !== undefined && reactionsRaw !== null) {
@@ -1362,6 +1367,7 @@ export function validateComponentConfig(raw: unknown): ComponentDefinition {
     ...(behaviors !== undefined ? { behaviors } : {}),
     ...(identity !== undefined ? { identity } : {}),
     ...(state !== undefined ? { state } : {}),
+    ...(schema !== undefined ? { schema } : {}),
     ...(reactions !== undefined ? { reactions } : {}),
     ...(include !== undefined ? { include } : {}),
   };

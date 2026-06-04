@@ -457,6 +457,22 @@ export function mergeIncludes(
     const accReducers: ReducerRule[] = [];
     const accBehaviors: BehaviorRule[] = [];
 
+    // identity + schema are single-valued: at most one source (the host or one
+    // fragment) may declare each, else it is a clash. state is field-unioned:
+    // computed/internal fields merge, clashing on a duplicate field name. The
+    // host's own declarations seed the accumulators so host-vs-fragment clashes
+    // are caught too.
+    let mergedIdentity = host.identity;
+    let identitySource = host.identity !== undefined ? hostName : undefined;
+    let mergedSchema = host.schema;
+    let schemaSource = host.schema !== undefined ? hostName : undefined;
+    const accComputed = [...(host.state?.computed ?? [])];
+    const accInternal = [...(host.state?.internal ?? [])];
+    const stateFieldSource = new Map<string, string>();
+    for (const f of accComputed) stateFieldSource.set(f.name, hostName);
+    for (const f of accInternal) stateFieldSource.set(f.name, hostName);
+    let stateChanged = false;
+
     // Track which included-fragment (by component name) claimed each key —
     // used for clash detection between two distinct fragments.
     const includedEventTypes = new Map<string, string>();
@@ -473,28 +489,17 @@ export function mergeIncludes(
         );
       }
 
-      // Reject unsupported sections in an included component: reactions, identity,
-      // state, and nested include: cannot be merged via include: (no as/bind context
-      // for reference rewriting, and semantic mismatches). Make failures loud.
+      // Reject unsupported sections in an included component: reactions and
+      // nested include: cannot be merged via include: (no as/bind context for
+      // reference rewriting, and semantic mismatches). identity, state and
+      // schema ARE composable — they carry no cross-boundary references — and
+      // are merged below (single-source for identity/schema, field-union for
+      // state, all with clash detection). Make failures loud.
       if (component.reactions !== undefined && component.reactions.length > 0) {
         throw new BootError(
           'BOOT_ERR_DSL_SYNTAX',
           `boundary "${hostName}": include: component "${component.name}" declares "reactions" — reactions are not supported under include: (use use: for components with reactions)`,
           { boundary: hostName, component: component.name, section: 'reactions' },
-        );
-      }
-      if (component.identity !== undefined) {
-        throw new BootError(
-          'BOOT_ERR_DSL_SYNTAX',
-          `boundary "${hostName}": include: component "${component.name}" declares "identity" — identity is not supported under include:`,
-          { boundary: hostName, component: component.name, section: 'identity' },
-        );
-      }
-      if (component.state !== undefined) {
-        throw new BootError(
-          'BOOT_ERR_DSL_SYNTAX',
-          `boundary "${hostName}": include: component "${component.name}" declares "state" — state is not supported under include:`,
-          { boundary: hostName, component: component.name, section: 'state' },
         );
       }
       if (component.include !== undefined && component.include.length > 0) {
@@ -539,10 +544,70 @@ export function mergeIncludes(
         component.name,
         hostName,
       );
+
+      // Compose identity (single-source).
+      if (substituted.identity !== undefined) {
+        if (mergedIdentity !== undefined) {
+          throw new BootError(
+            'BOOT_ERR_DSL_SYNTAX',
+            `boundary "${hostName}": include: component "${component.name}" declares "identity" but it is already declared by "${identitySource}" — identity may come from only one source`,
+            { boundary: hostName, component: component.name, section: 'identity', existing: identitySource ?? null },
+          );
+        }
+        mergedIdentity = substituted.identity;
+        identitySource = component.name;
+      }
+
+      // Compose schema name (single-source).
+      if (substituted.schema !== undefined) {
+        if (mergedSchema !== undefined) {
+          throw new BootError(
+            'BOOT_ERR_DSL_SYNTAX',
+            `boundary "${hostName}": include: component "${component.name}" declares "schema" but it is already declared by "${schemaSource}" — schema may come from only one source`,
+            { boundary: hostName, component: component.name, section: 'schema', existing: schemaSource ?? null },
+          );
+        }
+        mergedSchema = substituted.schema;
+        schemaSource = component.name;
+      }
+
+      // Compose state (field-union; clash on a duplicate computed/internal field name).
+      for (const f of substituted.state?.computed ?? []) {
+        const prior = stateFieldSource.get(f.name);
+        if (prior !== undefined) {
+          throw new BootError(
+            'BOOT_ERR_DSL_SYNTAX',
+            `boundary "${hostName}": include: component "${component.name}" declares state field "${f.name}" but it is already declared by "${prior}" — state fields may come from only one source`,
+            { boundary: hostName, component: component.name, field: f.name, existing: prior },
+          );
+        }
+        stateFieldSource.set(f.name, component.name);
+        accComputed.push(f);
+        stateChanged = true;
+      }
+      for (const f of substituted.state?.internal ?? []) {
+        const prior = stateFieldSource.get(f.name);
+        if (prior !== undefined) {
+          throw new BootError(
+            'BOOT_ERR_DSL_SYNTAX',
+            `boundary "${hostName}": include: component "${component.name}" declares state field "${f.name}" but it is already declared by "${prior}" — state fields may come from only one source`,
+            { boundary: hostName, component: component.name, field: f.name, existing: prior },
+          );
+        }
+        stateFieldSource.set(f.name, component.name);
+        accInternal.push(f);
+        stateChanged = true;
+      }
     }
 
+    const identityChanged = mergedIdentity !== host.identity;
+    const schemaChanged = mergedSchema !== host.schema;
+
     // If no fragments contributed anything new, leave the boundary unchanged.
-    if (accEventCatalog.length === 0 && accReducers.length === 0 && accBehaviors.length === 0) {
+    if (
+      accEventCatalog.length === 0 && accReducers.length === 0 && accBehaviors.length === 0 &&
+      !identityChanged && !schemaChanged && !stateChanged
+    ) {
       continue;
     }
 
@@ -552,6 +617,9 @@ export function mergeIncludes(
       eventCatalog: [...host.eventCatalog, ...accEventCatalog],
       reducers: [...host.reducers, ...accReducers],
       behaviors: [...host.behaviors, ...accBehaviors],
+      ...(mergedIdentity !== undefined ? { identity: mergedIdentity } : {}),
+      ...(mergedSchema !== undefined ? { schema: mergedSchema } : {}),
+      ...(stateChanged ? { state: { computed: accComputed, internal: accInternal } } : {}),
     };
 
     // Update the mutable arrays and indexes in place.

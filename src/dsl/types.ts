@@ -244,6 +244,8 @@ export interface ComponentDefinition {
   readonly identity?: IdentityConfig;
   /** Optional declared state schema (merged at link time). */
   readonly state?: DeclaredState;
+  /** Optional state-schema name (merged into the boundary's `schema` at link time). */
+  readonly schema?: string;
   /** Choreography reactions declared inside this component. */
   readonly reactions?: readonly ReactionRule[];
   /** Fragment mixins to merge into this component at link time. */

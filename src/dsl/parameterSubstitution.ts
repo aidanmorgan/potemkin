@@ -342,6 +342,9 @@ export function substituteParameters(
     ...(component.state !== undefined
       ? { state: walkValue(component.state, resolved, component.name) as DeclaredState }
       : {}),
+    ...(component.schema !== undefined
+      ? { schema: substituteTokens(component.schema, resolved, component.name) as string }
+      : {}),
     ...(component.reactions !== undefined
       ? { reactions: walkReactions(component.reactions, resolved, component.name) }
       : {}),
