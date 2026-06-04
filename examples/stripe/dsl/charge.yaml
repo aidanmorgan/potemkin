@@ -35,6 +35,10 @@ event_catalog:
   - type: ChargeCaptured
     payload_template:
       amount: "event.payload.amount"
+  # Emitted by the refund reaction — accrues the refunded amount on the charge.
+  - type: ChargeRefunded
+    payload_template:
+      amount: "event.payload.amount"
 
 behaviors: []
 
@@ -60,6 +64,12 @@ reducers:
     patches:
       - { op: replace, path: /captured, value: "${true}" }
       - { op: replace, path: /amount_captured, value: "${event.payload.amount}" }
+  # Cumulative: the first patch updates amount_refunded; the second sees that new
+  # value (patches apply sequentially) to decide whether the charge is fully refunded.
+  - on: ChargeRefunded
+    patches:
+      - { op: replace, path: /amount_refunded, value: "${state.amount_refunded + event.payload.amount}" }
+      - { op: replace, path: /refunded, value: "${state.amount_refunded >= state.amount}" }
 
 reactions:
   - name: create-charge-on-confirm
@@ -74,3 +84,11 @@ reactions:
     boundary: Charge
     emit: ChargeCaptured
     target: "event.payload.chargeId"
+  - name: accrue-refund-on-charge
+    on: "Refund:RefundCreated"
+    intent: mutation
+    boundary: Charge
+    emit: ChargeRefunded
+    target: "event.payload.charge"
+    payload:
+      amount: "event.payload.amount"

@@ -102,3 +102,8 @@ export class PaymentIntentResponse {
 export class ChargeResponse {
   run(ctx: ScriptContext): ResponseScriptResult { return stripeResponse('charge', '/v1/charges', ctx); }
 }
+
+@Script('refundResponse')
+export class RefundResponse {
+  run(ctx: ScriptContext): ResponseScriptResult { return stripeResponse('refund', '/v1/refunds', ctx); }
+}

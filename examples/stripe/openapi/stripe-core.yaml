@@ -438,6 +438,82 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/error" }
 
+  # ── Refunds ─────────────────────────────────────────────────────────────────
+  # Creating a refund updates the target charge's amount_refunded/refunded via an
+  # in-UoW reaction. (In this simulation `amount` is explicit — a refund cannot
+  # read the charge's remaining balance across aggregates to default a full refund.)
+  /v1/refunds:
+    post:
+      operationId: createRefund
+      summary: Create a refund
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                charge: { type: string }
+                amount: { type: integer }
+                currency: { type: string }
+                reason: { type: string, enum: [duplicate, fraudulent, requested_by_customer] }
+                metadata: { type: object, additionalProperties: { type: string } }
+              required: [charge, amount]
+      responses:
+        "200":
+          description: The created refund
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/refund" }
+    get:
+      operationId: listRefunds
+      summary: List refunds
+      parameters:
+        - { name: charge, in: query, required: false, schema: { type: string } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100 } }
+      responses:
+        "200":
+          description: A list of refunds (Stripe list envelope)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/refund_list" }
+  /v1/refunds/{id}:
+    get:
+      operationId: getRefund
+      summary: Retrieve a refund
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The refund
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/refund" }
+        "404":
+          description: No such refund
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/error" }
+    post:
+      operationId: updateRefund
+      summary: Update a refund (metadata only)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: false
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                metadata: { type: object, additionalProperties: { type: string } }
+      responses:
+        "200":
+          description: The updated refund
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/refund" }
+
 components:
   schemas:
     # ── Shared ────────────────────────────────────────────────────────────────
@@ -637,6 +713,36 @@ components:
           items: { $ref: "#/components/schemas/charge" }
       required: [object, data, has_more, url]
 
+    # ── Refund ──────────────────────────────────────────────────────────────────
+    refund:
+      type: object
+      additionalProperties: true
+      properties:
+        id: { type: string }
+        object: { type: string, enum: [refund] }
+        created: { type: integer }
+        livemode: { type: boolean }
+        amount: { type: integer }
+        currency: { type: string }
+        charge: { type: string }
+        payment_intent: { type: string, nullable: true }
+        status: { type: string, enum: [succeeded, pending, failed, canceled] }
+        reason: { type: string, nullable: true }
+        metadata: { $ref: "#/components/schemas/metadata" }
+      required: [id, object, created, livemode, amount, currency, charge, status]
+
+    refund_list:
+      type: object
+      additionalProperties: false
+      properties:
+        object: { type: string, enum: [list] }
+        url: { type: string }
+        has_more: { type: boolean }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/refund" }
+      required: [object, data, has_more, url]
+
     # Per-boundary state schemas. The engine derives each boundary's state shape
     # from components.schemas.<BoundaryName>; both Customer boundaries (the
     # collection and the {customer} by-id boundary) share the customer shape.
@@ -666,3 +772,7 @@ components:
       $ref: "#/components/schemas/charge"
     ChargeById:
       $ref: "#/components/schemas/charge"
+    Refund:
+      $ref: "#/components/schemas/refund"
+    RefundById:
+      $ref: "#/components/schemas/refund"

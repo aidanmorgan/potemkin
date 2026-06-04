@@ -351,3 +351,62 @@ describe('Stripe simulation — Charges (created by reaction)', () => {
     expect(data[0]['payment_intent']).toBe(pi['id']);
   });
 });
+
+describe('Stripe simulation — Refunds (accrue against a charge)', () => {
+  let server: PersistentServer;
+  let agent: PersistentAgent;
+
+  beforeAll(async () => {
+    const openapi = await loadOpenApi(path.join(STRIPE_DIR, 'openapi', 'stripe-core.yaml'));
+    const sys = await bootSystem({
+      openapi,
+      potemkinConfigPath: path.join(STRIPE_DIR, 'potemkin.yaml'),
+    });
+    expandByContractPath(sys);
+    server = await withPersistentServer(createGateway(sys));
+    agent = server.agent;
+  });
+  afterAll(async () => { await server.close(); });
+
+  async function makeCharge(amount: number): Promise<string> {
+    const pi = (await agent.post('/v1/payment_intents').send({ amount, currency: 'usd', payment_method: 'pm_card_visa' }).expect(200)).body as Record<string, unknown>;
+    const confirmed = (await agent.post(`/v1/payment_intents/${pi['id'] as string}/confirm`).send({}).expect(200)).body as Record<string, unknown>;
+    return confirmed['latest_charge'] as string;
+  }
+
+  it('POST /v1/refunds returns a refund object (HTTP 200, re_ id) linked to the charge', async () => {
+    const charge = await makeCharge(2000);
+    const res = await agent.post('/v1/refunds').send({ charge, amount: 2000, reason: 'requested_by_customer' }).expect(200);
+    const body = res.body as Record<string, unknown>;
+    expect(body['object']).toBe('refund');
+    expect((body['id'] as string).startsWith('re_')).toBe(true);
+    expect(body['amount']).toBe(2000);
+    expect(body['charge']).toBe(charge);
+    expect(body['status']).toBe('succeeded');
+    expect(body['reason']).toBe('requested_by_customer');
+  });
+
+  it('a partial refund leaves the charge partially refunded; a second refund fully refunds it', async () => {
+    const charge = await makeCharge(2000);
+    await agent.post('/v1/refunds').send({ charge, amount: 500 }).expect(200);
+    let ch = (await agent.get(`/v1/charges/${charge}`).expect(200)).body as Record<string, unknown>;
+    expect(ch['amount_refunded']).toBe(500);
+    expect(ch['refunded']).toBe(false);
+
+    await agent.post('/v1/refunds').send({ charge, amount: 1500 }).expect(200);
+    ch = (await agent.get(`/v1/charges/${charge}`).expect(200)).body as Record<string, unknown>;
+    expect(ch['amount_refunded']).toBe(2000);
+    expect(ch['refunded']).toBe(true);
+  });
+
+  it('GET /v1/refunds?charge= lists the refunds for a charge as a Stripe envelope', async () => {
+    const charge = await makeCharge(1000);
+    await agent.post('/v1/refunds').send({ charge, amount: 400 }).expect(200);
+    await agent.post('/v1/refunds').send({ charge, amount: 600 }).expect(200);
+    const res = (await agent.get('/v1/refunds').query({ charge }).expect(200)).body as Record<string, unknown>;
+    expect(res['object']).toBe('list');
+    const data = res['data'] as Record<string, unknown>[];
+    expect(data.length).toBe(2);
+    expect(data.every((r) => r['charge'] === charge)).toBe(true);
+  });
+});
