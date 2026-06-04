@@ -1,6 +1,7 @@
 import { coverageCheck } from '../../../src/lint/checks/coverage';
 import { identityCheck } from '../../../src/lint/checks/identity';
 import { referencesCheck } from '../../../src/lint/checks/references';
+import { requiredFieldsCheck } from '../../../src/lint/checks/requiredFields';
 import type { LintContext } from '../../../src/lint/types';
 
 function ctx(partial: { boundaries?: unknown[]; byContractPath?: Record<string, unknown>; paths?: Record<string, unknown>; schemas?: Record<string, unknown> }): LintContext {
@@ -88,5 +89,67 @@ describe('referencesCheck', () => {
       schemas: { open: { additionalProperties: true, properties: { id: {} } } },
       boundaries: [{ boundary: 'open', contractPath: '/o', behaviors: [], mask: ['anything'] }],
     }))).toHaveLength(0);
+  });
+});
+
+describe('requiredFieldsCheck', () => {
+  const schemas = { charge: { required: ['id', 'amount', 'currency', 'status'] } };
+  const creation = { creation: { generate: 'ts:chargeId' } };
+
+  it('errors when the create reducer omits a required field (id excluded)', () => {
+    const findings = requiredFieldsCheck(ctx({
+      schemas,
+      boundaries: [{
+        boundary: 'charge', contractPath: '/charges', identity: creation,
+        behaviors: [{ name: 'create', emit: 'ChargeCreated' }],
+        eventCatalog: [],
+        reducers: [{ on: 'ChargeCreated', patches: [
+          { op: 'replace', path: '/amount', value: '' },
+          { op: 'replace', path: '/status', value: '' },
+        ] }],
+      }],
+    }));
+    expect(findings).toHaveLength(1);
+    expect(findings[0].code).toBe('REQUIRED_FIELD_UNSET');
+    // The missing-field list contains only 'currency'; 'id' is engine-set and excluded.
+    expect(findings[0].message).toMatch(/field\(s\) \[currency\]/);
+  });
+
+  it('passes when replace_state covers required fields via the event payload', () => {
+    const findings = requiredFieldsCheck(ctx({
+      schemas,
+      boundaries: [{
+        boundary: 'charge', contractPath: '/charges', identity: creation,
+        behaviors: [{ name: 'create', emit: 'ChargeCreated' }],
+        eventCatalog: [{ type: 'ChargeCreated', payloadTemplate: { amount: '', currency: '', status: '' } }],
+        reducers: [{ on: 'ChargeCreated', replaceState: true }],
+      }],
+    }));
+    expect(findings).toHaveLength(0);
+  });
+
+  it('skips boundaries whose create reducer is a TypeScript reducer', () => {
+    const findings = requiredFieldsCheck(ctx({
+      schemas,
+      boundaries: [{
+        boundary: 'charge', contractPath: '/charges', identity: creation,
+        behaviors: [{ name: 'create', emit: 'ChargeCreated' }],
+        eventCatalog: [],
+        reducers: [{ on: 'ChargeCreated', implementation: 'typescript' }],
+      }],
+    }));
+    expect(findings).toHaveLength(0);
+  });
+
+  it('skips non-creation boundaries', () => {
+    const findings = requiredFieldsCheck(ctx({
+      schemas,
+      boundaries: [{
+        boundary: 'chargeById', contractPath: '/charges/{id}',
+        behaviors: [{ name: 'u', emit: 'ChargeUpdated' }], eventCatalog: [],
+        reducers: [{ on: 'ChargeUpdated', patches: [{ op: 'replace', path: '/amount', value: '' }] }],
+      }],
+    }));
+    expect(findings).toHaveLength(0);
   });
 });
