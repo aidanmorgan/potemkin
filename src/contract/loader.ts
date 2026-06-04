@@ -47,6 +47,91 @@ function asJsonObject(v: unknown): JsonObject | undefined {
   return undefined;
 }
 
+/**
+ * Maximum nesting depth retained when copying an operation's request/response
+ * schema. Large real specs (e.g. Stripe) inline every `$ref` on dereference, so a
+ * single resource schema fans out into an astronomically large tree; beyond this
+ * depth the subtree is collapsed to `{}` (accept-anything).
+ */
+/**
+ * Maximum object-nesting depth retained when copying a (dereferenced) schema.
+ * Deeper schema objects are collapsed to `{}` (accept-anything). Real specs inline
+ * every `$ref` on dereference, so a single resource schema fans out into an
+ * astronomically large tree; this cap keeps the copy finite. Counts only object
+ * nesting (arrays do not consume depth), so a chain like
+ * object → anyOf[] → object → properties → object still descends through several
+ * meaningful resource levels before collapsing.
+ */
+const MAX_OPERATION_SCHEMA_DEPTH = 8;
+
+/**
+ * Produce an acyclic, depth-bounded deep copy of a (dereferenced) OpenAPI schema.
+ *
+ * After `SwaggerParser.dereference`, schemas in large real specs are cyclic object
+ * graphs (e.g. customer → subscription → customer). Both Ajv compilation and the
+ * validator's `JSON.stringify` cache key overflow / throw on such graphs, and the
+ * acyclic-but-inlined remainder is astronomically large. An *object* node that is
+ * either already on the current recursion path (a cycle) or past the depth cap is
+ * collapsed to `{}` (Ajv: "any value is valid"). Arrays are always copied through
+ * — never collapsed and not counted toward depth — so keyword arrays (`required`,
+ * `enum`, `anyOf`, `oneOf`, `allOf`, tuple `items`) keep their JSON shape and stay
+ * valid schemas. `path` is a single shared Set mutated with add/delete (O(depth)
+ * memory). The cycle/depth boundary is always reached via a nested reference
+ * field, so the resource's own top-level required scalars remain fully validated.
+ */
+export function decycleSchema(value: unknown, path: Set<object> = new Set(), depth = 0): unknown {
+  if (value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) {
+    return value.map((item) => decycleSchema(item, path, depth));
+  }
+  if (path.has(value) || depth >= MAX_OPERATION_SCHEMA_DEPTH) return {};
+  path.add(value);
+  try {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = decycleSchema(v, path, depth + 1);
+    }
+    return normalizeNullable(out);
+  } finally {
+    path.delete(value);
+  }
+}
+
+/**
+ * Rewrite an OpenAPI 3.0 `nullable: true` node into a form a JSON-Schema validator
+ * (Ajv) accepts while preserving its meaning (the value may also be `null`).
+ *
+ * Ajv has no `nullable` keyword and rejects it outright ("nullable cannot be used
+ * without type"). The transform depends on how the node constrains values:
+ *   - plain `type` (string or array) → fold `null` into the type union
+ *     (`type: "string"` → `type: ["string", "null"]`);
+ *   - any other constrained node (`anyOf`/`oneOf`/`enum`/`allOf` with no bare
+ *     `type`) → wrap as `{ anyOf: [ <node minus nullable>, { type: "null" } ] }`
+ *     so `null` is explicitly allowed alongside the original constraint. This is
+ *     essential for Stripe's many `nullable` enum/reference fields (e.g.
+ *     payment_intent.cancellation_reason, .customer, .latest_charge), which the
+ *     simulation legitimately emits as `null`.
+ */
+function normalizeNullable(node: Record<string, unknown>): Record<string, unknown> {
+  if (node['nullable'] !== true) return node;
+  const { nullable: _drop, ...rest } = node;
+  // An `enum` rejects null regardless of `type`, so add null to the allowed set.
+  if (Array.isArray(rest['enum']) && !(rest['enum'] as unknown[]).includes(null)) {
+    rest['enum'] = [...(rest['enum'] as unknown[]), null];
+  }
+  const t = rest['type'];
+  if (typeof t === 'string' && t !== 'null') {
+    rest['type'] = [t, 'null'];
+    return rest;
+  }
+  if (Array.isArray(t)) {
+    if (!t.includes('null')) rest['type'] = [...t, 'null'];
+    return rest;
+  }
+  // No bare `type` (anyOf / oneOf / allOf / $ref content): permit null via anyOf.
+  return { anyOf: [rest, { type: 'null' }] };
+}
+
 function extractParameters(rawParams: unknown): readonly OpenApiParameter[] {
   if (!Array.isArray(rawParams)) return [];
   const result: OpenApiParameter[] = [];
@@ -88,7 +173,8 @@ function extractOperation(rawOp: unknown): OpenApiOperation | undefined {
       const json = contentObj['application/json'];
       if (json !== null && typeof json === 'object' && !Array.isArray(json)) {
         const jsonObj = json as Record<string, unknown>;
-        requestBodySchema = asJsonObject(jsonObj['schema']);
+        const rbSchema = asJsonObject(jsonObj['schema']);
+        requestBodySchema = rbSchema ? (decycleSchema(rbSchema) as JsonObject) : undefined;
       }
     }
   }
@@ -106,7 +192,7 @@ function extractOperation(rawOp: unknown): OpenApiOperation | undefined {
       if (json === null || typeof json !== 'object' || Array.isArray(json)) continue;
       const jsonObj = json as Record<string, unknown>;
       const schema = asJsonObject(jsonObj['schema']);
-      if (schema) responseSchemas[status] = schema;
+      if (schema) responseSchemas[status] = decycleSchema(schema) as JsonObject;
     }
   }
 

@@ -44,8 +44,39 @@ function mapOasType(raw: JsonObject): SchemaTypeKind {
 
 /**
  * Recursively convert an OAS schema node (already dereferenced) into an ObjectGraphSchema.
+ *
+ * `stack` is the set of object references currently on the recursion path, so
+ * cyclic schemas (common in large real specs like Stripe, where e.g. customer →
+ * subscription → customer closes a loop) terminate instead of overflowing the
+ * stack. `depth` additionally caps how deep conversion descends: a fully
+ * dereferenced real spec inlines every `$ref` as a fresh copy, so deeply nested
+ * sub-resources expand into an astronomically large (acyclic) tree. Both limits
+ * collapse the offending node to `any`. The cycle/depth boundary is always
+ * reached via a nested, non-required reference field, so this never weakens
+ * validation of the resource's own required scalars.
  */
-function convertNode(raw: JsonObject, name: string): ObjectGraphSchema {
+const MAX_SCHEMA_DEPTH = 12;
+
+function convertNode(
+  raw: JsonObject,
+  name: string,
+  stack: Set<JsonObject> = new Set(),
+  depth = 0,
+): ObjectGraphSchema {
+  if (depth >= MAX_SCHEMA_DEPTH || stack.has(raw)) {
+    return { name, kind: 'any', nullable: true };
+  }
+  stack.add(raw);
+  try {
+    return convertNodeInner(raw, name, stack, depth);
+  } finally {
+    stack.delete(raw);
+  }
+}
+
+function convertNodeInner(raw: JsonObject, name: string, stack: Set<JsonObject>, depth: number): ObjectGraphSchema {
+  const nextDepth = depth + 1;
+
   // Handle nullable shorthand: nullable: true alongside type
   const nullable = (raw['nullable'] as boolean | undefined) ?? false;
 
@@ -61,7 +92,7 @@ function convertNode(raw: JsonObject, name: string): ObjectGraphSchema {
   // Handle oneOf → kind 'union' with unionVariant 'oneOf' (exactly one member must match)
   if (raw['oneOf']) {
     const members = (raw['oneOf'] as JsonObject[]).map((m, i) =>
-      convertNode(m as JsonObject, `${name}[${i}]`),
+      convertNode(m as JsonObject, `${name}[${i}]`, stack, nextDepth),
     );
     return { name, kind: 'union', union: members, nullable, unionVariant: 'oneOf' };
   }
@@ -69,7 +100,7 @@ function convertNode(raw: JsonObject, name: string): ObjectGraphSchema {
   // Handle anyOf → kind 'union' with unionVariant 'anyOf' (at least one member must match)
   if (raw['anyOf']) {
     const members = (raw['anyOf'] as JsonObject[]).map((m, i) =>
-      convertNode(m as JsonObject, `${name}[${i}]`),
+      convertNode(m as JsonObject, `${name}[${i}]`, stack, nextDepth),
     );
     return { name, kind: 'union', union: members, nullable, unionVariant: 'anyOf' };
   }
@@ -126,7 +157,7 @@ function convertNode(raw: JsonObject, name: string): ObjectGraphSchema {
     } else if (typeOnlyKind) {
       merged['type'] = typeOnlyKind;
     }
-    return convertNode(Object.keys(merged).length > 0 ? merged : { type: 'any' }, name);
+    return convertNode(Object.keys(merged).length > 0 ? merged : { type: "any" }, name, stack, depth);
   }
 
   const kind = mapOasType(raw);
@@ -135,7 +166,7 @@ function convertNode(raw: JsonObject, name: string): ObjectGraphSchema {
     const rawProps = (raw['properties'] as Record<string, JsonObject> | undefined) ?? {};
     const properties: Record<string, ObjectGraphSchema> = {};
     for (const [k, v] of Object.entries(rawProps)) {
-      properties[k] = convertNode(v as JsonObject, `${name}.${k}`);
+      properties[k] = convertNode(v as JsonObject, `${name}.${k}`, stack, nextDepth);
     }
     const required = Array.isArray(raw['required'])
       ? (raw['required'] as string[])
@@ -145,7 +176,7 @@ function convertNode(raw: JsonObject, name: string): ObjectGraphSchema {
     const rawAddl = raw['additionalProperties'];
     if (rawAddl === true) addlProps = true;
     else if (rawAddl && typeof rawAddl === 'object') {
-      addlProps = convertNode(rawAddl as JsonObject, `${name}.__additional`);
+      addlProps = convertNode(rawAddl as JsonObject, `${name}.__additional`, stack, nextDepth);
     }
 
     return {
@@ -161,7 +192,7 @@ function convertNode(raw: JsonObject, name: string): ObjectGraphSchema {
 
   if (kind === 'array') {
     const rawItems = raw['items'] as JsonObject | undefined;
-    const items = rawItems ? convertNode(rawItems, `${name}[]`) : undefined;
+    const items = rawItems ? convertNode(rawItems, `${name}[]`, stack, nextDepth) : undefined;
     return { name, kind, items, nullable, description: raw['description'] as string | undefined };
   }
 

@@ -54,6 +54,9 @@ event_catalog:
       phone: "has(command.payload.phone) ? command.payload.phone : state.phone"
       balance: "has(command.payload.balance) ? command.payload.balance : state.balance"
       metadata: "has(command.payload.metadata) ? command.payload.metadata : state.metadata"
+  # The deleted object ({id, object, deleted:true}) is synthesized by the
+  # response transform; the real Stripe customer schema has no `deleted` field,
+  # so the event carries only an audit timestamp and the reducer is a no-op.
   - type: CustomerDeleted
     payload_template:
       deletedAt: "ts:unixNow"
@@ -70,9 +73,9 @@ reducers:
       - { op: replace, path: /phone, value: "${event.payload.phone}" }
       - { op: replace, path: /balance, value: "${event.payload.balance}" }
       - { op: replace, path: /metadata, value: "${event.payload.metadata}" }
-  - on: CustomerDeleted
-    patches:
-      - { op: replace, path: /deleted, value: "${true}" }
+  # No CustomerDeleted reducer: the engine's own _deleted soft-delete marker
+  # (attached on DELETE) removes the entity from listings, and the deleted-object
+  # response is synthesized by the response transform — there is no state field to patch.
 
 operations:
   - { op: PostCustomers, emit: CustomerCreated }

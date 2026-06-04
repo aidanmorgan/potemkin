@@ -5,6 +5,7 @@ import type { BoundaryConfig } from '../dsl/types.js';
 import type { StateGraph } from '../stategraph/graph.js';
 import type { CelEvaluator } from '../cel/evaluator.js';
 import type { ContractValidator } from '../contract/validator.js';
+import { decycleSchema } from '../contract/loader.js';
 import type { Logger } from '../observability/logger.js';
 import type { Tracer } from '../observability/tracing.js';
 import type { ObjectGraphSchemaRegistry } from '../schema/types.js';
@@ -40,7 +41,9 @@ function compileSchemaValidator(schema: object): (data: unknown) => boolean {
   // compiled validator bound to the instance that produced it.
   const ajv = new Ajv({ allErrors: true, strict: false });
   addFormats(ajv);
-  const compiled = ajv.compile(schema);
+  // Break cycles + bound depth: dereferenced real specs yield cyclic component
+  // schemas that would overflow Ajv compilation.
+  const compiled = ajv.compile(decycleSchema(schema) as object);
   const validate = (data: unknown): boolean => {
     const ok = compiled(data) as boolean;
     // Surface the last-run errors on the wrapper so callers can read them.

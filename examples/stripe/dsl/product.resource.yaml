@@ -37,6 +37,9 @@ event_catalog:
       active: "has(command.payload.active) ? command.payload.active : state.active"
       metadata: "has(command.payload.metadata) ? command.payload.metadata : state.metadata"
       updated: "ts:unixNow"
+  # The deleted object ({id, object, deleted:true}) is synthesized by the response
+  # transform and the engine's _deleted marker drives soft-delete; the event
+  # carries only an audit timestamp (no `deleted` field exists on the schema).
   - type: ProductDeleted
     payload_template:
       deletedAt: "ts:unixNow"
@@ -51,9 +54,8 @@ reducers:
       - { op: replace, path: /active, value: "${event.payload.active}" }
       - { op: replace, path: /metadata, value: "${event.payload.metadata}" }
       - { op: replace, path: /updated, value: "${event.payload.updated}" }
-  - on: ProductDeleted
-    patches:
-      - { op: replace, path: /deleted, value: "${true}" }
+  # No ProductDeleted reducer: soft-delete is handled by the engine's _deleted
+  # marker and the deleted-object response is synthesized by the response transform.
 
 operations:
   - { op: PostProducts, emit: ProductCreated }

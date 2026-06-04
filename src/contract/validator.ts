@@ -3,6 +3,7 @@ import addFormats from 'ajv-formats';
 import type { ValidateFunction } from 'ajv';
 import type { JsonObject, JsonValue } from '../types.js';
 import type { OpenApiDoc } from './loader.js';
+import { decycleSchema } from './loader.js';
 import type { BoundaryConfig } from '../dsl/types.js';
 import { ContractViolationError, InternalExecutionError } from '../errors.js';
 import { matchRoute } from './router.js';
@@ -149,14 +150,20 @@ export function createContractValidator(
     const cached = validatorCache.get(schema);
     if (cached) return cached;
 
-    const key = JSON.stringify(schema);
+    // Break cycles + bound depth before stringifying/compiling: dereferenced
+    // schemas from large real specs (e.g. Stripe) are cyclic object graphs that
+    // would overflow JSON.stringify and Ajv. decycleSchema is identity-stable for
+    // already-acyclic schemas, so this is a no-op for small hand-written specs.
+    const acyclic = decycleSchema(schema) as JsonObject;
+
+    const key = JSON.stringify(acyclic);
     const keyCached = validatorCacheByKey.get(key);
     if (keyCached) {
       validatorCache.set(schema, keyCached);
       return keyCached;
     }
 
-    const compiled = ajv.compile(schema);
+    const compiled = ajv.compile(acyclic);
     validatorCache.set(schema, compiled);
 
     if (validatorCacheByKey.size >= maxKeyedValidators) {
