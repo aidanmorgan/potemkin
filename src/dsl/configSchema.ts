@@ -4,13 +4,6 @@
 
 import { BootError } from '../errors.js';
 import type { Patch } from './patches.js';
-import type {
-  DeclaredComputedField,
-  DeclaredInternalField,
-  EventDecl,
-  ReducerDecl,
-  FieldType,
-} from './schemaInference.js';
 
 
 export interface PotemkinConfigTypescriptScanEntry {
@@ -67,58 +60,6 @@ export interface PotemkinConfig {
 }
 
 
-export interface BoundaryBehavior {
-  readonly operationId: string;
-  readonly match?: Record<string, unknown>;
-  readonly emit?: readonly { name: string; template?: Record<string, string> }[];
-  readonly dispatch?: readonly {
-    boundary: string;
-    intent: string;
-    targetId?: string;
-    template?: Record<string, string>;
-  }[];
-}
-
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type -- nominal alias for ReducerDecl used across the DSL contract
-export interface BoundaryReducer extends ReducerDecl {}
-
-export interface BoundaryHateoasEntry {
-  readonly rel: string;
-  readonly href: string;
-}
-
-export interface BoundaryDeprecation {
-  readonly sunset?: string;
-  readonly replacement?: string;
-}
-
-export interface BoundaryModule {
-  readonly boundary: string;
-  readonly specId: string;
-  readonly contractPath: string;
-  readonly methods?: readonly string[];
-  readonly outOfContract?: boolean;
-  readonly events: readonly EventDecl[];
-  readonly behaviors?: readonly BoundaryBehavior[];
-  readonly reducers?: readonly BoundaryReducer[];
-  readonly state?: {
-    readonly computed?: readonly DeclaredComputedField[];
-    readonly internal?: readonly DeclaredInternalField[];
-  };
-  readonly hateoas?: readonly BoundaryHateoasEntry[];
-  readonly deprecation?: BoundaryDeprecation;
-  readonly mask?: readonly string[];
-  readonly strict?: boolean;
-}
-
-export interface GlobalModule {
-  readonly sagas?: readonly unknown[];
-  readonly idempotency?: Record<string, unknown>;
-  readonly auth?: Record<string, unknown>;
-  readonly hateoas?: Record<string, unknown>;
-}
-
-
 export const PLUGIN_SUB_KEYS = [
   'engine',
   'controlPort',
@@ -139,22 +80,6 @@ export const POTEMKIN_TOP_LEVEL_KEYS = [
   'workflow',
   'overlay',
   'governance',
-] as const;
-
-export const BOUNDARY_TOP_LEVEL_KEYS = [
-  'boundary',
-  'specId',
-  'contractPath',
-  'methods',
-  'outOfContract',
-  'events',
-  'behaviors',
-  'reducers',
-  'state',
-  'hateoas',
-  'deprecation',
-  'mask',
-  'strict',
 ] as const;
 
 // Renamed snake_case keys; each produces BOOT_ERR_REMOVED_SYNTAX at parse time.
@@ -546,4 +471,3 @@ function levenshtein(a: string, b: string): number {
   return prev[n];
 }
 
-export type { Patch, FieldType };

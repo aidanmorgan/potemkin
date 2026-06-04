@@ -82,4 +82,20 @@ describe('validateReducerConflictsFromDsl — implementation: typescript', () =>
       }),
     ).not.toThrow();
   });
+
+  it('throws BOOT_ERR_UNKNOWN_BOUNDARY when TS reducer targets a boundary not in the DSL', async () => {
+    await expectDslCode(
+      '  - on: LeadCreated\n    implementation: typescript',
+      [{ boundary: 'NonExistentBoundary', event: 'LeadCreated', fn: () => [], source: 'scripts/x.ts' }],
+      'BOOT_ERR_UNKNOWN_BOUNDARY',
+    );
+  });
+
+  it('throws BOOT_ERR_UNKNOWN_EVENT when TS reducer targets an event not in the boundary catalog', async () => {
+    await expectDslCode(
+      '  - on: LeadCreated\n    implementation: typescript',
+      [{ boundary: 'Lead', event: 'NoSuchEvent', fn: () => [], source: 'scripts/x.ts' }],
+      'BOOT_ERR_UNKNOWN_EVENT',
+    );
+  });
 });

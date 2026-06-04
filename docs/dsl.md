@@ -1586,7 +1586,7 @@ versioning:
 
 **HTTP effect:** `POST /v2/leads` → contract is matched against `/leads`; response carries `X-Potemkin-Version: v2`. Requests to un-prefixed paths route to the `default` version when one is declared.
 
-`/_engine` and `/_admin` paths are excluded from version resolution.
+`/_engine` and `/_admin` paths are excluded from version resolution. This feature is an Express middleware on the gateway HTTP path (engine-direct mode); it does not apply to the `/_engine/forward` body, where the path arrives already resolved.
 
 See: [`tests/fixtures/crm-versioned/dsl/global.yaml`](../tests/fixtures/crm-versioned/dsl/global.yaml), [`tests/e2e/47-api-versioning.e2e-test.ts`](../tests/e2e/47-api-versioning.e2e-test.ts)
 

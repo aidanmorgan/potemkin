@@ -369,3 +369,37 @@ reducers:
     );
   });
 });
+
+describe('BOOT_ERR_CONFIG_MISSING — unreadable potemkin.yaml', () => {
+  it('throws BOOT_ERR_CONFIG_MISSING when potemkin.yaml does not exist', async () => {
+    await expectBootCode(
+      () => loadPotemkinConfig('/nonexistent/path/potemkin.yaml'),
+      'BOOT_ERR_CONFIG_MISSING',
+    );
+  });
+});
+
+describe('BOOT_ERR_MISSING_SPEC_ID — boundary missing specId during contract cross-check', () => {
+  it('throws BOOT_ERR_MISSING_SPEC_ID when a boundary has no specId and specEndpoints are provided', async () => {
+    const root = await makeTmpFixture({
+      'specmatic.yaml': MINIMAL_SPECMATIC,
+      'potemkin.yaml': `
+version: 1
+specmatic: ./specmatic.yaml
+modules: ["dsl/*.yaml"]
+`,
+      'dsl/lead.yaml': `
+boundary: Lead
+contract_path: /leads
+event_catalog: []
+`,
+    });
+    const eps: SpecEndpoint[] = [
+      { specId: 'crm-v1', path: '/leads', method: 'POST' },
+    ];
+    await expectBootCode(
+      () => loadPotemkinConfig(path.join(root, 'potemkin.yaml'), { specEndpoints: eps }),
+      'BOOT_ERR_MISSING_SPEC_ID',
+    );
+  });
+});

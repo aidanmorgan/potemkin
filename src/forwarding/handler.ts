@@ -153,6 +153,14 @@ function mapErrorToStatus(err: unknown): ErrorMapped {
 /**
  * Create an Express request handler that implements the forwarding endpoint.
  * The handler reads a ForwardedRequest from req.body and returns a ForwardedResponse.
+ *
+ * API versioning (URL-prefix stripping + X-Potemkin-Version) is a gateway-mode
+ * HTTP middleware concern registered in src/http/gateway.ts. It is intentionally
+ * NOT applied here: the /_engine/forward body carries an already-resolved request
+ * path (the Kotlin plugin issues the real HTTP call, Specmatic handles contract
+ * routing, and the resolved path arrives here prefix-free). Version routing in
+ * the full Specmatic stack is a contract/stub concern, not a forwarding-body one.
+ * See the transport note in tests/e2e/47-api-versioning.e2e-test.ts.
  */
 export function createForwardingHandler(sys: BootedSystem): RequestHandler {
   return async function forwardingHandler(req: Request, res: Response): Promise<void> {

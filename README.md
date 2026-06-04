@@ -19,7 +19,7 @@ It runs in two modes:
   - [Splitting the simulation across multiple files](#splitting-the-simulation-across-multiple-files)
   - [Seeding initial state and resetting to a known baseline](#seeding-initial-state-and-resetting-to-a-known-baseline)
   - [Generating an entity id on creation](#generating-an-entity-id-on-creation)
-  - [Taking the entity id from a header instead of the URL](#taking-the-entity-id-from-a-header-instead-of-the-url)
+  - [Taking the entity id from a header, query param, or request body](#taking-the-entity-id-from-a-header-query-param-or-request-body)
   - [Declaring the events a boundary can emit](#declaring-the-events-a-boundary-can-emit)
   - [Validating an event payload against an OpenAPI schema](#validating-an-event-payload-against-an-openapi-schema)
   - [Defining an entity once and reusing it across paths](#defining-an-entity-once-and-reusing-it-across-paths)
@@ -35,6 +35,7 @@ It runs in two modes:
   - [Updating entity state when an event happens](#updating-entity-state-when-an-event-happens)
   - [Choosing the right patch op](#choosing-the-right-patch-op)
   - [Writing to nested paths and maintaining computed totals](#writing-to-nested-paths-and-maintaining-computed-totals)
+  - [Recording who changed an entity and when](#recording-who-changed-an-entity-and-when)
 - [Reading and querying the graph](#reading-and-querying-the-graph)
   - [Filtering a collection by a field](#filtering-a-collection-by-a-field)
   - [Returning one page at a time](#returning-one-page-at-a-time)
@@ -51,6 +52,7 @@ It runs in two modes:
   - [Coordinating a multi-step workflow with automatic rollback](#coordinating-a-multi-step-workflow-with-automatic-rollback)
   - [Building a cross-boundary read model](#building-a-cross-boundary-read-model)
   - [Reacting to another boundary's events without coupling the source](#reacting-to-another-boundarys-events-without-coupling-the-source)
+  - [Updating an existing entity from a reaction, only when a condition holds](#updating-an-existing-entity-from-a-reaction-only-when-a-condition-holds)
   - [Running custom logic that CEL can't express](#running-custom-logic-that-cel-cant-express)
   - [Owning an event's projection in TypeScript](#owning-an-events-projection-in-typescript)
   - [Calling out to another service when an event fires](#calling-out-to-another-service-when-an-event-fires)
@@ -174,18 +176,29 @@ identity:
 
 [`16-initialization-queries`](tests/e2e/16-initialization-queries.e2e-test.ts) exercises this alongside seeded entities.
 
-### Taking the entity id from a header instead of the URL
+### Taking the entity id from a header, query param, or request body
 
-If you want to identify the aggregate from somewhere other than the `{id}` path parameter — a request header, a query parameter, or a pointer into the request body — use `identity.key`. This is common when the aggregate id is a token or correlation id supplied by the caller rather than assigned by the server.
+If you want to identify the aggregate from somewhere other than the `{id}` path parameter — a request header, a query parameter, a named path segment, or a pointer into the request body — use `identity.key`. This is common when the aggregate id is a token or correlation id supplied by the caller rather than assigned by the server.
 
 ```yaml
 identity:
   key:
     from: header        # path | query | header | payload
-    name: x-token-id    # header/query name, or payload pointer (use `pointer:` for nested)
+    name: x-token-id    # header / query / path name
 ```
 
-The [`61-identity-key`](tests/e2e/61-identity-key.e2e-test.ts) test covers the header-derived id together with the generated-id fallback.
+For a body-derived key, set `from: payload` and point at the field with `pointer` (a dot path, so nested fields work):
+
+```yaml
+identity:
+  key:
+    from: payload
+    pointer: accountId   # reads body.accountId
+```
+
+When the named source is absent on a creation request, the engine falls back to `identity.creation.generate`, so a caller can either supply the key or let the server mint one. (There is no `cel:` source — an arbitrary CEL key is rejected at boot; use one of the four concrete sources.)
+
+The [`61-identity-key`](tests/e2e/61-identity-key.e2e-test.ts) test covers all four sources — header, named path segment, query param, and payload pointer — each resolving to the same aggregate on create and read-back, alongside the generated-id fallback.
 
 ### Declaring the events a boundary can emit
 
@@ -472,7 +485,7 @@ If you want to know which operation to reach for, here are all ten, with a short
 - `remove` — delete a key or array element.
 - `append` — push a value onto the end of an array.
 - `prepend` — push a value onto the front of an array.
-- `increment` — add a numeric `by` delta to the value at the path.
+- `increment` — add a numeric `by` delta to the value at the path; `by` defaults to `1` when omitted (and `value` is accepted as an alias for `by`).
 - `merge` — shallow-merge an object into the value at the path.
 - `upsert` — find an element in an array by a `key` field and replace it, or append if absent.
 - `copy` — copy the value at `from` to `path`.
@@ -492,7 +505,19 @@ If you want to patch a field inside a nested object, write the path as a full JS
 
 For running totals across a collection, use a computed field. Computed state is derived after every projection pass — for example, `totalValue` can be expressed as `sum(lineItems.*.lineTotal)` and will reflect the current array contents without any explicit accumulator patch. See [`54-computed-totals-end-to-end`](tests/e2e/54-computed-totals-end-to-end.e2e-test.ts) for a full worked example, and [`51-object-graph-evolution`](tests/e2e/51-object-graph-evolution.e2e-test.ts) for a long mutation sequence that exercises nested paths across many events.
 
-By default, the engine validates at boot that every state reference inside a computed field's formula is listed in its `depends_on`. Set `strict_schema: false` on the boundary to downgrade this check to a warning while formulas are still evolving (see `docs/dsl.md §2`).
+By default, the engine validates at boot that every state reference inside a computed field's formula is listed in its `depends_on`; an undeclared dependency halts boot with `BOOT_ERR_COMPUTED_FIELD_INCOMPLETE_DEPS`. Set `strict_schema: false` on the boundary to downgrade that check to a warning while formulas are still evolving. [`69-strict-schema`](tests/e2e/69-strict-schema.e2e-test.ts) boots a non-strict boundary and computes its field, then shows the same boundary failing boot under the strict default.
+
+### Recording who changed an entity and when
+
+If you want every mutation to stamp an audit trail onto the entity without writing the patches yourself, set `audit_fields: true` on the boundary. On every non-baseline event the engine fills `updatedAt` with the event's timestamp and `updatedBy` with the acting actor's id (resolved from the request's auth), so each write records who touched the aggregate and when. A request with no identified actor leaves `updatedBy` null.
+
+```yaml
+boundary: Note
+contract_path: /notes
+audit_fields: true
+```
+
+[`72-audit-fields`](tests/e2e/72-audit-fields.e2e-test.ts) creates and then mutates an entity as different actors, asserting `updatedBy` follows the actor that made each change (not the original creator) and that the timestamp lands within the request window.
 
 ---
 
@@ -769,6 +794,26 @@ reactions:
 
 A single `POST /orders` then commits four events — `OrderPlaced`, `InventoryReserved`, `NotificationQueued`, and `AuditRecorded` — atomically. The nine-boundary variant in [`66-reactions-fanout`](tests/e2e/66-reactions-fanout.e2e-test.ts) chains six hops deep (past the dispatch depth limit) and fans out to three independent legs, all in one request.
 
+### Updating an existing entity from a reaction, only when a condition holds
+
+The reactions above all create new aggregates. If instead you want a reaction to *mutate* an entity that already exists — and only fire when the trigger event meets some condition — set `intent: mutation`, gate it with `when:`, point `target:` at the existing aggregate id, and shape the emitted event with a `payload:` override:
+
+```yaml
+# warehouse.yaml — reacts to an order, but only allocates stock for non-empty orders
+reactions:
+  - name: allocate-stock-on-order-placed
+    on: "Order:OrderPlaced"
+    when: "event.payload.qty > 0"          # skip the reaction entirely when false
+    intent: mutation
+    target: "'warehouse-main'"             # CEL resolving to an existing aggregate id
+    emit: StockAllocated
+    payload:                               # merged over the event's payload_template
+      orderId:      "event.aggregateId"
+      allocatedQty: "event.payload.qty"
+```
+
+When `when:` evaluates false the reaction does not fire and the target is left untouched; when it holds, the mutation lands on the targeted aggregate with the overridden payload. `when:`, `target:`, and `payload:` evaluate against the trigger event (`event`, with `payload` aliasing `event.payload`). The gated-mutation reaction is exercised against a seeded warehouse aggregate in [`66-reactions-fanout`](tests/e2e/66-reactions-fanout.e2e-test.ts), which asserts both the skipped and the fired paths.
+
 ### Calling out to another service when an event fires
 
 If you want to notify an external system whenever a subscribed event is emitted — a payment processor, a fulfillment service, a logging endpoint — configure an outbound webhook. The engine POSTs the payload to your URL after the Unit of Work commits, signs the body with `x-potemkin-signature: sha256=<hmac>`, and retries with backoff up to `maxAttempts` times on failure.
@@ -831,7 +876,7 @@ mask:
   - internalNotes
 ```
 
-[`56-response-mutations`](tests/e2e/56-response-mutations.e2e-test.ts) confirms the masked field is gone from the served response.
+The engine-only [`71-mask-fields`](tests/e2e/71-mask-fields.e2e-test.ts) test walks the full path: the masked fields are stripped from the served response while the rest of the body is untouched. Masking is applied as a response-shaping step after contract validation — over the forwarding endpoint the removals travel in the response's `_patches` envelope for the consumer to apply, so a contract-required field can be masked without failing validation. The Specmatic-stack [`56-response-mutations`](tests/e2e/56-response-mutations.e2e-test.ts) test confirms the same through the plugin.
 
 ### Marking an endpoint deprecated
 
@@ -865,14 +910,16 @@ security_headers:
 
 ### Slowing a boundary down on purpose
 
-If you want to simulate a sluggish downstream, add a `latency:` block to the boundary. Use `fixed_ms` for a deterministic delay, or `min_ms`/`max_ms` for a uniform-random sample on each request.
+If you want to simulate a sluggish downstream, add a `latency:` block to the boundary. Use `fixed_ms` for a deterministic delay, or `min_ms`/`max_ms` for a uniform-random sample drawn fresh on each request. The two stack — supply all three and each response waits `fixed_ms` plus a random draw from `[min_ms, max_ms]`.
 
 ```yaml
 latency:
-  fixed_ms: 60
+  fixed_ms: 20      # deterministic floor
+  min_ms: 30        # plus a uniform-random sample in [30, 60]
+  max_ms: 60
 ```
 
-[`65-latency`](tests/e2e/65-latency.e2e-test.ts) measures that the response is held back by at least the configured floor.
+[`65-latency`](tests/e2e/65-latency.e2e-test.ts) measures the fixed delay, the random range, and the stacked combination, asserting each response is held back by at least the configured floor.
 
 ### Routing by URL version prefix
 
@@ -888,6 +935,8 @@ versioning:
       prefix: "/v2"
       default: true
 ```
+
+This applies on the in-process gateway HTTP path (engine-direct mode); it does not run on the `/_engine/forward` body, where the path arrives already resolved from the plugin.
 
 [`47-api-versioning`](tests/e2e/47-api-versioning.e2e-test.ts) checks that each prefix routes to the right version label.
 
@@ -970,7 +1019,7 @@ Route discovery is covered in [`01-route-discovery`](tests/e2e/01-route-discover
 
 If you want seeded data, scripted multi-step workflows, or response overlays to be visible to a client that talks to the Specmatic stub address (rather than the engine directly), use forward blocks. The plugin routes these through the stub, so the client sees a consistent view regardless of which layer handled each request.
 
-[`57-forward-blocks-and-jwt`](tests/e2e/57-forward-blocks-and-jwt.e2e-test.ts) proves the seeds, workflow, and overlay forms all reach the client through Specmatic.
+[`57-forward-blocks-and-jwt`](tests/e2e/57-forward-blocks-and-jwt.e2e-test.ts) proves the seeds, workflow, and overlay forms all reach the client through Specmatic. The engine-only [`70-seeds-engine-only`](tests/e2e/70-seeds-engine-only.e2e-test.ts) test verifies the same seed compilation and the cross-file `use:` mapping without needing the JVM.
 
 ### Handling engine restarts and hot reload
 

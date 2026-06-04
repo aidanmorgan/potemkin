@@ -2,8 +2,8 @@
 //
 // Reducers express state mutation exclusively via `patches:`. The legacy
 // `assign:` / `append:` / `assignAll:` keys are removed and rejected at boot —
-// the reducer-key check (assertNoRemovedReducerKeys) is applied by both the
-// in-memory pipeline (schema.ts) and the on-disk pipeline (configSchema.ts).
+// the reducer-key check (assertNoRemovedReducerKeys) is applied by the
+// in-memory pipeline (schema.ts); the on-disk path inherits it via schema.ts.
 //
 // Inline scripts (`scripts: [{ name, code }]`) are removed. Scripts are now
 // authored as @Script(id) class files discovered via typescript.scan and

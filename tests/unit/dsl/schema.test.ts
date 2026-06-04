@@ -621,5 +621,48 @@ describe('dsl/schema', () => {
         ).not.toThrow();
       });
     });
+
+    describe('BOOT_ERR_DSL_EMIT_REQUIRED', () => {
+      it('throws BOOT_ERR_DSL_EMIT_REQUIRED when a behavior has neither emit nor emit_when', () => {
+        const raw = {
+          ...minimalValid,
+          behaviors: [
+            {
+              name: 'b',
+              match: { operationId: 'createThing', condition: 'true' },
+            },
+          ],
+        };
+        let caught: unknown;
+        try {
+          validateBoundaryConfig(raw);
+        } catch (e) {
+          caught = e;
+        }
+        expect(caught).toBeInstanceOf(BootError);
+        expect((caught as BootError).code).toBe('BOOT_ERR_DSL_EMIT_REQUIRED');
+      });
+
+      it('throws BOOT_ERR_DSL_EMIT_REQUIRED when emit_when is an empty array', () => {
+        const raw = {
+          ...minimalValid,
+          behaviors: [
+            {
+              name: 'b',
+              match: { operationId: 'createThing', condition: 'true' },
+              emit_when: [],
+            },
+          ],
+        };
+        let caught: unknown;
+        try {
+          validateBoundaryConfig(raw);
+        } catch (e) {
+          caught = e;
+        }
+        expect(caught).toBeInstanceOf(BootError);
+        expect((caught as BootError).code).toBe('BOOT_ERR_DSL_EMIT_REQUIRED');
+      });
+    });
   });
 });

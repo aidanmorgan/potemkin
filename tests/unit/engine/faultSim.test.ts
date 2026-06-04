@@ -104,5 +104,36 @@ describe('engine/faultSim', () => {
       });
       expect(signal?.body).toBeNull();
     });
+
+    it('throws ContractViolationError when status is above 599 (e.g. 999)', () => {
+      expect(() =>
+        extractFaultSignal({
+          'x-specmatic-fault': JSON.stringify({ status: 999, body: {} }),
+        }),
+      ).toThrow(ContractViolationError);
+    });
+
+    it('throws ContractViolationError when status is 600 (boundary above range)', () => {
+      expect(() =>
+        extractFaultSignal({
+          'x-specmatic-fault': JSON.stringify({ status: 600, body: {} }),
+        }),
+      ).toThrow(ContractViolationError);
+    });
+
+    it('throws ContractViolationError when status is below 100 (e.g. 99)', () => {
+      expect(() =>
+        extractFaultSignal({
+          'x-specmatic-fault': JSON.stringify({ status: 99, body: {} }),
+        }),
+      ).toThrow(ContractViolationError);
+    });
+
+    it('accepts a valid status of 503 without throwing', () => {
+      const signal = extractFaultSignal({
+        'x-specmatic-fault': JSON.stringify({ status: 503, body: { error: 'down' } }),
+      });
+      expect(signal?.status).toBe(503);
+    });
   });
 });

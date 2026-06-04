@@ -168,6 +168,27 @@ describe('typescriptScanner — per-scan module isolation', () => {
   });
 });
 
+describe('typescriptScanner — SANDBOX_ERR_IMPORT_OUTSIDE_SCAN', () => {
+  it('throws SANDBOX_ERR_IMPORT_OUTSIDE_SCAN when a relative import resolves outside the scan directory', async () => {
+    // Place a sibling file outside the scan root so resolveSiblingTs finds it
+    // but isInsideAnyScanDir returns false.
+    const root = await makeTree({
+      'outside/secret.ts': `module.exports = { secret: true };`,
+      'src/r/main.ts': `require('../../outside/secret');`,
+    });
+    let caught: BootError | null = null;
+    try {
+      await scanTypescriptReducers(
+        { scan: [{ include: ['src/r/**/*.ts'] }] },
+        { cwd: root },
+      );
+    } catch (e) {
+      if (e instanceof BootError) caught = e;
+    }
+    expect(caught?.code).toBe('SANDBOX_ERR_IMPORT_OUTSIDE_SCAN');
+  });
+});
+
 describe('typescriptScanner — transpile errors', () => {
   it('throws BOOT_ERR_TS_TRANSPILE when a file fails to parse', async () => {
     const root = await makeTree({
