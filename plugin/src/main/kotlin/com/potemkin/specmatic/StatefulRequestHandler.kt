@@ -35,6 +35,7 @@ class StatefulRequestHandler(
     private val fixtures: FixturesClient? = null,
     private val resilientForwarder: ResilientForwarder? = null,
     private val workflow: WorkflowPropagator? = null,
+    private val fallback: FallbackPolicy? = null,
 ) : RequestHandler {
 
     override val name: String = "potemkin-stateful"
@@ -87,7 +88,11 @@ class StatefulRequestHandler(
             }
 
             if (!discovery.isStateful(path)) {
-                return null  // Not our path — let Specmatic handle it.
+                // Not a stateful (bounded) path. Apply the engine's `fallback:` policy
+                // (static 501/404/custom) so the stub behaves like the direct engine,
+                // rather than letting Specmatic generate an example. When no fallback
+                // policy is wired (legacy tests), fall through to Specmatic.
+                return fallback?.evaluate(method, path)
             }
 
             // Use the resilient forwarder when available (production path).

@@ -63,6 +63,7 @@ class PluginInitializer : StubInitializer {
         val resilient = ResilientForwarder(backendClient, ResilienceConfig.from(config))
         val discovery = RoutesDiscoveryClient(config.backendUrl, config.discoveryRefreshOnFailureMs)
         val fixturesClient = FixturesClient(config.backendUrl, config.discoveryRefreshOnFailureMs)
+        val fallbackPolicy = FallbackPolicy(config.backendUrl, okhttp3.OkHttpClient())
         val bridge = SpecmaticStubBridge(httpStub)
 
         val health = HealthMonitor(
@@ -109,7 +110,7 @@ class PluginInitializer : StubInitializer {
         val workflowPropagator = WorkflowPropagator(blocks.workflow)
 
         val handler = StatefulRequestHandler(
-            discovery, backendClient, fixturesClient, resilient, workflowPropagator,
+            discovery, backendClient, fixturesClient, resilient, workflowPropagator, fallbackPolicy,
         )
         httpStub.registerHandler(handler)
         val jwksProvider: JwksProvider = when {

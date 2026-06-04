@@ -34,4 +34,16 @@ describe('Stripe example — consumer-side harness smoke', () => {
     expect(fetched.status).toBe(200);
     expect((fetched.body as Record<string, unknown>)['email']).toBe('acme@example.com');
   });
+
+  it('applies the fallback policy THROUGH the stub: 501 for a declared-but-unsimulated path', async () => {
+    const res = await api.get('/v1/payouts');
+    expect(res.status).toBe(501);
+    expect((res.body as Record<string, unknown>)['error']).toBe('NOT_IMPLEMENTED');
+  });
+
+  it('applies the fallback policy THROUGH the stub: 404 for a path not in the contract', async () => {
+    const res = await api.get('/v1/not_a_stripe_path');
+    expect(res.status).toBe(404);
+    expect((res.body as Record<string, unknown>)['error']).toBe('NO_ROUTE');
+  });
 });

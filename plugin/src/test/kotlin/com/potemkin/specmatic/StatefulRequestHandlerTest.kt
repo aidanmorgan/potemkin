@@ -103,6 +103,39 @@ class StatefulRequestHandlerTest {
         assertTrue(client.proxyCalled)
     }
 
+    // ---- fallback policy ----------------------------------------------------------------
+
+    private class FakeFallback(private val status: Int) : FallbackPolicy("http://unused", noOpHttpClient()) {
+        var called = false
+        override fun evaluate(method: String, path: String): HttpStubResponse {
+            called = true
+            return HttpStubResponse(response = HttpResponse(status = status, body = StringValue("""{"error":"x"}""")))
+        }
+    }
+
+    @Test
+    fun `non-stateful path applies the fallback policy instead of falling through`() {
+        val client = FakeClient(cannedResponse())
+        val fallback = FakeFallback(501)
+        val handler = StatefulRequestHandler(
+            FixedDiscoveryClient(false), client, null, null, null, fallback,
+        )
+
+        val result = handler.handleRequest(request(path = "/v1/payouts"))
+
+        assertNotNull(result)
+        assertEquals(501, result.response.status)
+        assertTrue(fallback.called)
+        assertFalse(client.called, "fallback path must not forward to the engine")
+    }
+
+    @Test
+    fun `non-stateful path with no fallback wired falls through to Specmatic`() {
+        val client = FakeClient(cannedResponse())
+        val handler = StatefulRequestHandler(FixedDiscoveryClient(false), client)
+        assertNull(handler.handleRequest(request(path = "/v1/payouts")))
+    }
+
     // ---- original tests (unchanged) -----------------------------------------------------
 
     @Test
