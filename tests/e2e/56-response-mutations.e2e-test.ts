@@ -91,9 +91,15 @@ describeWithJava('56 — response mutations via Specmatic + _patches replay', ()
       });
       expect(res.status).toBe(200);
 
-      // Deprecation headers on the served response.
+      // Deprecation headers on the served response. The Sunset value is asserted
+      // by instant, not exact string: through the Specmatic stub the value is
+      // re-serialised to an RFC 8594 HTTP-date ("Fri, 01 Jan 2027 00:00:00 GMT"),
+      // whereas the raw engine path emits the ISO config value — both denote the
+      // same moment.
       expect(res.headers.get('deprecation')).toBe('true');
-      expect(res.headers.get('sunset')).toBe('2027-01-01T00:00:00Z');
+      const sunset = res.headers.get('sunset');
+      expect(sunset).toBeTruthy();
+      expect(new Date(sunset as string).toISOString()).toBe('2027-01-01T00:00:00.000Z');
       const link = res.headers.get('link');
       expect(link).toContain('/v2/documents');
       expect(link).toContain('rel="successor-version"');

@@ -35,11 +35,11 @@ async function waitForHealthState(
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
+      // /health reports DOWN with 503 and UP with 200; the state is in the body
+      // regardless of status, so read it either way.
       const res = await fetch(`${pluginControlUrl}/health`);
-      if (res.status === 200) {
-        const body = await res.json() as { state: string };
-        if (body.state === expectedState) return true;
-      }
+      const body = await res.json() as { state?: string };
+      if (body.state === expectedState) return true;
     } catch {
       // ignore
     }

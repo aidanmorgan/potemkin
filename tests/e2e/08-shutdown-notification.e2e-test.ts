@@ -26,10 +26,12 @@ const describeWithJava = javaAvailable() ? describe : describe.skip;
 
 async function getPluginHealthState(pluginControlUrl: string): Promise<string | null> {
   try {
+    // /health reports DOWN with HTTP 503 (standard health-check semantics) and UP
+    // with 200; the state string is in the body either way, so read it regardless
+    // of status.
     const res = await fetch(`${pluginControlUrl}/health`);
-    if (res.status !== 200) return null;
-    const body = await res.json() as { state: string };
-    return body.state;
+    const body = await res.json() as { state?: string };
+    return body.state ?? null;
   } catch {
     return null;
   }
