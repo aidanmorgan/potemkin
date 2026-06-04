@@ -84,7 +84,7 @@ describe('contract/lookupOperationId', () => {
     it('resolves every operationId declared in the CRM contract', async () => {
       const specPath = path.join(
         __dirname,
-        '../../fixtures/crm/openapi/nuisance-bureau.yaml',
+        '../../../examples/crm/openapi/nuisance-bureau.yaml',
       );
       const doc = await loadOpenApi(specPath);
 

@@ -20,6 +20,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as yaml from 'js-yaml';
 import { translateOverlayPatches } from '../../../src/dsl/forwardBlocks';
+import { resolveFixtureDir } from '../../fixtures/index';
 import type { Patch } from '../../../src/dsl/patches';
 
 export interface FixtureForwardBlocks {
@@ -42,7 +43,7 @@ interface OverlayBlock {
 export function buildFixtureForwardBlocks(fixtureName: string | undefined): FixtureForwardBlocks {
   if (!fixtureName) return { pluginConfigYaml: '' };
 
-  const fixtureDir = path.resolve(__dirname, '..', '..', 'fixtures', fixtureName);
+  const fixtureDir = resolveFixtureDir(fixtureName);
   const potemkinPath = path.join(fixtureDir, 'potemkin.yaml');
   const globalPath = path.join(fixtureDir, 'dsl', 'global.yaml');
 

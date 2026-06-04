@@ -11,8 +11,19 @@ const SCRIPTS_SCAN: TypescriptConfig = {
   watch: false,
 };
 
+/**
+ * Resolve a fixture's on-disk directory. The canonical CRM simulation is a
+ * standalone example under examples/crm; every other fixture lives under
+ * tests/fixtures/<name>. Keeping this in one place lets the engine and the
+ * full-Specmatic harness agree on where a fixture's files live.
+ */
+export function resolveFixtureDir(fixtureName: string): string {
+  if (fixtureName === 'crm') return path.resolve(__dirname, '..', '..', 'examples', 'crm');
+  return path.join(__dirname, fixtureName);
+}
+
 export async function loadFixture(fixtureName: string = 'crm'): Promise<BootInput> {
-  const dir = path.join(__dirname, fixtureName);
+  const dir = resolveFixtureDir(fixtureName);
   const openapi = await loadOpenApi(path.join(dir, 'openapi/nuisance-bureau.yaml'));
   const read = (p: string) => fs.readFileSync(path.join(dir, p), 'utf8');
   const dslModules = [
@@ -62,7 +73,7 @@ export async function loadFixtureWithGlobal(
   readonly scriptsDir: string;
   readonly dslModules: readonly { name: string; yaml: string }[];
 }> {
-  const dir = path.join(__dirname, fixtureName);
+  const dir = resolveFixtureDir(fixtureName);
   const openapi = await loadOpenApi(path.join(dir, 'openapi/nuisance-bureau.yaml'));
   const read = (p: string) => fs.readFileSync(path.join(dir, p), 'utf8');
   const dslModules = [
@@ -132,7 +143,7 @@ export interface EngineFixture {
  * ts-reducer-decorator).
  */
 export async function loadEngineFixture(fixtureName = 'crm'): Promise<EngineFixture> {
-  const dir = path.join(__dirname, fixtureName);
+  const dir = resolveFixtureDir(fixtureName);
   const openapi = await loadOpenApi(resolveOpenApiPath(dir));
   const potemkinConfigPath = path.join(dir, 'potemkin.yaml');
   if (!fs.existsSync(potemkinConfigPath)) {

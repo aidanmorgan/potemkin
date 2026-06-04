@@ -18,19 +18,12 @@ import { startSpecmatic } from './specmatic-driver';
 import { startEngine } from './engine-driver';
 import { getFreePort } from './port-allocator';
 import { buildFixtureForwardBlocks } from './forward-blocks';
+import { resolveFixtureDir } from '../../fixtures/index';
 import type { SpecmaticHandle } from './specmatic-driver';
 import type { EngineHandle } from './engine-driver';
 
 // Path to the CRM OpenAPI YAML used as the contract for the Specmatic stub.
-const CONTRACT_PATH = path.resolve(
-  __dirname,
-  '..',
-  '..',
-  'fixtures',
-  'crm',
-  'openapi',
-  'nuisance-bureau.yaml',
-);
+const CONTRACT_PATH = path.join(resolveFixtureDir('crm'), 'openapi', 'nuisance-bureau.yaml');
 
 /**
  * Resolve the OpenAPI contract served by the Specmatic stub for a given
@@ -40,7 +33,7 @@ const CONTRACT_PATH = path.resolve(
  */
 function resolveContractPath(fixtureName: string | undefined): string {
   if (!fixtureName) return CONTRACT_PATH;
-  const openapiDir = path.resolve(__dirname, '..', '..', 'fixtures', fixtureName, 'openapi');
+  const openapiDir = path.join(resolveFixtureDir(fixtureName), 'openapi');
   if (!fs.existsSync(openapiDir)) return CONTRACT_PATH;
   const files = fs.readdirSync(openapiDir).filter((f) => f.endsWith('.yaml') || f.endsWith('.yml'));
   if (files.length === 0) return CONTRACT_PATH;

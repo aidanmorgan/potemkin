@@ -17,7 +17,7 @@
     "lint": "eslint",
     "format": "prettier --write",
     "start": "tsx src/index.ts",
-    "start:example": "tsx examples/run-nuisance-bureau-sim.ts",
+    "start:example": "tsx examples/crm/run-crm-sim.ts",
     "specmatic-cli:download": "node -e \"require('./tests/integration/specmatic-cli/_helpers/specmatic-binary').ensureSpecmaticJar().then(p => console.log('Cached at:', p)).catch(e => { console.error(e); process.exit(1); })\"",
     "test:contract": "jest --config jest.contract.config.js",
     "test:e2e": "jest --config jest.e2e.config.js --runInBand",

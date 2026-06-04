@@ -14,7 +14,7 @@ import { bootSystem, type BootedSystem } from '../../src/engine/boot.js';
 import { loadFixtureWithGlobal } from '../fixtures/index.js';
 import type { CompiledDsl } from '../../src/dsl/types.js';
 
-const CRM_CONFIG = path.join(__dirname, '..', 'fixtures', 'crm', 'potemkin.yaml');
+const CRM_CONFIG = path.join(__dirname, '..', '..', 'examples', 'crm', 'potemkin.yaml');
 
 /** loadFixtureWithGlobal always populates compiledDsl; narrow the optional type. */
 function requireCompiled(dsl: CompiledDsl | undefined): CompiledDsl {

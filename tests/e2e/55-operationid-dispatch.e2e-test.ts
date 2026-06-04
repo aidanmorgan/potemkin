@@ -152,7 +152,7 @@ describeWithJava('55 — operationId dispatch via Specmatic stub', () => {
   describe('BOOT_ERR_UNKNOWN_OPERATION_ID', () => {
     it('boot fails when a behaviour references an operationId absent from the spec', async () => {
       const openapi = await loadOpenApi(
-        path.resolve(__dirname, '..', 'fixtures', 'crm', 'openapi', 'nuisance-bureau.yaml'),
+        path.resolve(__dirname, '..', '..', 'examples', 'crm', 'openapi', 'nuisance-bureau.yaml'),
       );
       // A Lead boundary whose behaviour references a non-existent operationId.
       const dsl = await compileDsl([

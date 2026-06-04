@@ -16,12 +16,12 @@
  * Domain: The Nuisance Bureau CRM — 5 boundaries: Lead, Campaign, Agent, Call, Opportunity.
  */
 
-import { bootSystem, createGateway, installGracefulShutdown } from '../src/index.js';
-import { loadCrmFixture } from '../tests/fixtures/index.js';
-import { createLogger } from '../src/observability/logger.js';
+import { bootSystem, createGateway, installGracefulShutdown } from '../../src/index.js';
+import { loadFixture } from '../../tests/fixtures/index.js';
+import { createLogger } from '../../src/observability/logger.js';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const version: string = (require('../package.json') as { version: string }).version;
+const version: string = (require('../../package.json') as { version: string }).version;
 
 const log = createLogger({ name: 'nuisance-bureau-sim' });
 
@@ -29,7 +29,7 @@ const PORT = Number(process.env['PORT'] ?? 3001);
 
 async function main(): Promise<void> {
   // --- Boot ----------------------------------------------------------------
-  const fixture = await loadCrmFixture();
+  const fixture = await loadFixture('crm');
 
   const sys = await bootSystem({
     ...fixture,

@@ -23,7 +23,7 @@ import {
 } from '../_support/persistentAgent.js';
 import { registerFileTeardown } from '../_support/testTeardown.js';
 
-const CRM_CONFIG = path.join(__dirname, '..', 'fixtures', 'crm', 'potemkin.yaml');
+const CRM_CONFIG = path.join(__dirname, '..', '..', 'examples', 'crm', 'potemkin.yaml');
 
 describe('boot attaches per-boundary inferred schemas', () => {
   let sys: BootedSystem;
