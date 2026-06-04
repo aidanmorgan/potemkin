@@ -78,6 +78,15 @@ describe('Stripe simulation — Customers', () => {
     const res = await agent.delete(`/v1/customers/${id}`).expect(200);
     expect(res.body).toEqual({ id, object: 'customer', deleted: true });
   });
+
+  it('returns 501 for a contract path that has no boundary (declared but not simulated)', async () => {
+    const res = await agent.get('/v1/payouts').expect(501);
+    expect((res.body as Record<string, unknown>)['error']).toBe('NOT_IMPLEMENTED');
+  });
+
+  it('returns 404 for a path that is not in the contract at all', async () => {
+    await agent.get('/v1/not_a_stripe_path').expect(404);
+  });
 });
 
 describe('Stripe simulation — Products', () => {

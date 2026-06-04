@@ -519,6 +519,20 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/refund" }
 
+  # ── Payouts (declared but NOT simulated) ────────────────────────────────────
+  # A real Stripe endpoint we deliberately do not implement statefully — it
+  # exercises the 501 Not Implemented behaviour for un-bounded contract paths.
+  /v1/payouts:
+    get:
+      operationId: listPayouts
+      summary: List payouts (not implemented by this simulation)
+      responses:
+        "200":
+          description: A list of payouts
+          content:
+            application/json:
+              schema: { type: object }
+
 components:
   schemas:
     # ── Shared ────────────────────────────────────────────────────────────────

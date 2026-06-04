@@ -41,6 +41,7 @@ import type {
   VersioningConfig,
   WebhookConfig,
 } from './types.js';
+import type { FallbackConfig, FallbackRule, FallbackRuleMatch, FallbackResponse } from './types.js';
 import type { DeclaredComputedField, DeclaredInternalField, DeclaredState, FieldKind, FieldType } from './schemaInference.js';
 import { createCelEvaluator } from '../cel/evaluator.js';
 import { createLogger } from '../observability/logger.js';
@@ -2050,6 +2051,7 @@ export interface GlobalConfig {
   readonly faults?: readonly FaultRule[];
   readonly webhooks?: readonly WebhookConfig[];
   readonly reactions?: readonly ReactionRule[];
+  readonly fallback?: FallbackConfig;
 }
 
 /**
@@ -2068,6 +2070,7 @@ const KNOWN_GLOBAL_KEYS: ReadonlySet<string> = new Set([
   'fault_rules',
   'webhooks',
   'reactions',
+  'fallback',
 ]);
 
 function validateAuthConfig(raw: unknown): AuthConfig {
@@ -2291,6 +2294,69 @@ function validateWebhookConfig(raw: unknown, i: number): WebhookConfig {
  * Validate a raw global config object parsed from an optional globalYaml string
  * in compileDsl. Unknown top-level keys are a BOOT_ERR.
  */
+function validateFallbackResponse(raw: unknown, ctx: string): FallbackResponse {
+  if (!isRecord(raw)) {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}: must be a mapping with a status`, { context: ctx });
+  }
+  const status = raw['status'];
+  if (typeof status !== 'number' || !Number.isInteger(status) || status < 100 || status > 599) {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.status: must be an HTTP status integer 100-599`, { context: ctx });
+  }
+  return {
+    status,
+    ...(raw['body'] !== undefined ? { body: raw['body'] as JsonValue } : {}),
+  };
+}
+
+function validateFallbackRule(raw: unknown, index: number): FallbackRule {
+  const ctx = `fallback.rules[${index}]`;
+  if (!isRecord(raw)) {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}: must be a mapping`, { context: ctx });
+  }
+  const matchRaw = raw['match'];
+  if (!isRecord(matchRaw)) {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.match: must be a mapping`, { context: ctx });
+  }
+  for (const k of Object.keys(matchRaw)) {
+    if (k !== 'path' && k !== 'method' && k !== 'in_contract') {
+      throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.match: unknown key "${k}" — expected path, method, in_contract`, { context: ctx });
+    }
+  }
+  const match: FallbackRuleMatch = {
+    ...(typeof matchRaw['path'] === 'string' ? { path: matchRaw['path'] } : {}),
+    ...(typeof matchRaw['method'] === 'string' ? { method: matchRaw['method'] } : {}),
+    ...(typeof matchRaw['in_contract'] === 'boolean' ? { inContract: matchRaw['in_contract'] } : {}),
+  };
+  const respond = validateFallbackResponse(raw['respond'], `${ctx}.respond`);
+  return { match, respond };
+}
+
+function validateFallbackConfig(raw: unknown): FallbackConfig | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (!isRecord(raw)) {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', 'fallback: must be a mapping', { received: typeof raw });
+  }
+  for (const k of Object.keys(raw)) {
+    if (k !== 'rules' && k !== 'default') {
+      throw new BootError('BOOT_ERR_DSL_SYNTAX', `fallback: unknown key "${k}" — expected rules, default`, { field: k });
+    }
+  }
+  let rules: readonly FallbackRule[] | undefined;
+  if (raw['rules'] !== undefined && raw['rules'] !== null) {
+    if (!Array.isArray(raw['rules'])) {
+      throw new BootError('BOOT_ERR_DSL_SYNTAX', 'fallback.rules: must be an array', { field: 'rules' });
+    }
+    rules = (raw['rules'] as unknown[]).map((r, i) => validateFallbackRule(r, i));
+  }
+  const def = raw['default'] !== undefined && raw['default'] !== null
+    ? validateFallbackResponse(raw['default'], 'fallback.default')
+    : undefined;
+  return {
+    ...(rules !== undefined ? { rules } : {}),
+    ...(def !== undefined ? { default: def } : {}),
+  };
+}
+
 export function validateGlobalConfig(raw: unknown): GlobalConfig {
   if (!isRecord(raw)) {
     throw new BootError('BOOT_ERR_DSL_SYNTAX', 'Global config must be a YAML mapping object', { received: typeof raw });
@@ -2372,6 +2438,8 @@ export function validateGlobalConfig(raw: unknown): GlobalConfig {
     reactions = (raw['reactions'] as unknown[]).map((r, i) => validateReactionRule(r, i, undefined));
   }
 
+  const fallback = validateFallbackConfig(raw['fallback']);
+
   return {
     ...(sagas !== undefined ? { sagas } : {}),
     ...(idempotency !== undefined ? { idempotency } : {}),
@@ -2383,5 +2451,6 @@ export function validateGlobalConfig(raw: unknown): GlobalConfig {
     ...(faults !== undefined ? { faults } : {}),
     ...(webhooks !== undefined ? { webhooks } : {}),
     ...(reactions !== undefined ? { reactions } : {}),
+    ...(fallback !== undefined ? { fallback } : {}),
   };
 }

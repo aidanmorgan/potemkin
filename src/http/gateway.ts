@@ -63,6 +63,7 @@ import { createSessionAuthMiddleware, SESSION_ACTOR_KEY, SESSION_HANDLED_KEY } f
 import type { Actor } from '../types.js';
 import { createForwardingHandler, healthHandler, createRoutesHandler, createFixturesHandler } from '../forwarding/handler.js';
 import { createFormFieldsHandler } from '../contract/formFields.js';
+import { createFallbackHandler, createFallbackMetadataHandler } from './fallback.js';
 import { parseControlHeaders, applyMask } from './controlHeaders.js';
 import { POTEMKIN_REQUEST_HEADERS } from './potemkinHeaders.js';
 import { applyPaginationStyle, applyResponseFormat } from './responseFormat.js';
@@ -223,6 +224,9 @@ export function createGateway(sys: BootedSystem): Express {
   // Form-field type metadata so the plugin can coerce x-www-form-urlencoded
   // requests to typed JSON before forwarding (engine stays JSON-only).
   app.get('/_engine/form-fields', createFormFieldsHandler(sys));
+  // Fallback policy (rules + contract paths) so the plugin applies the same
+  // unmatched-request behaviour through the stub instead of Specmatic examples.
+  app.get('/_engine/fallback', createFallbackMetadataHandler(sys));
 
   // POST /_engine/dsl (install/replay) + GET /_engine/state/:boundary/:id
   // for the new plugin↔engine wire contract.
@@ -244,10 +248,12 @@ export function createGateway(sys: BootedSystem): Express {
     );
   }
 
-  // Catch-all 404 for paths not covered by any contract route.
-  app.use((req: Request, res: Response) => {
-    res.status(404).json({ error: 'NO_ROUTE', path: req.path });
-  });
+  // Single fallback handler for any request that matched no boundary. The
+  // `fallback:` policy (ordered rules + default) decides the static response; the
+  // zero-config default is 501 for a declared-but-unsimulated contract path and
+  // 404 otherwise. Lets the engine boot the whole real spec (e.g. Stripe's 414
+  // paths) while only some resources are implemented statefully.
+  app.use(createFallbackHandler(sys));
 
   // Body-parse error handler — express.json() sets 'body' on SyntaxError when JSON is malformed.
   // Must be declared before the generic error handler so it catches SyntaxError first.

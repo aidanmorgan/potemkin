@@ -2,7 +2,7 @@ import * as yaml from 'js-yaml';
 import { BootError } from '../errors.js';
 import { createLogger, getTracer, withSpan } from '../observability/index.js';
 import { validateBoundaryConfig, validateComponentConfig, validateGlobalConfig, validateUseEntries } from './schema.js';
-import type { AuthConfig, BoundaryConfig, CompiledDsl, ComponentDefinition, FaultRule, HateoasConfig, ReactionRule, ReactionsByTrigger, SagaConfig, IdempotencyConfig, DerivedProjectionConfig, LatencyConfig, SecurityHeadersConfig, UseEntry, VersioningConfig, WebhookConfig } from './types.js';
+import type { AuthConfig, BoundaryConfig, CompiledDsl, ComponentDefinition, FaultRule, FallbackConfig, HateoasConfig, ReactionRule, ReactionsByTrigger, SagaConfig, IdempotencyConfig, DerivedProjectionConfig, LatencyConfig, SecurityHeadersConfig, UseEntry, VersioningConfig, WebhookConfig } from './types.js';
 import { linkComponents, mergeIncludes } from './componentLinker.js';
 
 const log = createLogger({ name: 'dsl' });
@@ -344,6 +344,7 @@ export async function compileDsl(
     let faults: readonly FaultRule[] | undefined;
     let webhooks: readonly WebhookConfig[] | undefined;
     let globalReactions: readonly ReactionRule[] | undefined;
+    let fallback: FallbackConfig | undefined;
 
     if (globalYaml) {
       let rawGlobal: unknown;
@@ -368,6 +369,7 @@ export async function compileDsl(
       faults = globalConfig.faults;
       webhooks = globalConfig.webhooks;
       globalReactions = globalConfig.reactions;
+      fallback = globalConfig.fallback;
     }
 
     // Collect all reactions from boundary files and the global config.
@@ -413,6 +415,7 @@ export async function compileDsl(
       ...(securityHeaders !== undefined ? { securityHeaders } : {}),
       ...(faults !== undefined ? { faults } : {}),
       ...(webhooks !== undefined ? { webhooks } : {}),
+      ...(fallback !== undefined ? { fallback } : {}),
       ...(reactions !== undefined ? { reactions } : {}),
       ...(reactionsByTrigger !== undefined ? { reactionsByTrigger } : {}),
       ...(hasComponents ? { components: componentsMap } : {}),

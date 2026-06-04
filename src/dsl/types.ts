@@ -505,6 +505,37 @@ export interface EventResponseSnapshot {
  */
 export type ReactionsByTrigger = ReadonlyMap<string, readonly ReactionRule[]>;
 
+/** Static response produced by a fallback rule / default (for unmatched requests). */
+export interface FallbackResponse {
+  readonly status: number;
+  readonly body?: JsonValue;
+}
+
+/** Match predicate for a fallback rule. All present fields must hold (AND). */
+export interface FallbackRuleMatch {
+  /** Glob over the request path (`*` within a segment, `**` across segments). */
+  readonly path?: string;
+  /** HTTP method (case-insensitive). */
+  readonly method?: string;
+  /** Whether the request path matches a declared OpenAPI path template. */
+  readonly inContract?: boolean;
+}
+
+export interface FallbackRule {
+  readonly match: FallbackRuleMatch;
+  readonly respond: FallbackResponse;
+}
+
+/**
+ * `fallback:` — policy for requests that match no boundary. Ordered rules
+ * (first match wins) plus an optional default. With no config the engine
+ * defaults to 501 for in-contract paths and 404 otherwise.
+ */
+export interface FallbackConfig {
+  readonly rules?: readonly FallbackRule[];
+  readonly default?: FallbackResponse;
+}
+
 export interface CompiledDsl {
   readonly boundaries: readonly BoundaryConfig[];
   readonly byContractPath: Record<string, BoundaryConfig>;
@@ -527,6 +558,8 @@ export interface CompiledDsl {
   readonly derivedProjections?: readonly DerivedProjectionConfig[];
   /** Header-driven fault / chaos rules. */
   readonly faults?: readonly FaultRule[];
+  /** Policy for requests that match no boundary (501/404/custom). */
+  readonly fallback?: FallbackConfig;
   /** Auth configuration (JWT, session, simple bearer). */
   readonly auth?: AuthConfig;
   /** Security response headers. */
