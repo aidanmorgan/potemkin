@@ -64,6 +64,7 @@ import type { Actor } from '../types.js';
 import { createForwardingHandler, healthHandler, createRoutesHandler, createFixturesHandler } from '../forwarding/handler.js';
 import { createFormFieldsHandler } from '../contract/formFields.js';
 import { createFallbackHandler, createFallbackMetadataHandler } from './fallback.js';
+import { createLintHandler } from '../lint/httpHandler.js';
 import { parseControlHeaders, applyMask } from './controlHeaders.js';
 import { POTEMKIN_REQUEST_HEADERS } from './potemkinHeaders.js';
 import { applyPaginationStyle, applyResponseFormat } from './responseFormat.js';
@@ -227,6 +228,8 @@ export function createGateway(sys: BootedSystem): Express {
   // Fallback policy (rules + contract paths) so the plugin applies the same
   // unmatched-request behaviour through the stub instead of Specmatic examples.
   app.get('/_engine/fallback', createFallbackMetadataHandler(sys));
+  // Lint result so the plugin can surface a combined [engine]/[plugin] report.
+  app.get('/_engine/lint', createLintHandler(sys));
 
   // POST /_engine/dsl (install/replay) + GET /_engine/state/:boundary/:id
   // for the new plugin↔engine wire contract.

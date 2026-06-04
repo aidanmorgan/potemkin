@@ -59,6 +59,21 @@ class PluginInitializer : StubInitializer {
             config.controlPort,
         )
 
+        // Strict plugin self-lint: refuse to boot (and therefore to serve) on an
+        // invalid plugin configuration, surfacing a combined [plugin]/[engine]
+        // located report. The engine report is best-effort (the engine may not be
+        // up at plugin init).
+        val pluginLint = PluginLint()
+        val selfErrors = pluginLint.selfLint(config)
+        val engineReport = pluginLint.fetchEngineReport(config.backendUrl)
+        if (selfErrors.isNotEmpty() || engineReport?.passed == false) {
+            throw PluginBootException(
+                "BOOT_ERR_PLUGIN_LINT: configuration lint failed — plugin refusing to serve:\n" +
+                    pluginLint.combinedReport(selfErrors, engineReport),
+            )
+        }
+        log.info("Potemkin plugin self-lint passed; engine lint: {}", if (engineReport == null) "unavailable" else "passed")
+
         val backendClient = CqrsBackendClient(config.backendUrl, config.forwardTimeoutMs)
         val resilient = ResilientForwarder(backendClient, ResilienceConfig.from(config))
         val discovery = RoutesDiscoveryClient(config.backendUrl, config.discoveryRefreshOnFailureMs)
