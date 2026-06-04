@@ -152,8 +152,9 @@ export function createContractValidator(
 
     // Break cycles + bound depth before stringifying/compiling: dereferenced
     // schemas from large real specs (e.g. Stripe) are cyclic object graphs that
-    // would overflow JSON.stringify and Ajv. decycleSchema is identity-stable for
-    // already-acyclic schemas, so this is a no-op for small hand-written specs.
+    // would overflow JSON.stringify and Ajv. For small acyclic specs this is
+    // behaviour-preserving — it only rewrites `nullable` nodes into the
+    // equivalent type-union form, leaving validation outcomes unchanged.
     const acyclic = decycleSchema(schema) as JsonObject;
 
     const key = JSON.stringify(acyclic);

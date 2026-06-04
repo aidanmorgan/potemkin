@@ -48,12 +48,6 @@ function asJsonObject(v: unknown): JsonObject | undefined {
 }
 
 /**
- * Maximum nesting depth retained when copying an operation's request/response
- * schema. Large real specs (e.g. Stripe) inline every `$ref` on dereference, so a
- * single resource schema fans out into an astronomically large tree; beyond this
- * depth the subtree is collapsed to `{}` (accept-anything).
- */
-/**
  * Maximum object-nesting depth retained when copying a (dereferenced) schema.
  * Deeper schema objects are collapsed to `{}` (accept-anything). Real specs inline
  * every `$ref` on dereference, so a single resource schema fans out into an
