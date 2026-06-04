@@ -55,6 +55,12 @@ class PotemkinResponseInterceptor(
         }
     }
 
+    // autoVivify=true mirrors CqrsBackendClient.serialiseBodyWithPatches: engine _patches
+    // are produced by src/http/responseMutations.ts with the expectation that intermediate
+    // containers are created when absent (e.g. `merge /_links` on a body that has no
+    // `_links` yet). Using autoVivify=false would throw on `remove` of an absent field
+    // and fail `merge`/`append`/etc. on missing intermediate paths, producing inconsistent
+    // behaviour between the interceptor path and the CqrsBackendClient path.
     private fun applyResponsePatches(httpResponse: HttpResponse, bodyText: String): HttpResponse {
 
         val parsed: Any? = try {
@@ -86,7 +92,7 @@ class PotemkinResponseInterceptor(
         }
 
         return try {
-            val patched = PatchApplier.apply(bodyMap, patches)
+            val patched = PatchApplier.apply(bodyMap, patches, autoVivify = true)
             httpResponse.copy(body = StringValue(mapper.writeValueAsString(patched)))
         } catch (e: PatchApplyException) {
             log.warn(

@@ -21,6 +21,51 @@ import type { Logger } from '../observability/logger.js';
 export type SideEffectThunk = () => Promise<unknown>;
 
 /**
+ * Monotonic reset-epoch holder carried on the running system. resetSystem
+ * increments `current`; post-commit side-effects capture the value in force when
+ * they are scheduled and refuse to run once it has advanced (see withEpochGuard).
+ * A mutable holder (not a bare number) so it can be shared by reference across
+ * the system, the UoW, and any pending thunk.
+ */
+export interface ResetEpoch {
+  current: number;
+}
+
+/** Create a fresh reset-epoch holder starting at 0 (boot time). */
+export function createResetEpoch(): ResetEpoch {
+  return { current: 0 };
+}
+
+/**
+ * Wrap a post-commit side-effect so it NO-OPS if a reset has landed between the
+ * moment it was scheduled and the moment it runs. The thunk captures the epoch
+ * in force at scheduling time; when it executes it compares that against the
+ * live epoch and, on a mismatch, returns without performing the side-effect
+ * (which would otherwise append orphan events into the freshly-reset store).
+ *
+ * When no epoch holder is supplied (direct callers that never reset) the thunk
+ * runs unconditionally, preserving existing behaviour.
+ */
+export function withEpochGuard(
+  thunk: SideEffectThunk,
+  epoch: ResetEpoch | undefined,
+  logger?: Logger,
+): SideEffectThunk {
+  if (!epoch) return thunk;
+  const scheduledEpoch = epoch.current;
+  return async (): Promise<unknown> => {
+    if (epoch.current !== scheduledEpoch) {
+      logger?.debug(
+        { scheduledEpoch, currentEpoch: epoch.current },
+        'Post-commit side-effect suppressed: reset occurred after it was scheduled',
+      );
+      return undefined;
+    }
+    return thunk();
+  };
+}
+
+/**
  * Collects deferred post-commit side-effects for a bulk-transactional batch.
  * When supplied to a UoW, the UoW enqueues its side-effects here instead of
  * dispatching them inline.

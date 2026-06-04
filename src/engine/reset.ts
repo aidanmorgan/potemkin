@@ -27,6 +27,17 @@ export function resetSystem(sys: BootedSystem): void {
     resetLog.info({ step: 'reset_start' }, 'Reset: starting ephemeral reset');
 
     try {
+      // ── Step 0: Advance the reset epoch ────────────────────────────────────
+      // Bump BEFORE purging so any post-commit side-effect (saga/webhook) that
+      // was scheduled before this reset and runs afterwards observes the new
+      // epoch and no-ops, rather than appending orphan events into the store we
+      // are about to restore to baseline.
+      sys.resetEpoch.current++;
+      resetLog.info(
+        { step: 'epoch_advanced', resetEpoch: sys.resetEpoch.current },
+        'Reset: reset epoch advanced',
+      );
+
       // ── Step 1: Purge Event Log ────────────────────────────────────────────
       sys.events.purge();
       resetLog.info({ step: 'events_purged' }, 'Reset: event store purged');

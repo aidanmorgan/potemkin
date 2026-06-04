@@ -130,6 +130,9 @@ The Node engine is not running or is bound to a different port. Start the engine
 **ClassNotFoundException for Specmatic classes at build time**  
 `specmatic-core` is a `compileOnly` dependency — it is intentionally absent from the fat-JAR. It must be present on the Specmatic runtime classpath (it always is when using `specmatic.jar`).
 
+**Drop-connection chaos returns 504 instead of a TCP reset**  
+When drop-connection chaos is configured, the gateway path (`gateway.ts`) destroys the TCP socket directly. The plugin path cannot do this — `RequestHandler.handleRequest` and `ResponseInterceptor.interceptResponse` return `HttpResponse` objects; there is no API to close the Specmatic HTTP connection from inside the plugin. Instead the forwarding handler (`src/forwarding/handler.ts`) emits a synthetic `504` with header `x-potemkin-dropped: true`, which the plugin propagates verbatim. Tests asserting drop-connection chaos on the plugin path must expect a `504` response, not a connection reset.
+
 ---
 
 ## Design reference

@@ -174,6 +174,31 @@ class CqrsBackendClientTest {
         assertNull(result)
     }
 
+    // ---- drop-connection chaos (ac36) ---------------------------------------------------
+
+    @Test
+    fun `drop-connection chaos returns 504 with x-potemkin-dropped header on plugin path`() {
+        // The forwarding handler emits a synthetic 504 + x-potemkin-dropped:true when
+        // drop-connection chaos fires (src/forwarding/handler.ts). The plugin cannot abort
+        // the Specmatic socket from inside a RequestHandler so it propagates the 504 verbatim.
+        // This test asserts that canonical plugin behaviour: 504 + header present, no TCP reset.
+        val droppedEnvelope = mapper.writeValueAsString(
+            mapOf(
+                "status" to 504,
+                "headers" to mapOf(PotemkinHeaders.DROPPED to "true"),
+                "body" to null,
+            ),
+        )
+        server.enqueue(MockResponse().setResponseCode(200).setBody(droppedEnvelope))
+
+        val result = client.forward(simpleRequest())
+
+        assertNotNull(result, "drop-connection chaos must yield a response, not null")
+        assertEquals(504, result.response.status)
+        assertEquals("true", result.response.headers[PotemkinHeaders.DROPPED],
+            "x-potemkin-dropped header must be preserved so callers can distinguish drop-chaos from real timeouts")
+    }
+
     // ---- query parameter serialisation --------------------------------------------------
 
     @Test

@@ -3,6 +3,7 @@ import { createEventStore } from '../../../src/eventstore/store';
 import { createStateGraph } from '../../../src/stategraph/graph';
 import { createIdempotencyStore } from '../../../src/idempotency/store';
 import { createSessionStore } from '../../../src/identity/sessionStore';
+import { createResetEpoch } from '../../../src/engine/sideEffects';
 import { createCelEvaluator } from '../../../src/cel/evaluator';
 import { createLogger } from '../../../src/observability/logger';
 import type { BootedSystem } from '../../../src/engine/boot';
@@ -49,6 +50,7 @@ function makeBootedSystem(
     idempotencyStore: createIdempotencyStore(),
     sessionStore: createSessionStore({ sweepIntervalMs: 0 }),
     aggregateLocks: new Map<string, Promise<void>>(),
+    resetEpoch: createResetEpoch(),
   } as unknown as BootedSystem;
 }
 

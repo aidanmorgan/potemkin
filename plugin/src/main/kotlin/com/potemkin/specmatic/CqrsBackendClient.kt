@@ -154,6 +154,14 @@ open class CqrsBackendClient(
 
     private fun buildHttpStubResponse(resp: ForwardedResponse): HttpStubResponse {
         val bodyString = serialiseBodyWithPatches(resp)
+        // Drop-connection chaos note: when the engine's forwarding layer fires drop-connection
+        // chaos it cannot destroy the upstream socket (only gateway.ts can do that via
+        // `res.socket?.destroy()`). Instead it sends a synthetic 504 with header
+        // `x-potemkin-dropped: true` (PotemkinHeaders.DROPPED). The plugin has no API to
+        // abort the Specmatic HTTP connection from inside a RequestHandler — the Specmatic
+        // stub framework only accepts an HttpResponse, not a raw socket close. The 504 is
+        // therefore propagated verbatim. Plugin-path drop-connection chaos means 504, not
+        // a TCP reset. This divergence from the gateway path is intentional and known.
         val httpResponse = HttpResponse(
             status = resp.status,
             headers = resp.headers,

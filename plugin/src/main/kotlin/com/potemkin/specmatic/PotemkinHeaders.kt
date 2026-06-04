@@ -24,4 +24,20 @@ object PotemkinHeaders {
      * session-key resolution order.
      */
     const val WORKFLOW_SESSION = "X-Potemkin-Workflow-Session"
+
+    /**
+     * Set by the Node engine's forwarding handler (`src/forwarding/handler.ts`) when
+     * drop-connection chaos fires on the plugin path. The gateway path destroys the TCP
+     * socket directly (`res.socket?.destroy()`), but the forwarding layer cannot reach
+     * the upstream socket, so it instead sends a synthetic 504 with this header.
+     *
+     * The plugin cannot abort the Specmatic HTTP connection from inside a [RequestHandler]
+     * or [ResponseInterceptor] — those APIs only return [io.specmatic.core.HttpResponse]
+     * objects; there is no escape hatch to close the underlying channel. Consequently, the
+     * plugin propagates the 504 verbatim. Tests must assert 504 (not a TCP reset) for
+     * drop-connection chaos scenarios on the plugin path.
+     *
+     * Value: `"true"` (lowercase, as sent by the Node engine).
+     */
+    const val DROPPED = "x-potemkin-dropped"
 }

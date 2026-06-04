@@ -62,7 +62,8 @@ import { fireReactions } from './reactions.js';
 import { applyEventToDerivedProjections } from '../projections/engine.js';
 import { findTriggeredSagas, runSaga } from '../sagas/orchestrator.js';
 import { prepareWebhookDelivery, deliverWebhook, type FetchLike } from '../webhooks/dispatcher.js';
-import type { SideEffectQueue, SideEffectThunk } from './sideEffects.js';
+import type { SideEffectQueue, SideEffectThunk, ResetEpoch } from './sideEffects.js';
+import { withEpochGuard } from './sideEffects.js';
 import type { WebhookConfig } from '../dsl/types.js';
 import type { ControlHeaders } from '../http/controlHeaders.js';
 import type { TsReducerRegistry } from './tsReducerRegistry.js';
@@ -144,6 +145,15 @@ export interface UowInput {
    * rolled back. When absent, side-effects fire immediately (the normal path).
    */
   readonly deferSideEffects?: SideEffectQueue;
+  /**
+   * Monotonic reset-epoch holder from the running system (sys.resetEpoch). When
+   * supplied, each post-commit side-effect (saga/webhook) captures the epoch in
+   * force at scheduling time and no-ops if it has advanced (i.e. a reset landed)
+   * by the time it runs — so a side-effect scheduled before a reset cannot
+   * append orphan events into the freshly-reset store. When absent, side-effects
+   * run unconditionally (direct callers that never reset).
+   */
+  readonly resetEpoch?: ResetEpoch;
   /**
    * Per-UoW event budget for reaction-emitted events.
    * Defaults to MAX_UOW_REACTION_EVENTS (1000) in reactions.ts when not supplied.
@@ -784,10 +794,16 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
           }
 
           for (const thunk of sideEffects) {
+            // Bake the reset-epoch guard into every thunk at scheduling time so a
+            // side-effect that straddles a reset (created pre-reset, run
+            // post-reset) no-ops instead of appending orphan events. The guard is
+            // captured here, so it protects BOTH the inline path and the deferred
+            // queue path (the queue may flush long after this UoW returns).
+            const guarded = withEpochGuard(thunk, input.resetEpoch, logger);
             if (input.deferSideEffects) {
-              input.deferSideEffects.enqueue(thunk);
+              input.deferSideEffects.enqueue(guarded);
             } else {
-              thunk().catch((err: unknown) => {
+              guarded().catch((err: unknown) => {
                 logger.error({ err }, 'Post-commit side-effect failed unexpectedly');
               });
             }

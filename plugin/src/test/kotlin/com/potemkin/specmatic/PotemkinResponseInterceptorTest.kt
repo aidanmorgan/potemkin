@@ -7,6 +7,7 @@ import io.specmatic.core.value.StringValue
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -84,8 +85,10 @@ class PotemkinResponseInterceptorTest {
 
     @Test
     fun `failed patch preserves the original response and adds a Warning header`() {
+        // Use a `move` from a non-existent source — this always fails even under autoVivify=true
+        // because `move`/`copy` source-not-found is never vivifiable (there is nothing to copy).
         val original =
-            """{"status":"PENDING","_patches":[{"op":"replace","path":"/missing","value":"X"}]}"""
+            """{"status":"PENDING","_patches":[{"op":"move","from":"/nonExistent","path":"/status"}]}"""
         val resp = response(original)
 
         val result = interceptor.interceptResponse(req, resp)
@@ -94,7 +97,7 @@ class PotemkinResponseInterceptorTest {
         assertEquals(original, result.body.toStringLiteral())
         val warning = result.headers["Warning"]
         assertTrue(warning != null && warning.startsWith("199 potemkin"), "Warning header: $warning")
-        assertTrue(warning.contains("replace"), "Warning describes the failing op: $warning")
+        assertTrue(warning.contains("move"), "Warning describes the failing op: $warning")
     }
 
     @Test
@@ -106,6 +109,45 @@ class PotemkinResponseInterceptorTest {
 
         assertEquals(original, result.body.toStringLiteral())
         assertTrue(result.headers["Warning"]?.startsWith("199 potemkin") == true)
+    }
+
+    @Test
+    fun `remove of absent field is a no-op (autoVivify parity with CqrsBackendClient)`() {
+        // Engine _patches may contain a `remove` targeting a field that is conditionally
+        // absent in the response body. Under autoVivify=true this must be silently skipped,
+        // matching CqrsBackendClient.serialiseBodyWithPatches. Under the old autoVivify=false
+        // it would have thrown and emitted a Warning header instead.
+        val resp = response(
+            """{"id":"L-1","status":"ACTIVE","_patches":[{"op":"remove","path":"/nonExistentField"}]}""",
+        )
+
+        val result = interceptor.interceptResponse(req, resp)
+        val body = bodyAsMap(result)
+
+        assertEquals("L-1", body["id"])
+        assertEquals("ACTIVE", body["status"])
+        assertFalse(body.containsKey("_patches"), "_patches must be stripped")
+        assertNull(result.headers["Warning"], "remove of absent field must not emit a Warning")
+    }
+
+    @Test
+    fun `merge into absent intermediate path is autoVivified (parity with CqrsBackendClient)`() {
+        // Engine _patches for HATEOAS links may target a path that does not exist yet
+        // (e.g. /_links when the body has no _links key). autoVivify=true must create
+        // the intermediate container; autoVivify=false would have thrown a PatchApplyException.
+        val resp = response(
+            """{"id":"L-1","_patches":[{"op":"merge","path":"/_links","value":{"self":"/loans/L-1"}}]}""",
+        )
+
+        val result = interceptor.interceptResponse(req, resp)
+        val body = bodyAsMap(result)
+
+        @Suppress("UNCHECKED_CAST")
+        val links = body["_links"] as? Map<String, Any?>
+        assertNotNull(links, "_links must be created by autoVivify")
+        assertEquals("/loans/L-1", links!!["self"])
+        assertFalse(body.containsKey("_patches"), "_patches must be stripped")
+        assertNull(result.headers["Warning"], "autoVivify merge must not emit a Warning")
     }
 
     @Test
@@ -151,11 +193,11 @@ class PotemkinResponseInterceptorTest {
 
     @Test
     fun `Warning header backslash in detail is escaped so quoted-string is well-formed`() {
-        // A path ending in a backslash: without proper escaping the backslash would
-        // escape the closing quote and corrupt the RFC-7234 quoted-string.
-        // A backslash immediately before a quote is the worst case: \\" must become \\\\\"
-        // so the parser sees one escaped backslash followed by an escaped quote.
-        val malformedPatch = """{"x":1,"_patches":[{"op":"replace","path":"/missing\\"}]}"""
+        // A `move` from a source path ending in a backslash: without proper escaping the
+        // backslash would escape the closing quote and corrupt the RFC-7234 quoted-string.
+        // Use `move` (non-existent source always fails even under autoVivify=true) so the
+        // source path with its trailing backslash appears verbatim in the Warning detail.
+        val malformedPatch = """{"x":1,"_patches":[{"op":"move","from":"/missing\\","path":"/x"}]}"""
         val resp = response(malformedPatch)
 
         val result = interceptor.interceptResponse(req, resp)
@@ -178,7 +220,9 @@ class PotemkinResponseInterceptorTest {
         // Path is /foo\" — the backslash is immediately before a double-quote.
         // Without correct ordering (escape \ first, then "), the \" pair at the end of the
         // header value would escape the closing quote and corrupt the RFC-7234 quoted-string.
-        val malformedPatch = """{"x":1,"_patches":[{"op":"replace","path":"/foo\\\""}]}"""
+        // Use `move` (non-existent source always fails even under autoVivify=true) so the
+        // source path with its embedded backslash+quote appears in the Warning detail.
+        val malformedPatch = """{"x":1,"_patches":[{"op":"move","from":"/foo\\\"","path":"/x"}]}"""
         val resp = response(malformedPatch)
 
         val result = interceptor.interceptResponse(req, resp)

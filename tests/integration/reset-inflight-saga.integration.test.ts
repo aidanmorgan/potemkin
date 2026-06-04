@@ -1,19 +1,24 @@
 /**
- * RED TEAM — combo 6: RESET × IN-FLIGHT side-effect.
+ * reset-inflight-saga.integration.test.ts
+ *
+ * Regression for bug cjyf: reset orphans in-flight post-commit side-effects.
  *
  * Sagas (and webhooks) run AFTER commit, fire-and-forget. resetSystem() is
- * synchronous and purges the event store + state graph + aggregate locks, with
- * the documented assumption that reset is called "quiescently (no in-flight
- * UoW)". But a post-commit saga thunk can still be pending when a reset lands.
+ * synchronous and purges the event store + state graph + locks back to the
+ * frozen baseline, under the documented assumption that it is called quiescently
+ * (no in-flight UoW). But a post-commit saga thunk can still be pending when a
+ * reset lands; if it then runs it appends orphan saga/step events into the
+ * freshly-reset store, corrupting the deterministic baseline.
  *
- * Invariant: after a reset, the event store must contain ONLY the frozen
- * baseline — no orphaned events from a side-effect that was scheduled before the
- * reset but executed after it.
+ * The fix carries a monotonic reset epoch on the BootedSystem. resetSystem
+ * increments it; each post-commit side-effect thunk captures the epoch in force
+ * when it is scheduled and no-ops if the epoch has advanced by the time it runs.
  *
- * This repro makes the race deterministic by capturing the post-commit saga via
- * the SideEffectQueue (the same deferral mechanism the bulk path uses), running
- * the reset while the thunk is still queued, then flushing the thunk — exactly
- * modelling "side-effect scheduled before reset, runs after reset".
+ * Invariant: after a reset, the event store contains ONLY the frozen baseline —
+ * no orphaned events from a side-effect scheduled before but executed after the
+ * reset. A side-effect with NO intervening reset must still fire fully.
+ *
+ * Converted from tests/redteam/reset-inflight-saga.redteam.test.ts.
  */
 
 import { bootSystem, type BootedSystem } from '../../src/engine/boot.js';
@@ -144,7 +149,29 @@ async function buildSystem(): Promise<BootedSystem> {
   return bootSystem({ openapi, compiledDsl });
 }
 
-describe('RED TEAM combo6: reset while a post-commit saga is pending', () => {
+/** Let post-commit fire-and-forget side-effects (the saga + its step UoW) settle. */
+async function flushSideEffects(): Promise<void> {
+  for (let i = 0; i < 5; i++) {
+    await new Promise((r) => setImmediate(r));
+  }
+}
+
+function openLoan(): Command {
+  return {
+    commandId: nextUuidv7(),
+    boundary: 'Loan',
+    intent: 'creation',
+    targetId: nextUuidv7(),
+    payload: {},
+    queryParams: {},
+    httpMethod: 'POST',
+    path: '/loans',
+    origin: 'inbound',
+    depth: 0,
+  };
+}
+
+describe('reset epoch suppresses in-flight side-effects (cjyf)', () => {
   let sys: BootedSystem;
 
   beforeEach(async () => {
@@ -153,34 +180,25 @@ describe('RED TEAM combo6: reset while a post-commit saga is pending', () => {
 
   afterEach(() => resetSystem(sys));
 
-  it('a saga scheduled before reset does not orphan events into the reset store', async () => {
+  it('a saga scheduled before resetSystem appends no events after the reset (store stays at baseline)', async () => {
     const baselineCount = sys.frozenBaseline.length;
 
     // Capture the post-commit saga thunk instead of firing it inline — models a
-    // side-effect that has been scheduled but not yet executed.
+    // side-effect that has been scheduled but not yet executed. The queue is the
+    // same deferral mechanism the bulk path uses; the epoch guard is baked into
+    // the thunk at scheduling time, so it protects the deferred path too.
     const queue = createSideEffectQueue();
 
-    const cmd: Command = {
-      commandId: nextUuidv7(),
-      boundary: 'Loan',
-      intent: 'creation',
-      targetId: nextUuidv7(),
-      payload: {},
-      queryParams: {},
-      httpMethod: 'POST',
-      path: '/loans',
-      origin: 'inbound',
-      depth: 0,
-    };
-
     await executeUnitOfWork({
-      command: cmd,
+      command: openLoan(),
       dsl: sys.dsl,
       openapi: sys.openapi,
       graph: sys.graph,
       events: sys.events,
       cel: sys.cel,
       validator: sys.validator,
+      aggregateLocks: sys.aggregateLocks,
+      resetEpoch: sys.resetEpoch,
       inferredSchemas: sys.inferredSchemas,
       deferSideEffects: queue,
     });
@@ -188,17 +206,54 @@ describe('RED TEAM combo6: reset while a post-commit saga is pending', () => {
     // The saga thunk is queued (LoanOpened committed, saga not yet run).
     expect(queue.size()).toBeGreaterThan(0);
 
-    // RESET happens now — purges store + graph + locks back to baseline.
+    // RESET happens now — purges store + graph + locks back to baseline and
+    // advances the reset epoch.
     resetSystem(sys);
     expect(sys.events.size()).toBe(baselineCount);
 
-    // The pending saga thunk now runs (it was scheduled before the reset).
+    // The pending saga thunk now runs (it was scheduled before the reset). The
+    // epoch it captured no longer matches, so it must no-op.
     queue.flush(sys.logger);
-    // Allow the async saga run (and its step UoW) to settle.
-    await new Promise((r) => setTimeout(r, 20));
+    await flushSideEffects();
 
-    // INVARIANT: the store still holds ONLY the baseline — the late saga must not
-    // have appended orphaned saga/step events into the freshly-reset store.
+    // INVARIANT: the store still holds ONLY the baseline — the late saga did not
+    // append orphaned saga/step events into the freshly-reset store.
     expect(sys.events.size()).toBe(baselineCount);
+    const sagaEvents = sys.events.all().filter((e) => e.boundary === '__saga__');
+    expect(sagaEvents).toHaveLength(0);
+  });
+
+  it('a saga with no intervening reset still fires fully', async () => {
+    const baselineCount = sys.frozenBaseline.length;
+
+    // Fire the side-effect inline (no deferral, no reset). The captured epoch
+    // matches the live epoch, so the saga runs to completion.
+    await executeUnitOfWork({
+      command: openLoan(),
+      dsl: sys.dsl,
+      openapi: sys.openapi,
+      graph: sys.graph,
+      events: sys.events,
+      cel: sys.cel,
+      validator: sys.validator,
+      aggregateLocks: sys.aggregateLocks,
+      resetEpoch: sys.resetEpoch,
+      inferredSchemas: sys.inferredSchemas,
+    });
+
+    await flushSideEffects();
+
+    // The saga started and credited the ledger — orphan-free but NON-empty:
+    // events grew beyond baseline (LoanOpened + SagaStarted + LedgerCredited + ...).
+    expect(sys.events.size()).toBeGreaterThan(baselineCount);
+
+    const started = sys.events
+      .all()
+      .filter((e) => e.boundary === '__saga__' && e.type === 'SagaStarted');
+    expect(started).toHaveLength(1);
+    expect(started[0].payload['sagaName']).toBe('CreditLedgerOnLoan');
+
+    const credited = sys.events.all().filter((e) => e.type === 'LedgerCredited');
+    expect(credited).toHaveLength(1);
   });
 });

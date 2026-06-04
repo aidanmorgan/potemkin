@@ -39,6 +39,7 @@ import type { RegisteredScript } from '../sdk/index.js';
 import { createTsReducerRegistry, type TsReducerRegistry } from './tsReducerRegistry.js';
 import { createTsScriptRegistry } from './tsScriptRegistry.js';
 import { createFetchWebhookTransport } from '../webhooks/transport.js';
+import { createResetEpoch, type ResetEpoch } from './sideEffects.js';
 import { deriveFixtures } from '../forwarding/fixtures.js';
 import {
   buildInferredSchema,
@@ -133,6 +134,13 @@ export interface BootedSystem {
   readonly faultStore: FaultStore;
   /** Per-system aggregate lock map (serializes concurrent same-aggregate UoWs). */
   readonly aggregateLocks: Map<string, Promise<void>>;
+  /**
+   * Monotonic reset epoch. resetSystem increments it; post-commit side-effects
+   * (sagas, webhooks) capture the value in force when scheduled and no-op if it
+   * has advanced by the time they run, so a side-effect scheduled before a reset
+   * cannot append orphan events into the freshly-reset store.
+   */
+  readonly resetEpoch: ResetEpoch;
   /**
    * Plugin control client, present when `BootInput.pluginControl` was supplied.
    * Used by the graceful-shutdown wrapper to send a /shutdown notification.
@@ -763,6 +771,7 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
       sessionStore: createSessionStore({ nowMs: () => Date.now() + cel.getClockOffset() }),
       faultStore: createFaultStore({ nowMs: () => Date.now() + cel.getClockOffset() }),
       aggregateLocks: new Map<string, Promise<void>>(),
+      resetEpoch: createResetEpoch(),
       tsReducerRegistry,
       inferredSchemas,
       webhookTransport: input.webhookTransport ?? createFetchWebhookTransport(),
