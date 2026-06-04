@@ -246,7 +246,7 @@ modules: ["dsl/*.yaml"]
 `,
     'dsl/lead.yaml': `
 boundary: Lead
-specId: crm-v1
+spec_id: crm-v1
 contract_path: /leads
 methods: [POST]
 event_catalog: []
@@ -297,14 +297,14 @@ event_catalog: []
     );
   });
 
-  it('skips the check when outOfContract: true', async () => {
+  it('skips the check when out_of_contract: true', async () => {
     const root = await makeTmpFixture({
       ...baseFixture,
       'dsl/lead.yaml': `
 boundary: Lead
-specId: crm-v1
+spec_id: crm-v1
 contract_path: /leads-nowhere
-outOfContract: true
+out_of_contract: true
 event_catalog: []
 `,
     });

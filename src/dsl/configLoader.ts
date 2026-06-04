@@ -270,11 +270,9 @@ function runContractPathCrossCheck(
   for (const m of modules) {
     const rec = m.parsed as Record<string, unknown>;
     const boundaryName = String(rec['boundary']);
-    if (rec['outOfContract'] === true || rec['out_of_contract'] === true) continue;
+    if (rec['out_of_contract'] === true) continue;
 
-    const specId = typeof rec['specId'] === 'string'
-      ? (rec['specId'] as string)
-      : (rec['spec_id'] as string | undefined);
+    const specId = typeof rec['spec_id'] === 'string' ? (rec['spec_id'] as string) : undefined;
     const contractPath = typeof rec['contractPath'] === 'string'
       ? (rec['contractPath'] as string)
       : (rec['contract_path'] as string | undefined);

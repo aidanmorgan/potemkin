@@ -218,9 +218,8 @@ function validateRequiresGuard(raw: unknown, ctx: string): RequiresGuard {
   const condition: string = conditionRaw;
   validateCelOrScript(condition, `${ctx}.condition`, 'behavior');
 
-  // Support both camelCase and snake_case for error_code / error_message
-  const errorCodeRaw = raw['error_code'] ?? raw['errorCode'];
-  const errorMessageRaw = raw['error_message'] ?? raw['errorMessage'];
+  const errorCodeRaw = raw['error_code'];
+  const errorMessageRaw = raw['error_message'];
 
   const errorCode = typeof errorCodeRaw === 'string' ? errorCodeRaw : '';
   const errorMessage = typeof errorMessageRaw === 'string' ? errorMessageRaw : '';
@@ -1430,8 +1429,8 @@ const KNOWN_BOUNDARY_KEYS: ReadonlySet<string> = new Set([
   'audit_fields', 'fault_rules', 'reactions', 'response', 'schema',
   // Cross-file composition keys (C1)
   'include',
-  // Spec-endpoint cross-check keys consumed by configLoader (camelCase + snake_case).
-  'specId', 'spec_id', 'outOfContract', 'out_of_contract', 'method', 'methods',
+  // Spec-endpoint cross-check keys consumed by configLoader.
+  'spec_id', 'out_of_contract', 'methods',
 ]);
 
 /**
@@ -1640,8 +1639,8 @@ export function validateBoundaryConfig(raw: unknown): BoundaryConfig {
   const state = validateDeclaredState(raw['state'], 'root');
 
   let strictSchema: boolean | undefined;
-  if (raw['strict_schema'] !== undefined || raw['strictSchema'] !== undefined) {
-    const v = raw['strict_schema'] ?? raw['strictSchema'];
+  if (raw['strict_schema'] !== undefined) {
+    const v = raw['strict_schema'];
     if (typeof v !== 'boolean') {
       throw new BootError('BOOT_ERR_DSL_SYNTAX', `root: "strict_schema" must be a boolean`, { field: 'strict_schema' });
     }
