@@ -136,6 +136,25 @@ class StatefulRequestHandlerTest {
         assertNull(handler.handleRequest(request(path = "/v1/payouts")))
     }
 
+    @Test
+    fun `a seeded path defers to Specmatic instead of applying the fallback`() {
+        val client = FakeClient(cannedResponse())
+        val fallback = FakeFallback(501)
+        val handler = StatefulRequestHandler(
+            FixedDiscoveryClient(false), client, null, null, null, fallback,
+            setOf("GET" to "/seed-contract/contract-1"),
+        )
+
+        // Seeded path -> null (Specmatic serves the seed), fallback NOT applied.
+        assertNull(handler.handleRequest(request(method = "GET", path = "/seed-contract/contract-1")))
+        assertFalse(fallback.called)
+
+        // A non-seeded unmatched path still gets the fallback.
+        val other = handler.handleRequest(request(method = "GET", path = "/v1/payouts"))
+        assertNotNull(other)
+        assertEquals(501, other.response.status)
+    }
+
     // ---- original tests (unchanged) -----------------------------------------------------
 
     @Test

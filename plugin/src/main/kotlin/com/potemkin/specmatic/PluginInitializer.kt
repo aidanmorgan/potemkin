@@ -109,8 +109,13 @@ class PluginInitializer : StubInitializer {
         val deprecationPolicy = DeprecationPolicy.fromOverlayPatches(blocks.overlay.patches)
         val workflowPropagator = WorkflowPropagator(blocks.workflow)
 
+        // Paths Specmatic serves via a registered seed — the fallback defers to
+        // Specmatic for these instead of returning a 501/404.
+        val seededPaths: Set<Pair<String, String>> = config.forwardBlocks.seeds
+            .map { it.request.method.uppercase() to it.request.path }
+            .toSet()
         val handler = StatefulRequestHandler(
-            discovery, backendClient, fixturesClient, resilient, workflowPropagator, fallbackPolicy,
+            discovery, backendClient, fixturesClient, resilient, workflowPropagator, fallbackPolicy, seededPaths,
         )
         httpStub.registerHandler(handler)
         val jwksProvider: JwksProvider = when {

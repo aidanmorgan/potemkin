@@ -36,6 +36,9 @@ class StatefulRequestHandler(
     private val resilientForwarder: ResilientForwarder? = null,
     private val workflow: WorkflowPropagator? = null,
     private val fallback: FallbackPolicy? = null,
+    /** (METHOD, path) tuples that Specmatic serves via a registered seed — the
+     *  fallback must defer to Specmatic for these, not preempt them. */
+    private val seededPaths: Set<Pair<String, String>> = emptySet(),
 ) : RequestHandler {
 
     override val name: String = "potemkin-stateful"
@@ -88,10 +91,15 @@ class StatefulRequestHandler(
             }
 
             if (!discovery.isStateful(path)) {
-                // Not a stateful (bounded) path. Apply the engine's `fallback:` policy
-                // (static 501/404/custom) so the stub behaves like the direct engine,
-                // rather than letting Specmatic generate an example. When no fallback
-                // policy is wired (legacy tests), fall through to Specmatic.
+                // A registered seed is intentional Specmatic-served content — defer to
+                // Specmatic so it serves the seed (the fallback must not preempt it).
+                if (seededPaths.contains(method to path)) {
+                    return null
+                }
+                // Otherwise apply the engine's `fallback:` policy (static 501/404/custom)
+                // so the stub behaves like the direct engine, rather than letting
+                // Specmatic generate an example. When no fallback policy is wired
+                // (legacy tests), fall through to Specmatic.
                 return fallback?.evaluate(method, path)
             }
 
