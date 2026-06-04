@@ -1,0 +1,34 @@
+# Price — by-id boundary (GET retrieve, POST update).
+# Stripe prices are immutable except active/nickname/metadata, and cannot be
+# deleted — so this boundary has no DELETE behavior.
+boundary: PriceById
+contract_path: /v1/prices/{id}
+fallback_override: true
+
+response: "ts:priceResponse"
+
+identity:
+  key:
+    from: path
+    name: id
+
+event_catalog:
+  - type: PriceUpdated
+    payload_template:
+      active: "has(command.payload.active) ? command.payload.active : state.active"
+      nickname: "has(command.payload.nickname) ? command.payload.nickname : state.nickname"
+      metadata: "has(command.payload.metadata) ? command.payload.metadata : state.metadata"
+
+behaviors:
+  - name: updatePrice
+    match:
+      operationId: updatePrice
+      condition: "true"
+    emit: PriceUpdated
+
+reducers:
+  - on: PriceUpdated
+    patches:
+      - { op: replace, path: /active, value: "${event.payload.active}" }
+      - { op: replace, path: /nickname, value: "${event.payload.nickname}" }
+      - { op: replace, path: /metadata, value: "${event.payload.metadata}" }

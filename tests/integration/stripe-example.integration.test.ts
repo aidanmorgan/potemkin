@@ -132,3 +132,66 @@ describe('Stripe simulation — Products', () => {
     expect(res.body).toEqual({ id, object: 'product', deleted: true });
   });
 });
+
+describe('Stripe simulation — Prices', () => {
+  let server: PersistentServer;
+  let agent: PersistentAgent;
+
+  beforeAll(async () => {
+    const openapi = await loadOpenApi(path.join(STRIPE_DIR, 'openapi', 'stripe-core.yaml'));
+    const sys = await bootSystem({
+      openapi,
+      potemkinConfigPath: path.join(STRIPE_DIR, 'potemkin.yaml'),
+    });
+    expandByContractPath(sys);
+    server = await withPersistentServer(createGateway(sys));
+    agent = server.agent;
+  });
+  afterAll(async () => { await server.close(); });
+
+  async function makeProduct(): Promise<string> {
+    return ((await agent.post('/v1/products').send({ name: 'For pricing' }).expect(200)).body as Record<string, unknown>)['id'] as string;
+  }
+
+  it('POST /v1/prices returns a price object (HTTP 200, price_ id, one_time type)', async () => {
+    const product = await makeProduct();
+    const res = await agent.post('/v1/prices').send({ product, unit_amount: 1500, currency: 'usd' }).expect(200);
+    const body = res.body as Record<string, unknown>;
+    expect(body['object']).toBe('price');
+    expect((body['id'] as string).startsWith('price_')).toBe(true);
+    expect(body['product']).toBe(product);
+    expect(body['unit_amount']).toBe(1500);
+    expect(body['currency']).toBe('usd');
+    expect(body['type']).toBe('one_time');
+    expect(body['active']).toBe(true);
+  });
+
+  it('GET /v1/prices/{id} retrieves the created price', async () => {
+    const product = await makeProduct();
+    const created = (await agent.post('/v1/prices').send({ product, currency: 'eur', unit_amount: 999 }).expect(200)).body as Record<string, unknown>;
+    const id = created['id'] as string;
+    const res = await agent.get(`/v1/prices/${id}`).expect(200);
+    expect((res.body as Record<string, unknown>)['id']).toBe(id);
+    expect((res.body as Record<string, unknown>)['unit_amount']).toBe(999);
+  });
+
+  it('POST /v1/prices/{id} updates active/nickname only', async () => {
+    const product = await makeProduct();
+    const created = (await agent.post('/v1/prices').send({ product, currency: 'usd', unit_amount: 500 }).expect(200)).body as Record<string, unknown>;
+    const id = created['id'] as string;
+    const res = await agent.post(`/v1/prices/${id}`).send({ active: false, nickname: 'Legacy' }).expect(200);
+    const body = res.body as Record<string, unknown>;
+    expect(body['active']).toBe(false);
+    expect(body['nickname']).toBe('Legacy');
+    expect(body['unit_amount']).toBe(500); // immutable, preserved
+  });
+
+  it('GET /v1/prices returns a Stripe list envelope', async () => {
+    const product = await makeProduct();
+    await agent.post('/v1/prices').send({ product, currency: 'usd', unit_amount: 1 }).expect(200);
+    const res = await agent.get('/v1/prices').expect(200);
+    const body = res.body as Record<string, unknown>;
+    expect(body['object']).toBe('list');
+    expect(((body['data'] as Record<string, unknown>[])[0])['object']).toBe('price');
+  });
+});

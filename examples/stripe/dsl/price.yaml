@@ -1,0 +1,53 @@
+# Price — collection boundary (POST create, GET list).
+# Stripe ids are `price_<token>`. A price references a product (prod_ id) and
+# carries an amount/currency; `type` is one_time unless created as recurring.
+boundary: Price
+contract_path: /v1/prices
+fallback_override: true
+
+response: "ts:priceResponse"
+
+identity:
+  creation:
+    generate: "ts:priceId"
+
+query_mapping:
+  product: "state.product == param"
+  active: "state.active == param"
+
+event_catalog:
+  - type: PriceCreated
+    payload_template:
+      id: "command.targetId"
+      object: "'price'"
+      created: "ts:unixNow"
+      livemode: "false"
+      product: "command.payload.product"
+      unit_amount: "has(command.payload.unit_amount) ? command.payload.unit_amount : null"
+      currency: "command.payload.currency"
+      type: "'one_time'"
+      active: "has(command.payload.active) ? command.payload.active : true"
+      nickname: "has(command.payload.nickname) ? command.payload.nickname : null"
+      metadata: "has(command.payload.metadata) ? command.payload.metadata : {}"
+
+behaviors:
+  - name: createPrice
+    match:
+      operationId: createPrice
+      condition: "true"
+    emit: PriceCreated
+
+reducers:
+  - on: PriceCreated
+    patches:
+      - { op: replace, path: /id, value: "${event.payload.id}" }
+      - { op: replace, path: /object, value: "${event.payload.object}" }
+      - { op: replace, path: /created, value: "${event.payload.created}" }
+      - { op: replace, path: /livemode, value: "${event.payload.livemode}" }
+      - { op: replace, path: /product, value: "${event.payload.product}" }
+      - { op: replace, path: /unit_amount, value: "${event.payload.unit_amount}" }
+      - { op: replace, path: /currency, value: "${event.payload.currency}" }
+      - { op: replace, path: /type, value: "${event.payload.type}" }
+      - { op: replace, path: /active, value: "${event.payload.active}" }
+      - { op: replace, path: /nickname, value: "${event.payload.nickname}" }
+      - { op: replace, path: /metadata, value: "${event.payload.metadata}" }

@@ -191,6 +191,85 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/deleted_product" }
 
+  # ── Prices ──────────────────────────────────────────────────────────────────
+  # Stripe prices are immutable except active/nickname/metadata, and cannot be
+  # deleted (only deactivated) — so there is deliberately no DELETE operation.
+  /v1/prices:
+    post:
+      operationId: createPrice
+      summary: Create a price
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                product: { type: string }
+                unit_amount: { type: integer }
+                currency: { type: string }
+                nickname: { type: string }
+                active: { type: boolean }
+                metadata: { type: object, additionalProperties: { type: string } }
+              required: [product, currency]
+      responses:
+        "200":
+          description: The created price
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/price" }
+    get:
+      operationId: listPrices
+      summary: List prices
+      parameters:
+        - { name: product, in: query, required: false, schema: { type: string } }
+        - { name: active, in: query, required: false, schema: { type: boolean } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100 } }
+      responses:
+        "200":
+          description: A list of prices (Stripe list envelope)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/price_list" }
+  /v1/prices/{id}:
+    get:
+      operationId: getPrice
+      summary: Retrieve a price
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The price
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/price" }
+        "404":
+          description: No such price
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/error" }
+    post:
+      operationId: updatePrice
+      summary: Update a price (active/nickname/metadata only)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: false
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                active: { type: boolean }
+                nickname: { type: string }
+                metadata: { type: object, additionalProperties: { type: string } }
+      responses:
+        "200":
+          description: The updated price
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/price" }
+
 components:
   schemas:
     # ── Shared ────────────────────────────────────────────────────────────────
@@ -289,6 +368,36 @@ components:
           items: { $ref: "#/components/schemas/product" }
       required: [object, data, has_more, url]
 
+    # ── Price ─────────────────────────────────────────────────────────────────
+    price:
+      type: object
+      additionalProperties: true
+      properties:
+        id: { type: string }
+        object: { type: string, enum: [price] }
+        created: { type: integer }
+        livemode: { type: boolean }
+        product: { type: string }
+        unit_amount: { type: integer, nullable: true }
+        currency: { type: string }
+        type: { type: string, enum: [one_time, recurring] }
+        active: { type: boolean }
+        nickname: { type: string, nullable: true }
+        metadata: { $ref: "#/components/schemas/metadata" }
+      required: [id, object, created, livemode, product, currency, active, type]
+
+    price_list:
+      type: object
+      additionalProperties: false
+      properties:
+        object: { type: string, enum: [list] }
+        url: { type: string }
+        has_more: { type: boolean }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/price" }
+      required: [object, data, has_more, url]
+
     # Per-boundary state schemas. The engine derives each boundary's state shape
     # from components.schemas.<BoundaryName>; both Customer boundaries (the
     # collection and the {customer} by-id boundary) share the customer shape.
@@ -300,3 +409,7 @@ components:
       $ref: "#/components/schemas/product"
     ProductById:
       $ref: "#/components/schemas/product"
+    Price:
+      $ref: "#/components/schemas/price"
+    PriceById:
+      $ref: "#/components/schemas/price"

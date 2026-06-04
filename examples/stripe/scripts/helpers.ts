@@ -87,3 +87,8 @@ export class CustomerResponse {
 export class ProductResponse {
   run(ctx: ScriptContext): ResponseScriptResult { return stripeResponse('product', '/v1/products', ctx); }
 }
+
+@Script('priceResponse')
+export class PriceResponse {
+  run(ctx: ScriptContext): ResponseScriptResult { return stripeResponse('price', '/v1/prices', ctx); }
+}
