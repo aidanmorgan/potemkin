@@ -45,4 +45,35 @@ The CRM simulation is the system-under-test for a large share of the suite:
   suites boot a real Specmatic JVM with the Kotlin plugin pointed at this
   contract and drive requests through the complete wire.
 
-See the sibling [`examples/stripe`](../stripe) for a payments-domain example.
+## Consumer-side testing (how to use Potemkin + Specmatic)
+
+The example's own tests under `examples/crm/tests/` are written from the
+**consumer side** — they play a service that integrates with the CRM API. They
+drive the **real Specmatic stub** (Specmatic enforces the OpenAPI contract; the
+plugin forwards stateful paths to the engine) and force the API into known states
+**through the stub**, so a downstream integrator can write reliable,
+contract-driven integration tests against a stateful test double.
+
+State is forced through the stub via four mechanisms:
+
+- **Declarative seeding** — `initialization:` blocks pre-load known entities
+  (e.g. the seeded leads) so a test starts from a fixed, deterministic state.
+- **Fault injection** — `fault_rules` / `X-Potemkin-*` chaos headers force
+  declines / 5xx / latency to exercise the consumer's error handling.
+- **Idempotency retries** — the `Idempotency-Key` header proves a retry is safe
+  (cached replay, no duplicate side effects).
+- **Clock + reset** — `X-Potemkin-Clock-Offset` and a reset-through-stub between
+  tests give deterministic, isolated runs.
+
+The harness lives in [`examples/_harness`](../_harness): `startExampleStack({
+exampleName: 'crm' })` boots the engine + Specmatic stub + plugin and exposes the
+stub URL; `ConsumerClient` is the thin client the tests use.
+
+```sh
+cd plugin && ./gradlew shadowJar && cd ..   # build the plugin JAR (Java 17+)
+npm run test:examples                        # e2e-tier; NOT part of `npm test`
+npm run lint:sim -- examples/crm             # lint the simulation, no servers
+```
+
+See the sibling [`examples/stripe`](../stripe) for a payments-domain example with
+a state machine and reaction-materialised resources.
