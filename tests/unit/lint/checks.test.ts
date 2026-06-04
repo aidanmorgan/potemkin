@@ -1,14 +1,15 @@
 import { coverageCheck } from '../../../src/lint/checks/coverage';
 import { identityCheck } from '../../../src/lint/checks/identity';
+import { referencesCheck } from '../../../src/lint/checks/references';
 import type { LintContext } from '../../../src/lint/types';
 
-function ctx(partial: { boundaries?: unknown[]; byContractPath?: Record<string, unknown>; paths?: Record<string, unknown> }): LintContext {
+function ctx(partial: { boundaries?: unknown[]; byContractPath?: Record<string, unknown>; paths?: Record<string, unknown>; schemas?: Record<string, unknown> }): LintContext {
   return {
     dsl: {
       boundaries: (partial.boundaries ?? []) as never,
       byContractPath: (partial.byContractPath ?? {}) as never,
     } as never,
-    openapi: { raw: { paths: partial.paths ?? {} } } as never,
+    openapi: { raw: { paths: partial.paths ?? {}, components: { schemas: partial.schemas ?? {} } } } as never,
   };
 }
 
@@ -61,5 +62,31 @@ describe('identityCheck', () => {
       ],
     }));
     expect(findings).toHaveLength(0);
+  });
+});
+
+describe('referencesCheck', () => {
+  const schemas = { widget: { properties: { id: {}, name: {}, color: {} } } };
+
+  it('errors when mask names a field not in the schema', () => {
+    const findings = referencesCheck(ctx({
+      schemas,
+      boundaries: [{ boundary: 'widget', contractPath: '/widgets', behaviors: [], mask: ['name', 'colour'] }],
+    }));
+    expect(findings).toHaveLength(1);
+    expect(findings[0].code).toBe('MASK_FIELD_UNKNOWN');
+    expect(findings[0].message).toContain('colour');
+  });
+
+  it('passes when all mask fields exist; skips open (additionalProperties) schemas', () => {
+    expect(referencesCheck(ctx({
+      schemas,
+      boundaries: [{ boundary: 'widget', contractPath: '/widgets', behaviors: [], mask: ['name', 'color'] }],
+    }))).toHaveLength(0);
+
+    expect(referencesCheck(ctx({
+      schemas: { open: { additionalProperties: true, properties: { id: {} } } },
+      boundaries: [{ boundary: 'open', contractPath: '/o', behaviors: [], mask: ['anything'] }],
+    }))).toHaveLength(0);
   });
 });

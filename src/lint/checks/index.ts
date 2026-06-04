@@ -7,8 +7,10 @@
 import type { LintCheck } from '../types.js';
 import { coverageCheck } from './coverage.js';
 import { identityCheck } from './identity.js';
+import { referencesCheck } from './references.js';
 
 export const ALL_CHECKS: readonly LintCheck[] = [
   identityCheck,
+  referencesCheck,
   coverageCheck,
 ];
