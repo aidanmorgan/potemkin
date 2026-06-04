@@ -31,8 +31,8 @@ describe('Stripe simulation — Customers', () => {
   });
   afterAll(async () => { await server.close(); });
 
-  it('POST /v1/customers returns a customer object with a cus_ id and the Stripe envelope', async () => {
-    const res = await agent.post('/v1/customers').send({ email: 'acme@example.com', name: 'Acme Inc' }).expect(201);
+  it('POST /v1/customers returns a customer object (HTTP 200, Stripe envelope, cus_ id)', async () => {
+    const res = await agent.post('/v1/customers').send({ email: 'acme@example.com', name: 'Acme Inc' }).expect(200);
     const body = res.body as Record<string, unknown>;
     expect(body['object']).toBe('customer');
     expect(typeof body['id']).toBe('string');
@@ -45,7 +45,7 @@ describe('Stripe simulation — Customers', () => {
   });
 
   it('GET /v1/customers/{id} retrieves the created customer', async () => {
-    const created = (await agent.post('/v1/customers').send({ email: 'r@example.com' }).expect(201)).body as Record<string, unknown>;
+    const created = (await agent.post('/v1/customers').send({ email: 'r@example.com' }).expect(200)).body as Record<string, unknown>;
     const id = created['id'] as string;
     const res = await agent.get(`/v1/customers/${id}`).expect(200);
     expect((res.body as Record<string, unknown>)['id']).toBe(id);
@@ -53,7 +53,7 @@ describe('Stripe simulation — Customers', () => {
   });
 
   it('POST /v1/customers/{id} updates only the supplied fields (Stripe merge semantics)', async () => {
-    const created = (await agent.post('/v1/customers').send({ email: 'u@example.com', name: 'Before' }).expect(201)).body as Record<string, unknown>;
+    const created = (await agent.post('/v1/customers').send({ email: 'u@example.com', name: 'Before' }).expect(200)).body as Record<string, unknown>;
     const id = created['id'] as string;
     const res = await agent.post(`/v1/customers/${id}`).send({ name: 'After' }).expect(200);
     const body = res.body as Record<string, unknown>;
@@ -61,13 +61,21 @@ describe('Stripe simulation — Customers', () => {
     expect(body['email']).toBe('u@example.com'); // preserved, not nulled
   });
 
-  it('DELETE /v1/customers/{id} returns deleted: true', async () => {
-    const created = (await agent.post('/v1/customers').send({ email: 'd@example.com' }).expect(201)).body as Record<string, unknown>;
+  it('GET /v1/customers returns a Stripe list envelope ({object:"list", data})', async () => {
+    await agent.post('/v1/customers').send({ email: 'list@example.com' }).expect(200);
+    const res = await agent.get('/v1/customers').expect(200);
+    const body = res.body as Record<string, unknown>;
+    expect(body['object']).toBe('list');
+    expect(body['has_more']).toBe(false);
+    expect(Array.isArray(body['data'])).toBe(true);
+    expect((body['data'] as unknown[]).length).toBeGreaterThan(0);
+    expect(((body['data'] as Record<string, unknown>[])[0])['object']).toBe('customer');
+  });
+
+  it('DELETE /v1/customers/{id} returns exactly the Stripe deleted object', async () => {
+    const created = (await agent.post('/v1/customers').send({ email: 'd@example.com' }).expect(200)).body as Record<string, unknown>;
     const id = created['id'] as string;
     const res = await agent.delete(`/v1/customers/${id}`).expect(200);
-    const body = res.body as Record<string, unknown>;
-    expect(body['id']).toBe(id);
-    expect(body['object']).toBe('customer');
-    expect(body['deleted']).toBe(true);
+    expect(res.body).toEqual({ id, object: 'customer', deleted: true });
   });
 });

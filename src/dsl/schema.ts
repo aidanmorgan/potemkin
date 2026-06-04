@@ -1416,7 +1416,7 @@ const KNOWN_BOUNDARY_KEYS: ReadonlySet<string> = new Set([
   // not fire before assertNoInlineScripts can emit BOOT_ERR_REMOVED_SYNTAX.
   'scripts',
   'deprecated', 'hateoas', 'mask', 'state', 'strict_schema', 'latency',
-  'audit_fields', 'fault_rules', 'reactions',
+  'audit_fields', 'fault_rules', 'reactions', 'response',
   // Cross-file composition keys (C1)
   'include',
   // Spec-endpoint cross-check keys consumed by configLoader (camelCase + snake_case).
@@ -1637,6 +1637,19 @@ export function validateBoundaryConfig(raw: unknown): BoundaryConfig {
     strictSchema = v;
   }
 
+  let responseScript: string | undefined;
+  const responseRaw = raw['response'];
+  if (responseRaw !== undefined && responseRaw !== null) {
+    if (typeof responseRaw !== 'string' || responseRaw.trim().length === 0) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `root: "response" must be a non-empty script reference (e.g. ts:<id>)`,
+        { field: 'response' },
+      );
+    }
+    responseScript = responseRaw;
+  }
+
   let auditFields: boolean | undefined;
   const auditFieldsRaw = raw['audit_fields'];
   if (auditFieldsRaw !== undefined && auditFieldsRaw !== null) {
@@ -1695,6 +1708,7 @@ export function validateBoundaryConfig(raw: unknown): BoundaryConfig {
     ...(mask !== undefined ? { mask } : {}),
     ...(state !== undefined ? { state } : {}),
     ...(strictSchema !== undefined ? { strictSchema } : {}),
+    ...(responseScript !== undefined ? { responseScript } : {}),
     ...(auditFields !== undefined ? { auditFields } : {}),
     ...(faults !== undefined ? { faults } : {}),
     ...(reactions !== undefined ? { reactions } : {}),

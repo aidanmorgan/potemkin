@@ -141,6 +141,65 @@ export function resolveCreationTargetId(input: {
 }
 
 // ---------------------------------------------------------------------------
+// Extension point: response shaping
+// ---------------------------------------------------------------------------
+
+/**
+ * Run a boundary's `response: ts:<id>` transform on a successful response.
+ *
+ * The registered @Script receives the matched operationId and the engine-computed
+ * `{ status, body }` and may return overrides for either. This is the generic
+ * extension point for response-shape customisation — e.g. a Stripe boundary
+ * returning 200 (not 201) on create, wrapping a collection in a `{object:"list",
+ * data}` envelope, or emitting a `{id, object, deleted:true}` delete response —
+ * all without any framework change. An unknown script id fails loudly.
+ */
+export function applyResponseScript(input: {
+  readonly responseScript: string;
+  readonly boundary: string;
+  readonly operationId: string | undefined;
+  readonly intent: string;
+  readonly status: number;
+  readonly body: JsonValue | null | undefined;
+  readonly scriptRegistry: ScriptRegistry | undefined;
+  readonly now: () => string;
+  readonly logger: Logger;
+}): { status: number; body: JsonValue | null | undefined } {
+  const { responseScript, boundary, operationId, intent, status, body, scriptRegistry, now, logger } = input;
+  const scriptId = responseScript.startsWith(TS_SENTINEL) ? responseScript.slice(TS_SENTINEL.length) : responseScript;
+  const handle = scriptRegistry?.get(boundary, scriptId);
+  if (!handle) {
+    throw new InternalExecutionError(
+      `response script "${scriptId}" for boundary "${boundary}" is not registered`,
+      { code: 'RESPONSE_SCRIPT_MISSING', boundary, script: scriptId },
+    );
+  }
+  const ctx: ScriptContext = {
+    command: {
+      commandId: '', boundary, intent, targetId: '', payload: {},
+      queryParams: {}, httpMethod: '', path: '', origin: 'inbound', depth: 0,
+    } as unknown as Command,
+    state: null,
+    payload: {},
+    helpers: {
+      uuid: () => nextUuidv7(),
+      now,
+      deepClone: <T>(v: T) => deepClone(v as JsonValue) as unknown as T,
+      deepMerge: (a: JsonObject, b: JsonObject) => deepMerge(a, b),
+    },
+    logger,
+    operationId,
+    response: { status, body: (body ?? null) as JsonValue | null },
+  };
+  const result = handle.fn(ctx) as { status?: number; body?: JsonValue | null } | undefined;
+  if (result === null || typeof result !== 'object') return { status, body };
+  return {
+    status: typeof result.status === 'number' ? result.status : status,
+    body: Object.prototype.hasOwnProperty.call(result, 'body') ? (result.body ?? null) : body,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Helper: evaluate a CEL or ts: expression
 // ---------------------------------------------------------------------------
 

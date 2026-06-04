@@ -2,10 +2,10 @@
 // The sandbox require-hook resolves that specifier here.
 
 import type { Patch } from '../dsl/patches.js';
-import type { ScriptContext } from '../scripts/types.js';
+import type { ScriptContext, ResponseScriptResult } from '../scripts/types.js';
 
 export type { Patch };
-export type { ScriptContext };
+export type { ScriptContext, ResponseScriptResult };
 
 export interface ReducerContext {
   /** Current wall-clock (respects the global clock offset for time-travel). */

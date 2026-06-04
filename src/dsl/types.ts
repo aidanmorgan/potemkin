@@ -149,6 +149,14 @@ export interface BoundaryConfig {
   readonly state?: DeclaredState;
   /** When false, downgrades the computed-field INCOMPLETE_DEPS check to a WARN. */
   readonly strictSchema?: boolean;
+  /**
+   * Optional `response: ts:<id>` transform — a registered @Script run on every
+   * successful (2xx) response for this boundary. It receives the matched
+   * operationId + the engine-computed { status, body } and may return overrides.
+   * The generic extension point for response-shape customisation (e.g. a Stripe
+   * list envelope or deleted-object shape) without framework changes.
+   */
+  readonly responseScript?: string;
   /** Choreography reaction rules declared in this boundary file. */
   readonly reactions?: readonly ReactionRule[];
   /** Fragment mixins to merge into this boundary at link time (C4). */

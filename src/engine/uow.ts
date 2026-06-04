@@ -46,7 +46,8 @@ import type { ShadowGraph } from '../stategraph/shadow.js';
 import type { DerivedProjectionRegistry } from '../projections/types.js';
 
 import { createShadowGraph } from '../stategraph/shadow.js';
-import { runPatternMatch } from './patternMatcher.js';
+import { runPatternMatch, applyResponseScript } from './patternMatcher.js';
+import { lookupOperationId } from '../contract/loader.js';
 import { projectEvent } from './projection.js';
 import { runQuery } from './query.js';
 import { nextUuidv7 } from '../ids/uuidv7.js';
@@ -847,6 +848,29 @@ export async function executeUnitOfWork(input: UowInput): Promise<ExecutionResul
           body = command.targetId !== null
             ? ((dryRun ? (shadow.get(command.targetId) ?? graph.get(command.targetId)) : graph.get(command.targetId)) ?? {})
             : {};
+        }
+
+        // Response extension point: a boundary may register `response: ts:<id>` to
+        // reshape the status/body before it is validated and returned (e.g. a
+        // Stripe list envelope or deleted-object shape). Running here — ahead of
+        // validateResponse — keeps the transformed body the single authoritative
+        // response on both the gateway and forwarding paths, and the contract is
+        // validated against what the client actually receives.
+        const respBoundary = input.dsl.byBoundaryName[command.boundary];
+        if (respBoundary?.responseScript !== undefined && status >= 200 && status < 300) {
+          const shaped = applyResponseScript({
+            responseScript: respBoundary.responseScript,
+            boundary: command.boundary,
+            operationId: lookupOperationId(openapi, respBoundary.contractPath, command.httpMethod),
+            intent: command.intent,
+            status,
+            body,
+            scriptRegistry: input.dsl.scriptRegistry,
+            now: () => new Date().toISOString(),
+            logger,
+          });
+          status = shaped.status;
+          body = shaped.body ?? null;
         }
 
         // Validate the response body against the contract (throws InternalExecutionError on fail).

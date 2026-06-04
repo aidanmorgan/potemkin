@@ -4,6 +4,9 @@ boundary: CustomerById
 contract_path: /v1/customers/{customer}
 fallback_override: true
 
+# Same response transform: shapes the DELETE into the Stripe deleted object.
+response: "ts:customerResponse"
+
 identity:
   key:
     from: path

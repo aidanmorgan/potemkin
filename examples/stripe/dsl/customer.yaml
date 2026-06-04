@@ -2,7 +2,12 @@
 # Stripe ids are `cus_<token>`; every object carries object/created/livemode.
 boundary: Customer
 contract_path: /v1/customers
-fallback_override: false
+# fallback_override lets the collection GET (/v1/customers) auto-serve a query.
+fallback_override: true
+
+# Stripe-faithful response shaping (200-on-create, list envelope) via the
+# generic response extension point — no framework changes.
+response: "ts:customerResponse"
 
 identity:
   creation:
