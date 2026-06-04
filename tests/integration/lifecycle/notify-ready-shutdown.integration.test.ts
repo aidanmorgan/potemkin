@@ -7,7 +7,7 @@
  * URL pointing at the test server.
  *
  * Scenarios:
- *  1. After boot with a live plugin control server, POST /ready is received
+ *  1. After boot with a live plugin control server, POST /_potemkin/ready is received
  *     within 500 ms and its payload matches ReadyNotification shape.
  *  2. `notifyShutdown` sends a correct POST /shutdown payload.
  *  3. When the plugin control server is DOWN, boot still succeeds and the
@@ -33,7 +33,7 @@ interface CapturedPost {
 }
 
 /**
- * Spin up a minimal Express server that captures POST /ready and POST /shutdown.
+ * Spin up a minimal Express server that captures POST /_potemkin/ready and POST /shutdown.
  * Returns the server, its bound port, and a list of captured requests.
  */
 async function startControlServer(): Promise<{
@@ -47,8 +47,8 @@ async function startControlServer(): Promise<{
 
   const captured: CapturedPost[] = [];
 
-  app.post('/ready', (req, res) => {
-    captured.push({ path: '/ready', body: req.body as unknown, receivedAt: Date.now() });
+  app.post('/_potemkin/ready', (req, res) => {
+    captured.push({ path: '/_potemkin/ready', body: req.body as unknown, receivedAt: Date.now() });
     res.status(200).json({ ok: true });
   });
 
@@ -111,23 +111,23 @@ describe('lifecycle: notify-ready integration', () => {
     await stopServer(controlServer);
   });
 
-  it('sends POST /ready within 500 ms of boot completion', async () => {
+  it('sends POST /_potemkin/ready within 500 ms of boot completion', async () => {
     const fixture = await loadFixture();
     const bootCompletedAt = Date.now();
 
     await bootSystem({ ...fixture, pluginControl: { url: controlUrl } });
 
-    const cap = await waitForCapture(captured, '/ready', 500);
+    const cap = await waitForCapture(captured, '/_potemkin/ready', 500);
 
     expect(cap).not.toBeNull();
     expect(cap!.receivedAt - bootCompletedAt).toBeLessThan(500);
   });
 
-  it('POST /ready payload matches ReadyNotification shape', async () => {
+  it('POST /_potemkin/ready payload matches ReadyNotification shape', async () => {
     const fixture = await loadFixture();
     await bootSystem({ ...fixture, pluginControl: { url: controlUrl } });
 
-    const cap = await waitForCapture(captured, '/ready', 500);
+    const cap = await waitForCapture(captured, '/_potemkin/ready', 500);
     expect(cap).not.toBeNull();
 
     const body = cap!.body as Partial<ReadyNotification>;

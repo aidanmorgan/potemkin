@@ -152,7 +152,7 @@ describe('createPluginControlClient — notifyReady', () => {
     expect(body['fixturesChecksum']).toBe('def456');
   });
 
-  it('POSTs to the /ready endpoint', async () => {
+  it('POSTs to the /_potemkin/ready endpoint', async () => {
     const capturedUrls: string[] = [];
 
     globalThis.fetch = jest.fn().mockImplementation((url: string) => {
@@ -163,7 +163,7 @@ describe('createPluginControlClient — notifyReady', () => {
     const client = createPluginControlClient({ url: 'http://localhost:9090' });
     await client.notifyReady(READY_PAYLOAD);
 
-    expect(capturedUrls[0]).toBe('http://localhost:9090/ready');
+    expect(capturedUrls[0]).toBe('http://localhost:9090/_potemkin/ready');
   });
 
   it('never throws even on catastrophic fetch error', async () => {

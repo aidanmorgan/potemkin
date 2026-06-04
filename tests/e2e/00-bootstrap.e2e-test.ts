@@ -4,7 +4,7 @@
  * Verifies:
  *  - Specmatic starts cleanly with the plugin on the classpath.
  *  - The plugin's control server is listening on the allocated port.
- *  - GET /health on the control server returns a 200 with a JSON body that
+ *  - GET /_potemkin/health on the control server returns a 200 with a JSON body that
  *    includes a `state` field.
  */
 
@@ -40,7 +40,7 @@ describeWithJava('00 — Bootstrap: Specmatic + plugin SPI load', () => {
     expect([200, 400, 404]).toContain(res.status);
   }, 60_000);
 
-  it('plugin control server responds to GET /health', async () => {
+  it('plugin control server responds to GET /_potemkin/health', async () => {
     const res = await fetch(`${app.pluginControlUrl}/_potemkin/health`);
     expect(res.status).toBe(200);
     const body = await res.json() as Record<string, unknown>;
