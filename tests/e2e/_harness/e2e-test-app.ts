@@ -268,7 +268,7 @@ export async function startE2eApp(opts: E2eAppOptions = {}): Promise<E2eApp> {
     throw new Error(`Specmatic did not start: ${err}`);
   }
 
-  // 6. Start Node engine — sends /ready to plugin control server on boot
+  // 6. Start Node engine — sends /_potemkin/ready to plugin control server on boot
   const pluginControlUrl = `http://127.0.0.1:${pluginControlPort}`;
   const engine = await startEngine({
     port: enginePort,
@@ -279,9 +279,9 @@ export async function startE2eApp(opts: E2eAppOptions = {}): Promise<E2eApp> {
   // 7. Wait for plugin control server to be reachable.
   // The Ktor control server starts inside the JVM (spawned in step 4) so it can take
   // a few seconds after the Specmatic stub is up before Ktor is listening.
-  await probeUrl(`${pluginControlUrl}/health`, 15_000);
+  await probeUrl(`${pluginControlUrl}/_potemkin/health`, 15_000);
 
-  // Give the engine 1 s to send /ready and the plugin to react
+  // Give the engine 1 s to send /_potemkin/ready and the plugin to react
   await new Promise((r) => setTimeout(r, 1_000));
 
   // 7b. Warm the plugin's route-discovery cache through the stub. The plugin's

@@ -29,7 +29,7 @@ async function getPluginHealthState(pluginControlUrl: string): Promise<string | 
     // /health reports DOWN with HTTP 503 (standard health-check semantics) and UP
     // with 200; the state string is in the body either way, so read it regardless
     // of status.
-    const res = await fetch(`${pluginControlUrl}/health`);
+    const res = await fetch(`${pluginControlUrl}/_potemkin/health`);
     const body = await res.json() as { state?: string };
     return body.state ?? null;
   } catch {

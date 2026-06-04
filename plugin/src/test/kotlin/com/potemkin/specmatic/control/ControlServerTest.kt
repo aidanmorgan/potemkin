@@ -99,7 +99,7 @@ class ControlServerTest {
             application {
                 configure(spy, null, null, org.slf4j.LoggerFactory.getLogger("test"))
             }
-            val response = client.post("/ready") {
+            val response = client.post("/_potemkin/ready") {
                 contentType(ContentType.Application.Json)
                 setBody("""{"engine":"node","version":"2.0.0","startedAt":"2026-01-01T00:00:00Z"}""")
             }
@@ -118,7 +118,7 @@ class ControlServerTest {
             application {
                 configure(spy, null, null, org.slf4j.LoggerFactory.getLogger("test"))
             }
-            val response = client.post("/ready") {
+            val response = client.post("/_potemkin/ready") {
                 contentType(ContentType.Application.Json)
                 setBody("{}")
             }
@@ -138,7 +138,7 @@ class ControlServerTest {
             application {
                 configure(spy, null, null, org.slf4j.LoggerFactory.getLogger("test"))
             }
-            val response = client.get("/health")
+            val response = client.get("/_potemkin/health")
             assertEquals(HttpStatusCode.OK, response.status)
             val body = response.bodyAsText()
             assertTrue(body.contains("UP"), "Response should contain 'UP': $body")
@@ -154,7 +154,7 @@ class ControlServerTest {
             application {
                 configure(spy, null, null, org.slf4j.LoggerFactory.getLogger("test"))
             }
-            val response = client.get("/health")
+            val response = client.get("/_potemkin/health")
             assertEquals(HttpStatusCode.ServiceUnavailable, response.status)
             val body = response.bodyAsText()
             assertTrue(body.contains("DOWN"), "Response should contain 'DOWN': $body")
@@ -179,7 +179,7 @@ class ControlServerTest {
             application {
                 configure(degradedSpy, null, null, org.slf4j.LoggerFactory.getLogger("test"))
             }
-            val response = client.get("/health")
+            val response = client.get("/_potemkin/health")
             assertEquals(HttpStatusCode.OK, response.status)
             val body = response.bodyAsText()
             assertTrue(body.contains("DEGRADED"), "Response should contain 'DEGRADED': $body")
@@ -202,7 +202,7 @@ class ControlServerTest {
             application {
                 configure(spy, FakeRoutes(listOf("/leads", "/leads/{id}")), null, org.slf4j.LoggerFactory.getLogger("test"))
             }
-            val response = client.get("/ready")
+            val response = client.get("/_potemkin/ready")
             assertEquals(HttpStatusCode.OK, response.status)
             val body = response.bodyAsText()
             assertTrue(body.contains("\"ready\":true"), "Response should report ready=true: $body")
@@ -233,7 +233,7 @@ class ControlServerTest {
             application {
                 configure(spy, FakeRoutes(listOf("/leads")), null, org.slf4j.LoggerFactory.getLogger("test"))
             }
-            val response = client.get("/ready")
+            val response = client.get("/_potemkin/ready")
             assertEquals(HttpStatusCode.ServiceUnavailable, response.status)
         }
     }
@@ -255,7 +255,7 @@ class ControlServerTest {
                     contentType(ContentType.Application.Json)
                     setBody("{}")
                 }
-                client.post("/ready") {
+                client.post("/_potemkin/ready") {
                     contentType(ContentType.Application.Json)
                     setBody("{}")
                 }

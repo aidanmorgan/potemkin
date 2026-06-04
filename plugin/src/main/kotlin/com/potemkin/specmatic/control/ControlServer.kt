@@ -25,10 +25,11 @@ import java.time.Instant
  * Ktor/Netty HTTP server that receives lifecycle notifications from the Node CQRS engine.
  *
  * Endpoints:
- *  - `POST /shutdown` — signals engine is stopping; calls [HealthMonitor.markDownExternal].
- *  - `POST /ready`    — signals engine is ready; calls [HealthMonitor.markUpExternal],
- *                       then triggers a forced refresh of routes + fixtures.
- *  - `GET  /health`   — returns current [HealthState] as JSON.
+ *  - `POST /shutdown`        — signals engine is stopping; calls [HealthMonitor.markDownExternal].
+ *  - `POST /_potemkin/ready` — signals engine is ready; calls [HealthMonitor.markUpExternal],
+ *                              then triggers a forced refresh of routes + fixtures.
+ *  - `GET  /_potemkin/health`— returns current [HealthState] as JSON.
+ *  - `GET  /_potemkin/ready` — forwarding-readiness probe (engine UP + routes cached).
  *
  * The server starts on [ControlServerConfig.port] (default 9090) using Netty.
  * [start] blocks until the server is listening; [stop] shuts it down gracefully.
@@ -86,10 +87,10 @@ internal fun Application.configure(
             call.respond(HttpStatusCode.NoContent)
         }
 
-        post("/ready") {
+        post("/_potemkin/ready") {
             val notification = runCatching { call.receive<ReadyNotification>() }.getOrNull()
             log.info(
-                "ControlServer: POST /ready received — engine={} version={}",
+                "ControlServer: POST /_potemkin/ready received — engine={} version={}",
                 notification?.engine,
                 notification?.version,
             )
@@ -104,18 +105,15 @@ internal fun Application.configure(
 
         // Plugin-process health endpoint — independent of the Node engine.
         // Returns the current health state so operators / CI can scrape it.
-        // Exposed at both /health (legacy) and /_potemkin/health (canonical).
-        get("/health") { respondHealth(call, healthMonitor) }
         get("/_potemkin/health") { respondHealth(call, healthMonitor) }
 
-        // Forwarding-readiness endpoint — distinct from /health. Reports 200 only
+        // Forwarding-readiness endpoint — distinct from /_potemkin/health. Reports 200 only
         // once the engine is UP *and* the route-discovery cache is populated, so a
         // request to an engine-owned path will forward through the stub instead of
         // falling through to Specmatic. It self-heals: when the engine is up but
         // routes are not yet cached, it drives a synchronous forceRefresh(), so a
         // caller polling this endpoint deterministically warms forwarding without a
         // timing sleep (see the consumer-test harness gate).
-        get("/ready") { respondReady(call, healthMonitor, routes) }
         get("/_potemkin/ready") { respondReady(call, healthMonitor, routes) }
     }
 }

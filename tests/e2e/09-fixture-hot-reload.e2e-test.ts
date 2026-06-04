@@ -33,7 +33,7 @@ async function waitForHealthUp(pluginControlUrl: string, timeoutMs: number): Pro
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      const res = await fetch(`${pluginControlUrl}/health`);
+      const res = await fetch(`${pluginControlUrl}/_potemkin/health`);
       if (res.status === 200) {
         const body = await res.json() as { state: string };
         if (body.state === 'Up') return true;

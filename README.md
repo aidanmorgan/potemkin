@@ -1031,7 +1031,7 @@ If you want seeded data, scripted multi-step workflows, or response overlays to 
 
 ### Handling engine restarts and hot reload
 
-If you want the Specmatic plugin to stay in sync when the engine restarts — for example, during test isolation resets or fixture changes — the engine sends a `/ready` signal on boot and a `/shutdown` signal before stopping. The plugin monitors health and re-fetches fixtures after a restart, so the stub registry stays consistent.
+If you want the Specmatic plugin to stay in sync when the engine restarts — for example, during test isolation resets or fixture changes — the engine sends a `/_potemkin/ready` signal on boot and a `/shutdown` signal before stopping. The plugin monitors health and re-fetches fixtures after a restart, so the stub registry stays consistent.
 
 The shutdown and ready signals are in [`08-shutdown-notification`](tests/e2e/08-shutdown-notification.e2e-test.ts), hot reload in [`09-fixture-hot-reload`](tests/e2e/09-fixture-hot-reload.e2e-test.ts), and health monitoring in [`07-reliability`](tests/e2e/07-reliability.e2e-test.ts).
 

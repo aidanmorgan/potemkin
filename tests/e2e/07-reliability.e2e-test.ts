@@ -35,9 +35,9 @@ async function waitForHealthState(
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      // /health reports DOWN with 503 and UP with 200; the state is in the body
+      // /_potemkin/health reports DOWN with 503 and UP with 200; the state is in the body
       // regardless of status, so read it either way.
-      const res = await fetch(`${pluginControlUrl}/health`);
+      const res = await fetch(`${pluginControlUrl}/_potemkin/health`);
       const body = await res.json() as { state?: string };
       if (body.state === expectedState) return true;
     } catch {
@@ -69,7 +69,7 @@ describeWithJava('07 — Reliability: plugin health monitoring', () => {
   }, 60_000);
 
   it('plugin control health reports Up when engine is running', async () => {
-    const res = await fetch(`${app.pluginControlUrl}/health`);
+    const res = await fetch(`${app.pluginControlUrl}/_potemkin/health`);
     expect(res.status).toBe(200);
     const body = await res.json() as { state: string };
     expect(['UP', 'DEGRADED']).toContain(body.state);
@@ -91,14 +91,14 @@ describeWithJava('07 — Reliability: plugin health monitoring', () => {
     expect(downNow).toBe(true);
   }, 60_000);
 
-  it('sending POST /ready to plugin control transitions health back to Up', async () => {
+  it('sending POST /_potemkin/ready to plugin control transitions health back to Up', async () => {
     await fetch(`${app.pluginControlUrl}/shutdown`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ engine: 'potemkin-stateful', version: '0.1.0', reason: 'SIGTERM', stoppedAt: new Date().toISOString() }),
     });
     await waitForHealthState(app.pluginControlUrl, 'DOWN', 3_000);
-    const readyRes = await fetch(`${app.pluginControlUrl}/ready`, {
+    const readyRes = await fetch(`${app.pluginControlUrl}/_potemkin/ready`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

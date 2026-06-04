@@ -41,14 +41,14 @@ describeWithJava('00 — Bootstrap: Specmatic + plugin SPI load', () => {
   }, 60_000);
 
   it('plugin control server responds to GET /health', async () => {
-    const res = await fetch(`${app.pluginControlUrl}/health`);
+    const res = await fetch(`${app.pluginControlUrl}/_potemkin/health`);
     expect(res.status).toBe(200);
     const body = await res.json() as Record<string, unknown>;
     expect(typeof body['state']).toBe('string');
   }, 60_000);
 
   it('plugin control server health state is a known HealthState value', async () => {
-    const res = await fetch(`${app.pluginControlUrl}/health`);
+    const res = await fetch(`${app.pluginControlUrl}/_potemkin/health`);
     const body = await res.json() as { state: string };
     expect(['UP', 'DEGRADED', 'DOWN']).toContain(body.state);
   }, 60_000);

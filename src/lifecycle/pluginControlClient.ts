@@ -105,7 +105,7 @@ export function createPluginControlClient(
 
   return {
     notifyReady(payload: ReadyNotification): Promise<NotifyResult> {
-      return notify('/ready', payload);
+      return notify('/_potemkin/ready', payload);
     },
 
     notifyShutdown(payload: ShutdownNotification): Promise<NotifyResult> {

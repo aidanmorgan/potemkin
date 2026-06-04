@@ -28,7 +28,7 @@ export interface EngineHandle {
 
 interface EngineDriverOpts {
   port?: number;
-  /** If set, the engine will POST /ready and /shutdown notifications here. */
+  /** If set, the engine will POST /_potemkin/ready and /shutdown notifications here. */
   pluginControlUrl?: string;
   /**
    * Fixture directory under tests/fixtures (e.g. "crm", "crm-jwt",

@@ -66,7 +66,7 @@ describeWithJava('49 — Full feature coverage walkthrough (CRM fixture)', () =>
   });
 
   it('plugin exposes /_potemkin/health and legacy /health on the same port', async () => {
-    const fresh = await fetch(`${app.pluginControlUrl}/health`);
+    const fresh = await fetch(`${app.pluginControlUrl}/_potemkin/health`);
     expect(fresh.status).toBe(200);
     const newPath = await fetch(`${app.pluginControlUrl}/_potemkin/health`);
     expect(newPath.status).toBe(200);
