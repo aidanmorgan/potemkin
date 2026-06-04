@@ -28,6 +28,8 @@ import { epochAnchoredUuidv7 } from '../ids/uuidv7.js';
 import { rootLogger, childLogger } from '../observability/logger.js';
 import { getTracer, withSpan, createEngineMetrics } from '../observability/index.js';
 import { deriveSchemasFromOpenApi } from '../schema/fromOpenApi.js';
+import { lintOrThrow } from '../lint/runner.js';
+import { ALL_CHECKS } from '../lint/checks/index.js';
 import { staticCheckDsl } from '../schema/dslStaticChecker.js';
 import { createDerivedProjectionRegistry, applyEventToDerivedProjections } from '../projections/engine.js';
 import { createPluginControlClient } from '../lifecycle/pluginControlClient.js';
@@ -506,6 +508,20 @@ export async function bootSystem(input: BootInput): Promise<BootedSystem> {
     }
 
     validateBehaviorOperationIds(dsl, input.openapi);
+
+    // Strict lint of the fully-composed model: abort boot on any ERROR finding
+    // with a located report; log WARNING findings (e.g. un-bounded operations).
+    const lintWarnings = lintOrThrow(
+      {
+        dsl,
+        openapi: input.openapi,
+        ...(loadedConfig?.boundarySourcePaths ? { boundarySourcePaths: loadedConfig.boundarySourcePaths } : {}),
+      },
+      ALL_CHECKS,
+    );
+    for (const w of lintWarnings) {
+      bootLog.warn({ step: 'lint', code: w.code, ...w.location }, `Lint: ${w.message}`);
+    }
 
     bootLog.info(
       { step: 'contract_bind', durationMs: Date.now() - phaseStart3 },
