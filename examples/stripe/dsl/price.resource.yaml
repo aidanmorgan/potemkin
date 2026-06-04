@@ -1,15 +1,16 @@
-# Price — collection boundary (POST create, GET list).
+# Price — a single resource aggregate spanning the collection + by-id paths.
 # Stripe ids are `price_<token>`. A price references a product (prod_ id) and
 # carries an amount/currency; `type` is one_time unless created as recurring.
-boundary: Price
-contract_path: /v1/prices
-fallback_override: true
-
-response: "ts:priceResponse"
+# Prices are immutable except active/nickname/metadata and cannot be deleted, so
+# the by-id path exposes only retrieve + update (no DELETE operation).
+resource: price
+schema: price
 
 identity:
   creation:
     generate: "ts:priceId"
+
+response: "ts:priceResponse"
 
 query_mapping:
   product: "state.product == param"
@@ -26,28 +27,27 @@ event_catalog:
       unit_amount: "has(command.payload.unit_amount) ? command.payload.unit_amount : null"
       currency: "command.payload.currency"
       type: "'one_time'"
+      billing_scheme: "'per_unit'"
       active: "has(command.payload.active) ? command.payload.active : true"
       nickname: "has(command.payload.nickname) ? command.payload.nickname : null"
       metadata: "has(command.payload.metadata) ? command.payload.metadata : {}"
-
-behaviors:
-  - name: createPrice
-    match:
-      operationId: createPrice
-      condition: "true"
-    emit: PriceCreated
+  - type: PriceUpdated
+    payload_template:
+      active: "has(command.payload.active) ? command.payload.active : state.active"
+      nickname: "has(command.payload.nickname) ? command.payload.nickname : state.nickname"
+      metadata: "has(command.payload.metadata) ? command.payload.metadata : state.metadata"
 
 reducers:
   - on: PriceCreated
+    replace_state: true
+  - on: PriceUpdated
     patches:
-      - { op: replace, path: /id, value: "${event.payload.id}" }
-      - { op: replace, path: /object, value: "${event.payload.object}" }
-      - { op: replace, path: /created, value: "${event.payload.created}" }
-      - { op: replace, path: /livemode, value: "${event.payload.livemode}" }
-      - { op: replace, path: /product, value: "${event.payload.product}" }
-      - { op: replace, path: /unit_amount, value: "${event.payload.unit_amount}" }
-      - { op: replace, path: /currency, value: "${event.payload.currency}" }
-      - { op: replace, path: /type, value: "${event.payload.type}" }
       - { op: replace, path: /active, value: "${event.payload.active}" }
       - { op: replace, path: /nickname, value: "${event.payload.nickname}" }
       - { op: replace, path: /metadata, value: "${event.payload.metadata}" }
+
+operations:
+  - { op: PostPrices, emit: PriceCreated }
+  - { op: GetPrices, query: true }
+  - { op: GetPricesPrice, query: true }
+  - { op: PostPricesPrice, emit: PriceUpdated }

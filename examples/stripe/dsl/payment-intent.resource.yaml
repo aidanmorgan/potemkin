@@ -1,0 +1,125 @@
+# PaymentIntent — a single resource aggregate spanning the collection, by-id, and
+# the confirm/capture/cancel sub-action paths. Stripe ids are `pi_<token>`.
+#
+# State machine (status):
+#   create  → requires_confirmation (payment_method supplied) | requires_payment_method
+#   confirm → succeeded (automatic capture) | requires_capture (manual capture)
+#   capture → succeeded (only from requires_capture)
+#   cancel  → canceled (only from a non-terminal state)
+# Confirming always materialises a Charge (see charge.resource.yaml, which reacts
+# to PaymentIntentConfirmed); capture marks that charge captured.
+resource: payment_intent
+schema: payment_intent
+
+identity:
+  creation:
+    generate: "ts:paymentIntentId"
+
+response: "ts:paymentIntentResponse"
+
+query_mapping:
+  customer: "state.customer == param"
+
+event_catalog:
+  - type: PaymentIntentCreated
+    payload_template:
+      id: "command.targetId"
+      object: "'payment_intent'"
+      created: "ts:unixNow"
+      livemode: "false"
+      amount: "command.payload.amount"
+      currency: "command.payload.currency"
+      status: "has(command.payload.payment_method) ? 'requires_confirmation' : 'requires_payment_method'"
+      customer: "has(command.payload.customer) ? command.payload.customer : null"
+      payment_method: "has(command.payload.payment_method) ? command.payload.payment_method : null"
+      capture_method: "has(command.payload.capture_method) ? command.payload.capture_method : 'automatic'"
+      amount_received: "0"
+      latest_charge: "null"
+      cancellation_reason: "null"
+      description: "has(command.payload.description) ? command.payload.description : null"
+      client_secret: "command.targetId + '_secret_' + $uuidv7()"
+      metadata: "has(command.payload.metadata) ? command.payload.metadata : {}"
+  - type: PaymentIntentUpdated
+    payload_template:
+      amount: "has(command.payload.amount) ? command.payload.amount : state.amount"
+      description: "has(command.payload.description) ? command.payload.description : state.description"
+      metadata: "has(command.payload.metadata) ? command.payload.metadata : state.metadata"
+  - type: PaymentIntentConfirmed
+    payload_template:
+      status: "state.capture_method == 'manual' ? 'requires_capture' : 'succeeded'"
+      amount_received: "state.capture_method == 'manual' ? state.amount_received : state.amount"
+      payment_method: "has(command.payload.payment_method) ? command.payload.payment_method : state.payment_method"
+      # Confirming a PaymentIntent always materialises a Charge (the Charge
+      # boundary reacts to this event). The ch_ id is minted here so it can be
+      # recorded on the intent (latest_charge) and used as the Charge's id.
+      chargeId: "ts:chargeId"
+      amount: "state.amount"
+      currency: "state.currency"
+      customer: "state.customer"
+      captured: "state.capture_method != 'manual'"
+  - type: PaymentIntentCaptured
+    payload_template:
+      amount_received: "state.amount"
+      # Carry the charge id (minted at confirm) + amount so the Charge boundary
+      # reacts and marks the previously-authorised charge as captured.
+      chargeId: "state.latest_charge"
+      amount: "state.amount"
+  - type: PaymentIntentCanceled
+    payload_template:
+      cancellation_reason: "has(command.payload.cancellation_reason) ? command.payload.cancellation_reason : 'requested_by_customer'"
+
+reducers:
+  - on: PaymentIntentCreated
+    replace_state: true
+  - on: PaymentIntentUpdated
+    patches:
+      - { op: replace, path: /amount, value: "${event.payload.amount}" }
+      - { op: replace, path: /description, value: "${event.payload.description}" }
+      - { op: replace, path: /metadata, value: "${event.payload.metadata}" }
+  - on: PaymentIntentConfirmed
+    patches:
+      - { op: replace, path: /status, value: "${event.payload.status}" }
+      - { op: replace, path: /amount_received, value: "${event.payload.amount_received}" }
+      - { op: replace, path: /payment_method, value: "${event.payload.payment_method}" }
+      - { op: replace, path: /latest_charge, value: "${event.payload.chargeId}" }
+  - on: PaymentIntentCaptured
+    patches:
+      - { op: replace, path: /status, value: "${'succeeded'}" }
+      - { op: replace, path: /amount_received, value: "${event.payload.amount_received}" }
+  - on: PaymentIntentCanceled
+    patches:
+      - { op: replace, path: /status, value: "${'canceled'}" }
+      - { op: replace, path: /cancellation_reason, value: "${event.payload.cancellation_reason}" }
+
+operations:
+  - { op: PostPaymentIntents, emit: PaymentIntentCreated }
+  - { op: GetPaymentIntents, query: true }
+  - { op: GetPaymentIntentsIntent, query: true }
+  - op: PostPaymentIntentsIntent
+    emit: PaymentIntentUpdated
+    requires:
+      - name: not-terminal
+        condition: "state.status != 'succeeded' && state.status != 'canceled'"
+        error_code: PAYMENT_INTENT_UNEXPECTED_STATE
+        error_message: "You cannot update a PaymentIntent that has succeeded or been canceled"
+  - op: PostPaymentIntentsIntentConfirm
+    emit: PaymentIntentConfirmed
+    requires:
+      - name: must-be-confirmable
+        condition: "state.status == 'requires_payment_method' || state.status == 'requires_confirmation' || state.status == 'requires_action'"
+        error_code: PAYMENT_INTENT_UNEXPECTED_STATE
+        error_message: "You cannot confirm this PaymentIntent because it is not in a confirmable state"
+  - op: PostPaymentIntentsIntentCapture
+    emit: PaymentIntentCaptured
+    requires:
+      - name: must-require-capture
+        condition: "state.status == 'requires_capture'"
+        error_code: PAYMENT_INTENT_UNEXPECTED_STATE
+        error_message: "You cannot capture this PaymentIntent because it is not awaiting capture"
+  - op: PostPaymentIntentsIntentCancel
+    emit: PaymentIntentCanceled
+    requires:
+      - name: not-terminal
+        condition: "state.status != 'succeeded' && state.status != 'canceled'"
+        error_code: PAYMENT_INTENT_UNEXPECTED_STATE
+        error_message: "You cannot cancel this PaymentIntent because it has succeeded or is already canceled"

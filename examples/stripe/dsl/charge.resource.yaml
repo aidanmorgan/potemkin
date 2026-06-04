@@ -1,10 +1,11 @@
-# Charge — collection boundary (GET list) + reaction target.
+# Charge — a single resource aggregate spanning the collection + by-id paths.
 # Charges are never POST-created; they materialise atomically as an in-UoW
-# reaction when a PaymentIntent is confirmed, and are marked captured when a
-# manually-authorised intent is captured. Stripe ids are `ch_<token>`.
-boundary: Charge
-contract_path: /v1/charges
-fallback_override: true
+# reaction when a PaymentIntent is confirmed, are marked captured when a
+# manually-authorised intent is captured, and accrue refunds when a Refund is
+# created. Stripe ids are `ch_<token>`. The real schema also requires
+# billing_details/disputed/metadata, so the create event materialises them.
+resource: charge
+schema: charge
 
 response: "ts:chargeResponse"
 
@@ -31,6 +32,9 @@ event_catalog:
       amount_captured: "event.payload.captured ? event.payload.amount : 0"
       amount_refunded: "0"
       refunded: "false"
+      disputed: "false"
+      billing_details: "{}"
+      metadata: "{}"
   # Emitted by the capture reaction — marks a previously-authorised charge captured.
   - type: ChargeCaptured
     payload_template:
@@ -40,26 +44,9 @@ event_catalog:
     payload_template:
       amount: "event.payload.amount"
 
-behaviors: []
-
 reducers:
   - on: ChargeCreated
-    patches:
-      - { op: add, path: /id, value: "${event.payload.id}" }
-      - { op: add, path: /object, value: "${event.payload.object}" }
-      - { op: add, path: /created, value: "${event.payload.created}" }
-      - { op: add, path: /livemode, value: "${event.payload.livemode}" }
-      - { op: add, path: /amount, value: "${event.payload.amount}" }
-      - { op: add, path: /currency, value: "${event.payload.currency}" }
-      - { op: add, path: /paid, value: "${event.payload.paid}" }
-      - { op: add, path: /captured, value: "${event.payload.captured}" }
-      - { op: add, path: /status, value: "${event.payload.status}" }
-      - { op: add, path: /payment_intent, value: "${event.payload.payment_intent}" }
-      - { op: add, path: /payment_method, value: "${event.payload.payment_method}" }
-      - { op: add, path: /customer, value: "${event.payload.customer}" }
-      - { op: add, path: /amount_captured, value: "${event.payload.amount_captured}" }
-      - { op: add, path: /amount_refunded, value: "${event.payload.amount_refunded}" }
-      - { op: add, path: /refunded, value: "${event.payload.refunded}" }
+    replace_state: true
   - on: ChargeCaptured
     patches:
       - { op: replace, path: /captured, value: "${true}" }
@@ -73,22 +60,23 @@ reducers:
 
 reactions:
   - name: create-charge-on-confirm
-    on: "PaymentIntentConfirm:PaymentIntentConfirmed"
+    on: "PaymentIntentConfirmed"
     intent: creation
-    boundary: Charge
     emit: ChargeCreated
     target: "event.payload.chargeId"
   - name: capture-charge-on-pi-capture
-    on: "PaymentIntentCapture:PaymentIntentCaptured"
+    on: "PaymentIntentCaptured"
     intent: mutation
-    boundary: Charge
     emit: ChargeCaptured
     target: "event.payload.chargeId"
   - name: accrue-refund-on-charge
-    on: "Refund:RefundCreated"
+    on: "RefundCreated"
     intent: mutation
-    boundary: Charge
     emit: ChargeRefunded
     target: "event.payload.charge"
     payload:
       amount: "event.payload.amount"
+
+operations:
+  - { op: GetCharges, query: true }
+  - { op: GetChargesCharge, query: true }

@@ -75,8 +75,8 @@ reducers:
       - { op: replace, path: /deleted, value: "${true}" }
 
 operations:
-  - { op: createCustomer, emit: CustomerCreated }
-  - { op: listCustomers, query: true }
-  - { op: getCustomer, query: true }
-  - { op: updateCustomer, emit: CustomerUpdated }
-  - { op: deleteCustomer, emit: CustomerDeleted }
+  - { op: PostCustomers, emit: CustomerCreated }
+  - { op: GetCustomers, query: true }
+  - { op: GetCustomersCustomer, query: true }
+  - { op: PostCustomersCustomer, emit: CustomerUpdated }
+  - { op: DeleteCustomersCustomer, emit: CustomerDeleted }

@@ -1,0 +1,63 @@
+# Product — a single resource aggregate spanning the collection + by-id paths.
+# Stripe ids are `prod_<token>`; every object carries object/created/livemode.
+# The real Stripe schema also requires images/marketing_features (arrays) and an
+# `updated` Unix timestamp, so the create event materialises all of them.
+resource: product
+schema: product
+
+identity:
+  creation:
+    generate: "ts:productId"
+
+response: "ts:productResponse"
+
+query_mapping:
+  active: "state.active == param"
+
+event_catalog:
+  - type: ProductCreated
+    payload_template:
+      id: "command.targetId"
+      object: "'product'"
+      created: "ts:unixNow"
+      updated: "ts:unixNow"
+      livemode: "false"
+      name: "command.payload.name"
+      description: "has(command.payload.description) ? command.payload.description : null"
+      active: "has(command.payload.active) ? command.payload.active : true"
+      default_price: "null"
+      images: "[]"
+      marketing_features: "[]"
+      metadata: "has(command.payload.metadata) ? command.payload.metadata : {}"
+  # Stripe update semantics: only supplied params change; the rest are preserved.
+  - type: ProductUpdated
+    payload_template:
+      name: "has(command.payload.name) ? command.payload.name : state.name"
+      description: "has(command.payload.description) ? command.payload.description : state.description"
+      active: "has(command.payload.active) ? command.payload.active : state.active"
+      metadata: "has(command.payload.metadata) ? command.payload.metadata : state.metadata"
+      updated: "ts:unixNow"
+  - type: ProductDeleted
+    payload_template:
+      deletedAt: "ts:unixNow"
+
+reducers:
+  - on: ProductCreated
+    replace_state: true
+  - on: ProductUpdated
+    patches:
+      - { op: replace, path: /name, value: "${event.payload.name}" }
+      - { op: replace, path: /description, value: "${event.payload.description}" }
+      - { op: replace, path: /active, value: "${event.payload.active}" }
+      - { op: replace, path: /metadata, value: "${event.payload.metadata}" }
+      - { op: replace, path: /updated, value: "${event.payload.updated}" }
+  - on: ProductDeleted
+    patches:
+      - { op: replace, path: /deleted, value: "${true}" }
+
+operations:
+  - { op: PostProducts, emit: ProductCreated }
+  - { op: GetProducts, query: true }
+  - { op: GetProductsId, query: true }
+  - { op: PostProductsId, emit: ProductUpdated }
+  - { op: DeleteProductsId, emit: ProductDeleted }

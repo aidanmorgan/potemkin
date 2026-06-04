@@ -21,16 +21,26 @@ function stripeId(prefix: string, ctx: ScriptContext): string {
  *   - delete   → 200 + the `{id, object, deleted:true}` deleted object
  *   - list     → the `{object:"list", data, has_more, url}` list envelope
  *   - retrieve/update → unchanged (the resource object, already faithful)
+ *
+ * The real Stripe OpenAPI uses PascalCase operationIds (e.g. PostCustomers,
+ * GetCustomers, DeleteCustomersCustomer), so the create/list op names are passed
+ * explicitly per resource and the delete branch keys off the `Delete` prefix.
  */
-function stripeResponse(objectName: string, listUrl: string, ctx: ScriptContext): ResponseScriptResult {
+function stripeResponse(
+  objectName: string,
+  listUrl: string,
+  createOp: string,
+  listOp: string,
+  ctx: ScriptContext,
+): ResponseScriptResult {
   const op = ctx.operationId ?? '';
   const body = ctx.response?.body ?? null;
-  if (op.startsWith('create')) return { status: 200 };
-  if (op.startsWith('delete')) {
+  if (op === createOp) return { status: 200 };
+  if (op.startsWith('Delete')) {
     const b = (body ?? {}) as Record<string, unknown>;
     return { status: 200, body: { id: b['id'], object: objectName, deleted: true } };
   }
-  if (op.startsWith('list')) {
+  if (op === listOp) {
     return { body: { object: 'list', url: listUrl, has_more: false, data: Array.isArray(body) ? body : [] } };
   }
   return {};
@@ -82,30 +92,30 @@ export class RefundId {
 
 @Script('customerResponse')
 export class CustomerResponse {
-  run(ctx: ScriptContext): ResponseScriptResult { return stripeResponse('customer', '/v1/customers', ctx); }
+  run(ctx: ScriptContext): ResponseScriptResult { return stripeResponse('customer', '/v1/customers', 'PostCustomers', 'GetCustomers', ctx); }
 }
 
 @Script('productResponse')
 export class ProductResponse {
-  run(ctx: ScriptContext): ResponseScriptResult { return stripeResponse('product', '/v1/products', ctx); }
+  run(ctx: ScriptContext): ResponseScriptResult { return stripeResponse('product', '/v1/products', 'PostProducts', 'GetProducts', ctx); }
 }
 
 @Script('priceResponse')
 export class PriceResponse {
-  run(ctx: ScriptContext): ResponseScriptResult { return stripeResponse('price', '/v1/prices', ctx); }
+  run(ctx: ScriptContext): ResponseScriptResult { return stripeResponse('price', '/v1/prices', 'PostPrices', 'GetPrices', ctx); }
 }
 
 @Script('paymentIntentResponse')
 export class PaymentIntentResponse {
-  run(ctx: ScriptContext): ResponseScriptResult { return stripeResponse('payment_intent', '/v1/payment_intents', ctx); }
+  run(ctx: ScriptContext): ResponseScriptResult { return stripeResponse('payment_intent', '/v1/payment_intents', 'PostPaymentIntents', 'GetPaymentIntents', ctx); }
 }
 
 @Script('chargeResponse')
 export class ChargeResponse {
-  run(ctx: ScriptContext): ResponseScriptResult { return stripeResponse('charge', '/v1/charges', ctx); }
+  run(ctx: ScriptContext): ResponseScriptResult { return stripeResponse('charge', '/v1/charges', 'PostCharges', 'GetCharges', ctx); }
 }
 
 @Script('refundResponse')
 export class RefundResponse {
-  run(ctx: ScriptContext): ResponseScriptResult { return stripeResponse('refund', '/v1/refunds', ctx); }
+  run(ctx: ScriptContext): ResponseScriptResult { return stripeResponse('refund', '/v1/refunds', 'PostRefunds', 'GetRefunds', ctx); }
 }

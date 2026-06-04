@@ -4,6 +4,6 @@ systemUnderTest:
     definitions:
       - source: { fileSystem: { directory: ./openapi } }
         specs:
-          - id: stripe-core
-            path: stripe-core.yaml
+          - id: stripe-official
+            path: stripe-official.json
             urlPathPrefix: /
