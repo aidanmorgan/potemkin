@@ -63,7 +63,29 @@ const FORBIDDEN_BUILTINS = new Set([
   'process', 'node:process',
 ]);
 
+// The SDK reducer + script registries are module-global, so two concurrent
+// scans would reset + register into the same registries and collide (e.g. two
+// engines booting in parallel for ephemeral isolation, where the second scan's
+// @Script registration hits "already registered"). A promise-chain mutex
+// serializes the scan phase so scans never interleave.
+let scanChain: Promise<void> = Promise.resolve();
+
 export async function scanTypescriptReducers(
+  config: TypescriptConfig,
+  opts: ScannerOptions,
+): Promise<ScannerResult> {
+  const prevScan = scanChain;
+  let releaseScan!: () => void;
+  scanChain = new Promise<void>((resolve) => { releaseScan = resolve; });
+  await prevScan;
+  try {
+    return await scanInner(config, opts);
+  } finally {
+    releaseScan();
+  }
+}
+
+async function scanInner(
   config: TypescriptConfig,
   opts: ScannerOptions,
 ): Promise<ScannerResult> {
