@@ -17,6 +17,7 @@ import { createTsReducerRegistry } from '../../../src/engine/tsReducerRegistry';
 import { InternalExecutionError } from '../../../src/errors';
 import { makeBoundary, makeDomainEvent } from '../_helpers';
 import type { DomainEvent } from '../../../src/types';
+import type { BoundaryInferenceResult } from '../../../src/dsl/schemaInference';
 
 const cel = createCelEvaluator();
 
@@ -50,7 +51,7 @@ describe('rebuildEntityAtVersion — YAML reducer', () => {
     // Replay path
     const events = createEventStore();
     events.append([evt]);
-    const replayState = rebuildEntityAtVersion('agg-1', 1, boundary, events, cel);
+    const replayState = rebuildEntityAtVersion('agg-1', 1, boundary, {}, undefined, events, cel);
 
     expect(replayState).toEqual(liveState);
   });
@@ -58,7 +59,7 @@ describe('rebuildEntityAtVersion — YAML reducer', () => {
   it('returns null when no events exist for the aggregate', () => {
     const boundary = makeBoundary();
     const events = createEventStore();
-    const result = rebuildEntityAtVersion('ghost', 99, boundary, events, cel);
+    const result = rebuildEntityAtVersion('ghost', 99, boundary, {}, undefined, events, cel);
     expect(result).toBeNull();
   });
 
@@ -77,10 +78,10 @@ describe('rebuildEntityAtVersion — YAML reducer', () => {
     const events = createEventStore();
     events.append([evt1, evt2]);
 
-    const stateAtV1 = rebuildEntityAtVersion('agg-1', 1, boundary, events, cel);
+    const stateAtV1 = rebuildEntityAtVersion('agg-1', 1, boundary, {}, undefined, events, cel);
     expect((stateAtV1 as { score?: number })?.score).toBe(10);
 
-    const stateAtV2 = rebuildEntityAtVersion('agg-1', 2, boundary, events, cel);
+    const stateAtV2 = rebuildEntityAtVersion('agg-1', 2, boundary, {}, undefined, events, cel);
     expect((stateAtV2 as { score?: number })?.score).toBe(99);
   });
 });
@@ -118,7 +119,7 @@ describe('rebuildEntityAtVersion — TS reducer', () => {
     // Replay path — must pass the same tsRegistry to get identical result
     const events = createEventStore();
     events.append([evt]);
-    const replayState = rebuildEntityAtVersion('agg-1', 1, boundary, events, cel, undefined, tsRegistry);
+    const replayState = rebuildEntityAtVersion('agg-1', 1, boundary, {}, undefined, events, cel, undefined, tsRegistry);
 
     expect(replayState).toEqual(liveState);
     expect((replayState as { processed?: boolean })?.processed).toBe(true);
@@ -160,8 +161,12 @@ describe('rebuildEntityAtVersion — computed fields', () => {
     const events = createEventStore();
     events.append([evt]);
     const replayState = rebuildEntityAtVersion(
-      'agg-1', 1, boundary, events, cel, undefined, undefined, computed, computedOrder,
+      'agg-1', 1, boundary,
+      { TestBoundary: boundary },
+      { TestBoundary: { computedOrder } as unknown as BoundaryInferenceResult },
+      events, cel,
     );
+    void computed;
 
     expect(replayState).toEqual(liveState);
     expect((replayState as { displayScore?: number })?.displayScore).toBe(70);
@@ -197,7 +202,7 @@ describe('rebuildEntityAtVersion — auditFields', () => {
     // Replay path
     const events = createEventStore();
     events.append([evt]);
-    const replayState = rebuildEntityAtVersion('agg-1', 1, boundary, events, cel);
+    const replayState = rebuildEntityAtVersion('agg-1', 1, boundary, {}, undefined, events, cel);
 
     expect(replayState).toEqual(liveState);
     expect((replayState as { updatedAt?: string })?.updatedAt).toBe('2025-01-15T10:00:00.000Z');
@@ -227,7 +232,7 @@ describe('rebuildEntityAtVersion — all-or-nothing replay', () => {
     events.append([evt]);
 
     expect(() =>
-      rebuildEntityAtVersion('agg-1', 1, boundary, events, cel, undefined, tsRegistry),
+      rebuildEntityAtVersion('agg-1', 1, boundary, {}, undefined, events, cel, undefined, tsRegistry),
     ).toThrow(InternalExecutionError);
   });
 
@@ -251,7 +256,7 @@ describe('rebuildEntityAtVersion — all-or-nothing replay', () => {
 
     // The throw propagates out — caller maps to 500; no partial state is returned.
     expect(() =>
-      rebuildEntityAtVersion('agg-1', 1, boundary, events, cel, undefined, tsRegistry),
+      rebuildEntityAtVersion('agg-1', 1, boundary, {}, undefined, events, cel, undefined, tsRegistry),
     ).toThrow();
   });
 
@@ -272,10 +277,10 @@ describe('rebuildEntityAtVersion — all-or-nothing replay', () => {
     const events = createEventStore();
     events.append([evt1, evt2]);
 
-    const stateAtV1 = rebuildEntityAtVersion('agg-1', 1, boundary, events, cel);
+    const stateAtV1 = rebuildEntityAtVersion('agg-1', 1, boundary, {}, undefined, events, cel);
     expect((stateAtV1 as { score?: number })?.score).toBe(10);
 
-    const stateAtV2 = rebuildEntityAtVersion('agg-1', 2, boundary, events, cel);
+    const stateAtV2 = rebuildEntityAtVersion('agg-1', 2, boundary, {}, undefined, events, cel);
     expect((stateAtV2 as { score?: number })?.score).toBe(20);
   });
 });
@@ -299,7 +304,7 @@ describe('rebuildEntityAtVersion — does not inject a phantom id field for boun
     const events = createEventStore();
     events.append([evt]);
 
-    const rebuilt = rebuildEntityAtVersion('agg-1', 1, boundary, events, cel);
+    const rebuilt = rebuildEntityAtVersion('agg-1', 1, boundary, {}, undefined, events, cel);
 
     expect(rebuilt).not.toBeNull();
     expect(rebuilt).not.toHaveProperty('id');
@@ -327,7 +332,7 @@ describe('rebuildEntityAtVersion — does not inject a phantom id field for boun
 
     const events = createEventStore();
     events.append([evt]);
-    const rebuilt = rebuildEntityAtVersion('agg-1', 1, boundary, events, cel);
+    const rebuilt = rebuildEntityAtVersion('agg-1', 1, boundary, {}, undefined, events, cel);
 
     expect(rebuilt).toEqual(liveState);
   });

@@ -183,14 +183,12 @@ reactions:
     expect(stream).toHaveLength(4);
 
     const boundary = sys.dsl.byBoundaryName['Inventory']!;
-    const inf = sys.inferredSchemas!['Inventory']!;
 
     const rebuildAt = (v: number): Record<string, unknown> | null =>
       rebuildEntityAtVersion(
-        INVENTORY_ID, v, boundary, sys.events, sys.cel, undefined,
+        INVENTORY_ID, v, boundary,
+        sys.dsl.byBoundaryName, sys.inferredSchemas, sys.events, sys.cel, undefined,
         sys.tsReducerRegistry,
-        boundary.state?.computed ?? [],
-        inf.computedOrder,
       );
 
     // v3 = baseline + 2 reaction events: reaction-driven reserved=2, and the

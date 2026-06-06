@@ -658,17 +658,12 @@ async function handleContractRequest(
         throw err;
       }
       if (controls.timeTravel.readAtVersion !== undefined && targetId !== null) {
-        const ttInferred = sys.inferredSchemas?.[boundary.boundary];
-        const ttComputedArgs = ttInferred && ttInferred.computedOrder.length > 0
-          ? { computed: sys.dsl.byBoundaryName[boundary.boundary]?.state?.computed ?? [], computedOrder: ttInferred.computedOrder }
-          : {};
         let rebuilt: ReturnType<typeof rebuildEntityAtVersion>;
         try {
           rebuilt = rebuildEntityAtVersion(
-            targetId, controls.timeTravel.readAtVersion, boundary, sys.events, reqCel, logger,
+            targetId, controls.timeTravel.readAtVersion, boundary,
+            sys.dsl.byBoundaryName, sys.inferredSchemas, sys.events, reqCel, logger,
             sys.tsReducerRegistry,
-            ttComputedArgs.computed,
-            ttComputedArgs.computedOrder,
           );
         } catch (err) {
           res.setHeader('X-Specmatic-Result', 'failure');

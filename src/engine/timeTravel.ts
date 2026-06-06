@@ -15,7 +15,7 @@ import type { BoundaryConfig } from '../dsl/types.js';
 import type { CelEvaluator } from '../cel/evaluator.js';
 import type { Logger } from '../observability/logger.js';
 import type { TsReducerRegistry } from './tsReducerRegistry.js';
-import type { DeclaredComputedField } from '../dsl/schemaInference.js';
+import type { BoundaryInferenceResult } from '../dsl/schemaInference.js';
 import { createStateGraph } from '../stategraph/graph.js';
 import { projectEvent } from './projection.js';
 
@@ -23,21 +23,25 @@ import { projectEvent } from './projection.js';
  * Rebuild a single entity's state by replaying its events up to (and including)
  * `maxVersion`. Returns null when the entity has no events at that version.
  *
- * The replay delegates each event to the same `projectEvent` function used by
- * the live projection engine, so TS reducers, computed fields, and audit fields
- * are all applied identically — X-Potemkin-Read-At-Version reconstructs exactly
- * what the engine committed at that version.
+ * The replay delegates each event to the same `projectEvent` the live engine
+ * uses, and — critically — projects each event through its OWN emitting
+ * boundary's reducers + computed fields (resolved via `byBoundaryName`), exactly
+ * as the live UoW did when it committed the event. Using a single boundary would
+ * be wrong for the split collection/by-id architecture: a `GET /leads/{id}`
+ * read boundary (LeadById) owns only the delete reducer, so replaying the
+ * LeadCreated/LeadContacted history through it would drop all state. The
+ * `fallbackBoundary` covers any event whose boundary is not in the map.
  */
 export function rebuildEntityAtVersion(
   aggregateId: string,
   maxVersion: number,
-  boundary: BoundaryConfig,
+  fallbackBoundary: BoundaryConfig,
+  byBoundaryName: Readonly<Record<string, BoundaryConfig>>,
+  inferredSchemas: Readonly<Record<string, BoundaryInferenceResult>> | undefined,
   events: EventStore,
   cel: CelEvaluator,
   logger?: Logger,
   tsReducerRegistry?: TsReducerRegistry,
-  computed?: readonly DeclaredComputedField[],
-  computedOrder?: readonly string[],
 ): JsonObject | null {
   const stream = events.byAggregate(aggregateId);
   if (stream.length === 0) return null;
@@ -51,15 +55,19 @@ export function rebuildEntityAtVersion(
 
   for (const evt of stream) {
     if (evt.sequenceVersion > maxVersion) break;
+    const eventBoundary = byBoundaryName[evt.boundary] ?? fallbackBoundary;
+    const inferred = inferredSchemas?.[evt.boundary];
+    const hasComputed = inferred !== undefined && inferred.computedOrder.length > 0;
     projectEvent({
       event: evt,
-      boundary,
+      boundary: eventBoundary,
       graph,
       cel,
       logger,
       tsReducerRegistry,
-      computed,
-      computedOrder,
+      ...(hasComputed
+        ? { computed: eventBoundary.state?.computed ?? [], computedOrder: inferred.computedOrder }
+        : {}),
     });
     applied++;
   }
