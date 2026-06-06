@@ -164,10 +164,17 @@ function extractOperation(rawOp: unknown): OpenApiOperation | undefined {
     const content = rbObj['content'];
     if (content !== null && typeof content === 'object' && !Array.isArray(content)) {
       const contentObj = content as Record<string, unknown>;
-      const json = contentObj['application/json'];
-      if (json !== null && typeof json === 'object' && !Array.isArray(json)) {
-        const jsonObj = json as Record<string, unknown>;
-        const rbSchema = asJsonObject(jsonObj['schema']);
+      // Prefer JSON, but fall back to form-encoded media types so operations that
+      // declare their body only as application/x-www-form-urlencoded (e.g. the
+      // real Stripe spec) still get request-body validation. Without this, an
+      // invalid form-op body skips validation, mutates state, and only trips
+      // response validation — surfacing as a 500 instead of a 400.
+      const mediaType = contentObj['application/json']
+        ?? contentObj['application/x-www-form-urlencoded']
+        ?? contentObj['multipart/form-data'];
+      if (mediaType !== null && typeof mediaType === 'object' && !Array.isArray(mediaType)) {
+        const mtObj = mediaType as Record<string, unknown>;
+        const rbSchema = asJsonObject(mtObj['schema']);
         requestBodySchema = rbSchema ? (decycleSchema(rbSchema) as JsonObject) : undefined;
       }
     }
