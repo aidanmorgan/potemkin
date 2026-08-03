@@ -2310,9 +2310,9 @@ export class RuntimeEngine {
       for (const reducer of reducers) {
         const reducerContext: RuntimeReducerContext = {
           boundary: boundary.boundary,
-          state: asObject(next),
-          event,
-          payload: event.payload,
+          state: clone(asObject(next)),
+          event: clone(event),
+          payload: clone(event.payload),
           helpers: this.helpersFor(item.request),
         };
         if (reducer.reduce !== undefined) {
@@ -2526,9 +2526,9 @@ export class RuntimeEngine {
           for (const reducer of reducers) {
             const reducerContext: RuntimeReducerContext = {
               boundary: event.boundary,
-              state: asObject(next),
-              event,
-              payload: event.payload,
+              state: clone(asObject(next)),
+              event: clone(event),
+              payload: clone(event.payload),
               helpers: source.helpers,
             };
             if (reducer.reduce !== undefined) {

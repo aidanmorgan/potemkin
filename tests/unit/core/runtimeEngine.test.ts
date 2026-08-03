@@ -65,6 +65,75 @@ function program(
 }
 
 describe("source-independent runtime engine", () => {
+  it("detaches mutable reducer context values from state and event storage", async () => {
+    const runtime = createRuntimeEngine(
+      program({
+        boundary: "Order",
+        contractPath: "/orders",
+        eventCatalog: [
+          {
+            type: "OrderCreated",
+            payload: {
+              id: ({ payload }) => payload.id,
+              nested: ({ payload }) => payload.nested,
+            },
+          },
+        ],
+        behaviors: [
+          { name: "create", operationId: "createOrder", emit: "OrderCreated" },
+          { name: "read", operationId: "getOrder" },
+        ],
+        reducers: [
+          {
+            on: "OrderCreated",
+            replaceState: true,
+            apply: ({ state, event }) => {
+              const stateNested = state["nested"];
+              if (
+                stateNested !== null &&
+                typeof stateNested === "object" &&
+                !Array.isArray(stateNested)
+              ) {
+                (stateNested as JsonObject)["tamperedByReducer"] = "state";
+              }
+              const eventNested = event.payload["nested"];
+              if (
+                eventNested !== null &&
+                typeof eventNested === "object" &&
+                !Array.isArray(eventNested)
+              ) {
+                (eventNested as JsonObject)["tamperedByReducer"] = "event";
+              }
+              return [{ op: "replace", path: "/processed", value: true }];
+            },
+          },
+        ],
+      }),
+    );
+
+    const created = await runtime.execute(
+      request({ payload: { id: "order-1", nested: { value: "original" } } }),
+    );
+    expect(created.events[0]?.payload).toEqual({
+      id: "order-1",
+      nested: { value: "original" },
+    });
+
+    await expect(
+      runtime.execute(
+        request({
+          operationId: "getOrder",
+          intent: "query",
+          httpMethod: "GET",
+          targetId: "order-1",
+        }),
+      ),
+    ).resolves.toMatchObject({
+      status: 200,
+      body: { id: "order-1", nested: { value: "original" }, processed: true },
+    });
+  });
+
   it("does not expose stored aggregate state to reducer inputs", async () => {
     let reducerInput: JsonObject | undefined;
     const runtime = createRuntimeEngine(
