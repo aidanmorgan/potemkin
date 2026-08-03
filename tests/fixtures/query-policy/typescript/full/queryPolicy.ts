@@ -1,9 +1,13 @@
 import {
   PotemkinConfigure,
   boundary,
+  boundaryName,
+  contractPath,
   factoryName,
   field,
   linkRelation,
+  pathParameter,
+  pathSegment,
   queryPath,
   simulation,
 } from "potemkin/sdk";
@@ -27,7 +31,7 @@ const query = {
   includeDeleted: true,
 };
 
-const order = boundary("Order", "/orders")
+const order = boundary(boundaryName("Order"), contractPath(pathSegment("orders")))
   .fallbackOverride(true)
   .response({ hateoas: [{ rel: linkRelation("self"), href: "/orders" }] })
   .query(query)
@@ -39,12 +43,18 @@ const order = boundary("Order", "/orders")
     { id: "order-deleted", score: 4, active: true, _deleted: true },
   );
 
-const orderById = boundary("OrderById", "/orders/{id}")
+const orderById = boundary(
+  boundaryName("OrderById"),
+  contractPath(pathSegment("orders"), pathParameter("id")),
+)
   .fallbackOverride(true)
   .identity({ key: { from: "path", name: "id" } })
   .query({ fallback: () => ({ code: "ORDER_NOT_FOUND" }) });
 
-const probe = boundary("ProbeById", "/probes/{id}").identity({
+const probe = boundary(
+  boundaryName("ProbeById"),
+  contractPath(pathSegment("probes"), pathParameter("id")),
+).identity({
   key: { from: "path", name: "id" },
 });
 

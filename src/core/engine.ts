@@ -81,7 +81,7 @@ function resolveValue<Input, Output>(value: RuntimeValue<Input, Output>, input: 
   return typeof value === "function" ? (value as (value: Input) => Output)(input) : value;
 }
 
-function asObject(value: JsonValue | null | undefined): JsonObject {
+function asObject(value: JsonValue | object | null | undefined): JsonObject {
   if (value !== null && value !== undefined && typeof value === "object" && !Array.isArray(value)) {
     return clone(value as JsonObject);
   }
@@ -2316,7 +2316,7 @@ export class RuntimeEngine {
           helpers: this.helpersFor(item.request),
         };
         if (reducer.reduce !== undefined) {
-          next = clone(reducer.reduce(reducerContext));
+          next = asObject(clone(reducer.reduce(reducerContext)));
         } else if (reducer.apply !== undefined) {
           next = asObject(
             applyPatches(next, reducer.apply(reducerContext), "reducer", { autoVivify: true })
@@ -2532,7 +2532,7 @@ export class RuntimeEngine {
               helpers: source.helpers,
             };
             if (reducer.reduce !== undefined) {
-              next = clone(reducer.reduce(reducerContext));
+              next = asObject(clone(reducer.reduce(reducerContext)));
             } else if (reducer.apply !== undefined) {
               next = asObject(
                 applyPatches(next, reducer.apply(reducerContext), "projection", {

@@ -123,7 +123,10 @@ export interface BehaviorDefinition extends Omit<
     readonly operationId: OperationId;
   })[];
 }
-export interface ReducerDefinition extends Omit<RuntimeReducer, "on"> {
+export interface ReducerDefinition<State extends object = object> extends Omit<
+  RuntimeReducer<State>,
+  "on"
+> {
   readonly on: EventType;
 }
 export type GuardDefinition = Omit<RuntimeGuard, "name"> & {
@@ -477,6 +480,14 @@ type EventPayloadExpressions<
   >;
 }>;
 
+type EventPayloadDefinition = Readonly<Record<string, RuntimeValue<EventContext, JsonValue>>>;
+
+type EventPayloadValue<Value> = Value extends (...input: never[]) => infer Result ? Result : Value;
+
+type InferredEventPayload<Definitions extends object> = {
+  readonly [Key in keyof Definitions]: EventPayloadValue<Definitions[Key]>;
+};
+
 type MergeEventPayload<Current extends object, Added extends object> = Omit<Current, keyof Added> &
   Added;
 
@@ -492,6 +503,11 @@ export interface EventBuilder<
   build(): TypedEventDefinition<EventPayload, CommandPayload, State>;
 }
 
+export function event<const Definitions extends object>(
+  type: EventType,
+  payload: Definitions & EventPayloadDefinition,
+  schemaRef?: SchemaReference,
+): TypedEventDefinition<InferredEventPayload<Definitions>>;
 export function event<
   EventPayload extends object,
   CommandPayload extends object = JsonObject,

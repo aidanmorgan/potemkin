@@ -3,12 +3,19 @@ import {
   behavior,
   behaviorName,
   boundary,
+  boundaryName,
+  contractPath,
+  defineBehavior,
   defineGlobal,
   event,
+  eventType,
   factoryName,
+  operationId,
   reducerRule,
   simulation,
   scopeName,
+  pathSegment,
+  type EventContext,
   type FactoryContext,
 } from "potemkin/sdk";
 
@@ -27,27 +34,27 @@ const jwtAuth = defineGlobal({
   idempotency: { enabled: true, ttlSeconds: 60, hashIncludesBody: true },
 });
 
-const record = boundary("JwtRecord", "/jwt-records")
+const record = boundary(boundaryName("JwtRecord"), contractPath(pathSegment("jwt-records")))
   .fallbackOverride(false)
   .identity({ generate: ({ command }) => String(command.payload["id"]) })
   .eventCatalog(
-    event("JwtRecordCreated", {
-      id: ({ command }) => String(command.payload["id"]),
-      value: ({ command }) => String(command.payload["value"]),
+    event(eventType("JwtRecordCreated"), {
+      id: ({ command }: EventContext) => String(command.payload["id"]),
+      value: ({ command }: EventContext) => String(command.payload["value"]),
       status: "CREATED",
     }),
   )
   .behavior(
-    behavior({
+    defineBehavior({
       name: behaviorName("create-jwt-record"),
-      operationId: "createJwtRecord",
+      operationId: operationId("createJwtRecord"),
       condition: () => true,
       requiredScopes: [scopeName("writer")],
-      emit: "JwtRecordCreated",
+      emit: eventType("JwtRecordCreated"),
     }),
   )
   .reducer(
-    reducerRule("JwtRecordCreated")
+    reducerRule(eventType("JwtRecordCreated"))
       .apply(({ state, event: emitted }) => ({
         ...state,
         id: String(emitted.payload["id"]),

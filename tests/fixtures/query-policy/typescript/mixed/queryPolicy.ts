@@ -1,6 +1,18 @@
-import { PotemkinConfigure, boundary, factoryName, simulation } from "potemkin/sdk";
+import {
+  PotemkinConfigure,
+  boundary,
+  boundaryName,
+  contractPath,
+  factoryName,
+  pathParameter,
+  pathSegment,
+  simulation,
+} from "potemkin/sdk";
 
-const orderById = boundary("OrderById", "/orders/{id}")
+const orderById = boundary(
+  boundaryName("OrderById"),
+  contractPath(pathSegment("orders"), pathParameter("id")),
+)
   .fallbackOverride(true)
   .identity({ key: { from: "path", name: "id" } })
   .query({ fallback: () => ({ code: "ORDER_NOT_FOUND" }) });

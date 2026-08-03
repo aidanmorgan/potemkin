@@ -4,11 +4,15 @@ import {
   boundaryName,
   behaviorName,
   behavior,
+  contractPath,
+  defineBehavior,
   defineGlobal,
   defineHelper,
   event,
   eventReference,
   eventType,
+  field,
+  fieldPath,
   faultName,
   guardName,
   sagaName,
@@ -18,10 +22,13 @@ import {
   helperName,
   linkRelation,
   operationId,
+  pathParameter,
+  pathSegment,
   reducerRule,
   simulation,
   schemaReference,
   scopeName,
+  type EventContext,
   type FactoryContext,
 } from "potemkin/sdk";
 
@@ -35,49 +42,49 @@ const parityName = defineHelper(helperName("parityName"), (value: string): strin
 export class AuthoringParityFactory {
   @PotemkinConfigure(factoryName("authoring-parity"))
   static create(_context: FactoryContext) {
-    const order = boundary("Order", "/orders")
+    const order = boundary(boundaryName("Order"), contractPath(pathSegment("orders")))
       .fallbackOverride(false)
       .identity({
         generate: ({ command }) => String(command.payload["id"]),
       })
       .response({ hateoas: [{ rel: linkRelation("self"), href: "/orders" }] })
-      .mask("internalNote")
+      .mask(fieldPath(field("internalNote")))
       .eventCatalog(
-        event("OrderCreatedFirst", {
-          id: ({ command }) => String(command.payload["id"]),
-          name: ({ command }) => parityName(String(command.payload["name"])),
-          quantity: ({ command }) => Number(command.payload["quantity"]),
-          internalNote: ({ command }) => String(command.payload["internalNote"]),
+        event(eventType("OrderCreatedFirst"), {
+          id: ({ command }: EventContext) => String(command.payload["id"]),
+          name: ({ command }: EventContext) => parityName(String(command.payload["name"])),
+          quantity: ({ command }: EventContext) => Number(command.payload["quantity"]),
+          internalNote: ({ command }: EventContext) => String(command.payload["internalNote"]),
           status: "FIRST",
         }),
-        event("OrderCreated", {
-          id: ({ command }) => String(command.payload["id"]),
-          name: ({ command }) => parityName(String(command.payload["name"])),
-          quantity: ({ command }) => Number(command.payload["quantity"]),
-          internalNote: ({ command }) => String(command.payload["internalNote"]),
+        event(eventType("OrderCreated"), {
+          id: ({ command }: EventContext) => String(command.payload["id"]),
+          name: ({ command }: EventContext) => parityName(String(command.payload["name"])),
+          quantity: ({ command }: EventContext) => Number(command.payload["quantity"]),
+          internalNote: ({ command }: EventContext) => String(command.payload["internalNote"]),
           status: "CREATED",
         }),
       )
       .behavior(
-        behavior("create-order-first")
-          .operation("createOrder")
+        behavior(behaviorName("create-order-first"))
+          .operation(operationId("createOrder"))
           .headers({ "x-parity-behavior-order": "first" })
           .condition(() => true)
-          .emit("OrderCreatedFirst")
+          .emit(eventType("OrderCreatedFirst"))
           .status(202)
           .build(),
       )
       .behavior(
-        behavior({
+        defineBehavior({
           name: behaviorName("create-order"),
-          operationId: "createOrder",
+          operationId: operationId("createOrder"),
           condition: () => true,
-          emit: "OrderCreated",
+          emit: eventType("OrderCreated"),
           dispatchCommands: [
             {
-              boundary: "Receipt",
+              boundary: boundaryName("Receipt"),
               intent: "creation",
-              operationId: "createReceipt",
+              operationId: operationId("createReceipt"),
               targetId: ({ command }) => `${command.targetId ?? ""}-receipt`,
               payload: {
                 orderId: ({ command }) => command.targetId ?? "",
@@ -88,7 +95,7 @@ export class AuthoringParityFactory {
         }),
       )
       .reducer(
-        reducerRule("OrderCreatedFirst")
+        reducerRule(eventType("OrderCreatedFirst"))
           .apply(({ state, event: emitted }) => ({
             ...state,
             id: String(emitted.payload["id"]),
@@ -100,7 +107,7 @@ export class AuthoringParityFactory {
           .build(),
       )
       .reducer(
-        reducerRule("OrderCreated")
+        reducerRule(eventType("OrderCreated"))
           .apply(({ state, event: emitted }) => ({
             ...state,
             id: String(emitted.payload["id"]),
@@ -112,7 +119,10 @@ export class AuthoringParityFactory {
           .build(),
       );
 
-    const orderById = boundary("OrderById", "/orders/{id}")
+    const orderById = boundary(
+      boundaryName("OrderById"),
+      contractPath(pathSegment("orders"), pathParameter("id")),
+    )
       .fallbackOverride(true)
       .schema(schemaReference("Order"))
       .identity({ key: { from: "path", name: "id" } })
@@ -124,22 +134,23 @@ export class AuthoringParityFactory {
           replacement: "/v2/orders",
         },
       })
-      .mask("internalNote")
+      .mask(fieldPath(field("internalNote")))
       .eventCatalog(
-        event("OrderRenamed", {
-          id: ({ event: emitted, command }) => emitted?.aggregateId ?? String(command.targetId),
-          name: ({ command }) => String(command.payload["name"]),
+        event(eventType("OrderRenamed"), {
+          id: ({ event: emitted, command }: EventContext) =>
+            emitted?.aggregateId ?? String(command.targetId),
+          name: ({ command }: EventContext) => String(command.payload["name"]),
         }),
       )
       .behavior(
-        behavior("rename-order-dispatch-only")
-          .operation("renameOrder")
+        behavior(behaviorName("rename-order-dispatch-only"))
+          .operation(operationId("renameOrder"))
           .headers({ "x-parity-dispatch-only": "on" })
           .condition(() => true)
           .dispatch({
-            boundary: "Receipt",
+            boundary: boundaryName("Receipt"),
             intent: "creation",
-            operationId: "createReceipt",
+            operationId: operationId("createReceipt"),
             targetId: ({ command }) => `${command.targetId ?? ""}-dispatch-only-receipt`,
             payload: {
               orderId: ({ command }) => command.targetId ?? "",
@@ -149,15 +160,15 @@ export class AuthoringParityFactory {
           .build(),
       )
       .behavior(
-        behavior({
+        defineBehavior({
           name: behaviorName("rename-order"),
-          operationId: "renameOrder",
+          operationId: operationId("renameOrder"),
           condition: () => true,
-          emit: "OrderRenamed",
+          emit: eventType("OrderRenamed"),
         }),
       )
       .reducer(
-        reducerRule("OrderRenamed")
+        reducerRule(eventType("OrderRenamed"))
           .apply(({ state, event: emitted }) => ({
             ...state,
             name: String(emitted.payload["name"]),
@@ -165,28 +176,31 @@ export class AuthoringParityFactory {
           .build(),
       );
 
-    const receipt = boundary("Receipt", "/receipts/{id}")
+    const receipt = boundary(
+      boundaryName("Receipt"),
+      contractPath(pathSegment("receipts"), pathParameter("id")),
+    )
       .fallbackOverride(false)
       .identity({
         generate: ({ command }) => String(command.targetId),
       })
       .eventCatalog(
-        event("ReceiptCreated", {
-          id: ({ command }) => String(command.targetId),
-          orderId: ({ command }) => String(command.payload["orderId"]),
-          amount: ({ command }) => Number(command.payload["amount"]),
+        event(eventType("ReceiptCreated"), {
+          id: ({ command }: EventContext) => String(command.targetId),
+          orderId: ({ command }: EventContext) => String(command.payload["orderId"]),
+          amount: ({ command }: EventContext) => Number(command.payload["amount"]),
         }),
       )
       .behavior(
-        behavior({
+        defineBehavior({
           name: behaviorName("create-receipt"),
-          operationId: "createReceipt",
+          operationId: operationId("createReceipt"),
           condition: () => true,
-          emit: "ReceiptCreated",
+          emit: eventType("ReceiptCreated"),
         }),
       )
       .reducer(
-        reducerRule("ReceiptCreated")
+        reducerRule(eventType("ReceiptCreated"))
           .apply(({ state, event: emitted }) => ({
             ...state,
             id: String(emitted.payload["id"]),
@@ -196,20 +210,23 @@ export class AuthoringParityFactory {
           .build(),
       );
 
-    const audit = boundary("Audit", "/audits/{id}")
+    const audit = boundary(
+      boundaryName("Audit"),
+      contractPath(pathSegment("audits"), pathParameter("id")),
+    )
       .fallbackOverride(false)
       .identity({
         generate: ({ helpers }) => helpers.uuid(),
       })
       .eventCatalog(
-        event("AuditRecorded", {
-          id: ({ helpers }) => helpers.uuid(),
-          orderId: ({ command }) => String(command.payload["orderId"] ?? ""),
+        event(eventType("AuditRecorded"), {
+          id: ({ helpers }: EventContext) => helpers.uuid(),
+          orderId: ({ command }: EventContext) => String(command.payload["orderId"] ?? ""),
           action: "created",
         }),
       )
       .reducer(
-        reducerRule("AuditRecorded")
+        reducerRule(eventType("AuditRecorded"))
           .apply(({ state, event: emitted }) => ({
             ...state,
             id: String(emitted.payload["id"]),
@@ -248,7 +265,7 @@ export class AuthoringParityFactory {
               },
             },
             {
-              name: "maintenance-response",
+              name: faultName("maintenance-response"),
               selectors: { forceResponse: "maintenance" },
               matches: () => true,
               response: {
@@ -257,7 +274,7 @@ export class AuthoringParityFactory {
               },
             },
             {
-              name: "scenario-response",
+              name: faultName("scenario-response"),
               selectors: { scenario: "slow_db" },
               matches: () => true,
               response: {
@@ -266,7 +283,7 @@ export class AuthoringParityFactory {
               },
             },
             {
-              name: "feature-response",
+              name: faultName("feature-response"),
               selectors: { featureFlag: "parity-beta" },
               matches: () => true,
               response: {
@@ -275,7 +292,7 @@ export class AuthoringParityFactory {
               },
             },
             {
-              name: "probability-response",
+              name: faultName("probability-response"),
               probability: 1,
               headers: { "x-parity-probability": "on" },
               matches: ({ headers }) => headers["x-parity-probability"] === "on",
@@ -285,7 +302,7 @@ export class AuthoringParityFactory {
               },
             },
             {
-              name: "probability-off",
+              name: faultName("probability-off"),
               probability: 0,
               headers: { "x-parity-probability": "off" },
               matches: ({ headers }) => headers["x-parity-probability"] === "off",
@@ -298,7 +315,7 @@ export class AuthoringParityFactory {
               },
             },
             {
-              name: "intermediate-probability",
+              name: faultName("intermediate-probability"),
               probability: 0.5,
               headers: { "x-parity-probability-half": "on" },
               matches: ({ headers }) => headers["x-parity-probability-half"] === "on",
@@ -311,7 +328,7 @@ export class AuthoringParityFactory {
               },
             },
             {
-              name: "operation-method-fault",
+              name: faultName("operation-method-fault"),
               headers: { "x-parity-operation": "on" },
               matches: ({ command, headers }) =>
                 command.operationId === "createOrder" &&
@@ -326,7 +343,7 @@ export class AuthoringParityFactory {
               },
             },
             {
-              name: "guarded-scoped-fault",
+              name: faultName("guarded-scoped-fault"),
               headers: { "x-parity-guarded": "on" },
               requiredScopes: [scopeName("writer")],
               requires: [
@@ -347,7 +364,7 @@ export class AuthoringParityFactory {
               },
             },
             {
-              name: "boundary-intent-condition-fault",
+              name: faultName("boundary-intent-condition-fault"),
               headers: { "x-parity-boundary": "on" },
               matches: ({ command, headers }) =>
                 command.boundary === "Order" &&
@@ -363,19 +380,19 @@ export class AuthoringParityFactory {
               },
             },
             {
-              name: "ordered-first",
+              name: faultName("ordered-first"),
               headers: { "x-parity-order": "same" },
               matches: ({ headers }) => headers["x-parity-order"] === "same",
               response: { status: 503, body: { error: "ORDERED_FIRST" } },
             },
             {
-              name: "ordered-second",
+              name: faultName("ordered-second"),
               headers: { "x-parity-order": "same" },
               matches: ({ headers }) => headers["x-parity-order"] === "same",
               response: { status: 418, body: { error: "ORDERED_SECOND" } },
             },
             {
-              name: "wildcard-selector",
+              name: faultName("wildcard-selector"),
               headers: { "x-parity-wildcard": "*" },
               matches: ({ headers }) => headers["x-parity-wildcard"] !== undefined,
               response: { status: 502, body: { error: "WILDCARD_SELECTOR" } },
@@ -413,14 +430,14 @@ export class AuthoringParityFactory {
                 eventReference(boundaryName("OrderById"), eventType("OrderRenamed")),
               ],
               reduce: [
-                reducerRule("OrderCreated")
+                reducerRule(eventType("OrderCreated"))
                   .apply(({ state, event: emitted }) => ({
                     ...state,
                     name: String(emitted.payload["name"]),
                     renameCount: 0,
                   }))
                   .build(),
-                reducerRule("OrderRenamed")
+                reducerRule(eventType("OrderRenamed"))
                   .apply(({ state, event: emitted }) => ({
                     ...state,
                     name: String(emitted.payload["name"]),
@@ -435,8 +452,8 @@ export class AuthoringParityFactory {
               name: "audit-order-creation",
               on: eventReference(boundaryName("Order"), eventType("OrderCreated")),
               intent: "creation",
-              boundary: "Audit",
-              emit: "AuditRecorded",
+              boundary: boundaryName("Audit"),
+              emit: eventType("AuditRecorded"),
               payload: {
                 orderId: ({ event: emitted }) => emitted?.aggregateId ?? "",
               },

@@ -371,12 +371,12 @@ export interface RuntimeBehavior {
   readonly responseStatus?: number;
 }
 
-export interface RuntimeReducer {
+export interface RuntimeReducer<State extends object = object> {
   readonly on: string;
   readonly apply?: (input: Readonly<RuntimeReducerContext>) => readonly Patch[];
   /** Native TypeScript state transition. Source-specific authoring may return
    * the complete next JSON object without constructing patch operations. */
-  readonly reduce?: (input: Readonly<RuntimeReducerContext>) => JsonObject;
+  reduce?(input: Readonly<RuntimeReducerContext>): State;
   readonly replaceState?: boolean;
 }
 

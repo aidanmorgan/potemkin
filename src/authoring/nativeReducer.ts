@@ -17,10 +17,10 @@ export type NativeReducerContext<EventPayload extends object, State extends obje
 export type NativeReducer<
   EventPayload extends object = JsonObject,
   State extends object = JsonObject,
-> = Omit<RuntimeReducer, "apply" | "replaceState" | "reduce"> & {
+> = Omit<RuntimeReducer<State>, "apply" | "replaceState" | "reduce"> & {
   readonly on: EventType;
   /** Return the resultant state; the input projection is deeply readonly. */
-  readonly reduce: (input: Readonly<NativeReducerContext<EventPayload, State>>) => State;
+  reduce(input: Readonly<NativeReducerContext<EventPayload, State>>): State;
 };
 
 export interface NativeReducerBuilder<

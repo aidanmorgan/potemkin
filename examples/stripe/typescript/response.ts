@@ -2,6 +2,7 @@ import {
   PotemkinConfigure,
   defineHelper,
   factoryName,
+  helperName,
   simulation,
   type JsonObject,
   type JsonValue,
@@ -43,14 +44,14 @@ function stripeResponse(context: JsonObject): JsonValue {
 
 function asObject(value: JsonValue | undefined): JsonObject {
   return value !== undefined && value !== null && typeof value === "object" && !Array.isArray(value)
-    ? value
+    ? (value as JsonObject)
     : {};
 }
 
 function stripInternalState(value: JsonValue): JsonValue {
   if (Array.isArray(value)) return value.map((item) => stripInternalState(item));
   if (value === null || typeof value !== "object") return value;
-  const visible = { ...value };
+  const visible = { ...asObject(value) };
   delete visible["_deleted"];
   delete visible["_deletedAt"];
   return visible;
@@ -65,7 +66,10 @@ function objectNameFrom(value: JsonValue): string | undefined {
   return first !== undefined ? objectNameFrom(first) : undefined;
 }
 
-const responseHelper = defineHelper<[JsonObject], JsonValue>("stripeResponse", stripeResponse);
+const responseHelper = defineHelper<[JsonObject], JsonValue>(
+  helperName("stripeResponse"),
+  stripeResponse,
+);
 
 export class StripeResponseConfiguration {
   @PotemkinConfigure(factoryName("stripe-response"))

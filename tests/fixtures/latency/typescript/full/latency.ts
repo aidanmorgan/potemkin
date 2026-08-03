@@ -1,39 +1,54 @@
 import {
   PotemkinConfigure,
   boundary,
+  boundaryName,
+  contractPath,
   behaviorName,
+  defineBehavior,
   defineFault,
   event,
   faultName,
   factoryName,
+  eventType,
+  operationId,
+  pathParameter,
+  pathSegment,
   reducerRule,
   simulation,
+  type EventContext,
   type FactoryContext,
+  type LatencyDefinition,
+  type BoundaryName,
+  type ContractPath,
+  type EventType,
+  type OperationId,
 } from "potemkin/sdk";
 
 function jobBoundary(
-  name: string,
-  contractPath: string,
-  operationId: string,
-  eventType: string,
-  latency: { fixedMs?: number; minMs?: number; maxMs?: number },
+  name: BoundaryName,
+  path: ContractPath,
+  operation: OperationId,
+  emittedEvent: EventType,
+  latency: LatencyDefinition,
 ) {
-  return boundary(name, contractPath)
+  return boundary(name, path)
     .fallbackOverride(false)
     .latency(latency)
     .identity({ generate: ({ helpers }) => helpers.uuid() })
     .eventCatalog(
-      event(eventType, {
-        id: ({ command }) => String(command.targetId ?? ""),
-        name: ({ command }) => String(command.payload.name ?? ""),
+      event(emittedEvent, {
+        id: ({ command }: EventContext) => String(command.targetId ?? ""),
+        name: ({ command }: EventContext) => String(command.payload.name ?? ""),
       }),
     )
-    .behavior({
-      name: behaviorName(operationId),
-      operationId,
-      condition: () => true,
-      emit: eventType,
-    })
+    .behavior(
+      defineBehavior({
+        name: behaviorName(operation),
+        operationId: operation,
+        condition: () => true,
+        emit: emittedEvent,
+      }),
+    )
     .faults(
       defineFault({
         name: faultName("delayed-job-fault"),
@@ -47,7 +62,7 @@ function jobBoundary(
       }),
     )
     .reducer(
-      reducerRule(eventType)
+      reducerRule(emittedEvent)
         .apply(({ state, event: emitted }) => ({
           ...state,
           id: String(emitted.payload.id),
@@ -62,20 +77,38 @@ export class LatencyFactory {
   @PotemkinConfigure(factoryName("latency-typescript"))
   static create(_context: FactoryContext) {
     return simulation()
-      .boundary(jobBoundary("Job", "/jobs", "submitJob", "JobSubmitted", { fixedMs: 60 }))
-      .boundary(boundary("JobById", "/jobs/{id}").fallbackOverride(true).build())
       .boundary(
-        jobBoundary("JobRanged", "/jobs/ranged", "submitRangedJob", "RangedJobSubmitted", {
-          minMs: 40,
-          maxMs: 80,
-        }),
+        jobBoundary(
+          boundaryName("Job"),
+          contractPath(pathSegment("jobs")),
+          operationId("submitJob"),
+          eventType("JobSubmitted"),
+          { fixedMs: 60 },
+        ),
       )
       .boundary(
-        jobBoundary("JobStacked", "/jobs/stacked", "submitStackedJob", "StackedJobSubmitted", {
-          fixedMs: 20,
-          minMs: 30,
-          maxMs: 60,
-        }),
+        boundary(
+          boundaryName("JobById"),
+          contractPath(pathSegment("jobs"), pathParameter("id")),
+        ).fallbackOverride(true),
+      )
+      .boundary(
+        jobBoundary(
+          boundaryName("JobRanged"),
+          contractPath(pathSegment("jobs"), pathSegment("ranged")),
+          operationId("submitRangedJob"),
+          eventType("RangedJobSubmitted"),
+          { minMs: 40, maxMs: 80 },
+        ),
+      )
+      .boundary(
+        jobBoundary(
+          boundaryName("JobStacked"),
+          contractPath(pathSegment("jobs"), pathSegment("stacked")),
+          operationId("submitStackedJob"),
+          eventType("StackedJobSubmitted"),
+          { fixedMs: 20, minMs: 30, maxMs: 60 },
+        ),
       )
       .build();
   }

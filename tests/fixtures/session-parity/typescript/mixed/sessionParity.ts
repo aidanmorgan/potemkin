@@ -1,44 +1,50 @@
 import {
   PotemkinConfigure,
   boundary,
-  behavior,
   behaviorName,
+  defineBehavior,
   event,
+  eventType,
   factoryName,
+  operationId,
+  boundaryName,
+  contractPath,
+  pathSegment,
   reducerRule,
   simulation,
   scopeName,
+  type EventContext,
   type FactoryContext,
 } from "potemkin/sdk";
 
-const record = boundary("Record", "/records")
+const record = boundary(boundaryName("Record"), contractPath(pathSegment("records")))
   .fallbackOverride(false)
   .identity({
     generate: ({ command }) => String(command.payload["id"]),
   })
   .eventCatalog(
-    event("RecordCreated", {
-      id: ({ command }) => String(command.payload["id"]),
-      value: ({ command }) => String(command.payload["value"]),
+    event(eventType("RecordCreated"), {
+      id: ({ command }: EventContext) => String(command.payload["id"]),
+      value: ({ command }: EventContext) => String(command.payload["value"]),
       status: "CREATED",
     }),
   )
   .behavior(
-    behavior({
+    defineBehavior({
       name: behaviorName("list-records"),
-      operationId: "listRecords",
+      operationId: operationId("listRecords"),
       condition: () => true,
     }),
-    behavior({
+    defineBehavior({
       name: behaviorName("create-record"),
-      operationId: "createRecord",
+      operationId: operationId("createRecord"),
       condition: () => true,
       requiredScopes: [scopeName("writer")],
-      emit: "RecordCreated",
+      emit: eventType("RecordCreated"),
     }),
   )
   .reducer(
-    reducerRule("RecordCreated")
+    reducerRule(eventType("RecordCreated"))
       .apply(({ state, event: emitted }) => ({
         ...state,
         id: String(emitted.payload["id"]),

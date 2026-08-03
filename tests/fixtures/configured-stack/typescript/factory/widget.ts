@@ -1,5 +1,21 @@
-import { behaviorName, boundary, event, reducerRule, simulation } from "potemkin/sdk";
-import { PotemkinConfigure, factoryName, type FactoryContext } from "potemkin/sdk";
+import {
+  behaviorName,
+  boundary,
+  boundaryName,
+  contractPath,
+  defineBehavior,
+  event,
+  eventType,
+  factoryName,
+  pathParameter,
+  pathSegment,
+  operationId,
+  reducerRule,
+  simulation,
+  PotemkinConfigure,
+  type FactoryContext,
+  type EventContext,
+} from "potemkin/sdk";
 import { sourceLabel } from "../shared/source-label";
 
 interface WidgetState {
@@ -19,23 +35,25 @@ export class ConfiguredWidgetFactory {
   static create(_context: FactoryContext) {
     return simulation()
       .boundary(
-        boundary("Widget", "/widgets")
+        boundary(boundaryName("Widget"), contractPath(pathSegment("widgets")))
           .identity({ generate: ({ helpers }) => helpers.uuid() })
           .eventCatalog(
-            event("WidgetCreated", {
-              id: ({ command }) => String(command.targetId ?? ""),
-              name: ({ command }) => String(command.payload.name ?? ""),
+            event(eventType("WidgetCreated"), {
+              id: ({ command }: EventContext) => String(command.targetId ?? ""),
+              name: ({ command }: EventContext) => String(command.payload.name ?? ""),
               source: () => sourceLabel("typescript"),
             }),
           )
-          .behavior({
-            name: behaviorName("createWidget"),
-            operationId: "createWidget",
-            condition: () => true,
-            emit: "WidgetCreated",
-          })
+          .behavior(
+            defineBehavior({
+              name: behaviorName("createWidget"),
+              operationId: operationId("createWidget"),
+              condition: () => true,
+              emit: eventType("WidgetCreated"),
+            }),
+          )
           .reducer(
-            reducerRule<WidgetCreated, WidgetState>("WidgetCreated")
+            reducerRule<WidgetCreated, WidgetState>(eventType("WidgetCreated"))
               .apply(({ state, event: emitted }) => ({
                 ...state,
                 id: emitted.payload.id,
@@ -46,7 +64,12 @@ export class ConfiguredWidgetFactory {
           )
           .build(),
       )
-      .boundary(boundary("WidgetById", "/widgets/{id}").fallbackOverride(true))
+      .boundary(
+        boundary(
+          boundaryName("WidgetById"),
+          contractPath(pathSegment("widgets"), pathParameter("id")),
+        ).fallbackOverride(true),
+      )
       .helper(sourceLabel)
       .build();
   }

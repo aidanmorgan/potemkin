@@ -2,17 +2,25 @@ import {
   PotemkinConfigure,
   behaviorName,
   boundary,
+  boundaryName,
+  contractPath,
+  defineBehavior,
   event,
+  eventType,
   factoryName,
+  operationId,
+  pathParameter,
+  pathSegment,
   reducerRule,
   simulation,
+  type EventContext,
   type JsonObject,
 } from "potemkin/sdk";
 
 export class ValidationControlFactory {
   @PotemkinConfigure(factoryName("validation-control"))
   static create() {
-    const profile = boundary("Profile", "/profiles")
+    const profile = boundary(boundaryName("Profile"), contractPath(pathSegment("profiles")))
       .fallbackOverride(false)
       .identity({ generate: ({ command }) => String(command.payload["id"]) })
       .response({
@@ -27,19 +35,21 @@ export class ValidationControlFactory {
         },
       })
       .eventCatalog(
-        event("ProfileCreated", {
-          id: ({ command }) => String(command.payload["id"]),
-          displayName: ({ command }) => String(command.payload["displayName"]),
+        event(eventType("ProfileCreated"), {
+          id: ({ command }: EventContext) => String(command.payload["id"]),
+          displayName: ({ command }: EventContext) => String(command.payload["displayName"]),
         }),
       )
-      .behavior({
-        name: behaviorName("create-profile"),
-        operationId: "createProfile",
-        condition: () => true,
-        emit: "ProfileCreated",
-      })
+      .behavior(
+        defineBehavior({
+          name: behaviorName("create-profile"),
+          operationId: operationId("createProfile"),
+          condition: () => true,
+          emit: eventType("ProfileCreated"),
+        }),
+      )
       .reducer(
-        reducerRule("ProfileCreated")
+        reducerRule(eventType("ProfileCreated"))
           .apply(({ state, event: emitted }) => ({
             ...state,
             id: String(emitted.payload["id"]),
@@ -51,7 +61,12 @@ export class ValidationControlFactory {
 
     return simulation()
       .boundary(profile)
-      .boundary(boundary("ProfileById", "/profiles/{id}").fallbackOverride(true))
+      .boundary(
+        boundary(
+          boundaryName("ProfileById"),
+          contractPath(pathSegment("profiles"), pathParameter("id")),
+        ).fallbackOverride(true),
+      )
       .build();
   }
 }

@@ -124,7 +124,7 @@
     "verify:hardcoded-colors": "verifyx hardcoded-colors",
     "verify:lint": "oxlint . --deny-warnings",
     "verify:format": "oxfmt --check .",
-    "verify:check-types": "tsc --noEmit",
+    "verify:check-types": "tsc --noEmit && tsc --project tsconfig.authoring.json",
     "verify:unused-code": "knip --no-progress --treat-config-hints-as-errors --exclude exports,types,duplicates",
     "verify:duplicate-code": "jscpd --format typescript,tsx --threshold 2 --ignore \"**/*.test.*\" --ignore \"**/tables.generated.ts\" -r consoleFull src",
     "verify:test": "jest --runInBand --forceExit"
