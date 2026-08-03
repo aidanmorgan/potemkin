@@ -16,6 +16,7 @@ import {
   resourceName,
   sagaName,
   sagaStepName,
+  webhookName,
   schemaReference,
   scopeName,
   linkRelation,
@@ -41,6 +42,7 @@ describe("TypeScript semantic references", () => {
     expect(faultName("unavailable")).toBe("unavailable");
     expect(sagaName("order-flow")).toBe("order-flow");
     expect(sagaStepName("reserve")).toBe("reserve");
+    expect(webhookName("order-hook")).toBe("order-hook");
     expect(schemaReference("#/components/schemas/Order")).toBe("#/components/schemas/Order");
     expect(contractPath(pathSegment("orders"), pathParameter("id"))).toBe("/orders/{id}");
     expect(fieldPath(field("customer"), field("email"))).toBe("/customer/email");
@@ -72,6 +74,7 @@ describe("TypeScript semantic references", () => {
     expect(sdk.faultName("unavailable")).toBe("unavailable");
     expect(sdk.sagaName("order-flow")).toBe("order-flow");
     expect(sdk.sagaStepName("reserve")).toBe("reserve");
+    expect(sdk.webhookName("order-hook")).toBe("order-hook");
     expect(sdk.expression("event", () => "value")({})).toBe("value");
   });
 });

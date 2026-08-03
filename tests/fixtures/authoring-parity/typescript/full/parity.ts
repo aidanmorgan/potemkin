@@ -12,6 +12,7 @@ import {
   faultName,
   sagaName,
   sagaStepName,
+  webhookName,
   factoryName,
   helperName,
   linkRelation,
@@ -442,7 +443,7 @@ export class AuthoringParityFactory {
           ],
           webhooks: [
             {
-              name: "order-created-hook",
+              name: webhookName("order-created-hook"),
               trigger: ({ event: emitted }) => emitted?.type === "OrderCreated",
               url: "http://127.0.0.1:19878/order-hook",
               secret: "parity-webhook-secret",

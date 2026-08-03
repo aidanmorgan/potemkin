@@ -20,6 +20,7 @@ export type BehaviorName = PotemkinReference<"behavior-name">;
 export type FaultName = PotemkinReference<"fault-name">;
 export type SagaName = PotemkinReference<"saga-name">;
 export type SagaStepName = PotemkinReference<"saga-step-name">;
+export type WebhookName = PotemkinReference<"webhook-name">;
 export type ResourceName = PotemkinReference<"resource-name">;
 export type ComponentName = PotemkinReference<"component-name">;
 export type HelperName = PotemkinReference<"helper-name">;
@@ -82,6 +83,10 @@ export function sagaName(value: string): SagaName {
 
 export function sagaStepName(value: string): SagaStepName {
   return reference("saga-step-name", value);
+}
+
+export function webhookName(value: string): WebhookName {
+  return reference("webhook-name", value);
 }
 
 export function resourceName(value: string): ResourceName {

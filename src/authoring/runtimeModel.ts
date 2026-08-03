@@ -60,6 +60,7 @@ import type {
   SagaStepName,
   ScopeName,
   SchemaReference,
+  WebhookName,
 } from "./references.js";
 
 /**
@@ -141,7 +142,9 @@ export type ReactionDefinition = Omit<RuntimeReaction, "on" | "boundary" | "emit
   readonly boundary: BoundaryName;
   readonly emit: EventType;
 };
-export type WebhookDefinition = RuntimeWebhook;
+export type WebhookDefinition = Omit<RuntimeWebhook, "name"> & {
+  readonly name: WebhookName;
+};
 export type SagaCompensationDefinition = Omit<RuntimeSagaCompensation, "operationId"> & {
   readonly operationId: OperationId;
 };

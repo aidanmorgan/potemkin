@@ -7,6 +7,7 @@ import {
   faultName,
   sagaName,
   sagaStepName,
+  webhookName,
   operationId,
   pathParameter,
   pathSegment,
@@ -272,7 +273,7 @@ function directDefinition() {
         ],
         webhooks: [
           {
-            name: "order-hook",
+            name: webhookName("order-hook"),
             trigger: ({ event }: WebhookContext) => event?.type === "OrderCreated",
             url: () => "https://example.test/order",
             payload: { orderId: ({ event }: WebhookContext) => event?.aggregateId ?? "" },

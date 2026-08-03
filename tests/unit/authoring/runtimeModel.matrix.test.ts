@@ -8,6 +8,7 @@ import {
   type ReactionDefinition,
   type ResponseDefinition,
   type SagaDefinition,
+  type WebhookDefinition,
   type TypedEventContext,
 } from "../../../src/authoring/runtimeModel.js";
 import { defineComponent, use } from "../../../src/authoring/composition.js";
@@ -53,6 +54,9 @@ describe("source-neutral TypeScript runtime model builders", () => {
   // @ts-expect-error HATEOAS relations use the canonical linkRelation constructor.
   const rawResponseRelation: NonNullable<ResponseDefinition["hateoas"]>[number]["rel"] = "self";
   void rawResponseRelation;
+  // @ts-expect-error Webhook names use the canonical webhookName constructor.
+  const rawWebhookName: WebhookDefinition["name"] = "raw-webhook";
+  void rawWebhookName;
 
   it("preserves payload inference through incremental event builder calls", () => {
     const inferred = event(eventType("Inferred"))

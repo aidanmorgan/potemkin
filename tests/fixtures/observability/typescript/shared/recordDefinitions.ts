@@ -10,6 +10,7 @@ import {
   operationId,
   sagaName,
   sagaStepName,
+  webhookName,
 } from "potemkin/sdk";
 
 interface RecordState {
@@ -200,7 +201,7 @@ export function bulkGlobal() {
     ],
     webhooks: [
       {
-        name: "record-created-hook",
+        name: webhookName("record-created-hook"),
         trigger: ({ event }) => event?.type === "RecordCreated",
         url: "http://127.0.0.1:19879/bulk-hook",
         payload: {

@@ -8,6 +8,7 @@ import {
   field,
   fieldPath,
   linkRelation,
+  webhookName,
   operationId,
   pathParameter,
   pathSegment,
@@ -407,7 +408,7 @@ function definition(): SimulationDefinition {
         ],
         webhooks: [
           {
-            name: "order-created-hook",
+            name: webhookName("order-created-hook"),
             trigger: ({ event }: WebhookContext) => event?.type === "OrderCreated",
             url: "http://127.0.0.1:19878/order-hook",
             secret: WEBHOOK_SECRET,
