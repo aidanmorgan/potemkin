@@ -1,11 +1,11 @@
 import type { JsonValue } from "../types.js";
-import type { RuntimeHelperDefinition } from "../model/runtime.js";
 import { helperError } from "./errors.js";
 import type { HelperName } from "./references.js";
 
-export type TypeScriptHelperDefinition = Omit<RuntimeHelperDefinition, "name"> & {
+export interface TypeScriptHelperDefinition {
   readonly name: HelperName;
-};
+  readonly invoke: (args: readonly JsonValue[]) => JsonValue;
+}
 
 /** A callable TypeScript helper which can also be registered in the model. */
 export interface TypeScriptHelper<

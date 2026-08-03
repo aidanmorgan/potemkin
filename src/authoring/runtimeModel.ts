@@ -13,7 +13,6 @@ import type {
   RuntimeBehavior,
   RuntimeBoundary,
   RuntimeDependencies,
-  RuntimeEvent,
   RuntimePredicate,
   RuntimeReducerContext,
   RuntimeResponse,
@@ -79,7 +78,7 @@ import type {
  * CEL expressions, source-specific references, YAML field names, or parser registries in
  * this model.
  */
-export interface EventDefinition extends Omit<RuntimeEvent, "payload" | "type" | "schemaRef"> {
+export interface EventDefinition {
   readonly type: EventType;
   readonly schemaRef?: SchemaReference;
   readonly payload: Readonly<Record<string, RuntimeValue<EventContext, JsonValue>>>;
