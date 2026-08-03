@@ -1,7 +1,7 @@
 import { createCelEvaluator } from "../../../src/cel/evaluator.js";
 import { CelPhase } from "../../../src/cel/phases.js";
 import { defineHelper } from "../../../src/authoring/helpers.js";
-import { simulation } from "../../../src/authoring/runtimeModel.js";
+import { defineSimulation, simulation } from "../../../src/authoring/runtimeModel.js";
 import { helperName } from "../../../src/authoring/references.js";
 
 describe("TypeScript helper model", () => {
@@ -35,6 +35,20 @@ describe("TypeScript helper model", () => {
     const definition = simulation().helper(sourceLabel).build();
 
     expect(definition.helpers).toEqual([sourceLabel.definition]);
+  });
+
+  it("does not expose the broad runtime helper shape to TypeScript definitions", () => {
+    const invalid = defineSimulation({
+      boundaries: [],
+      helpers: [
+        {
+          // @ts-expect-error Simulation definitions require branded TypeScript helper definitions.
+          name: "raw-helper",
+          invoke: () => "value",
+        },
+      ],
+    });
+    expect(invalid.helpers).toHaveLength(1);
   });
 
   it("rejects names which cannot be called by CEL", () => {

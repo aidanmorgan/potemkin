@@ -49,7 +49,6 @@ import type {
   TypedMatchContext,
   TypedReducerContext,
   WebhookDefinition,
-  RuntimeHelperDefinition,
 } from "./runtimeModel.js";
 import type {
   EventContext,
@@ -176,7 +175,6 @@ export type {
   RuntimeReducerContext,
   DeepReadonly,
   WebhookDefinition,
-  RuntimeHelperDefinition,
   BoundaryName,
   BehaviorName,
   ContractPath,

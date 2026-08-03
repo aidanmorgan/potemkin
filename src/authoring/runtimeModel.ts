@@ -16,7 +16,6 @@ import type {
   RuntimeEvent,
   RuntimeFault,
   RuntimeGuard,
-  RuntimeHelperDefinition,
   RuntimePolicies,
   RuntimePredicate,
   RuntimeReaction,
@@ -33,7 +32,7 @@ import type {
 } from "../model/runtime.js";
 import type { OpenApiDoc } from "../contract/loader.js";
 import { expandResources, type ResourceDefinition } from "./resourceModel.js";
-import type { TypeScriptHelperRegistration } from "./helpers.js";
+import type { TypeScriptHelperDefinition, TypeScriptHelperRegistration } from "./helpers.js";
 import { definitionError, TypeScriptAuthoringError } from "./errors.js";
 import { runtimeLatencyProblem } from "../model/latency.js";
 import {
@@ -54,8 +53,6 @@ import type {
   ScopeName,
   SchemaReference,
 } from "./references.js";
-
-export type { RuntimeHelperDefinition };
 
 /**
  * The direct authoring model.
@@ -145,7 +142,7 @@ export interface SimulationDefinition {
   readonly resources?: readonly ResourceDefinition[];
   readonly policies?: GlobalDefinition;
   readonly uses?: readonly UseDefinition[];
-  readonly helpers?: readonly RuntimeHelperDefinition[];
+  readonly helpers?: readonly TypeScriptHelperDefinition[];
 }
 
 export type AuthoringValue<Context, Value> = RuntimeValue<Context, Value>;
