@@ -5,6 +5,7 @@ import {
   eventType,
   field,
   fieldPath,
+  helperName,
   operationId,
   pathParameter,
   pathSegment,
@@ -18,6 +19,7 @@ describe("TypeScript semantic references", () => {
   it("builds canonical identifiers and paths from typed constructors", () => {
     expect(boundaryName("Orders")).toBe("Orders");
     expect(componentName("OrderComponents")).toBe("OrderComponents");
+    expect(helperName("formatOrder")).toBe("formatOrder");
     expect(resourceName("Order")).toBe("Order");
     expect(operationId("createOrder")).toBe("createOrder");
     expect(eventType("OrderCreated")).toBe("OrderCreated");
@@ -38,6 +40,7 @@ describe("TypeScript semantic references", () => {
   it("publishes the constructors through the supported SDK object", () => {
     expect(sdk.boundaryName("Orders")).toBe("Orders");
     expect(sdk.componentName("OrderComponents")).toBe("OrderComponents");
+    expect(sdk.helperName("formatOrder")).toBe("formatOrder");
     expect(sdk.resourceName("Order")).toBe("Order");
     expect(sdk.contractPath(sdk.pathSegment("orders"))).toBe("/orders");
     expect(sdk.eventType("OrderCreated")).toBe("OrderCreated");

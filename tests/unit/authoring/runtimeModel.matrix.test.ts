@@ -15,6 +15,7 @@ import {
   eventType,
   field,
   fieldPath,
+  helperName,
   operationId,
   pathSegment,
   resourceName,
@@ -211,7 +212,7 @@ describe("source-neutral TypeScript runtime model builders", () => {
         },
       ],
     });
-    const helper = defineHelper("label", (value: string) => `label:${value}`);
+    const helper = defineHelper(helperName("label"), (value: string) => `label:${value}`);
     const boundaryDefinition = boundary(
       boundaryName("Orders"),
       contractPath(pathSegment("orders")),

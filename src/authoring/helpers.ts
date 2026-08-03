@@ -1,6 +1,11 @@
 import type { JsonValue } from "../types.js";
 import type { RuntimeHelperDefinition } from "../model/runtime.js";
 import { helperError } from "./errors.js";
+import type { HelperName } from "./references.js";
+
+export type TypeScriptHelperDefinition = Omit<RuntimeHelperDefinition, "name"> & {
+  readonly name: HelperName;
+};
 
 /** A callable TypeScript helper which can also be registered in the model. */
 export interface TypeScriptHelper<
@@ -8,7 +13,7 @@ export interface TypeScriptHelper<
   Output extends JsonValue = JsonValue,
 > {
   (...args: Args): Output;
-  readonly definition: RuntimeHelperDefinition;
+  readonly definition: TypeScriptHelperDefinition;
 }
 
 /** Structural registration surface used by the simulation builder. */
@@ -37,7 +42,7 @@ function validateHelperName(name: string): void {
  * `.helper()`/`.helpers()` for YAML CEL use.
  */
 export function defineHelper<Args extends readonly JsonValue[], Output extends JsonValue>(
-  name: string,
+  name: HelperName,
   implementation: (...args: Args) => Output,
 ): TypeScriptHelper<Args, Output> {
   validateHelperName(name);
@@ -52,7 +57,7 @@ export function defineHelper<Args extends readonly JsonValue[], Output extends J
     }
     return value;
   };
-  const definition: RuntimeHelperDefinition = Object.freeze({ name, invoke });
+  const definition: TypeScriptHelperDefinition = Object.freeze({ name, invoke });
   const helper = ((...args: Args) => invoke(args) as Output) as TypeScriptHelper<Args, Output>;
   Object.defineProperty(helper, "definition", {
     configurable: false,

@@ -1,7 +1,13 @@
-import { PotemkinConfigure, defineHelper, simulation, type JsonObject } from "potemkin/sdk";
+import {
+  PotemkinConfigure,
+  defineHelper,
+  helperName,
+  simulation,
+  type JsonObject,
+} from "potemkin/sdk";
 
 const addUnexpectedProfileField = defineHelper(
-  "addUnexpectedProfileField",
+  helperName("addUnexpectedProfileField"),
   (input: JsonObject): JsonObject => {
     const response = input["response"];
     const responseObject =

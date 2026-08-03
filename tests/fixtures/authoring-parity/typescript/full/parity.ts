@@ -5,6 +5,7 @@ import {
   defineGlobal,
   defineHelper,
   event,
+  helperName,
   reducerRule,
   simulation,
   schemaReference,
@@ -16,7 +17,7 @@ import {
  * identity-preserving so the mixed runtime has the same observable behaviour
  * while proving that YAML can call a TypeScript registration.
  */
-const parityName = defineHelper("parityName", (value: string): string => value);
+const parityName = defineHelper(helperName("parityName"), (value: string): string => value);
 
 export class AuthoringParityFactory {
   @PotemkinConfigure("authoring-parity")

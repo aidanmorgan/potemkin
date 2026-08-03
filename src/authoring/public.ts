@@ -9,6 +9,7 @@ import {
   eventType,
   field,
   fieldPath,
+  helperName,
   operationId,
   pathParameter,
   pathSegment,
@@ -16,7 +17,7 @@ import {
   schemaReference,
   TypeScriptReferenceError,
 } from "./references.js";
-import type { TypeScriptHelper } from "./helpers.js";
+import type { TypeScriptHelper, TypeScriptHelperDefinition } from "./helpers.js";
 import type { DeepReadonly } from "../types.js";
 import type {
   AuthoringPredicate,
@@ -61,6 +62,7 @@ import type {
   EventType,
   FieldPath,
   FieldPathSegment,
+  HelperName,
   HttpMethod,
   OperationId,
   ResourceName,
@@ -123,6 +125,7 @@ export {
   eventType,
   field,
   fieldPath,
+  helperName,
   operationId,
   pathParameter,
   pathSegment,
@@ -171,6 +174,7 @@ export type {
   EventType,
   FieldPath,
   FieldPathSegment,
+  HelperName,
   HttpMethod,
   OperationId,
   ResourceName,
@@ -178,4 +182,4 @@ export type {
 };
 
 export type { NativeReducer, NativeReducerBuilder, NativeReducerContext };
-export type { TypeScriptHelper };
+export type { TypeScriptHelper, TypeScriptHelperDefinition };

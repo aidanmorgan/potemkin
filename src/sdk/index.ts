@@ -12,7 +12,7 @@ import { createPotemkinConfigure, PotemkinConfigure } from "../authoring/factory
 import { TypeScriptAuthoringError } from "../authoring/errors.js";
 import { ConfigurationError, isConfigurationError } from "../errors.js";
 import type { TypeScriptDiagnosticCode, TypeScriptSourceLocation } from "../authoring/errors.js";
-import type { TypeScriptHelper } from "../authoring/helpers.js";
+import type { TypeScriptHelper, TypeScriptHelperDefinition } from "../authoring/helpers.js";
 import type { DeepReadonly, JsonObject, JsonValue } from "../types.js";
 import type {
   EventContext,
@@ -37,6 +37,7 @@ import type {
   EventType,
   FieldPath,
   FieldPathSegment,
+  HelperName,
   HttpMethod,
   OperationId,
   ResourceName,
@@ -94,6 +95,7 @@ const {
   eventType,
   field,
   fieldPath,
+  helperName,
   operationId,
   pathParameter,
   pathSegment,
@@ -139,6 +141,7 @@ export const sdk = Object.freeze({
   eventType,
   field,
   fieldPath,
+  helperName,
   operationId,
   pathParameter,
   pathSegment,
@@ -183,6 +186,7 @@ export type {
   ResourceValue,
   TypedEventDefinition,
   TypeScriptHelper,
+  TypeScriptHelperDefinition,
   TypeScriptDiagnosticCode,
   TypeScriptSourceLocation,
   JsonObject,
@@ -202,6 +206,7 @@ export type {
   EventType,
   FieldPath,
   FieldPathSegment,
+  HelperName,
   HttpMethod,
   OperationId,
   ResourceName,
