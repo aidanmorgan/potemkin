@@ -24,6 +24,8 @@ import type {
   RuntimeResponse,
   RuntimeResponsePolicy,
   RuntimeSaga,
+  RuntimeSagaCompensation,
+  RuntimeSagaStep,
   RuntimeSecondaryCommand,
   RuntimeWebhook,
   RuntimeValue,
@@ -53,6 +55,8 @@ import type {
   HttpMethod,
   LinkRelation,
   OperationId,
+  SagaName,
+  SagaStepName,
   ScopeName,
   SchemaReference,
 } from "./references.js";
@@ -131,7 +135,25 @@ export type ReactionDefinition = Omit<RuntimeReaction, "on" | "boundary" | "emit
   readonly emit: EventType;
 };
 export type WebhookDefinition = RuntimeWebhook;
-export type SagaDefinition = RuntimeSaga;
+export type SagaCompensationDefinition = Omit<RuntimeSagaCompensation, "operationId"> & {
+  readonly operationId: OperationId;
+};
+export type SagaStepDefinition = Omit<
+  RuntimeSagaStep,
+  "name" | "boundary" | "operationId" | "compensation"
+> & {
+  readonly name: SagaStepName;
+  readonly boundary: BoundaryName;
+  readonly operationId: OperationId;
+  readonly compensation?: SagaCompensationDefinition;
+};
+export type SagaDefinition = Omit<RuntimeSaga, "name" | "trigger" | "steps"> & {
+  readonly name: SagaName;
+  readonly trigger: Omit<RuntimeSaga["trigger"], "boundary"> & {
+    readonly boundary: BoundaryName;
+  };
+  readonly steps: readonly SagaStepDefinition[];
+};
 export type ProjectionDefinition = Omit<RuntimeDerivedProjection, "subscribe" | "reduce"> & {
   readonly subscribe: readonly EventSelector[];
   readonly reduce: readonly ReducerDefinition[];

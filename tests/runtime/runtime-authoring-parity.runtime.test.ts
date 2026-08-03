@@ -5,6 +5,8 @@ import {
   eventReference,
   eventType,
   faultName,
+  sagaName,
+  sagaStepName,
   operationId,
   pathParameter,
   pathSegment,
@@ -235,7 +237,7 @@ function directDefinition() {
         ],
         sagas: [
           {
-            name: "issue-receipt",
+            name: sagaName("issue-receipt"),
             trigger: {
               boundary: boundaryName("Order"),
               intent: "creation",
@@ -243,7 +245,7 @@ function directDefinition() {
             },
             steps: [
               {
-                name: "receipt",
+                name: sagaStepName("receipt"),
                 boundary: boundaryName("Receipt"),
                 intent: "creation",
                 operationId: operationId("createReceipt"),

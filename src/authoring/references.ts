@@ -18,6 +18,8 @@ export type PotemkinReference<Kind extends string> = string & {
 export type BoundaryName = PotemkinReference<"boundary-name">;
 export type BehaviorName = PotemkinReference<"behavior-name">;
 export type FaultName = PotemkinReference<"fault-name">;
+export type SagaName = PotemkinReference<"saga-name">;
+export type SagaStepName = PotemkinReference<"saga-step-name">;
 export type ResourceName = PotemkinReference<"resource-name">;
 export type ComponentName = PotemkinReference<"component-name">;
 export type HelperName = PotemkinReference<"helper-name">;
@@ -72,6 +74,14 @@ export function behaviorName(value: string): BehaviorName {
 
 export function faultName(value: string): FaultName {
   return reference("fault-name", value);
+}
+
+export function sagaName(value: string): SagaName {
+  return reference("saga-name", value);
+}
+
+export function sagaStepName(value: string): SagaStepName {
+  return reference("saga-step-name", value);
 }
 
 export function resourceName(value: string): ResourceName {

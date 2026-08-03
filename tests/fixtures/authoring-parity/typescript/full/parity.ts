@@ -10,8 +10,11 @@ import {
   eventReference,
   eventType,
   faultName,
+  sagaName,
+  sagaStepName,
   factoryName,
   helperName,
+  operationId,
   reducerRule,
   simulation,
   schemaReference,
@@ -377,18 +380,18 @@ export class AuthoringParityFactory {
           ],
           sagas: [
             {
-              name: "order-created-saga-receipt",
+              name: sagaName("order-created-saga-receipt"),
               trigger: {
-                boundary: "Order",
+                boundary: boundaryName("Order"),
                 intent: "creation",
                 condition: () => true,
               },
               steps: [
                 {
-                  name: "create-saga-receipt",
-                  boundary: "Receipt",
+                  name: sagaStepName("create-saga-receipt"),
+                  boundary: boundaryName("Receipt"),
                   intent: "creation",
-                  operationId: "createReceipt",
+                  operationId: operationId("createReceipt"),
                   targetId: ({ event: emitted }) => `${emitted?.aggregateId ?? ""}-saga-receipt`,
                   payload: {
                     orderId: ({ event: emitted }) => emitted?.aggregateId ?? "",

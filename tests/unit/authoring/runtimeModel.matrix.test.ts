@@ -6,6 +6,7 @@ import {
   type FaultDefinition,
   type ProjectionDefinition,
   type ReactionDefinition,
+  type SagaDefinition,
   type TypedEventContext,
 } from "../../../src/authoring/runtimeModel.js";
 import { defineComponent, use } from "../../../src/authoring/composition.js";
@@ -42,6 +43,9 @@ describe("source-neutral TypeScript runtime model builders", () => {
   // @ts-expect-error Projection subscriptions use eventType(...) or eventReference(...).
   const rawProjectionEvent: ProjectionDefinition["subscribe"][number] = "Orders:Created";
   void rawProjectionEvent;
+  // @ts-expect-error Saga names use the canonical sagaName constructor.
+  const rawSagaName: SagaDefinition["name"] = "raw-saga";
+  void rawSagaName;
 
   it("preserves payload inference through incremental event builder calls", () => {
     const inferred = event(eventType("Inferred"))

@@ -7,6 +7,9 @@ import {
   eventReference,
   eventType,
   reducerRule,
+  operationId,
+  sagaName,
+  sagaStepName,
 } from "potemkin/sdk";
 
 interface RecordState {
@@ -146,18 +149,18 @@ export function bulkGlobal() {
   return defineGlobal({
     sagas: [
       {
-        name: "record-created-saga-receipt",
+        name: sagaName("record-created-saga-receipt"),
         trigger: {
-          boundary: "RecordBatch",
+          boundary: boundaryName("RecordBatch"),
           intent: "creation",
           condition: () => true,
         },
         steps: [
           {
-            name: "create-saga-receipt",
-            boundary: "BulkReceipt",
+            name: sagaStepName("create-saga-receipt"),
+            boundary: boundaryName("BulkReceipt"),
             intent: "creation",
-            operationId: "createBulkReceipt",
+            operationId: operationId("createBulkReceipt"),
             targetId: ({ event }) => `${event?.aggregateId ?? ""}-saga-receipt`,
             payload: {
               recordId: ({ event }) => event?.aggregateId ?? "",
