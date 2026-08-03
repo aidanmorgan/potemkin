@@ -23,6 +23,28 @@ interface OrderState {
 const helpers = {} as RuntimeHelpers;
 
 describe("native TypeScript reducers", () => {
+  it("exposes deeply readonly state and event projections", () => {
+    type Created = { readonly item: { readonly tags: string[] } };
+    type State = { item: { tags: string[] } };
+
+    const reducer = reducerRule<Created, State>(eventType("ItemCreated")).apply(
+      ({ state, event }) => {
+        // @ts-expect-error Reducers cannot mutate nested state owned by the runtime.
+        state.item.tags.push("forbidden");
+        // @ts-expect-error Reducers cannot mutate nested event payloads.
+        event.payload.item.tags.push("forbidden");
+
+        return {
+          item: {
+            tags: [...state.item.tags, ...event.payload.item.tags],
+          },
+        };
+      },
+    );
+
+    expect(reducer).toBeDefined();
+  });
+
   it("return arbitrary-depth objects, arrays, and primitive values", () => {
     const reducer = reducerRule<OrderCreated, OrderState>(eventType("OrderCreated"))
       .apply(({ state, event }) => ({

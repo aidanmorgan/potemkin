@@ -1,5 +1,5 @@
 import type { RuntimeReducer, RuntimeReducerContext } from "../model/runtime.js";
-import type { JsonObject } from "../types.js";
+import type { DeepReadonly, JsonObject } from "../types.js";
 import type { EventType } from "./references.js";
 
 /** TypeScript state transition context with the application shapes retained. */
@@ -7,10 +7,10 @@ export type NativeReducerContext<EventPayload extends object, State extends obje
   RuntimeReducerContext,
   "event" | "payload" | "state"
 > & {
-  readonly state: Readonly<State>;
-  readonly payload: Readonly<EventPayload>;
+  readonly state: DeepReadonly<State>;
+  readonly payload: DeepReadonly<EventPayload>;
   readonly event: Omit<RuntimeReducerContext["event"], "payload"> & {
-    readonly payload: Readonly<EventPayload>;
+    readonly payload: DeepReadonly<EventPayload>;
   };
 };
 
@@ -19,7 +19,8 @@ export type NativeReducer<
   State extends object = JsonObject,
 > = Omit<RuntimeReducer, "apply" | "replaceState" | "reduce"> & {
   readonly on: EventType;
-  readonly reduce: (input: Readonly<NativeReducerContext<EventPayload, State>>) => Readonly<State>;
+  /** Return the resultant state; the input projection is deeply readonly. */
+  readonly reduce: (input: Readonly<NativeReducerContext<EventPayload, State>>) => State;
 };
 
 export interface NativeReducerBuilder<
@@ -27,7 +28,7 @@ export interface NativeReducerBuilder<
   State extends object = JsonObject,
 > {
   apply(
-    transition: (input: Readonly<NativeReducerContext<EventPayload, State>>) => Readonly<State>,
+    transition: (input: Readonly<NativeReducerContext<EventPayload, State>>) => State,
   ): NativeReducerBuilder<EventPayload, State>;
   build(): NativeReducer<EventPayload, State>;
 }

@@ -5,6 +5,21 @@ export interface JsonObject {
 }
 export type JsonValue = JsonScalar | JsonArray | JsonObject;
 
+/**
+ * Recursively readonly view of a JSON-domain value.
+ *
+ * This is intentionally separate from `Readonly<T>`: reducer inputs may
+ * contain arrays and arbitrarily nested objects, and none of those nested
+ * containers may be mutated while a state projection is being calculated.
+ */
+export type DeepReadonly<T> = T extends readonly (infer Item)[]
+  ? readonly DeepReadonly<Item>[]
+  : T extends object
+    ? string extends keyof T
+      ? Readonly<T>
+      : { readonly [Key in keyof T]: DeepReadonly<T[Key]> }
+    : T;
+
 export type Intent = "creation" | "mutation" | "query";
 export type Origin = "inbound" | "secondary";
 

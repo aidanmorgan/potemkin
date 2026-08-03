@@ -13,7 +13,7 @@ import { TypeScriptAuthoringError } from "../authoring/errors.js";
 import { ConfigurationError, isConfigurationError } from "../errors.js";
 import type { TypeScriptDiagnosticCode, TypeScriptSourceLocation } from "../authoring/errors.js";
 import type { TypeScriptHelper } from "../authoring/helpers.js";
-import type { JsonObject, JsonValue } from "../types.js";
+import type { DeepReadonly, JsonObject, JsonValue } from "../types.js";
 import type {
   EventContext,
   IdentityContext,
@@ -178,6 +178,7 @@ export type {
   TypeScriptSourceLocation,
   JsonObject,
   JsonValue,
+  DeepReadonly,
   EventContext,
   IdentityContext,
   MatchContext,

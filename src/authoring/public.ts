@@ -16,6 +16,7 @@ import {
   TypeScriptReferenceError,
 } from "./references.js";
 import type { TypeScriptHelper } from "./helpers.js";
+import type { DeepReadonly } from "../types.js";
 import type {
   AuthoringPredicate,
   AuthoringValue,
@@ -155,6 +156,7 @@ export type {
   IdentityContext,
   MatchContext,
   RuntimeReducerContext,
+  DeepReadonly,
   WebhookDefinition,
   RuntimeHelperDefinition,
   BoundaryName,
