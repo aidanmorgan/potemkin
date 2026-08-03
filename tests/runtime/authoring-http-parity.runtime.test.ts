@@ -12,6 +12,8 @@ import {
   operationId,
   pathParameter,
   pathSegment,
+  projectionName,
+  reactionName,
   schemaReference,
 } from "../../src/authoring/references.js";
 /**
@@ -367,7 +369,7 @@ function definition(): SimulationDefinition {
         ],
         derivedProjections: [
           {
-            name: "OrderSummary",
+            name: projectionName("OrderSummary"),
             key: expression(
               "projection",
               ({ event }: ProjectionContext) => event?.aggregateId ?? "",
@@ -396,7 +398,7 @@ function definition(): SimulationDefinition {
         ],
         reactions: [
           {
-            name: "audit-order-creation",
+            name: reactionName("audit-order-creation"),
             on: eventReference(boundaryName("Order"), eventType("OrderCreated")),
             intent: "creation",
             boundary: boundaryName("Audit"),

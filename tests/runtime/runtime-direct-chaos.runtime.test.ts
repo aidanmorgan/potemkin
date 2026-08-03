@@ -6,6 +6,7 @@ import {
   eventType,
   operationId,
   pathSegment,
+  projectionName,
 } from "../../src/authoring/references.js";
 import http from "node:http";
 import request from "supertest";
@@ -116,7 +117,7 @@ function directDefinition() {
         idempotency: { enabled: true, ttlSeconds: 60, hashIncludesBody: true },
         derivedProjections: [
           {
-            name: "ItemSummary",
+            name: projectionName("ItemSummary"),
             key: ({ event: emitted }) => emitted?.aggregateId ?? "",
             subscribe: [eventReference(boundaryName("Item"), eventType("ItemCreated"))],
             reduce: [

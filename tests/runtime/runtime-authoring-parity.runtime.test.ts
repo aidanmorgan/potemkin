@@ -11,6 +11,7 @@ import {
   operationId,
   pathParameter,
   pathSegment,
+  projectionName,
 } from "../../src/authoring/references.js";
 import request from "supertest";
 import { loadOpenApi } from "../../src/contract/loader.js";
@@ -258,7 +259,7 @@ function directDefinition() {
         ],
         derivedProjections: [
           {
-            name: "OrderSummary",
+            name: projectionName("OrderSummary"),
             key: ({ event }: ProjectionContext) => event?.aggregateId ?? "",
             subscribe: [eventReference(boundaryName("Order"), eventType("OrderCreated"))],
             reduce: [

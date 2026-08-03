@@ -5,6 +5,7 @@ import {
   eventType,
   operationId,
   pathSegment,
+  projectionName,
 } from "../../src/authoring/references.js";
 import request from "supertest";
 import { loadOpenApi } from "../../src/contract/loader.js";
@@ -131,7 +132,7 @@ function typescriptDefinition() {
     .policies({
       derivedProjections: [
         defineProjection({
-          name: "OrderSummary",
+          name: projectionName("OrderSummary"),
           key: expression("projection", ({ event }: ProjectionContext) =>
             String(event?.aggregateId),
           ),
