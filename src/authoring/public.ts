@@ -59,6 +59,7 @@ import type {
   EventType,
   FieldPath,
   FieldPathSegment,
+  HttpMethod,
   OperationId,
   SchemaReference,
 } from "./references.js";
@@ -165,6 +166,7 @@ export type {
   EventType,
   FieldPath,
   FieldPathSegment,
+  HttpMethod,
   OperationId,
   SchemaReference,
 };

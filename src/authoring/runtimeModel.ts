@@ -47,6 +47,7 @@ import type {
   ContractPath,
   EventType,
   FieldPath,
+  HttpMethod,
   OperationId,
   SchemaReference,
 } from "./references.js";
@@ -69,9 +70,10 @@ export interface EventDefinition extends Omit<RuntimeEvent, "payload" | "type" |
 
 export interface BehaviorDefinition extends Omit<
   RuntimeBehavior,
-  "operationId" | "emit" | "emitWhen" | "dispatchCommands"
+  "operationId" | "emit" | "emitWhen" | "dispatchCommands" | "method"
 > {
   readonly operationId: OperationId;
+  readonly method?: HttpMethod;
   readonly emit?: EventType;
   readonly emitWhen?: readonly (Omit<NonNullable<RuntimeBehavior["emitWhen"]>[number], "event"> & {
     readonly event: EventType;
@@ -318,7 +320,7 @@ export interface BehaviorBuilder<
   condition(
     condition: (input: Readonly<TypedMatchContext<Payload, State>>) => boolean,
   ): BehaviorBuilder<Payload, State>;
-  method(method: string): BehaviorBuilder<Payload, State>;
+  method(method: HttpMethod): BehaviorBuilder<Payload, State>;
   headers(headers: Readonly<Record<string, string>>): BehaviorBuilder<Payload, State>;
   requires(...guards: readonly RuntimeGuard[]): BehaviorBuilder<Payload, State>;
   scopes(...scopes: readonly string[]): BehaviorBuilder<Payload, State>;
@@ -351,7 +353,7 @@ export function behavior(
       build({ ...value, condition: condition as NonNullable<RuntimeBehavior["condition"]> }),
     condition: (condition) =>
       build({ ...value, condition: condition as NonNullable<RuntimeBehavior["condition"]> }),
-    method: (method) => build({ ...value, method: method.toUpperCase() }),
+    method: (method) => build({ ...value, method }),
     headers: (headers) => build({ ...value, headers: { ...headers } }),
     requires: (...guards) => build({ ...value, requires: [...(value.requires ?? []), ...guards] }),
     scopes: (...scopes) =>

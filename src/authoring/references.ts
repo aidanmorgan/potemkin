@@ -22,6 +22,9 @@ export type ContractPath = PotemkinReference<"contract-path">;
 export type SchemaReference = PotemkinReference<"schema-reference">;
 export type FieldPath = PotemkinReference<"field-path">;
 
+/** OpenAPI/HTTP methods supported by the Potemkin authoring surface. */
+export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS" | "TRACE";
+
 export interface ContractPathSegment {
   readonly kind: "literal" | "parameter";
   readonly value: string;

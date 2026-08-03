@@ -47,7 +47,7 @@ describe("source-neutral TypeScript runtime model builders", () => {
       .operation(operationId("create"))
       .when(() => true)
       .condition(() => true)
-      .method("post")
+      .method("POST")
       .headers({ "x-test": "yes" })
       .requires(guard)
       .scopes("write", "audit")
@@ -62,6 +62,9 @@ describe("source-neutral TypeScript runtime model builders", () => {
       responseStatus: 201,
       requiredScopes: ["write", "audit"],
     });
+
+    // @ts-expect-error The public authoring API uses canonical uppercase HTTP methods.
+    behavior("lowercase-method").method("post");
 
     const dispatched = behavior("dispatch")
       .operation(operationId("dispatch"))
