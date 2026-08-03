@@ -10,6 +10,7 @@ import {
   eventReference,
   eventType,
   faultName,
+  guardName,
   sagaName,
   sagaStepName,
   webhookName,
@@ -330,7 +331,7 @@ export class AuthoringParityFactory {
               requiredScopes: [scopeName("writer")],
               requires: [
                 {
-                  name: "parity-required-header",
+                  name: guardName("parity-required-header"),
                   check: ({ request }) => request.headers["x-parity-required"] === "on",
                   errorCode: "PARITY_REQUIRED_HEADER",
                   errorMessage: "the parity required header must be enabled",

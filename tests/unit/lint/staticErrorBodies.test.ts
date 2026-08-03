@@ -19,6 +19,7 @@ import {
   behaviorName,
   contractPath,
   eventType,
+  guardName,
   operationId,
   pathSegment,
 } from "../../../src/authoring/references";
@@ -186,7 +187,7 @@ describe("static contract-error lint", () => {
               .operation(operationId("createOrder"))
               .emit(eventType("OrderCreated"))
               .requires({
-                name: "accepted-only",
+                name: guardName("accepted-only"),
                 check: () => true,
                 errorCode: "NO",
                 errorMessage: "rejected",

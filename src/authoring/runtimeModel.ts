@@ -53,6 +53,7 @@ import type {
   EventType,
   FaultName,
   FieldPath,
+  GuardName,
   HttpMethod,
   LinkRelation,
   OperationId,
@@ -100,11 +101,13 @@ export interface BehaviorDefinition extends Omit<
   | "method"
   | "requiredScopes"
   | "linkName"
+  | "requires"
 > {
   readonly name: BehaviorName;
   readonly operationId: OperationId;
   readonly method?: HttpMethod;
   readonly requiredScopes?: readonly ScopeName[];
+  readonly requires?: readonly GuardDefinition[];
   readonly linkName?: LinkRelation;
   readonly emit?: EventType;
   readonly emitWhen?: readonly (Omit<NonNullable<RuntimeBehavior["emitWhen"]>[number], "event"> & {
@@ -121,7 +124,9 @@ export interface BehaviorDefinition extends Omit<
 export interface ReducerDefinition extends Omit<RuntimeReducer, "on"> {
   readonly on: EventType;
 }
-export type GuardDefinition = RuntimeGuard;
+export type GuardDefinition = Omit<RuntimeGuard, "name"> & {
+  readonly name: GuardName;
+};
 export type SecondaryCommandDefinition = NonNullable<
   BehaviorDefinition["dispatchCommands"]
 >[number];
@@ -133,9 +138,10 @@ export type ResponseDefinition = Omit<RuntimeResponsePolicy, "mask" | "hateoas">
   readonly mask?: readonly FieldPath[];
   readonly hateoas?: readonly ResponseLinkDefinition[];
 };
-export type FaultDefinition = Omit<RuntimeFault, "name" | "requiredScopes"> & {
+export type FaultDefinition = Omit<RuntimeFault, "name" | "requiredScopes" | "requires"> & {
   readonly name: FaultName;
   readonly requiredScopes?: readonly ScopeName[];
+  readonly requires?: readonly GuardDefinition[];
 };
 export type ReactionDefinition = Omit<RuntimeReaction, "on" | "boundary" | "emit"> & {
   readonly on: EventSelector;
@@ -461,7 +467,7 @@ export interface BehaviorBuilder<
   ): BehaviorBuilder<Payload, State>;
   method(method: HttpMethod): BehaviorBuilder<Payload, State>;
   headers(headers: Readonly<Record<string, string>>): BehaviorBuilder<Payload, State>;
-  requires(...guards: readonly RuntimeGuard[]): BehaviorBuilder<Payload, State>;
+  requires(...guards: readonly GuardDefinition[]): BehaviorBuilder<Payload, State>;
   scopes(...scopes: readonly ScopeName[]): BehaviorBuilder<Payload, State>;
   emit(eventType: EventType): BehaviorBuilder<Payload, State>;
   emitWhen(

@@ -4,6 +4,7 @@ import {
   event,
   simulation,
   type FaultDefinition,
+  type GuardDefinition,
   type ProjectionDefinition,
   type ReactionDefinition,
   type ResponseDefinition,
@@ -22,6 +23,7 @@ import {
   eventType,
   eventReference,
   faultName,
+  guardName,
   field,
   fieldPath,
   helperName,
@@ -32,7 +34,6 @@ import {
   schemaReference,
   scopeName,
 } from "../../../src/authoring/references.js";
-import type { RuntimeGuard } from "../../../src/model/runtime.js";
 import type { JsonObject } from "../../../src/types.js";
 
 describe("source-neutral TypeScript runtime model builders", () => {
@@ -92,8 +93,8 @@ describe("source-neutral TypeScript runtime model builders", () => {
     });
     expect(Object.isFrozen(builtEvent)).toBe(true);
 
-    const guard: RuntimeGuard = {
-      name: "allowed",
+    const guard: GuardDefinition = {
+      name: guardName("allowed"),
       check: () => true,
       errorCode: "NOT_ALLOWED",
       errorMessage: "not allowed",

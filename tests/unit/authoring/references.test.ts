@@ -6,6 +6,7 @@ import {
   eventReference,
   eventType,
   faultName,
+  guardName,
   field,
   fieldPath,
   factoryName,
@@ -40,6 +41,7 @@ describe("TypeScript semantic references", () => {
       "Orders:OrderCreated",
     );
     expect(faultName("unavailable")).toBe("unavailable");
+    expect(guardName("allowed")).toBe("allowed");
     expect(sagaName("order-flow")).toBe("order-flow");
     expect(sagaStepName("reserve")).toBe("reserve");
     expect(webhookName("order-hook")).toBe("order-hook");
@@ -72,6 +74,7 @@ describe("TypeScript semantic references", () => {
       "Orders:OrderCreated",
     );
     expect(sdk.faultName("unavailable")).toBe("unavailable");
+    expect(sdk.guardName("allowed")).toBe("allowed");
     expect(sdk.sagaName("order-flow")).toBe("order-flow");
     expect(sdk.sagaStepName("reserve")).toBe("reserve");
     expect(sdk.webhookName("order-hook")).toBe("order-hook");
