@@ -240,6 +240,7 @@ function warmupProbeForFixture(fixtureName: string | undefined): {
   path: string;
   engineStatuses: readonly number[];
   headers: Record<string, string>;
+  bodyMatches?: (body: JsonValue | null) => boolean;
 } {
   // A syntactically valid UUID that no fixture seeds, so the engine never holds
   // an entity for it.
@@ -280,7 +281,20 @@ function warmupProbeForFixture(fixtureName: string | undefined): {
         headers: { ...accept, authorization: `Bearer ${mintWarmupJwt()}` },
       };
     default:
-      return { path: `/leads/${BOGUS_ID}`, engineStatuses: [404], headers: accept };
+      // A missing-entity 404 is not a sufficient readiness proof: a stale
+      // Specmatic route cache can return the same status without forwarding
+      // to the newly loaded CRM runtime. Require a known baseline response
+      // whose identity cannot be produced by an unrelated generated example.
+      return {
+        path: "/leads/00000000-0000-7000-8000-000000000010",
+        engineStatuses: [200],
+        headers: accept,
+        bodyMatches: (body) =>
+          body !== null &&
+          typeof body === "object" &&
+          !Array.isArray(body) &&
+          (body as Record<string, unknown>)["id"] === "00000000-0000-7000-8000-000000000010",
+      };
   }
 }
 
@@ -299,9 +313,15 @@ async function warmStubForwarding(
     readonly path: string;
     readonly engineStatuses: readonly number[];
     readonly headers: Record<string, string>;
+    readonly bodyMatches?: (body: JsonValue | null) => boolean;
   },
 ): Promise<boolean> {
-  const { path: p, engineStatuses, headers } = customProbe ?? warmupProbeForFixture(fixtureName);
+  const {
+    path: p,
+    engineStatuses,
+    headers,
+    bodyMatches,
+  } = customProbe ?? warmupProbeForFixture(fixtureName);
   // Healthy forwarding converges within a second or two; cap the wait so a
   // broken plugin/engine connection fails startup promptly.
   const deadline = Date.now() + 6_000;
@@ -316,11 +336,17 @@ async function warmStubForwarding(
       // body here can leave Specmatic closing the same socket while the next
       // suite's first request is already being accepted by the JVM, which
       // manifests as a transient ECONNRESET on the shared session.
-      await res.arrayBuffer();
+      const bodyText = await res.text();
+      let body: JsonValue | null = null;
+      try {
+        body = JSON.parse(bodyText) as JsonValue;
+      } catch {
+        body = null;
+      }
       // Only an engine-specific status proves the engine served this response.
       // A 2xx is a Specmatic-generated example (not forwarding); 0/parse error
       // means the route is not yet discovered.
-      if (engineStatuses.includes(res.status)) {
+      if (engineStatuses.includes(res.status) && (bodyMatches === undefined || bodyMatches(body))) {
         consecutiveHealthy += 1;
         if (consecutiveHealthy >= 3) return true;
       } else {
