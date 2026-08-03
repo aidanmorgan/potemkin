@@ -16,9 +16,6 @@ import type {
   RuntimePredicate,
   RuntimeReducerContext,
   RuntimeResponse,
-  RuntimeSaga,
-  RuntimeSagaCompensation,
-  RuntimeSagaStep,
   RuntimeValue,
   SagaContext,
   WebhookContext,
@@ -222,25 +219,31 @@ export interface WebhookDefinition {
   readonly secret?: string;
   readonly retry?: Readonly<{ maxAttempts?: number; delayMs?: number }>;
 }
-export type SagaCompensationDefinition = Omit<RuntimeSagaCompensation, "operationId"> & {
+export interface SagaCompensationDefinition {
+  readonly intent: Command["intent"];
   readonly operationId: OperationId;
-};
-export type SagaStepDefinition = Omit<
-  RuntimeSagaStep,
-  "name" | "boundary" | "operationId" | "compensation"
-> & {
+  readonly targetId?: RuntimeValue<SagaContext, string | null>;
+  readonly payload?: Readonly<Record<string, RuntimeValue<SagaContext, JsonValue>>>;
+}
+export interface SagaStepDefinition {
   readonly name: SagaStepName;
   readonly boundary: BoundaryName;
+  readonly intent: Command["intent"];
   readonly operationId: OperationId;
+  readonly targetId?: RuntimeValue<SagaContext, string | null>;
+  readonly payload?: Readonly<Record<string, RuntimeValue<SagaContext, JsonValue>>>;
   readonly compensation?: SagaCompensationDefinition;
-};
-export type SagaDefinition = Omit<RuntimeSaga, "name" | "trigger" | "steps"> & {
+}
+export interface SagaTriggerDefinition {
+  readonly boundary: BoundaryName;
+  readonly intent: Command["intent"];
+  readonly condition?: RuntimePredicate<SagaContext>;
+}
+export interface SagaDefinition {
   readonly name: SagaName;
-  readonly trigger: Omit<RuntimeSaga["trigger"], "boundary"> & {
-    readonly boundary: BoundaryName;
-  };
+  readonly trigger: SagaTriggerDefinition;
   readonly steps: readonly SagaStepDefinition[];
-};
+}
 export interface ProjectionDefinition {
   readonly name: ProjectionName;
   readonly key: RuntimeValue<ProjectionContext, string>;
