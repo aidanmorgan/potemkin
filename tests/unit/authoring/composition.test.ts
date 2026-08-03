@@ -15,6 +15,7 @@ import {
   operationId,
   pathSegment,
   schemaReference,
+  stateFieldName,
   type ContractPath,
 } from "../../../src/authoring/references.js";
 import type { ComponentSource } from "../../../src/authoring/composition.js";
@@ -254,10 +255,16 @@ describe("direct TypeScript component composition", () => {
     expect(() => composeBoundaries([schemaHost])).toThrow("schema is already supplied");
 
     const state = defineComponent(componentName("State"), () => ({
-      state: { computed: [{ name: "same", dependsOn: [], formula: () => true }], internal: [] },
+      state: {
+        computed: [{ name: stateFieldName("same"), dependsOn: [], formula: () => true }],
+        internal: [],
+      },
     }));
     const stateHost = boundary(boundaryName("StateHost"), contractPath(pathSegment("state")))
-      .state({ computed: [{ name: "same", dependsOn: [], formula: () => false }], internal: [] })
+      .state({
+        computed: [{ name: stateFieldName("same"), dependsOn: [], formula: () => false }],
+        internal: [],
+      })
       .include(include(state))
       .build();
     expect(() => composeBoundaries([stateHost])).toThrow("state field");

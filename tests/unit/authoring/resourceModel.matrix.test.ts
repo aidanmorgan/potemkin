@@ -12,6 +12,7 @@ import {
   pathSegment,
   resourceName,
   schemaReference,
+  stateFieldName,
 } from "../../../src/authoring/references.js";
 import type { OpenApiDoc } from "../../../src/contract/loader.js";
 
@@ -41,7 +42,7 @@ const fullResource: ResourceDefinition = {
   auditFields: true,
   deprecated: { date: "2026-01-01" },
   latency: { fixedMs: 1 },
-  state: { internal: [{ name: "version" }] },
+  state: { internal: [{ name: stateFieldName("version") }] },
   strictSchema: true,
   faults: [],
   reactions: [],

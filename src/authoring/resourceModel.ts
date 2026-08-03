@@ -1,12 +1,7 @@
 import type { OpenApiDoc } from "../contract/loader.js";
 import type { RuntimeBehavior, RuntimeFault } from "../model/runtime.js";
 import type { ComposableBoundary } from "./composition.js";
-import type {
-  RuntimeDeprecation,
-  RuntimeLatency,
-  RuntimeStateSchema,
-  RuntimeValue,
-} from "../model/runtime.js";
+import type { RuntimeDeprecation, RuntimeLatency, RuntimeValue } from "../model/runtime.js";
 import type { JsonObject } from "../types.js";
 import { definitionError } from "./errors.js";
 import type {
@@ -14,10 +9,12 @@ import type {
   EventDefinition,
   FaultDefinition,
   IdentityDefinition,
+  InitializationDefinition,
   QueryDefinition,
   ReducerDefinition,
   ReactionDefinition,
   ResponseDefinition,
+  StateDefinition,
 } from "./runtimeModel.js";
 import type {
   ContractPath,
@@ -54,13 +51,13 @@ export interface ResourceDefinition {
   readonly query?: QueryDefinition;
   readonly eventCatalog: readonly EventDefinition[];
   readonly reducers: readonly ReducerDefinition[];
-  readonly initialization?: readonly JsonObject[];
+  readonly initialization?: readonly InitializationDefinition[];
   readonly operations: readonly ResourceOperation[];
   readonly mask?: readonly FieldPath[];
   readonly auditFields?: boolean;
   readonly deprecated?: RuntimeDeprecation;
   readonly latency?: RuntimeLatency;
-  readonly state?: RuntimeStateSchema;
+  readonly state?: StateDefinition;
   readonly strictSchema?: boolean;
   readonly faults?: readonly FaultDefinition[];
   readonly reactions?: readonly ReactionDefinition[];

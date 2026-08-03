@@ -29,7 +29,9 @@ import type {
   ReactionDefinition,
   ResponseDefinition,
   IdentityDefinition,
+  InitializationDefinition,
   QueryDefinition,
+  StateDefinition,
 } from "./runtimeModel.js";
 
 /**
@@ -61,6 +63,8 @@ export type ComponentSource = Partial<
     | "faults"
     | "identity"
     | "query"
+    | "initialization"
+    | "state"
     | "response"
     | "reactions"
     | "include"
@@ -72,6 +76,8 @@ export type ComponentSource = Partial<
   readonly reducers?: readonly ReducerDefinition[];
   readonly identity?: IdentityDefinition;
   readonly query?: QueryDefinition;
+  readonly initialization?: readonly InitializationDefinition[];
+  readonly state?: StateDefinition;
   readonly response?: ResponseDefinition;
   readonly mask?: readonly FieldPath[];
   readonly faults?: readonly FaultDefinition[];

@@ -8,6 +8,8 @@ import {
   type IdentityKeyDefinition,
   type ProjectionDefinition,
   type QueryDefinition,
+  type StateDefinition,
+  type StateFieldType,
   type ReactionDefinition,
   type ResponseDefinition,
   type SagaDefinition,
@@ -36,6 +38,7 @@ import {
   resourceName,
   schemaReference,
   scopeName,
+  stateFieldName,
 } from "../../../src/authoring/references.js";
 import type { JsonObject } from "../../../src/types.js";
 
@@ -77,6 +80,12 @@ describe("source-neutral TypeScript runtime model builders", () => {
   // @ts-expect-error Query expansion paths use queryPath(...), not raw strings.
   const rawQueryExpansion: NonNullable<QueryDefinition["expand"]>[number] = "customer";
   void rawQueryExpansion;
+  // @ts-expect-error State field names use stateFieldName(...), not raw strings.
+  const rawStateField: NonNullable<StateDefinition["internal"]>[number]["name"] = "version";
+  void rawStateField;
+  // @ts-expect-error State metadata types are a closed semantic union.
+  const invalidStateFieldType: StateFieldType = "date";
+  void invalidStateFieldType;
 
   it("preserves payload inference through incremental event builder calls", () => {
     const inferred = event(eventType("Inferred"))
@@ -219,14 +228,14 @@ describe("source-neutral TypeScript runtime model builders", () => {
       })
       .reducer(reducer)
       .seed({ state: { id: "seed-1" }, id: "seed-1" })
-      .initialization({ state: { id: "seed-2" }, eventType: "Seeded" })
+      .initialization({ state: { id: "seed-2" }, eventType: eventType("Seeded") })
       .response({ latency: { fixedMs: 2 }, status: () => 201 })
       .mask(fieldPath(field("secret")))
       .deprecated({ date: "2026-01-01", sunset: "2027-01-01", replacement: "/v2/orders" })
       .latency({ minMs: 1, maxMs: 3 })
       .auditFields()
       .strictSchema()
-      .state({ computed: [], internal: [{ name: "version", type: "integer" }] })
+      .state({ computed: [], internal: [{ name: stateFieldName("version"), type: "integer" }] })
       .faults(fault)
       .reactions(reaction)
       .include({

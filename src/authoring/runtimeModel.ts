@@ -58,6 +58,7 @@ import type {
   LinkRelation,
   OperationId,
   QueryPath,
+  StateFieldName,
   SagaName,
   SagaStepName,
   ScopeName,
@@ -205,6 +206,8 @@ export type BoundaryDefinition = Omit<
   | "faults"
   | "identity"
   | "query"
+  | "initialization"
+  | "state"
   | "response"
   | "reactions"
 > & {
@@ -216,6 +219,8 @@ export type BoundaryDefinition = Omit<
   readonly reducers: readonly ReducerDefinition[];
   readonly identity?: IdentityDefinition;
   readonly query?: QueryDefinition;
+  readonly initialization?: readonly InitializationDefinition[];
+  readonly state?: StateDefinition;
   readonly response?: ResponseDefinition;
   readonly mask?: readonly FieldPath[];
   readonly faults?: readonly FaultDefinition[];
@@ -309,6 +314,36 @@ export interface QueryDefinition {
   readonly includeDeleted?: boolean;
   readonly fallback?: QueryValue<JsonValue | undefined>;
 }
+export type StateFieldType =
+  | "string"
+  | "integer"
+  | "number"
+  | "boolean"
+  | "null"
+  | "array"
+  | "object"
+  | "unknown";
+export interface ComputedFieldDefinition {
+  readonly name: StateFieldName;
+  readonly formula: (context: Readonly<RuntimeReducerContext>) => JsonValue;
+  readonly dependsOn: readonly StateFieldName[];
+}
+export interface InternalFieldDefinition {
+  readonly name: StateFieldName;
+  readonly type?: StateFieldType;
+}
+export interface StateDefinition {
+  readonly computed?: readonly ComputedFieldDefinition[];
+  readonly internal?: readonly InternalFieldDefinition[];
+  readonly validate?: (state: Readonly<JsonObject>) => void;
+}
+export interface SeedDefinition {
+  readonly state: JsonObject;
+  readonly id?: string;
+  readonly eventType?: EventType;
+  readonly timestamp?: string;
+}
+export type InitializationDefinition = JsonObject | SeedDefinition;
 export type ResponseExpression = RuntimeValue<ResponseContext, RuntimeResponse | null | undefined>;
 export type EventHydrationExpression = RuntimeValue<EventContext, JsonValue>;
 export type ReducerExpression = RuntimeValue<RuntimeReducerContext, JsonValue>;
@@ -612,19 +647,15 @@ export interface BoundaryBuilder {
   eventCatalog(...values: readonly EventDefinition[]): BoundaryBuilder;
   behavior(...values: readonly BehaviorDefinition[]): BoundaryBuilder;
   reducer(...values: readonly ReducerDefinition[]): BoundaryBuilder;
-  seed(
-    ...values: readonly NonNullable<RuntimeBoundary["initialization"]>[number][]
-  ): BoundaryBuilder;
-  initialization(
-    ...values: readonly NonNullable<RuntimeBoundary["initialization"]>[number][]
-  ): BoundaryBuilder;
+  seed(...values: readonly InitializationDefinition[]): BoundaryBuilder;
+  initialization(...values: readonly InitializationDefinition[]): BoundaryBuilder;
   response(value: ResponseDefinition): BoundaryBuilder;
   mask(...fields: readonly FieldPath[]): BoundaryBuilder;
   deprecated(value: NonNullable<RuntimeBoundary["deprecated"]>): BoundaryBuilder;
   latency(value: NonNullable<RuntimeBoundary["latency"]>): BoundaryBuilder;
   auditFields(enabled?: boolean): BoundaryBuilder;
   strictSchema(enabled?: boolean): BoundaryBuilder;
-  state(value: NonNullable<RuntimeBoundary["state"]>): BoundaryBuilder;
+  state(value: StateDefinition): BoundaryBuilder;
   faults(...values: readonly FaultDefinition[]): BoundaryBuilder;
   reactions(...values: readonly ReactionDefinition[]): BoundaryBuilder;
   include(...values: readonly ComponentInclude[]): BoundaryBuilder;

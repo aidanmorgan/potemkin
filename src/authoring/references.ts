@@ -36,6 +36,7 @@ export type ContractPath = PotemkinReference<"contract-path">;
 export type SchemaReference = PotemkinReference<"schema-reference">;
 export type FieldPath = PotemkinReference<"field-path">;
 export type QueryPath = PotemkinReference<"query-path">;
+export type StateFieldName = PotemkinReference<"state-field-name">;
 
 /** OpenAPI/HTTP methods supported by the Potemkin authoring surface. */
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS" | "TRACE";
@@ -173,6 +174,10 @@ export function field(value: string): FieldPathSegment {
     throw new TypeScriptReferenceError("field path segment", "must be a non-empty token");
   }
   return Object.freeze({ value: normalized });
+}
+
+export function stateFieldName(value: string): StateFieldName {
+  return reference("state-field-name", value);
 }
 
 /** Build an RFC 6901 response-mask path from typed field segments. */
