@@ -236,12 +236,17 @@ function mintWarmupJwt(): string {
  * token so it reaches the engine's entity-absence path rather than the auth
  * 401 (which would be ambiguous against operations that declare a 401 response).
  */
-function warmupProbeForFixture(fixtureName: string | undefined): {
+type WarmupProbe = {
+  readonly method?: "GET" | "POST";
   path: string;
   engineStatuses: readonly number[];
   headers: Record<string, string>;
+  requestBody?: JsonValue;
   bodyMatches?: (body: JsonValue | null) => boolean;
-} {
+  responseHeadersMatch?: (headers: Headers) => boolean;
+};
+
+function warmupProbeForFixture(fixtureName: string | undefined): WarmupProbe {
   // A syntactically valid UUID that no fixture seeds, so the engine never holds
   // an entity for it.
   const BOGUS_ID = "00000000-0000-7000-8000-0000deadbeef";
@@ -280,6 +285,24 @@ function warmupProbeForFixture(fixtureName: string | undefined): {
         engineStatuses: [404],
         headers: { ...accept, authorization: `Bearer ${mintWarmupJwt()}` },
       };
+    case "crm-session":
+      return {
+        method: "POST",
+        path: "/sessions",
+        engineStatuses: [200],
+        headers: { ...accept, "content-type": "application/json" },
+        requestBody: { actorId: "potemkin-readiness", scopes: ["agent"] },
+        bodyMatches: (body) =>
+          body !== null &&
+          typeof body === "object" &&
+          !Array.isArray(body) &&
+          (body as Record<string, unknown>)["csrfToken"] !== undefined &&
+          typeof (body as Record<string, unknown>)["csrfToken"] === "string" &&
+          typeof (body as Record<string, unknown>)["actor"] === "object" &&
+          (body as { actor: { id?: unknown } }).actor?.id === "potemkin-readiness",
+        responseHeadersMatch: (headers) =>
+          headers.get("set-cookie")?.startsWith("potemkin_sid=") === true,
+      };
     default:
       // A missing-entity 404 is not a sufficient readiness proof: a stale
       // Specmatic route cache can return the same status without forwarding
@@ -309,18 +332,16 @@ function warmupProbeForFixture(fixtureName: string | undefined): {
 async function warmStubForwarding(
   stubUrl: string,
   fixtureName: string | undefined,
-  customProbe?: {
-    readonly path: string;
-    readonly engineStatuses: readonly number[];
-    readonly headers: Record<string, string>;
-    readonly bodyMatches?: (body: JsonValue | null) => boolean;
-  },
+  customProbe?: WarmupProbe,
 ): Promise<boolean> {
   const {
+    method = "GET",
     path: p,
     engineStatuses,
     headers,
+    requestBody,
     bodyMatches,
+    responseHeadersMatch,
   } = customProbe ?? warmupProbeForFixture(fixtureName);
   // Healthy forwarding converges within a second or two; cap the wait so a
   // broken plugin/engine connection fails startup promptly.
@@ -329,8 +350,9 @@ async function warmStubForwarding(
   while (Date.now() < deadline) {
     try {
       const res = await fetch(`${stubUrl}${p}`, {
-        method: "GET",
+        method,
         headers: { connection: "close", ...headers },
+        ...(requestBody === undefined ? {} : { body: JSON.stringify(requestBody) }),
       });
       // Drain the response before starting the next request. Cancelling the
       // body here can leave Specmatic closing the same socket while the next
@@ -346,7 +368,11 @@ async function warmStubForwarding(
       // Only an engine-specific status proves the engine served this response.
       // A 2xx is a Specmatic-generated example (not forwarding); 0/parse error
       // means the route is not yet discovered.
-      if (engineStatuses.includes(res.status) && (bodyMatches === undefined || bodyMatches(body))) {
+      if (
+        engineStatuses.includes(res.status) &&
+        (bodyMatches === undefined || bodyMatches(body)) &&
+        (responseHeadersMatch === undefined || responseHeadersMatch(res.headers))
+      ) {
         consecutiveHealthy += 1;
         if (consecutiveHealthy >= 3) return true;
       } else {
