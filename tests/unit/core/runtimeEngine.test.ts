@@ -8,7 +8,7 @@ import type {
   RuntimeHelpers,
   RuntimeProgram,
 } from "../../../src/model/runtime.js";
-import type { Command } from "../../../src/types.js";
+import type { Command, JsonObject } from "../../../src/types.js";
 
 const helpers: RuntimeHelpers = {
   now: () => "2026-01-01T00:00:00.000Z",
@@ -65,6 +65,75 @@ function program(
 }
 
 describe("source-independent runtime engine", () => {
+  it("does not expose stored aggregate state to reducer inputs", async () => {
+    let reducerInput: JsonObject | undefined;
+    const runtime = createRuntimeEngine(
+      program({
+        boundary: "Order",
+        contractPath: "/orders",
+        eventCatalog: [
+          {
+            type: "OrderCreated",
+            payload: {
+              id: ({ payload }) => payload.id,
+              nested: ({ payload }) => payload.nested,
+            },
+          },
+          { type: "OrderUpdated", payload: {} },
+        ],
+        behaviors: [
+          { name: "create", operationId: "createOrder", emit: "OrderCreated" },
+          { name: "update", operationId: "updateOrder", emit: "OrderUpdated" },
+          { name: "read", operationId: "getOrder" },
+        ],
+        reducers: [
+          {
+            on: "OrderCreated",
+            reduce: ({ event }) => ({
+              id: event.payload.id,
+              nested: event.payload.nested,
+            }),
+          },
+          {
+            on: "OrderUpdated",
+            reduce: ({ state }) => {
+              reducerInput = state as JsonObject;
+              return { ...state, updated: true };
+            },
+          },
+        ],
+      }),
+    );
+
+    await runtime.execute(request({ payload: { id: "order-1", nested: { items: ["initial"] } } }));
+    await runtime.execute(
+      request({
+        commandId: "command-2",
+        operationId: "updateOrder",
+        intent: "mutation",
+        payload: {},
+      }),
+    );
+
+    const nested = reducerInput?.["nested"];
+    expect(nested !== null && typeof nested === "object" && !Array.isArray(nested)).toBe(true);
+    (nested as { items: string[] }).items.push("outside");
+
+    await expect(
+      runtime.execute(
+        request({
+          operationId: "getOrder",
+          intent: "query",
+          httpMethod: "GET",
+          targetId: "order-1",
+        }),
+      ),
+    ).resolves.toMatchObject({
+      status: 200,
+      body: { nested: { items: ["initial"] }, updated: true },
+    });
+  });
+
   it("executes identity, events, reducers, queries, and reset without YAML or CEL", async () => {
     const runtime = createRuntimeEngine(
       program({
