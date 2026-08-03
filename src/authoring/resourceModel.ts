@@ -1,16 +1,18 @@
 import type { OpenApiDoc } from "../contract/loader.js";
 import type { RuntimeBehavior, RuntimeFault } from "../model/runtime.js";
 import type { ComposableBoundary } from "./composition.js";
-import type { RuntimeDeprecation, RuntimeLatency, RuntimeValue } from "../model/runtime.js";
+import type { RuntimeValue } from "../model/runtime.js";
 import type { JsonObject } from "../types.js";
 import { definitionError } from "./errors.js";
 import type {
   BehaviorDefinition,
+  DeprecationDefinition,
   EventDefinition,
   FaultDefinition,
   IdentityDefinition,
   InitializationDefinition,
   QueryDefinition,
+  LatencyDefinition,
   ReducerDefinition,
   ReactionDefinition,
   ResponseDefinition,
@@ -55,8 +57,8 @@ export interface ResourceDefinition {
   readonly operations: readonly ResourceOperation[];
   readonly mask?: readonly FieldPath[];
   readonly auditFields?: boolean;
-  readonly deprecated?: RuntimeDeprecation;
-  readonly latency?: RuntimeLatency;
+  readonly deprecated?: DeprecationDefinition;
+  readonly latency?: LatencyDefinition;
   readonly state?: StateDefinition;
   readonly strictSchema?: boolean;
   readonly faults?: readonly FaultDefinition[];

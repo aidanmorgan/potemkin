@@ -154,9 +154,14 @@ export type IdentityDefinition = Omit<NonNullable<RuntimeBoundary["identity"]>, 
 export type ResponseLinkDefinition = Omit<RuntimeLink, "rel"> & {
   readonly rel: LinkRelation;
 };
-export type ResponseDefinition = Omit<RuntimeResponsePolicy, "mask" | "hateoas"> & {
+export type ResponseDefinition = Omit<
+  RuntimeResponsePolicy,
+  "mask" | "hateoas" | "deprecated" | "latency"
+> & {
   readonly mask?: readonly FieldPath[];
   readonly hateoas?: readonly ResponseLinkDefinition[];
+  readonly deprecated?: DeprecationDefinition;
+  readonly latency?: LatencyDefinition;
 };
 export type FaultDefinition = Omit<RuntimeFault, "name" | "requiredScopes" | "requires"> & {
   readonly name: FaultName;
@@ -206,8 +211,11 @@ export type BoundaryDefinition = Omit<
   | "faults"
   | "identity"
   | "query"
+  | "queryMapping"
   | "initialization"
   | "state"
+  | "deprecated"
+  | "latency"
   | "response"
   | "reactions"
 > & {
@@ -219,8 +227,11 @@ export type BoundaryDefinition = Omit<
   readonly reducers: readonly ReducerDefinition[];
   readonly identity?: IdentityDefinition;
   readonly query?: QueryDefinition;
+  readonly queryMapping?: QueryMappingDefinition;
   readonly initialization?: readonly InitializationDefinition[];
   readonly state?: StateDefinition;
+  readonly deprecated?: DeprecationDefinition;
+  readonly latency?: LatencyDefinition;
   readonly response?: ResponseDefinition;
   readonly mask?: readonly FieldPath[];
   readonly faults?: readonly FaultDefinition[];
@@ -313,6 +324,17 @@ export interface QueryDefinition {
   readonly pagination?: "raw" | "envelope";
   readonly includeDeleted?: boolean;
   readonly fallback?: QueryValue<JsonValue | undefined>;
+}
+export type QueryMappingDefinition = Readonly<Record<string, QueryExpression>>;
+export interface DeprecationDefinition {
+  readonly date: string;
+  readonly sunset?: string;
+  readonly replacement?: string;
+}
+export interface LatencyDefinition {
+  readonly minMs?: number;
+  readonly maxMs?: number;
+  readonly fixedMs?: number;
 }
 export type StateFieldType =
   | "string"
@@ -642,7 +664,7 @@ export interface BoundaryBuilder {
   fallbackOverride(enabled?: boolean): BoundaryBuilder;
   identity(value: IdentityDefinition): BoundaryBuilder;
   query(value: QueryDefinition): BoundaryBuilder;
-  queryMapping(value: NonNullable<RuntimeBoundary["queryMapping"]>): BoundaryBuilder;
+  queryMapping(value: QueryMappingDefinition): BoundaryBuilder;
   event(...values: readonly EventDefinition[]): BoundaryBuilder;
   eventCatalog(...values: readonly EventDefinition[]): BoundaryBuilder;
   behavior(...values: readonly BehaviorDefinition[]): BoundaryBuilder;
@@ -651,8 +673,8 @@ export interface BoundaryBuilder {
   initialization(...values: readonly InitializationDefinition[]): BoundaryBuilder;
   response(value: ResponseDefinition): BoundaryBuilder;
   mask(...fields: readonly FieldPath[]): BoundaryBuilder;
-  deprecated(value: NonNullable<RuntimeBoundary["deprecated"]>): BoundaryBuilder;
-  latency(value: NonNullable<RuntimeBoundary["latency"]>): BoundaryBuilder;
+  deprecated(value: DeprecationDefinition): BoundaryBuilder;
+  latency(value: LatencyDefinition): BoundaryBuilder;
   auditFields(enabled?: boolean): BoundaryBuilder;
   strictSchema(enabled?: boolean): BoundaryBuilder;
   state(value: StateDefinition): BoundaryBuilder;

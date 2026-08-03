@@ -31,6 +31,9 @@ import type {
   IdentityDefinition,
   InitializationDefinition,
   QueryDefinition,
+  QueryMappingDefinition,
+  DeprecationDefinition,
+  LatencyDefinition,
   StateDefinition,
 } from "./runtimeModel.js";
 
@@ -63,8 +66,11 @@ export type ComponentSource = Partial<
     | "faults"
     | "identity"
     | "query"
+    | "queryMapping"
     | "initialization"
     | "state"
+    | "deprecated"
+    | "latency"
     | "response"
     | "reactions"
     | "include"
@@ -76,8 +82,11 @@ export type ComponentSource = Partial<
   readonly reducers?: readonly ReducerDefinition[];
   readonly identity?: IdentityDefinition;
   readonly query?: QueryDefinition;
+  readonly queryMapping?: QueryMappingDefinition;
   readonly initialization?: readonly InitializationDefinition[];
   readonly state?: StateDefinition;
+  readonly deprecated?: DeprecationDefinition;
+  readonly latency?: LatencyDefinition;
   readonly response?: ResponseDefinition;
   readonly mask?: readonly FieldPath[];
   readonly faults?: readonly FaultDefinition[];

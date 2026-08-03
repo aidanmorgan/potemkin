@@ -8,6 +8,7 @@ import {
   type IdentityKeyDefinition,
   type ProjectionDefinition,
   type QueryDefinition,
+  type QueryMappingDefinition,
   type StateDefinition,
   type StateFieldType,
   type ReactionDefinition,
@@ -86,6 +87,9 @@ describe("source-neutral TypeScript runtime model builders", () => {
   // @ts-expect-error State metadata types are a closed semantic union.
   const invalidStateFieldType: StateFieldType = "date";
   void invalidStateFieldType;
+  // @ts-expect-error Query mappings use typed predicates, not CEL strings.
+  const rawQueryMapping: QueryMappingDefinition = { active: "state.active == true" };
+  void rawQueryMapping;
 
   it("preserves payload inference through incremental event builder calls", () => {
     const inferred = event(eventType("Inferred"))
