@@ -1,4 +1,4 @@
-import { PotemkinConfigure, boundary, factoryName, simulation } from "potemkin/sdk";
+import { PotemkinConfigure, boundary, factoryName, linkRelation, simulation } from "potemkin/sdk";
 import type { QueryContext } from "potemkin/sdk";
 
 const query = {
@@ -21,7 +21,7 @@ const query = {
 
 const order = boundary("Order", "/orders")
   .fallbackOverride(true)
-  .response({ hateoas: [{ rel: "self", href: "/orders" }] })
+  .response({ hateoas: [{ rel: linkRelation("self"), href: "/orders" }] })
   .query(query)
   .initialization(
     { id: "order-1", score: 1, active: true },

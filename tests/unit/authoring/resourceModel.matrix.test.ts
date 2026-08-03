@@ -36,7 +36,7 @@ const fullResource: ResourceDefinition = {
   eventCatalog: [{ type: eventType("OrderCreated"), payload: {} }],
   reducers: [{ on: eventType("OrderCreated"), apply: () => [] }],
   initialization: [{ state: { id: "seed-1" } }],
-  response: { mask: ["secret"] },
+  response: { mask: [fieldPath(field("secret"))] },
   mask: [fieldPath(field("internal"))],
   auditFields: true,
   deprecated: { date: "2026-01-01" },

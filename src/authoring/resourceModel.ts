@@ -1,10 +1,5 @@
 import type { OpenApiDoc } from "../contract/loader.js";
-import type {
-  RuntimeBehavior,
-  RuntimeFault,
-  RuntimeIdentity,
-  RuntimeResponsePolicy,
-} from "../model/runtime.js";
+import type { RuntimeBehavior, RuntimeFault, RuntimeIdentity } from "../model/runtime.js";
 import type { ComposableBoundary } from "./composition.js";
 import type {
   RuntimeDeprecation,
@@ -21,6 +16,7 @@ import type {
   FaultDefinition,
   ReducerDefinition,
   ReactionDefinition,
+  ResponseDefinition,
 } from "./runtimeModel.js";
 import type {
   ContractPath,
@@ -53,7 +49,7 @@ export interface ResourceDefinition {
   readonly resource: ResourceName;
   readonly schema: SchemaReference;
   readonly identity?: RuntimeIdentity;
-  readonly response?: RuntimeResponsePolicy;
+  readonly response?: ResponseDefinition;
   readonly query?: RuntimeQueryPolicy;
   readonly eventCatalog: readonly EventDefinition[];
   readonly reducers: readonly ReducerDefinition[];

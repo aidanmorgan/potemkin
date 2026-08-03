@@ -6,6 +6,7 @@ import {
   type FaultDefinition,
   type ProjectionDefinition,
   type ReactionDefinition,
+  type ResponseDefinition,
   type SagaDefinition,
   type TypedEventContext,
 } from "../../../src/authoring/runtimeModel.js";
@@ -46,6 +47,12 @@ describe("source-neutral TypeScript runtime model builders", () => {
   // @ts-expect-error Saga names use the canonical sagaName constructor.
   const rawSagaName: SagaDefinition["name"] = "raw-saga";
   void rawSagaName;
+  // @ts-expect-error Response masks use the canonical fieldPath constructor.
+  const rawResponseMask: NonNullable<ResponseDefinition["mask"]>[number] = "secret";
+  void rawResponseMask;
+  // @ts-expect-error HATEOAS relations use the canonical linkRelation constructor.
+  const rawResponseRelation: NonNullable<ResponseDefinition["hateoas"]>[number]["rel"] = "self";
+  void rawResponseRelation;
 
   it("preserves payload inference through incremental event builder calls", () => {
     const inferred = event(eventType("Inferred"))

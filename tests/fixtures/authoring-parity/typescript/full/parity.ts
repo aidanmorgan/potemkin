@@ -14,6 +14,7 @@ import {
   sagaStepName,
   factoryName,
   helperName,
+  linkRelation,
   operationId,
   reducerRule,
   simulation,
@@ -37,7 +38,7 @@ export class AuthoringParityFactory {
       .identity({
         generate: ({ command }) => String(command.payload["id"]),
       })
-      .response({ hateoas: [{ rel: "self", href: "/orders" }] })
+      .response({ hateoas: [{ rel: linkRelation("self"), href: "/orders" }] })
       .mask("internalNote")
       .eventCatalog(
         event("OrderCreatedFirst", {
@@ -114,7 +115,7 @@ export class AuthoringParityFactory {
       .schema(schemaReference("Order"))
       .identity({ key: { from: "path", name: "id" } })
       .response({
-        hateoas: [{ rel: "self", href: "/orders/{id}" }],
+        hateoas: [{ rel: linkRelation("self"), href: "/orders/{id}" }],
         deprecated: {
           date: "2026-01-01T00:00:00Z",
           sunset: "2027-01-01T00:00:00Z",

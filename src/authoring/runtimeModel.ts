@@ -16,6 +16,7 @@ import type {
   RuntimeEvent,
   RuntimeFault,
   RuntimeGuard,
+  RuntimeLink,
   RuntimePolicies,
   RuntimePredicate,
   RuntimeReaction,
@@ -124,7 +125,13 @@ export type SecondaryCommandDefinition = NonNullable<
   BehaviorDefinition["dispatchCommands"]
 >[number];
 export type IdentityDefinition = NonNullable<RuntimeBoundary["identity"]>;
-export type ResponseDefinition = RuntimeResponsePolicy;
+export type ResponseLinkDefinition = Omit<RuntimeLink, "rel"> & {
+  readonly rel: LinkRelation;
+};
+export type ResponseDefinition = Omit<RuntimeResponsePolicy, "mask" | "hateoas"> & {
+  readonly mask?: readonly FieldPath[];
+  readonly hateoas?: readonly ResponseLinkDefinition[];
+};
 export type FaultDefinition = Omit<RuntimeFault, "name" | "requiredScopes"> & {
   readonly name: FaultName;
   readonly requiredScopes?: readonly ScopeName[];
@@ -168,6 +175,7 @@ export type BoundaryDefinition = Omit<
   | "reducers"
   | "mask"
   | "faults"
+  | "response"
   | "reactions"
 > & {
   readonly boundary: BoundaryName;
@@ -176,6 +184,7 @@ export type BoundaryDefinition = Omit<
   readonly eventCatalog: readonly EventDefinition[];
   readonly behaviors: readonly BehaviorDefinition[];
   readonly reducers: readonly ReducerDefinition[];
+  readonly response?: ResponseDefinition;
   readonly mask?: readonly FieldPath[];
   readonly faults?: readonly FaultDefinition[];
   readonly reactions?: readonly ReactionDefinition[];

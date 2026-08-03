@@ -7,6 +7,7 @@ import {
   faultName,
   field,
   fieldPath,
+  linkRelation,
   operationId,
   pathParameter,
   pathSegment,
@@ -133,7 +134,7 @@ function definition(): SimulationDefinition {
         String(command.payload["id"]),
       ),
     })
-    .response({ hateoas: [{ rel: "self", href: "/orders" }] })
+    .response({ hateoas: [{ rel: linkRelation("self"), href: "/orders" }] })
     .mask(fieldPath(field("internalNote")))
     .eventCatalog(
       event(eventType("OrderCreatedFirst"), {
@@ -221,7 +222,7 @@ function definition(): SimulationDefinition {
     .schema(schemaReference("Order"))
     .identity({ key: { from: "path", name: "id" } })
     .response({
-      hateoas: [{ rel: "self", href: "/orders/{id}" }],
+      hateoas: [{ rel: linkRelation("self"), href: "/orders/{id}" }],
       deprecated: {
         date: "2026-01-01T00:00:00Z",
         sunset: "2027-01-01T00:00:00Z",
