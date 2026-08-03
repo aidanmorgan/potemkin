@@ -45,6 +45,8 @@ import type {
   BoundaryName,
   BehaviorName,
   ContractPath,
+  EventReference,
+  EventSelector,
   EventType,
   FaultName,
   FieldPath,
@@ -123,10 +125,17 @@ export type FaultDefinition = Omit<RuntimeFault, "name" | "requiredScopes"> & {
   readonly name: FaultName;
   readonly requiredScopes?: readonly ScopeName[];
 };
-export type ReactionDefinition = RuntimeReaction;
+export type ReactionDefinition = Omit<RuntimeReaction, "on" | "boundary" | "emit"> & {
+  readonly on: EventSelector;
+  readonly boundary: BoundaryName;
+  readonly emit: EventType;
+};
 export type WebhookDefinition = RuntimeWebhook;
 export type SagaDefinition = RuntimeSaga;
-export type ProjectionDefinition = RuntimeDerivedProjection;
+export type ProjectionDefinition = Omit<RuntimeDerivedProjection, "subscribe" | "reduce"> & {
+  readonly subscribe: readonly EventSelector[];
+  readonly reduce: readonly ReducerDefinition[];
+};
 export type BoundaryDefinition = Omit<
   ComposableBoundary,
   | "boundary"
@@ -137,6 +146,7 @@ export type BoundaryDefinition = Omit<
   | "reducers"
   | "mask"
   | "faults"
+  | "reactions"
 > & {
   readonly boundary: BoundaryName;
   readonly contractPath: ContractPath;
@@ -146,9 +156,17 @@ export type BoundaryDefinition = Omit<
   readonly reducers: readonly ReducerDefinition[];
   readonly mask?: readonly FieldPath[];
   readonly faults?: readonly FaultDefinition[];
+  readonly reactions?: readonly ReactionDefinition[];
 };
-export type GlobalDefinition = Omit<RuntimePolicies, "faults"> & {
+export type GlobalDefinition = Omit<
+  RuntimePolicies,
+  "faults" | "reactions" | "derivedProjections" | "sagas" | "webhooks"
+> & {
   readonly faults?: readonly FaultDefinition[];
+  readonly reactions?: readonly ReactionDefinition[];
+  readonly derivedProjections?: readonly ProjectionDefinition[];
+  readonly sagas?: readonly SagaDefinition[];
+  readonly webhooks?: readonly WebhookDefinition[];
 };
 
 export interface SimulationDefinition {

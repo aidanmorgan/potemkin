@@ -2,6 +2,7 @@ import {
   boundaryName,
   behaviorName,
   contractPath,
+  eventReference,
   eventType,
   faultName,
   operationId,
@@ -256,9 +257,9 @@ function directDefinition() {
           {
             name: "OrderSummary",
             key: ({ event }: ProjectionContext) => event?.aggregateId ?? "",
-            subscribe: ["Order:OrderCreated"],
+            subscribe: [eventReference(boundaryName("Order"), eventType("OrderCreated"))],
             reduce: [
-              reducerRule(eventType("Order:OrderCreated"))
+              reducerRule(eventType("OrderCreated"))
                 .apply(({ state, event }) => ({
                   ...state,
                   name: String(event.payload.name),

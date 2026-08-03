@@ -2,6 +2,7 @@ import {
   boundaryName,
   behaviorName,
   contractPath,
+  eventReference,
   eventType,
   operationId,
   pathSegment,
@@ -117,7 +118,7 @@ function directDefinition() {
           {
             name: "ItemSummary",
             key: ({ event: emitted }) => emitted?.aggregateId ?? "",
-            subscribe: ["Item:ItemCreated"],
+            subscribe: [eventReference(boundaryName("Item"), eventType("ItemCreated"))],
             reduce: [
               reducerRule(eventType("ItemCreated"))
                 .apply(({ state, event: emitted }) => ({

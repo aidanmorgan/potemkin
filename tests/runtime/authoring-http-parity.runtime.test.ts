@@ -2,6 +2,7 @@ import {
   boundaryName,
   behaviorName,
   contractPath,
+  eventReference,
   eventType,
   faultName,
   field,
@@ -369,7 +370,10 @@ function definition(): SimulationDefinition {
               "projection",
               ({ event }: ProjectionContext) => event?.aggregateId ?? "",
             ),
-            subscribe: ["Order:OrderCreated", "OrderById:OrderRenamed"],
+            subscribe: [
+              eventReference(boundaryName("Order"), eventType("OrderCreated")),
+              eventReference(boundaryName("OrderById"), eventType("OrderRenamed")),
+            ],
             reduce: [
               reducerRule(eventType("OrderCreated"))
                 .apply(({ state, event }) => ({
@@ -391,7 +395,7 @@ function definition(): SimulationDefinition {
         reactions: [
           {
             name: "audit-order-creation",
-            on: "Order:OrderCreated",
+            on: eventReference(boundaryName("Order"), eventType("OrderCreated")),
             intent: "creation",
             boundary: boundaryName("Audit"),
             emit: eventType("AuditRecorded"),

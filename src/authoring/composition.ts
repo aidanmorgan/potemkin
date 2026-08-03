@@ -27,6 +27,7 @@ import type {
   EventDefinition,
   FaultDefinition,
   ReducerDefinition,
+  ReactionDefinition,
 } from "./runtimeModel.js";
 
 /**
@@ -56,6 +57,7 @@ export type ComponentSource = Partial<
     | "reducers"
     | "mask"
     | "faults"
+    | "reactions"
     | "include"
   >
 > & {
@@ -65,6 +67,7 @@ export type ComponentSource = Partial<
   readonly reducers?: readonly ReducerDefinition[];
   readonly mask?: readonly FieldPath[];
   readonly faults?: readonly FaultDefinition[];
+  readonly reactions?: readonly ReactionDefinition[];
   readonly include?: readonly ComponentInclude[];
 };
 

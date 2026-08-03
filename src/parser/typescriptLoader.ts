@@ -167,5 +167,9 @@ function mergePolicies(policies: readonly GlobalDefinition[]): GlobalDefinition 
   return {
     ...merged,
     faults: policies.flatMap((policy) => policy.faults ?? []),
+    reactions: policies.flatMap((policy) => policy.reactions ?? []),
+    derivedProjections: policies.flatMap((policy) => policy.derivedProjections ?? []),
+    sagas: policies.flatMap((policy) => policy.sagas ?? []),
+    webhooks: policies.flatMap((policy) => policy.webhooks ?? []),
   };
 }

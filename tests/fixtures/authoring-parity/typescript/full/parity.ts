@@ -1,11 +1,14 @@
 import {
   PotemkinConfigure,
   boundary,
+  boundaryName,
   behaviorName,
   behavior,
   defineGlobal,
   defineHelper,
   event,
+  eventReference,
+  eventType,
   faultName,
   factoryName,
   helperName,
@@ -399,7 +402,10 @@ export class AuthoringParityFactory {
             {
               name: "OrderSummary",
               key: ({ event: emitted }) => emitted?.aggregateId ?? "",
-              subscribe: ["Order:OrderCreated", "OrderById:OrderRenamed"],
+              subscribe: [
+                eventReference(boundaryName("Order"), eventType("OrderCreated")),
+                eventReference(boundaryName("OrderById"), eventType("OrderRenamed")),
+              ],
               reduce: [
                 reducerRule("OrderCreated")
                   .apply(({ state, event: emitted }) => ({
@@ -421,7 +427,7 @@ export class AuthoringParityFactory {
           reactions: [
             {
               name: "audit-order-creation",
-              on: "Order:OrderCreated",
+              on: eventReference(boundaryName("Order"), eventType("OrderCreated")),
               intent: "creation",
               boundary: "Audit",
               emit: "AuditRecorded",

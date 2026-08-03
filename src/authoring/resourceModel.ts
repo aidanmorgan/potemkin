@@ -3,7 +3,6 @@ import type {
   RuntimeBehavior,
   RuntimeFault,
   RuntimeIdentity,
-  RuntimeReaction,
   RuntimeResponsePolicy,
 } from "../model/runtime.js";
 import type { ComposableBoundary } from "./composition.js";
@@ -21,6 +20,7 @@ import type {
   EventDefinition,
   FaultDefinition,
   ReducerDefinition,
+  ReactionDefinition,
 } from "./runtimeModel.js";
 import type {
   ContractPath,
@@ -57,7 +57,6 @@ export interface ResourceDefinition {
   readonly query?: RuntimeQueryPolicy;
   readonly eventCatalog: readonly EventDefinition[];
   readonly reducers: readonly ReducerDefinition[];
-  readonly reactions?: readonly RuntimeReaction[];
   readonly initialization?: readonly JsonObject[];
   readonly operations: readonly ResourceOperation[];
   readonly mask?: readonly FieldPath[];
@@ -67,6 +66,7 @@ export interface ResourceDefinition {
   readonly state?: RuntimeStateSchema;
   readonly strictSchema?: boolean;
   readonly faults?: readonly FaultDefinition[];
+  readonly reactions?: readonly ReactionDefinition[];
 }
 
 interface IndexedOperation {

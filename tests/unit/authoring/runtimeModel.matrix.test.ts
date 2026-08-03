@@ -4,6 +4,8 @@ import {
   event,
   simulation,
   type FaultDefinition,
+  type ProjectionDefinition,
+  type ReactionDefinition,
   type TypedEventContext,
 } from "../../../src/authoring/runtimeModel.js";
 import { defineComponent, use } from "../../../src/authoring/composition.js";
@@ -15,6 +17,7 @@ import {
   componentName,
   contractPath,
   eventType,
+  eventReference,
   faultName,
   field,
   fieldPath,
@@ -33,6 +36,12 @@ describe("source-neutral TypeScript runtime model builders", () => {
   // @ts-expect-error Fault names use the canonical faultName constructor.
   const rawFaultName: FaultDefinition["name"] = "raw-fault";
   void rawFaultName;
+  // @ts-expect-error Cross-boundary event references use eventReference(...).
+  const rawReactionEvent: ReactionDefinition["on"] = "Orders:Created";
+  void rawReactionEvent;
+  // @ts-expect-error Projection subscriptions use eventType(...) or eventReference(...).
+  const rawProjectionEvent: ProjectionDefinition["subscribe"][number] = "Orders:Created";
+  void rawProjectionEvent;
 
   it("preserves payload inference through incremental event builder calls", () => {
     const inferred = event(eventType("Inferred"))
@@ -139,13 +148,15 @@ describe("source-neutral TypeScript runtime model builders", () => {
     };
     const reaction = {
       boundary: boundaryName("Audit"),
-      on: "Created",
-      emit: "Recorded",
+      on: eventType("Created"),
+      emit: eventType("Recorded"),
       intent: "creation" as const,
       when: () => true,
       target: () => "audit-1",
       payload: { source: () => "test" },
     };
+    const projectionSubscription = eventReference(boundaryName("Orders"), eventType("Created"));
+    expect(projectionSubscription).toBe("Orders:Created");
 
     const definition = boundary(boundaryName("Orders"), contractPath(pathSegment("orders")))
       .schema(schemaReference("Order"))

@@ -135,20 +135,20 @@ function typescriptDefinition() {
           key: expression("projection", ({ event }: ProjectionContext) =>
             String(event?.aggregateId),
           ),
-          subscribe: ["BaselineEntityCreatedEvent", "OrderCreated"],
+          subscribe: [eventType("BaselineEntityCreatedEvent"), eventType("OrderCreated")],
           reduce: [
-            {
-              on: "BaselineEntityCreatedEvent",
-              apply: ({ event: emitted }: RuntimeReducerContext) => [
-                { op: "add", path: "/label", value: emitted.payload.label },
-              ],
-            },
-            {
-              on: "OrderCreated",
-              apply: ({ event: emitted }: RuntimeReducerContext) => [
-                { op: "add", path: "/label", value: emitted.payload.label },
-              ],
-            },
+            reducerRule(eventType("BaselineEntityCreatedEvent"))
+              .apply(({ state, event: emitted }) => ({
+                ...state,
+                label: emitted.payload.label,
+              }))
+              .build(),
+            reducerRule(eventType("OrderCreated"))
+              .apply(({ state, event: emitted }) => ({
+                ...state,
+                label: emitted.payload.label,
+              }))
+              .build(),
           ],
         }),
       ],

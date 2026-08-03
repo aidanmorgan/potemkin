@@ -26,6 +26,8 @@ export type ScopeName = PotemkinReference<"scope-name">;
 export type LinkRelation = PotemkinReference<"link-relation">;
 export type OperationId = PotemkinReference<"operation-id">;
 export type EventType = PotemkinReference<"event-type">;
+export type EventReference = PotemkinReference<"event-reference">;
+export type EventSelector = EventType | EventReference;
 export type ContractPath = PotemkinReference<"contract-path">;
 export type SchemaReference = PotemkinReference<"schema-reference">;
 export type FieldPath = PotemkinReference<"field-path">;
@@ -106,6 +108,11 @@ export function operationId(value: string): OperationId {
 
 export function eventType(value: string): EventType {
   return reference("event-type", value);
+}
+
+/** Identify an event emitted by a specific boundary for cross-boundary policies. */
+export function eventReference(boundary: BoundaryName, event: EventType): EventReference {
+  return reference("event-reference", `${boundary}:${event}`);
 }
 
 export function schemaReference(value: string): SchemaReference {

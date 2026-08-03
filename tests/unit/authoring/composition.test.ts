@@ -10,6 +10,7 @@ import {
   behaviorName,
   componentName,
   contractPath,
+  eventReference,
   eventType,
   operationId,
   pathSegment,
@@ -162,8 +163,12 @@ describe("direct TypeScript component composition", () => {
         strictSchema: true,
         faults: [],
         reactions: [
-          { boundary: boundaryName("Part"), on: "Part:Created", emit: "Recorded" },
-          { boundary: boundaryName("Part"), on: "Created", emit: "Recorded" },
+          {
+            boundary: boundaryName("Part"),
+            on: eventReference(boundaryName("Part"), eventType("Created")),
+            emit: eventType("Recorded"),
+          },
+          { boundary: boundaryName("Part"), on: eventType("Created"), emit: eventType("Recorded") },
         ],
         export: { states: [] },
       };

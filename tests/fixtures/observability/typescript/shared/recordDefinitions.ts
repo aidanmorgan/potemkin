@@ -1,4 +1,13 @@
-import { behaviorName, boundary, defineGlobal, event, reducerRule } from "potemkin/sdk";
+import {
+  behaviorName,
+  boundary,
+  boundaryName,
+  defineGlobal,
+  event,
+  eventReference,
+  eventType,
+  reducerRule,
+} from "potemkin/sdk";
 
 interface RecordState {
   id: string;
@@ -162,7 +171,7 @@ export function bulkGlobal() {
       {
         name: "BulkSummary",
         key: ({ event }) => event?.aggregateId ?? "",
-        subscribe: ["RecordBatch:RecordCreated"],
+        subscribe: [eventReference(boundaryName("RecordBatch"), eventType("RecordCreated"))],
         reduce: [
           reducerRule("RecordCreated")
             .apply(({ state, event }) => ({
@@ -177,7 +186,7 @@ export function bulkGlobal() {
     reactions: [
       {
         name: "audit-record-creation",
-        on: "RecordBatch:RecordCreated",
+        on: eventReference(boundaryName("RecordBatch"), eventType("RecordCreated")),
         intent: "creation",
         boundary: "BulkAudit",
         emit: "BulkAuditRecorded",
