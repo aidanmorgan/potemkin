@@ -7,9 +7,12 @@ import {
   defineGlobal,
   event,
   eventType,
+  field,
+  fieldPath,
   faultName,
   behaviorName,
   guardName,
+  linkRelation,
   operationId,
   pathSegment,
   reducerRule,
@@ -132,6 +135,18 @@ const componentSource: ComponentSource = {
 };
 const component = defineComponent(componentName("ContractDefaults"), componentSource);
 
+const typedPolicies = boundary(boundaryName("TypedPolicies"), contractPath(pathSegment("policies")))
+  .identity({
+    generate: ({ request }) => String(request?.headers["x-actor"] ?? "anonymous"),
+    key: { from: "path", name: "policyId" },
+  })
+  .response({
+    mask: [fieldPath(field("secret"))],
+    hateoas: [{ rel: linkRelation("self"), href: ({ command }) => command.path }],
+    status: () => 201,
+    headers: { "x-potemkin": () => "typed" },
+  });
+
 const invalidComponentSource: ComponentSource = {
   export: {
     states: [
@@ -151,5 +166,6 @@ const invalidComponentSource: ComponentSource = {
 void contract;
 void policies;
 void component;
+void typedPolicies;
 void invalidComponentSource;
 void payloadShapeIsInferred;

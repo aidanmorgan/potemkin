@@ -15,13 +15,11 @@ import type {
   RuntimeDependencies,
   RuntimeDerivedProjection,
   RuntimeEvent,
-  RuntimeLink,
   RuntimePredicate,
   RuntimeReaction,
   RuntimeReducer,
   RuntimeReducerContext,
   RuntimeResponse,
-  RuntimeResponsePolicy,
   RuntimeSaga,
   RuntimeSagaCompensation,
   RuntimeSagaStep,
@@ -161,21 +159,25 @@ export type IdentityKeyDefinition =
       readonly name?: string;
       readonly pointer: string;
     };
-export type IdentityDefinition = Omit<NonNullable<RuntimeBoundary["identity"]>, "key"> & {
+export interface IdentityDefinition {
+  readonly generate?: (input: Readonly<IdentityContext>) => string;
   readonly key?: IdentityKeyDefinition;
-};
-export type ResponseLinkDefinition = Omit<RuntimeLink, "rel"> & {
+}
+export interface ResponseLinkDefinition {
   readonly rel: LinkRelation;
-};
-export type ResponseDefinition = Omit<
-  RuntimeResponsePolicy,
-  "mask" | "hateoas" | "deprecated" | "latency"
-> & {
+  readonly href: RuntimeValue<ResponseContext, string>;
+  readonly condition?: RuntimePredicate<ResponseContext>;
+}
+export interface ResponseDefinition {
+  readonly transform?: (input: Readonly<ResponseContext>) => RuntimeResponse | null | undefined;
   readonly mask?: readonly FieldPath[];
   readonly hateoas?: readonly ResponseLinkDefinition[];
   readonly deprecated?: DeprecationDefinition;
   readonly latency?: LatencyDefinition;
-};
+  readonly auditFields?: boolean;
+  readonly status?: RuntimeValue<ResponseContext, number>;
+  readonly headers?: Readonly<Record<string, RuntimeValue<ResponseContext, string>>>;
+}
 export type FaultErrorClass =
   | "timeout"
   | "throttle"
