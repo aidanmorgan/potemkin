@@ -20,6 +20,8 @@ export type ResourceName = PotemkinReference<"resource-name">;
 export type ComponentName = PotemkinReference<"component-name">;
 export type HelperName = PotemkinReference<"helper-name">;
 export type FactoryName = PotemkinReference<"factory-name">;
+export type ScopeName = PotemkinReference<"scope-name">;
+export type LinkRelation = PotemkinReference<"link-relation">;
 export type OperationId = PotemkinReference<"operation-id">;
 export type EventType = PotemkinReference<"event-type">;
 export type ContractPath = PotemkinReference<"contract-path">;
@@ -78,6 +80,14 @@ export function helperName(value: string): HelperName {
 
 export function factoryName(value: string): FactoryName {
   return reference("factory-name", value);
+}
+
+export function scopeName(value: string): ScopeName {
+  return reference("scope-name", value);
+}
+
+export function linkRelation(value: string): LinkRelation {
+  return reference("link-relation", value);
 }
 
 export function operationId(value: string): OperationId {

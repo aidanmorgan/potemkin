@@ -7,6 +7,7 @@ import {
   factoryName,
   reducerRule,
   simulation,
+  scopeName,
   type FactoryContext,
 } from "potemkin/sdk";
 
@@ -46,7 +47,7 @@ const record = boundary("Record", "/records")
       name: "create-record",
       operationId: "createRecord",
       condition: () => true,
-      requiredScopes: ["writer"],
+      requiredScopes: [scopeName("writer")],
       emit: "RecordCreated",
     }),
   )

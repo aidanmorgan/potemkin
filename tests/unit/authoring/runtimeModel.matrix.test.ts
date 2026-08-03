@@ -16,10 +16,12 @@ import {
   field,
   fieldPath,
   helperName,
+  linkRelation,
   operationId,
   pathSegment,
   resourceName,
   schemaReference,
+  scopeName,
 } from "../../../src/authoring/references.js";
 import type { RuntimeGuard } from "../../../src/model/runtime.js";
 import type { JsonObject } from "../../../src/types.js";
@@ -81,10 +83,10 @@ describe("source-neutral TypeScript runtime model builders", () => {
       .method("POST")
       .headers({ "x-test": "yes" })
       .requires(guard)
-      .scopes("write", "audit")
+      .scopes(scopeName("write"), scopeName("audit"))
       .emit(eventType("Created"))
       .postcondition(() => true)
-      .link("self", () => true)
+      .link(linkRelation("self"), () => true)
       .status(201)
       .build();
     expect(emitted).toMatchObject({
@@ -93,6 +95,11 @@ describe("source-neutral TypeScript runtime model builders", () => {
       responseStatus: 201,
       requiredScopes: ["write", "audit"],
     });
+
+    // @ts-expect-error Scope values use the canonical scopeName constructor.
+    behavior("raw-scope").scopes("write");
+    // @ts-expect-error Link relations use the canonical linkRelation constructor.
+    behavior("raw-link").link("self");
 
     // @ts-expect-error The public authoring API uses canonical uppercase HTTP methods.
     behavior("lowercase-method").method("post");

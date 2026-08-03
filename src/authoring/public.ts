@@ -10,11 +10,13 @@ import {
   field,
   fieldPath,
   helperName,
+  linkRelation,
   operationId,
   pathParameter,
   pathSegment,
   resourceName,
   schemaReference,
+  scopeName,
   TypeScriptReferenceError,
 } from "./references.js";
 import type { TypeScriptHelper, TypeScriptHelperDefinition } from "./helpers.js";
@@ -64,8 +66,10 @@ import type {
   FieldPathSegment,
   HelperName,
   HttpMethod,
+  LinkRelation,
   OperationId,
   ResourceName,
+  ScopeName,
   SchemaReference,
 } from "./references.js";
 
@@ -126,10 +130,12 @@ export {
   field,
   fieldPath,
   helperName,
+  linkRelation,
   operationId,
   pathParameter,
   pathSegment,
   resourceName,
+  scopeName,
   schemaReference,
   TypeScriptReferenceError,
   defineHelper,
@@ -176,8 +182,10 @@ export type {
   FieldPathSegment,
   HelperName,
   HttpMethod,
+  LinkRelation,
   OperationId,
   ResourceName,
+  ScopeName,
   SchemaReference,
 };
 

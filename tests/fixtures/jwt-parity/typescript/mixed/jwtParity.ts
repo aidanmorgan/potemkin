@@ -6,6 +6,7 @@ import {
   factoryName,
   reducerRule,
   simulation,
+  scopeName,
   type FactoryContext,
 } from "potemkin/sdk";
 
@@ -24,7 +25,7 @@ const record = boundary("JwtRecord", "/jwt-records")
       name: "create-jwt-record",
       operationId: "createJwtRecord",
       condition: () => true,
-      requiredScopes: ["writer"],
+      requiredScopes: [scopeName("writer")],
       emit: "JwtRecordCreated",
     }),
   )

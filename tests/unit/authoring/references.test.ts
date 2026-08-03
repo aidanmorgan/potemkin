@@ -12,6 +12,8 @@ import {
   pathSegment,
   resourceName,
   schemaReference,
+  scopeName,
+  linkRelation,
   TypeScriptReferenceError,
 } from "../../../src/authoring/references.js";
 import { sdk } from "../../../src/sdk/index.js";
@@ -22,6 +24,8 @@ describe("TypeScript semantic references", () => {
     expect(componentName("OrderComponents")).toBe("OrderComponents");
     expect(helperName("formatOrder")).toBe("formatOrder");
     expect(factoryName("order-scenario")).toBe("order-scenario");
+    expect(scopeName("orders:write")).toBe("orders:write");
+    expect(linkRelation("self")).toBe("self");
     expect(resourceName("Order")).toBe("Order");
     expect(operationId("createOrder")).toBe("createOrder");
     expect(eventType("OrderCreated")).toBe("OrderCreated");
@@ -44,6 +48,8 @@ describe("TypeScript semantic references", () => {
     expect(sdk.componentName("OrderComponents")).toBe("OrderComponents");
     expect(sdk.helperName("formatOrder")).toBe("formatOrder");
     expect(sdk.factoryName("order-scenario")).toBe("order-scenario");
+    expect(sdk.scopeName("orders:write")).toBe("orders:write");
+    expect(sdk.linkRelation("self")).toBe("self");
     expect(sdk.resourceName("Order")).toBe("Order");
     expect(sdk.contractPath(sdk.pathSegment("orders"))).toBe("/orders");
     expect(sdk.eventType("OrderCreated")).toBe("OrderCreated");

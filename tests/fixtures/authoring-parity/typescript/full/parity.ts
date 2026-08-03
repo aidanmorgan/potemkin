@@ -10,6 +10,7 @@ import {
   reducerRule,
   simulation,
   schemaReference,
+  scopeName,
   type FactoryContext,
 } from "potemkin/sdk";
 
@@ -316,7 +317,7 @@ export class AuthoringParityFactory {
             {
               name: "guarded-scoped-fault",
               headers: { "x-parity-guarded": "on" },
-              requiredScopes: ["writer"],
+              requiredScopes: [scopeName("writer")],
               requires: [
                 {
                   name: "parity-required-header",

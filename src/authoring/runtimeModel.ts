@@ -48,7 +48,9 @@ import type {
   EventType,
   FieldPath,
   HttpMethod,
+  LinkRelation,
   OperationId,
+  ScopeName,
   SchemaReference,
 } from "./references.js";
 
@@ -84,10 +86,18 @@ export type TypedEventDefinition<
 
 export interface BehaviorDefinition extends Omit<
   RuntimeBehavior,
-  "operationId" | "emit" | "emitWhen" | "dispatchCommands" | "method"
+  | "operationId"
+  | "emit"
+  | "emitWhen"
+  | "dispatchCommands"
+  | "method"
+  | "requiredScopes"
+  | "linkName"
 > {
   readonly operationId: OperationId;
   readonly method?: HttpMethod;
+  readonly requiredScopes?: readonly ScopeName[];
+  readonly linkName?: LinkRelation;
   readonly emit?: EventType;
   readonly emitWhen?: readonly (Omit<NonNullable<RuntimeBehavior["emitWhen"]>[number], "event"> & {
     readonly event: EventType;
@@ -387,7 +397,7 @@ export interface BehaviorBuilder<
   method(method: HttpMethod): BehaviorBuilder<Payload, State>;
   headers(headers: Readonly<Record<string, string>>): BehaviorBuilder<Payload, State>;
   requires(...guards: readonly RuntimeGuard[]): BehaviorBuilder<Payload, State>;
-  scopes(...scopes: readonly string[]): BehaviorBuilder<Payload, State>;
+  scopes(...scopes: readonly ScopeName[]): BehaviorBuilder<Payload, State>;
   emit(eventType: EventType): BehaviorBuilder<Payload, State>;
   emitWhen(
     ...emissions: readonly NonNullable<BehaviorDefinition["emitWhen"]>[number][]
@@ -398,7 +408,10 @@ export interface BehaviorBuilder<
   postcondition(
     condition: (input: Readonly<TypedEventContext<Payload, State>>) => boolean,
   ): BehaviorBuilder<Payload, State>;
-  link(name: string, condition?: RuntimeBehavior["linkCondition"]): BehaviorBuilder<Payload, State>;
+  link(
+    name: LinkRelation,
+    condition?: RuntimeBehavior["linkCondition"],
+  ): BehaviorBuilder<Payload, State>;
   status(status: number): BehaviorBuilder<Payload, State>;
   build(): BehaviorDefinition;
 }

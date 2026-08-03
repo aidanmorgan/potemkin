@@ -40,8 +40,10 @@ import type {
   FactoryName,
   HelperName,
   HttpMethod,
+  LinkRelation,
   OperationId,
   ResourceName,
+  ScopeName,
   SchemaReference,
 } from "../authoring/references.js";
 import type {
@@ -98,11 +100,13 @@ const {
   fieldPath,
   factoryName,
   helperName,
+  linkRelation,
   operationId,
   pathParameter,
   pathSegment,
   resourceName,
   schemaReference,
+  scopeName,
   TypeScriptReferenceError,
 } = references;
 
@@ -145,10 +149,12 @@ export const sdk = Object.freeze({
   fieldPath,
   factoryName,
   helperName,
+  linkRelation,
   operationId,
   pathParameter,
   pathSegment,
   resourceName,
+  scopeName,
   schemaReference,
   TypeScriptReferenceError,
   PotemkinConfigure,
@@ -212,8 +218,10 @@ export type {
   FactoryName,
   HelperName,
   HttpMethod,
+  LinkRelation,
   OperationId,
   ResourceName,
+  ScopeName,
   SchemaReference,
 };
 
