@@ -1,4 +1,10 @@
-import { behavior, boundary, event, simulation } from "../../../src/authoring/runtimeModel.js";
+import {
+  behavior,
+  boundary,
+  event,
+  simulation,
+  type TypedEventContext,
+} from "../../../src/authoring/runtimeModel.js";
 import { defineComponent, use } from "../../../src/authoring/composition.js";
 import { defineHelper } from "../../../src/authoring/helpers.js";
 import { defineResource } from "../../../src/authoring/resourceModel.js";
@@ -14,8 +20,30 @@ import {
   schemaReference,
 } from "../../../src/authoring/references.js";
 import type { RuntimeGuard } from "../../../src/model/runtime.js";
+import type { JsonObject } from "../../../src/types.js";
 
 describe("source-neutral TypeScript runtime model builders", () => {
+  it("preserves payload inference through incremental event builder calls", () => {
+    const inferred = event(eventType("Inferred"))
+      .payload({ id: () => "order-1" })
+      .build();
+    expect(inferred.payload.id).toEqual(expect.any(Function));
+
+    const created = event(eventType("Created"))
+      .payload<{ id: string }>({ id: () => "order-1" })
+      .payload<{ total: number }>({ total: () => 42 })
+      .build();
+
+    const idExpression = created.payload.id;
+    if (typeof idExpression === "function") {
+      const id: string = idExpression({} as TypedEventContext<JsonObject>);
+      expect(id).toBe("order-1");
+    }
+    expect(created.payload.total).toEqual(expect.any(Function));
+    // @ts-expect-error Incremental event builders expose only authored payload keys.
+    void created.payload.missing;
+  });
+
   it("builds events and exercises every behavior authoring branch", () => {
     const builtEvent = event(eventType("Created"))
       .payload({ id: () => "id-1" })

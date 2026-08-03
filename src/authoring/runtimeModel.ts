@@ -73,7 +73,7 @@ export type TypedEventDefinition<
   EventPayload extends object,
   CommandPayload extends object = JsonObject,
   State extends object = JsonObject,
-> = EventDefinition & {
+> = Omit<EventDefinition, "payload"> & {
   readonly payload: Readonly<{
     [Key in keyof EventPayload]: RuntimeValue<
       TypedEventContext<CommandPayload, State>,
@@ -280,10 +280,30 @@ function copyValue<T>(value: T): T {
   ) as T;
 }
 
-export interface EventBuilder {
-  payload(values: Readonly<Record<string, RuntimeValue<EventContext, JsonValue>>>): EventBuilder;
-  schemaRef(reference: SchemaReference): EventBuilder;
-  build(): EventDefinition;
+type EventPayloadExpressions<
+  EventPayload extends object,
+  CommandPayload extends object,
+  State extends object,
+> = Readonly<{
+  [Key in keyof EventPayload]: RuntimeValue<
+    TypedEventContext<CommandPayload, State>,
+    EventPayload[Key]
+  >;
+}>;
+
+type MergeEventPayload<Current extends object, Added extends object> = Omit<Current, keyof Added> &
+  Added;
+
+export interface EventBuilder<
+  EventPayload extends object = {},
+  CommandPayload extends object = JsonObject,
+  State extends object = JsonObject,
+> {
+  payload<AddedPayload extends object>(
+    values: EventPayloadExpressions<AddedPayload, CommandPayload, State>,
+  ): EventBuilder<MergeEventPayload<EventPayload, AddedPayload>, CommandPayload, State>;
+  schemaRef(reference: SchemaReference): EventBuilder<EventPayload, CommandPayload, State>;
+  build(): TypedEventDefinition<EventPayload, CommandPayload, State>;
 }
 
 export function event<
@@ -305,16 +325,37 @@ export function event(
   payload: Readonly<Record<string, RuntimeValue<EventContext, JsonValue>>>,
   schemaRef?: SchemaReference,
 ): EventDefinition;
-export function event(type: EventType): EventBuilder;
+export function event<
+  EventPayload extends object = {},
+  CommandPayload extends object = JsonObject,
+  State extends object = JsonObject,
+>(type: EventType): EventBuilder<EventPayload, CommandPayload, State>;
 export function event(
   type: EventType,
   payload: Readonly<Record<string, RuntimeValue<EventContext, JsonValue>>> = {},
   schemaRef?: SchemaReference,
 ): EventDefinition | EventBuilder {
-  const build = (value: EventDefinition): EventBuilder => ({
-    payload: (next) => build({ ...value, payload: { ...value.payload, ...next } }),
-    schemaRef: (reference) => build({ ...value, schemaRef: reference }),
-    build: () => freeze(copyValue(value)),
+  const build = <
+    EventPayload extends object = {},
+    CommandPayload extends object = JsonObject,
+    State extends object = JsonObject,
+  >(
+    value: EventDefinition,
+  ): EventBuilder<EventPayload, CommandPayload, State> => ({
+    payload: <AddedPayload extends object>(
+      next: EventPayloadExpressions<AddedPayload, CommandPayload, State>,
+    ) =>
+      build<MergeEventPayload<EventPayload, AddedPayload>, CommandPayload, State>({
+        ...value,
+        payload: { ...value.payload, ...next } as EventDefinition["payload"],
+      }),
+    schemaRef: (reference) =>
+      build<EventPayload, CommandPayload, State>({
+        ...value,
+        schemaRef: reference,
+      }),
+    build: () =>
+      freeze(copyValue(value)) as TypedEventDefinition<EventPayload, CommandPayload, State>,
   });
   const value: EventDefinition = {
     type,
