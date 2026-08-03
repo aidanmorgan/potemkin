@@ -1,5 +1,6 @@
 import {
   PotemkinConfigure,
+  behaviorName,
   boundary,
   event,
   factoryName,
@@ -32,7 +33,7 @@ export class ValidationControlFactory {
         }),
       )
       .behavior({
-        name: "create-profile",
+        name: behaviorName("create-profile"),
         operationId: "createProfile",
         condition: () => true,
         emit: "ProfileCreated",

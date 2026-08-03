@@ -1,4 +1,4 @@
-import { boundary, event, reducerRule, simulation } from "potemkin/sdk";
+import { behaviorName, boundary, event, reducerRule, simulation } from "potemkin/sdk";
 import { PotemkinConfigure, factoryName } from "potemkin/sdk";
 import { sourceLabel } from "../shared/source-label";
 
@@ -27,7 +27,7 @@ export class ConfiguredWidget {
         }),
       )
       .behavior({
-        name: "createWidget",
+        name: behaviorName("createWidget"),
         operationId: "createWidget",
         condition: () => true,
         emit: "WidgetCreated",

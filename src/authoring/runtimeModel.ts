@@ -44,6 +44,7 @@ import {
 } from "./composition.js";
 import type {
   BoundaryName,
+  BehaviorName,
   ContractPath,
   EventType,
   FieldPath,
@@ -94,6 +95,7 @@ export interface BehaviorDefinition extends Omit<
   | "requiredScopes"
   | "linkName"
 > {
+  readonly name: BehaviorName;
   readonly operationId: OperationId;
   readonly method?: HttpMethod;
   readonly requiredScopes?: readonly ScopeName[];
@@ -417,11 +419,11 @@ export interface BehaviorBuilder<
 }
 
 export function behavior<Payload extends object = JsonObject, State extends object = JsonObject>(
-  name: string,
+  name: BehaviorName,
 ): BehaviorBuilder<Payload, State>;
 export function behavior(value: BehaviorDefinition): BehaviorDefinition;
 export function behavior(
-  valueOrName: string | BehaviorDefinition,
+  valueOrName: BehaviorName | BehaviorDefinition,
 ): BehaviorBuilder | BehaviorDefinition {
   if (typeof valueOrName !== "string") return freeze(copyValue(valueOrName));
   const build = (value: BehaviorDefinition): BehaviorBuilder => ({

@@ -15,6 +15,7 @@ import {
 import { reducerRule } from "../../../src/authoring/nativeReducer.js";
 import {
   boundaryName,
+  behaviorName,
   contractPath,
   eventType,
   operationId,
@@ -69,7 +70,7 @@ function thingDefinition() {
         )
         .behavior(
           behavior({
-            name: "createThing",
+            name: behaviorName("createThing"),
             operationId: operationId("createThing"),
             emit: eventType("ThingCreated"),
           }),

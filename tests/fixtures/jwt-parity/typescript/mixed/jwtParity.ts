@@ -1,6 +1,7 @@
 import {
   PotemkinConfigure,
   behavior,
+  behaviorName,
   boundary,
   event,
   factoryName,
@@ -22,7 +23,7 @@ const record = boundary("JwtRecord", "/jwt-records")
   )
   .behavior(
     behavior({
-      name: "create-jwt-record",
+      name: behaviorName("create-jwt-record"),
       operationId: "createJwtRecord",
       condition: () => true,
       requiredScopes: [scopeName("writer")],

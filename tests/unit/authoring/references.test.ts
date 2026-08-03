@@ -1,4 +1,5 @@
 import {
+  behaviorName,
   boundaryName,
   componentName,
   contractPath,
@@ -21,6 +22,7 @@ import { sdk } from "../../../src/sdk/index.js";
 describe("TypeScript semantic references", () => {
   it("builds canonical identifiers and paths from typed constructors", () => {
     expect(boundaryName("Orders")).toBe("Orders");
+    expect(behaviorName("create-order")).toBe("create-order");
     expect(componentName("OrderComponents")).toBe("OrderComponents");
     expect(helperName("formatOrder")).toBe("formatOrder");
     expect(factoryName("order-scenario")).toBe("order-scenario");
@@ -45,6 +47,7 @@ describe("TypeScript semantic references", () => {
 
   it("publishes the constructors through the supported SDK object", () => {
     expect(sdk.boundaryName("Orders")).toBe("Orders");
+    expect(sdk.behaviorName("create-order")).toBe("create-order");
     expect(sdk.componentName("OrderComponents")).toBe("OrderComponents");
     expect(sdk.helperName("formatOrder")).toBe("formatOrder");
     expect(sdk.factoryName("order-scenario")).toBe("order-scenario");

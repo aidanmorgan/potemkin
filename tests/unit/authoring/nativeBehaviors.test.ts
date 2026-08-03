@@ -1,6 +1,6 @@
 import { behavior, event } from "../../../src/authoring/public.js";
 import type { TypedEventContext, TypedMatchContext } from "../../../src/authoring/runtimeModel.js";
-import { eventType, operationId } from "../../../src/authoring/references.js";
+import { behaviorName, eventType, operationId } from "../../../src/authoring/references.js";
 
 interface CreateCommand {
   customer: { risk: { score: number; flags: string[] } };
@@ -37,7 +37,7 @@ describe("native TypeScript behavior authoring", () => {
     expect(customerId(context)).toBe("manual-review");
     expect(totalLines(context)).toBe(5);
 
-    const definition = behavior<CreateCommand>("createOrder")
+    const definition = behavior<CreateCommand>(behaviorName("createOrder"))
       .operation(operationId("createOrder"))
       .condition(
         ({ payload, state }) =>

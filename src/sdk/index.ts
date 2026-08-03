@@ -31,6 +31,7 @@ import * as resources from "../authoring/resourceModel.js";
 import * as references from "../authoring/references.js";
 import type {
   BoundaryName,
+  BehaviorName,
   ComponentName,
   ContractPath,
   ContractPathSegment,
@@ -93,6 +94,7 @@ const { defineResource } = resources;
 
 const {
   boundaryName,
+  behaviorName,
   componentName,
   contractPath,
   eventType,
@@ -142,6 +144,7 @@ export const sdk = Object.freeze({
   use,
   defineResource,
   boundaryName,
+  behaviorName,
   componentName,
   contractPath,
   eventType,
@@ -209,6 +212,7 @@ export type {
 
 export type {
   BoundaryName,
+  BehaviorName,
   ComponentName,
   ContractPath,
   ContractPathSegment,

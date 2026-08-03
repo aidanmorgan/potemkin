@@ -7,6 +7,7 @@ import {
 } from "../../../src/authoring/composition.js";
 import {
   boundaryName,
+  behaviorName,
   componentName,
   contractPath,
   eventType,
@@ -32,7 +33,7 @@ describe("direct TypeScript component composition", () => {
       ],
       behaviors: [
         {
-          name: "create",
+          name: behaviorName("create"),
           operationId: operationId("createResource"),
           emit: eventType("ResourceCreated"),
           dispatchCommands: [
@@ -76,12 +77,12 @@ describe("direct TypeScript component composition", () => {
       ],
       behaviors: [
         {
-          name: "shared",
+          name: behaviorName("shared"),
           operationId: operationId("included"),
           emit: eventType("SharedEvent"),
         },
         {
-          name: "included-only",
+          name: behaviorName("included-only"),
           operationId: operationId("includedOnly"),
           emit: eventType("IncludedOnly"),
         },
@@ -91,7 +92,7 @@ describe("direct TypeScript component composition", () => {
     const host = boundary(boundaryName("Host"), contractPath(pathSegment("host")))
       .event({ type: eventType("SharedEvent"), payload: {} })
       .behavior({
-        name: "shared",
+        name: behaviorName("shared"),
         operationId: operationId("local"),
         emit: eventType("SharedEvent"),
       })
@@ -139,7 +140,7 @@ describe("direct TypeScript component composition", () => {
         eventCatalog: [{ type: eventType("Created"), payload: {} }],
         behaviors: [
           {
-            name: "dispatch",
+            name: behaviorName("dispatch"),
             operationId: operationId("dispatch"),
             dispatchCommands: [
               {
@@ -209,7 +210,13 @@ describe("direct TypeScript component composition", () => {
     const event = (name: string) =>
       defineComponent(componentName(name), () => ({
         eventCatalog: [{ type: eventType("Shared"), payload: {} }],
-        behaviors: [{ name: "shared", operationId: operationId(name), emit: eventType("Shared") }],
+        behaviors: [
+          {
+            name: behaviorName("shared"),
+            operationId: operationId(name),
+            emit: eventType("Shared"),
+          },
+        ],
         reducers: [],
       }));
     const first = event("First");
@@ -253,7 +260,7 @@ describe("direct TypeScript component composition", () => {
     const alias = defineComponent(componentName("Alias"), () => ({
       behaviors: [
         {
-          name: "alias-dispatch",
+          name: behaviorName("alias-dispatch"),
           operationId: operationId("aliasDispatch"),
           dispatchCommands: [
             {

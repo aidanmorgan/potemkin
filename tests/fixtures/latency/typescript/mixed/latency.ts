@@ -1,6 +1,7 @@
 import {
   PotemkinConfigure,
   boundary,
+  behaviorName,
   defineFault,
   event,
   factoryName,
@@ -27,7 +28,7 @@ function jobBoundary(
       }),
     )
     .behavior({
-      name: operationId,
+      name: behaviorName(operationId),
       operationId,
       condition: () => true,
       emit: eventType,

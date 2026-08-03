@@ -2,6 +2,7 @@ import {
   PotemkinConfigure,
   boundary,
   behavior,
+  behaviorName,
   event,
   factoryName,
   reducerRule,
@@ -24,12 +25,12 @@ const record = boundary("Record", "/records")
   )
   .behavior(
     behavior({
-      name: "list-records",
+      name: behaviorName("list-records"),
       operationId: "listRecords",
       condition: () => true,
     }),
     behavior({
-      name: "create-record",
+      name: behaviorName("create-record"),
       operationId: "createRecord",
       condition: () => true,
       requiredScopes: [scopeName("writer")],

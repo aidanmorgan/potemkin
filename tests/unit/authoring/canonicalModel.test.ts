@@ -12,6 +12,7 @@ import type { EventContext } from "../../../src/model/runtime.js";
 import { TypeScriptAuthoringError } from "../../../src/authoring/errors.js";
 import {
   boundaryName,
+  behaviorName,
   contractPath,
   eventType,
   operationId,
@@ -50,7 +51,7 @@ describe("canonical authored model", () => {
           )
           .behavior(
             behavior({
-              name: "createLedger",
+              name: behaviorName("createLedger"),
               operationId: operationId("createLedger"),
               condition: () => true,
               emit: eventType("LedgerCreated"),

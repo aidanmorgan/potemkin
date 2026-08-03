@@ -1,4 +1,4 @@
-import { boundary, defineGlobal, event, reducerRule } from "potemkin/sdk";
+import { behaviorName, boundary, defineGlobal, event, reducerRule } from "potemkin/sdk";
 
 interface RecordState {
   id: string;
@@ -23,7 +23,7 @@ export function recordBatchBoundary() {
       }),
     )
     .behavior({
-      name: "createRecordBatch",
+      name: behaviorName("createRecordBatch"),
       operationId: "createRecordBatch",
       condition: () => true,
       emit: "RecordCreated",
@@ -80,7 +80,7 @@ export function receiptBoundary() {
       }),
     )
     .behavior({
-      name: "createBulkReceipt",
+      name: behaviorName("createBulkReceipt"),
       operationId: "createBulkReceipt",
       condition: () => true,
       emit: "BulkReceiptCreated",

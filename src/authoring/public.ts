@@ -4,6 +4,7 @@ import * as model from "./runtimeModel.js";
 import { reducerRule } from "./nativeReducer.js";
 import { defineHelper } from "./helpers.js";
 import {
+  behaviorName,
   boundaryName,
   contractPath,
   eventType,
@@ -59,6 +60,7 @@ import type {
 import type { NativeReducer, NativeReducerBuilder, NativeReducerContext } from "./nativeReducer.js";
 import type {
   BoundaryName,
+  BehaviorName,
   ContractPath,
   ContractPathSegment,
   EventType,
@@ -125,6 +127,7 @@ export {
   boundary,
   simulation,
   boundaryName,
+  behaviorName,
   contractPath,
   eventType,
   field,
@@ -175,6 +178,7 @@ export type {
   WebhookDefinition,
   RuntimeHelperDefinition,
   BoundaryName,
+  BehaviorName,
   ContractPath,
   ContractPathSegment,
   EventType,

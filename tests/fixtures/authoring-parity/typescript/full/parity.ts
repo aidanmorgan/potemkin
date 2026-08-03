@@ -1,6 +1,7 @@
 import {
   PotemkinConfigure,
   boundary,
+  behaviorName,
   behavior,
   defineGlobal,
   defineHelper,
@@ -58,7 +59,7 @@ export class AuthoringParityFactory {
       )
       .behavior(
         behavior({
-          name: "create-order",
+          name: behaviorName("create-order"),
           operationId: "createOrder",
           condition: () => true,
           emit: "OrderCreated",
@@ -139,7 +140,7 @@ export class AuthoringParityFactory {
       )
       .behavior(
         behavior({
-          name: "rename-order",
+          name: behaviorName("rename-order"),
           operationId: "renameOrder",
           condition: () => true,
           emit: "OrderRenamed",
@@ -168,7 +169,7 @@ export class AuthoringParityFactory {
       )
       .behavior(
         behavior({
-          name: "create-receipt",
+          name: behaviorName("create-receipt"),
           operationId: "createReceipt",
           condition: () => true,
           emit: "ReceiptCreated",

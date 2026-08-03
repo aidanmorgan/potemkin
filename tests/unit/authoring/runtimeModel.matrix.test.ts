@@ -9,6 +9,7 @@ import { defineComponent, use } from "../../../src/authoring/composition.js";
 import { defineHelper } from "../../../src/authoring/helpers.js";
 import { defineResource } from "../../../src/authoring/resourceModel.js";
 import {
+  behaviorName,
   boundaryName,
   componentName,
   contractPath,
@@ -49,6 +50,8 @@ describe("source-neutral TypeScript runtime model builders", () => {
   });
 
   it("builds events and exercises every behavior authoring branch", () => {
+    // @ts-expect-error Behavior names use the canonical behaviorName constructor.
+    behavior("raw-behavior-name");
     const builtEvent = event(eventType("Created"))
       .payload({ id: () => "id-1" })
       .schemaRef(schemaReference("#/components/schemas/Created"))
@@ -76,7 +79,7 @@ describe("source-neutral TypeScript runtime model builders", () => {
       condition: () => true,
     };
 
-    const emitted = behavior("create")
+    const emitted = behavior(behaviorName("create"))
       .operation(operationId("create"))
       .when(() => true)
       .condition(() => true)
@@ -97,14 +100,14 @@ describe("source-neutral TypeScript runtime model builders", () => {
     });
 
     // @ts-expect-error Scope values use the canonical scopeName constructor.
-    behavior("raw-scope").scopes("write");
+    behavior(behaviorName("raw-scope")).scopes("write");
     // @ts-expect-error Link relations use the canonical linkRelation constructor.
-    behavior("raw-link").link("self");
+    behavior(behaviorName("raw-link")).link("self");
 
     // @ts-expect-error The public authoring API uses canonical uppercase HTTP methods.
-    behavior("lowercase-method").method("post");
+    behavior(behaviorName("lowercase-method")).method("post");
 
-    const dispatched = behavior("dispatch")
+    const dispatched = behavior(behaviorName("dispatch"))
       .operation(operationId("dispatch"))
       .emitWhen(emission)
       .dispatch(command)
@@ -112,12 +115,12 @@ describe("source-neutral TypeScript runtime model builders", () => {
     expect(dispatched.emitWhen).toHaveLength(1);
     expect(dispatched.dispatchCommands).toHaveLength(1);
 
-    expect(() => behavior("missing-operation").emit(eventType("Created")).build()).toThrow(
-      'Behavior "missing-operation" requires an operationId',
-    );
-    expect(() => behavior("missing-effect").operation(operationId("noop")).build()).toThrow(
-      'Behavior "missing-effect" requires an event or dispatch',
-    );
+    expect(() =>
+      behavior(behaviorName("missing-operation")).emit(eventType("Created")).build(),
+    ).toThrow('Behavior "missing-operation" requires an operationId');
+    expect(() =>
+      behavior(behaviorName("missing-effect")).operation(operationId("noop")).build(),
+    ).toThrow('Behavior "missing-effect" requires an event or dispatch');
   });
 
   it("builds a boundary through all optional source-neutral policies", () => {
@@ -157,7 +160,11 @@ describe("source-neutral TypeScript runtime model builders", () => {
       .queryMapping({ status: () => true })
       .event(resourceEvent)
       .eventCatalog({ type: eventType("Audited"), payload: {} })
-      .behavior({ name: "create", operationId: operationId("create"), emit: eventType("Created") })
+      .behavior({
+        name: behaviorName("create"),
+        operationId: operationId("create"),
+        emit: eventType("Created"),
+      })
       .reducer(reducer)
       .seed({ state: { id: "seed-1" }, id: "seed-1" })
       .initialization({ state: { id: "seed-2" }, eventType: "Seeded" })
