@@ -28,6 +28,12 @@ import { createRuntimeAuthenticationPort } from "../identity/actorResolver.js";
 import { createSessionStore, type SessionStore } from "../identity/sessionStore.js";
 import type { Actor, JsonObject, JsonValue } from "../types.js";
 import { ConfigurationError, InternalExecutionError } from "../errors.js";
+
+function isJsonObject(value: JsonValue | null | undefined): value is JsonObject {
+  return (
+    value !== null && value !== undefined && typeof value === "object" && !Array.isArray(value)
+  );
+}
 import type { PluginControlClient } from "../lifecycle/types.js";
 import { createHash } from "node:crypto";
 import type { RuntimeHostServices } from "./host.js";
@@ -169,8 +175,7 @@ export function runtimeContract(
     shapeError: (operationId: string, status: number, body: JsonValue) => {
       const route = operationRoutes.get(operationId);
       if (route === undefined) return undefined;
-      const candidate =
-        body !== null && typeof body === "object" && !Array.isArray(body) ? body : {};
+      const candidate = isJsonObject(body) ? body : {};
       if (validateContractErrorBody(doc, route.method, route.path, status, body).valid) return body;
       const code =
         typeof candidate["code"] === "string"
@@ -238,10 +243,7 @@ export function runtimeContract(
         // In that case there is no entity-level schema to apply. Preserve all
         // actual validation failures, including malformed entities.
         const details = error instanceof InternalExecutionError ? error.details : undefined;
-        const errors =
-          details !== null && typeof details === "object" && !Array.isArray(details)
-            ? details.errors
-            : undefined;
+        const errors = isJsonObject(details) ? details.errors : undefined;
         if (errors === `No schema found for boundary '${boundary}'`) return;
         throw error;
       }

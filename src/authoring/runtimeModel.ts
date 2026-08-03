@@ -1,4 +1,4 @@
-import type { JsonObject, JsonValue } from "../types.js";
+import type { DeepReadonly, JsonObject, JsonValue } from "../types.js";
 import { compileRuntime } from "../model/compiler.js";
 import type { RuntimeDefinition, RuntimeModel } from "../model/index.js";
 import type {
@@ -128,26 +128,26 @@ export type TypedMatchContext<Payload extends object, State extends object = Jso
   MatchContext,
   "payload" | "state"
 > & {
-  readonly payload: Readonly<Payload>;
-  readonly state: Readonly<State> | null;
+  readonly payload: DeepReadonly<Payload>;
+  readonly state: DeepReadonly<State> | null;
 };
 
 export type TypedEventContext<Payload extends object, State extends object = JsonObject> = Omit<
   EventContext,
   "payload" | "state"
 > & {
-  readonly payload: Readonly<Payload>;
-  readonly state: Readonly<State> | null;
+  readonly payload: DeepReadonly<Payload>;
+  readonly state: DeepReadonly<State> | null;
 };
 
 export type TypedReducerContext<Payload extends object, State extends object = JsonObject> = Omit<
   RuntimeReducerContext,
   "event" | "payload" | "state"
 > & {
-  readonly state: Readonly<State>;
-  readonly payload: Readonly<Payload>;
+  readonly state: DeepReadonly<State>;
+  readonly payload: DeepReadonly<Payload>;
   readonly event: Omit<RuntimeReducerContext["event"], "payload"> & {
-    readonly payload: Readonly<Payload>;
+    readonly payload: DeepReadonly<Payload>;
   };
 };
 

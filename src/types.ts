@@ -1,5 +1,5 @@
 export type JsonScalar = string | number | boolean | null;
-export type JsonArray = Array<JsonValue>;
+export type JsonArray = readonly JsonValue[];
 export interface JsonObject {
   [k: string]: JsonValue;
 }

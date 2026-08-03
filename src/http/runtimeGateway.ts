@@ -409,7 +409,7 @@ function applyRuntimeSecurityHeaders(
 }
 
 function jsonObjectBody(value: JsonValue): JsonObject {
-  return value !== null && typeof value === "object" && !Array.isArray(value) ? value : {};
+  return isJsonObject(value) ? value : {};
 }
 
 function preserveForwardDecorations(base: JsonValue, decorated: JsonValue): JsonValue {
@@ -915,10 +915,7 @@ function registerRuntimeForwarding(
             ? (error as { code: string }).code
             : "BOOT_ERR_MALFORMED_FORWARDED_REQUEST",
         message:
-          result.body !== null &&
-          typeof result.body === "object" &&
-          !Array.isArray(result.body) &&
-          typeof result.body.message === "string"
+          isJsonObject(result.body) && typeof result.body.message === "string"
             ? result.body.message
             : "Forwarded request envelope is invalid",
       });

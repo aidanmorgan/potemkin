@@ -1,4 +1,10 @@
-import type { JsonValue } from "./types.js";
+import type { JsonObject, JsonValue } from "./types.js";
+
+function isJsonObject(value: JsonValue | undefined): value is JsonObject {
+  return (
+    value !== undefined && value !== null && typeof value === "object" && !Array.isArray(value)
+  );
+}
 
 export abstract class SimError extends Error {
   abstract readonly code: string;
@@ -69,10 +75,7 @@ export function deserializeSimError(value: unknown): SimError | null {
     case "EXPORT_INVALID":
       return new ExportError(message, details);
     case "SESSION_LIMIT_EXCEEDED": {
-      const maxSessions =
-        details !== undefined && typeof details === "object" && !Array.isArray(details)
-          ? details["maxSessions"]
-          : undefined;
+      const maxSessions = isJsonObject(details) ? details["maxSessions"] : undefined;
       return new SessionLimitError(typeof maxSessions === "number" ? maxSessions : 0, message);
     }
     default:
