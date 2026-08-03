@@ -1,6 +1,7 @@
 import {
   PotemkinConfigure,
   defineHelper,
+  factoryName,
   simulation,
   type JsonObject,
   type JsonValue,
@@ -67,7 +68,7 @@ function objectNameFrom(value: JsonValue): string | undefined {
 const responseHelper = defineHelper<[JsonObject], JsonValue>("stripeResponse", stripeResponse);
 
 export class StripeResponseConfiguration {
-  @PotemkinConfigure("stripe-response")
+  @PotemkinConfigure(factoryName("stripe-response"))
   static create() {
     return simulation().helper(responseHelper).build();
   }

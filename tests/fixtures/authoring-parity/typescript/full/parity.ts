@@ -5,6 +5,7 @@ import {
   defineGlobal,
   defineHelper,
   event,
+  factoryName,
   helperName,
   reducerRule,
   simulation,
@@ -20,7 +21,7 @@ import {
 const parityName = defineHelper(helperName("parityName"), (value: string): string => value);
 
 export class AuthoringParityFactory {
-  @PotemkinConfigure("authoring-parity")
+  @PotemkinConfigure(factoryName("authoring-parity"))
   static create(_context: FactoryContext) {
     const order = boundary("Order", "/orders")
       .fallbackOverride(false)

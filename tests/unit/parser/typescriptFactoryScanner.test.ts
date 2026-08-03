@@ -7,6 +7,7 @@ import { createDefaultTypeScriptModuleLoaderDependencies } from "../../../src/pa
 import type { TypeScriptDiscoveryDependencies } from "../../../src/parser/typescriptDiscovery";
 import { loadTypeScriptConfiguration } from "../../../src/parser/typescriptLoader";
 import { PotemkinConfigure } from "../../../src/authoring/factory";
+import { factoryName } from "../../../src/authoring/references";
 import { TypeScriptAuthoringError } from "../../../src/authoring/errors";
 
 const openapi = { raw: {}, paths: {} } as never;
@@ -196,7 +197,7 @@ describe("TypeScript static engine factories", () => {
     }
 
     expect(() =>
-      PotemkinConfigure("invalid")(
+      PotemkinConfigure(factoryName("invalid"))(
         Scenario.prototype,
         "create",
         Object.getOwnPropertyDescriptor(Scenario.prototype, "create")!,

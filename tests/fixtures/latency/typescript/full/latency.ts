@@ -3,6 +3,7 @@ import {
   boundary,
   defineFault,
   event,
+  factoryName,
   reducerRule,
   simulation,
   type FactoryContext,
@@ -56,7 +57,7 @@ function jobBoundary(
 }
 
 export class LatencyFactory {
-  @PotemkinConfigure("latency-typescript")
+  @PotemkinConfigure(factoryName("latency-typescript"))
   static create(_context: FactoryContext) {
     return simulation()
       .boundary(jobBoundary("Job", "/jobs", "submitJob", "JobSubmitted", { fixedMs: 60 }))

@@ -1,5 +1,5 @@
 import { boundary, event, reducerRule, simulation } from "potemkin/sdk";
-import { PotemkinConfigure } from "potemkin/sdk";
+import { PotemkinConfigure, factoryName } from "potemkin/sdk";
 import { sourceLabel } from "../shared/source-label";
 
 interface WidgetState {
@@ -15,7 +15,7 @@ interface WidgetCreated {
 }
 
 export class ConfiguredWidget {
-  @PotemkinConfigure("configured-widget")
+  @PotemkinConfigure(factoryName("configured-widget"))
   static create() {
     const widget = boundary("Widget", "/widgets")
       .identity({ generate: ({ helpers }) => helpers.uuid() })

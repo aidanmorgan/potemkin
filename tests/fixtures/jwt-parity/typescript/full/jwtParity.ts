@@ -4,6 +4,7 @@ import {
   boundary,
   defineGlobal,
   event,
+  factoryName,
   reducerRule,
   simulation,
   type FactoryContext,
@@ -55,7 +56,7 @@ const record = boundary("JwtRecord", "/jwt-records")
   );
 
 export class JwtParityFactory {
-  @PotemkinConfigure("jwt-parity")
+  @PotemkinConfigure(factoryName("jwt-parity"))
   static create(_context: FactoryContext) {
     return simulation().boundary(record).global(jwtAuth).build();
   }

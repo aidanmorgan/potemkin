@@ -5,6 +5,7 @@ import {
   eventType,
   field,
   fieldPath,
+  factoryName,
   helperName,
   operationId,
   pathParameter,
@@ -20,6 +21,7 @@ describe("TypeScript semantic references", () => {
     expect(boundaryName("Orders")).toBe("Orders");
     expect(componentName("OrderComponents")).toBe("OrderComponents");
     expect(helperName("formatOrder")).toBe("formatOrder");
+    expect(factoryName("order-scenario")).toBe("order-scenario");
     expect(resourceName("Order")).toBe("Order");
     expect(operationId("createOrder")).toBe("createOrder");
     expect(eventType("OrderCreated")).toBe("OrderCreated");
@@ -41,6 +43,7 @@ describe("TypeScript semantic references", () => {
     expect(sdk.boundaryName("Orders")).toBe("Orders");
     expect(sdk.componentName("OrderComponents")).toBe("OrderComponents");
     expect(sdk.helperName("formatOrder")).toBe("formatOrder");
+    expect(sdk.factoryName("order-scenario")).toBe("order-scenario");
     expect(sdk.resourceName("Order")).toBe("Order");
     expect(sdk.contractPath(sdk.pathSegment("orders"))).toBe("/orders");
     expect(sdk.eventType("OrderCreated")).toBe("OrderCreated");

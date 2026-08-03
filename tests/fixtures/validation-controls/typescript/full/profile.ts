@@ -2,13 +2,14 @@ import {
   PotemkinConfigure,
   boundary,
   event,
+  factoryName,
   reducerRule,
   simulation,
   type JsonObject,
 } from "potemkin/sdk";
 
 export class ValidationControlFactory {
-  @PotemkinConfigure("validation-control")
+  @PotemkinConfigure(factoryName("validation-control"))
   static create() {
     const profile = boundary("Profile", "/profiles")
       .fallbackOverride(false)

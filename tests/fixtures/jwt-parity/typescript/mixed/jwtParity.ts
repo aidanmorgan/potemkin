@@ -3,6 +3,7 @@ import {
   behavior,
   boundary,
   event,
+  factoryName,
   reducerRule,
   simulation,
   type FactoryContext,
@@ -39,7 +40,7 @@ const record = boundary("JwtRecord", "/jwt-records")
   );
 
 export class JwtParityMixedFactory {
-  @PotemkinConfigure("jwt-parity-mixed")
+  @PotemkinConfigure(factoryName("jwt-parity-mixed"))
   static create(_context: FactoryContext) {
     return simulation().boundary(record).build();
   }

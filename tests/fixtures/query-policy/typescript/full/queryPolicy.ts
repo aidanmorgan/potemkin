@@ -1,4 +1,4 @@
-import { PotemkinConfigure, boundary, simulation } from "potemkin/sdk";
+import { PotemkinConfigure, boundary, factoryName, simulation } from "potemkin/sdk";
 import type { QueryContext } from "potemkin/sdk";
 
 const query = {
@@ -41,7 +41,7 @@ const probe = boundary("ProbeById", "/probes/{id}").identity({
 });
 
 export class QueryPolicyFactory {
-  @PotemkinConfigure("query-policy")
+  @PotemkinConfigure(factoryName("query-policy"))
   static create() {
     return simulation().boundary(order).boundary(orderById).boundary(probe).build();
   }

@@ -3,6 +3,7 @@ import {
   boundary,
   behavior,
   event,
+  factoryName,
   reducerRule,
   simulation,
   type FactoryContext,
@@ -46,7 +47,7 @@ const record = boundary("Record", "/records")
   );
 
 export class SessionParityMixedFactory {
-  @PotemkinConfigure("session-parity-mixed")
+  @PotemkinConfigure(factoryName("session-parity-mixed"))
   static create(_context: FactoryContext) {
     return simulation().boundary(record).build();
   }

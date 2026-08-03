@@ -19,6 +19,7 @@ export type BoundaryName = PotemkinReference<"boundary-name">;
 export type ResourceName = PotemkinReference<"resource-name">;
 export type ComponentName = PotemkinReference<"component-name">;
 export type HelperName = PotemkinReference<"helper-name">;
+export type FactoryName = PotemkinReference<"factory-name">;
 export type OperationId = PotemkinReference<"operation-id">;
 export type EventType = PotemkinReference<"event-type">;
 export type ContractPath = PotemkinReference<"contract-path">;
@@ -73,6 +74,10 @@ export function helperName(value: string): HelperName {
     throw new TypeScriptReferenceError("helper-name", "must be a CEL identifier");
   }
   return result;
+}
+
+export function factoryName(value: string): FactoryName {
+  return reference("factory-name", value);
 }
 
 export function operationId(value: string): OperationId {

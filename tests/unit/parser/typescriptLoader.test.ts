@@ -7,6 +7,7 @@ import { loadTypeScriptConfiguration } from "../../../src/parser/typescriptLoade
 import { TypeScriptAuthoringError } from "../../../src/authoring/errors";
 import { simulation } from "../../../src/authoring/runtimeModel";
 import type { RegisteredFactory } from "../../../src/authoring/factory";
+import { factoryName } from "../../../src/authoring/references";
 
 const openapi = { raw: {}, paths: {} } as OpenApiDoc;
 
@@ -121,7 +122,7 @@ describe("configuration-driven TypeScript static factories", () => {
     const calls: string[] = [];
     const factories: RegisteredFactory[] = [
       {
-        name: "second",
+        name: factoryName("second"),
         source: "class:Second.create",
         factory: async () => {
           calls.push("second");
@@ -129,12 +130,12 @@ describe("configuration-driven TypeScript static factories", () => {
         },
       },
       {
-        name: "first",
+        name: factoryName("first"),
         source: "class:First.create",
         factory: () => ({ boundaries: [], resources: [], uses: [], helpers: [], policies: {} }),
       },
       {
-        name: "ignored",
+        name: factoryName("ignored"),
         source: "class:Ignored.create",
         factory: () => undefined as never,
       },
@@ -166,7 +167,7 @@ describe("configuration-driven TypeScript static factories", () => {
     ["helpers", { boundaries: [], helpers: "invalid" }],
   ] as const)("rejects a factory with invalid %s", async (_name, value) => {
     const factory: RegisteredFactory = {
-      name: "invalid",
+      name: factoryName("invalid"),
       source: "invalid.ts",
       factory: () => value as never,
     };
@@ -187,7 +188,7 @@ describe("configuration-driven TypeScript static factories", () => {
 
   it("wraps ordinary factory failures but preserves typed authoring failures", async () => {
     const ordinary: RegisteredFactory = {
-      name: "ordinary",
+      name: factoryName("ordinary"),
       source: "ordinary.ts",
       factory: () => {
         throw new Error("factory exploded");
@@ -207,7 +208,7 @@ describe("configuration-driven TypeScript static factories", () => {
     ).rejects.toMatchObject({ code: "TS_EXECUTION" });
 
     const typed: RegisteredFactory = {
-      name: "typed",
+      name: factoryName("typed"),
       source: "typed.ts",
       factory: () => {
         throw new TypeScriptAuthoringError("TS_SOURCE_READ", "already typed");

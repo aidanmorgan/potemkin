@@ -1,5 +1,5 @@
 import { boundary, event, reducerRule, simulation } from "potemkin/sdk";
-import { PotemkinConfigure, type FactoryContext } from "potemkin/sdk";
+import { PotemkinConfigure, factoryName, type FactoryContext } from "potemkin/sdk";
 import { sourceLabel } from "../shared/source-label";
 
 interface WidgetState {
@@ -15,7 +15,7 @@ interface WidgetCreated {
 }
 
 export class ConfiguredWidgetFactory {
-  @PotemkinConfigure("configured-widget")
+  @PotemkinConfigure(factoryName("configured-widget"))
   static create(_context: FactoryContext) {
     return simulation()
       .boundary(

@@ -4,6 +4,7 @@ import {
   behavior,
   defineGlobal,
   event,
+  factoryName,
   reducerRule,
   simulation,
   type FactoryContext,
@@ -65,7 +66,7 @@ const recordById = boundary("RecordById", "/records/{id}")
   .identity({ key: { from: "path", name: "id" } });
 
 export class SessionParityFactory {
-  @PotemkinConfigure("session-parity")
+  @PotemkinConfigure(factoryName("session-parity"))
   static create(_context: FactoryContext) {
     return simulation().boundary(record).boundary(recordById).global(sessionAuth).build();
   }

@@ -1,6 +1,7 @@
 import {
   PotemkinConfigure,
   defineHelper,
+  factoryName,
   helperName,
   simulation,
   type JsonObject,
@@ -22,7 +23,7 @@ const addUnexpectedProfileField = defineHelper(
 );
 
 export class ValidationControlHelperFactory {
-  @PotemkinConfigure("validation-control-helper")
+  @PotemkinConfigure(factoryName("validation-control-helper"))
   static create() {
     return simulation().helper(addUnexpectedProfileField).build();
   }

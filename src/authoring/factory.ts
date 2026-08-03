@@ -2,6 +2,7 @@ import type { OpenApiDoc } from "../contract/loader.js";
 import type { PotemkinConfiguration } from "../config.js";
 import type { SimulationBuilder, SimulationDefinition } from "./runtimeModel.js";
 import { TypeScriptAuthoringError } from "./errors.js";
+import { factoryName, type FactoryName } from "./references.js";
 
 /** Context supplied to a discovered TypeScript engine factory. */
 export interface FactoryContext {
@@ -16,7 +17,7 @@ export type FactoryOutput = SimulationDefinition | SimulationBuilder;
 export type TypeScriptFactory = (context: FactoryContext) => FactoryOutput | Promise<FactoryOutput>;
 
 export interface RegisteredFactory {
-  readonly name: string;
+  readonly name: FactoryName;
   readonly factory: TypeScriptFactory;
   readonly source: string;
 }
@@ -28,7 +29,7 @@ export interface FactoryRegistrar {
 
 /** Per-load factory collection; it deliberately has no process-global state. */
 export class FactoryCollector implements FactoryRegistrar {
-  private readonly entries = new Map<string, RegisteredFactory>();
+  private readonly entries = new Map<FactoryName, RegisteredFactory>();
 
   snapshot(): readonly RegisteredFactory[] {
     return [...this.entries.values()];
@@ -51,7 +52,7 @@ export class FactoryCollector implements FactoryRegistrar {
 }
 
 function registerFactory(
-  name: string,
+  name: FactoryName,
   implementation: TypeScriptFactory,
   source: string,
   registrar: FactoryRegistrar | undefined,
@@ -69,7 +70,7 @@ function registerFactory(
 }
 
 function configure(
-  name: string | undefined,
+  name: FactoryName | undefined,
   registrar: FactoryRegistrar | undefined,
 ): MethodDecorator {
   return (target, propertyKey, descriptor) => {
@@ -89,9 +90,9 @@ function configure(
       );
     }
     const className = target.name || "AnonymousFactory";
-    const factoryName = name ?? `${className}.${String(propertyKey)}`;
+    const nameValue = name ?? factoryName(`${className}.${String(propertyKey)}`);
     registerFactory(
-      factoryName,
+      nameValue,
       implementation.bind(target) as TypeScriptFactory,
       `class:${className}.${String(propertyKey)}`,
       registrar,
@@ -104,7 +105,7 @@ function configure(
  *
  * ```ts
  * class Scenario {
- *   @PotemkinConfigure("crm")
+ *   @PotemkinConfigure(factoryName("crm"))
  *   static create(context: FactoryContext) {
  *     return simulation().boundary(...).build();
  *   }
@@ -115,7 +116,7 @@ function configure(
  * TypeScript dependencies have been loaded. It is never invoked as a class
  * constructor, so factory classes remain side-effect free at discovery time.
  */
-export function PotemkinConfigure(name?: string): MethodDecorator {
+export function PotemkinConfigure(name?: FactoryName): MethodDecorator {
   return configure(name, undefined);
 }
 
@@ -130,6 +131,6 @@ function validateFactoryName(name: string): void {
 
 export function createPotemkinConfigure(
   registrar: FactoryRegistrar,
-): (name?: string) => MethodDecorator {
+): (name?: FactoryName) => MethodDecorator {
   return (name) => configure(name, registrar);
 }
