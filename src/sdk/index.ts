@@ -51,6 +51,7 @@ import type {
   ResourceOperation,
   ResourceValue,
 } from "../authoring/resourceModel.js";
+import type { TypedEventDefinition } from "../authoring/runtimeModel.js";
 
 const {
   all,
@@ -174,6 +175,7 @@ export type {
   ResourceDefinition,
   ResourceOperation,
   ResourceValue,
+  TypedEventDefinition,
   TypeScriptHelper,
   TypeScriptDiagnosticCode,
   TypeScriptSourceLocation,

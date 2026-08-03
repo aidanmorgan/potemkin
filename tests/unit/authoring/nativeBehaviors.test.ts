@@ -29,12 +29,13 @@ describe("native TypeScript behavior authoring", () => {
       payload: command,
     } as unknown as TypedEventContext<CreateCommand>;
 
-    expect(
-      (created.payload.customerId as (input: TypedEventContext<CreateCommand>) => string)(context),
-    ).toBe("manual-review");
-    expect(
-      (created.payload.totalLines as (input: TypedEventContext<CreateCommand>) => number)(context),
-    ).toBe(5);
+    const customerId = created.payload.customerId;
+    const totalLines = created.payload.totalLines;
+    expect(typeof customerId).toBe("function");
+    expect(typeof totalLines).toBe("function");
+    if (typeof customerId !== "function" || typeof totalLines !== "function") return;
+    expect(customerId(context)).toBe("manual-review");
+    expect(totalLines(context)).toBe(5);
 
     const definition = behavior<CreateCommand>("createOrder")
       .operation(operationId("createOrder"))

@@ -68,6 +68,20 @@ export interface EventDefinition extends Omit<RuntimeEvent, "payload" | "type" |
   readonly payload: Readonly<Record<string, RuntimeValue<EventContext, JsonValue>>>;
 }
 
+/** Event definition retaining the authored payload expressions for IDE inference. */
+export type TypedEventDefinition<
+  EventPayload extends object,
+  CommandPayload extends object = JsonObject,
+  State extends object = JsonObject,
+> = EventDefinition & {
+  readonly payload: Readonly<{
+    [Key in keyof EventPayload]: RuntimeValue<
+      TypedEventContext<CommandPayload, State>,
+      EventPayload[Key]
+    >;
+  }>;
+};
+
 export interface BehaviorDefinition extends Omit<
   RuntimeBehavior,
   "operationId" | "emit" | "emitWhen" | "dispatchCommands" | "method"
@@ -285,7 +299,7 @@ export function event<
     >;
   }>,
   schemaRef?: SchemaReference,
-): EventDefinition;
+): TypedEventDefinition<EventPayload, CommandPayload, State>;
 export function event(
   type: EventType,
   payload: Readonly<Record<string, RuntimeValue<EventContext, JsonValue>>>,
