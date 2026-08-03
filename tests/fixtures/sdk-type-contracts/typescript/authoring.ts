@@ -1,7 +1,9 @@
 import {
   boundary,
   boundaryName,
+  componentName,
   contractPath,
+  defineComponent,
   defineGlobal,
   event,
   eventType,
@@ -10,6 +12,7 @@ import {
   pathSegment,
   reducerRule,
   type EventContext,
+  type ComponentSource,
 } from "potemkin/sdk";
 
 interface CreatedPayload {
@@ -84,6 +87,37 @@ const policies = defineGlobal({
 // @ts-expect-error Global auth modes are a closed canonical union.
 defineGlobal({ auth: { mode: "oauth" } });
 
+const componentSource: ComponentSource = {
+  fallbackOverride: true,
+  export: {
+    states: [
+      {
+        name: "created",
+        steps: [{ operationId: operationId("createContract") }],
+      },
+    ],
+  },
+};
+const component = defineComponent(componentName("ContractDefaults"), componentSource);
+
+const invalidComponentSource: ComponentSource = {
+  export: {
+    states: [
+      {
+        name: "created",
+        steps: [
+          {
+            // @ts-expect-error Component export operation identifiers are canonical references.
+            operationId: "createContract",
+          },
+        ],
+      },
+    ],
+  },
+};
+
 void contract;
 void policies;
+void component;
+void invalidComponentSource;
 void payloadShapeIsInferred;

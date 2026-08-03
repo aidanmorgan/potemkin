@@ -19,7 +19,9 @@ import type {
   ComponentName,
   ContractPath,
   FieldPath,
+  OperationId,
   SchemaReference,
+  SagaName,
 } from "./references.js";
 import type {
   BehaviorDefinition,
@@ -52,31 +54,22 @@ export interface ComponentInclude {
   readonly parameters?: Readonly<JsonObject>;
 }
 
+export interface ExportDefinition {
+  readonly states: readonly {
+    readonly name: string;
+    readonly steps: readonly {
+      readonly operationId: OperationId;
+      readonly body?: JsonObject;
+      readonly headers?: Readonly<Record<string, string>>;
+    }[];
+    readonly saga?: SagaName;
+  }[];
+}
+
 /** The boundary fields which a reusable component may contribute. */
-export type ComponentSource = Partial<
-  Omit<
-    RuntimeBoundary,
-    | "boundary"
-    | "contractPath"
-    | "schema"
-    | "eventCatalog"
-    | "behaviors"
-    | "reducers"
-    | "mask"
-    | "faults"
-    | "identity"
-    | "query"
-    | "queryMapping"
-    | "initialization"
-    | "state"
-    | "deprecated"
-    | "latency"
-    | "response"
-    | "reactions"
-    | "include"
-  >
-> & {
+export interface ComponentSource {
   readonly schema?: SchemaReference;
+  readonly fallbackOverride?: boolean;
   readonly eventCatalog?: readonly EventDefinition[];
   readonly behaviors?: readonly BehaviorDefinition[];
   readonly reducers?: readonly ReducerDefinition[];
@@ -92,7 +85,10 @@ export type ComponentSource = Partial<
   readonly faults?: readonly FaultDefinition[];
   readonly reactions?: readonly ReactionDefinition[];
   readonly include?: readonly ComponentInclude[];
-};
+  readonly auditFields?: boolean;
+  readonly strictSchema?: boolean;
+  readonly export?: ExportDefinition;
+}
 
 /** A live boundary may include reusable fragments before compilation. */
 export type ComposableBoundary = Omit<RuntimeBoundary, "include"> & {

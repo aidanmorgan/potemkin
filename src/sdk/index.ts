@@ -61,6 +61,7 @@ import type {
   ComponentDefinition,
   ComponentInclude,
   ComponentSource,
+  ExportDefinition,
   UseDefinition,
 } from "../authoring/composition.js";
 import type {
@@ -333,6 +334,7 @@ export type {
   ComponentDefinition,
   ComponentInclude,
   ComponentSource,
+  ExportDefinition,
   UseDefinition,
   ResourceDefinition,
   ResourceOperation,
