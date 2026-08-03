@@ -1,58 +1,51 @@
 # Potemkin
 
-Potemkin is a stateful HTTP simulator. An OpenAPI contract describes the wire format. YAML describes the state transitions. The Node engine keeps an in-memory event log and state graph, and the Kotlin plugin lets Specmatic drive the same simulation through HTTP.
+Potemkin is a stateful HTTP simulator. An OpenAPI contract describes the wire format. YAML or TypeScript describes the state transitions. The Node engine keeps an in-memory event log and state graph, and the Kotlin plugin lets Specmatic drive the same simulation through HTTP.
 
-This repository has two authoring surfaces with one execution model:
+This repository has YAML and TypeScript authoring surfaces with one execution model. YAML uses CEL
+expressions and declarative blocks; TypeScript uses typed builders, immutable functions, and typed
+callbacks. Both compile to one immutable `RuntimeProgram` and execute through the same core engine,
+policies, storage ports, and HTTP gateway.
 
-- TypeScript definitions are the primary runtime model. Engineers use interfaces, builders, pure
-  functions, and typed callbacks.
-- YAML is parsed and compiled into those same runtime types. CEL and the YAML DSL exist only in
-  the parser; they are not evaluated by the core engine.
+The current design has four deliberate layers:
 
-Both surfaces lower to one immutable `RuntimeProgram` and execute through the same core engine,
-policies, storage ports, and HTTP gateway. The parser is an authoring layer; it is not a second
-runtime. The less-common combinations and their evidence are tracked in [`requirements.md`](requirements.md)
-and the [parity design](docs/design/typescript-yaml-parity.md).
+- `src/parser`: YAML parsing/CEL compilation, TypeScript AST discovery and loading, OpenAPI
+  composition, and configuration watching.
+- `src/authoring` and `src/sdk`: the typed TypeScript authoring surface, semantic identifier
+  constructors, `@PotemkinConfigure`, helper registration, and native reducer contracts.
+- `src/model`: the source-neutral runtime model. YAML and TypeScript are compiled into this same
+  shape before execution; the runtime never branches on the authoring source.
+- `src/core`, `src/runtime`, and `src/http`: event execution, state/projector behavior, policies,
+  request controls, response shaping, and the HTTP gateway.
 
-## Current status
+There is no TypeScript-to-YAML adapter or second TypeScript runtime. The YAML loader and TypeScript
+loader each produce the common model directly. TypeScript reducers are immutable event handlers:
+they receive a read-only state view and return the complete resultant state, so they cannot mutate
+the engine's stored graph.
 
-The authoritative feature baseline is the README on `main`, recorded in
-[`docs/design/main-readme-feature-completeness.md`](docs/design/main-readme-feature-completeness.md).
-The canonical runtime is the only supported execution path. Remaining combinations that need
-additional evidence are listed in
-[`docs/design/main-readme-operational-feature-completeness.md`](docs/design/main-readme-operational-feature-completeness.md).
+Recent changes also made the operational path explicit: one `potemkin.yml` selects multiple YAML,
+OpenAPI, and TypeScript globs; the server watches that source graph and reloads it from a clean
+initialization state; TypeScript factories are discovered from the AST; helpers registered by a
+TypeScript factory can be used by either YAML/CEL or TypeScript; and the real end-to-end tests drive
+requests through Specmatic and the Kotlin plugin rather than calling `/_engine/forward` directly.
 
-The bounded checks below passed in the current checkout. The suites are run separately to keep the
-canonical runtime, parser, and Specmatic fixtures within the local Node heap limit.
+## Verification
 
 ```text
-pnpm exec jest --runInBand tests/unit tests/runtime tests/integration
-                                                         194 suites, 2,718 tests
+pnpm run verify:test                                    full retained Jest suite
 pnpm run test:e2e                                      Specmatic-backed E2E suites
-pnpm run test:bdd                                       48 scenarios
-pnpm exec tsc --noEmit                                 passed
-pnpm run lint                                           passed (warnings remain)
+pnpm run test:conformance                              Specmatic contract-floor gate
+pnpm run test:bdd                                       BDD scenarios
+pnpm run verify:check-types                            source and authoring fixture types
+pnpm run verify:no-skips                               no skipped/focused/todo tests
+pnpm run verify:examples                               exported example corpus is current
 ```
 
-The full Specmatic stack and the examples suite require Java and the built plugin. Their results
-depend on the local Specmatic cache. Lower-level runtime/parser checks are kept under
-`tests/runtime` and run with the normal Jest configuration. The
-OpenTelemetry exchange requirement has direct YAML/TypeScript coverage and real
-Specmatic-forwarding coverage, including the nested forwarded request and complete final response
-envelope, in [`tests/runtime/runtime-otel.runtime.test.ts`](tests/runtime/runtime-otel.runtime.test.ts)
-and [`tests/e2e/runtime-observability.e2e-test.ts`](tests/e2e/runtime-observability.e2e-test.ts).
-
-### Open backlog
-
-`REQ-76` is complete. The runtime emits one final OpenTelemetry exchange observation per handled
-request, preserving the original inbound request and the exact response (or transport-close
-outcome) after matching, mutation, projections, sagas, webhooks, response shaping, masking,
-validation, chaos, and rollback. The observation uses the same trace and Potemkin command
-correlation for YAML and TypeScript authoring, with injected redaction and byte-size policies.
-Direct-gateway and real Specmatic-forwarding coverage includes success, rejection, faults, chaos,
-admin, bulk rollback, and closed-connection cases. The full acceptance criteria and evidence are
-recorded in [`requirements.md`](requirements.md), under `Observability backlog`, `REQ-76`, and the
-`Agent backlog task for REQ-76` checklist.
+The full Specmatic stack and the examples suite require Java and the built plugin. Lower-level
+runtime and parser checks live under `tests/runtime` and use the normal Jest configuration.
+The current retained Jest baseline is 196 suites and 2,750 tests. The verification commands are
+kept separate because the full Specmatic and example stacks require Java, a built plugin, and a
+larger Node heap.
 
 ## What a developer builds
 
@@ -116,6 +109,10 @@ specmatic: ./specmatic.yaml
 
 modules:
   - "dsl/**/*.yaml"
+  - "scenarios/**/*.yaml"
+
+openapi:
+  - "openapi/**/*.yaml"
 
 typescript:
   scan:
@@ -124,6 +121,7 @@ typescript:
       exclude:
         - "**/*.test.ts"
         - "**/*.d.ts"
+  watchIntervalMs: 10000
 plugin:
   engine:
     url: "${POTEMKIN_ENGINE_URL:http://localhost:3000}"
@@ -131,7 +129,17 @@ plugin:
   controlPort: 0
 ```
 
-The OpenAPI file is configured in `specmatic.yaml`. Potemkin uses the operation IDs from that contract when it selects a behavior. A route that is in the contract but has no behavior uses the configured fallback policy. A path that is not in the contract returns `404 NO_ROUTE`.
+The `openapi` globs in `potemkin.yml` select the OpenAPI documents that Potemkin composes into its
+contract model. The `specmatic` entry points to the Specmatic configuration used by the plugin.
+Potemkin uses operation IDs from the composed contract when it selects a behavior. A route that is
+in the contract but has no behavior uses the configured fallback policy. A path that is not in the
+contract returns `404 NO_ROUTE`.
+
+`modules` and `openapi` are arrays of globs, not single paths. Every matching YAML module and
+OpenAPI document participates in the next compilation. The TypeScript scanner applies each
+`include`/`exclude` pair only to discovery; an imported dependency may live outside an exclusion
+glob and is still loaded when a selected module imports it. This lets teams keep shared typed
+helpers outside the primary scenario globs without making them configuration entry points.
 
 Create a boundary in `dsl/leads.yaml`:
 
@@ -155,10 +163,50 @@ behaviors: []
 reducers: []
 ```
 
+The TypeScript form uses the SDK builders. A configured module can return the
+simulation from a `@PotemkinConfigure` factory:
+
+```ts
+import {
+  PotemkinConfigure,
+  boundary,
+  boundaryName,
+  behavior,
+  contractPath,
+  event,
+  eventType,
+  factoryName,
+  operationId,
+  pathSegment,
+  schemaReference,
+  simulation,
+} from "potemkin/sdk";
+
+class LeadConfiguration {
+  @PotemkinConfigure(factoryName("leads"))
+  static create() {
+    return simulation()
+      .boundary(
+        boundary(boundaryName("Lead"), contractPath(pathSegment("leads")))
+          .identity({ generate: ({ helpers }) => helpers.uuid() })
+          .eventCatalog(
+            event(eventType("LeadCreated"), {
+              id: ({ command }) => command.targetId ?? "",
+              companyName: ({ payload }) => String(payload.companyName ?? ""),
+              status: () => "NEW",
+            }),
+          )
+          .build(),
+      )
+      .build();
+  }
+}
+```
+
 Run the simulation linter before starting the stack:
 
 ```sh
-
+pnpm run lint:sim -- examples/crm/potemkin.yml
 ```
 
 The linter catches duplicate boundaries, unknown operation IDs, invalid event references, bad CEL, and several boot-time configuration errors.
@@ -183,6 +231,14 @@ error instead.
 boundary: Lead
 contract_path: /leads
 fallback_override: true
+```
+
+The TypeScript equivalent is:
+
+```ts
+const lead = boundary(boundaryName("Lead"), contractPath(pathSegment("leads")))
+  .fallbackOverride(true)
+  .build();
 ```
 
 ## Step 2: seed deterministic state
@@ -227,6 +283,33 @@ identity:
     pointer: accountId
 ```
 
+The TypeScript builder uses `.initialization()` and the same identity sources:
+
+```ts
+const lead = boundary(boundaryName("Lead"), contractPath(pathSegment("leads")))
+  .identity({
+    key: { from: "header", name: "x-token-id" },
+  })
+  .initialization({
+    id: "00000000-0000-7000-8000-000000000010",
+    companyName: "Apex Solutions Ltd",
+    contactName: "Mina Cole",
+    email: "mina@apex.example",
+    status: "CONTACTED",
+    tags: ["priority", "enterprise"],
+    callIds: [],
+  })
+  .build();
+```
+
+When the identity is in the request body, use a payload pointer:
+
+```ts
+const account = boundary(boundaryName("Account"), contractPath(pathSegment("accounts")))
+  .identity({ key: { from: "payload", pointer: "accountId" } })
+  .build();
+```
+
 The identity tests in [`tests/e2e/identity-key.e2e-test.ts`](tests/e2e/identity-key.e2e-test.ts) cover header, path, query, payload, and generated IDs.
 
 ## Step 3: turn requests into events
@@ -246,6 +329,56 @@ behaviors:
       operationId: qualifyLead
       condition: "state.status == 'CONTACTED'"
     emit: LeadQualified
+```
+
+The TypeScript builder expresses the same matching rules with typed callbacks:
+
+```ts
+import {
+  behavior,
+  behaviorName,
+  boundary,
+  boundaryName,
+  contractPath,
+  eventType,
+  guardName,
+  operationId,
+  pathSegment,
+  scopeName,
+} from "potemkin/sdk";
+
+interface LeadInput {
+  companyName?: string;
+  status?: string;
+}
+
+interface LeadState {
+  status?: string;
+  score?: number;
+  active?: boolean;
+  campaignId?: string;
+  qualificationCount?: number;
+  history?: readonly { event: string; at?: string }[];
+  quantity?: number;
+  unitPrice?: number;
+}
+
+const leadBehaviors = [
+  behavior<LeadInput, LeadState>(behaviorName("createLead"))
+    .operation(operationId("createLead"))
+    .condition(() => true)
+    .emit(eventType("LeadCreated"))
+    .build(),
+  behavior<LeadInput, LeadState>(behaviorName("qualifyLead"))
+    .operation(operationId("qualifyLead"))
+    .condition(({ state }) => state?.status === "CONTACTED")
+    .emit(eventType("LeadQualified"))
+    .build(),
+];
+
+const lead = boundary(boundaryName("Lead"), contractPath(pathSegment("leads")))
+  .behavior(...leadBehaviors)
+  .build();
 ```
 
 The request pipeline is:
@@ -280,6 +413,23 @@ A behavior can require fields or scopes before it emits anything:
 
 Failed validation or guards leave the event log and state graph unchanged.
 
+The same field and scope guards can be declared as typed functions:
+
+```ts
+const closeLead = behavior<LeadInput, LeadState>(behaviorName("closeLead"))
+  .operation(operationId("closeLead"))
+  .condition(({ state }) => state?.status === "QUALIFIED")
+  .requires({
+    name: guardName("closeReason"),
+    check: ({ payload }) => String(payload.reason ?? "").length > 0,
+    errorCode: "CLOSE_REASON_REQUIRED",
+    errorMessage: "A close reason is required",
+  })
+  .scopes(scopeName("leads:write"))
+  .emit(eventType("LeadClosed"))
+  .build();
+```
+
 ### Event payloads and schema checks
 
 The event catalogue defines the event types a boundary can emit. CEL expressions are evaluated when the event is hydrated:
@@ -293,6 +443,29 @@ event_catalog:
       qualifiedBy: "actor.id"
       qualifiedAt: "$now()"
       score: "state.score"
+```
+
+TypeScript event payloads are ordinary typed callbacks, and `schemaReference`
+can attach the same OpenAPI component check:
+
+```ts
+interface QualifiedPayload {
+  id: string;
+  qualifiedBy: string;
+  qualifiedAt: string;
+  score: number;
+}
+
+const qualified = event<QualifiedPayload>(
+  eventType("LeadQualified"),
+  {
+    id: ({ command }) => command.targetId ?? "",
+    qualifiedBy: ({ request }) => request.actor?.id ?? "",
+    qualifiedAt: ({ helpers }) => helpers.now(),
+    score: ({ state }) => Number(state?.score ?? 0),
+  },
+  schemaReference("#/components/schemas/LeadQualified"),
+);
 ```
 
 `schema_ref` checks the hydrated event payload against an OpenAPI component before the unit of work commits. Use `$uuidv7()`, `$now()`, request data, actor data, and current state in the appropriate DSL phase. The complete phase rules are in [`docs/cel.md`](docs/cel.md).
@@ -314,6 +487,26 @@ One request can choose among several events:
   postcondition: "state.status == command.payload.status"
 ```
 
+The TypeScript builder uses `.emitWhen(...)` for the same branch selection:
+
+```ts
+const updateLead = behavior<LeadInput, LeadState>(behaviorName("updateLead"))
+  .operation(operationId("updateLead"))
+  .condition(() => true)
+  .emitWhen(
+    {
+      when: ({ payload }) => payload.status === "QUALIFIED",
+      event: eventType("LeadQualified"),
+    },
+    {
+      when: ({ payload }) => payload.status === "CLOSED",
+      event: eventType("LeadClosed"),
+    },
+  )
+  .postcondition(({ state, payload }) => state?.status === payload.status)
+  .build();
+```
+
 Dispatch a second command in the same unit of work when one boundary owns a workflow step in another boundary:
 
 ```yaml
@@ -330,6 +523,26 @@ Dispatch a second command in the same unit of work when one boundary owns a work
       payload:
         leadId: "command.targetId"
         value: "command.payload.value"
+```
+
+The TypeScript equivalents use `.emitWhen(...)` and `.dispatch(...)`:
+
+```ts
+const convertLead = behavior<LeadInput, LeadState>(behaviorName("convertLead"))
+  .operation(operationId("convertLead"))
+  .condition(({ state }) => state?.status === "QUALIFIED")
+  .emit(eventType("LeadConverted"))
+  .dispatch({
+    boundary: boundaryName("Opportunity"),
+    intent: "creation",
+    operationId: operationId("createOpportunity"),
+    targetId: ({ helpers }) => helpers.uuid(),
+    payload: {
+      leadId: ({ command }) => command.targetId ?? "",
+      value: ({ payload }) => Number(payload.value ?? 0),
+    },
+  })
+  .build();
 ```
 
 A behavior may also be dispatch-only when the primary boundary must remain
@@ -353,6 +566,17 @@ Add a header predicate when the same operation needs separate simulated outcomes
   emit: CallCreated
 ```
 
+TypeScript matches the same header with `.headers(...)`:
+
+```ts
+const slowDatabaseScenario = behavior("slow-database-scenario")
+  .operation(operationId("createCall"))
+  .headers({ "x-potemkin-scenario": "slow_db" })
+  .condition(() => true)
+  .emit(eventType("CallCreated"))
+  .build();
+```
+
 Set `audit_fields: true` on a boundary to stamp `updatedAt` and `updatedBy` on
 non-baseline events. `updatedBy` comes from the authenticated actor, or is null
 when the request has no actor:
@@ -361,6 +585,14 @@ when the request has no actor:
 boundary: Note
 contract_path: /notes
 audit_fields: true
+```
+
+The TypeScript form is:
+
+```ts
+const note = boundary(boundaryName("Note"), contractPath(pathSegment("notes")))
+  .auditFields()
+  .build();
 ```
 
 ## Step 4: project events with reducers
@@ -403,6 +635,39 @@ reducers:
         value: QUALIFIED
       - op: remove
         path: /openTasks/0
+```
+
+TypeScript reducers are immutable functions that return the complete next
+state. The builder keeps the event type attached to the reducer:
+
+```ts
+interface LeadEvent {
+  id?: string;
+  status?: string;
+  qualifiedAt?: string;
+}
+
+const leadReducer = reducerRule<LeadEvent, LeadState>(eventType("LeadQualified"))
+  .apply(({ state, event }) => ({
+    ...state,
+    status: "QUALIFIED",
+    qualificationCount: Number(state.qualificationCount ?? 0) + 1,
+    history: [...(state.history ?? []), { event: event.type, at: event.payload.qualifiedAt }],
+  }))
+  .build();
+
+const lead = boundary(boundaryName("Lead"), contractPath(pathSegment("leads")))
+  .reducer(leadReducer)
+  .state({
+    computed: [
+      {
+        name: "lineTotal",
+        formula: ({ state }) => Number(state.quantity ?? 0) * Number(state.unitPrice ?? 0),
+        dependsOn: ["quantity", "unitPrice"],
+      },
+    ],
+  })
+  .build();
 ```
 
 Nested JSON Pointer paths and CEL values are supported:
@@ -482,6 +747,31 @@ query:
     code: ORDER_NOT_FOUND
 ```
 
+The TypeScript query policy uses the parsed query and candidate state directly:
+
+```ts
+const lead = boundary(boundaryName("Lead"), contractPath(pathSegment("leads")))
+  .queryMapping({
+    status: ({ state, query }) => String(state.status) === String(query.status),
+    campaignId: ({ state, query }) => String(state.campaignId) === String(query.campaignId),
+  })
+  .query({
+    fields: {
+      threshold: ({ state, query }) => Number(state.score ?? 0) >= Number(query.threshold),
+    },
+    filter: ({ state }) => state.active === true,
+    sort: (left, right) => Number(left.score) - Number(right.score),
+    pageSize: ({ query }) => Number(query.limit ?? 25),
+    maxPageSize: 100,
+    cursor: ({ query }) => (typeof query.cursor === "string" ? query.cursor : undefined),
+    expand: ["customer"],
+    pagination: "envelope",
+    includeDeleted: false,
+    fallback: () => ({ code: "ORDER_NOT_FOUND" }),
+  })
+  .build();
+```
+
 `fields` entries are active only when their matching query parameter is
 present. `fallback` is returned for a targeted query that has no matching
 entity. YAML and TypeScript compile these declarations into the same runtime
@@ -500,6 +790,20 @@ idempotency:
   hash_includes_body: true
 ```
 
+The TypeScript global policy uses camelCase field names:
+
+```ts
+const model = simulation()
+  .global({
+    idempotency: {
+      enabled: true,
+      ttlSeconds: 86400,
+      hashIncludesBody: true,
+    },
+  })
+  .build();
+```
+
 Send the same key and request twice:
 
 ```sh
@@ -512,6 +816,25 @@ curl -s -X POST "$STUB_URL/leads" \
   -H 'Content-Type: application/json' \
   -H 'Idempotency-Key: create-apex-001' \
   -d '{"companyName":"Apex Solutions Ltd","contactName":"Mina Cole","email":"mina@apex.example"}'
+```
+
+From TypeScript, repeat the request with the same key to receive the stored
+response:
+
+```ts
+const body = JSON.stringify({
+  companyName: "Apex Solutions Ltd",
+  contactName: "Mina Cole",
+  email: "mina@apex.example",
+});
+
+const headers = {
+  "Content-Type": "application/json",
+  "Idempotency-Key": "create-apex-001",
+};
+await fetch(`${STUB_URL}/leads`, { method: "POST", headers, body });
+const replay = await fetch(`${STUB_URL}/leads`, { method: "POST", headers, body });
+console.log(replay.headers.get("X-Potemkin-Idempotency-Replay"));
 ```
 
 The second request replays the stored response instead of creating another event. Reusing the key with a different body is rejected.
@@ -529,6 +852,24 @@ curl -s -X PATCH "$STUB_URL/leads/$LEAD_ID" \
 
 A stale `If-Match` value returns a concurrency error and does not commit. Conditional GET supports `If-None-Match` and returns `304` when the entity has not changed.
 
+Optimistic concurrency is exercised through the same HTTP headers from a
+TypeScript test or consumer:
+
+```ts
+const response = await fetch(`${STUB_URL}/leads/${LEAD_ID}`, {
+  method: "PATCH",
+  headers: {
+    "Content-Type": "application/json",
+    "If-Match": '"3"',
+  },
+  body: JSON.stringify({ status: "QUALIFIED" }),
+});
+
+if (response.status === 412) {
+  console.log("stale version; no event was committed");
+}
+```
+
 ## Authentication and request identity
 
 The default bearer-token mode is convenient for tests. The token is deliberately simple and is not cryptographically verified. Put the actor ID first, followed by comma-separated scopes:
@@ -544,16 +885,114 @@ behaviors:
     emit: LeadUpdated
 ```
 
+The TypeScript boundary builder attaches the required scope directly:
+
+```ts
+const updateLead = behavior("updateLead")
+  .operation(operationId("updateLead"))
+  .condition(() => true)
+  .scopes("lead:write")
+  .emit(eventType("LeadUpdated"))
+  .build();
+
+const model = simulation()
+  .boundary(boundary(boundaryName("Lead"), contractPath(pathSegment("leads"))).behavior(updateLead))
+  .global({ auth: { mode: "simple" } })
+  .build();
+```
+
 ```sh
 curl -s "$STUB_URL/leads" \
   -H 'Authorization: Bearer alice:lead:read,lead:write'
+```
+
+The equivalent TypeScript consumer request is:
+
+```ts
+await fetch(`${STUB_URL}/leads`, {
+  headers: { Authorization: "Bearer alice:lead:read,lead:write" },
+});
 ```
 
 Require a scope in a behavior with `match.required_scopes`, as shown earlier. The actor is available to CEL and event templates through `actor.id`, `actor.scopes`, and related fields.
 
 JWT verification is also supported for tests that need a real token boundary. Configure the issuer, audience, algorithm, and key material in the global auth block. [`tests/e2e/forward-blocks-and-jwt.e2e-test.ts`](tests/e2e/forward-blocks-and-jwt.e2e-test.ts) covers valid, expired, and missing-token cases.
 
+YAML JWT configuration:
+
+```yaml
+auth:
+  mode: jwt
+  jwt:
+    secret: local-test-secret
+    algorithm: HS256
+    issuer: potemkin-tests
+    audience: crm-client
+    scopes_claim: scopes
+```
+
+The TypeScript equivalent is:
+
+```ts
+const jwtModel = simulation()
+  .global({
+    auth: {
+      mode: "jwt",
+      jwt: {
+        secret: process.env.POTEMKIN_JWT_SECRET ?? "local-test-secret",
+        algorithm: "HS256",
+        issuer: "potemkin-tests",
+        audience: "crm-client",
+        scopesClaim: "scopes",
+      },
+    },
+  })
+  .build();
+```
+
+Send a JWT from TypeScript like any other authenticated request:
+
+```ts
+await fetch(`${STUB_URL}/leads`, {
+  headers: { Authorization: `Bearer ${jwt}` },
+});
+```
+
 Cookie sessions and CSRF checks are available for browser-shaped simulations. Configure the session cookie and CSRF header, then send both on a state-changing request:
+
+YAML session configuration:
+
+```yaml
+auth:
+  mode: session
+  session:
+    cookie_name: sid
+    ttl_seconds: 3600
+    csrf: true
+    csrf_header: X-CSRF-Token
+    login_path: /sessions
+    logout_path: /sessions/logout
+```
+
+The TypeScript equivalent is:
+
+```ts
+const sessionModel = simulation()
+  .global({
+    auth: {
+      mode: "session",
+      session: {
+        cookieName: "sid",
+        ttlSeconds: 3600,
+        csrf: true,
+        csrfHeader: "X-CSRF-Token",
+        loginPath: "/sessions",
+        logoutPath: "/sessions/logout",
+      },
+    },
+  })
+  .build();
+```
 
 ```sh
 LOGIN_RESPONSE=$(curl -s -X POST "$STUB_URL/sessions" -c cookies.txt \
@@ -565,6 +1004,28 @@ curl -s -X POST "$STUB_URL/leads" -b cookies.txt \
   -H "X-CSRF-Token: $CSRF_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"companyName":"Browser Client","contactName":"Alice","phone":"+61 2 0000 0001","email":"alice@example.com","source":"WEBSITE"}'
+```
+
+In a TypeScript client, carry the session cookie and CSRF token forward:
+
+```ts
+const login = await fetch(`${STUB_URL}/sessions`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ actorId: "alice", scopes: ["agent", "viewer"] }),
+});
+const csrfToken = (await login.json()).csrfToken;
+const sessionCookie = login.headers.get("set-cookie") ?? "";
+
+await fetch(`${STUB_URL}/leads`, {
+  method: "POST",
+  headers: {
+    Cookie: sessionCookie,
+    "X-CSRF-Token": csrfToken,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({ companyName: "Browser Client", source: "WEBSITE" }),
+});
 ```
 
 Keep admin endpoints on a trusted network. Set `ADMIN_TOKEN` to require `Authorization: Bearer <token>` for reset, state, events, clock, and fault controls.
@@ -598,6 +1059,43 @@ sagas:
             stage: "'withdrawn'"
 ```
 
+The TypeScript policy uses `defineSaga` and typed context callbacks:
+
+```ts
+import { boundaryName, defineSaga, operationId, sagaName, sagaStepName } from "potemkin/sdk";
+
+const leadConversion = defineSaga({
+  name: sagaName("LeadConversion"),
+  trigger: {
+    boundary: boundaryName("Lead"),
+    intent: "mutation",
+    condition: ({ event }) => event?.type === "LeadConverted",
+  },
+  steps: [
+    {
+      name: sagaStepName("createOpportunity"),
+      boundary: boundaryName("Opportunity"),
+      intent: "creation",
+      operationId: operationId("createOpportunity"),
+      targetId: ({ helpers }) => helpers.uuid(),
+      payload: {
+        leadId: ({ event }) => event?.aggregateId ?? "",
+        value: ({ command }) => Number(command.payload.value ?? 0),
+      },
+      compensation: {
+        intent: "mutation",
+        operationId: operationId("closeOpportunity"),
+        payload: { stage: "withdrawn" },
+      },
+    },
+  ],
+});
+
+const workflowModel = simulation()
+  .global({ sagas: [leadConversion] })
+  .build();
+```
+
 The saga tests in [`tests/e2e/full-crm-flow.e2e-test.ts`](tests/e2e/full-crm-flow.e2e-test.ts) verify the success and compensation paths.
 
 ### Reactions
@@ -620,6 +1118,38 @@ reactions:
     emit: NotificationQueued
 ```
 
+TypeScript can register both subscribers in the global policy:
+
+```ts
+import {
+  boundaryName,
+  defineReaction,
+  eventReference,
+  eventType,
+  reactionName,
+  simulation,
+} from "potemkin/sdk";
+
+const orderReactions = [
+  defineReaction({
+    name: reactionName("reserve-inventory"),
+    on: eventReference(boundaryName("Order"), eventType("OrderPlaced")),
+    boundary: boundaryName("Inventory"),
+    intent: "creation",
+    emit: eventType("InventoryReserved"),
+  }),
+  defineReaction({
+    name: reactionName("queue-order-notification"),
+    on: eventReference(boundaryName("Order"), eventType("OrderPlaced")),
+    boundary: boundaryName("Notification"),
+    intent: "creation",
+    emit: eventType("NotificationQueued"),
+  }),
+];
+
+const reactionModel = simulation().global({ reactions: orderReactions }).build();
+```
+
 Use `intent: mutation`, `when`, `target`, and `payload` to update an existing aggregate conditionally:
 
 ```yaml
@@ -633,6 +1163,33 @@ reactions:
     payload:
       orderId: "event.aggregateId"
       quantity: "event.payload.quantity"
+```
+
+The conditional mutation form uses callbacks for `when`, `target`, and
+payload values:
+
+```ts
+import {
+  boundaryName,
+  defineReaction,
+  eventReference,
+  eventType,
+  reactionName,
+} from "potemkin/sdk";
+
+const allocateStock = defineReaction({
+  name: reactionName("allocate-stock"),
+  on: eventReference(boundaryName("Order"), eventType("OrderPlaced")),
+  boundary: boundaryName("Inventory"),
+  intent: "mutation",
+  when: ({ event }) => Number(event?.payload.quantity ?? 0) > 0,
+  target: () => "warehouse-main",
+  emit: eventType("StockAllocated"),
+  payload: {
+    orderId: ({ event }) => event?.aggregateId ?? "",
+    quantity: ({ event }) => Number(event?.payload.quantity ?? 0),
+  },
+});
 ```
 
 Reaction events are part of the same unit of work. A failure rolls back the source event and all reaction events. The fan-out and chaining example is [`tests/e2e/reactions-fanout.e2e-test.ts`](tests/e2e/reactions-fanout.e2e-test.ts).
@@ -664,6 +1221,46 @@ derived_projections:
             by: 1
 ```
 
+The TypeScript projection uses a native reducer for its read model:
+
+```ts
+import {
+  defineProjection,
+  eventReference,
+  eventType,
+  boundaryName,
+  projectionName,
+} from "potemkin/sdk";
+
+const leadSummary = defineProjection({
+  name: projectionName("LeadSummary"),
+  key: ({ event }) => event?.aggregateId ?? "",
+  subscribe: [
+    eventReference(boundaryName("Lead"), eventType("LeadCreated")),
+    eventReference(boundaryName("Opportunity"), eventType("OpportunityCreated")),
+  ],
+  reduce: [
+    reducerRule(eventType("LeadCreated"))
+      .apply(({ state, event }) => ({
+        ...state,
+        lead_id: event.aggregateId,
+        companyName: event.payload.companyName,
+      }))
+      .build(),
+    reducerRule(eventType("OpportunityCreated"))
+      .apply(({ state }) => ({
+        ...state,
+        total_opportunities: Number(state.total_opportunities ?? 0) + 1,
+      }))
+      .build(),
+  ],
+});
+
+const projectionModel = simulation()
+  .global({ derivedProjections: [leadSummary] })
+  .build();
+```
+
 Inspect it during a test:
 
 ```sh
@@ -690,6 +1287,28 @@ webhooks:
       delayMs: 100
 ```
 
+The TypeScript webhook definition supplies the URL and payload as callbacks:
+
+```ts
+import { defineWebhook, webhookName } from "potemkin/sdk";
+
+const leadConvertedWebhook = defineWebhook({
+  name: webhookName("lead-converted"),
+  trigger: ({ event }) => event?.type === "LeadConverted",
+  url: () => "http://127.0.0.1:19876/webhook",
+  secret: process.env.LEAD_WEBHOOK_SECRET ?? "local-test-secret",
+  payload: {
+    leadId: ({ event }) => event?.aggregateId ?? "",
+    event: ({ event }) => event?.type ?? "",
+  },
+  retry: { maxAttempts: 3, delayMs: 100 },
+});
+
+const webhookModel = simulation()
+  .global({ webhooks: [leadConvertedWebhook] })
+  .build();
+```
+
 The receiver test is [`tests/e2e/webhook-hmac.e2e-test.ts`](tests/e2e/webhook-hmac.e2e-test.ts).
 
 ## TypeScript authoring
@@ -697,10 +1316,15 @@ The receiver test is [`tests/e2e/webhook-hmac.e2e-test.ts`](tests/e2e/webhook-hm
 TypeScript supplies the simulation model directly. Callbacks are phase-specific and typed; CEL
 and DSL strings are parser inputs, not a second TypeScript expression language. Use the semantic
 reference constructors from `potemkin/sdk` for boundary names, operation IDs, event types,
-contract paths, and response field paths. The runtime model still contains canonical strings at
+contract paths, and response field paths. The runtime model contains canonical strings at
 the source-neutral boundary, but TypeScript authoring cannot interchange these identifier roles.
 Import authoring from `potemkin/sdk` and runtime boot/transport from their explicit package
 surfaces; application code does not need to import internal `src/` modules.
+
+The SDK also exposes typed error classes. Invalid semantic references and invalid authoring
+definitions report `TypeScriptReferenceError` or `TypeScriptAuthoringError` with a stable
+diagnostic code and structured details. This makes configuration failures distinguishable from
+ordinary application exceptions and keeps IDE completion useful at each authoring boundary.
 
 This example boots the same HTTP runtime used by the YAML path:
 
@@ -710,13 +1334,24 @@ import {
   boundary,
   boundaryName,
   contractPath,
+  defineComponent,
+  defineFault,
+  defineProjection,
+  defineReaction,
+  defineResource,
+  defineSaga,
+  defineWebhook,
   event,
   eventType,
   expression,
+  field,
+  fieldPath,
+  include,
   operationId,
   pathSegment,
   reducerRule,
   simulation,
+  use,
   type EventContext,
   type IdentityContext,
 } from "potemkin/sdk";
@@ -846,22 +1481,25 @@ The AST scanner invokes only static methods decorated with the exact
 ```ts
 import {
   PotemkinConfigure,
+  behaviorName,
   boundaryName,
   contractPath,
   boundary,
   defineHelper,
   event,
   eventType,
+  factoryName,
+  helperName,
   operationId,
   pathSegment,
   reducerRule,
   simulation,
 } from "potemkin/sdk";
 
-const sourceLabel = defineHelper("sourceLabel", (source: string) => source);
+const sourceLabel = defineHelper(helperName("sourceLabel"), (source: string) => source);
 
 class WidgetConfiguration {
-  @PotemkinConfigure("widgets")
+  @PotemkinConfigure(factoryName("widgets"))
   static create() {
     return simulation()
       .helper(sourceLabel)
@@ -873,7 +1511,7 @@ class WidgetConfiguration {
             }),
           )
           .behavior({
-            name: "createWidget",
+            name: behaviorName("createWidget"),
             operationId: operationId("createWidget"),
             emit: eventType("WidgetCreated"),
           })
@@ -929,6 +1567,7 @@ import {
   boundary,
   boundaryName,
   contractPath,
+  factoryName,
   pathSegment,
   simulation,
   PotemkinConfigure,
@@ -936,7 +1575,7 @@ import {
 } from "potemkin/sdk";
 
 class WidgetScenario {
-  @PotemkinConfigure("widgets")
+  @PotemkinConfigure(factoryName("widgets"))
   static create(_context: FactoryContext) {
     return simulation()
       .boundary(boundary(boundaryName("Widget"), contractPath(pathSegment("widgets"))).build())
@@ -952,11 +1591,21 @@ dependencies and registration, then the annotated static factories are invoked
 in deterministic source/name order. YAML modules are loaded by the separate
 YAML source loader and both authoring forms compile into the same runtime model.
 
+Discovery is AST-based rather than a text search. Comments, strings, instance
+methods, unrelated decorators, and decorator-like text do not make a file an
+entry point. The canonical decorator import is `PotemkinConfigure` from
+`potemkin/sdk`; additional single-purpose annotations may be added to the SDK
+when they carry typed discovery or metadata semantics, but they must remain
+canonical exports with loader and runtime tests.
+
 `modules` and `openapi` accept multiple globs. The server always polls the single
 `potemkin.yml` and every selected YAML, OpenAPI, and TypeScript file every ten
-seconds by default. A detected change clears the runtime and boots the new
-configuration from its initialization state. Start the server with
-the one configuration path supplied by environment or command line:
+seconds by default. The TypeScript dependency graph is included in the watched
+set, while the configuration file itself is always watched. A detected change
+clears the runtime and boots the new configuration from its initialization
+state; if a reload fails, the previous active runtime remains in service and
+the error is reported. Start the server with the one configuration path
+supplied by environment or command line:
 
 ```sh
 POTEMKIN_CONFIG_PATH=/workspace/potemkin.yml pnpm run start:server
@@ -999,12 +1648,10 @@ reducerRule(eventType("LeadQualified"))
 
 ### Testing a pure TypeScript model
 
-REQ-48 through REQ-75 require every YAML type, variant, and combination to have a TypeScript equivalent. That includes boundaries, resources, initialization, identity, event catalogues, behaviors, guards, reducers, queries, reactions, sagas, derived projections, response shaping, auth, idempotency, concurrency, faults, forwarding, webhooks, composition, and resource expansion.
-
 The API uses typed interfaces, immutable values, functional composition, and builders. It can
-compile a TypeScript-authored boundary or resource directly, install direct TypeScript reducers,
-run typed expressions in the current evaluator phases, and retain lifecycle declarations. The
-runtime authoring checks live under `tests/runtime/`, while public behavior is proved by the
+compile a TypeScript-authored boundary or resource directly, install native TypeScript reducers,
+run typed expressions in the evaluator phases, and retain lifecycle declarations. The runtime
+authoring checks live under `tests/runtime/`, while public behavior is proved by the
 Specmatic-backed suites under `tests/e2e/`.
 
 Run the lower-level authoring checks directly while working on the API:
@@ -1016,118 +1663,46 @@ PATH=/opt/homebrew/opt/node@24/bin:$PATH \
   tests/runtime/typescript-resource.runtime.test.ts
 ```
 
-The YAML-only counterpart is `tests/runtime/authoring-yaml.runtime.test.ts`.
-The observable parity trace is `tests/runtime/pure-authoring-observables.runtime.test.ts` and
-boots one YAML system and one TypeScript system, then compares their responses, events, state,
-headers, and side-effect observations.
+The source-specific authoring tests are `tests/runtime/authoring-yaml.runtime.test.ts` and
+`tests/runtime/authoring-typescript.runtime.test.ts`. The observable authoring trace is
+`tests/runtime/pure-authoring-observables.runtime.test.ts`.
 
 ### Using the source-independent runtime directly
 
-For lower-level runtime tests, use the runtime builders. This path has no YAML module, CEL expression, or
-YAML parser representation in it. The parser module described below produces the same
-`RuntimeProgram` when the source is YAML.
+For lower-level tests and embedding, compile the same TypeScript authoring definition into the
+source-independent `RuntimeModel` and give that model to the runtime system. This path has no YAML
+module, CEL expression, or parser representation in it; the YAML loader produces the same model.
 
 ```ts
-import {
-  createRuntimeEngine,
-  runtimeBehavior,
-  runtimeBoundary,
-  runtimeEvent,
-  runtimeProgram,
-  runtimeReducer,
-} from "potemkin";
+import { bootRuntime } from "potemkin";
+import { boundary, boundaryName, contractPath, pathSegment, simulation } from "potemkin/sdk";
 
-const orders = runtimeBoundary("Order", "/orders")
-  .event(
-    runtimeEvent("OrderCreated")
-      .payload({
-        id: ({ payload }) => payload.id,
-        total: ({ payload }) => payload.total,
-      })
-      .build(),
-  )
-  .behavior(
-    runtimeBehavior("createOrder")
-      .operation("createOrder")
-      .emit("OrderCreated")
-      .scopes("orders:write")
-      .build(),
-  )
-  .reducer(
-    runtimeReducer("OrderCreated")
-      .apply(({ event }) => [
-        { op: "replace", path: "/id", value: event.payload.id },
-        { op: "replace", path: "/total", value: event.payload.total },
-      ])
-      .build(),
-  )
-  .response({
-    mask: ["/internalNote"],
-    deprecated: { date: "2027-01-01", replacement: "/v2/orders" },
-  })
+const definition = simulation()
+  .boundary(boundary(boundaryName("Order"), contractPath(pathSegment("orders"))).build())
   .build();
 
-const engine = createRuntimeEngine(
-  runtimeProgram()
-    .boundary(orders)
-    .policies({
-      faults: [
-        {
-          name: "maintenance",
-          matches: ({ headers }) => headers["x-maintenance"] === "on",
-          response: { status: 503, body: { error: "MAINTENANCE" } },
-        },
-      ],
-      sagas: [
-        {
-          name: "fulfil-order",
-          trigger: { boundary: "Order", intent: "creation", condition: () => true },
-          steps: [],
-        },
-      ],
-      webhooks: [
-        {
-          name: "order-created",
-          trigger: ({ event }) => event?.type === "OrderCreated",
-          url: () => "https://hooks.example.test/orders",
-          secret: process.env.ORDER_WEBHOOK_SECRET,
-        },
-      ],
-    })
-    .compile({
-      contract: { operationIdFor: () => "createOrder" },
-      helpers: {
-        now: () => new Date().toISOString(),
-        uuid: () => crypto.randomUUID(),
-        random: Math.random,
-        clone: structuredClone,
-      },
-      webhooks: {
-        deliver: async (delivery) =>
-          fetch(delivery.url, {
-            method: "POST",
-            headers: delivery.headers,
-            body: delivery.body,
-          }).then(() => undefined),
-      },
-    }),
-);
+const system = await bootRuntime({ openapi, definition });
 ```
+
+Use the SDK's `reducerRule(...).apply(...)` contract for native reducers in this path. The reducer
+returns the complete next state; JSON Patch operations are a YAML authoring concern and are
+compiled by the YAML loader before the runtime starts. The runtime itself receives only the common
+model and does not inspect YAML, TypeScript, DSL, or CEL values.
 
 The usual development sequence is:
 
-1. Put the runtime definition in a normal `.ts` test or module.
-2. Inject deterministic `helpers`, a contract binding, and test transports.
-3. Call `engine.execute` with a `Command` and request headers.
-4. Inspect `result.events` and `engine.snapshot()` alongside the response.
-5. Call `engine.reset()` between scenarios; it clears state, events, projections,
+1. Put the typed definition in a normal `.ts` test or configuration module.
+2. Inject deterministic helpers, the OpenAPI contract, and test transports at boot.
+3. Send requests through `createRuntimeGateway` or the Specmatic/plugin path.
+4. Inspect the response, committed events, and `engine.snapshot()` alongside the request.
+5. Call `system.engine.reset()` between scenarios; it clears state, events, projections,
    idempotency records, and fault effects before reseeding.
 
 Use `bootYamlRuntime({ yamlProgram })`, or call `compileYamlProgram` from the `parser` subpath when
-the source is YAML. Faults, reactions,
-dispatch, sagas and compensation, projections, HMAC webhooks, response policies, lifecycle hooks,
-queries, auth, idempotency, optimistic concurrency, fallback, and reset are runtime capabilities;
-their authoring syntax belongs to the TypeScript definition or the parser, not to the core.
+the source is YAML. Faults, reactions, dispatch, sagas and compensation, projections, HMAC
+webhooks, response policies, lifecycle hooks, queries, auth, idempotency, optimistic concurrency,
+fallback, and reset are runtime capabilities; their authoring syntax belongs to the TypeScript
+definition or the parser, not to the core.
 
 ## Response shaping
 
@@ -1151,6 +1726,22 @@ contract_path: /leads
 hateoas:
   - rel: campaign
     href: /campaigns
+```
+
+The TypeScript form puts global link settings in `defineGlobal` and boundary
+links in the response policy:
+
+```ts
+const leadWithLinks = boundary(boundaryName("Lead"), contractPath(pathSegment("leads")))
+  .response({
+    hateoas: [{ rel: "campaign", href: () => "/campaigns" }],
+  })
+  .build();
+
+const linksModel = simulation()
+  .boundary(leadWithLinks)
+  .global({ hateoas: { enabled: true, selfLinks: true } })
+  .build();
 ```
 
 The global form can also add action links with `link_name` and `link_condition`. See [`tests/e2e/hateoas.e2e-test.ts`](tests/e2e/hateoas.e2e-test.ts).
@@ -1178,6 +1769,34 @@ security_headers:
     X-Custom-Sim-Header: potemkin-sim
 ```
 
+The TypeScript equivalents use field references, boundary response policies,
+and camelCase global security options:
+
+```ts
+const securedLead = boundary(boundaryName("Lead"), contractPath(pathSegment("leads")))
+  .mask(fieldPath(field("internalNotes")))
+  .deprecated({
+    date: "2025-01-01",
+    sunset: "2027-01-01T00:00:00Z",
+    replacement: "/v2/leads",
+  })
+  .build();
+
+const securityModel = simulation()
+  .boundary(securedLead)
+  .global({
+    securityHeaders: {
+      enabled: true,
+      hsts: true,
+      nosniff: true,
+      frameDeny: true,
+      referrerPolicy: "strict-origin-when-cross-origin",
+      customHeaders: { "X-Custom-Sim-Header": "potemkin-sim" },
+    },
+  })
+  .build();
+```
+
 Masking is applied to responses and does not change stored state. Deprecation produces `Deprecation`, `Sunset`, and `Link` headers. Security headers also apply to errors and admin responses.
 
 ### Latency and version routing
@@ -1202,6 +1821,27 @@ versioning:
     - version: v2
       prefix: /v2
       default: true
+```
+
+The TypeScript form is:
+
+```ts
+const delayedLead = boundary(boundaryName("Lead"), contractPath(pathSegment("leads")))
+  .latency({ fixedMs: 20, minMs: 30, maxMs: 60 })
+  .build();
+
+const versionedModel = simulation()
+  .boundary(delayedLead)
+  .global({
+    versioning: {
+      enabled: true,
+      versions: [
+        { version: "v1", prefix: "/v1" },
+        { version: "v2", prefix: "/v2", default: true },
+      ],
+    },
+  })
+  .build();
 ```
 
 The gateway strips the prefix for contract lookup and reports the selected version in
@@ -1238,6 +1878,34 @@ fault_rules:
         Retry-After: "30"
 ```
 
+TypeScript fault rules use typed predicates and direct runtime controls:
+
+```ts
+const maintenanceFault = defineFault({
+  name: "dnc-registry-timeout",
+  matches: ({ command }) => String(command.payload.reason) === "REGISTRY_CHECK",
+  response: {
+    status: 504,
+    body: { error: "DNC_REGISTRY_TIMEOUT" },
+  },
+  delayMs: 100,
+});
+
+const rateLimitFault = defineFault({
+  name: "rate-limit-header",
+  matches: ({ request }) => request.controls?.rateLimit === true,
+  response: {
+    status: 429,
+    body: { error: "RATE_LIMITED" },
+    headers: { "Retry-After": "30" },
+  },
+});
+
+const faultModel = simulation()
+  .global({ faults: [maintenanceFault, rateLimitFault] })
+  .build();
+```
+
 For one request, use chaos headers instead of editing YAML:
 
 ```sh
@@ -1246,6 +1914,19 @@ curl -s "$STUB_URL/leads/$LEAD_ID" \
 
 curl -s "$STUB_URL/leads/$LEAD_ID" \
   -H 'X-Potemkin-Force-Status: 503'
+```
+
+A TypeScript consumer sends the same request-scoped controls as ordinary
+headers:
+
+```ts
+await fetch(`${STUB_URL}/leads/${LEAD_ID}`, {
+  headers: { "X-Potemkin-Force-Latency": "250" },
+});
+
+await fetch(`${STUB_URL}/leads/${LEAD_ID}`, {
+  headers: { "X-Potemkin-Force-Status": "503" },
+});
 ```
 
 Other control headers support dry runs, time-travel reads, clock offsets, response format control, observability injection, and admin-gated validation controls. The canonical names are in [`src/http/potemkinHeaders.ts`](src/http/potemkinHeaders.ts). The matrix is exercised by [`tests/e2e/chaos-headers.e2e-test.ts`](tests/e2e/chaos-headers.e2e-test.ts) and [`tests/e2e/control-headers.e2e-test.ts`](tests/e2e/control-headers.e2e-test.ts).
@@ -1281,12 +1962,57 @@ The controls most often used in a consumer test are:
 | `X-Potemkin-Skip-Response-Validation`    | `true`           | Skip response validation; admin-gated.                            |
 | `X-Potemkin-Allow-Additional-Properties` | `true`           | Relax a closed object schema; admin-gated.                        |
 
+For direct TypeScript runtime calls, the same controls are grouped in the
+request object instead of HTTP headers:
+
+```ts
+const controls = {
+  dryRun: true,
+  includeEvents: true,
+  seed: "42",
+  responseFormat: "plain" as const,
+  traceId: "test-123",
+  forceLatencyMs: 250,
+};
+
+// Pass `controls` on RuntimeRequest when calling the source-independent engine.
+```
+
 For deterministic clock-dependent responses:
 
 ```sh
 curl -s "$STUB_URL/leads/$LEAD_ID" \
   -H 'X-Potemkin-Clock-Offset: 86400000'
 ```
+
+## Observability
+
+Potemkin has source-neutral observability ports. The production server connects
+them to OpenTelemetry, while tests and embedders can inject deterministic
+observers. Each handled request produces one final exchange observation after
+matching, state changes, response policies, side effects, validation, and
+transport outcome have completed. The observation preserves the original
+request, final response, trace/command correlation, status, headers, captured
+body sizes, truncation flags, and connection-close outcome.
+
+Request and response bodies are redacted and byte-limited before they reach the
+observer. The same observation contract is used for direct HTTP and
+Specmatic-forwarded requests, including successful responses, reads, faults,
+chaos outcomes, validation failures, transactional rollback, and closed
+connections. Runtime counters and histograms are also exposed through the
+OpenTelemetry metrics port.
+
+Enable OTLP export for the server with the standard environment variables:
+
+```sh
+OTEL_SERVICE_NAME=potemkin \
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318 \
+pnpm run start:server -- --config /workspace/potemkin.yml
+```
+
+Set `OTEL_SDK_DISABLED=true` to disable the production SDK. The observability
+matrix is exercised by [`tests/e2e/runtime-observability.e2e-test.ts`](tests/e2e/runtime-observability.e2e-test.ts)
+and the lower-level request/response tests under [`tests/unit/observability`](tests/unit/observability).
 
 ## Composition and resource expansion
 
@@ -1327,6 +2053,53 @@ use:
       actorField: updatedBy
 ```
 
+TypeScript components are factories, so parameters become ordinary values:
+
+```ts
+import {
+  componentName,
+  defineComponent,
+  eventType,
+  include,
+  reducerRule,
+  simulation,
+  use,
+  boundaryName,
+  contractPath,
+  pathSegment,
+} from "potemkin/sdk";
+
+const auditedEntity = defineComponent(componentName("AuditedEntity"), (parameters) => {
+  const actorField = String(parameters.actorField ?? "lastActor");
+  return {
+    reducers: [
+      reducerRule(eventType("AuditLogged"))
+        .apply(({ state, event }) => ({
+          ...state,
+          [actorField]: event.payload.actor,
+        }))
+        .build(),
+    ],
+  };
+});
+
+const composedModel = simulation()
+  .use(
+    use(auditedEntity, boundaryName("Document"), contractPath(pathSegment("documents")), {
+      actorField: "lastActor",
+    }),
+    use(auditedEntity, boundaryName("Invoice"), contractPath(pathSegment("invoices")), {
+      actorField: "updatedBy",
+    }),
+  )
+  .boundary(
+    boundary(boundaryName("Note"), contractPath(pathSegment("notes")))
+      .include(include(auditedEntity, { actorField: "updatedBy" }))
+      .build(),
+  )
+  .build();
+```
+
 Use `include` when a live boundary or component should inherit a fragment. Local behavior and event names override included entries; reducers are additive. Duplicate or unresolved composition references fail at boot. The full example is [`tests/e2e/composition.e2e-test.ts`](tests/e2e/composition.e2e-test.ts).
 
 ### Resource files
@@ -1341,6 +2114,50 @@ operations:
   - { op: GetProducts, query: true }
   - { op: GetProductsId, query: true }
   - { op: PostProductsId, emit: ProductUpdated }
+```
+
+The TypeScript resource definition expands from the same OpenAPI operation IDs:
+
+```ts
+import {
+  defineResource,
+  event,
+  eventType,
+  operationId,
+  resourceName,
+  schemaReference,
+  reducerRule,
+  simulation,
+} from "potemkin/sdk";
+
+const productResource = defineResource({
+  resource: resourceName("Product"),
+  schema: schemaReference("product"),
+  eventCatalog: [
+    event(eventType("ProductCreated"), {
+      id: ({ command }) => command.targetId ?? "",
+    }),
+    event(eventType("ProductUpdated"), {
+      id: ({ command }) => command.targetId ?? "",
+    }),
+  ],
+  reducers: [
+    reducerRule(eventType("ProductCreated"))
+      .apply(({ state, event }) => ({ ...state, id: event.payload.id }))
+      .build(),
+    reducerRule(eventType("ProductUpdated"))
+      .apply(({ state, event }) => ({ ...state, id: event.payload.id }))
+      .build(),
+  ],
+  operations: [
+    { operationId: operationId("PostProducts"), emit: eventType("ProductCreated") },
+    { operationId: operationId("GetProducts"), query: true },
+    { operationId: operationId("GetProductsId"), query: true },
+    { operationId: operationId("PostProductsId"), emit: eventType("ProductUpdated") },
+  ],
+});
+
+const resourceModel = simulation().resource(productResource).build();
 ```
 
 The Stripe example uses this for customers, products, prices, payment intents, charges, and refunds. The expansion is in [`src/dsl/resourceExpander.ts`](src/dsl/resourceExpander.ts), and concrete files are in [`examples/stripe/dsl`](examples/stripe/dsl).
@@ -1360,10 +2177,29 @@ curl -s "$ENGINE_URL/_engine/state"
 curl -s -X POST "$ENGINE_URL/_admin/reset"
 ```
 
+The same inspection endpoints are ordinary TypeScript HTTP calls:
+
+```ts
+const routes = await fetch(`${ENGINE_URL}/_engine/routes`).then((response) => response.json());
+const state = await fetch(`${ENGINE_URL}/_admin/state`).then((response) => response.json());
+const events = await fetch(`${ENGINE_URL}/_admin/events`).then((response) => response.json());
+const projection = await fetch(`${ENGINE_URL}/_admin/derived/LeadSummary`).then((response) =>
+  response.json(),
+);
+
+await fetch(`${ENGINE_URL}/_admin/reset`, { method: "POST" });
+```
+
 Reload the configured source graph immediately, without waiting for the polling interval, with:
 
 ```sh
 curl -s -X POST "$ENGINE_URL/_admin/force-reload"
+```
+
+From a TypeScript test or development script:
+
+```ts
+await fetch(`${ENGINE_URL}/_admin/force-reload`, { method: "POST" });
 ```
 
 The force-reload endpoint clears the active runtime and compiles the current YAML, TypeScript, and
@@ -1378,6 +2214,14 @@ engine outside a trusted test process:
 ADMIN_TOKEN='local-admin-token' pnpm run start:example
 curl -s "$ENGINE_URL/_admin/state" \
   -H 'Authorization: Bearer local-admin-token'
+```
+
+The authenticated TypeScript request is:
+
+```ts
+await fetch(`${ENGINE_URL}/_admin/state`, {
+  headers: { Authorization: "Bearer local-admin-token" },
+});
 ```
 
 State and event admin responses are raw diagnostic data. They are not subject to
@@ -1408,13 +2252,23 @@ The plugin can forward control operations for seeds, workflows, overlays, govern
 Engine restarts are covered by [`tests/e2e/reliability.e2e-test.ts`](tests/e2e/reliability.e2e-test.ts), shutdown notifications by [`tests/e2e/shutdown-notification.e2e-test.ts`](tests/e2e/shutdown-notification.e2e-test.ts), and fixture refresh by [`tests/e2e/fixture-hot-reload.e2e-test.ts`](tests/e2e/fixture-hot-reload.e2e-test.ts).
 
 The plugin is a working integration path. `pnpm run test:conformance` and
-`pnpm run export:examples` are available. The repository contains reusable pieces for
-contract-backed model equivalence—normalization, identifier mapping, sequence generation,
-shrinkers, metamorphic relations, and divergence ledgers. Stripe behavior is tested locally
-against the vendored OpenAPI contract through Specmatic; the test suite does not call Stripe's
-network APIs.
+`pnpm run export:examples` are available. Stripe behavior is tested locally against the vendored
+OpenAPI contract through Specmatic; the test suite does not call Stripe's network APIs.
 
-## Testing and known repository issues
+The E2E harness boots one Specmatic JVM for the suite and rewrites the single
+`potemkin.yml` between scenarios. It calls `POST /_admin/force-reload` after
+each rewrite, so tests do not wait for the ten-second polling interval. The
+requests still travel through the real Specmatic stub and Kotlin plugin before
+reaching Potemkin; direct `/_engine/forward` calls are not the E2E proof path.
+
+The conformance gate is a separate real Specmatic test-mode process. CRM Layer
+A and the bounded Stripe Layer A run as blocking CI checks, Layer B verifies
+deterministically seeded positive reads, and Layer C uses only exact,
+staleness-guarded stateful-divergence entries. The gate proves contract-floor
+conformance (status, response shape, and error-body shape), while behavioral
+fidelity is covered by the consumer-side example suites.
+
+## Testing
 
 Run the relevant check after changing a simulation:
 
@@ -1426,81 +2280,16 @@ pnpm run test:examples
 pnpm run test:coverage
 ```
 
-The current caveats are:
-
-- The default conformance command covers the contract-invalid 400 layer. Stateful 404/422 cases
-  remain a separate behaviour concern and are not silently folded into that gate.
-- The positive conformance layer needs Java, the plugin JAR, and the cached Specmatic artifact.
-- MakerX Verify passes the lint, formatting, type, unused-code, duplication, and test gates.
-
-## Current work
-
-The remaining implementation work is concentrated in these areas:
-
-1. **Complete TypeScript/YAML parity.** The direct definition model, builders, functional helpers,
-   typed contexts, direct boot path, lifecycle runtime, and parity normalizer exist. The remaining
-   work is the long tail of typed constructors and runtime coverage for every YAML variant,
-   optional field, discriminated union, and valid cross-feature combination. The authoritative
-   inventory is §17 of [`docs/design/typescript-yaml-parity.md`](docs/design/typescript-yaml-parity.md).
-
-2. **Specmatic conformance gate — implemented for the bounded 400 layer.** The verifier, JUnit
-   parser, allowlist handling, CLI, generated negative cases, and positive-example selection exist.
-   The default run is the contract-invalid layer; the exported positive corpus and fixture Layer-B
-   verifier are also wired through the real Specmatic JVM path. Route- and status-scoped stateful
-   runs remain the bounded conformance checks while the broader generated mutation surface is
-   completed. See [`docs/design/specmatic-conformance-gate.md`](docs/design/specmatic-conformance-gate.md).
-
-3. **Specmatic example export — implemented for the deterministic engine path.**
-   `pnpm run export:examples` writes stable request/response examples and supports `--check`.
-   The CRM and Stripe repositories contain generated Tier-1 baseline and contract-backed Tier-2
-   state-machine/side-effect snapshots, including explicit branch and saga drives declared by
-   boundary `export:` blocks. The plain Specmatic harness independently serves every
-   generated example without the Potemkin engine or plugin, including Tier-3 declared-error
-   examples. See [`docs/design/specmatic-export-examples.md`](docs/design/specmatic-export-examples.md).
-
-4. **Contract-backed behavioral equivalence — implemented locally.** The retained equivalence
-   harness compares local Potemkin runtimes, while the Stripe example is exercised through its
-   vendored OpenAPI contract and the Specmatic JVM. No external provider or Stripe API credentials
-   are used by the repository test path. See [`docs/design/specmatic-equivalence-testing.md`](docs/design/specmatic-equivalence-testing.md).
-
-5. **Contract-shaped errors — implemented.** Fallback, gateway, and forwarding failures use the
-   matched operation's exact or default error schema, with deterministic values and boot-time
-   validation for static fault bodies.
-
-6. **Static model analysis — implemented as MODEL1/MODEL2.** `/_admin/model`
-   exposes the extracted model, and lint reports structural findings. Inference-uncertain dead
-   states are warnings; explicit unreachable states and invalid suppressions remain errors.
-
-7. **Plugin reflection hardening — implemented.** Reflection is centralized, version-checked, and
-   covered by Kotlin tests so an incompatible Specmatic surface fails clearly.
-
-8. **Tooling and documentation cleanup.** Node 24, pnpm, the production build, contract test
-   script, and lint errors are fixed. Remaining work is broader example coverage for the parity
-   long tail and keeping the README and design matrices aligned with the implementation.
-
-9. **Test suite re-packaging and value review.** Inventory the tests by behavior and layer,
-   regroup them under descriptive unnumbered names, and remove migration-only, duplicate, or
-   low-value tests only after their useful assertions are protected by canonical unit, runtime,
-   YAML/TypeScript parity, or real Specmatic-backed E2E coverage. The acceptance checklist is
-   tracked as REQ-98 in [`requirements.md`](requirements.md).
-
-10. **Full layer and module-structure sweep.** Audit the source tree and public package boundaries,
-    then refactor misplaced or mixed-responsibility code so the YAML/CEL, TypeScript SDK/loader,
-    model, runtime, transport, CLI, and composition layers follow clear conventional TypeScript
-    module boundaries. The acceptance checklist is tracked as REQ-99 in
-    [`requirements.md`](requirements.md).
-
 ## Reference material
 
-- [`requirements.md`](requirements.md): EARS requirements and BDD traceability.
 - [`docs/dsl.md`](docs/dsl.md): YAML grammar, lifecycle, errors, composition, response generation, and limits.
 - [`docs/cel.md`](docs/cel.md): CEL operators, built-ins, phase rules, and shared TypeScript helpers.
 - [`docs/specmatic.md`](docs/specmatic.md): plugin and forwarding notes.
-- [`docs/design/typescript-yaml-parity.md`](docs/design/typescript-yaml-parity.md): planned TypeScript authoring model.
+- [`src/sdk/index.ts`](src/sdk/index.ts): TypeScript SDK exports and authoring surface.
 - [`tests/e2e/README.md`](tests/e2e/README.md): Specmatic-backed E2E harness.
 - [`examples/crm/README.md`](examples/crm/README.md): complete CRM simulation.
 - [`examples/stripe/README.md`](examples/stripe/README.md): stateful Stripe subset.
 
 ## Contributing
 
-When behavior changes, update the requirement or design document, add a focused test, and update the example that demonstrates the behavior. Keep YAML and the future TypeScript model semantically equivalent. Avoid adding a configuration field without documenting its phase, error behavior, and reset behavior.
+When behavior changes, update the relevant documentation, add a focused test, and update the example that demonstrates the behavior. Avoid adding a configuration field without documenting its phase, error behavior, and reset behavior.
