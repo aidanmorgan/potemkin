@@ -7,11 +7,9 @@
 # identity.creation.generate provides the fallback when the header is absent:
 # a fresh UUIDv7 is minted automatically (same as the standard creation path).
 #
-# Implementation note — the key extraction runs in both the HTTP gateway
-# (src/http/gateway.ts) and the forwarding handler (src/forwarding/handler.ts)
-# via extractEntityKey() (src/engine/keyExtractor.ts) BEFORE the Command is built,
-# so targetId on the command already carries the header-derived value and the rest
-# of the CQRS/ES pipeline (PatternMatcher → reducer → StateGraph) is unaffected.
+# Implementation note — the key extraction runs in the shared runtime gateway
+# before the Command is built, so targetId already carries the header-derived
+# value and the rest of the CQRS/ES pipeline remains source-independent.
 
 boundary: Token
 contract_path: /tokens

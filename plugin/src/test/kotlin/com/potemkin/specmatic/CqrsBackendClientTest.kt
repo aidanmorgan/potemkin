@@ -76,6 +76,57 @@ class CqrsBackendClientTest {
     }
 
     @Test
+    fun `response patches are applied to array-shaped alternate representations`() {
+        val body = listOf(
+            mapOf(
+                "data" to mapOf(
+                    "id" to "one",
+                    "attributes" to mapOf("name" to "first"),
+                ),
+            ),
+            mapOf(
+                "data" to mapOf(
+                    "id" to "two",
+                    "attributes" to mapOf("name" to "second"),
+                ),
+            ),
+        )
+        val patches = listOf(
+            mapOf(
+                "op" to "replace",
+                "path" to "/0/data/attributes/name",
+                "value" to "[MASKED]",
+                "source" to "mask",
+            ),
+            mapOf(
+                "op" to "replace",
+                "path" to "/1/data/attributes/name",
+                "value" to "[MASKED]",
+                "source" to "mask",
+            ),
+        )
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                mapper.writeValueAsString(
+                    mapOf(
+                        "status" to 201,
+                        "headers" to mapOf("Content-Type" to "application/json"),
+                        "body" to body,
+                        "_patches" to patches,
+                    ),
+                ),
+            ),
+        )
+
+        val result = client.forward(simpleRequest())
+
+        assertNotNull(result)
+        val served = mapper.readTree(result.response.body.toStringLiteral())
+        assertEquals("[MASKED]", served[0]["data"]["attributes"]["name"].asText())
+        assertEquals("[MASKED]", served[1]["data"]["attributes"]["name"].asText())
+    }
+
+    @Test
     fun `happy path - server receives correct path in forwarded body`() {
         server.enqueue(MockResponse().setResponseCode(200).setBody(cannedForwardedResponse()))
 
@@ -84,6 +135,15 @@ class CqrsBackendClientTest {
         val recorded = server.takeRequest()
         val body = mapper.readTree(recorded.body.readUtf8())
         assertEquals("/loans/456", body["path"].asText())
+    }
+
+    @Test
+    fun `forward requests close the plugin to engine connection at lifecycle boundaries`() {
+        server.enqueue(MockResponse().setResponseCode(200).setBody(cannedForwardedResponse()))
+
+        client.forward(simpleRequest())
+
+        assertEquals("close", server.takeRequest().getHeader("Connection"))
     }
 
     // ---- 4xx - propagated as deliberate client errors -----------------------------------
@@ -178,8 +238,8 @@ class CqrsBackendClientTest {
 
     @Test
     fun `drop-connection chaos returns 504 with x-potemkin-dropped header on plugin path`() {
-        // The forwarding handler emits a synthetic 504 + x-potemkin-dropped:true when
-        // drop-connection chaos fires (src/forwarding/handler.ts). The plugin cannot abort
+        // The runtime gateway emits a synthetic 504 + x-potemkin-dropped:true when
+        // drop-connection chaos fires. The plugin cannot abort
         // the Specmatic socket from inside a RequestHandler so it propagates the 504 verbatim.
         // This test asserts that canonical plugin behaviour: 504 + header present, no TCP reset.
         val droppedEnvelope = mapper.writeValueAsString(

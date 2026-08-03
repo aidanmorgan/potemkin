@@ -1,0 +1,26 @@
+{
+  "http-request": {
+    "method": "GET",
+    "path": "/campaigns/00000000-0000-754f-9edd-579cbfbcd5aa"
+  },
+  "http-response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "body": {
+      "id": "00000000-0000-754f-9edd-579cbfbcd5aa",
+      "name": "Export Completed Campaign",
+      "status": "COMPLETED",
+      "targetSource": "REFERRAL",
+      "script": "Export campaign script",
+      "startedAt": "2030-03-01T00:00:00.000Z",
+      "endedAt": "2030-10-31T23:59:59.000Z",
+      "targetCalls": 100,
+      "targetConversions": 10,
+      "actualCalls": 0,
+      "actualConversions": 0,
+      "assignedAgentIds": []
+    }
+  }
+}

@@ -8,7 +8,7 @@ One inbound operation often needs to mutate several object graphs (boundaries) a
 Potemkin can already do this with `dispatch_commands` (synchronous, in-UoW, atomic) and `sagas`
 (post-commit, eventual), but both are **orchestration**: the source behaviour must enumerate every
 target inline, each target needs its own OpenAPI operation + behaviour + event + reducer, and the
-cascade is capped at depth 5 (`src/engine/uow.ts:434`). The result is high authoring friction,
+cascade is capped at depth 5 (`src/core/engine.ts`). The result is high authoring friction,
 tight source→target coupling, and a hard upper bound on fan-out chains.
 
 ## Goal
@@ -29,33 +29,33 @@ Each entry:
 
 ```yaml
 reactions:
-  - name: record-conversion-on-campaign   # optional, for trace logs
-    on: "Lead:LeadConverted"              # "<Boundary>:<EventType>" or bare "<EventType>"
-    when: "event.payload.campaignId != null"   # optional CEL gate (default: true)
-    boundary: Campaign                    # reacting boundary; defaults to the file's boundary
-    emit: CampaignConversionRecorded      # event type in the reacting boundary's event_catalog
-    intent: mutation                      # mutation (default) | creation
-    target: "event.payload.campaignId"    # CEL -> aggregate id to mutate/create
-    payload:                              # optional CEL overrides merged over the event template
+  - name: record-conversion-on-campaign # optional, for trace logs
+    on: "Lead:LeadConverted" # "<Boundary>:<EventType>" or bare "<EventType>"
+    when: "event.payload.campaignId != null" # optional CEL gate (default: true)
+    boundary: Campaign # reacting boundary; defaults to the file's boundary
+    emit: CampaignConversionRecorded # event type in the reacting boundary's event_catalog
+    intent: mutation # mutation (default) | creation
+    target: "event.payload.campaignId" # CEL -> aggregate id to mutate/create
+    payload: # optional CEL overrides merged over the event template
       leadId: "${event.aggregateId}"
 ```
 
-| Field | Required | Meaning |
-|---|---|---|
-| `on` | yes | Trigger subscription: `Boundary:EventType` or bare `EventType` (any boundary). |
-| `emit` | yes | Event type to emit, resolved against the reacting boundary's `event_catalog`. |
-| `target` | yes (mutation) | CEL resolving to the aggregate id the emitted event applies to. For `creation`, may generate via the reacting boundary's `identity.creation.generate` when omitted. |
-| `boundary` | no | Reacting boundary; defaults to the boundary of the file the reaction is declared in (required when declared in the global file). |
-| `when` | no | CEL gate; the reaction fires only when true. |
-| `intent` | no | `mutation` (default) or `creation`. |
-| `payload` | no | CEL map merged over the emitted event's `payload_template`. |
+| Field      | Required       | Meaning                                                                                                                                                             |
+| ---------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `on`       | yes            | Trigger subscription: `Boundary:EventType` or bare `EventType` (any boundary).                                                                                      |
+| `emit`     | yes            | Event type to emit, resolved against the reacting boundary's `event_catalog`.                                                                                       |
+| `target`   | yes (mutation) | CEL resolving to the aggregate id the emitted event applies to. For `creation`, may generate via the reacting boundary's `identity.creation.generate` when omitted. |
+| `boundary` | no             | Reacting boundary; defaults to the boundary of the file the reaction is declared in (required when declared in the global file).                                    |
+| `when`     | no             | CEL gate; the reaction fires only when true.                                                                                                                        |
+| `intent`   | no             | `mutation` (default) or `creation`.                                                                                                                                 |
+| `payload`  | no             | CEL map merged over the emitted event's `payload_template`.                                                                                                         |
 
 The reaction does **not** reference an `operationId` and requires **no behaviour** on the reacting
 boundary — only the event in its `event_catalog` and a reducer for it (the irreducible ES minimum).
 
 ## Semantics
 
-1. **Trigger.** During the UoW loop (`src/engine/uow.ts:429-526`), after each event is staged and
+1. **Trigger.** During the UoW loop (`src/core/engine.ts`), after each event is staged and
    projected to the shadow graph, the reaction registry is consulted for entries whose `on` matches
    `<boundary>:<eventType>` (and bare `<eventType>`).
 2. **Gate.** `when` is evaluated against the trigger context; false skips the reaction.

@@ -1,0 +1,23 @@
+{
+  "http-request": {
+    "method": "GET",
+    "path": "/opportunities/00000000-0000-7c73-b9ba-3758c392f548"
+  },
+  "http-response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "body": {
+      "id": "00000000-0000-7c73-b9ba-3758c392f548",
+      "leadId": "00000000-0000-75e8-ac8a-de8e4e52c9bb",
+      "agentId": "00000000-0000-7000-8000-000000000003",
+      "campaignId": "00000000-0000-7000-8000-000000000001",
+      "stage": "PROPOSED",
+      "value": 30000,
+      "probability": 75,
+      "expectedCloseDate": "2031-01-15",
+      "lineItems": []
+    }
+  }
+}

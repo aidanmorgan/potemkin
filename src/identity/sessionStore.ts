@@ -18,9 +18,9 @@
  *   the same virtual clock used by CEL (admin clock advance affects TTL).
  */
 
-import { randomBytes } from 'node:crypto';
-import type { Actor } from '../types.js';
-import { nextUuidv7 } from '../ids/uuidv7.js';
+import type { Actor } from "../types.js";
+import { SessionLimitError } from "../errors.js";
+import type { RuntimeTimerScheduler } from "../runtime/ports.js";
 
 export interface Session {
   /** Session id — UUIDv7 string, used as the cookie value. */
@@ -39,7 +39,7 @@ export interface SessionStore {
   /** Create a new session for `actor`. `ttlMs` controls expiry from "now". */
   create(actor: Actor, ttlMs: number): Session;
   /** Look up a session by id. Returns null if missing or expired (evicts expired entries). */
-  get(sessionId: string): Session | null;
+  get(sessionId: string, at?: number): Session | null;
   /** Destroy a session by id. Returns true if the entry existed. */
   destroy(sessionId: string): boolean;
   /** Wipe all sessions and stop the background sweep timer. */
@@ -51,8 +51,14 @@ export interface SessionStore {
 }
 
 export interface SessionStoreOptions {
-  /** Clock function returning the current time in ms. Defaults to Date.now. */
-  readonly nowMs?: () => number;
+  /** Clock function returning the current time in ms. Supplied by the owning runtime. */
+  readonly nowMs: () => number;
+  /** Identifier factory supplied by the owning runtime. */
+  readonly uuid: () => string;
+  /** CSRF token factory supplied by the owning runtime. */
+  readonly csrfToken: () => string;
+  /** Timer implementation supplied by the owning runtime host. */
+  readonly scheduler: RuntimeTimerScheduler;
   /**
    * How often (ms) the background sweep runs to delete expired entries that were
    * never looked up. Defaults to 60 000 ms (60 s). Set to 0 to disable.
@@ -65,14 +71,12 @@ export interface SessionStoreOptions {
   readonly maxSessions?: number;
 }
 
-/** Build a per-session CSRF token. 32 random bytes → 64 hex chars. */
-function generateCsrfToken(): string {
-  return randomBytes(32).toString('hex');
-}
-
-export function createSessionStore(opts: SessionStoreOptions = {}): SessionStore {
+export function createSessionStore(opts: SessionStoreOptions): SessionStore {
   const sessions = new Map<string, Session>();
-  const now = opts.nowMs ?? Date.now;
+  const now = opts.nowMs;
+  const uuid = opts.uuid;
+  const csrfToken = opts.csrfToken;
+  const scheduler = opts.scheduler;
   const sweepIntervalMs = opts.sweepIntervalMs ?? 60_000;
   const maxSessions = opts.maxSessions ?? Infinity;
 
@@ -86,20 +90,16 @@ export function createSessionStore(opts: SessionStoreOptions = {}): SessionStore
     }
   }
 
-  let sweepTimer: ReturnType<typeof setInterval> | undefined;
+  let sweepTimer: unknown;
 
   if (sweepIntervalMs > 0) {
-    sweepTimer = setInterval(sweep, sweepIntervalMs);
-    // unref() so the timer doesn't prevent the Node.js process from exiting
-    // when nothing else is keeping it alive.
-    if (sweepTimer.unref) {
-      sweepTimer.unref();
-    }
+    sweepTimer = scheduler.setInterval(sweep, sweepIntervalMs);
+    scheduler.unref?.(sweepTimer);
   }
 
   function stopSweep(): void {
     if (sweepTimer !== undefined) {
-      clearInterval(sweepTimer);
+      scheduler.clearInterval(sweepTimer);
       sweepTimer = undefined;
     }
   }
@@ -113,28 +113,28 @@ export function createSessionStore(opts: SessionStoreOptions = {}): SessionStore
         if (current < session.expiresAt) liveCount++;
       }
       if (liveCount >= maxSessions) {
-        throw new Error(
-          `Session limit of ${maxSessions} reached; cannot create a new session`,
-        );
+        throw new SessionLimitError(maxSessions);
       }
 
       const created = now();
       const session: Session = {
-        id: nextUuidv7(),
+        id: uuid(),
         actor,
         createdAt: created,
         expiresAt: created + ttlMs,
-        csrfToken: generateCsrfToken(),
+        csrfToken: csrfToken(),
       };
       sessions.set(session.id, session);
       return session;
     },
 
-    get(sessionId: string): Session | null {
+    get(sessionId: string, at?: number): Session | null {
       const session = sessions.get(sessionId);
       if (!session) return null;
-      if (now() >= session.expiresAt) {
-        sessions.delete(sessionId);
+      if ((at ?? now()) >= session.expiresAt) {
+        // A request-local clock must not evict a session from the shared
+        // store. It only changes the answer seen by this request.
+        if (at === undefined) sessions.delete(sessionId);
         return null;
       }
       return session;

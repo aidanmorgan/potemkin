@@ -1,7 +1,7 @@
 package com.potemkin.specmatic
 
 /**
- * Kotlin port of `applyPatches` from `src/dsl/patches.ts`.
+ * Kotlin port of `applyPatches` from `src/model/patches.ts`.
  *
  * Operates on a plain JSON model — [Map] (objects), [List] (arrays), and JSON
  * scalars ([String], [Boolean], [Number], `null`) — which is exactly the shape

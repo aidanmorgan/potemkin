@@ -1,0 +1,7 @@
+version: 3
+specmatic:
+  settings:
+    test:
+      schemaResiliencyTests: positiveOnly
+      maxTestRequestCombinations: 10
+      maxTestCount: 30

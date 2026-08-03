@@ -15,12 +15,11 @@ against this simulation.
 
 ```
 examples/crm/
-  potemkin.yaml          # entry point: points at specmatic.yaml + globs dsl/**
+  potemkin.yml           # entry point: points at specmatic.yaml + globs dsl/**
   specmatic.yaml         # Specmatic config (contract + stub settings)
   openapi/
     nuisance-bureau.yaml # the API contract the simulation implements
   dsl/                   # one YAML file per boundary (+ sub-path action files)
-  scripts/               # scanned @Script TypeScript (e.g. lead scoring)
   dictionary.yaml        # schema-inference dictionary for response defaults
   run-crm-sim.ts         # runnable entry point (boots engine + gateway)
 ```
@@ -34,15 +33,15 @@ forwards stateful paths to the engine. `start:example` boots that full stack
 
 ```sh
 cd plugin && ./gradlew shadowJar && cd ..   # build the plugin JAR (Java 17+)
-npm run start:example                        # boots Specmatic + plugin + engine
+pnpm run start:example                       # boots Specmatic + plugin + engine
 # then drive requests at the printed STUB URL (Specmatic-validated):
 #   curl -s -XPOST <stubUrl>/leads -H 'Content-Type: application/json' \
 #        -d '{"companyName":"Acme","contactName":"A","phone":"+61...","email":"a@x","source":"WEBSITE"}'
 ```
 
-> The engine also exposes an Express gateway directly (`bootSystem` +
-> `createGateway`), but that is an internal framework-test convenience — Potemkin
-> is not meant to be used standalone, only as a Specmatic plugin.
+> The engine also exposes the same runtime directly for TypeScript-authored
+> tests (`bootRuntime` + `createRuntimeGateway`). The Specmatic plugin is still
+> the normal consumer-facing entry point for this example.
 
 ## Consumer-side testing (how to use Potemkin + Specmatic)
 
@@ -64,14 +63,13 @@ State is forced through the stub via four mechanisms:
 - **Clock + reset** — `X-Potemkin-Clock-Offset` and a reset-through-stub between
   tests give deterministic, isolated runs.
 
-The harness lives in [`examples/_harness`](../_harness): `startExampleStack({
+The shared conformance harness lives in [`src/conformance/exampleStack.ts`](../../src/conformance/exampleStack.ts): `startExampleStack({
 exampleName: 'crm' })` boots the engine + Specmatic stub + plugin and exposes the
 stub URL; `ConsumerClient` is the thin client the tests use.
 
 ```sh
 cd plugin && ./gradlew shadowJar && cd ..   # build the plugin JAR (Java 17+)
-npm run test:examples                        # e2e-tier; NOT part of `npm test`
-npm run lint:sim -- examples/crm             # lint the simulation, no servers
+pnpm run test:examples                       # e2e-tier; not part of `pnpm test`
 ```
 
 See the sibling [`examples/stripe`](../stripe) for a payments-domain example with

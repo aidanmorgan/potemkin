@@ -11,7 +11,7 @@ data class ForwardedRequest(
     val headers: Map<String, String> = emptyMap(),
     val body: Any? = null,
     // The Node engine's POST /_engine/forward contract names this field `query`
-    // (src/forwarding/types.ts ForwardedRequest). Serialise to that name so the
+    // (src/http/specmaticTransport.ts ForwardedRequest). Serialise to that name so the
     // engine accepts the request instead of rejecting it as malformed.
     // The TS type is Record<string, string | string[]>: a single value serialises as
     // a plain JSON string; multiple values for the same key serialise as a JSON array.
@@ -26,7 +26,7 @@ data class ForwardedResponse(
     val headers: Map<String, String> = emptyMap(),
     val body: Any? = null,
     // Response-mutation patches (HATEOAS/mask/etc.) the engine reports out-of-band
-    // (src/forwarding/types.ts ForwardedResponse._patches). The plugin re-embeds
+    // (src/http/specmaticTransport.ts ForwardedResponse._patches). The plugin re-embeds
     // them into the served body so PotemkinResponseInterceptor can re-apply them.
     @JsonProperty("_patches") val patches: List<Any?>? = null,
 )

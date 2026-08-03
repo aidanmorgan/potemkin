@@ -39,7 +39,7 @@ event_catalog:
       email: "command.payload.email"
       source: "command.payload.source"
       status: "'NEW'"
-      score: "ts:computeScore"
+      score: "command.payload.source == 'REFERRAL' ? 80 : command.payload.source == 'PARTNER' ? 70 : command.payload.source == 'WEBSITE' ? 50 : command.payload.source == 'COLD_LIST' ? 20 : 30"
       createdAt: "$now()"
       callIds: "[]"
       notes: "[]"

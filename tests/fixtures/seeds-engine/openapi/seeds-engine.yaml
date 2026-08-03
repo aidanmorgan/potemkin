@@ -9,7 +9,7 @@ info:
 #   /widgets — Widget boundary (initialKind: WIDGET)
 #   /gadgets — Gadget boundary (initialKind: GADGET)
 #
-# The seeds: block in potemkin.yaml declares two expectations targeting
+# The seeds: block in potemkin.yml declares two expectations targeting
 # /widgets/seeded-1 and /gadgets/seeded-2; these are asserted at the
 # seedCompiler level in the engine-only test (no JVM required).
 

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "src/cli/*.ts",
+    "tests/**/*.ts",
+    "tests/**/*.cjs",
+    "examples/**/*.ts",
+    "scripts/**/*.{mjs,ts}",
+    "tests/fixtures/**/typescript/**/*.ts",
+    "tests/fixtures/**/shared/**/*.ts"
+  ],
+  "project": [
+    "src/**/*.ts",
+    "tests/**/*.ts",
+    "tests/**/*.cjs",
+    "examples/**/*.ts",
+    "scripts/**/*.{mjs,ts}"
+  ],
+  "ignoreDependencies": [
+    "@opentelemetry/instrumentation-express",
+    "@opentelemetry/instrumentation-http",
+    "@opentelemetry/instrumentation-pino",
+    "cookie",
+    "@types/cookie",
+    "ts-node"
+  ],
+  "ignoreBinaries": ["java"]
+}

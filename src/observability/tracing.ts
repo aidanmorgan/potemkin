@@ -1,34 +1,60 @@
-import {
-  trace,
-  SpanStatusCode,
-} from '@opentelemetry/api';
-import type { Tracer, Span } from '@opentelemetry/api';
-import { NodeSDK } from '@opentelemetry/sdk-node';
-import { resourceFromAttributes } from '@opentelemetry/resources';
-import {
-  ATTR_SERVICE_NAME,
-  ATTR_SERVICE_INSTANCE_ID,
-} from '@opentelemetry/semantic-conventions';
-import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
-import { metrics as sdkMetrics } from '@opentelemetry/sdk-node';
-import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
-import { randomUUID } from 'node:crypto';
-import { nextUuidv7 } from '../ids/uuidv7.js';
-import { rootLogger } from './logger.js';
+import { trace, SpanStatusCode } from "@opentelemetry/api";
+import type { Tracer, Span } from "@opentelemetry/api";
+import { NodeSDK } from "@opentelemetry/sdk-node";
+import { resourceFromAttributes } from "@opentelemetry/resources";
+import { ATTR_SERVICE_NAME, ATTR_SERVICE_INSTANCE_ID } from "@opentelemetry/semantic-conventions";
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
+import { metrics as sdkMetrics } from "@opentelemetry/sdk-node";
+import { SimpleSpanProcessor } from "@opentelemetry/sdk-trace-base";
+import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
+import { randomUUID } from "node:crypto";
+import { nextUuidv7 } from "../ids/uuidv7.js";
+import { createNoopLogger, type Logger } from "./logger.js";
 
-// Pull version from package.json at module load time (best-effort).
-let _serviceVersion = 'unknown';
-try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const pkg = require('../../package.json') as { version?: string };
-  _serviceVersion = pkg.version ?? 'unknown';
-} catch {
-  // ignore
+function loadServiceVersion(): string {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const pkg = require("../../package.json") as { version?: string };
+    return pkg.version ?? "unknown";
+  } catch {
+    return "unknown";
+  }
 }
+
+const serviceVersion = loadServiceVersion();
 
 export type { Tracer, Span };
 export { SpanStatusCode };
+
+/**
+ * Inert tracer for standalone library calls. A host that wants OpenTelemetry
+ * observations supplies a tracer explicitly; this fallback does not consult
+ * the process-global OpenTelemetry provider.
+ */
+export function createNoopTracer(): Tracer {
+  const span = {
+    setAttribute: () => span,
+    setAttributes: () => undefined,
+    setStatus: () => undefined,
+    recordException: () => undefined,
+    addEvent: () => span,
+    addLink: () => span,
+    addLinks: () => span,
+    end: () => undefined,
+    isRecording: () => false,
+    spanContext: () => ({ traceId: "", spanId: "", traceFlags: 0 }),
+  } as unknown as Span;
+
+  return {
+    startSpan: () => span,
+    startActiveSpan: (...args: unknown[]) => {
+      const callback = args[args.length - 1];
+      if (typeof callback !== "function") throw new TypeError("A span callback is required");
+      return callback(span);
+    },
+  } as unknown as Tracer;
+}
 
 export interface TracingOptions {
   readonly serviceName?: string;
@@ -36,12 +62,22 @@ export interface TracingOptions {
   readonly otlpEndpoint?: string;
   /** Default true unless OTEL_SDK_DISABLED=true env var is set. */
   readonly enabled?: boolean;
+  /** Host-provided environment values used only for tracing defaults. */
+  readonly env?: Readonly<Record<string, string | undefined>>;
+  /** Host-provided diagnostic sink for best-effort tracing warnings. */
+  readonly logger?: Logger;
+  /** Use synchronous export when a host needs deterministic export assertions. */
+  readonly spanProcessor?: "batch" | "simple";
+  /** Optional metric export interval, primarily for deterministic host tests. */
+  readonly metricExportIntervalMs?: number;
 }
 
 export async function initTracing(
   opts?: TracingOptions,
 ): Promise<{ shutdown: () => Promise<void> }> {
-  const sdkDisabledEnv = process.env['OTEL_SDK_DISABLED'] === 'true';
+  const env = opts?.env ?? {};
+  const logger = opts?.logger ?? createNoopLogger();
+  const sdkDisabledEnv = env["OTEL_SDK_DISABLED"] === "true";
   const enabled = opts?.enabled !== undefined ? opts.enabled : !sdkDisabledEnv;
 
   if (!enabled) {
@@ -55,30 +91,37 @@ export async function initTracing(
     instanceId = randomUUID();
   }
 
-  const serviceName = opts?.serviceName ?? process.env['OTEL_SERVICE_NAME'] ?? 'specmatic-stateful-sim';
-  const otlpEndpoint =
-    opts?.otlpEndpoint ?? process.env['OTEL_EXPORTER_OTLP_ENDPOINT'];
+  const serviceName = opts?.serviceName ?? env["OTEL_SERVICE_NAME"] ?? "potemkin";
+  const otlpEndpoint = opts?.otlpEndpoint ?? env["OTEL_EXPORTER_OTLP_ENDPOINT"];
 
   if (!otlpEndpoint) {
-    rootLogger().warn(
+    logger.warn(
       { serviceName },
-      'OTEL tracing is best-effort / disabled: no OTLP endpoint configured. ' +
-      'Set OTEL_EXPORTER_OTLP_ENDPOINT or pass opts.otlpEndpoint to enable export.',
+      "OTEL tracing is best-effort / disabled: no OTLP endpoint configured. " +
+        "Set OTEL_EXPORTER_OTLP_ENDPOINT or pass opts.otlpEndpoint to enable export.",
     );
     return { shutdown: async () => undefined };
   }
 
   const resource = resourceFromAttributes({
     [ATTR_SERVICE_NAME]: serviceName,
-    'service.version': _serviceVersion,
+    "service.version": serviceVersion,
     [ATTR_SERVICE_INSTANCE_ID]: instanceId,
   });
 
+  const traceExporter = new OTLPTraceExporter({ url: `${otlpEndpoint}/v1/traces` });
+  const spanProcessor =
+    opts?.spanProcessor === "simple" ? new SimpleSpanProcessor(traceExporter) : undefined;
+
   const sdk = new NodeSDK({
     resource,
-    traceExporter: new OTLPTraceExporter({ url: `${otlpEndpoint}/v1/traces` }),
+    traceExporter,
+    ...(spanProcessor === undefined ? {} : { spanProcessors: [spanProcessor] }),
     metricReader: new sdkMetrics.PeriodicExportingMetricReader({
       exporter: new OTLPMetricExporter({ url: `${otlpEndpoint}/v1/metrics` }),
+      ...(opts?.metricExportIntervalMs === undefined
+        ? {}
+        : { exportIntervalMillis: opts.metricExportIntervalMs }),
     }),
     instrumentations: [getNodeAutoInstrumentations()],
   });
@@ -86,7 +129,7 @@ export async function initTracing(
   try {
     sdk.start();
   } catch (err) {
-    rootLogger().warn({ err, serviceName }, 'OTEL SDK start failed; tracing is best-effort / disabled.');
+    logger.warn({ err, serviceName }, "OTEL SDK start failed; tracing is best-effort / disabled.");
     return { shutdown: async () => undefined };
   }
 
@@ -98,7 +141,7 @@ export async function initTracing(
 }
 
 export function getTracer(name?: string): Tracer {
-  return trace.getTracer(name ?? 'specmatic-stateful-sim');
+  return trace.getTracer(name ?? "potemkin");
 }
 
 export async function withSpan<T>(

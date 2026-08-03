@@ -1,0 +1,13 @@
+version: 1
+specmatic: ./specmatic.yaml
+openapi:
+  - openapi/query-policy.yaml
+modules:
+  - dsl/order.yaml
+  - dsl/probe.yaml
+typescript:
+  scan:
+    - include:
+        - typescript/mixed/**/*.ts
+      exclude:
+        - "**/*.d.ts"

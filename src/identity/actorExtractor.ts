@@ -7,7 +7,7 @@
  * NOTE: This is a simulation shortcut.  In production you would validate a signed JWT.
  */
 
-import type { Actor } from '../types.js';
+import type { Actor } from "../types.js";
 
 /**
  * Parse an Authorization header value into an Actor.
@@ -18,18 +18,20 @@ import type { Actor } from '../types.js';
  *  - the token portion does not contain a `:` separator
  */
 export function extractActor(authorizationHeader: string | undefined): Actor | null {
-  if (!authorizationHeader || authorizationHeader.trim() === '') return null;
+  if (!authorizationHeader || authorizationHeader.trim() === "") return null;
 
-  const BEARER_PREFIX = 'Bearer ';
-  if (!authorizationHeader.startsWith(BEARER_PREFIX) &&
-      !authorizationHeader.startsWith('bearer ')) {
+  const BEARER_PREFIX = "Bearer ";
+  if (
+    !authorizationHeader.startsWith(BEARER_PREFIX) &&
+    !authorizationHeader.startsWith("bearer ")
+  ) {
     return null;
   }
 
   const token = authorizationHeader.slice(BEARER_PREFIX.length).trim();
   if (!token) return null;
 
-  const colonIdx = token.indexOf(':');
+  const colonIdx = token.indexOf(":");
   if (colonIdx === -1) {
     // No scopes portion — treat entire token as actor id with no scopes
     return { id: token, scopes: [] };
@@ -38,9 +40,9 @@ export function extractActor(authorizationHeader: string | undefined): Actor | n
   const id = token.slice(0, colonIdx);
   const scopesPart = token.slice(colonIdx + 1);
   const scopes = scopesPart
-    .split(',')
-    .map(s => s.trim())
-    .filter(s => s.length > 0);
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
 
   if (!id) return null;
 

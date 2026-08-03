@@ -1,0 +1,8 @@
+node_modules
+dist
+build
+.git
+.beads/backup
+tests/e2e/.cache
+plugin/build
+plugin/.gradle

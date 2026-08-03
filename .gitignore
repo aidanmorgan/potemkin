@@ -7,6 +7,8 @@ coverage/
 .DS_Store
 # Specmatic CLI jar cache (tests/integration/specmatic-cli/.cache/)
 tests/integration/specmatic-cli/.cache/
+# Local Specmatic binaries downloaded by the conformance harness
+.cache/
 # Specmatic test reports generated at runtime
 build/
 

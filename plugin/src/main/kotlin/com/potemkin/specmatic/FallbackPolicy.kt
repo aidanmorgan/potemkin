@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Fetches the compiled rules + contract paths from GET /_engine/fallback once
  * (cached). For an unmatched request the first matching rule wins; else the
  * configured default; else the zero-config default (501 for a declared contract
- * path, 404 otherwise). Mirrors src/http/fallback.ts exactly.
+ * path, 404 otherwise). Mirrors routeFallback in src/core/engine.ts exactly.
  */
 open class FallbackPolicy(
     private val backendUrl: String,

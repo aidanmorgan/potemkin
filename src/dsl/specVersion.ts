@@ -3,7 +3,7 @@
 // SHA-256 the concatenation. No YAML parsing — byte-identical inputs in
 // any order collide; whitespace/comment edits produce different hashes.
 
-import { createHash } from 'node:crypto';
+import { createHash } from "node:crypto";
 
 export interface DslModuleBytes {
   readonly path: string;
@@ -12,11 +12,11 @@ export interface DslModuleBytes {
 
 export function computeSpecVersion(modules: readonly DslModuleBytes[]): string {
   const sorted = [...modules].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-  const outer = createHash('sha256');
+  const outer = createHash("sha256");
   for (const m of sorted) {
-    const inner = createHash('sha256');
-    inner.update(m.yaml, 'utf8');
+    const inner = createHash("sha256");
+    inner.update(m.yaml, "utf8");
     outer.update(inner.digest());
   }
-  return outer.digest('hex');
+  return outer.digest("hex");
 }

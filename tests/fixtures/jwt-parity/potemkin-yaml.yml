@@ -1,0 +1,7 @@
+version: 1
+specmatic: ./specmatic.yaml
+openapi:
+  - openapi/jwt-parity.yaml
+modules:
+  - dsl/global.yaml
+  - dsl/record.yaml

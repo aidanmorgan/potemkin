@@ -15,7 +15,7 @@ event_catalog:
       speaker: "command.payload.speaker"
       text: "command.payload.text"
       timestamp: "$now()"
-      sequenceNum: "ts:computeSequenceNum"
+      sequenceNum: "length(state.transcript) + 1"
 
 behaviors:
   - name: addTranscriptEntry

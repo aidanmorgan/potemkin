@@ -1,0 +1,30 @@
+boundary: Thing
+contract_path: /things
+identity:
+  creation:
+    generate: "$uuidv7()"
+event_catalog:
+  - type: ThingCreated
+    payload_template:
+      id: command.targetId
+      name: command.payload.name
+      source: "sourceLabel('yaml')"
+behaviors:
+  - name: createThing
+    match:
+      operationId: createThing
+      condition: "true"
+    emit: ThingCreated
+    dispatch_commands:
+      - boundary: Widget
+        intent: creation
+        operationId: createWidget
+        target_id: "$concat(command.targetId, '-widget')"
+        payload:
+          name: command.payload.name
+reducers:
+  - on: ThingCreated
+    patches:
+      - { op: replace, path: /id, value: "${event.payload.id}" }
+      - { op: replace, path: /name, value: "${event.payload.name}" }
+      - { op: replace, path: /source, value: "${event.payload.source}" }

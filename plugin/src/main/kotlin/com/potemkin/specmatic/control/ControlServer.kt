@@ -1,7 +1,6 @@
 package com.potemkin.specmatic.control
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
-import com.potemkin.specmatic.FixturesClient
 import com.potemkin.specmatic.RoutesDiscoveryClient
 import com.potemkin.specmatic.reliability.HealthMonitor
 import com.potemkin.specmatic.reliability.HealthState
@@ -40,7 +39,7 @@ class ControlServer(
     private val config: ControlServerConfig = ControlServerConfig(),
     private val healthMonitor: HealthMonitor,
     private val routes: RoutesDiscoveryClient? = null,
-    private val fixtures: FixturesClient? = null,
+    private val refreshFixtures: (suspend () -> Unit)? = null,
 ) {
     private val log = LoggerFactory.getLogger(ControlServer::class.java)
 
@@ -48,7 +47,7 @@ class ControlServer(
         factory = Netty,
         port = config.port,
         module = {
-            configure(healthMonitor, routes, fixtures, log)
+            configure(healthMonitor, routes, refreshFixtures, log)
         },
     )
 
@@ -67,7 +66,7 @@ class ControlServer(
 internal fun Application.configure(
     healthMonitor: HealthMonitor,
     routes: RoutesDiscoveryClient?,
-    fixtures: FixturesClient?,
+    refreshFixtures: (suspend () -> Unit)?,
     log: org.slf4j.Logger,
 ) {
     install(ContentNegotiation) {
@@ -96,10 +95,9 @@ internal fun Application.configure(
             )
             healthMonitor.markUpExternal()
             // Trigger a forced refresh of routes and fixtures so new contract paths
-            // and stubs are picked up immediately. FixturesClient has no forceRefresh;
-            // fetchFixtures() performs the same conditional GET + cache update.
+            // and dynamic expectations are picked up before this notification returns.
             routes?.forceRefresh()
-            fixtures?.fetchFixtures()
+            refreshFixtures?.invoke()
             call.respond(HttpStatusCode.NoContent)
         }
 

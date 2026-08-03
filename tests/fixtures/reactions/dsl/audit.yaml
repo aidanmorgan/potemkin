@@ -14,9 +14,9 @@ identity:
 event_catalog:
   - type: AuditRecorded
     payload_template:
-      id:      "$uuidv7()"
+      id: "$uuidv7()"
       orderId: "event.aggregateId"
-      action:  "'ORDER_PLACED'"
+      action: "'ORDER_PLACED'"
 
 behaviors: []
 

@@ -16,18 +16,18 @@ paths:
   # path entry provides that match. The operations carry no response schemas so
   # the validator bails early after matching (no schema = no check), allowing
   # SagaStepCompleted to be recorded when the domain logic succeeds.
-  '':
+  "":
     post:
       operationId: sagaStepCreation
       summary: Internal saga step creation (path '' matches orchestrator-built commands)
       responses:
-        '201':
+        "201":
           description: Created (no schema — saga response validation pass-through)
     put:
       operationId: sagaStepMutation
       summary: Internal saga step mutation (path '' matches orchestrator-built commands)
       responses:
-        '200':
+        "200":
           description: OK (no schema — saga response validation pass-through)
   /orders:
     post:

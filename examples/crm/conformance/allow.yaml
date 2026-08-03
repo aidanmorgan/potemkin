@@ -1,0 +1,13 @@
+version: 1
+allowlists:
+  # The negative layer must not consume the positive stateful-divergence
+  # entries. Keeping an explicit empty selection also makes stale entries
+  # fail loudly if the layer routing changes.
+  - name: crm-negative
+    entries: []
+  - name: crm-layer-c
+    # The former unseeded PATCH/DELETE 404 observations are now represented by
+    # the exported Tier-3 examples (patchLead__404__* and deleteLead__404__*).
+    # Keeping this selection explicit preserves the staleness guard: any new
+    # stateful divergence must be fixed or exported, never silently admitted.
+    entries: []

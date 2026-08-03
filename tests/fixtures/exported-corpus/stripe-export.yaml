@@ -1,0 +1,157 @@
+openapi: 3.0.3
+info:
+  title: Stripe exported-example verification contract
+  version: 1.0.0
+paths:
+  /v1/charges:
+    get:
+      responses:
+        "200":
+          description: Stripe list response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StripeList"
+  /v1/charges/{id}:
+    get:
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Stripe charge response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StripeObject"
+  /v1/customers:
+    get:
+      responses:
+        "200":
+          description: Stripe customer list response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StripeList"
+  /v1/customers/{id}:
+    get:
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Stripe customer response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StripeObject"
+  /v1/payment_intents:
+    get:
+      responses:
+        "200":
+          description: Stripe list response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StripeList"
+  /v1/payment_intents/{id}:
+    get:
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Stripe payment intent response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StripeObject"
+  /v1/prices:
+    get:
+      responses:
+        "200":
+          description: Stripe list response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StripeList"
+  /v1/prices/{id}:
+    get:
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Stripe price response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StripeObject"
+  /v1/products:
+    get:
+      responses:
+        "200":
+          description: Stripe list response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StripeList"
+  /v1/products/{id}:
+    get:
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Stripe product response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StripeObject"
+  /v1/refunds:
+    get:
+      responses:
+        "200":
+          description: Stripe list response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StripeList"
+  /v1/refunds/{id}:
+    get:
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Stripe refund response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StripeObject"
+components:
+  schemas:
+    StripeObject:
+      type: object
+      additionalProperties: true
+    StripeList:
+      type: object
+      additionalProperties: true

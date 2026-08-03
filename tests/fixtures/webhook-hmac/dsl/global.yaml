@@ -11,7 +11,7 @@
 #   6. POST-s the signed body to the receiver with at most `retry.maxAttempts`
 #      attempts on transient failures.
 #
-# The test (64-webhook-hmac.e2e-test.ts) binds a local HTTP server on port 19877
+# The test (webhook-hmac.e2e-test.ts) binds a local HTTP server on port 19877
 # and asserts that the received POST body and signature header are correct.
 #
 # Port is hard-coded (19877) so the YAML literal can reference it without CEL

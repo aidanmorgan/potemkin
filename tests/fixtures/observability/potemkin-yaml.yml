@@ -1,0 +1,6 @@
+version: 1
+specmatic: ./specmatic.yaml
+openapi:
+  - openapi/*.yaml
+modules:
+  - yaml/*.yaml

@@ -9,7 +9,7 @@
  * expressions or interpolation lives here.
  *
  * Supported builtins (top-level calls):
- *   $uuidv7, $now, $concat, int, double, string, bool, bytes,
+ *   $uuidv7, $now, $unix, $concat, int, double, string, bool, bytes,
  *   abs, min, max, floor, ceil, round, pow, sqrt,
  *   size, keys, values, range,
  *   type, coalesce, default, timestamp, duration, now
@@ -23,15 +23,20 @@
  *   Map:    size, has, keys, values
  */
 
-import type { CelPhase } from './phases.js';
+import type { CelPhase } from "./phases.js";
 import {
-  callBuiltin, deepEqual, naturalCompare, createFakeRng,
-  type BuiltinContext, type FakeRng,
-} from './builtins.js';
-import { createLogger } from '../observability/logger.js';
-import { parse } from './grammar/parser.js';
-import type { Expr } from './grammar/ast.js';
-import { parseTemplate } from './grammar/template.js';
+  callBuiltin,
+  deepEqual,
+  naturalCompare,
+  createFakeRng,
+  type BuiltinContext,
+  type FakeRng,
+} from "./builtins.js";
+import { deterministicUuidv7 } from "../ids/uuidv7.js";
+import { createNoopLogger, type Logger } from "../observability/logger.js";
+import { parse } from "./grammar/parser.js";
+import type { Expr } from "./grammar/ast.js";
+import { parseTemplate } from "./grammar/template.js";
 
 // ---------------------------------------------------------------------------
 // ReDoS protection for matches() — synchronous, shape-based guard.
@@ -84,10 +89,11 @@ function detectCatastrophicRegexShape(pattern: string): string | null {
   const groupRe = /\(([^()]*)\)\s*([+*]|\{\d+,?\d*\}?)?/g;
   let m: RegExpExecArray | null;
   while ((m = groupRe.exec(pattern)) !== null) {
-    const body = m[1] ?? '';
-    const outerQuant = m[2] ?? '';
+    const body = m[1] ?? "";
+    const outerQuant = m[2] ?? "";
     // Only an *unbounded* outer quantifier can cause exponential blow-up.
-    const outerUnbounded = outerQuant === '+' || outerQuant === '*' || /^\{\d+,\}?$/.test(outerQuant);
+    const outerUnbounded =
+      outerQuant === "+" || outerQuant === "*" || /^\{\d+,\}?$/.test(outerQuant);
     if (!outerUnbounded) continue;
 
     // (a) nested unbounded quantifier inside the repeated group.
@@ -97,7 +103,7 @@ function detectCatastrophicRegexShape(pattern: string): string | null {
     // (b) overlapping alternation inside the repeated group, e.g. (a|a)+,
     //     (a|ab)+. Any alternation under an unbounded repeat is treated as
     //     potentially overlapping and rejected conservatively.
-    if (body.includes('|')) {
+    if (body.includes("|")) {
       return `overlapping-alternation shape /(${body})${outerQuant}/`;
     }
   }
@@ -105,7 +111,7 @@ function detectCatastrophicRegexShape(pattern: string): string | null {
   // Defensive catch-all for shapes the per-group scan above can miss because of
   // nested parentheses (the body regex is intentionally non-recursive).
   if (groupRepeat.test(pattern) && /\([^)]*[+*]/.test(pattern)) {
-    return 'nested-quantifier shape (nested groups)';
+    return "nested-quantifier shape (nested groups)";
   }
 
   // Sequential-unbounded-quantifier check.
@@ -132,19 +138,19 @@ function detectCatastrophicRegexShape(pattern: string): string | null {
   const tokensArr: string[] = [];
   let tokM: RegExpExecArray | null;
   while ((tokM = tokenRe.exec(pattern)) !== null) {
-    tokensArr.push(tokM[1] ?? '');
+    tokensArr.push(tokM[1] ?? "");
   }
   for (let i = 0; i < tokensArr.length; i++) {
-    const tok = tokensArr[i] ?? '';
-    const next = tokensArr[i + 1] ?? '';
-    const isUnboundedQuant = next === '+' || next === '*' || /^\{\d+,\d*\}$/.test(next);
+    const tok = tokensArr[i] ?? "";
+    const next = tokensArr[i + 1] ?? "";
+    const isUnboundedQuant = next === "+" || next === "*" || /^\{\d+,\d*\}$/.test(next);
     if (isUnboundedQuant) {
       // Normalise character classes to 'CLS' so [a-z] and [a-z] match each other.
-      const norm = /^\[/.test(tok) ? 'CLS' : tok;
+      const norm = tok.startsWith("[") ? "CLS" : tok;
       if (norm === seqAtom) {
         seqCount++;
         if (seqCount >= 3) {
-          return 'sequential-unbounded-quantifier shape (>= 3 adjacent unbounded quantifiers on overlapping atoms)';
+          return "sequential-unbounded-quantifier shape (>= 3 adjacent unbounded quantifiers on overlapping atoms)";
         }
       } else {
         seqAtom = norm;
@@ -187,8 +193,6 @@ function evalMatchesSafe(pattern: string, input: string): boolean {
 
 export { detectCatastrophicRegexShape };
 
-const logger = createLogger({ name: 'cel' });
-
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
@@ -221,11 +225,7 @@ export interface CelRequestContext {
 
 export interface CelEvaluator {
   compile(expression: string): CompiledCel;
-  evaluate(
-    expression: string | CompiledCel,
-    ctx: CelContext,
-    phase: CelPhase,
-  ): unknown;
+  evaluate(expression: string | CompiledCel, ctx: CelContext, phase: CelPhase): unknown;
   /**
    * Evaluate a YAML/DSL value with the ${expr} micro-syntax:
    *   - non-string values returned as-is
@@ -264,7 +264,10 @@ export interface CelEvaluator {
 
 type Scope = Map<string, unknown>;
 
-function scopeLookup(scopes: Scope[], name: string): { found: true; value: unknown } | { found: false } {
+function scopeLookup(
+  scopes: Scope[],
+  name: string,
+): { found: true; value: unknown } | { found: false } {
   for (let i = scopes.length - 1; i >= 0; i--) {
     if (scopes[i]!.has(name)) {
       return { found: true, value: scopes[i]!.get(name) };
@@ -278,15 +281,20 @@ function scopeLookup(scopes: Scope[], name: string): { found: true; value: unkno
 // ---------------------------------------------------------------------------
 
 function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
+  return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
-function evalExpr(expr: Expr, ctx: CelContext, builtinCtx: BuiltinContext, scopes: Scope[] = []): unknown {
+function evalExpr(
+  expr: Expr,
+  ctx: CelContext,
+  builtinCtx: BuiltinContext,
+  scopes: Scope[] = [],
+): unknown {
   switch (expr.kind) {
-    case 'literal':
+    case "literal":
       return expr.value;
 
-    case 'ident': {
+    case "ident": {
       // Check scopes first (comprehension variables)
       const scopeResult = scopeLookup(scopes, expr.name);
       if (scopeResult.found) return scopeResult.value;
@@ -294,91 +302,99 @@ function evalExpr(expr: Expr, ctx: CelContext, builtinCtx: BuiltinContext, scope
       throw new Error(`CEL_EVAL: undefined identifier '${expr.name}'`);
     }
 
-    case 'member': {
+    case "member": {
       const obj = evalExpr(expr.obj, ctx, builtinCtx, scopes);
       const key = evalExpr(expr.key, ctx, builtinCtx, scopes);
-      if (typeof key === 'string' && isRecord(obj)) {
+      if (typeof key === "string" && isRecord(obj)) {
         const val = obj[key];
         // Normalise absent keys to CEL null — never leak JS undefined.
         return val === undefined ? null : val;
       }
-      if (typeof key === 'number' && Array.isArray(obj)) {
+      if (typeof key === "number" && Array.isArray(obj)) {
         if (key < 0 || key >= obj.length) {
-          throw new Error(`CEL_RUNTIME_ERROR: index out of range [${key}] with length ${obj.length}`);
+          throw new Error(
+            `CEL_RUNTIME_ERROR: index out of range [${key}] with length ${obj.length}`,
+          );
         }
         return obj[key];
       }
-      throw new Error(
-        `CEL_EVAL: cannot access key ${JSON.stringify(key)} on ${typeof obj}`,
-      );
+      throw new Error(`CEL_EVAL: cannot access key ${JSON.stringify(key)} on ${typeof obj}`);
     }
 
-    case 'nullSafeMember': {
+    case "nullSafeMember": {
       const obj = evalExpr(expr.obj, ctx, builtinCtx, scopes);
       if (obj === null || obj === undefined) return null;
       const key = evalExpr(expr.key, ctx, builtinCtx, scopes);
-      if (typeof key === 'string' && isRecord(obj)) {
+      if (typeof key === "string" && isRecord(obj)) {
         return obj[key] ?? null;
       }
-      if (typeof key === 'number' && Array.isArray(obj)) {
+      if (typeof key === "number" && Array.isArray(obj)) {
         if (key < 0 || key >= obj.length) return null;
         return obj[key] ?? null;
       }
       return null;
     }
 
-    case 'call': {
+    case "call": {
       // has(x.field) is a special macro — checks field presence without evaluation
-      if (expr.fn === 'has' && expr.args.length === 1) {
+      if (expr.fn === "has" && expr.args.length === 1) {
         const arg = expr.args[0];
         if (!arg) throw new Error(`CEL_EVAL: has() requires exactly one argument`);
-        if (arg.kind === 'member' && arg.key.kind === 'literal' && typeof arg.key.value === 'string') {
+        if (
+          arg.kind === "member" &&
+          arg.key.kind === "literal" &&
+          typeof arg.key.value === "string"
+        ) {
           const objVal = evalExpr(arg.obj, ctx, builtinCtx, scopes);
           if (isRecord(objVal)) return arg.key.value in objVal;
           if (Array.isArray(objVal)) return false;
           return false;
         }
-        throw new Error(`CEL_EVAL: has() argument must be a field access expression like has(obj.field)`);
+        throw new Error(
+          `CEL_EVAL: has() argument must be a field access expression like has(obj.field)`,
+        );
       }
-      const args = expr.args.map(a => evalExpr(a, ctx, builtinCtx, scopes));
+      const args = expr.args.map((a) => evalExpr(a, ctx, builtinCtx, scopes));
       return callBuiltin(expr.fn, args, builtinCtx);
     }
 
-    case 'method': {
+    case "method": {
       return evalMethod(expr.receiver, expr.method, expr.args, ctx, builtinCtx, scopes, false);
     }
 
-    case 'nullSafeMethod': {
+    case "nullSafeMethod": {
       const receiver = evalExpr(expr.receiver, ctx, builtinCtx, scopes);
       if (receiver === null || receiver === undefined) return null;
-      return evalMethod(expr.receiver, expr.method, expr.args, ctx, builtinCtx, scopes, false, { value: receiver });
+      return evalMethod(expr.receiver, expr.method, expr.args, ctx, builtinCtx, scopes, false, {
+        value: receiver,
+      });
     }
 
-    case 'comprehension': {
+    case "comprehension": {
       return evalComprehension(expr, ctx, builtinCtx, scopes);
     }
 
-    case 'unary': {
+    case "unary": {
       const v = evalExpr(expr.operand, ctx, builtinCtx, scopes);
-      if (expr.op === '!') return !v;
-      if (expr.op === '-') {
-        if (typeof v === 'number') return -v;
+      if (expr.op === "!") return !v;
+      if (expr.op === "-") {
+        if (typeof v === "number") return -v;
         throw new Error(`CEL_EVAL: unary '-' requires a number, got ${typeof v}`);
       }
       /* istanbul ignore next — parser only emits '!' and '-' */
       throw new Error(`CEL_EVAL: unknown unary operator '${expr.op}'`);
     }
 
-    case 'binary': {
+    case "binary": {
       const op = expr.op;
 
       // Short-circuit operators
-      if (op === '&&') {
+      if (op === "&&") {
         const l = evalExpr(expr.left, ctx, builtinCtx, scopes);
         if (!l) return l;
         return evalExpr(expr.right, ctx, builtinCtx, scopes);
       }
-      if (op === '||') {
+      if (op === "||") {
         const l = evalExpr(expr.left, ctx, builtinCtx, scopes);
         if (l) return l;
         return evalExpr(expr.right, ctx, builtinCtx, scopes);
@@ -388,37 +404,45 @@ function evalExpr(expr: Expr, ctx: CelContext, builtinCtx: BuiltinContext, scope
       const right = evalExpr(expr.right, ctx, builtinCtx, scopes);
 
       switch (op) {
-        case '==': return deepEqual(left, right);
-        case '!=': return !deepEqual(left, right);
-        case '<':  return (left as number) < (right as number);
-        case '<=': return (left as number) <= (right as number);
-        case '>':  return (left as number) > (right as number);
-        case '>=': return (left as number) >= (right as number);
-        case '+': {
-          if (typeof left === 'string' || typeof right === 'string') {
+        case "==":
+          return deepEqual(left, right);
+        case "!=":
+          return !deepEqual(left, right);
+        case "<":
+          return (left as number) < (right as number);
+        case "<=":
+          return (left as number) <= (right as number);
+        case ">":
+          return (left as number) > (right as number);
+        case ">=":
+          return (left as number) >= (right as number);
+        case "+": {
+          if (typeof left === "string" || typeof right === "string") {
             const toStr = (v: unknown): string => {
-              if (v === null || v === undefined) return 'null';
-              if (typeof v === 'object') return JSON.stringify(v);
+              if (v === null || v === undefined) return "null";
+              if (typeof v === "object") return JSON.stringify(v);
               return String(v);
             };
             return toStr(left) + toStr(right);
           }
           return (left as number) + (right as number);
         }
-        case '-': return (left as number) - (right as number);
-        case '*': return (left as number) * (right as number);
-        case '/': {
+        case "-":
+          return (left as number) - (right as number);
+        case "*":
+          return (left as number) * (right as number);
+        case "/": {
           const divisor = right as number;
           if (divisor === 0) throw new Error(`CEL_RUNTIME_ERROR: divide by zero`);
           return (left as number) / divisor;
         }
-        case '%': {
+        case "%": {
           const modulus = right as number;
           if (modulus === 0) throw new Error(`CEL_RUNTIME_ERROR: divide by zero`);
           return (left as number) % modulus;
         }
-        case 'in': {
-          if (Array.isArray(right)) return right.some(v => deepEqual(v, left));
+        case "in": {
+          if (Array.isArray(right)) return right.some((v) => deepEqual(v, left));
           if (isRecord(right)) return (left as string) in right;
           throw new Error(`CEL_EVAL: 'in' requires an array or object on the right`);
         }
@@ -428,20 +452,22 @@ function evalExpr(expr: Expr, ctx: CelContext, builtinCtx: BuiltinContext, scope
       }
     }
 
-    case 'ternary': {
+    case "ternary": {
       const cond = evalExpr(expr.cond, ctx, builtinCtx, scopes);
-      return cond ? evalExpr(expr.then, ctx, builtinCtx, scopes) : evalExpr(expr.else, ctx, builtinCtx, scopes);
+      return cond
+        ? evalExpr(expr.then, ctx, builtinCtx, scopes)
+        : evalExpr(expr.else, ctx, builtinCtx, scopes);
     }
 
-    case 'array': {
-      return expr.elements.map(e => evalExpr(e, ctx, builtinCtx, scopes));
+    case "array": {
+      return expr.elements.map((e) => evalExpr(e, ctx, builtinCtx, scopes));
     }
 
-    case 'object': {
+    case "object": {
       const obj: Record<string, unknown> = {};
       for (const entry of expr.entries) {
         const k = evalExpr(entry.key, ctx, builtinCtx, scopes);
-        if (typeof k !== 'string') throw new Error(`CEL_EVAL: object key must be a string`);
+        if (typeof k !== "string") throw new Error(`CEL_EVAL: object key must be a string`);
         obj[k] = evalExpr(entry.value, ctx, builtinCtx, scopes);
       }
       return obj;
@@ -463,13 +489,14 @@ function evalMethod(
   _nullSafe: boolean,
   preEvaluatedReceiver?: { value: unknown },
 ): unknown {
-  const receiver = preEvaluatedReceiver !== undefined
-    ? preEvaluatedReceiver.value
-    : evalExpr(receiverExpr, ctx, builtinCtx, scopes);
-  const args = argExprs.map(a => evalExpr(a, ctx, builtinCtx, scopes));
+  const receiver =
+    preEvaluatedReceiver !== undefined
+      ? preEvaluatedReceiver.value
+      : evalExpr(receiverExpr, ctx, builtinCtx, scopes);
+  const args = argExprs.map((a) => evalExpr(a, ctx, builtinCtx, scopes));
 
   // String methods
-  if (typeof receiver === 'string') {
+  if (typeof receiver === "string") {
     return evalStringMethod(receiver, method, args);
   }
 
@@ -488,30 +515,34 @@ function evalMethod(
 
 function evalStringMethod(s: string, method: string, args: unknown[]): unknown {
   switch (method) {
-    case 'startsWith': {
-      if (typeof args[0] !== 'string') throw new Error(`CEL_TYPE_ERROR: startsWith requires a string argument`);
+    case "startsWith": {
+      if (typeof args[0] !== "string")
+        throw new Error(`CEL_TYPE_ERROR: startsWith requires a string argument`);
       return s.startsWith(args[0]);
     }
-    case 'endsWith': {
-      if (typeof args[0] !== 'string') throw new Error(`CEL_TYPE_ERROR: endsWith requires a string argument`);
+    case "endsWith": {
+      if (typeof args[0] !== "string")
+        throw new Error(`CEL_TYPE_ERROR: endsWith requires a string argument`);
       return s.endsWith(args[0]);
     }
-    case 'contains': {
-      if (typeof args[0] !== 'string') throw new Error(`CEL_TYPE_ERROR: contains requires a string argument`);
+    case "contains": {
+      if (typeof args[0] !== "string")
+        throw new Error(`CEL_TYPE_ERROR: contains requires a string argument`);
       return s.includes(args[0]);
     }
-    case 'matches': {
-      if (typeof args[0] !== 'string') throw new Error(`CEL_TYPE_ERROR: matches requires a string (regex) argument`);
+    case "matches": {
+      if (typeof args[0] !== "string")
+        throw new Error(`CEL_TYPE_ERROR: matches requires a string (regex) argument`);
       return evalMatchesSafe(args[0], s);
     }
-    case 'size':
+    case "size":
       return s.length;
-    case 'replace': {
-      if (typeof args[0] !== 'string' || typeof args[1] !== 'string')
+    case "replace": {
+      if (typeof args[0] !== "string" || typeof args[1] !== "string")
         throw new Error(`CEL_TYPE_ERROR: replace requires string arguments`);
       const [oldStr, newStr, maxN] = args;
       if (maxN !== undefined) {
-        if (typeof maxN !== 'number') throw new Error(`CEL_TYPE_ERROR: replace n must be a number`);
+        if (typeof maxN !== "number") throw new Error(`CEL_TYPE_ERROR: replace n must be a number`);
         let result = s;
         let count = 0;
         const n = Math.trunc(maxN as number);
@@ -523,41 +554,48 @@ function evalStringMethod(s: string, method: string, args: unknown[]): unknown {
       }
       return s.split(oldStr as string).join(newStr as string);
     }
-    case 'split': {
-      if (typeof args[0] !== 'string') throw new Error(`CEL_TYPE_ERROR: split requires a string separator`);
+    case "split": {
+      if (typeof args[0] !== "string")
+        throw new Error(`CEL_TYPE_ERROR: split requires a string separator`);
       return s.split(args[0]);
     }
-    case 'substring': {
-      if (typeof args[0] !== 'number') throw new Error(`CEL_TYPE_ERROR: substring requires a number start`);
+    case "substring": {
+      if (typeof args[0] !== "number")
+        throw new Error(`CEL_TYPE_ERROR: substring requires a number start`);
       const start = Math.trunc(args[0]);
       if (args.length >= 2) {
-        if (typeof args[1] !== 'number') throw new Error(`CEL_TYPE_ERROR: substring end must be a number`);
+        if (typeof args[1] !== "number")
+          throw new Error(`CEL_TYPE_ERROR: substring end must be a number`);
         return s.substring(start, Math.trunc(args[1] as number));
       }
       return s.substring(start);
     }
-    case 'indexOf': {
-      if (typeof args[0] !== 'string') throw new Error(`CEL_TYPE_ERROR: indexOf requires a string argument`);
+    case "indexOf": {
+      if (typeof args[0] !== "string")
+        throw new Error(`CEL_TYPE_ERROR: indexOf requires a string argument`);
       return s.indexOf(args[0]);
     }
-    case 'lastIndexOf': {
-      if (typeof args[0] !== 'string') throw new Error(`CEL_TYPE_ERROR: lastIndexOf requires a string argument`);
+    case "lastIndexOf": {
+      if (typeof args[0] !== "string")
+        throw new Error(`CEL_TYPE_ERROR: lastIndexOf requires a string argument`);
       return s.lastIndexOf(args[0]);
     }
-    case 'lowerAscii':
+    case "lowerAscii":
       return s.toLowerCase();
-    case 'upperAscii':
+    case "upperAscii":
       return s.toUpperCase();
-    case 'trim':
+    case "trim":
       return s.trim();
-    case 'trimStart':
+    case "trimStart":
       return s.trimStart();
-    case 'trimEnd':
+    case "trimEnd":
       return s.trimEnd();
-    case 'charAt': {
-      if (typeof args[0] !== 'number') throw new Error(`CEL_TYPE_ERROR: charAt requires a number argument`);
+    case "charAt": {
+      if (typeof args[0] !== "number")
+        throw new Error(`CEL_TYPE_ERROR: charAt requires a number argument`);
       const idx = Math.trunc(args[0]);
-      if (idx < 0 || idx >= s.length) throw new Error(`CEL_RUNTIME_ERROR: charAt index out of range`);
+      if (idx < 0 || idx >= s.length)
+        throw new Error(`CEL_RUNTIME_ERROR: charAt index out of range`);
       return s.charAt(idx);
     }
     default:
@@ -567,35 +605,36 @@ function evalStringMethod(s: string, method: string, args: unknown[]): unknown {
 
 function evalListMethod(lst: unknown[], method: string, args: unknown[]): unknown {
   switch (method) {
-    case 'size':
+    case "size":
       return lst.length;
-    case 'contains':
-      return lst.some(v => deepEqual(v, args[0]));
-    case 'indexOf': {
-      const idx = lst.findIndex(v => deepEqual(v, args[0]));
+    case "contains":
+      return lst.some((v) => deepEqual(v, args[0]));
+    case "indexOf": {
+      const idx = lst.findIndex((v) => deepEqual(v, args[0]));
       return idx;
     }
-    case 'lastIndexOf': {
+    case "lastIndexOf": {
       let last = -1;
       for (let i = 0; i < lst.length; i++) {
         if (deepEqual(lst[i], args[0])) last = i;
       }
       return last;
     }
-    case 'sort': {
+    case "sort": {
       const copy = [...lst];
       copy.sort(naturalCompare);
       return copy;
     }
-    case 'reverse': {
+    case "reverse": {
       return [...lst].reverse();
     }
-    case 'join': {
-      const sep = args[0] ?? '';
-      if (typeof sep !== 'string') throw new Error(`CEL_TYPE_ERROR: join separator must be a string`);
-      return lst.map(v => String(v)).join(sep);
+    case "join": {
+      const sep = args[0] ?? "";
+      if (typeof sep !== "string")
+        throw new Error(`CEL_TYPE_ERROR: join separator must be a string`);
+      return lst.map((v) => String(v)).join(sep);
     }
-    case 'flatten': {
+    case "flatten": {
       const result: unknown[] = [];
       for (const item of lst) {
         if (Array.isArray(item)) {
@@ -606,10 +645,10 @@ function evalListMethod(lst: unknown[], method: string, args: unknown[]): unknow
       }
       return result;
     }
-    case 'distinct': {
+    case "distinct": {
       const seen: unknown[] = [];
       for (const item of lst) {
-        if (!seen.some(s => deepEqual(s, item))) {
+        if (!seen.some((s) => deepEqual(s, item))) {
           seen.push(item);
         }
       }
@@ -622,16 +661,17 @@ function evalListMethod(lst: unknown[], method: string, args: unknown[]): unknow
 
 function evalMapMethod(m: Record<string, unknown>, method: string, args: unknown[]): unknown {
   switch (method) {
-    case 'size':
+    case "size":
       return Object.keys(m).length;
-    case 'has': {
+    case "has": {
       const key = args[0];
-      if (typeof key !== 'string') throw new Error(`CEL_TYPE_ERROR: map.has() requires a string key`);
+      if (typeof key !== "string")
+        throw new Error(`CEL_TYPE_ERROR: map.has() requires a string key`);
       return key in m;
     }
-    case 'keys':
+    case "keys":
       return Object.keys(m);
-    case 'values':
+    case "values":
       return Object.values(m);
     default:
       throw new Error(`CEL_EVAL: unknown map method '${method}'`);
@@ -642,10 +682,17 @@ function evalMapMethod(m: Record<string, unknown>, method: string, args: unknown
 // Comprehension evaluation
 // ---------------------------------------------------------------------------
 
-type ComprehensionKind = 'all' | 'exists' | 'exists_one' | 'filter' | 'map';
+type ComprehensionKind = "all" | "exists" | "exists_one" | "filter" | "map";
 
 function evalComprehension(
-  expr: { kind: 'comprehension'; kind2: ComprehensionKind; receiver: Expr; varName: string; body: Expr; nullSafe?: boolean },
+  expr: {
+    kind: "comprehension";
+    kind2: ComprehensionKind;
+    receiver: Expr;
+    varName: string;
+    body: Expr;
+    nullSafe?: boolean;
+  },
   ctx: CelContext,
   builtinCtx: BuiltinContext,
   scopes: Scope[],
@@ -664,11 +711,13 @@ function evalComprehension(
   } else if (isRecord(collection)) {
     items = Object.keys(collection); // for maps, iterate over keys
   } else {
-    throw new Error(`CEL_EVAL: comprehension receiver must be a list or map, got ${typeof collection}`);
+    throw new Error(
+      `CEL_EVAL: comprehension receiver must be a list or map, got ${typeof collection}`,
+    );
   }
 
   switch (expr.kind2) {
-    case 'all': {
+    case "all": {
       for (const item of items) {
         const scope = new Map([[expr.varName, item]]);
         const result = evalExpr(expr.body, ctx, builtinCtx, [...scopes, scope]);
@@ -676,7 +725,7 @@ function evalComprehension(
       }
       return true;
     }
-    case 'exists': {
+    case "exists": {
       for (const item of items) {
         const scope = new Map([[expr.varName, item]]);
         const result = evalExpr(expr.body, ctx, builtinCtx, [...scopes, scope]);
@@ -684,7 +733,7 @@ function evalComprehension(
       }
       return false;
     }
-    case 'exists_one': {
+    case "exists_one": {
       let count = 0;
       for (const item of items) {
         const scope = new Map([[expr.varName, item]]);
@@ -694,7 +743,7 @@ function evalComprehension(
       }
       return count === 1;
     }
-    case 'filter': {
+    case "filter": {
       const filtered: unknown[] = [];
       for (const item of items) {
         const scope = new Map([[expr.varName, item]]);
@@ -703,7 +752,7 @@ function evalComprehension(
       }
       return filtered;
     }
-    case 'map': {
+    case "map": {
       const mapped: unknown[] = [];
       for (const item of items) {
         const scope = new Map([[expr.varName, item]]);
@@ -735,10 +784,14 @@ function evalComprehension(
 function buildEvaluator(args: {
   offsetOf: () => number;
   rng: FakeRng;
+  uuid?: () => string;
+  now?: () => string;
+  custom?: BuiltinContext["custom"];
+  logger: Logger;
   setAdminOffset: (ms: number) => void;
   parentRoot: CelEvaluator | null;
 }): CelEvaluator {
-  const { offsetOf, rng, setAdminOffset } = args;
+  const { offsetOf, rng, uuid, now, custom, logger, setAdminOffset } = args;
 
   const compile = (expression: string): CompiledCel => {
     let ast: Expr;
@@ -747,7 +800,7 @@ function buildEvaluator(args: {
     } catch (err) {
       logger.debug(
         { src: expression.slice(0, 120) },
-         
+
         `CEL compile error: ${err instanceof Error ? err.message : /* istanbul ignore next */ String(err)}`,
       );
       throw err;
@@ -758,18 +811,23 @@ function buildEvaluator(args: {
   const evaluator: CelEvaluator = {
     compile,
 
-    evaluate(
-      expression: string | CompiledCel,
-      ctx: CelContext,
-      phase: CelPhase,
-    ): unknown {
+    evaluate(expression: string | CompiledCel, ctx: CelContext, phase: CelPhase): unknown {
       const compiled: CompiledCel =
-        typeof expression === 'string' ? compile(expression) : expression;
+        typeof expression === "string" ? compile(expression) : expression;
 
       const builtinCtx: BuiltinContext = {
         phase,
-        now: () => new Date(Date.now() + offsetOf()).toISOString(),
+        context: ctx,
+        custom,
+        now: () => {
+          const base = now?.();
+          const timestamp = base === undefined ? Date.now() : Date.parse(base);
+          return new Date(
+            (Number.isFinite(timestamp) ? timestamp : Date.now()) + offsetOf(),
+          ).toISOString();
+        },
         fake: rng,
+        ...(uuid === undefined ? {} : { uuid }),
       };
 
       try {
@@ -780,7 +838,7 @@ function buildEvaluator(args: {
             src: compiled.source.slice(0, 120),
             ctxKeys: Object.keys(ctx),
           },
-           
+
           `CEL evaluate error: ${err instanceof Error ? err.message : /* istanbul ignore next */ String(err)}`,
         );
         throw err;
@@ -789,31 +847,41 @@ function buildEvaluator(args: {
 
     evaluateDslValue(value: unknown, ctx: CelContext, phase: CelPhase): unknown {
       const plan = parseTemplate(value);
+      const evaluatePart = (src: string): unknown => evaluator.evaluate(src, ctx, phase);
       switch (plan.kind) {
-        case 'literal':
+        case "literal":
           return plan.value;
-        case 'whole':
-          return evaluator.evaluate(plan.expr, ctx, phase);
-        case 'interp': {
-          let out = '';
+        case "whole":
+          return evaluatePart(plan.expr);
+        case "interp": {
+          let out = "";
           for (const p of plan.parts) {
-            if (p.kind === 'text') { out += p.text; continue; }
-            const v = evaluator.evaluate(p.src, ctx, phase);
-            out += v === null || v === undefined ? '' : String(v);
+            if (p.kind === "text") {
+              out += p.text;
+              continue;
+            }
+            const v = evaluatePart(p.src);
+            out += v === null || v === undefined ? "" : String(v);
           }
           return out;
         }
       }
     },
 
-    getClockOffset(): number { return offsetOf(); },
-    setClockOffset(ms: number): void { setAdminOffset(ms); },
+    getClockOffset(): number {
+      return offsetOf();
+    },
+    setClockOffset(ms: number): void {
+      setAdminOffset(ms);
+    },
 
     withRequestContext(reqCtx: CelRequestContext): CelEvaluator {
       // Always layer onto the originating root's admin clock so chaining
       // withRequestContext never compounds one request's offset onto another's.
       const root = args.parentRoot ?? evaluator;
-      const reqOffset = Number.isFinite(reqCtx.clockOffsetMs ?? NaN) ? (reqCtx.clockOffsetMs as number) : 0;
+      const reqOffset = Number.isFinite(reqCtx.clockOffsetMs ?? NaN)
+        ? (reqCtx.clockOffsetMs as number)
+        : 0;
       const hasOffset = reqCtx.clockOffsetMs !== undefined && reqOffset !== 0;
       const hasSeed = reqCtx.seed !== undefined;
       if (!hasOffset && !hasSeed) return root;
@@ -825,9 +893,18 @@ function buildEvaluator(args: {
         reqRng = createFakeRng();
         reqRng.seedString(reqCtx.seed);
       }
+      let requestUuid = uuid;
+      if (hasSeed) {
+        let uuidIndex = 0;
+        requestUuid = () => deterministicUuidv7(`${reqCtx.seed}:${uuidIndex++}`);
+      }
       return buildEvaluator({
         offsetOf: () => root.getClockOffset() + reqOffset,
         rng: reqRng,
+        uuid: requestUuid,
+        now,
+        custom,
+        logger,
         // Delegate to root so the server-wide clock is never forked per request.
         setAdminOffset: (ms: number) => root.setClockOffset(ms),
         parentRoot: root,
@@ -837,16 +914,38 @@ function buildEvaluator(args: {
   return evaluator;
 }
 
-export function createCelEvaluator(): CelEvaluator {
+export interface CelEvaluatorOptions {
+  /** Optional external virtual-clock offset owned by the runtime. */
+  readonly externalClockOffset?: () => number;
+  /** UUID source supplied by the runtime rather than the process-global helper. */
+  readonly uuid?: () => string;
+  /** Random source supplied by the runtime rather than a process-global source. */
+  readonly random?: () => number;
+  /** Clock source supplied by the runtime rather than reading process time. */
+  readonly now?: () => string;
+  /** Source-independent functions registered by the runtime model. */
+  readonly custom?: BuiltinContext["custom"];
+  /** Host-owned diagnostic sink; absent means no logging. */
+  readonly logger?: Logger;
+}
+
+export function createCelEvaluator(options: CelEvaluatorOptions = {}): CelEvaluator {
   // adminClockOffsetMs and fakeRng are instance state, not module globals, so
   // concurrent booted systems stay isolated. Per-request overrides (clock
   // offset, faker seed) live in a per-request sub-evaluator; see withRequestContext.
   let adminClockOffsetMs = 0;
-  const fakeRng: FakeRng = createFakeRng();
+  const fakeRng: FakeRng = createFakeRng(options.random);
+  const logger = options.logger ?? createNoopLogger();
   return buildEvaluator({
-    offsetOf: () => adminClockOffsetMs,
+    offsetOf: () => adminClockOffsetMs + (options.externalClockOffset?.() ?? 0),
     rng: fakeRng,
-    setAdminOffset: (ms: number) => { adminClockOffsetMs = Number.isFinite(ms) ? ms : 0; },
+    uuid: options.uuid,
+    now: options.now,
+    custom: options.custom,
+    logger,
+    setAdminOffset: (ms: number) => {
+      adminClockOffsetMs = Number.isFinite(ms) ? ms : 0;
+    },
     parentRoot: null,
   });
 }

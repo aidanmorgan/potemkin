@@ -9,16 +9,16 @@
  * object regardless of network failures.
  */
 
-import retry from 'async-retry';
-import { childLogger } from '../observability/logger.js';
-import type { Logger } from '../observability/logger.js';
+import retry from "async-retry";
+import { childLogger } from "../observability/logger.js";
+import type { Logger } from "../observability/logger.js";
 import type {
   PluginControlConfig,
   PluginControlClient,
   ReadyNotification,
   ShutdownNotification,
   NotifyResult,
-} from './types.js';
+} from "./types.js";
 
 const DEFAULT_TIMEOUT_MS = 2000;
 const DEFAULT_RETRIES = 3;
@@ -30,36 +30,64 @@ const DEFAULT_FACTOR = 4;
 const SHUTDOWN_TIMEOUT_MS = 500;
 const SHUTDOWN_RETRIES = 1;
 
+export interface PluginControlClientDependencies {
+  /** HTTP transport supplied by the host composition root. */
+  readonly fetch: typeof globalThis.fetch;
+  /** Monotonic-enough wall clock used only for notification duration metrics. */
+  readonly nowMs: () => number;
+  /** Abort-signal factory supplied by the host composition root. */
+  readonly timeoutSignal: (milliseconds: number) => AbortSignal;
+}
+
+export class PluginControlError extends Error {
+  readonly code = "PLUGIN_CONTROL_HTTP" as const;
+
+  constructor(
+    readonly status: number,
+    readonly statusText: string,
+    readonly url: string,
+  ) {
+    super(`HTTP ${status} ${statusText} from ${url}`);
+    this.name = "PluginControlError";
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
 /**
  * POST a JSON payload to the given URL.
  * Throws on non-2xx responses so async-retry will retry them.
  */
-async function postJson(url: string, payload: unknown, timeoutMs: number): Promise<void> {
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+async function postJson(
+  request: typeof globalThis.fetch,
+  url: string,
+  payload: unknown,
+  timeoutMs: number,
+  timeoutSignal: (milliseconds: number) => AbortSignal,
+): Promise<void> {
+  const res = await request(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(timeoutMs),
+    signal: timeoutSignal(timeoutMs),
   });
 
   if (!res.ok) {
-    throw new Error(`HTTP ${res.status} ${res.statusText} from ${url}`);
+    throw new PluginControlError(res.status, res.statusText, url);
   }
 }
 
 export function createPluginControlClient(
   config: PluginControlConfig & { readonly logger?: Logger },
+  dependencies: PluginControlClientDependencies,
 ): PluginControlClient {
-  const baseUrl = config.url.replace(/\/$/, '');
+  const baseUrl = config.url.replace(/\/$/, "");
   const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const retries = (config.retries ?? DEFAULT_RETRIES) - 1; // async-retry counts retries, not total attempts
   const minBackoffMs = config.minBackoffMs ?? DEFAULT_MIN_BACKOFF_MS;
   const maxBackoffMs = config.maxBackoffMs ?? DEFAULT_MAX_BACKOFF_MS;
   const factor = config.factor ?? DEFAULT_FACTOR;
 
-  const log = config.logger
-    ? childLogger(config.logger, { name: 'lifecycle.client' })
-    : undefined;
+  const log = config.logger ? childLogger(config.logger, { name: "lifecycle.client" }) : undefined;
 
   async function notify(
     path: string,
@@ -71,15 +99,21 @@ export function createPluginControlClient(
     const effectiveTimeout = overrideTimeoutMs ?? timeoutMs;
     const effectiveRetries = overrideRetries !== undefined ? overrideRetries - 1 : retries;
 
-    const startMs = Date.now();
+    const startMs = dependencies.nowMs();
     let attempts = 0;
 
     try {
       await retry(
         async (_bail, attemptNumber) => {
           attempts = attemptNumber;
-          log?.debug({ url, attempt: attemptNumber }, 'lifecycle.client: attempting notification');
-          await postJson(url, payload, effectiveTimeout);
+          log?.debug({ url, attempt: attemptNumber }, "lifecycle.client: attempting notification");
+          await postJson(
+            dependencies.fetch,
+            url,
+            payload,
+            effectiveTimeout,
+            dependencies.timeoutSignal,
+          );
         },
         {
           retries: effectiveRetries,
@@ -87,29 +121,29 @@ export function createPluginControlClient(
           maxTimeout: maxBackoffMs,
           factor,
           onRetry: (err: Error, attempt: number) => {
-            log?.warn({ url, attempt, err: err.message }, 'lifecycle.client: retrying after error');
+            log?.warn({ url, attempt, err: err.message }, "lifecycle.client: retrying after error");
           },
         },
       );
 
-      const durationMs = Date.now() - startMs;
-      log?.info({ url, attempts, durationMs }, 'lifecycle.client: notification succeeded');
+      const durationMs = dependencies.nowMs() - startMs;
+      log?.info({ url, attempts, durationMs }, "lifecycle.client: notification succeeded");
       return { ok: true, attempts, durationMs };
     } catch (err) {
-      const durationMs = Date.now() - startMs;
+      const durationMs = dependencies.nowMs() - startMs;
       const error = err instanceof Error ? err.message : String(err);
-      log?.warn({ url, attempts, durationMs, error }, 'lifecycle.client: notification failed');
+      log?.warn({ url, attempts, durationMs, error }, "lifecycle.client: notification failed");
       return { ok: false, attempts, durationMs, error };
     }
   }
 
   return {
     notifyReady(payload: ReadyNotification): Promise<NotifyResult> {
-      return notify('/_potemkin/ready', payload);
+      return notify("/_potemkin/ready", payload);
     },
 
     notifyShutdown(payload: ShutdownNotification): Promise<NotifyResult> {
-      return notify('/shutdown', payload, SHUTDOWN_TIMEOUT_MS, SHUTDOWN_RETRIES);
+      return notify("/shutdown", payload, SHUTDOWN_TIMEOUT_MS, SHUTDOWN_RETRIES);
     },
   };
 }

@@ -1,0 +1,26 @@
+{
+  "http-request": {
+    "method": "GET",
+    "path": "/campaigns/00000000-0000-7c59-a02d-9c09322d544b"
+  },
+  "http-response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "body": {
+      "id": "00000000-0000-7c59-a02d-9c09322d544b",
+      "name": "Export Active Campaign",
+      "status": "ACTIVE",
+      "targetSource": "WEBSITE",
+      "script": "Export campaign script",
+      "startedAt": "2030-01-01T00:00:00.000Z",
+      "endedAt": "2030-12-31T23:59:59.000Z",
+      "targetCalls": 500,
+      "targetConversions": 50,
+      "actualCalls": 0,
+      "actualConversions": 0,
+      "assignedAgentIds": []
+    }
+  }
+}

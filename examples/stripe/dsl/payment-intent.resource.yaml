@@ -10,12 +10,11 @@
 # to PaymentIntentConfirmed); capture marks that charge captured.
 resource: payment_intent
 schema: payment_intent
+response: stripeResponse
 
 identity:
   creation:
-    generate: "ts:paymentIntentId"
-
-response: "ts:paymentIntentResponse"
+    generate: "$concat('pi_', $uuidv7())"
 
 query_mapping:
   customer: "state.customer == param"
@@ -25,7 +24,7 @@ event_catalog:
     payload_template:
       id: "command.targetId"
       object: "'payment_intent'"
-      created: "ts:unixNow"
+      created: "$unix()"
       livemode: "false"
       amount: "command.payload.amount"
       currency: "command.payload.currency"
@@ -52,7 +51,7 @@ event_catalog:
       # Confirming a PaymentIntent always materialises a Charge (the Charge
       # boundary reacts to this event). The ch_ id is minted here so it can be
       # recorded on the intent (latest_charge) and used as the Charge's id.
-      chargeId: "ts:chargeId"
+      chargeId: "$concat('ch_', $uuidv7())"
       amount: "state.amount"
       currency: "state.currency"
       customer: "state.customer"

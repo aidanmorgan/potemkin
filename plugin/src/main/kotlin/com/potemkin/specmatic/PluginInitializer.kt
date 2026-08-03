@@ -40,6 +40,12 @@ class PluginInitializer : StubInitializer {
     override fun initialize(specmaticConfig: SpecmaticConfig, httpStub: HttpStub) {
         log.info("Potemkin plugin initialising…")
 
+        // Validate all private Specmatic members before starting health,
+        // lifecycle, control-server, or shutdown-hook work. The validator
+        // inspects declared field types only, so this is safe before any
+        // expectations have been populated.
+        SpecmaticReflectionContract.validate(httpStub.javaClass)
+
         // Refuse to boot if another plugin already registered a request
         // handler — Potemkin assumes sole RequestHandler ownership.
         val existingHandlers = runCatching { httpStub.requestHandlers }.getOrNull()
@@ -79,18 +85,24 @@ class PluginInitializer : StubInitializer {
         val discovery = RoutesDiscoveryClient(config.backendUrl, config.discoveryRefreshOnFailureMs)
         val fixturesClient = FixturesClient(config.backendUrl, config.discoveryRefreshOnFailureMs)
         val fallbackPolicy = FallbackPolicy(config.backendUrl, okhttp3.OkHttpClient())
-        val bridge = SpecmaticStubBridge(httpStub)
+        // Runtime fixtures and static seed expectations have different lifecycles.
+        // FixtureLifecycleManager is allowed to clear/re-seat only the runtime
+        // fixture partition when the Node engine reloads or becomes unavailable;
+        // clearing that partition must never remove the seed expectations that
+        // Specmatic serves directly.
+        val fixtureBridge = SpecmaticStubBridge(httpStub)
+        val seedBridge = SpecmaticStubBridge(httpStub)
 
         val health = HealthMonitor(
             backendUrl = config.backendUrl,
             config = HealthProbeConfig.from(config),
         )
-        val lifecycle = FixtureLifecycleManager(health, fixturesClient, bridge)
+        val lifecycle = FixtureLifecycleManager(health, fixturesClient, fixtureBridge)
         val control = ControlServer(
             config = ControlServerConfig(port = config.controlPort),
             healthMonitor = health,
             routes = discovery,
-            fixtures = fixturesClient,
+            refreshFixtures = lifecycle::refreshNow,
         )
 
         health.addListener(lifecycle)
@@ -130,7 +142,7 @@ class PluginInitializer : StubInitializer {
             .map { it.request.method.uppercase() to it.request.path }
             .toSet()
         val handler = StatefulRequestHandler(
-            discovery, backendClient, fixturesClient, resilient, workflowPropagator, fallbackPolicy, seededPaths,
+            discovery, resilient, fixturesClient, workflowPropagator, fallbackPolicy, seededPaths,
         )
         httpStub.registerHandler(handler)
         val jwksProvider: JwksProvider = when {
@@ -144,7 +156,7 @@ class PluginInitializer : StubInitializer {
         httpStub.registerResponseInterceptor(PotemkinResponseInterceptor(deprecationPolicy))
 
         // Apply workflow/governance merge logging + register seed expectations.
-        applyForwardBlocks(config, specmaticConfig, bridge, httpStub)
+        applyForwardBlocks(config, specmaticConfig, seedBridge, httpStub)
         log.info(
             "Potemkin StatefulRequestHandler registered — routes discovered via {}/_engine/routes, control server on port {}",
             config.backendUrl,
@@ -243,25 +255,17 @@ class PluginInitializer : StubInitializer {
  * accessor at runtime (verified by decompiling specmatic-2.46.2.jar).
  *
  * Fail-loud contract: if no feature can generate a body for the target — no
- * matching scenario, a non-JSON-object body, or the features field is
- * inaccessible — [resolve] throws [IllegalStateException]. A `base: contract` seed
- * that silently compiled from `{}` would drop every contract-derived field, so we
- * refuse rather than ship an empty body.
+ * matching scenario, a non-JSON-object body, or an unreadable features field —
+ * [resolve] throws. A `base: contract` seed that silently compiled from `{}`
+ * would drop every contract-derived field, so we refuse rather than ship an
+ * empty body.
  */
 class SpecmaticContractBaseResolver(private val httpStub: HttpStub) {
 
     private val log = LoggerFactory.getLogger(SpecmaticContractBaseResolver::class.java)
     private val mapper = jacksonObjectMapper()
 
-    @Suppress("UNCHECKED_CAST")
-    private val features: List<Feature> by lazy {
-        val field = httpStub.javaClass.getDeclaredField("features")
-        field.isAccessible = true
-        (field.get(httpStub) as? List<Feature>)
-            ?: throw IllegalStateException(
-                "SpecmaticContractBaseResolver: HttpStub.features was null — cannot resolve contract bodies.",
-            )
-    }
+    private val features: List<Feature> = SpecmaticReflectionContract.readFeatures(httpStub)
 
     /** Resolver entry point passed to [SeedApplier]. */
     @Suppress("UNCHECKED_CAST")

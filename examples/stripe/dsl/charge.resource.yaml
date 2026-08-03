@@ -6,8 +6,7 @@
 # billing_details/disputed/metadata, so the create event materialises them.
 resource: charge
 schema: charge
-
-response: "ts:chargeResponse"
+response: stripeResponse
 
 query_mapping:
   payment_intent: "state.payment_intent == param"
@@ -19,7 +18,7 @@ event_catalog:
     payload_template:
       id: "event.payload.chargeId"
       object: "'charge'"
-      created: "ts:unixNow"
+      created: "$unix()"
       livemode: "false"
       amount: "event.payload.amount"
       currency: "event.payload.currency"
@@ -42,7 +41,7 @@ event_catalog:
   # Emitted by the refund reaction — accrues the refunded amount on the charge.
   - type: ChargeRefunded
     payload_template:
-      amount: "event.payload.amount"
+      amount: "command.payload.amount"
 
 reducers:
   - on: ChargeCreated
@@ -55,8 +54,16 @@ reducers:
   # value (patches apply sequentially) to decide whether the charge is fully refunded.
   - on: ChargeRefunded
     patches:
-      - { op: replace, path: /amount_refunded, value: "${state.amount_refunded + event.payload.amount}" }
-      - { op: replace, path: /refunded, value: "${state.amount_refunded >= state.amount}" }
+      - {
+          op: replace,
+          path: /amount_refunded,
+          value: "${state.amount_refunded + event.payload.amount}",
+        }
+      - {
+          op: replace,
+          path: /refunded,
+          value: "${state.amount_refunded + event.payload.amount >= state.amount}",
+        }
 
 reactions:
   - name: create-charge-on-confirm
@@ -69,14 +76,17 @@ reactions:
     intent: mutation
     emit: ChargeCaptured
     target: "event.payload.chargeId"
-  - name: accrue-refund-on-charge
-    on: "RefundCreated"
-    intent: mutation
-    emit: ChargeRefunded
-    target: "event.payload.charge"
-    payload:
-      amount: "event.payload.amount"
-
 operations:
   - { op: GetCharges, query: true }
   - { op: GetChargesCharge, query: true }
+  - op: GetChargesCharge
+    # Query requests use executeQuery directly; this behavior is only reached
+    # by the internal refund dispatch command.
+    condition: "true"
+    emit: ChargeRefunded
+    requires:
+      - name: refund-within-remaining-charge
+        condition: "state.amount_refunded + command.payload.amount <= state.amount"
+        error_status: 400
+        error_code: REFUND_EXCEEDS_CHARGE
+        error_message: "Refund amount exceeds the charge's remaining amount"

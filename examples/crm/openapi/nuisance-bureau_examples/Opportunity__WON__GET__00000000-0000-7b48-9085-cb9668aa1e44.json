@@ -1,0 +1,24 @@
+{
+  "http-request": {
+    "method": "GET",
+    "path": "/opportunities/00000000-0000-7b48-9085-cb9668aa1e44"
+  },
+  "http-response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "body": {
+      "id": "00000000-0000-7b48-9085-cb9668aa1e44",
+      "leadId": "00000000-0000-7000-8000-000000000010",
+      "agentId": "00000000-0000-7000-8000-000000000003",
+      "campaignId": "00000000-0000-7000-8000-000000000001",
+      "stage": "WON",
+      "value": 25000,
+      "probability": 90,
+      "expectedCloseDate": "2030-12-31",
+      "lineItems": [],
+      "closedAt": "1970-01-01T00:00:00.000Z"
+    }
+  }
+}

@@ -18,7 +18,7 @@ latency:
 event_catalog:
   - type: NoteAppended
     payload_template:
-      id: "ts:generateNoteId"
+      id: "$uuidv7()"
       text: "command.payload.text"
       author: "command.payload.author"
       createdAt: "$now()"

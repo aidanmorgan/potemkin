@@ -1,64 +1,84 @@
-/**
- * Unit tests for the webhook fetch transport factory.
- */
+import {
+  createRuntimeWebhookTransport,
+  RuntimeWebhookDeliveryError,
+} from "../../../src/webhooks/transport.js";
 
-import { createFetchWebhookTransport } from '../../../src/webhooks/transport';
+describe("runtime webhook transport", () => {
+  it("uses only the injected fetch and timeout dependencies", async () => {
+    const signal = new AbortController().signal;
+    const fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 204,
+    } as Response) as unknown as typeof globalThis.fetch;
+    const timeoutSignal = jest.fn().mockReturnValue(signal) as unknown as (
+      milliseconds: number,
+    ) => AbortSignal;
+    const transport = createRuntimeWebhookTransport({
+      fetch,
+      timeoutSignal,
+      deliveryTimeoutMs: 1_250,
+    });
 
-describe('webhooks/transport — createFetchWebhookTransport', () => {
-  it('throws a descriptive error when globalThis.fetch is absent', () => {
-    const original = (globalThis as Record<string, unknown>)['fetch'];
-    try {
-      delete (globalThis as Record<string, unknown>)['fetch'];
-      expect(() => createFetchWebhookTransport()).toThrow(
-        'createFetchWebhookTransport: globalThis.fetch is not available',
-      );
-    } finally {
-      if (original !== undefined) {
-        (globalThis as Record<string, unknown>)['fetch'] = original;
-      }
-    }
+    await transport.deliver({
+      url: "https://receiver.test/events",
+      body: '{"kind":"created"}',
+      headers: { "content-type": "application/json" },
+      attempts: 1,
+    });
+
+    expect(timeoutSignal).toHaveBeenCalledWith(1_250);
+    expect(fetch).toHaveBeenCalledWith("https://receiver.test/events", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: '{"kind":"created"}',
+      signal,
+    });
   });
 
-  it('returns a FetchLike when globalThis.fetch is present', () => {
-    if (typeof (globalThis as Record<string, unknown>)['fetch'] !== 'function') {
-      // Environment has no fetch — skip the positive path test.
-      return;
-    }
-    const transport = createFetchWebhookTransport();
-    expect(typeof transport).toBe('function');
+  it("returns a typed error for a non-success response", async () => {
+    const transport = createRuntimeWebhookTransport({
+      fetch: jest.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+      } as Response) as unknown as typeof globalThis.fetch,
+      timeoutSignal: () => new AbortController().signal,
+    });
+
+    const failure = await transport
+      .deliver({
+        url: "https://receiver.test/events",
+        body: "{}",
+        headers: {},
+        attempts: 1,
+      })
+      .catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(RuntimeWebhookDeliveryError);
+    expect(failure).toMatchObject({
+      code: "WEBHOOK_DELIVERY_FAILED",
+      status: 503,
+      url: "https://receiver.test/events",
+    });
   });
 
-  it('aborts a hung endpoint within the configured deliveryTimeoutMs', async () => {
-    const original = (globalThis as Record<string, unknown>)['fetch'];
-    // Replace global fetch with a version that never resolves.
-    (globalThis as Record<string, unknown>)['fetch'] = (
-      _url: string,
-      init: { signal?: AbortSignal },
-    ) =>
+  it("propagates an injected timeout signal to a hung endpoint", async () => {
+    const fetch = ((_url: string | URL, init?: RequestInit) =>
       new Promise<never>((_resolve, reject) => {
-        // If the AbortSignal fires, reject with its reason so the transport throws.
-        if (init?.signal) {
-          init.signal.addEventListener('abort', () => {
-            reject(init.signal!.reason);
-          });
-        }
-      });
+        init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+      })) as typeof globalThis.fetch;
+    const transport = createRuntimeWebhookTransport({
+      fetch,
+      timeoutSignal: (milliseconds) => AbortSignal.timeout(milliseconds),
+      deliveryTimeoutMs: 25,
+    });
 
-    try {
-      const transport = createFetchWebhookTransport(50);
-      const start = Date.now();
-      await expect(
-        transport('http://hung.test/webhook', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: '{}',
-        }),
-      ).rejects.toBeDefined();
-      const elapsed = Date.now() - start;
-      // The abort should fire well within 1 second (the timeout is 50 ms).
-      expect(elapsed).toBeLessThan(1000);
-    } finally {
-      (globalThis as Record<string, unknown>)['fetch'] = original;
-    }
-  }, 5000);
+    await expect(
+      transport.deliver({
+        url: "https://receiver.test/hung",
+        body: "{}",
+        headers: {},
+        attempts: 1,
+      }),
+    ).rejects.toBeDefined();
+  }, 1_000);
 });

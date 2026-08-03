@@ -1,8 +1,20 @@
-import { uuidv7 } from 'uuidv7';
-import { createHash } from 'crypto';
+import { uuidv7 } from "uuidv7";
+import { createHash } from "crypto";
 
 export function nextUuidv7(): string {
   return uuidv7();
+}
+
+/**
+ * Create one deterministic UUID source for a bounded host run.
+ *
+ * The counter belongs to the returned source rather than this module. That
+ * keeps export determinism scoped to the host that requested it and prevents
+ * an export setting from leaking into the normal runtime process.
+ */
+export function createDeterministicUuidv7Source(seedIndex = 0): () => string {
+  let nextIndex = seedIndex;
+  return () => epochAnchoredUuidv7(nextIndex++);
 }
 
 /**
@@ -18,8 +30,23 @@ export function nextUuidv7(): string {
  * @param seedIndex - monotonic counter used to differentiate multiple epoch-anchored IDs
  */
 export function epochAnchoredUuidv7(seedIndex: number): string {
-  const hash = createHash('sha256').update(seedIndex.toString()).digest();
+  return formatUuidv7(createHash("sha256").update(seedIndex.toString()).digest());
+}
 
+/**
+ * Generate a deterministic, valid UUIDv7 for a request-scoped seed.
+ *
+ * Seeded simulation values must be reproducible. The timestamp portion is
+ * anchored at epoch zero deliberately: using wall-clock time here would make
+ * two requests with the same seed produce different identities. The UUIDv7
+ * version and variant bits remain valid, so the value can still be used by
+ * contracts that require a UUIDv7-shaped identifier.
+ */
+export function deterministicUuidv7(seed: string): string {
+  return formatUuidv7(createHash("sha256").update(seed).digest());
+}
+
+function formatUuidv7(hash: Uint8Array): string {
   const b = new Uint8Array(16);
 
   b[0] = 0;
@@ -38,7 +65,7 @@ export function epochAnchoredUuidv7(seedIndex: number): string {
   // byte 8: variant bits 10xxxxxx
   b[8] = 0x80 | (hash[2]! & 0x3f);
 
-  b[9]  = hash[3]!;
+  b[9] = hash[3]!;
   b[10] = hash[4]!;
   b[11] = hash[5]!;
   b[12] = hash[6]!;
@@ -46,12 +73,18 @@ export function epochAnchoredUuidv7(seedIndex: number): string {
   b[14] = hash[8]!;
   b[15] = hash[9]!;
 
-  const hex = Array.from(b).map(x => x.toString(16).padStart(2, '0')).join('');
+  const hex = Array.from(b)
+    .map((x) => x.toString(16).padStart(2, "0"))
+    .join("");
   return (
-    hex.slice(0, 8) + '-' +
-    hex.slice(8, 12) + '-' +
-    hex.slice(12, 16) + '-' +
-    hex.slice(16, 20) + '-' +
+    hex.slice(0, 8) +
+    "-" +
+    hex.slice(8, 12) +
+    "-" +
+    hex.slice(12, 16) +
+    "-" +
+    hex.slice(16, 20) +
+    "-" +
     hex.slice(20, 32)
   );
 }

@@ -1,0 +1,27 @@
+boundary: Profile
+contract_path: /profiles
+fallback_override: false
+identity:
+  creation:
+    generate: command.payload.id
+response: addUnexpectedProfileField
+event_catalog:
+  - type: ProfileCreated
+    payload_template:
+      id: command.payload.id
+      displayName: command.payload.displayName
+behaviors:
+  - name: create-profile
+    match:
+      operationId: createProfile
+      condition: "true"
+    emit: ProfileCreated
+reducers:
+  - on: ProfileCreated
+    patches:
+      - op: replace
+        path: /id
+        value: "${event.payload.id}"
+      - op: replace
+        path: /displayName
+        value: "${event.payload.displayName}"

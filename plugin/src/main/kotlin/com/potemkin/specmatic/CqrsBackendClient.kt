@@ -63,6 +63,12 @@ open class CqrsBackendClient(
 
         val request = Request.Builder()
             .url("$backendUrl/_engine/forward")
+            // Configuration reloads replace the runtime program while the Node HTTP
+            // listener remains alive. Do not let the plugin reuse a keep-alive connection
+            // whose peer belonged to the previous runtime lifecycle; a fresh connection
+            // makes the reload boundary explicit and lets the resilience policy handle a
+            // genuinely unavailable engine.
+            .header("Connection", "close")
             .post(bodyJson.toRequestBody(json))
             .build()
 
@@ -243,8 +249,8 @@ open class CqrsBackendClient(
 
     private fun buildHttpStubResponse(resp: ForwardedResponse): HttpStubResponse {
         val bodyString = serialiseBodyWithPatches(resp)
-        // Drop-connection chaos note: when the engine's forwarding layer fires drop-connection
-        // chaos it cannot destroy the upstream socket (only gateway.ts can do that via
+        // Drop-connection chaos note: when the runtime gateway fires drop-connection
+        // chaos it cannot destroy the upstream socket (only the direct gateway can do that via
         // `res.socket?.destroy()`). Instead it sends a synthetic 504 with header
         // `x-potemkin-dropped: true` (PotemkinHeaders.DROPPED). The plugin has no API to
         // abort the Specmatic HTTP connection from inside a RequestHandler — the Specmatic
@@ -273,21 +279,20 @@ open class CqrsBackendClient(
      * same [PatchApplier] the interceptor uses — keeping the served body and the
      * [PotemkinResponseInterceptor] replay path (for Specmatic-served bodies) op-for-op equal.
      *
-     * Patches only apply to an object body. A non-object body (string/array/null) is emitted
-     * as-is. A malformed/failing patch set leaves the base body unchanged (the engine already
-     * validated the base; never disrupt the response).
+     * Patches apply to every JSON body shape supported by the canonical patch model, including
+     * arrays and nested alternate representations. A malformed/failing patch set leaves the
+     * base body unchanged (the engine already validated the base; never disrupt the response).
      */
     private fun serialiseBodyWithPatches(resp: ForwardedResponse): String {
         val body = resp.body
         val patchesRaw = resp.patches
-        if (!patchesRaw.isNullOrEmpty() && body is Map<*, *>) {
+        if (!patchesRaw.isNullOrEmpty()) {
             val patched = try {
                 val patches = Patch.fromList(patchesRaw)
-                @Suppress("UNCHECKED_CAST")
                 // Response-mutation patches are produced by the engine for autoVivify
                 // application (src/http/responseMutations.ts): a `merge /_links` on a body
                 // without `_links` must create it. Apply with the same semantics for parity.
-                PatchApplier.apply(body as Map<String, Any?>, patches, autoVivify = true)
+                PatchApplier.apply(body, patches, autoVivify = true)
             } catch (e: Exception) {
                 log.warn("Failed to apply response _patches; emitting base body: {}", e.message)
                 body

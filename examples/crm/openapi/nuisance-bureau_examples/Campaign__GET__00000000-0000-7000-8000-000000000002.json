@@ -1,0 +1,26 @@
+{
+  "http-request": {
+    "method": "GET",
+    "path": "/campaigns/00000000-0000-7000-8000-000000000002"
+  },
+  "http-response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "id": "00000000-0000-7000-8000-000000000002",
+      "name": "Partner Referral Drive",
+      "status": "DRAFT",
+      "targetSource": "PARTNER",
+      "script": "Hi, I'm reaching out on behalf of our mutual partner...",
+      "startedAt": "1970-06-01T00:00:00.000Z",
+      "endedAt": "1970-09-30T23:59:59.000Z",
+      "targetCalls": 200,
+      "targetConversions": 30,
+      "actualCalls": 0,
+      "actualConversions": 0,
+      "assignedAgentIds": []
+    }
+  }
+}

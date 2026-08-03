@@ -23,8 +23,8 @@
  * first (it understands the collection envelope), then response-format.
  */
 
-import type { JsonValue, JsonObject } from '../types.js';
-import type { ResponseFormat, PaginationStyle } from './controlHeaders.js';
+import type { JsonValue, JsonObject } from "../types.js";
+import type { ResponseFormat, PaginationStyle } from "./controlHeaders.js";
 
 /** The pagination envelope shape produced by engine/query.ts for collections. */
 interface PaginationEnvelope {
@@ -38,15 +38,15 @@ interface PaginationEnvelope {
 function isEnvelope(body: JsonValue | null | undefined): body is JsonObject & PaginationEnvelope {
   return (
     body !== null &&
-    typeof body === 'object' &&
+    typeof body === "object" &&
     !Array.isArray(body) &&
-    Array.isArray((body as JsonObject)['items']) &&
-    typeof (body as JsonObject)['totalCount'] === 'number'
+    Array.isArray((body as JsonObject)["items"]) &&
+    typeof (body as JsonObject)["totalCount"] === "number"
   );
 }
 
 function isPlainObject(body: JsonValue | null | undefined): body is JsonObject {
-  return body !== null && typeof body === 'object' && !Array.isArray(body);
+  return body !== null && typeof body === "object" && !Array.isArray(body);
 }
 
 /** Read a single string query value (first entry when repeated). */
@@ -67,14 +67,14 @@ function buildQueryString(
 ): string {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {
-    if (key === 'offset' || key === 'limit' || key === 'cursor') continue;
+    if (key === "offset" || key === "limit" || key === "cursor") continue;
     const values = Array.isArray(value) ? value : [value];
     for (const v of values) {
       params.append(key, v);
     }
   }
-  params.append('offset', String(offset));
-  params.append('limit', String(limit));
+  params.append("offset", String(offset));
+  params.append("limit", String(limit));
   return params.toString();
 }
 
@@ -110,7 +110,7 @@ export function applyPaginationStyle(
     items = [...(body as JsonValue[])];
     totalCount = items.length;
     offset = 0;
-    const limitQ = firstQuery(query['limit']);
+    const limitQ = firstQuery(query["limit"]);
     limit = limitQ !== undefined ? Math.max(0, parseInt(limitQ, 10) || 0) : items.length;
   } else {
     // Not a collection — nothing to do.
@@ -119,7 +119,7 @@ export function applyPaginationStyle(
 
   const hasMore = offset + items.length < totalCount;
 
-  if (style === 'envelope') {
+  if (style === "envelope") {
     return {
       body: { items, totalCount, offset, limit, hasMore } as unknown as JsonValue,
       headers,
@@ -127,8 +127,8 @@ export function applyPaginationStyle(
   }
 
   // Both 'raw' and 'link-header' return a bare array body.
-  if (style === 'link-header') {
-    const basePath = requestPath.split('?')[0]!;
+  if (style === "link-header") {
+    const basePath = requestPath.split("?")[0]!;
     const links: string[] = [];
     if (limit > 0) {
       if (hasMore) {
@@ -140,8 +140,8 @@ export function applyPaginationStyle(
         links.push(`<${basePath}?${buildQueryString(query, prevOffset, limit)}>; rel="prev"`);
       }
     }
-    if (links.length > 0) headers['Link'] = links.join(', ');
-    headers['X-Total-Count'] = String(totalCount);
+    if (links.length > 0) headers["Link"] = links.join(", ");
+    headers["X-Total-Count"] = String(totalCount);
   }
 
   return { body: items as unknown as JsonValue, headers };
@@ -149,8 +149,8 @@ export function applyPaginationStyle(
 
 /** Best-effort extraction of an entity id for JSON:API / HAL self links. */
 function entityId(obj: JsonObject): string | undefined {
-  const id = obj['id'];
-  return typeof id === 'string' || typeof id === 'number' ? String(id) : undefined;
+  const id = obj["id"];
+  return typeof id === "string" || typeof id === "number" ? String(id) : undefined;
 }
 
 /**
@@ -164,11 +164,11 @@ export function applyResponseFormat(
   requestPath: string,
 ): JsonValue {
   if (body === null || body === undefined) return body ?? null;
-  if (format === 'plain') return body;
+  if (format === "plain") return body;
 
-  const selfPath = requestPath.split('?')[0]!;
+  const selfPath = requestPath.split("?")[0]!;
 
-  if (format === 'hal') {
+  if (format === "hal") {
     if (Array.isArray(body)) {
       return {
         _embedded: { items: body as JsonValue[] },
@@ -187,7 +187,7 @@ export function applyResponseFormat(
     }
     if (isPlainObject(body)) {
       // Merge a self link without clobbering any existing _links from HATEOAS.
-      const existingLinks = isPlainObject(body['_links']) ? (body['_links'] as JsonObject) : {};
+      const existingLinks = isPlainObject(body["_links"]) ? (body["_links"] as JsonObject) : {};
       return {
         ...body,
         _links: { self: { href: selfPath }, ...existingLinks },
@@ -214,7 +214,12 @@ export function applyResponseFormat(
   if (isEnvelope(body)) {
     return {
       data: body.items.map(toResource),
-      meta: { totalCount: body.totalCount, offset: body.offset, limit: body.limit, hasMore: body.hasMore },
+      meta: {
+        totalCount: body.totalCount,
+        offset: body.offset,
+        limit: body.limit,
+        hasMore: body.hasMore,
+      },
     } as unknown as JsonValue;
   }
   return { data: toResource(body) } as unknown as JsonValue;

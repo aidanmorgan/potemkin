@@ -30,13 +30,13 @@ identity:
 event_catalog:
   - type: ItemCreated
     payload_template:
-      id:    "command.targetId"
-      kind:  "'{{initialKind}}'"
+      id: "command.targetId"
+      kind: "'{{initialKind}}'"
       label: "command.payload.label"
 
   - type: ItemUpdated
     payload_template:
-      id:    "command.targetId"
+      id: "command.targetId"
       label: "command.payload.label"
 
 behaviors:

@@ -1,0 +1,26 @@
+{
+  "http-request": {
+    "method": "GET",
+    "path": "/v1/customers/cus_00000000-0000-784f-aa5f-65dbb21616d5"
+  },
+  "http-response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "body": {
+      "id": "cus_00000000-0000-784f-aa5f-65dbb21616d5",
+      "object": "customer",
+      "created": 0,
+      "livemode": false,
+      "email": null,
+      "name": null,
+      "description": null,
+      "phone": null,
+      "balance": 0,
+      "currency": null,
+      "delinquent": false,
+      "metadata": {}
+    }
+  }
+}

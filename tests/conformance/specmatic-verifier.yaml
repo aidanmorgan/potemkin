@@ -1,0 +1,9 @@
+version: 3
+specmatic:
+  settings:
+    test:
+      # Specmatic 2.46.2 names the positive-only mode through the resiliency
+      # suite setting; the CLI has no --only-positive option.
+      schemaResiliencyTests: positiveOnly
+      maxTestRequestCombinations: 10
+      maxTestCount: 20

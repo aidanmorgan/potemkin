@@ -16,9 +16,9 @@ identity:
 event_catalog:
   - type: NotificationCreated
     payload_template:
-      id:         "$uuidv7()"
+      id: "$uuidv7()"
       documentId: "event.aggregateId"
-      message:    "'Document created'"
+      message: "'Document created'"
 
 behaviors: []
 

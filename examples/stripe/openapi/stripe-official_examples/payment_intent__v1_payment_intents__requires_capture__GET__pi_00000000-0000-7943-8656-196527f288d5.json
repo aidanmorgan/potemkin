@@ -1,0 +1,30 @@
+{
+  "http-request": {
+    "method": "GET",
+    "path": "/v1/payment_intents/pi_00000000-0000-7943-8656-196527f288d5"
+  },
+  "http-response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "body": {
+      "id": "pi_00000000-0000-7943-8656-196527f288d5",
+      "object": "payment_intent",
+      "created": 0,
+      "livemode": false,
+      "amount": 2000,
+      "currency": "usd",
+      "status": "requires_capture",
+      "customer": null,
+      "payment_method": null,
+      "capture_method": "manual",
+      "amount_received": 0,
+      "latest_charge": "ch_00000000-0000-71cb-badc-a3b3b1e31aad",
+      "cancellation_reason": null,
+      "description": null,
+      "client_secret": "pi_00000000-0000-7943-8656-196527f288d5_secret_00000000-0000-77b6-abde-d9e7695a20d9",
+      "metadata": {}
+    }
+  }
+}

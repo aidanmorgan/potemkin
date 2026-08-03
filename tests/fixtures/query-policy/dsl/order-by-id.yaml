@@ -1,0 +1,13 @@
+boundary: OrderById
+contract_path: /orders/{id}
+fallback_override: true
+identity:
+  key:
+    from: path
+    name: id
+query:
+  fallback:
+    code: ORDER_NOT_FOUND
+event_catalog: []
+behaviors: []
+reducers: []

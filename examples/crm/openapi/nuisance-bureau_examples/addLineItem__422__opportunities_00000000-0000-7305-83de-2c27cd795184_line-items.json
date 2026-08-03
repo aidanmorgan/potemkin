@@ -1,0 +1,24 @@
+{
+  "http-request": {
+    "method": "POST",
+    "path": "/opportunities/00000000-0000-7305-83de-2c27cd795184/line-items",
+    "body": {
+      "description": "export",
+      "quantity": 1,
+      "unitPrice": 0
+    }
+  },
+  "http-response": {
+    "status": 422,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "body": {
+      "error": "OPPORTUNITY_CLOSED",
+      "message": "Cannot add line items to a closed opportunity",
+      "details": {
+        "code": "OPPORTUNITY_CLOSED"
+      }
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "http-request": {
+    "method": "GET",
+    "path": "/v1/customers"
+  },
+  "http-response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "body": {
+      "object": "list",
+      "url": "/v1/customers",
+      "has_more": false,
+      "data": [
+        {
+          "id": "cus_seed000000000000000001",
+          "object": "customer",
+          "created": 1700000000,
+          "livemode": false,
+          "email": "seeded@example.com",
+          "name": "Seeded Customer",
+          "description": null,
+          "phone": null,
+          "balance": 0,
+          "currency": null,
+          "delinquent": false,
+          "metadata": {}
+        }
+      ]
+    }
+  }
+}

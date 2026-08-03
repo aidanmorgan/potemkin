@@ -1,0 +1,8 @@
+version: 1
+specmatic: ./specmatic.yaml
+openapi:
+  - openapi/query-policy.yaml
+modules:
+  - dsl/order.yaml
+  - dsl/order-by-id.yaml
+  - dsl/probe.yaml

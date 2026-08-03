@@ -1,0 +1,10 @@
+boundary: ProbeById
+contract_path: /probes/{id}
+fallback_override: false
+identity:
+  key:
+    from: path
+    name: id
+event_catalog: []
+behaviors: []
+reducers: []

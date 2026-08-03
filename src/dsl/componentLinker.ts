@@ -45,8 +45,8 @@
  *  - behaviors[].dispatchCommands[].boundary  (secondary command target)
  */
 
-import { BootError } from '../errors.js';
-import { substituteParameters } from './parameterSubstitution.js';
+import { BootError } from "../errors.js";
+import { substituteParameters } from "./parameterSubstitution.js";
 import type {
   BehaviorRule,
   BoundaryConfig,
@@ -56,7 +56,7 @@ import type {
   ReducerRule,
   SecondaryCommandSpec,
   UseEntry,
-} from './types.js';
+} from "./types.js";
 
 // ---------------------------------------------------------------------------
 // C5: boundary reference resolver
@@ -83,7 +83,7 @@ function resolveAlias(
     return bind[alias]!;
   }
   throw new BootError(
-    'BOOT_ERR_DSL_REFERENCE',
+    "BOOT_ERR_DSL_REFERENCE",
     `use: entry "${entry.as}" (component "${entry.component}"): boundary alias "${alias}" is not the component self-name and is not mapped in bind — add it to bind: { ${alias}: <ConcreteName> }`,
     { alias, component: entry.component, as: entry.as },
   );
@@ -108,12 +108,13 @@ function rewriteReaction(
   // reactions; may be undefined for global reactions, but components use boundary-file
   // style so it defaults to the component name via the schema parser).
   const rawBoundary = reaction.boundary;
-  const newBoundary = rawBoundary !== undefined
-    ? resolveAlias(rawBoundary, componentName, concreteAs, bind, entry)
-    : undefined;
+  const newBoundary =
+    rawBoundary !== undefined
+      ? resolveAlias(rawBoundary, componentName, concreteAs, bind, entry)
+      : undefined;
 
   // Rewrite the "<Boundary>:" prefix of a qualified "on" trigger.
-  const colonIdx = reaction.on.indexOf(':');
+  const colonIdx = reaction.on.indexOf(":");
   let newOn = reaction.on;
   if (colonIdx !== -1) {
     const onBoundary = reaction.on.slice(0, colonIdx);
@@ -198,7 +199,7 @@ function rewriteBoundaryRefs(
   // ambiguity surfaces at boot rather than producing surprising wiring.
   if (Object.prototype.hasOwnProperty.call(bind, componentName)) {
     throw new BootError(
-      'BOOT_ERR_DSL_SYNTAX',
+      "BOOT_ERR_DSL_SYNTAX",
       `use: entry "${entry.as}" (component "${entry.component}"): bind alias "${componentName}" shadows the component's own name — the self reference always rewrites to "as", so remove this bind entry`,
       { alias: componentName, component: entry.component, as: entry.as },
     );
@@ -273,7 +274,7 @@ export function linkComponents(
     const component = components[entry.component];
     if (component === undefined) {
       throw new BootError(
-        'BOOT_ERR_DSL_REFERENCE',
+        "BOOT_ERR_DSL_REFERENCE",
         `use: entry references unknown component "${entry.component}"`,
         { component: entry.component, as: entry.as },
       );
@@ -288,7 +289,7 @@ export function linkComponents(
     // 4. Collision guard: concrete name.
     if (Object.prototype.hasOwnProperty.call(byBoundaryName, entry.as)) {
       throw new BootError(
-        'BOOT_ERR_DSL_DUPLICATE_BOUNDARY',
+        "BOOT_ERR_DSL_DUPLICATE_BOUNDARY",
         `use: entry produces duplicate boundary name "${entry.as}" (already registered as a live boundary)`,
         { boundary: entry.as, component: entry.component },
       );
@@ -297,7 +298,7 @@ export function linkComponents(
     // 5. Collision guard: concrete contract_path.
     if (Object.prototype.hasOwnProperty.call(byContractPath, entry.contractPath)) {
       throw new BootError(
-        'BOOT_ERR_DSL_DUPLICATE_BOUNDARY',
+        "BOOT_ERR_DSL_DUPLICATE_BOUNDARY",
         `use: entry produces duplicate contract_path "${entry.contractPath}" for boundary "${entry.as}"`,
         { contractPath: entry.contractPath, boundary: entry.as, component: entry.component },
       );
@@ -311,12 +312,22 @@ export function linkComponents(
     const concrete: BoundaryConfig = {
       boundary: entry.as,
       contractPath: entry.contractPath,
-      fallbackOverride: false,
+      fallbackOverride: rewritten.fallbackOverride ?? false,
       behaviors: rewritten.behaviors ?? [],
       reducers: rewritten.reducers ?? [],
       eventCatalog: rewritten.eventCatalog ?? [],
       ...(rewritten.identity !== undefined ? { identity: rewritten.identity } : {}),
+      ...(rewritten.schema !== undefined ? { schema: rewritten.schema } : {}),
       ...(rewritten.state !== undefined ? { state: rewritten.state } : {}),
+      ...(rewritten.query !== undefined ? { query: rewritten.query } : {}),
+      ...(rewritten.queryMapping !== undefined ? { queryMapping: rewritten.queryMapping } : {}),
+      ...(rewritten.deprecated !== undefined ? { deprecated: rewritten.deprecated } : {}),
+      ...(rewritten.hateoas !== undefined ? { hateoas: rewritten.hateoas } : {}),
+      ...(rewritten.mask !== undefined ? { mask: rewritten.mask } : {}),
+      ...(rewritten.latency !== undefined ? { latency: rewritten.latency } : {}),
+      ...(rewritten.auditFields !== undefined ? { auditFields: rewritten.auditFields } : {}),
+      ...(rewritten.strictSchema !== undefined ? { strictSchema: rewritten.strictSchema } : {}),
+      ...(rewritten.faults !== undefined ? { faults: rewritten.faults } : {}),
       ...(rewritten.reactions !== undefined && rewritten.reactions.length > 0
         ? { reactions: rewritten.reactions }
         : {}),
@@ -356,8 +367,8 @@ function mergeFragment(
   fragmentBehaviors: readonly BehaviorRule[] | undefined,
   localEventTypes: ReadonlySet<string>,
   localBehaviorNames: ReadonlySet<string>,
-  includedEventTypes: Map<string, string>,   // key → source component name
-  includedReducerOns: Map<string, string>,   // tracked for informational purposes only (no clash error)
+  includedEventTypes: Map<string, string>, // key → source component name
+  includedReducerOns: Map<string, string>, // tracked for informational purposes only (no clash error)
   includedBehaviorNames: Map<string, string>,
   accEventCatalog: EventCatalogEntry[],
   accReducers: ReducerRule[],
@@ -371,9 +382,14 @@ function mergeFragment(
     if (localEventTypes.has(key)) continue; // local wins
     if (includedEventTypes.has(key)) {
       throw new BootError(
-        'BOOT_ERR_DSL_SYNTAX',
+        "BOOT_ERR_DSL_SYNTAX",
         `boundary "${hostBoundaryName}": include: clash — event type "${key}" is contributed by both "${includedEventTypes.get(key)}" and "${sourceComponentName}" with no local override`,
-        { boundary: hostBoundaryName, key, source1: includedEventTypes.get(key)!, source2: sourceComponentName },
+        {
+          boundary: hostBoundaryName,
+          key,
+          source1: includedEventTypes.get(key)!,
+          source2: sourceComponentName,
+        },
       );
     }
     includedEventTypes.set(key, sourceComponentName);
@@ -397,9 +413,14 @@ function mergeFragment(
     if (localBehaviorNames.has(key)) continue;
     if (includedBehaviorNames.has(key)) {
       throw new BootError(
-        'BOOT_ERR_DSL_SYNTAX',
+        "BOOT_ERR_DSL_SYNTAX",
         `boundary "${hostBoundaryName}": include: clash — behavior name "${key}" is contributed by both "${includedBehaviorNames.get(key)}" and "${sourceComponentName}" with no local override`,
-        { boundary: hostBoundaryName, key, source1: includedBehaviorNames.get(key)!, source2: sourceComponentName },
+        {
+          boundary: hostBoundaryName,
+          key,
+          source1: includedBehaviorNames.get(key)!,
+          source2: sourceComponentName,
+        },
       );
     }
     includedBehaviorNames.set(key, sourceComponentName);
@@ -481,7 +502,7 @@ export function mergeIncludes(
       const component = components[includeEntry.component];
       if (component === undefined) {
         throw new BootError(
-          'BOOT_ERR_DSL_REFERENCE',
+          "BOOT_ERR_DSL_REFERENCE",
           `boundary "${hostName}": include: references unknown component "${includeEntry.component}"`,
           { boundary: hostName, component: includeEntry.component },
         );
@@ -495,16 +516,16 @@ export function mergeIncludes(
       // state, all with clash detection). Make failures loud.
       if (component.reactions !== undefined && component.reactions.length > 0) {
         throw new BootError(
-          'BOOT_ERR_DSL_SYNTAX',
+          "BOOT_ERR_DSL_SYNTAX",
           `boundary "${hostName}": include: component "${component.name}" declares "reactions" — reactions are not supported under include: (use use: for components with reactions)`,
-          { boundary: hostName, component: component.name, section: 'reactions' },
+          { boundary: hostName, component: component.name, section: "reactions" },
         );
       }
       if (component.include !== undefined && component.include.length > 0) {
         throw new BootError(
-          'BOOT_ERR_DSL_SYNTAX',
+          "BOOT_ERR_DSL_SYNTAX",
           `boundary "${hostName}": include: component "${component.name}" declares its own "include:" — nested include is not supported under include:`,
-          { boundary: hostName, component: component.name, section: 'include' },
+          { boundary: hostName, component: component.name, section: "include" },
         );
       }
 
@@ -518,9 +539,14 @@ export function mergeIncludes(
         for (const dc of behavior.dispatchCommands ?? []) {
           if (!Object.prototype.hasOwnProperty.call(byBoundaryName, dc.boundary)) {
             throw new BootError(
-              'BOOT_ERR_DSL_SYNTAX',
+              "BOOT_ERR_DSL_SYNTAX",
               `boundary "${hostName}": include: component "${component.name}" behavior "${behavior.name}" dispatch_commands.boundary "${dc.boundary}" is not a known concrete boundary — included behaviors must use concrete boundary names (include: has no bind: rewriting context)`,
-              { boundary: hostName, component: component.name, behavior: behavior.name, alias: dc.boundary },
+              {
+                boundary: hostName,
+                component: component.name,
+                behavior: behavior.name,
+                alias: dc.boundary,
+              },
             );
           }
         }
@@ -546,9 +572,14 @@ export function mergeIncludes(
       if (substituted.identity !== undefined) {
         if (mergedIdentity !== undefined) {
           throw new BootError(
-            'BOOT_ERR_DSL_SYNTAX',
+            "BOOT_ERR_DSL_SYNTAX",
             `boundary "${hostName}": include: component "${component.name}" declares "identity" but it is already declared by "${identitySource}" — identity may come from only one source`,
-            { boundary: hostName, component: component.name, section: 'identity', existing: identitySource ?? null },
+            {
+              boundary: hostName,
+              component: component.name,
+              section: "identity",
+              existing: identitySource ?? null,
+            },
           );
         }
         mergedIdentity = substituted.identity;
@@ -559,9 +590,14 @@ export function mergeIncludes(
       if (substituted.schema !== undefined) {
         if (mergedSchema !== undefined) {
           throw new BootError(
-            'BOOT_ERR_DSL_SYNTAX',
+            "BOOT_ERR_DSL_SYNTAX",
             `boundary "${hostName}": include: component "${component.name}" declares "schema" but it is already declared by "${schemaSource}" — schema may come from only one source`,
-            { boundary: hostName, component: component.name, section: 'schema', existing: schemaSource ?? null },
+            {
+              boundary: hostName,
+              component: component.name,
+              section: "schema",
+              existing: schemaSource ?? null,
+            },
           );
         }
         mergedSchema = substituted.schema;
@@ -573,7 +609,7 @@ export function mergeIncludes(
         const prior = stateFieldSource.get(f.name);
         if (prior !== undefined) {
           throw new BootError(
-            'BOOT_ERR_DSL_SYNTAX',
+            "BOOT_ERR_DSL_SYNTAX",
             `boundary "${hostName}": include: component "${component.name}" declares state field "${f.name}" but it is already declared by "${prior}" — state fields may come from only one source`,
             { boundary: hostName, component: component.name, field: f.name, existing: prior },
           );
@@ -586,7 +622,7 @@ export function mergeIncludes(
         const prior = stateFieldSource.get(f.name);
         if (prior !== undefined) {
           throw new BootError(
-            'BOOT_ERR_DSL_SYNTAX',
+            "BOOT_ERR_DSL_SYNTAX",
             `boundary "${hostName}": include: component "${component.name}" declares state field "${f.name}" but it is already declared by "${prior}" — state fields may come from only one source`,
             { boundary: hostName, component: component.name, field: f.name, existing: prior },
           );
@@ -602,8 +638,12 @@ export function mergeIncludes(
 
     // If no fragments contributed anything new, leave the boundary unchanged.
     if (
-      accEventCatalog.length === 0 && accReducers.length === 0 && accBehaviors.length === 0 &&
-      !identityChanged && !schemaChanged && !stateChanged
+      accEventCatalog.length === 0 &&
+      accReducers.length === 0 &&
+      accBehaviors.length === 0 &&
+      !identityChanged &&
+      !schemaChanged &&
+      !stateChanged
     ) {
       continue;
     }

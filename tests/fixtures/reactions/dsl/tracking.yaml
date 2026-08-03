@@ -13,9 +13,9 @@ identity:
 event_catalog:
   - type: TrackingStarted
     payload_template:
-      id:         "$uuidv7()"
+      id: "$uuidv7()"
       shippingId: "event.aggregateId"
-      status:     "'IN_TRANSIT'"
+      status: "'IN_TRANSIT'"
 
 behaviors: []
 

@@ -36,7 +36,7 @@ function encodeForm(form: Record<string, unknown>): string {
     parts.push(`${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`);
   };
   for (const [key, value] of Object.entries(form)) {
-    if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
       for (const [sub, subVal] of Object.entries(value as Record<string, unknown>)) {
         add(`${key}[${sub}]`, subVal);
       }
@@ -44,11 +44,23 @@ function encodeForm(form: Record<string, unknown>): string {
       add(key, value);
     }
   }
-  return parts.join('&');
+  return parts.join("&");
 }
 
-function buildUrl(baseUrl: string, path: string, query?: RequestOptions['query']): string {
-  const url = new URL(path, baseUrl);
+function assertLoopbackHttpUrl(url: URL): URL {
+  const loopbackHosts = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
+  if (url.protocol !== "http:" || !loopbackHosts.has(url.hostname)) {
+    throw new TypeError(
+      `ConsumerClient only permits loopback HTTP endpoints, received ${url.origin}`,
+    );
+  }
+  return url;
+}
+
+function buildUrl(baseUrl: string, path: string, query?: RequestOptions["query"]): string {
+  // Resolve and validate the final URL. URL() accepts an absolute `path`, which
+  // would otherwise allow a caller to bypass the loopback base URL entirely.
+  const url = assertLoopbackHttpUrl(new URL(path, baseUrl));
   if (query) {
     for (const [k, v] of Object.entries(query)) {
       if (v !== undefined) url.searchParams.set(k, String(v));
@@ -57,17 +69,36 @@ function buildUrl(baseUrl: string, path: string, query?: RequestOptions['query']
   return url.toString();
 }
 
-export class ConsumerClient {
-  constructor(private readonly baseUrl: string) {}
+function requireLoopbackBaseUrl(baseUrl: string): string {
+  let url: URL;
+  try {
+    url = new URL(baseUrl);
+  } catch {
+    throw new TypeError(`ConsumerClient requires a loopback HTTP base URL: ${baseUrl}`);
+  }
 
-  async request(method: string, path: string, opts: RequestOptions = {}): Promise<ConsumerResponse> {
-    const headers: Record<string, string> = { Accept: 'application/json', ...(opts.headers ?? {}) };
+  return assertLoopbackHttpUrl(url).toString();
+}
+
+export class ConsumerClient {
+  private readonly baseUrl: string;
+
+  constructor(baseUrl: string) {
+    this.baseUrl = requireLoopbackBaseUrl(baseUrl);
+  }
+
+  async request(
+    method: string,
+    path: string,
+    opts: RequestOptions = {},
+  ): Promise<ConsumerResponse> {
+    const headers: Record<string, string> = { Accept: "application/json", ...opts.headers };
     let body: string | undefined;
     if (opts.json !== undefined) {
-      headers['Content-Type'] = 'application/json';
+      headers["Content-Type"] = "application/json";
       body = JSON.stringify(opts.json);
     } else if (opts.form !== undefined) {
-      headers['Content-Type'] = 'application/x-www-form-urlencoded';
+      headers["Content-Type"] = "application/x-www-form-urlencoded";
       body = encodeForm(opts.form);
     }
 
@@ -75,20 +106,24 @@ export class ConsumerClient {
     const text = await res.text();
     let parsed: unknown = null;
     if (text.length > 0) {
-      try { parsed = JSON.parse(text); } catch { parsed = null; }
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        parsed = null;
+      }
     }
     return { status: res.status, headers: res.headers, body: parsed, text };
   }
 
   get(path: string, opts?: RequestOptions): Promise<ConsumerResponse> {
-    return this.request('GET', path, opts);
+    return this.request("GET", path, opts);
   }
 
   post(path: string, opts?: RequestOptions): Promise<ConsumerResponse> {
-    return this.request('POST', path, opts);
+    return this.request("POST", path, opts);
   }
 
   delete(path: string, opts?: RequestOptions): Promise<ConsumerResponse> {
-    return this.request('DELETE', path, opts);
+    return this.request("DELETE", path, opts);
   }
 }

@@ -13,9 +13,9 @@ identity:
 event_catalog:
   - type: DispatchConfirmed
     payload_template:
-      id:         "$uuidv7()"
+      id: "$uuidv7()"
       trackingId: "event.aggregateId"
-      confirmed:  "true"
+      confirmed: "true"
 
 behaviors: []
 

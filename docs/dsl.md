@@ -26,7 +26,9 @@ The engine is a CQRS/Event Sourcing runtime. The DSL never directly mutates stat
 
 ### What the DSL is not
 
-- It is **not** a programming language. Complex logic should be expressed in CEL or, as a last resort, a `@Script`-annotated TypeScript class discovered at boot (see [Section 10](#10-typescript-scripts-script-tier-1)).
+- It is **not** a programming language. Declarative logic is expressed in CEL;
+  reusable native computations are registered as typed helpers from a
+  `@PotemkinConfigure` factory (see [Section 10](#typescript-configuration-factories-and-helpers)).
 - It is **not** a database schema. Structural shape is owned by the OpenAPI contract (`contract_path`).
 - It is **not** executed at request time by an interpreter. All DSL expressions are compiled at boot and validated against the contract before the server accepts traffic.
 
@@ -45,12 +47,12 @@ Multiple boundary files may coexist; the engine merges them into a single execut
 
 ### Boot-time vs runtime concerns
 
-| Phase | What happens |
-|-------|-------------|
-| **Boot** | YAML parsed, CEL compiled, cross-references validated, `@Script` classes discovered via scan, OpenAPI bound, initialization data seeded |
-| **Runtime** | HTTP request arrives, command assembled, pattern matcher evaluates behaviors, events staged, projected, committed |
+| Phase       | What happens                                                                                                                                       |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Boot**    | YAML parsed, CEL compiled, cross-references validated, `@PotemkinConfigure` classes discovered via scan, OpenAPI bound, initialization data seeded |
+| **Runtime** | HTTP request arrives, command assembled, pattern matcher evaluates behaviors, events staged, projected, committed                                  |
 
-Any error in a boot-time concern halts startup with a `BOOT_ERR_*` code (see [Section 12](#12-error-reference)).
+Any error in a boot-time concern halts startup with a `BOOT_ERR_*` code (see [Section 12](#error-reference)).
 
 ---
 
@@ -58,23 +60,24 @@ Any error in a boot-time concern halts startup with a `BOOT_ERR_*` code (see [Se
 
 A boundary file is a YAML mapping. The top-level keys are:
 
-| YAML key (snake_case) | TypeScript field (camelCase) | Type | Required | Description |
-|---|---|---|---|---|
-| `boundary` | `boundary` | `string` | yes | Logical namespace for this aggregate (e.g. `Opportunity`). Used in event routing and cross-boundary dispatch. |
-| `contract_path` | `contractPath` | `string` | yes | The OpenAPI route this boundary handles (e.g. `/opportunities`). |
-| `fallback_override` | `fallbackOverride` | `boolean` | no (default `false`) | When `true`, unmatched commands use a generic CRUD fallback instead of returning an error. |
-| `identity` | `identity` | object | no | Identity generation and key extraction config. |
-| `identity.creation.generate` | `identity.creation.generate` | CEL string | no | Expression producing the aggregate ID on creation. Typically `"$uuidv7()"`. |
-| `identity.key.from` | `identity.key.from` | `path\|query\|header\|payload` | no | Source from which the aggregate key is read on each request. Defaults to the `{id}` path parameter when absent. |
-| `identity.key.name` | `identity.key.name` | string | no | Parameter name (path/query) or header name (lowercased) to read the key from. |
-| `identity.key.pointer` | `identity.key.pointer` | string | no | Dot-path into the JSON body for `from: payload`. Defaults to `name` when omitted. |
-| `query_mapping` | `queryMapping` | `map<string, string>` | no | Maps URL query parameter names to CEL filter expressions. |
-| `event_catalog` | `eventCatalog` | array | no | Defines named event types and their payload templates. |
-| `behaviors` | `behaviors` | array | no | Rules matching commands to events. |
-| `reducers` | `reducers` | array | no | Rules projecting events onto aggregate state. |
-| `initialization` | `initialization` | array | no | Seed records loaded at boot as baseline state. |
-| `strict_schema` | `strictSchema` | boolean | no (default `true`) | When `false`, downgrades the computed-field `INCOMPLETE_DEPS` check from a boot error to a warning. See [`strict_schema`](#strict_schema) below. |
-| `typescript` | — | scan config in `potemkin.yaml` | — | Script discovery is declared in `potemkin.yaml` (`typescript.scan`), not in boundary files. See [Section 10](#10-typescript-scripts-script-tier-1). |
+| YAML key (snake_case)        | TypeScript field (camelCase) | Type                           | Required             | Description                                                                                                                                                                          |
+| ---------------------------- | ---------------------------- | ------------------------------ | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `boundary`                   | `boundary`                   | `string`                       | yes                  | Logical namespace for this aggregate (e.g. `Opportunity`). Used in event routing and cross-boundary dispatch.                                                                        |
+| `contract_path`              | `contractPath`               | `string`                       | yes                  | The OpenAPI route this boundary handles (e.g. `/opportunities`).                                                                                                                     |
+| `fallback_override`          | `fallbackOverride`           | `boolean`                      | no (default `false`) | When `true`, unmatched commands use a generic CRUD fallback instead of returning an error.                                                                                           |
+| `identity`                   | `identity`                   | object                         | no                   | Identity generation and key extraction config.                                                                                                                                       |
+| `identity.creation.generate` | `identity.creation.generate` | CEL string                     | no                   | Expression producing the aggregate ID on creation. Typically `"$uuidv7()"`.                                                                                                          |
+| `identity.key.from`          | `identity.key.from`          | `path\|query\|header\|payload` | no                   | Source from which the aggregate key is read on each request. Defaults to the `{id}` path parameter when absent.                                                                      |
+| `identity.key.name`          | `identity.key.name`          | string                         | no                   | Parameter name (path/query) or header name (lowercased) to read the key from.                                                                                                        |
+| `identity.key.pointer`       | `identity.key.pointer`       | string                         | no                   | Dot-path into the JSON body for `from: payload`. Defaults to `name` when omitted.                                                                                                    |
+| `query_mapping`              | `queryMapping`               | `map<string, string>`          | no                   | Maps URL query parameter names to CEL filter expressions.                                                                                                                            |
+| `query`                      | `query`                      | object                         | no                   | Source-neutral query policy: CEL filtering/fields, deterministic sort, page sizing, cursor, expansion, pagination, deleted-row inclusion, and targeted fallback.                     |
+| `event_catalog`              | `eventCatalog`               | array                          | no                   | Defines named event types and their payload templates.                                                                                                                               |
+| `behaviors`                  | `behaviors`                  | array                          | no                   | Rules matching commands to events.                                                                                                                                                   |
+| `reducers`                   | `reducers`                   | array                          | no                   | Rules projecting events onto aggregate state.                                                                                                                                        |
+| `initialization`             | `initialization`             | array                          | no                   | Seed records loaded at boot as baseline state.                                                                                                                                       |
+| `strict_schema`              | `strictSchema`               | boolean                        | no (default `true`)  | When `false`, downgrades the computed-field `INCOMPLETE_DEPS` check from a boot error to a warning. See [`strict_schema`](#strict_schema) below.                                     |
+| `typescript`                 | —                            | scan config in `potemkin.yml`  | —                    | TypeScript factory and helper discovery is declared in `potemkin.yml` (`typescript.scan`), not in boundary files. See [Section 10](#typescript-configuration-factories-and-helpers). |
 
 > ⚠️ All YAML keys use `snake_case`. The schema validator (`src/dsl/schema.ts`) maps them to `camelCase` TypeScript fields. Do not use camelCase in YAML.
 
@@ -101,11 +104,11 @@ identity:
 
 When the aggregate key is not carried in the standard `{id}` URL path parameter, declare `identity.key` to tell the engine where to find it. Without this block the engine always reads `{id}` from the path.
 
-| Sub-field | Values | Required | Description |
-|-----------|--------|----------|-------------|
-| `from` | `path` \| `query` \| `header` \| `payload` | yes | Source of the key value |
-| `name` | string | yes (for `path`/`query`/`header`) | Path-param name, query-param name, or header name (lowercased) |
-| `pointer` | string | no | Dot-path into the JSON body for `from: payload`. Defaults to `name` when omitted. |
+| Sub-field | Values                                     | Required                          | Description                                                                       |
+| --------- | ------------------------------------------ | --------------------------------- | --------------------------------------------------------------------------------- |
+| `from`    | `path` \| `query` \| `header` \| `payload` | yes                               | Source of the key value                                                           |
+| `name`    | string                                     | yes (for `path`/`query`/`header`) | Path-param name, query-param name, or header name (lowercased)                    |
+| `pointer` | string                                     | no                                | Dot-path into the JSON body for `from: payload`. Defaults to `name` when omitted. |
 
 ```yaml
 identity:
@@ -118,14 +121,14 @@ identity:
 identity:
   key:
     from: payload
-    name: accountId        # used as dot-path when pointer is absent
+    name: accountId # used as dot-path when pointer is absent
 ```
 
 ```yaml
 identity:
   key:
     from: payload
-    pointer: nested.accountId   # explicit dot-path overrides name
+    pointer: nested.accountId # explicit dot-path overrides name
 ```
 
 The `from: payload` source reads via a dot-notation path into the JSON request body. All other sources (`path`, `query`, `header`) use the `name` field as the parameter or header key.
@@ -140,7 +143,7 @@ When a boundary declares `state.computed` fields, the engine checks at boot that
 - `strict_schema: false` — the check is downgraded to a `WARN` logged at startup; boot continues.
 
 ```yaml
-strict_schema: false   # permit incomplete depends_on during iterative development
+strict_schema: false # permit incomplete depends_on during iterative development
 ```
 
 Set this to `false` only during iterative development when formulas are still evolving. Leave it at the default (`true`) for production fixtures to catch schema drift at boot.
@@ -157,6 +160,61 @@ query_mapping:
 
 A `GET /leads?status=NEW` request returns only entities where `state.status == "NEW"`.
 
+### `query`
+
+`query` is the declarative YAML form of the TypeScript SDK's
+`BoundaryBuilder.query(...)` policy. The parser compiles its expressions and
+values into `RuntimeQueryPolicy` callbacks before the engine starts, so the
+runtime does not know whether the policy came from YAML or TypeScript.
+
+```yaml
+query:
+  fields:
+    threshold: "state.score >= int(query.threshold)"
+  filter: "state.active == true"
+  sort:
+    - field: score
+      direction: desc
+  page_size: 25
+  max_page_size: 100
+  cursor: "query.cursor"
+  expand: [customer]
+  pagination: envelope
+  include_deleted: false
+  fallback:
+    code: ORDER_NOT_FOUND
+```
+
+Supported fields are:
+
+- `fields`: map query-parameter names to CEL predicates evaluated against the
+  candidate `state`; a predicate is applied only when its parameter is
+  present.
+- `filter`: CEL predicate applied to every candidate row.
+- `sort`: ordered `{ field, direction }` entries. `direction` is `asc` or
+  `desc`; entries are applied in declaration order.
+- `page_size`: non-negative number or CEL expression; `max_page_size` caps it.
+- `cursor`: CEL expression resolving to the opaque cursor value.
+- `expand`: related state fields to expand as `_<field>` arrays.
+- `pagination`: `raw` or `envelope`.
+- `include_deleted`: include rows marked `_deleted` when true.
+- `fallback`: JSON value or CEL expression returned for a targeted query with
+  no matching row.
+
+The equivalent TypeScript declaration uses typed callbacks rather than CEL:
+
+```ts
+import { boundary, boundaryName, contractPath, pathSegment } from "potemkin/sdk";
+
+boundary(boundaryName("Order"), contractPath(pathSegment("orders"))).query({
+  filter: ({ state }) => state.active === true,
+  sort: (left, right) => Number(right.score) - Number(left.score),
+  pageSize: () => 25,
+  maxPageSize: 100,
+  pagination: "envelope",
+});
+```
+
 ---
 
 ## 3. Event catalog
@@ -170,7 +228,7 @@ event_catalog:
       id: "command.targetId"
       companyName: "command.payload.companyName"
       contactName: "command.payload.contactName"
-      score: "ts:computeScore"
+      score: "CEL score expression"
       createdAt: "$now()"
   - type: LeadConverted
     schema_ref: "#/components/schemas/LeadCreated"
@@ -178,21 +236,21 @@ event_catalog:
       convertedAt: "$now()"
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `type` | string | yes | Unique event type key within the boundary. Referenced by `emit` and `on` in behaviors/reducers. |
-| `payload_template` | `map<string, CEL>` | yes (may be empty `{}`) | Map of event payload fields to CEL expressions. Evaluated in the `EventHydration` phase. |
-| `schema_ref` | string | no | OpenAPI `$ref` path (e.g. `#/components/schemas/LoanDisbursedEvent`) for runtime payload validation (Tier 1). |
+| Field              | Type               | Required                | Description                                                                                                   |
+| ------------------ | ------------------ | ----------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `type`             | string             | yes                     | Unique event type key within the boundary. Referenced by `emit` and `on` in behaviors/reducers.               |
+| `payload_template` | `map<string, CEL>` | yes (may be empty `{}`) | Map of event payload fields to CEL expressions. Evaluated in the `EventHydration` phase.                      |
+| `schema_ref`       | string             | no                      | OpenAPI `$ref` path (e.g. `#/components/schemas/LoanDisbursedEvent`) for runtime payload validation (Tier 1). |
 
 ### Payload template CEL context
 
 During event hydration the following variables are available ([CEL — see docs/cel.md](./cel.md)):
 
-| Variable | Type | Description |
-|----------|------|-------------|
+| Variable  | Type   | Description                                                                              |
+| --------- | ------ | ---------------------------------------------------------------------------------------- |
 | `command` | object | The full command envelope including `targetId`, `payload`, `intent`, `path`, `commandId` |
-| `state` | object | Current shadow-graph state for the aggregate at the time of emit |
-| `payload` | object | Alias for `command.payload` |
+| `state`   | object | Current shadow-graph state for the aggregate at the time of emit                         |
+| `payload` | object | Alias for `command.payload`                                                              |
 
 Because templates run in the `EventHydration` phase, `$uuidv7()`, `$now()`, and `now()` are all permitted. These functions are **banned in reducers** to preserve replay determinism.
 
@@ -200,7 +258,7 @@ Because templates run in the `EventHydration` phase, `$uuidv7()`, `$now()`, and 
 
 When present, the engine resolves the `$ref` at boot against the loaded OpenAPI document. An unresolvable reference halts boot with `BOOT_ERR_DSL_SCHEMA_VIOLATION`. At runtime, after the payload template is evaluated, the resulting object is validated with AJV against the resolved schema. A violation aborts the Unit of Work with `SCHEMA_TYPE_MISMATCH` (HTTP 500).
 
-See `src/engine/projection.ts` for the AJV validation implementation.
+See `src/core/engine.ts` and `src/runtime/system.ts` for the runtime validation path.
 
 ---
 
@@ -260,12 +318,12 @@ match:
   condition: "$concat('/leads/', command.targetId, '/contact') == command.path"
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | yes | Human-readable guard name for trace logs |
-| `condition` | CEL string | yes | Boolean expression |
-| `error_code` | string | no | Error code included in the 422 response body |
-| `message` | string | no | Human-readable error message in the 422 body |
+| Field        | Type       | Required | Description                                  |
+| ------------ | ---------- | -------- | -------------------------------------------- |
+| `name`       | string     | yes      | Human-readable guard name for trace logs     |
+| `condition`  | CEL string | yes      | Boolean expression                           |
+| `error_code` | string     | no       | Error code included in the 422 response body |
+| `message`    | string     | no       | Human-readable error message in the 422 body |
 
 > ⚠️ `requires[]` guards run before `match.condition`. A failing guard terminates the entire evaluation — subsequent behaviors are never tried.
 
@@ -302,12 +360,18 @@ emit_when:
     emit: LoanSettled
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
+| Field  | Type        | Description                                      |
+| ------ | ----------- | ------------------------------------------------ |
 | `when` | CEL boolean | Evaluated against the current shadow graph state |
-| `emit` | string | Event catalog key to stage if `when` is `true` |
+| `emit` | string      | Event catalog key to stage if `when` is `true`   |
 
 > ⚠️ `emit` and `emit_when` are mutually exclusive within a single behavior entry. Providing both halts boot with `BOOT_ERR_DSL_SYNTAX`.
+
+When the primary boundary should remain unchanged, a behavior may instead
+declare `dispatch_commands` without `emit` or `emit_when`. This dispatch-only
+form executes its secondary commands in the same Unit of Work and is the YAML
+equivalent of a TypeScript behavior built with `.dispatch(...)` and no
+`.emit(...)`.
 
 ### `postcondition` (Tier 1)
 
@@ -334,14 +398,14 @@ dispatch_commands:
     condition: "command.payload.leadId != null"
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `boundary` | string | yes | Target boundary logical name |
-| `intent` | string | yes | `creation`, `mutation`, or `query` |
-| `operationId` | string | yes | OpenAPI operationId for the secondary command |
-| `target_id` | CEL string | yes | CEL expression resolving to the target aggregate ID |
-| `payload` | `map<string, CEL>` | no | Payload fields (each value is a CEL expression) |
-| `condition` | CEL boolean | no | When present and `false`, this entry is silently skipped (Tier 1) |
+| Field         | Type               | Required | Description                                                       |
+| ------------- | ------------------ | -------- | ----------------------------------------------------------------- |
+| `boundary`    | string             | yes      | Target boundary logical name                                      |
+| `intent`      | string             | yes      | `creation`, `mutation`, or `query`                                |
+| `operationId` | string             | yes      | OpenAPI operationId for the secondary command                     |
+| `target_id`   | CEL string         | yes      | CEL expression resolving to the target aggregate ID               |
+| `payload`     | `map<string, CEL>` | no       | Payload fields (each value is a CEL expression)                   |
+| `condition`   | CEL boolean        | no       | When present and `false`, this entry is silently skipped (Tier 1) |
 
 Secondary commands execute inside the same UoW. All events (primary and secondary) are appended atomically when the UoW commits. The maximum recursion depth is 5 (`max_uow_depth`); exceeding it aborts with HTTP 508 `INFINITE_LOOP_DETECTED`.
 
@@ -362,7 +426,7 @@ Secondary commands execute inside the same UoW. All events (primary and secondar
 
 ## 5. Reducers
 
-Reducers project domain events onto aggregate state. Each reducer subscribes to one event type and declares a list of `patches` — RFC 6902 JSON-Patch operations extended with a few Potemkin-specific ops. (The legacy `assign:` / `append:` map form was removed; using either now halts boot with `BOOT_ERR_REMOVED_SYNTAX`.)
+Reducers project domain events onto aggregate state. Each reducer subscribes to one event type and declares a list of `patches` — RFC 6902 JSON-Patch operations extended with a few Potemkin-specific ops. The removed `assign:` / `append:` map form halts boot with `BOOT_ERR_REMOVED_SYNTAX`.
 
 ```yaml
 reducers:
@@ -385,40 +449,40 @@ reducers:
       - op: replace
         path: /status
         value: "${'CONTACTED'}"
-      - op: append            # push onto the array at /callIds
+      - op: append # push onto the array at /callIds
         path: /callIds
         value: "${event.payload.callId}"
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `on` | string | yes | Event catalog key to subscribe to |
-| `patches` | `Patch[]` | yes | Ordered list of patch operations applied in sequence |
+| Field     | Type      | Required | Description                                          |
+| --------- | --------- | -------- | ---------------------------------------------------- |
+| `on`      | string    | yes      | Event catalog key to subscribe to                    |
+| `patches` | `Patch[]` | yes      | Ordered list of patch operations applied in sequence |
 
 Each patch has `op`, `path` (a JSON Pointer like `/status` or `/address/city`), and — for value-bearing ops — `value`.
 
-**Patch `op` vocabulary** (see `src/dsl/patches.ts`):
+**Patch `op` vocabulary** (see `src/model/patches.ts`):
 
-| `op` | Effect |
-|------|--------|
-| `add` | Set the field (creating it), or insert into an array at the pointer index |
-| `replace` | Overwrite an existing field |
-| `remove` | Delete the field |
-| `append` / `prepend` | Push `value` onto the end / front of the array at `path` |
-| `increment` | Add the numeric `value` (default `1`) to the number at `path` |
-| `merge` | Shallow-merge the object `value` into the object at `path` |
-| `upsert` | Insert-or-replace an array element matched by a key field |
-| `copy` / `move` | Copy/move from a `from` pointer to `path`; `from` is required (boot rejects if absent) |
+| `op`                 | Effect                                                                                 |
+| -------------------- | -------------------------------------------------------------------------------------- |
+| `add`                | Set the field (creating it), or insert into an array at the pointer index              |
+| `replace`            | Overwrite an existing field                                                            |
+| `remove`             | Delete the field                                                                       |
+| `append` / `prepend` | Push `value` onto the end / front of the array at `path`                               |
+| `increment`          | Add the numeric `value` (default `1`) to the number at `path`                          |
+| `merge`              | Shallow-merge the object `value` into the object at `path`                             |
+| `upsert`             | Insert-or-replace an array element matched by a key field                              |
+| `copy` / `move`      | Copy/move from a `from` pointer to `path`; `from` is required (boot rejects if absent) |
 
 **`value` interpolation:** a bare string is a **literal**; only `${...}` is evaluated as CEL (with type preservation — `value: "${0}"` is the number `0`, `value: "ACTIVE"` is the string `"ACTIVE"`). This is why the examples above wrap CEL in `${…}` (e.g. `"${event.payload.id}"`, `"${'NEW'}"`, `"${[]}"`).
 
 ### CEL context in reducers
 
-| Variable | Description |
-|----------|-------------|
-| `event` | The domain event being projected (includes `event.payload`, `event.type`, `event.aggregateId`, `event.sequenceVersion`) |
-| `state` | The current state of the aggregate (before this reducer runs) |
-| `payload` | Alias for `event.payload` |
+| Variable  | Description                                                                                                             |
+| --------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `event`   | The domain event being projected (includes `event.payload`, `event.type`, `event.aggregateId`, `event.sequenceVersion`) |
+| `state`   | The current state of the aggregate (before this reducer runs)                                                           |
+| `payload` | Alias for `event.payload`                                                                                               |
 
 ### Phase ban: reducer determinism
 
@@ -426,7 +490,9 @@ Reducers **must not** use non-deterministic functions. The following are banned 
 
 - `$uuidv7()` / `$now()` / `now()` / `timestamp()`
 
-The `ts:` script sentinel is also banned in reducer fields at boot time (`BOOT_ERR_SCRIPT_IN_REDUCER`).
+TypeScript reducers are native immutable callbacks and do not use CEL patch
+sentinels. Their complete next state is validated at runtime in the same way as
+state projected from YAML patches.
 
 This restriction preserves event-sourcing determinism: replaying the event log from epoch must always produce identical state.
 
@@ -444,7 +510,7 @@ patches:
     value: "${event.payload.amount}"
 ```
 
-The projection engine (`src/engine/projection.ts`) auto-vivifies missing intermediate objects/arrays.
+The canonical runtime engine (`src/core/engine.ts`) auto-vivifies missing intermediate objects/arrays.
 
 **Boot-time path validation.** At boot, every `path` is validated as a well-formed RFC 6901 JSON Pointer. A path that does not start with `/` (or is not the empty string) halts boot with `BOOT_ERR_DSL_SYNTAX`. Paths containing `${...}` are also rejected at boot with `BOOT_ERR_DSL_SYNTAX` — patch paths are never CEL-interpolated. A `${...}` expression in a path would create a literal key with that text rather than evaluating a dynamic expression, silently corrupting state; the boot rejection prevents this. If you need a dynamic target, write separate patch ops for each concrete path.
 
@@ -486,21 +552,21 @@ sagas:
 
 ### DSL schema
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | yes | Unique saga name |
-| `trigger.boundary` | string | yes | Boundary whose committed event triggers the saga |
-| `trigger.intent` | string | yes | Command intent that triggers (`creation`, `mutation`, `query`) |
-| `trigger.condition` | CEL boolean | yes | Evaluated against command and event context; `false` suppresses the saga |
-| `steps[].name` | string | yes | Step name for trace logging |
-| `steps[].boundary` | string | yes | Target boundary for the step command |
-| `steps[].intent` | string | yes | Command intent for the step |
-| `steps[].target_id` | CEL string | no | Resolves to the target aggregate ID |
-| `steps[].payload` | `map<string, CEL>` | no | Payload fields (each value is a CEL expression) |
-| `steps[].compensation` | object | no | Compensation command dispatched on step failure |
-| `steps[].compensation.intent` | string | yes | Intent for the compensation command |
-| `steps[].compensation.target_id` | CEL string | no | Target ID for the compensation command |
-| `steps[].compensation.payload` | `map<string, CEL>` | no | Payload for compensation |
+| Field                            | Type               | Required | Description                                                              |
+| -------------------------------- | ------------------ | -------- | ------------------------------------------------------------------------ |
+| `name`                           | string             | yes      | Unique saga name                                                         |
+| `trigger.boundary`               | string             | yes      | Boundary whose committed event triggers the saga                         |
+| `trigger.intent`                 | string             | yes      | Command intent that triggers (`creation`, `mutation`, `query`)           |
+| `trigger.condition`              | CEL boolean        | yes      | Evaluated against command and event context; `false` suppresses the saga |
+| `steps[].name`                   | string             | yes      | Step name for trace logging                                              |
+| `steps[].boundary`               | string             | yes      | Target boundary for the step command                                     |
+| `steps[].intent`                 | string             | yes      | Command intent for the step                                              |
+| `steps[].target_id`              | CEL string         | no       | Resolves to the target aggregate ID                                      |
+| `steps[].payload`                | `map<string, CEL>` | no       | Payload fields (each value is a CEL expression)                          |
+| `steps[].compensation`           | object             | no       | Compensation command dispatched on step failure                          |
+| `steps[].compensation.intent`    | string             | yes      | Intent for the compensation command                                      |
+| `steps[].compensation.target_id` | CEL string         | no       | Target ID for the compensation command                                   |
+| `steps[].compensation.payload`   | `map<string, CEL>` | no       | Payload for compensation                                                 |
 
 ### Post-commit lifecycle
 
@@ -526,7 +592,7 @@ Primary UoW commits
 
 All lifecycle events are stored under the `__saga__` boundary with the saga instance ID as `aggregateId`. Compensation failures do **not** abort the compensation chain — all compensations are attempted even if individual ones fail.
 
-See `src/sagas/orchestrator.ts` for the implementation.
+See `src/core/engine.ts` for the implementation.
 
 ---
 
@@ -541,11 +607,11 @@ idempotency:
   hash_includes_body: true
 ```
 
-| Field | Default | Description |
-|-------|---------|-------------|
-| `enabled` | `true` | Enable/disable idempotency checking |
-| `ttl_seconds` | `86400` | Expiry window in seconds for stored entries |
-| `hash_includes_body` | `true` | Include request body in the deduplication hash |
+| Field                | Default | Description                                    |
+| -------------------- | ------- | ---------------------------------------------- |
+| `enabled`            | `true`  | Enable/disable idempotency checking            |
+| `ttl_seconds`        | `86400` | Expiry window in seconds for stored entries    |
+| `hash_includes_body` | `true`  | Include request body in the deduplication hash |
 
 ### HTTP behaviour
 
@@ -602,10 +668,10 @@ behaviors:
 
 ### Error semantics
 
-| Condition | Error class | HTTP status | Code |
-|-----------|-------------|-------------|------|
-| `required_scopes` declared, no actor | `AuthenticationRequiredError` | 401 | `AUTH_MISSING` |
-| Actor present, scopes insufficient | `AuthorizationDeniedError` | 403 | `AUTH_INSUFFICIENT_SCOPES` |
+| Condition                            | Error class                   | HTTP status | Code                       |
+| ------------------------------------ | ----------------------------- | ----------- | -------------------------- |
+| `required_scopes` declared, no actor | `AuthenticationRequiredError` | 401         | `AUTH_MISSING`             |
+| Actor present, scopes insufficient   | `AuthorizationDeniedError`    | 403         | `AUTH_INSUFFICIENT_SCOPES` |
 
 See `src/identity/scopeChecker.ts` for the implementation.
 
@@ -615,7 +681,7 @@ See `src/identity/scopeChecker.ts` for the implementation.
 
 Derived projections aggregate events from multiple boundaries into a separate read model, exposed via an admin endpoint. Declared in the global config file.
 
-Each `reduce` rule uses the same `patches:` vocabulary as boundary reducers (§5) — the legacy `assign:`/`append:` map form was removed here too.
+Each `reduce` rule uses the same `patches:` vocabulary as boundary reducers (§5). The removed `assign:`/`append:` map form is rejected here too.
 
 ```yaml
 derived_projections:
@@ -643,13 +709,13 @@ derived_projections:
             value: "${coalesce(state.total_opportunities, 0) + 1}"
 ```
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `name` | yes | Unique projection name |
-| `key` | yes | CEL expression returning the string key for the derived entity |
-| `subscribe[]` | yes | Event subscriptions as `<Boundary>:<EventType>` or bare `<EventType>` |
-| `reduce[].on` | yes | Event subscription this reduce rule handles (`<Boundary>:<EventType>` or bare `<EventType>`) |
-| `reduce[].patches` | yes | Ordered patch operations (same vocabulary as §5 reducers) |
+| Field              | Required | Description                                                                                  |
+| ------------------ | -------- | -------------------------------------------------------------------------------------------- |
+| `name`             | yes      | Unique projection name                                                                       |
+| `key`              | yes      | CEL expression returning the string key for the derived entity                               |
+| `subscribe[]`      | yes      | Event subscriptions as `<Boundary>:<EventType>` or bare `<EventType>`                        |
+| `reduce[].on`      | yes      | Event subscription this reduce rule handles (`<Boundary>:<EventType>` or bare `<EventType>`) |
+| `reduce[].patches` | yes      | Ordered patch operations (same vocabulary as §5 reducers)                                    |
 
 ### `key` expression
 
@@ -672,116 +738,99 @@ Returns the full derived state map as JSON:
 
 Returns HTTP 404 if the projection name does not exist.
 
-See `src/projections/engine.ts` for the implementation.
+See `src/core/engine.ts` for the implementation.
 
 ---
 
-## 10. TypeScript scripts (`@Script`) (Tier 1)
+## 10. TypeScript configuration factories and helpers
 
-When CEL is not expressive enough for a particular computation, write a `@Script`-annotated TypeScript class in a scanned `.ts` file and reference it with a `ts:<id>` sentinel anywhere a CEL expression is accepted.
-
-> ⚠️ The legacy inline `scripts[].code` form is **removed**. Using it halts boot with `BOOT_ERR_REMOVED_SYNTAX`. Migrate to the `@Script` annotation approach described here.
-
-### Authoring a script
-
-Scripts live in `.ts` files that are discovered at boot via the `typescript.scan` glob in `potemkin.yaml`. Import `Script` and `ScriptContext` from `@potemkin/sdk`, decorate the class with `@Script('id')`, and implement a `run(ctx)` method:
-
-```typescript
-// scripts/computeScore.ts  (picked up by typescript.scan)
-import { Script, type ScriptContext } from '@potemkin/sdk';
-
-@Script('computeScore')
-export class ComputeScore {
-  run(ctx: ScriptContext): number {
-    const base: Record<string, number> = { REFERRAL: 80, WEBSITE: 50, PARTNER: 70, COLD_LIST: 20 };
-    return base[ctx.command.payload['source'] as string] ?? 30;
-  }
-}
-```
-
-A functional helper is also available for parity with the `reducer()` helper:
-
-```typescript
-import { defineScript, type ScriptContext } from '@potemkin/sdk';
-
-export const computeScore = defineScript('computeScore', (ctx: ScriptContext) => {
-  const base: Record<string, number> = { REFERRAL: 80, WEBSITE: 50, PARTNER: 70, COLD_LIST: 20 };
-  return base[ctx.command.payload['source'] as string] ?? 30;
-});
-```
-
-Declare the scan glob in `potemkin.yaml` so the scanner finds the file at boot:
+TypeScript files selected by `potemkin.yml` are configuration modules. The
+scanner uses the TypeScript AST to find static methods decorated with the exact
+`@PotemkinConfigure` decorator imported from `potemkin/sdk`; it does not use a
+text search and it does not treat arbitrary exports as configuration.
 
 ```yaml
 typescript:
   scan:
     - include:
-        - "scripts/**/*.ts"
+        - "scenarios/**/*.ts"
+        - "shared/**/*.ts"
       exclude:
         - "**/*.test.ts"
         - "**/*.d.ts"
 ```
 
-### `ts:` sentinel
+The include/exclude globs select entry modules for discovery. A discovered entry
+may import relative dependencies outside the include matches, provided those
+dependencies remain inside the configured scan roots. Dependencies are loaded
+for the factory graph; only annotated static methods are invoked.
 
-Reference the id in the YAML with `ts:<id>`. No `scripts:` block is required in the boundary file — the YAML holds only the sentinel:
+```typescript
+import {
+  PotemkinConfigure,
+  boundary,
+  boundaryName,
+  contractPath,
+  defineHelper,
+  event,
+  eventType,
+  operationId,
+  pathSegment,
+  reducerRule,
+  simulation,
+} from "potemkin/sdk";
+
+const sourceLabel = defineHelper("sourceLabel", (source: string) => source);
+
+class WidgetConfiguration {
+  @PotemkinConfigure("widgets")
+  static create() {
+    return simulation()
+      .helper(sourceLabel)
+      .boundary(
+        boundary(boundaryName("Widget"), contractPath(pathSegment("widgets")))
+          .eventCatalog(
+            event(eventType("WidgetCreated"), {
+              source: ({ command }) => sourceLabel(String(command.payload.source ?? "")),
+            }),
+          )
+          .behavior({
+            name: "createWidget",
+            operationId: operationId("createWidget"),
+            emit: eventType("WidgetCreated"),
+          })
+          .reducer(
+            reducerRule(eventType("WidgetCreated"))
+              .apply(({ state, event }) => ({ ...state, source: event.payload.source }))
+              .build(),
+          )
+          .build(),
+      )
+      .build();
+  }
+}
+```
+
+`defineHelper` returns a callable TypeScript function and a model definition.
+Register it with `.helper()` or `.helpers()` on the simulation. The same
+registered function can then be called by YAML CEL, for example:
 
 ```yaml
 event_catalog:
-  - type: LeadCreated
+  - type: ThingCreated
     payload_template:
-      id: "command.targetId"
-      companyName: "command.payload.companyName"
-      score: "ts:computeScore"
+      source: "sourceLabel(command.payload.source)"
 ```
 
-The sentinel is permitted in:
+Helpers are pure JSON-in/JSON-out functions. Names must be valid CEL
+identifiers, duplicate names fail canonical compilation, and the compiled
+runtime model contains no indication of whether a boundary came from YAML or
+TypeScript. The TypeScript loader and YAML parser both produce that model.
 
-- `behaviors[].match.condition`
-- `behaviors[].match.requires[].condition`
-- `event_catalog[].payload_template` field values
-- `behaviors[].postcondition`
-- `dispatch_commands[].condition`
-- `behaviors[].emit_when[].when`
-
-> ⚠️ The `ts:` sentinel is **banned** in all reducer-phase fields. Presence halts boot with `BOOT_ERR_SCRIPT_IN_REDUCER`.
-
-### Boot-time discovery
-
-At boot, the TypeScript scanner (`src/dsl/typescriptScanner.ts`) imports every file matching the `typescript.scan` globs. Each `@Script(id)` class self-registers into the script registry on import. The scanner drains the registry and makes all discovered scripts available for resolution.
-
-- `ts:<id>` sentinel referencing an unknown id → `BOOT_ERR_DSL_REFERENCE` (boot halt)
-
-Scanned scripts are **trusted code** — the source is authored and version-controlled in the same repository as the rest of the simulation. The scanner loads each `.ts` file in a `node:vm` context whose `require()` blocks accidental imports of `fs`, `net`, `process`, and similar modules. This is convenience isolation against developer mistakes, not a security boundary: a malicious or untrusted file can still reach the host process via prototype-chain access (`Object.constructor('return process')()`). Only load `.ts` files you own and control. Do not point `typescript.scan` at directories containing untrusted code.
-
-There is **no per-call time budget**: at request time the resolved `run(ctx)` function is invoked as a direct host call, the same way a scanned `@Reducer` is. (The 50 ms budget that applied to the removed inline `scripts[].code` form no longer applies.) Because there is no time limit, keep scanned scripts fast — see [Section 14](#14-advanced-patterns-and-idioms).
-
-### ScriptContext shape
-
-Every script receives a single `ctx` argument of the following shape (see `src/scripts/types.ts`):
-
-| Property | Available phases | Description |
-|----------|-----------------|-------------|
-| `ctx.command` | All | Full command envelope (`intent`, `targetId`, `payload`, `path`, `commandId`, `actor`) |
-| `ctx.state` | All | Current shadow-graph state for the aggregate (or `null` for new entities) |
-| `ctx.event` | EventHydration | Domain event being hydrated (only in `payload_template` scripts) |
-| `ctx.payload` | EventHydration | Partially materialized event payload |
-| `ctx.helpers.uuid()` | Behavior, EventHydration | Generates a UUIDv7 |
-| `ctx.helpers.now()` | Behavior, EventHydration | Returns current UTC ISO-8601 timestamp |
-| `ctx.helpers.deepClone(v)` | All | Deep clones a value |
-| `ctx.helpers.deepMerge(a, b)` | All | Deep merges two objects |
-| `ctx.logger` | All | Scoped pino child-logger |
-
-### Failure semantics
-
-| Condition | Code | HTTP status |
-|-----------|------|-------------|
-| `ts:<id>` sentinel with no matching `@Script` id | `BOOT_ERR_DSL_REFERENCE` | boot halt |
-| `scripts[].code` present (removed syntax) | `BOOT_ERR_REMOVED_SYNTAX` | boot halt |
-| `ts:` in reducer-phase field | `BOOT_ERR_SCRIPT_IN_REDUCER` | boot halt |
-| Script throws unhandled exception | `INTERNAL_EXECUTION_FAILURE` | 500 |
-
-See [`tests/fixtures/ts-script/`](../tests/fixtures/ts-script/) for the canonical fixture and [`tests/e2e/67-annotation-script.e2e-test.ts`](../tests/e2e/67-annotation-script.e2e-test.ts) for the engine-only e2e example.
+The server polls the single configuration file and every selected YAML,
+OpenAPI, and TypeScript source every ten seconds by default. A change clears the
+active runtime and reloads from the new source graph. `POST /_admin/force-reload`
+performs the same operation immediately.
 
 ---
 
@@ -817,34 +866,31 @@ This is the mechanism that ensures `GET /leads` returns the same seed data after
 
 ### Boot-time errors (`BOOT_ERR_*`)
 
-| Code | Cause |
-|------|-------|
-| `BOOT_ERR_DSL_SYNTAX` | YAML parse failure, invalid field type, `emit` + `emit_when` co-presence, `ts:` in reducer, malformed CEL expression |
-| `BOOT_ERR_DSL_REFERENCE` | `emit` or `on` references an event type not in `event_catalog`; or a `ts:<id>` sentinel resolves to no scanned `@Script` id |
-| `BOOT_ERR_DSL_SCHEMA_VIOLATION` | patches `path` references an unknown field in the OpenAPI schema; `schema_ref` cannot be resolved |
-| `BOOT_ERR_DSL_EMIT_REQUIRED` | Behavior has neither `emit` nor `emit_when` |
-| `BOOT_ERR_REMOVED_SYNTAX` | `scripts[].code` (inline TypeScript) present — this form is removed; migrate to `@Script` annotation |
-| `BOOT_ERR_SCRIPT_IN_REDUCER` | `ts:` sentinel found in a reducer-phase field |
+| Code                            | Cause                                                                                              |
+| ------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `BOOT_ERR_DSL_SYNTAX`           | YAML parse failure, invalid field type, `emit` + `emit_when` co-presence, malformed CEL expression |
+| `BOOT_ERR_DSL_REFERENCE`        | `emit` or `on` references an event type not in `event_catalog`                                     |
+| `BOOT_ERR_DSL_SCHEMA_VIOLATION` | patches `path` references an unknown field in the OpenAPI schema; `schema_ref` cannot be resolved  |
+| `BOOT_ERR_DSL_EMIT_REQUIRED`    | Behavior has neither `emit`, `emit_when`, nor `dispatch_commands`                                  |
 
 ### Runtime errors
 
-| Code | HTTP | Cause |
-|------|------|-------|
-| `ENTITY_ABSENT` | 404 | Mutation command targeting non-existent aggregate |
-| `ENTITY_CONFLICT` | 409 | Creation command for already-existing aggregate |
-| `UnhandledOperationError` | 422 | No matching behavior and no fallback; also returned when `requires[]` guard fails |
-| `PRECONDITION_FAILED` | 428 | `If-Match` header required but missing |
-| `CONCURRENCY_CONFLICT` | 412 | `If-Match` sequence version mismatch |
-| `POSTCONDITION_VIOLATED` | 500 | `postcondition` expression evaluated to `false` |
-| `SCHEMA_TYPE_MISMATCH` | 500 | reducer `patches` value violates OpenAPI schema; event payload violates `schema_ref` |
-| `INTERNAL_EXECUTION_FAILURE` | 500 | Uncaught exception in CEL or script during UoW |
-| `SCRIPT_TIMEOUT` | 500 | Reserved (was: inline TypeScript script exceeded 50 ms; inline form is removed) |
-| `AUTH_MISSING` | 401 | `required_scopes` declared, but no `Authorization` header present |
-| `AUTH_INSUFFICIENT_SCOPES` | 403 | Actor present but scopes are not a superset of `required_scopes` |
-| `IDEMPOTENCY_KEY_CONFLICT` | 409 | Idempotency key reused with a different request body |
-| `INFINITE_LOOP_DETECTED` | 508 | Secondary command recursion exceeded `max_uow_depth = 5` |
-| `REACTION_BUDGET_EXCEEDED` | 508 | Reaction fan-out exceeded the per-UoW event budget (see [Section 19](#19-reactions-choreography)) |
-| `CEL_PHASE_BANNED` | 500 | Non-deterministic function called in reducer phase |
+| Code                         | HTTP | Cause                                                                                          |
+| ---------------------------- | ---- | ---------------------------------------------------------------------------------------------- |
+| `ENTITY_ABSENT`              | 404  | Mutation command targeting non-existent aggregate                                              |
+| `ENTITY_CONFLICT`            | 409  | Creation command for already-existing aggregate                                                |
+| `UnhandledOperationError`    | 422  | No matching behavior and no fallback; also returned when `requires[]` guard fails              |
+| `PRECONDITION_FAILED`        | 428  | `If-Match` header required but missing                                                         |
+| `CONCURRENCY_CONFLICT`       | 412  | `If-Match` sequence version mismatch                                                           |
+| `POSTCONDITION_VIOLATED`     | 500  | `postcondition` expression evaluated to `false`                                                |
+| `SCHEMA_TYPE_MISMATCH`       | 500  | reducer `patches` value violates OpenAPI schema; event payload violates `schema_ref`           |
+| `INTERNAL_EXECUTION_FAILURE` | 500  | Uncaught exception in CEL, a TypeScript factory, or a registered helper during UoW             |
+| `AUTH_MISSING`               | 401  | `required_scopes` declared, but no `Authorization` header present                              |
+| `AUTH_INSUFFICIENT_SCOPES`   | 403  | Actor present but scopes are not a superset of `required_scopes`                               |
+| `IDEMPOTENCY_KEY_CONFLICT`   | 409  | Idempotency key reused with a different request body                                           |
+| `INFINITE_LOOP_DETECTED`     | 508  | Secondary command recursion exceeded `max_uow_depth = 5`                                       |
+| `REACTION_BUDGET_EXCEEDED`   | 508  | Reaction fan-out exceeded the per-UoW event budget (see [Section 19](#reactions-choreography)) |
+| `CEL_PHASE_BANNED`           | 500  | Non-deterministic function called in reducer phase                                             |
 
 ---
 
@@ -854,7 +900,7 @@ This example uses both boundary files from `docs/_examples/dsl/` and the global 
 
 ### The boundaries
 
-**Lead** (`docs/_examples/dsl/lead.yaml`): Manages CRM leads with lifecycle transitions (NEW → CONTACTED → QUALIFIED → CONVERTED). `fallback_override: true` so GET requests work without explicit query behaviors. Lead scoring uses a `@Script`-annotated TypeScript class referenced via `ts:computeScore`.
+**Lead** (`docs/_examples/dsl/lead.yaml`): Manages CRM leads with lifecycle transitions (NEW → CONTACTED → QUALIFIED → CONVERTED). `fallback_override: true` so GET requests work without explicit query behaviors. Lead scoring uses a `@PotemkinConfigure`-annotated TypeScript class referenced via `CEL score expression`.
 
 **Opportunity** (`docs/_examples/dsl/opportunity.yaml`): Manages sales opportunities with three behaviors: `createOpportunity`, `advanceOpportunity`, and `closeWon`/`closeLost`. The `closeLost` behavior uses `emit_when` to emit `OpportunityLost` from either PROPOSED or NEGOTIATING stage.
 
@@ -863,14 +909,20 @@ This example uses both boundary files from `docs/_examples/dsl/` and the global 
 Payload:
 
 ```json
-{ "companyName": "Apex Solutions Ltd", "contactName": "Jordan Walsh", "phone": "+61 2 9000 0001", "email": "jordan@apexsolutions.com", "source": "WEBSITE" }
+{
+  "companyName": "Apex Solutions Ltd",
+  "contactName": "Jordan Walsh",
+  "phone": "+61 2 9000 0001",
+  "email": "jordan@apexsolutions.com",
+  "source": "WEBSITE"
+}
 ```
 
 1. **Contract Gateway** validates the payload against the OpenAPI spec.
 2. **Command Router** translates to a `creation` command for the `Lead` boundary. A new UUIDv7 is generated as `targetId` (via `identity.creation.generate`).
 3. **Pattern Matcher** iterates `Lead.behaviors`:
    - `createLead`: `match.operationId` matches the `createLead` operation, `condition` → `true`. Match!
-4. **Event hydration**: `LeadCreated` payload template evaluated — `id`, `companyName`, `contactName`, `score` (via `ts:computeScore`) populated.
+4. **Event hydration**: `LeadCreated` payload template evaluated — `id`, `companyName`, `contactName`, `score` (via `CEL score expression`) populated.
 5. **Shadow projection**: `LeadCreated` projected into shadow graph. Lead state now has `status: 'NEW'`.
 6. **UoW commit**: `LeadCreated` event appended atomically to the event log.
 7. **Response**: HTTP 201 with the new lead entity.
@@ -887,67 +939,73 @@ Payload: `{ "outcome": "LOST", "closureReason": "Budget constraints" }`
 
 ### Testing the fixture (jest + supertest)
 
-There is no `buildApp` helper — the public API is `bootSystem` (boot the engine from compiled DSL + an OpenAPI doc) followed by `createGateway` (mount the Express app). Both are exported from `src/index.ts`:
+The runtime API has one engine boot and one HTTP gateway. YAML is parsed at the boundary and both YAML and TypeScript definitions are installed as `RuntimeProgram` values:
 
 ```typescript
-import request from 'supertest';
-import { readFileSync } from 'node:fs';
-import {
-  parseDslYaml, compileDsl, loadOpenApi,
-  bootSystem, createGateway, resetSystem,
-} from '../src/index.js';
+import request from "supertest";
+import { readFileSync } from "node:fs";
+import { loadOpenApi } from "../src/contract/loader.js";
+import { bootYamlRuntime } from "../src/parser/runtime.js";
+import { createRuntimeGateway } from "../src/http/runtimeGateway.js";
 
-describe('Lead boundary', () => {
-  let app: import('express').Express;
-  let sys: Awaited<ReturnType<typeof bootSystem>>;
+describe("Lead boundary", () => {
+  let app: import("express").Express;
+  let sys: Awaited<ReturnType<typeof bootYamlRuntime>>;
 
   beforeEach(async () => {
-    // Compile the boundary + global YAML and load the OpenAPI contract.
-    const modules = ['lead', 'opportunity'].map((n) =>
-      parseDslYaml(readFileSync(`docs/_examples/dsl/${n}.yaml`, 'utf8'), `${n}.yaml`),
-    );
-    const globalYaml = readFileSync('docs/_examples/dsl/global.yaml', 'utf8');
-    const compiledDsl = compileDsl(modules, globalYaml);
-    const openapi = await loadOpenApi('docs/_examples/openapi.yaml');
+    const modules = ["lead", "opportunity"].map((n) => ({
+      name: `${n}.yaml`,
+      yaml: readFileSync(`docs/_examples/dsl/${n}.yaml`, "utf8"),
+    }));
+    const globalYaml = readFileSync("docs/_examples/dsl/global.yaml", "utf8");
+    const openapi = await loadOpenApi("docs/_examples/openapi.yaml");
 
-    sys = await bootSystem({ openapi, compiledDsl });
-    app = createGateway(sys);
+    sys = await bootYamlRuntime({ openapi, yamlProgram: { modules, globalYaml } });
+    app = createRuntimeGateway(sys);
   });
 
-  afterEach(() => resetSystem(sys));
+  afterEach(() => sys.engine.reset());
 
-  it('creates a lead and scores it by source', async () => {
+  it("creates a lead and scores it by source", async () => {
     const res = await request(app)
-      .post('/leads')
-      .send({ companyName: 'Apex Solutions', contactName: 'Jordan', phone: '+61 2 9000 0001', email: 'jordan@apex.com', source: 'REFERRAL' })
+      .post("/leads")
+      .send({
+        companyName: "Apex Solutions",
+        contactName: "Jordan",
+        phone: "+61 2 9000 0001",
+        email: "jordan@apex.com",
+        source: "REFERRAL",
+      })
       .expect(201);
 
     expect(res.body.score).toBe(80); // REFERRAL score
-    expect(res.body.status).toBe('NEW');
+    expect(res.body.status).toBe("NEW");
   });
 
-  it('converts a qualified lead to an opportunity', async () => {
+  it("converts a qualified lead to an opportunity", async () => {
     const leadRes = await request(app)
-      .post('/leads')
-      .send({ companyName: 'Beta Corp', contactName: 'Alex', phone: '+61 2 9000 0002', email: 'alex@beta.com', source: 'WEBSITE' })
+      .post("/leads")
+      .send({
+        companyName: "Beta Corp",
+        contactName: "Alex",
+        phone: "+61 2 9000 0002",
+        email: "alex@beta.com",
+        source: "WEBSITE",
+      })
       .expect(201);
 
     const leadId = leadRes.body.id;
 
-    await request(app)
-      .post(`/leads/${leadId}/contact`)
-      .expect(200);
+    await request(app).post(`/leads/${leadId}/contact`).expect(200);
 
-    await request(app)
-      .post(`/leads/${leadId}/qualify`)
-      .expect(200);
+    await request(app).post(`/leads/${leadId}/qualify`).expect(200);
 
     const oppRes = await request(app)
       .post(`/leads/${leadId}/convert`)
       .send({ value: 5000 })
       .expect(200);
 
-    expect(oppRes.body.status).toBe('CONVERTED');
+    expect(oppRes.body.status).toBe("CONVERTED");
   });
 });
 ```
@@ -1028,9 +1086,9 @@ derived_projections:
 
 Poll `GET /_admin/derived/LeadSummary` to retrieve the aggregated map.
 
-### Long-running scripts (caution)
+### Long-running factory and helper code (caution)
 
-`@Script` classes run as trusted host code without an enforced time limit. Scripts that iterate large arrays or perform complex numeric derivations can slow down the request cycle. If a computation is too slow:
+`@PotemkinConfigure` classes run as trusted host code without an enforced time limit. Factory or helper code that iterates large arrays or performs complex numeric derivations can slow down the request cycle. If a computation is too slow:
 
 1. Pre-compute and store partial results in aggregate state via reducers.
 2. Simplify the logic in CEL (which is typically faster for straightforward expressions).
@@ -1052,33 +1110,35 @@ Poll `GET /_admin/derived/LeadSummary` to retrieve the aggregated map.
 
 ### snake_case → camelCase field map (YAML → TypeScript)
 
-| YAML key | TypeScript field | Notes |
-|----------|-----------------|-------|
-| `contract_path` | `contractPath` | |
-| `fallback_override` | `fallbackOverride` | |
-| `event_catalog` | `eventCatalog` | |
-| `payload_template` | `payloadTemplate` | |
-| `schema_ref` | `schemaRef` | |
-| `query_mapping` | `queryMapping` | |
-| `dispatch_commands` | `dispatchCommands` | |
-| `target_id` | `targetId` | |
-| `emit_when` | `emitWhen` | |
-| `required_scopes` | `requiredScopes` | |
-| `error_code` | `errorCode` | |
-| `error_message` | `errorMessage` | |
-| `ttl_seconds` | `ttlSeconds` | |
-| `hash_includes_body` | `hashIncludesBody` | |
-| `derived_projections` | `derivedProjections` | |
+| YAML key              | TypeScript field     | Notes |
+| --------------------- | -------------------- | ----- |
+| `contract_path`       | `contractPath`       |       |
+| `fallback_override`   | `fallbackOverride`   |       |
+| `event_catalog`       | `eventCatalog`       |       |
+| `payload_template`    | `payloadTemplate`    |       |
+| `schema_ref`          | `schemaRef`          |       |
+| `query_mapping`       | `queryMapping`       |       |
+| `dispatch_commands`   | `dispatchCommands`   |       |
+| `target_id`           | `targetId`           |       |
+| `emit_when`           | `emitWhen`           |       |
+| `required_scopes`     | `requiredScopes`     |       |
+| `error_code`          | `errorCode`          |       |
+| `error_message`       | `errorMessage`       |       |
+| `ttl_seconds`         | `ttlSeconds`         |       |
+| `hash_includes_body`  | `hashIncludesBody`   |       |
+| `derived_projections` | `derivedProjections` |       |
 
 The schema validator (`src/dsl/schema.ts`) accepts both `snake_case` and `camelCase` for some fields (e.g. `error_code`/`errorCode`). Use `snake_case` in YAML files for consistency.
 
 ### Required vs optional fields summary
 
 **Boundary config (required):**
+
 - `boundary`
 - `contract_path`
 
 **Boundary config (optional, default noted):**
+
 - `fallback_override` (default `false`)
 - `identity`
 - `query_mapping`
@@ -1086,20 +1146,24 @@ The schema validator (`src/dsl/schema.ts`) accepts both `snake_case` and `camelC
 - `behaviors` (default `[]`)
 - `reducers` (default `[]`)
 - `initialization` (default absent)
-- `typescript` (scan globs declared in `potemkin.yaml`, not boundary files)
+- `typescript` (scan globs declared in `potemkin.yml`, not boundary files)
 
 **Behavior `match` (required):**
+
 - `operationId`
 - `condition`
 
 **Behavior (required — one of):**
+
 - `emit` OR `emit_when`
 
 **Event catalog entry (required):**
+
 - `type`
 - `payload_template`
 
 **Reducer rule (required):**
+
 - `on`
 
 ---
@@ -1110,35 +1174,33 @@ The boot sequence performs the following validation steps in order:
 
 1. **YAML parse** — Each file must be a valid YAML mapping. Arrays, scalars at root, or null documents halt with `BOOT_ERR_DSL_SYNTAX`.
 
-2. **Schema validation** (`src/dsl/schema.ts`) — Required fields present, correct types, `emit`/`emit_when` mutual exclusion, `ts:` sentinel format validation (`[A-Za-z_][A-Za-z0-9_]*` after prefix).
+2. **Schema validation** (`src/dsl/schema.ts`) — Required fields present, correct types, and `emit`/`emit_when` mutual exclusion.
 
 3. **CEL pre-compilation** — All CEL expressions in `match.condition`, `match.requires[].condition`, `postcondition`, `emit_when[].when`, `dispatch_commands[].condition`, and `payload_template` field values are compiled with `celEvaluator.compile()`. Parse errors produce `BOOT_ERR_DSL_SYNTAX`.
 
-4. **Cross-reference validation** — Every `emit` value and every `on` value must match an event type key in the boundary's `event_catalog`. `ts:` sentinels must resolve to a `@Script(id)` class discovered via the `typescript.scan` globs. Failures produce `BOOT_ERR_DSL_REFERENCE`.
+4. **Cross-reference validation** — Every `emit` value and every `on` value must match an event type key in the boundary's `event_catalog`. Registered helper names are validated as CEL identifiers and duplicate names fail canonical compilation.
 
-5. **Reducer phase check** — `ts:` sentinels in `reducers[].patches[].value` produce `BOOT_ERR_SCRIPT_IN_REDUCER`.
+5. **Contract binding** — `contract_path` values are validated against the loaded OpenAPI document. `schema_ref` values are resolved against `#/components/schemas/`. Failures produce `BOOT_ERR_DSL_SCHEMA_VIOLATION`.
 
-6. **Contract binding** — `contract_path` values are validated against the loaded OpenAPI document. `schema_ref` values are resolved against `#/components/schemas/`. Failures produce `BOOT_ERR_DSL_SCHEMA_VIOLATION`.
+6. **Object-Graph Schema Registry** — RFC 6901 `path` pointers in `reducers[].patches` are validated against the entity schema derived from the OpenAPI components. Unknown paths produce `BOOT_ERR_DSL_SCHEMA_VIOLATION`.
 
-7. **Object-Graph Schema Registry** — RFC 6901 `path` pointers in `reducers[].patches` are validated against the entity schema derived from the OpenAPI components. Unknown paths produce `BOOT_ERR_DSL_SCHEMA_VIOLATION`.
+7. **TypeScript discovery** — configured files are inspected with the TypeScript AST; only static methods decorated with the exact `@PotemkinConfigure` decorator are invoked. Relative dependencies may be loaded for the factory graph, including files excluded from discovery.
 
-8. **Script discovery** — files matching the `typescript.scan` globs are imported; each `@Script(id)` class registers itself. `ts:<id>` sentinels are resolved against the registry. Unknown ids produce `BOOT_ERR_DSL_REFERENCE`. Presence of the removed `scripts[].code` field produces `BOOT_ERR_REMOVED_SYNTAX`.
-
-9. **Initialization ingestion** — Seed records are projected into the initial state graph. Projection errors abort boot.
+8. **Initialization ingestion** — Seed records are projected into the initial state graph. Projection errors abort boot.
 
 ---
 
 ## 17. Limits and quotas
 
-| Limit | Value | Error on breach |
-|-------|-------|----------------|
-| `max_uow_depth` | 5 levels of secondary command recursion (`dispatch_commands`) | HTTP 508 `INFINITE_LOOP_DETECTED` |
-| Reaction event budget | 1000 events per UoW (reactions only; separate from depth) | HTTP 508 `ReactionBudgetExceeded` |
-| Script error | Unhandled exception from a `@Script` class | HTTP 500 `INTERNAL_EXECUTION_FAILURE` |
-| Pattern-match priority | First-match-wins, source document order | n/a |
-| Reducer determinism | `$uuidv7`/`$now`/`now`/`timestamp` banned | `CEL_PHASE_BANNED` |
-| `emit` + `emit_when` co-presence | Mutually exclusive | `BOOT_ERR_DSL_SYNTAX` (boot halt) |
-| Script name characters | `[A-Za-z_][A-Za-z0-9_]*` | `BOOT_ERR_DSL_SYNTAX` (boot halt) |
+| Limit                            | Value                                                         | Error on breach                       |
+| -------------------------------- | ------------------------------------------------------------- | ------------------------------------- |
+| `max_uow_depth`                  | 5 levels of secondary command recursion (`dispatch_commands`) | HTTP 508 `INFINITE_LOOP_DETECTED`     |
+| Reaction event budget            | 1000 events per UoW (reactions only; separate from depth)     | HTTP 508 `ReactionBudgetExceeded`     |
+| Factory/helper error             | Unhandled exception from a `@PotemkinConfigure` class         | HTTP 500 `INTERNAL_EXECUTION_FAILURE` |
+| Pattern-match priority           | First-match-wins, source document order                       | n/a                                   |
+| Reducer determinism              | `$uuidv7`/`$now`/`now`/`timestamp` banned                     | `CEL_PHASE_BANNED`                    |
+| `emit` + `emit_when` co-presence | Mutually exclusive                                            | `BOOT_ERR_DSL_SYNTAX` (boot halt)     |
+| Helper name characters           | `[A-Za-z_][A-Za-z0-9_]*`                                      | `BOOT_ERR_DSL_SYNTAX` (boot halt)     |
 
 ### Dispatch depth vs reaction termination
 
@@ -1150,22 +1212,20 @@ The boot sequence performs the following validation steps in order:
 
 The two mechanisms coexist: a behaviour that uses both `dispatch_commands` and fires reactions operates under both limits independently.
 
-### Legacy field names
+### Removed field names
 
-The schema validator accepts the following legacy field name aliases for backward compatibility. They parse identically to the canonical names but emit a `DEBUG`-level log at boot time: `DSL: deprecated field 'X', use 'Y' instead`.
+The schema validator rejects the following removed field names and reports the canonical replacement.
 
-| Canonical (preferred) | Legacy (accepted) | Location |
-|---|---|---|
-| `requires[].condition` | `requires[].expression` | `match.requires[]` block |
-| `postcondition: "<expr>"` | `postcondition: {expression: "<expr>"}` | `behaviors[]` |
+| Canonical                 | Removed name                            | Location                 |
+| ------------------------- | --------------------------------------- | ------------------------ |
+| `requires[].condition`    | `requires[].expression`                 | `match.requires[]` block |
+| `postcondition: "<expr>"` | `postcondition: {expression: "<expr>"}` | `behaviors[]`            |
 
-New DSL files should use the canonical names. Legacy names will continue to be accepted indefinitely but may be removed in a future major version.
-
-> ⚠️ `scripts[].code` and `scripts[].source` are **not** legacy aliases — they are removed syntax. Using either halts boot with `BOOT_ERR_REMOVED_SYNTAX`.
+New DSL files must use the canonical names.
 
 ### Reducer determinism guarantee
 
-The event log is an immutable, append-only record. The current state graph can be rebuilt at any time by replaying events through reducers. This guarantee holds only if reducers are pure functions of `event` and `state` — which is why `$uuidv7()`, `$now()`, and `ts:` scripts are banned in the reducer phase.
+The event log is an immutable, append-only record. The current state graph can be rebuilt at any time by replaying events through reducers. This guarantee holds only if reducers are pure functions of `event` and `state`; native TypeScript reducers return a complete next state and YAML reducers use deterministic CEL and patches.
 
 ### First-match-wins semantics
 
@@ -1183,19 +1243,19 @@ The keys in this section shape the HTTP response the gateway returns, independen
 
 **Where each key lives:**
 
-| Key | File | Scope |
-|-----|------|-------|
-| `hateoas` (static array) | boundary file | per-boundary, per-response |
-| `mask` | boundary file | per-boundary, per-response |
-| `deprecated` | boundary file | per-boundary, per-response |
-| `latency` | boundary file | per-boundary, every response |
-| `fault_rules` (boundary) | boundary file | boundary-scoped chaos |
-| `link_name` / `link_condition` | behavior inside a boundary file | per-behavior action link |
-| `hateoas` (global block) | global config file | cross-boundary dynamic links |
-| `security_headers` | global config file | every response |
-| `fault_rules` (global) | global config file | global chaos rules |
-| `versioning` | global config file | URL prefix routing + response tag |
-| `webhooks` | global config file | post-commit outbound HTTP |
+| Key                            | File                            | Scope                             |
+| ------------------------------ | ------------------------------- | --------------------------------- |
+| `hateoas` (static array)       | boundary file                   | per-boundary, per-response        |
+| `mask`                         | boundary file                   | per-boundary, per-response        |
+| `deprecated`                   | boundary file                   | per-boundary, per-response        |
+| `latency`                      | boundary file                   | per-boundary, every response      |
+| `fault_rules` (boundary)       | boundary file                   | boundary-scoped chaos             |
+| `link_name` / `link_condition` | behavior inside a boundary file | per-behavior action link          |
+| `hateoas` (global block)       | global config file              | cross-boundary dynamic links      |
+| `security_headers`             | global config file              | every response                    |
+| `fault_rules` (global)         | global config file              | global chaos rules                |
+| `versioning`                   | global config file              | URL prefix routing + response tag |
+| `webhooks`                     | global config file              | post-commit outbound HTTP         |
 
 Pagination shape, ETag/conditional caching, and the `X-Potemkin-*` control headers are **runtime behaviors of the gateway pipeline** — they are not configured with YAML keys. They are documented in sub-sections 18.8–18.11 below.
 
@@ -1214,14 +1274,14 @@ hateoas:
     href: /documents
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `rel` | string | yes | Relation name (key in `_links`, e.g. `self`, `collection`) |
-| `href` | string | yes | Link href (literal path) |
+| Field  | Type   | Required | Description                                                |
+| ------ | ------ | -------- | ---------------------------------------------------------- |
+| `rel`  | string | yes      | Relation name (key in `_links`, e.g. `self`, `collection`) |
+| `href` | string | yes      | Link href (literal path)                                   |
 
 **HTTP effect:** the response body gains `_links: { "<rel>": { "href": "<href>" } }`. The boundary-level static list **overrides** any `links:` entries from the OpenAPI document for that operation.
 
-See: [`tests/fixtures/governance/dsl/document.yaml`](../tests/fixtures/governance/dsl/document.yaml), [`tests/fixtures/governance/dsl/document-by-id.yaml`](../tests/fixtures/governance/dsl/document-by-id.yaml), [`tests/e2e/56-response-mutations.e2e-test.ts`](../tests/e2e/56-response-mutations.e2e-test.ts)
+See: [`tests/fixtures/governance/dsl/document.yaml`](../tests/fixtures/governance/dsl/document.yaml), [`tests/fixtures/governance/dsl/document-by-id.yaml`](../tests/fixtures/governance/dsl/document-by-id.yaml), [`tests/e2e/response-mutations.e2e-test.ts`](../tests/e2e/response-mutations.e2e-test.ts)
 
 ---
 
@@ -1232,18 +1292,18 @@ The global `hateoas:` block enables automatic `_links` generation on every query
 **Global config block** (in the global config YAML file):
 
 ```yaml
-# tests/fixtures/crm/dsl/global.yaml
+# examples/crm/dsl/global.yaml
 hateoas:
   enabled: true
   self_links: true
   # base_url: "https://api.example.com"   # optional — prefixes all hrefs
 ```
 
-| Field | Default | Description |
-|-------|---------|-------------|
-| `enabled` | `false` | Master switch. Must be `true` for any dynamic links to be injected. |
-| `self_links` | `true` | Inject a `self` link pointing at the entity's canonical GET path (resolved via `{id}` path template). |
-| `base_url` | absent | When set, every generated href is prefixed with this value (e.g. `https://api.example.com/leads/abc`). |
+| Field        | Default | Description                                                                                            |
+| ------------ | ------- | ------------------------------------------------------------------------------------------------------ |
+| `enabled`    | `false` | Master switch. Must be `true` for any dynamic links to be injected.                                    |
+| `self_links` | `true`  | Inject a `self` link pointing at the entity's canonical GET path (resolved via `{id}` path template).  |
+| `base_url`   | absent  | When set, every generated href is prefixed with this value (e.g. `https://api.example.com/leads/abc`). |
 
 **Per-behavior fields** (on any behavior in any boundary):
 
@@ -1259,10 +1319,10 @@ behaviors:
     emit: LeadConverted
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `link_name` | string | The relation key emitted in `_links` (e.g. `convert` → `_links.convert`). When set and the gate passes, the link is added to entities served from the parent boundary. |
-| `link_condition` | CEL boolean | Independent gate for link visibility. Evaluated against `state`. When absent, `match.condition` is used as the gate. |
+| Field            | Type        | Description                                                                                                                                                            |
+| ---------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `link_name`      | string      | The relation key emitted in `_links` (e.g. `convert` → `_links.convert`). When set and the gate passes, the link is added to entities served from the parent boundary. |
+| `link_condition` | CEL boolean | Independent gate for link visibility. Evaluated against `state`. When absent, `match.condition` is used as the gate.                                                   |
 
 **HTTP effect:** query responses from the parent collection boundary receive `_links` per entity. Example:
 
@@ -1271,7 +1331,7 @@ behaviors:
   "id": "abc",
   "status": "QUALIFIED",
   "_links": {
-    "self":    { "href": "/leads/abc",         "method": "GET" },
+    "self": { "href": "/leads/abc", "method": "GET" },
     "convert": { "href": "/leads/abc/convert", "method": "POST" }
   }
 }
@@ -1279,7 +1339,7 @@ behaviors:
 
 `_links` is suppressed when `?fields=` is present (sparse-fieldset requests are explicit projections).
 
-See: [`tests/e2e/44-hateoas.e2e-test.ts`](../tests/e2e/44-hateoas.e2e-test.ts)
+See: [`tests/e2e/hateoas.e2e-test.ts`](../tests/e2e/hateoas.e2e-test.ts)
 
 ---
 
@@ -1301,7 +1361,7 @@ mask:
 
 **HTTP effect:** `internalNotes` is absent from every response body on this boundary.
 
-See: [`tests/fixtures/governance/dsl/document.yaml`](../tests/fixtures/governance/dsl/document.yaml), [`tests/e2e/56-response-mutations.e2e-test.ts`](../tests/e2e/56-response-mutations.e2e-test.ts)
+See: [`tests/fixtures/governance/dsl/document.yaml`](../tests/fixtures/governance/dsl/document.yaml), [`tests/e2e/response-mutations.e2e-test.ts`](../tests/e2e/response-mutations.e2e-test.ts)
 
 ---
 
@@ -1310,7 +1370,7 @@ See: [`tests/fixtures/governance/dsl/document.yaml`](../tests/fixtures/governanc
 Emits HTTP `Deprecation`, `Sunset`, and `Link` headers on every successful 2xx response from that boundary, signalling to clients that the API is scheduled for retirement.
 
 ```yaml
-# tests/fixtures/crm/dsl/lead-add-note.yaml
+# examples/crm/dsl/lead-add-note.yaml
 deprecated:
   date: "2025-01-01"
   sunset: "2025-06-01"
@@ -1324,11 +1384,11 @@ deprecated:
   replacement: /v2/documents
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `date` | ISO-8601 string | no | Deprecation date. Becomes the `Deprecation` header value formatted as an HTTP-date per RFC 8594 (e.g. `Wed, 01 Jan 2025 00:00:00 GMT`). When omitted the header value is the literal string `true`. |
-| `sunset` | ISO-8601 string | no | When present, emits `Sunset: <HTTP-date>` (RFC 8594). |
-| `replacement` | string | no | When present, emits `Link: <replacement>; rel="successor-version"`. |
+| Field         | Type            | Required | Description                                                                                                                                                                                         |
+| ------------- | --------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `date`        | ISO-8601 string | no       | Deprecation date. Becomes the `Deprecation` header value formatted as an HTTP-date per RFC 8594 (e.g. `Wed, 01 Jan 2025 00:00:00 GMT`). When omitted the header value is the literal string `true`. |
+| `sunset`      | ISO-8601 string | no       | When present, emits `Sunset: <HTTP-date>` (RFC 8594).                                                                                                                                               |
+| `replacement` | string          | no       | When present, emits `Link: <replacement>; rel="successor-version"`.                                                                                                                                 |
 
 **HTTP effect (with all three fields):**
 
@@ -1340,7 +1400,7 @@ Link:        </v2/leads/{id}/notes>; rel="successor-version"
 
 When `deprecated:` is absent but the OpenAPI operation carries `deprecated: true`, the engine falls back to `Deprecation: true` with no Sunset or Link header.
 
-See: [`tests/fixtures/crm/dsl/lead-add-note.yaml`](../tests/fixtures/crm/dsl/lead-add-note.yaml), [`tests/fixtures/governance/dsl/document-by-id.yaml`](../tests/fixtures/governance/dsl/document-by-id.yaml), [`tests/e2e/56-response-mutations.e2e-test.ts`](../tests/e2e/56-response-mutations.e2e-test.ts)
+See: [`examples/crm/dsl/lead-add-note.yaml`](../examples/crm/dsl/lead-add-note.yaml), [`tests/fixtures/governance/dsl/document-by-id.yaml`](../tests/fixtures/governance/dsl/document-by-id.yaml), [`tests/e2e/response-mutations.e2e-test.ts`](../tests/e2e/response-mutations.e2e-test.ts)
 
 ---
 
@@ -1357,24 +1417,24 @@ latency:
 ```
 
 ```yaml
-# tests/fixtures/crm/dsl/lead-add-note.yaml
+# examples/crm/dsl/lead-add-note.yaml
 latency:
   min_ms: 20
   max_ms: 200
   fixed_ms: 50
 ```
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `fixed_ms` | number | absent | Fixed additional delay in milliseconds, applied on every response. |
-| `min_ms` | number | absent | Lower bound (ms) of a uniform-random delay range. |
-| `max_ms` | number | absent | Upper bound (ms) of a uniform-random delay range. |
+| Field      | Type   | Default | Description                                                        |
+| ---------- | ------ | ------- | ------------------------------------------------------------------ |
+| `fixed_ms` | number | absent  | Fixed additional delay in milliseconds, applied on every response. |
+| `min_ms`   | number | absent  | Lower bound (ms) of a uniform-random delay range.                  |
+| `max_ms`   | number | absent  | Upper bound (ms) of a uniform-random delay range.                  |
 
 All present fields are additive: `fixed_ms` adds its value first, then a uniform-random sample from `[min_ms, max_ms]` is added on top. The combined delay is capped at **30 000 ms**. Latency is also additive with `X-Potemkin-Force-Latency` / `X-Potemkin-Slow-Response` chaos headers.
 
 Latency is boundary-scoped: configuring `latency:` on `/jobs` does not affect `/jobs/{id}`.
 
-See: [`tests/fixtures/latency/dsl/job.yaml`](../tests/fixtures/latency/dsl/job.yaml), [`tests/e2e/65-latency.e2e-test.ts`](../tests/e2e/65-latency.e2e-test.ts)
+See: [`tests/fixtures/latency/dsl/job.yaml`](../tests/fixtures/latency/dsl/job.yaml), [`tests/e2e/latency.e2e-test.ts`](../tests/e2e/latency.e2e-test.ts)
 
 ---
 
@@ -1383,7 +1443,7 @@ See: [`tests/fixtures/latency/dsl/job.yaml`](../tests/fixtures/latency/dsl/job.y
 Injects HTTP security response headers on **every** response from the gateway (applied as Express middleware before any route handler). Declared in the global config file.
 
 ```yaml
-# tests/fixtures/crm/dsl/global.yaml
+# examples/crm/dsl/global.yaml
 security_headers:
   enabled: true
   hsts: true
@@ -1394,16 +1454,16 @@ security_headers:
     X-Custom-Sim-Header: "potemkin-sim"
 ```
 
-| Field | Type | Default | Emitted header |
-|-------|------|---------|----------------|
-| `enabled` | boolean | `true` | Master switch. Set to `false` to disable all headers without removing the block. |
-| `hsts` | boolean | absent | `Strict-Transport-Security: max-age=31536000; includeSubDomains` |
-| `nosniff` | boolean | absent | `X-Content-Type-Options: nosniff` |
-| `frame_deny` | boolean | absent | `X-Frame-Options: DENY` |
-| `referrer_policy` | string | absent | `Referrer-Policy: <value>` |
-| `custom_headers` | `map<string, string>` | absent | Each entry emitted verbatim as `<name>: <value>` |
+| Field             | Type                  | Default | Emitted header                                                                   |
+| ----------------- | --------------------- | ------- | -------------------------------------------------------------------------------- |
+| `enabled`         | boolean               | `true`  | Master switch. Set to `false` to disable all headers without removing the block. |
+| `hsts`            | boolean               | absent  | `Strict-Transport-Security: max-age=31536000; includeSubDomains`                 |
+| `nosniff`         | boolean               | absent  | `X-Content-Type-Options: nosniff`                                                |
+| `frame_deny`      | boolean               | absent  | `X-Frame-Options: DENY`                                                          |
+| `referrer_policy` | string                | absent  | `Referrer-Policy: <value>`                                                       |
+| `custom_headers`  | `map<string, string>` | absent  | Each entry emitted verbatim as `<name>: <value>`                                 |
 
-See: [`tests/fixtures/crm/dsl/global.yaml`](../tests/fixtures/crm/dsl/global.yaml), [`tests/e2e/38-security-headers.e2e-test.ts`](../tests/e2e/38-security-headers.e2e-test.ts)
+See: [`examples/crm/dsl/global.yaml`](../examples/crm/dsl/global.yaml), [`tests/e2e/security-headers.e2e-test.ts`](../tests/e2e/security-headers.e2e-test.ts)
 
 ---
 
@@ -1419,7 +1479,7 @@ Declarative chaos rules evaluated before any behavior logic on every inbound req
 Within each scope, rules are evaluated in document order; the **first match wins**.
 
 ```yaml
-# tests/fixtures/crm/dsl/global.yaml — global fault rules
+# examples/crm/dsl/global.yaml — global fault rules
 fault_rules:
   - name: rate-limit-via-header
     match:
@@ -1459,7 +1519,7 @@ fault_rules:
 ```
 
 ```yaml
-# tests/fixtures/crm/dsl/lead.yaml — boundary-scoped fault rule
+# examples/crm/dsl/lead.yaml — boundary-scoped fault rule
 fault_rules:
   - name: duplicate-check-slow
     match:
@@ -1474,27 +1534,27 @@ fault_rules:
 
 **`match` fields:**
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `boundary` | string | Restrict to a specific boundary name. Ignored on boundary-scoped rules (they are already scoped). |
-| `intent` | string | `creation`, `mutation`, or `query`. |
-| `condition` | CEL boolean | Guard expression evaluated against `command` and `state`. Default: `"true"`. |
-| `headers` | `map<string, string>` | Header name → expected value. `"*"` matches any non-empty value (presence check). AND semantics. |
-| `potemkin` | `map<string, string>` | Convenience aliases expanding to `X-Potemkin-*` headers (see §18.11). Equivalent to `headers:` with the expanded names. |
-| `probability` | number (0..1) | Probabilistic gate. When present, the rule fires only when `random() > probability`. |
+| Field         | Type                  | Description                                                                                                             |
+| ------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `boundary`    | string                | Restrict to a specific boundary name. Ignored on boundary-scoped rules (they are already scoped).                       |
+| `intent`      | string                | `creation`, `mutation`, or `query`.                                                                                     |
+| `condition`   | CEL boolean           | Guard expression evaluated against `command` and `state`. Default: `"true"`.                                            |
+| `headers`     | `map<string, string>` | Header name → expected value. `"*"` matches any non-empty value (presence check). AND semantics.                        |
+| `potemkin`    | `map<string, string>` | Convenience aliases expanding to `X-Potemkin-*` headers (see §18.11). Equivalent to `headers:` with the expanded names. |
+| `probability` | number (0..1)         | Probabilistic gate. When present, the rule fires only when `random() > probability`.                                    |
 
 **`response` fields:**
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `status` | integer | HTTP status code to return. |
-| `body` | JSON value | Response body. |
-| `headers` | `map<string, string>` | Response headers to set. |
-| `delay_ms` | number | Pre-response delay in milliseconds (stacks with `latency:`). |
+| Field      | Type                  | Description                                                  |
+| ---------- | --------------------- | ------------------------------------------------------------ |
+| `status`   | integer               | HTTP status code to return.                                  |
+| `body`     | JSON value            | Response body.                                               |
+| `headers`  | `map<string, string>` | Response headers to set.                                     |
+| `delay_ms` | number                | Pre-response delay in milliseconds (stacks with `latency:`). |
 
 **Precedence (highest first):** boundary fault rules → global fault rules → chaos headers (§18.11). The `X-Potemkin-Skip-Dispatch: true` control header bypasses fault injection for a single request.
 
-See: [`tests/fixtures/crm/dsl/global.yaml`](../tests/fixtures/crm/dsl/global.yaml), [`tests/fixtures/crm/dsl/lead.yaml`](../tests/fixtures/crm/dsl/lead.yaml), [`tests/e2e/46-chaos-headers.e2e-test.ts`](../tests/e2e/46-chaos-headers.e2e-test.ts)
+See: [`examples/crm/dsl/global.yaml`](../examples/crm/dsl/global.yaml), [`examples/crm/dsl/lead.yaml`](../examples/crm/dsl/lead.yaml), [`tests/e2e/chaos-headers.e2e-test.ts`](../tests/e2e/chaos-headers.e2e-test.ts)
 
 ---
 
@@ -1520,21 +1580,21 @@ The engine automatically wraps collection query results in a metadata envelope w
 
 **`X-Potemkin-Pagination-Style` control header** (Tier 5, §18.11) overrides the default style per request:
 
-| Value | Effect |
-|-------|--------|
-| `envelope` | Always wrap in `{ items, totalCount, offset, limit, hasMore }`. |
-| `raw` | Always return a bare array (unwrap any envelope). |
+| Value         | Effect                                                                                              |
+| ------------- | --------------------------------------------------------------------------------------------------- |
+| `envelope`    | Always wrap in `{ items, totalCount, offset, limit, hasMore }`.                                     |
+| `raw`         | Always return a bare array (unwrap any envelope).                                                   |
 | `link-header` | Bare array body + RFC 5988 `Link:` header with `rel="next"` and `rel="prev"` when more pages exist. |
 
 The `Link:` header preserves all original query parameters (filters, sort) and only overrides `offset`/`limit`.
 
-**Multi-sort:** `?sort=field1,-field2` sorts by `field1` ascending then `field2` descending. Backward-compatible with the legacy `?sort=field&order=desc` form.
+**Multi-sort:** `?sort=field1,-field2` sorts by `field1` ascending then `field2` descending. The single-field `?sort=field&order=desc` form is also accepted.
 
 **Array operators:** `?callIds:contains=<value>` tests membership/substring in the `callIds` field. `?callIds:arrayContains=<value>` applies strict array-only membership (non-arrays evaluate to false).
 
 **Sparse fieldsets:** `?fields=id,companyName,score` returns only the named fields per entity. `id` is always preserved. Applied after derived properties, before relationship expansion.
 
-See: [`tests/e2e/36-pagination-envelope.e2e-test.ts`](../tests/e2e/36-pagination-envelope.e2e-test.ts), [`tests/e2e/39-multisort-array-operators.e2e-test.ts`](../tests/e2e/39-multisort-array-operators.e2e-test.ts), [`tests/e2e/43-query-extensions.e2e-test.ts`](../tests/e2e/43-query-extensions.e2e-test.ts)
+See: [`tests/e2e/pagination-envelope.e2e-test.ts`](../tests/e2e/pagination-envelope.e2e-test.ts), [`tests/e2e/multisort-array-operators.e2e-test.ts`](../tests/e2e/multisort-array-operators.e2e-test.ts), [`tests/e2e/query-extensions.e2e-test.ts`](../tests/e2e/query-extensions.e2e-test.ts)
 
 ---
 
@@ -1549,17 +1609,17 @@ The gateway automatically manages ETags and conditional-request semantics for si
 
 **Conditional request handling (single-entity GET only):**
 
-| Request header | Engine behaviour |
-|----------------|-----------------|
-| `If-None-Match: "<n>"` | Returns **304 Not Modified** (empty body) when the ETag matches. `*` always matches. |
-| `If-Modified-Since: <http-date>` | Returns **304 Not Modified** when `Last-Modified ≤ If-Modified-Since`. Malformed dates are ignored. |
+| Request header                   | Engine behaviour                                                                                                                                                                       |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `If-None-Match: "<n>"`           | Returns **304 Not Modified** (empty body) when the ETag matches. `*` always matches.                                                                                                   |
+| `If-Modified-Since: <http-date>` | Returns **304 Not Modified** when `Last-Modified ≤ If-Modified-Since`. Malformed dates are ignored.                                                                                    |
 | `If-Match: "<n>"` (on mutations) | Returns **412 Precondition Failed** when the supplied value does not match the stored `sequenceVersion`. Returns **428 Precondition Required** when the header is absent but required. |
 
 Weak validators (`W/"5"`) on `If-Match` are rejected with HTTP 400.
 
 304 responses carry `ETag` and `Last-Modified` headers but no body.
 
-See: [`tests/e2e/37-conditional-requests.e2e-test.ts`](../tests/e2e/37-conditional-requests.e2e-test.ts)
+See: [`tests/e2e/conditional-requests.e2e-test.ts`](../tests/e2e/conditional-requests.e2e-test.ts)
 
 ---
 
@@ -1579,18 +1639,18 @@ versioning:
       default: true
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `enabled` | boolean | no (default `false`) | Master switch. |
-| `versions[].version` | string | yes | Version label (e.g. `"v1"`). Echoed in the `X-Potemkin-Version` response header. |
-| `versions[].prefix` | string | yes | URL prefix that selects this version (e.g. `"/v1"`). Stripped before contract matching. |
-| `versions[].default` | boolean | no | When `true`, requests without a recognised version prefix are routed to this version. At most one version may be the default. |
+| Field                | Type    | Required             | Description                                                                                                                   |
+| -------------------- | ------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`            | boolean | no (default `false`) | Master switch.                                                                                                                |
+| `versions[].version` | string  | yes                  | Version label (e.g. `"v1"`). Echoed in the `X-Potemkin-Version` response header.                                              |
+| `versions[].prefix`  | string  | yes                  | URL prefix that selects this version (e.g. `"/v1"`). Stripped before contract matching.                                       |
+| `versions[].default` | boolean | no                   | When `true`, requests without a recognised version prefix are routed to this version. At most one version may be the default. |
 
 **HTTP effect:** `POST /v2/leads` → contract is matched against `/leads`; response carries `X-Potemkin-Version: v2`. Requests to un-prefixed paths route to the `default` version when one is declared.
 
 `/_engine` and `/_admin` paths are excluded from version resolution. This feature is an Express middleware on the gateway HTTP path (engine-direct mode); it does not apply to the `/_engine/forward` body, where the path arrives already resolved.
 
-See: [`tests/fixtures/crm-versioned/dsl/global.yaml`](../tests/fixtures/crm-versioned/dsl/global.yaml), [`tests/e2e/47-api-versioning.e2e-test.ts`](../tests/e2e/47-api-versioning.e2e-test.ts)
+See: [`tests/fixtures/crm-versioned/dsl/global.yaml`](../tests/fixtures/crm-versioned/dsl/global.yaml), [`tests/e2e/api-versioning.e2e-test.ts`](../tests/e2e/api-versioning.e2e-test.ts)
 
 ---
 
@@ -1616,17 +1676,17 @@ webhooks:
       delayMs: 50
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | yes | Unique webhook name. |
-| `trigger.boundary` | string | no | Restrict to events emitted by this boundary. |
-| `trigger.intent` | string | no | `creation`, `mutation`, or `query`. |
-| `trigger.condition` | CEL boolean | yes | Evaluated against the emitted event context (`event.type`, `event.aggregateId`, `event.payload`). |
-| `url` | CEL string expression | yes | Destination URL. Must be a CEL expression (wrap a literal in single quotes: `"'https://...'"`) |
-| `secret` | string | no | Shared secret for HMAC-SHA256 signing. When present, the POST carries `x-potemkin-signature: sha256=<hex>`. |
-| `payload` | `map<string, CEL>` | no | Template for the POST body. Each key's value is a CEL expression evaluated against event context. When absent, the full event is delivered. |
-| `retry.maxAttempts` | integer | no | Maximum delivery attempts on transient failures (default: 1). |
-| `retry.delayMs` | integer | no | Delay between retry attempts in milliseconds. |
+| Field               | Type                  | Required | Description                                                                                                                                 |
+| ------------------- | --------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`              | string                | yes      | Unique webhook name.                                                                                                                        |
+| `trigger.boundary`  | string                | no       | Restrict to events emitted by this boundary.                                                                                                |
+| `trigger.intent`    | string                | no       | `creation`, `mutation`, or `query`.                                                                                                         |
+| `trigger.condition` | CEL boolean           | yes      | Evaluated against the emitted event context (`event.type`, `event.aggregateId`, `event.payload`).                                           |
+| `url`               | CEL string expression | yes      | Destination URL. Must be a CEL expression (wrap a literal in single quotes: `"'https://...'"`)                                              |
+| `secret`            | string                | no       | Shared secret for HMAC-SHA256 signing. When present, the POST carries `x-potemkin-signature: sha256=<hex>`.                                 |
+| `payload`           | `map<string, CEL>`    | no       | Template for the POST body. Each key's value is a CEL expression evaluated against event context. When absent, the full event is delivered. |
+| `retry.maxAttempts` | integer               | no       | Maximum delivery attempts on transient failures (default: 1).                                                                               |
+| `retry.delayMs`     | integer               | no       | Delay between retry attempts in milliseconds.                                                                                               |
 
 **Delivery pipeline:**
 
@@ -1639,7 +1699,7 @@ webhooks:
 
 Webhooks fire **after** the primary Unit of Work commits. The `X-Potemkin-Skip-Webhooks: true` request header suppresses all webhook dispatch for a single request.
 
-See: [`tests/fixtures/webhook-hmac/dsl/global.yaml`](../tests/fixtures/webhook-hmac/dsl/global.yaml), [`tests/e2e/64-webhook-hmac.e2e-test.ts`](../tests/e2e/64-webhook-hmac.e2e-test.ts)
+See: [`tests/fixtures/webhook-hmac/dsl/global.yaml`](../tests/fixtures/webhook-hmac/dsl/global.yaml), [`tests/e2e/webhook-hmac.e2e-test.ts`](../tests/e2e/webhook-hmac.e2e-test.ts)
 
 ---
 
@@ -1651,80 +1711,86 @@ All constants live in `src/http/potemkinHeaders.ts`.
 
 #### Chaos and fault headers
 
-| Header | Value | Default effect |
-|--------|-------|----------------|
-| `x-potemkin-use-fault` | `<rule-name>` | Invoke the named YAML fault rule verbatim (highest precedence). |
-| `x-potemkin-force-status` | `<100..599>` | Short-circuit with the given HTTP status and a generic `FORCED_STATUS` body. |
-| `x-potemkin-error-class` | `timeout\|throttle\|outage\|bad_gateway\|conflict\|auth\|forbidden` | Map to canonical HTTP status (504/429/503/502/409/401/403) with a standard error body. |
-| `x-potemkin-force-latency` | `<int ms>` | Add a fixed delay before the response. Additive with `latency:`. |
-| `x-potemkin-slow-response` | `<int ms>` | Synonym for `x-potemkin-force-latency`. |
-| `x-potemkin-jitter` | `<max>` or `<min>:<max>` | Add uniform-random jitter in the given range. |
-| `x-potemkin-drop-connection` | `<int ms>` | Sleep then close the socket; no response body. |
-| `x-potemkin-success-rate` | `<0..1>` or `<0..100>` | Probabilistic gate: fails with 503 when `random() >= rate`. |
-| `x-potemkin-retry-after` | `<int seconds>` | Attach `Retry-After:` to any chaos response. |
-| `x-potemkin-body-truncate` | `<int bytes>` | Serialise the normal body then slice to N bytes (network shaping). |
+| Header                       | Value                                                               | Default effect                                                                         |
+| ---------------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `x-potemkin-use-fault`       | `<rule-name>`                                                       | Invoke the named YAML fault rule verbatim (highest precedence).                        |
+| `x-potemkin-force-status`    | `<100..599>`                                                        | Short-circuit with the given HTTP status and a generic `FORCED_STATUS` body.           |
+| `x-potemkin-error-class`     | `timeout\|throttle\|outage\|bad_gateway\|conflict\|auth\|forbidden` | Map to canonical HTTP status (504/429/503/502/409/401/403) with a standard error body. |
+| `x-potemkin-force-latency`   | `<int ms>`                                                          | Add a fixed delay before the response. Additive with `latency:`.                       |
+| `x-potemkin-slow-response`   | `<int ms>`                                                          | Synonym for `x-potemkin-force-latency`.                                                |
+| `x-potemkin-jitter`          | `<max>` or `<min>:<max>`                                            | Add uniform-random jitter in the given range.                                          |
+| `x-potemkin-drop-connection` | `<int ms>`                                                          | Sleep then close the socket; no response body.                                         |
+| `x-potemkin-success-rate`    | `<0..1>` or `<0..100>`                                              | Probabilistic gate: fails with 503 when `random() >= rate`.                            |
+| `x-potemkin-retry-after`     | `<int seconds>`                                                     | Attach `Retry-After:` to any chaos response.                                           |
+| `x-potemkin-body-truncate`   | `<int bytes>`                                                       | Serialise the normal body then slice to N bytes (network shaping).                     |
 
 Chaos header precedence (highest first): `use-fault` → `force-status` → `error-class` → `drop-connection` → `success-rate`. Latency headers stack additively. `body-truncate` and `retry-after` are applied to whichever response wins.
 
+Request-driven delay values are finite and non-negative. Force-latency,
+slow-response, drop-connection, and each jitter bound are limited to 30,000 ms;
+the combined fixed latency is capped at that value. Malformed, reversed, or
+over-limit delay values are ignored.
+
 #### Tier 1 — Test transparency
 
-| Header | Effect |
-|--------|--------|
-| `x-potemkin-dry-run: true` | Execute the full UoW but do not commit events. Response carries `X-Potemkin-Dry-Run: true`. |
-| `x-potemkin-include-events: true` | Append `_events: [...]` to the response body showing events produced. |
-| `x-potemkin-echo: true` | Append `_debug: { boundary, intent, targetId, dryRun, method, path }` to the response. |
-| `x-potemkin-seed: <int>` | Deterministic seed for `$fake()` / `$uuidv7()` in this request. |
-| `x-potemkin-clock-offset: <ms>` | Per-request `$now()` offset (signed ms). Additive to the admin clock. |
+| Header                            | Effect                                                                                      |
+| --------------------------------- | ------------------------------------------------------------------------------------------- |
+| `x-potemkin-dry-run: true`        | Execute the full UoW but do not commit events. Response carries `X-Potemkin-Dry-Run: true`. |
+| `x-potemkin-include-events: true` | Append `_events: [...]` to the response body showing events produced.                       |
+| `x-potemkin-echo: true`           | Append `_debug: { boundary, intent, targetId, dryRun, method, path }` to the response.      |
+| `x-potemkin-seed: <int>`          | Deterministic seed for `$fake()` / `$uuidv7()` in this request.                             |
+| `x-potemkin-clock-offset: <ms>`   | Per-request `$now()` offset (signed ms). Additive to the admin clock.                       |
 
 #### Tier 2 — Side-effect control
 
-| Header | Effect |
-|--------|--------|
-| `x-potemkin-skip-sagas: true` | Commit primary events but skip saga triggers. |
-| `x-potemkin-skip-webhooks: true` | Commit primary events but skip outbound webhook dispatch. |
-| `x-potemkin-skip-projections: true` | Commit events but skip derived projection application. |
-| `x-potemkin-skip-dispatch: true` | Block secondary command cascading (depth-0 only). Also bypasses `fault_rules:` injection. |
-| `x-potemkin-max-cascade-depth: <n>` | Override UoW max cascade depth for this request. |
-| `x-potemkin-bulk-transactional: true` | Make an array-body request all-or-nothing (atomic batch). |
+| Header                                | Effect                                                                                    |
+| ------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `x-potemkin-skip-sagas: true`         | Commit primary events but skip saga triggers.                                             |
+| `x-potemkin-skip-webhooks: true`      | Commit primary events but skip outbound webhook dispatch.                                 |
+| `x-potemkin-skip-projections: true`   | Commit events but skip derived projection application.                                    |
+| `x-potemkin-skip-reactions: true`     | Commit events but skip reaction subscribers.                                              |
+| `x-potemkin-skip-dispatch: true`      | Block secondary command cascading (depth-0 only). Also bypasses `fault_rules:` injection. |
+| `x-potemkin-max-cascade-depth: <n>`   | Override UoW max cascade depth for this request.                                          |
+| `x-potemkin-bulk-transactional: true` | Make an array-body request all-or-nothing (atomic batch).                                 |
 
 #### Tier 3 — Identity override (admin-gated)
 
-| Header | Effect |
-|--------|--------|
+| Header                                     | Effect                                                                               |
+| ------------------------------------------ | ------------------------------------------------------------------------------------ |
 | `x-potemkin-actor: <id>:<scope1>,<scope2>` | Override actor identity for this request. Requires the caller to hold `admin` scope. |
-| `x-potemkin-impersonate: <id>:<scopes>` | Run as another actor; logs both original and impersonated actors. Admin-gated. |
-| `x-potemkin-caused-by: <eventId>` | Set the `causedBy` field on emitted events. |
+| `x-potemkin-impersonate: <id>:<scopes>`    | Run as another actor; logs both original and impersonated actors. Admin-gated.       |
+| `x-potemkin-caused-by: <eventId>`          | Set the `causedBy` field on emitted events.                                          |
 
 #### Tier 4 — Event-sourcing time travel
 
-| Header | Effect |
-|--------|--------|
-| `x-potemkin-read-at-version: <n>` | Query the entity's state as of sequence version `n`. |
-| `x-potemkin-replay-event: <eventId>` | Re-emit a historic event by ID. |
+| Header                               | Effect                                               |
+| ------------------------------------ | ---------------------------------------------------- |
+| `x-potemkin-read-at-version: <n>`    | Query the entity's state as of sequence version `n`. |
+| `x-potemkin-replay-event: <eventId>` | Re-emit a historic event by ID.                      |
 
 #### Tier 5 — Response format control
 
-| Header | Values | Effect |
-|--------|--------|--------|
-| `x-potemkin-response-format` | `hal` \| `jsonapi` \| `plain` | Reshape response body to HAL+JSON, JSON:API, or plain (default). |
-| `x-potemkin-pagination-style` | `envelope` \| `raw` \| `link-header` | Override collection response shape (see §18.8). |
-| `x-potemkin-mask` | comma-separated field names | Replace named fields with `"[MASKED]"` sentinel in the response body. |
+| Header                        | Values                               | Effect                                                                |
+| ----------------------------- | ------------------------------------ | --------------------------------------------------------------------- |
+| `x-potemkin-response-format`  | `hal` \| `jsonapi` \| `plain`        | Reshape response body to HAL+JSON, JSON:API, or plain (default).      |
+| `x-potemkin-pagination-style` | `envelope` \| `raw` \| `link-header` | Override collection response shape (see §18.8).                       |
+| `x-potemkin-mask`             | comma-separated field names          | Replace named fields with `"[MASKED]"` sentinel in the response body. |
 
 #### Tier 6 — Observability injection
 
-| Header | Effect |
-|--------|--------|
-| `x-potemkin-trace-id: <id>` | Echo the supplied trace ID in the response header `X-Potemkin-Trace-Id`. |
-| `x-potemkin-span-name: <name>` | Name the `http.request` OTel span; echoed in `X-Potemkin-Span-Name`. |
-| `x-potemkin-log-level: debug\|info\|warn\|error` | Per-request log level. |
-| `x-potemkin-metric-tag: <key>=<value>` | Attach a custom tag to metrics emitted by this request. |
+| Header                                           | Effect                                                                   |
+| ------------------------------------------------ | ------------------------------------------------------------------------ |
+| `x-potemkin-trace-id: <id>`                      | Echo the supplied trace ID in the response header `X-Potemkin-Trace-Id`. |
+| `x-potemkin-span-name: <name>`                   | Name the `http.request` OTel span; echoed in `X-Potemkin-Span-Name`.     |
+| `x-potemkin-log-level: debug\|info\|warn\|error` | Per-request log level.                                                   |
+| `x-potemkin-metric-tag: <key>=<value>`           | Attach a custom tag to metrics emitted by this request.                  |
 
 #### Tier 7 — Validation control (admin-gated)
 
-| Header | Effect |
-|--------|--------|
-| `x-potemkin-skip-request-validation: true` | Skip OpenAPI request validation. Admin-gated. |
-| `x-potemkin-skip-response-validation: true` | Skip OpenAPI response validation. Admin-gated. |
+| Header                                         | Effect                                                             |
+| ---------------------------------------------- | ------------------------------------------------------------------ |
+| `x-potemkin-skip-request-validation: true`     | Skip OpenAPI request validation. Admin-gated.                      |
+| `x-potemkin-skip-response-validation: true`    | Skip OpenAPI response validation. Admin-gated.                     |
 | `x-potemkin-allow-additional-properties: true` | Relax `additionalProperties: false` for this request. Admin-gated. |
 
 **`potemkin:` convenience block** — in `fault_rules[].match`, the shorthand `potemkin:` block expands alias names to the full `X-Potemkin-*` header names. The full alias table is in `src/http/potemkinHeaders.ts` (`POTEMKIN_SIGNAL_ALIASES`).
@@ -1741,7 +1807,7 @@ fault_rules:
       status: 429
 ```
 
-See: [`tests/e2e/46-chaos-headers.e2e-test.ts`](../tests/e2e/46-chaos-headers.e2e-test.ts), [`tests/e2e/48-control-headers.e2e-test.ts`](../tests/e2e/48-control-headers.e2e-test.ts)
+See: [`tests/e2e/chaos-headers.e2e-test.ts`](../tests/e2e/chaos-headers.e2e-test.ts), [`tests/e2e/control-headers.e2e-test.ts`](../tests/e2e/control-headers.e2e-test.ts)
 
 ### Admin surface access model
 
@@ -1757,7 +1823,7 @@ Set `ADMIN_TOKEN` in any environment reachable from an untrusted network. All ad
 
 `reactions` is an array that may appear in any boundary file (or in the global config). Each entry declares that a boundary subscribes to another boundary's committed-to-shadow event and emits its own event inside the **same Unit of Work** — atomically, with no coupling to the source boundary.
 
-This is the write-side analogue of `derived_projections` (§9): where derived projections subscribe to events and build a read model, reactions subscribe to events and mutate write state. The canonical worked example is [`tests/e2e/66-reactions-fanout.e2e-test.ts`](../tests/e2e/66-reactions-fanout.e2e-test.ts).
+This is the write-side analogue of `derived_projections` (§9): where derived projections subscribe to events and build a read model, reactions subscribe to events and mutate write state. The canonical worked example is [`tests/e2e/reactions-fanout.e2e-test.ts`](../tests/e2e/reactions-fanout.e2e-test.ts).
 
 ### Grammar
 
@@ -1774,16 +1840,16 @@ reactions:
       leadId: "event.aggregateId"
 ```
 
-| Field | Required | Meaning |
-|-------|----------|---------|
-| `on` | yes | Trigger subscription: `Boundary:EventType` or bare `EventType` (matches any boundary). |
-| `emit` | yes | Event type to emit, resolved against the reacting boundary's `event_catalog`. |
-| `target` | yes (mutation) | CEL expression resolving to the aggregate id the emitted event applies to. For `creation`, may be omitted — the reacting boundary's `identity.creation.generate` is used instead. |
-| `boundary` | no | Reacting boundary name. Defaults to the boundary of the file the reaction is declared in. Required when the reaction is declared in the global config. |
-| `name` | no | Human-readable label used in trace logs and error messages. |
-| `when` | no | CEL gate; the reaction fires only when this expression evaluates to `true`. Omitting it is equivalent to `"true"`. |
-| `intent` | no | `mutation` (default) or `creation`. |
-| `payload` | no | Map of field names to CEL expressions, merged over the emitted event's `payload_template`. Each value is a CEL expression. |
+| Field      | Required       | Meaning                                                                                                                                                                           |
+| ---------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `on`       | yes            | Trigger subscription: `Boundary:EventType` or bare `EventType` (matches any boundary).                                                                                            |
+| `emit`     | yes            | Event type to emit, resolved against the reacting boundary's `event_catalog`.                                                                                                     |
+| `target`   | yes (mutation) | CEL expression resolving to the aggregate id the emitted event applies to. For `creation`, may be omitted — the reacting boundary's `identity.creation.generate` is used instead. |
+| `boundary` | no             | Reacting boundary name. Defaults to the boundary of the file the reaction is declared in. Required when the reaction is declared in the global config.                            |
+| `name`     | no             | Human-readable label used in trace logs and error messages.                                                                                                                       |
+| `when`     | no             | CEL gate; the reaction fires only when this expression evaluates to `true`. Omitting it is equivalent to `"true"`.                                                                |
+| `intent`   | no             | `mutation` (default) or `creation`.                                                                                                                                               |
+| `payload`  | no             | Map of field names to CEL expressions, merged over the emitted event's `payload_template`. Each value is a CEL expression.                                                        |
 
 A reaction requires **no behaviour** on the reacting boundary — only the event in its `event_catalog` and a reducer for it.
 
@@ -1801,10 +1867,10 @@ Reactions fire inside the running Unit of Work, not after commit:
 
 The `when`, `target`, and `payload` expressions evaluate against the trigger event context:
 
-| Variable | Description |
-|----------|-------------|
-| `event` | The trigger domain event (`type`, `aggregateId`, `payload`, `sequenceVersion`, `boundary`) |
-| `payload` | Alias for `event.payload` |
+| Variable  | Description                                                                                |
+| --------- | ------------------------------------------------------------------------------------------ |
+| `event`   | The trigger domain event (`type`, `aggregateId`, `payload`, `sequenceVersion`, `boundary`) |
+| `payload` | Alias for `event.payload`                                                                  |
 
 The emitted event's `payload_template` hydrates in the EventHydration phase — `$uuidv7()` and `$now()` are permitted there. In addition to `event` and `payload`, the `payload_template` context also exposes `state`, the current shadow-graph state of the reacting aggregate (the target identified by `target`), so a hydrated field may reference existing state on that aggregate. The reducer-phase ban on non-deterministic functions is preserved for reactions' reducers.
 
@@ -1829,8 +1895,10 @@ This ordering is deterministic so that event-log replay reproduces identical sta
 ### Boot-time errors
 
 | Code | Cause |
-|------|-------|
-| `BOOT_ERR_DSL_SYNTAX` | YAML parse failure, invalid field type, malformed CEL expression in `when`/`target`/`payload`, or `ts:` script sentinel in a reaction CEL field |
+| ---- | ----- |
+
+    | `BOOT_ERR_DSL_SYNTAX`    | YAML parse failure, invalid field type, or malformed CEL expression in `when`/`target`/`payload`                            |
+
 | `BOOT_ERR_DSL_REFERENCE` | `emit` references an event type not in the reacting boundary's `event_catalog`, or `boundary` names an unknown boundary, or `on` references a boundary that does not exist |
 
 ### Example: three-boundary fan-out
@@ -1866,15 +1934,15 @@ reactions:
 
 One `POST /orders` emits `OrderPlaced` once; Inventory, Notification, and Audit each receive their events in the same atomic commit. The Order boundary has no `reactions` key and no knowledge of its subscribers.
 
-See [`tests/e2e/66-reactions-fanout.e2e-test.ts`](../tests/e2e/66-reactions-fanout.e2e-test.ts) for a nine-boundary variant that includes a six-hop chain (deeper than the `dispatch_commands` depth limit).
+See [`tests/e2e/reactions-fanout.e2e-test.ts`](../tests/e2e/reactions-fanout.e2e-test.ts) for a nine-boundary variant that includes a six-hop chain (deeper than the `dispatch_commands` depth limit).
 
 ---
 
 ## 20. Cross-file composition
 
-Cross-file composition lets you define an entity once as a *component* and activate it as any number of concrete live boundaries from a separate mapping file — each with its own path, name, and parameters. Fragment components let you share a slice of an event catalog and its reducers across boundaries without repeating the definition.
+Cross-file composition lets you define an entity once as a _component_ and activate it as any number of concrete live boundaries from a separate mapping file — each with its own path, name, and parameters. Fragment components let you share a slice of an event catalog and its reducers across boundaries without repeating the definition.
 
-The canonical worked example is [`tests/e2e/68-composition.e2e-test.ts`](../tests/e2e/68-composition.e2e-test.ts).
+The canonical worked example is [`tests/e2e/composition.e2e-test.ts`](../tests/e2e/composition.e2e-test.ts).
 
 ---
 
@@ -1901,9 +1969,9 @@ identity:
 event_catalog:
   - type: DocumentCreated
     payload_template:
-      id:     "command.targetId"
+      id: "command.targetId"
       status: "'{{initialStatus}}'"
-      title:  "command.payload.title"
+      title: "command.payload.title"
 
 behaviors:
   - name: create-document
@@ -1922,18 +1990,18 @@ reducers:
 
 Top-level keys allowed on a component:
 
-| Key | Description |
-|-----|-------------|
-| `kind` | Must be `component`. |
-| `name` | Logical component name, unique across the catalog. |
-| `parameters` | Named parameter declarations (see [§20.2](#202-parameters)). |
-| `event_catalog` | Reusable event type definitions (same shape as a boundary's `event_catalog`). |
-| `reducers` | Reusable reducer rules. |
-| `behaviors` | Reusable behavior rules. |
-| `identity` | Optional identity config merged into the concrete boundary at link time. |
-| `state` | Optional declared state schema merged at link time. |
-| `reactions` | Optional choreography reactions declared inside the component (boundary-name references are rewritten at link time — see [§20.5](#205-reference-rewriting)). |
-| `include` | Fragment inclusions resolved at link time (see [§20.4](#204-include-fragment-merge)). |
+| Key             | Description                                                                                                                                                  |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `kind`          | Must be `component`.                                                                                                                                         |
+| `name`          | Logical component name, unique across the catalog.                                                                                                           |
+| `parameters`    | Named parameter declarations (see [§20.2](#202-parameters)).                                                                                                 |
+| `event_catalog` | Reusable event type definitions (same shape as a boundary's `event_catalog`).                                                                                |
+| `reducers`      | Reusable reducer rules.                                                                                                                                      |
+| `behaviors`     | Reusable behavior rules.                                                                                                                                     |
+| `identity`      | Optional identity config merged into the concrete boundary at link time.                                                                                     |
+| `state`         | Optional declared state schema merged at link time.                                                                                                          |
+| `reactions`     | Optional choreography reactions declared inside the component (boundary-name references are rewritten at link time — see [§20.5](#205-reference-rewriting)). |
+| `include`       | Fragment inclusions resolved at link time (see [§20.4](#204-include-fragment-merge)).                                                                        |
 
 A component file is not validated against an OpenAPI contract (it has no `contract_path`), so there is no `BOOT_ERR_DSL_REFERENCE` for unknown operationIds during Phase 1. Validation against the contract happens in Phase 3 on the linked concrete boundaries.
 
@@ -1956,16 +2024,16 @@ parameters:
     default: false
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `type` | `string` \| `number` \| `boolean` | Declared substitution type. The supplied value is type-checked at link time. |
-| `default` | string / number / boolean | Value used when the caller omits the parameter. If both `default` and `required: true` are given the default supplies the value, so the requirement never triggers — prefer one or the other. |
-| `required` | boolean | When `true`, callers must supply a value. Boot fails with `BOOT_ERR_DSL_SYNTAX` if absent. |
+| Field      | Type                              | Description                                                                                                                                                                                   |
+| ---------- | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `type`     | `string` \| `number` \| `boolean` | Declared substitution type. The supplied value is type-checked at link time.                                                                                                                  |
+| `default`  | string / number / boolean         | Value used when the caller omits the parameter. If both `default` and `required: true` are given the default supplies the value, so the requirement never triggers — prefer one or the other. |
+| `required` | boolean                           | When `true`, callers must supply a value. Boot fails with `BOOT_ERR_DSL_SYNTAX` if absent.                                                                                                    |
 
 **`{{name}}` substitution rules:**
 
-- A string that is *exactly* `{{name}}` (nothing else) substitutes to the native typed value (string, number, or boolean). This preserves the type in numeric patch `value` fields.
-- A `{{name}}` token *embedded* inside a larger string is always coerced to a string via `String()` — e.g. `"status-{{suffix}}"`.
+- A string that is _exactly_ `{{name}}` (nothing else) substitutes to the native typed value (string, number, or boolean). This preserves the type in numeric patch `value` fields.
+- A `{{name}}` token _embedded_ inside a larger string is always coerced to a string via `String()` — e.g. `"status-{{suffix}}"`.
 - CEL `${...}` expressions are passed through byte-for-byte; `{{...}}` inside a CEL span is never matched.
 - An unknown `{{token}}` (no declared parameter with that name) throws `BOOT_ERR_DSL_SYNTAX`.
 - Passing an argument name that is not declared in `parameters:` also throws `BOOT_ERR_DSL_SYNTAX`.
@@ -1999,13 +2067,13 @@ use:
 
 Each entry produces one concrete `BoundaryConfig` (name = `as`, path = `contract_path`). Multiple `use:` entries referencing the same component each produce a **distinct** concrete boundary — different `as`/`contract_path` is what makes them distinct.
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `component` | yes | Name of the component to instantiate (must exist in the catalog). |
-| `as` | yes | Concrete boundary name the instantiated boundary will carry. |
-| `contract_path` | yes | OpenAPI route path for the concrete boundary (e.g. `/documents`). |
-| `with` | no | Parameter bindings — key/value pairs passed to the component at link time. |
-| `bind` | no | Maps component-local sibling alias names to concrete boundary names (see [§20.5](#205-reference-rewriting)). |
+| Field           | Required | Description                                                                                                  |
+| --------------- | -------- | ------------------------------------------------------------------------------------------------------------ |
+| `component`     | yes      | Name of the component to instantiate (must exist in the catalog).                                            |
+| `as`            | yes      | Concrete boundary name the instantiated boundary will carry.                                                 |
+| `contract_path` | yes      | OpenAPI route path for the concrete boundary (e.g. `/documents`).                                            |
+| `with`          | no       | Parameter bindings — key/value pairs passed to the component at link time.                                   |
+| `bind`          | no       | Maps component-local sibling alias names to concrete boundary names (see [§20.5](#205-reference-rewriting)). |
 
 Two `use:` entries that produce the same `as` name or the same `contract_path` halt boot with `BOOT_ERR_DSL_DUPLICATE_BOUNDARY`. The same error fires when a `use:` entry collides with a file boundary that was already registered.
 
@@ -2043,10 +2111,10 @@ event_catalog:
 - **Clash between two included fragments** — if two included components contribute the same event `type` or behavior `name` and neither is locally overridden, boot fails with `BOOT_ERR_DSL_SYNTAX` naming both sources.
 - **Reducer `on` is not a unique key** — multiple included reducers with the same `on` value all coexist and all run when the event fires. No clash error is raised for `on` collisions.
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `component` | yes | Name of the component whose fragments are merged in. |
-| `with` | no | Parameter bindings applied to the included component before merging. |
+| Field       | Required | Description                                                          |
+| ----------- | -------- | -------------------------------------------------------------------- |
+| `component` | yes      | Name of the component whose fragments are merged in.                 |
+| `with`      | no       | Parameter bindings applied to the included component before merging. |
 
 ---
 
@@ -2064,11 +2132,11 @@ Components refer to boundary names that exist only after instantiation. The link
 
 Reference positions rewritten:
 
-| Position | Notes |
-|----------|-------|
-| `reactions[].boundary` | The reacting boundary — typically the component self-name. |
-| `reactions[].on` | The `Boundary:` prefix of a qualified trigger; bare `EventType` triggers are left unchanged. |
-| `behaviors[].dispatch_commands[].boundary` | The target boundary of a secondary command. |
+| Position                                   | Notes                                                                                        |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| `reactions[].boundary`                     | The reacting boundary — typically the component self-name.                                   |
+| `reactions[].on`                           | The `Boundary:` prefix of a qualified trigger; bare `EventType` triggers are left unchanged. |
+| `behaviors[].dispatch_commands[].boundary` | The target boundary of a secondary command.                                                  |
 
 Example from the composition fixture:
 
@@ -2082,6 +2150,7 @@ reactions:
 ```
 
 When instantiated with `as: Document` and `bind: { Notifier: Notification }`:
+
 - `on: "DocumentEntity:DocumentCreated"` rewrites to `"Document:DocumentCreated"` (self rewrite).
 - `boundary: Notifier` rewrites to `Notification` (sibling rewrite from `bind`).
 
@@ -2096,6 +2165,7 @@ Boot-time validation runs in three phases:
 **Phase 1 — per-file (partial).** Each file is classified as a live boundary, a component, or a use-mapping module. Component files are validated for shape and intra-component references (event catalog entries resolve within their own catalog, reducer `on` values resolve to events in the same catalog, `parameters:` is well-formed). No `contract_path`↔OpenAPI binding or cross-component reference checks run here. A component without `contract_path` is valid at this phase.
 
 **Phase 2 — linking.** The linker resolves `use:` and `include:` entries, type-checks and substitutes parameters, rewrites self/sibling references, merges fragments, and emits the flat set of concrete `BoundaryConfig` objects. Errors detected here:
+
 - Unknown component name in `use:` or `include:`.
 - Missing required parameter.
 - Parameter type mismatch.
@@ -2111,8 +2181,8 @@ Boot-time validation runs in three phases:
 
 ### 20.7 Error codes
 
-| Code | Cause |
-|------|-------|
-| `BOOT_ERR_DSL_SYNTAX` | YAML parse failure; unknown `{{token}}`; unknown argument name in `with:`; missing required parameter; parameter type mismatch; `bind` alias shadows component self-name; `include:` clash between two included fragments on the same event type or behavior name. |
-| `BOOT_ERR_DSL_REFERENCE` | `use:` or `include:` references an unknown component name; an unbound sibling alias appears in a boundary reference position and is not listed in `bind:`. |
-| `BOOT_ERR_DSL_DUPLICATE_BOUNDARY` | Two `use:` entries (or a `use:` entry and a file boundary) produce the same concrete boundary name or the same `contract_path`. |
+| Code                              | Cause                                                                                                                                                                                                                                                              |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `BOOT_ERR_DSL_SYNTAX`             | YAML parse failure; unknown `{{token}}`; unknown argument name in `with:`; missing required parameter; parameter type mismatch; `bind` alias shadows component self-name; `include:` clash between two included fragments on the same event type or behavior name. |
+| `BOOT_ERR_DSL_REFERENCE`          | `use:` or `include:` references an unknown component name; an unbound sibling alias appears in a boundary reference position and is not listed in `bind:`.                                                                                                         |
+| `BOOT_ERR_DSL_DUPLICATE_BOUNDARY` | Two `use:` entries (or a `use:` entry and a file boundary) produce the same concrete boundary name or the same `contract_path`.                                                                                                                                    |

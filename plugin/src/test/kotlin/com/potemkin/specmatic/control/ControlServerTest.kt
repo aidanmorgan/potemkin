@@ -128,6 +128,30 @@ class ControlServerTest {
         assertEquals(1, spy.markUpCalled)
     }
 
+    @Test
+    fun `POST ready waits for the injected fixture refresh to complete`() {
+        val spy = SpyHealthMonitor()
+        var refreshCalls = 0
+
+        testApplication {
+            application {
+                configure(
+                    spy,
+                    null,
+                    { refreshCalls++ },
+                    org.slf4j.LoggerFactory.getLogger("test"),
+                )
+            }
+            val response = client.post("/_potemkin/ready") {
+                contentType(ContentType.Application.Json)
+                setBody("{}")
+            }
+            assertEquals(HttpStatusCode.NoContent, response.status)
+        }
+
+        assertEquals(1, refreshCalls)
+    }
+
     // ---- GET /health --------------------------------------------------------------------
 
     @Test

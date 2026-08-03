@@ -1,0 +1,18 @@
+{
+  "http-request": {
+    "method": "GET",
+    "path": "/v1/payment_intents"
+  },
+  "http-response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "body": {
+      "object": "list",
+      "url": "/v1/payment_intents",
+      "has_more": false,
+      "data": []
+    }
+  }
+}

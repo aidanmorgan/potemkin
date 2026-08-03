@@ -56,5 +56,4 @@ reducers:
         path: /members
         value: "${[]}"
 
-
 initialization: []

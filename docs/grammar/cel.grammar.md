@@ -51,12 +51,12 @@ terminated by an end-of-input marker `$`.
 
 A `-` is lexed as part of a NUMBER lexeme **only when the character immediately
 following the `-` is a digit**. Otherwise `-` is the operator token `-`. This
-exactly reproduces the legacy tokenizer:
+exactly reproduces the tokenizer used by the current parser:
 
-- `-42`   → one NUMBER token `-42`
-- `1 - 2` → NUMBER `1`, op `-`, NUMBER `2`   (space after `-`)
-- `a -2`  → IDENT `a`, NUMBER `-2`            (digit immediately after `-`)
-- `-`     → op `-`                            (nothing follows)
+- `-42` → one NUMBER token `-42`
+- `1 - 2` → NUMBER `1`, op `-`, NUMBER `2` (space after `-`)
+- `a -2` → IDENT `a`, NUMBER `-2` (digit immediately after `-`)
+- `-` → op `-` (nothing follows)
 
 This is a lexer-level rule, so the grammar never sees a unary-minus-on-literal
 ambiguity for the common `-42` case; `-x` and `-(…)` still go through the unary
@@ -131,14 +131,14 @@ Entry       → Expr ':' Expr
 ```
 
 `'in'` shares the precedence/level of the relational/equality operators (this
-matches the legacy cascade where `in` sat just below equality and was
+matches the parser cascade where `in` sat just below equality and was
 left-associative). All comparison/equality/in operators are left-associative and
 share one level, so `5 > 3 == true` parses as `(5 > 3) == true`.
 
 ### 2.2 Method calls, comprehensions, member access
 
 `Postfix '.' IDENT '(' Args ')'` is reduced to one of three AST shapes by the
-reduce action, exactly as the legacy parser decided at parse time:
+reduce action, exactly as the parser decides at parse time:
 
 - IDENT ∈ {`all`,`exists`,`exists_one`,`filter`,`map`} → `comprehension`
   (its `Args` must be `IDENT , Expr`; otherwise a parse error is raised).
@@ -146,10 +146,10 @@ reduce action, exactly as the legacy parser decided at parse time:
 - otherwise → `member` on the result of the call's parenthesised form is **not**
   produced; an unknown `name(...)` after a `.` is still built as a `method`
   node so the evaluator can raise its existing "unknown … method" runtime error.
-  (The legacy parser only built a `method` node for known method names and would
+  (The parser only builds a `method` node for known method names and would
   otherwise treat `.name` as member access; to preserve identical evaluator
   errors the reduce action mirrors that decision: a `(` after `.IDENT` with an
-  unknown method name is a parse error, matching the legacy "unexpected token"
+  unknown method name is a parse error, matching the "unexpected token"
   behaviour for that shape.)
 
 `has(Expr)` is an ordinary `IDENT '(' Args ')'` call node at parse time; the
@@ -181,10 +181,10 @@ Part       → TEXT                       ; literal text
            | ESCAPED                    ; $${ body }      → literal "${body}"
 ```
 
-Evaluation (identical to legacy `planDslValue` semantics):
+Evaluation (identical to the current `planDslValue` semantics):
 
 - No `${` and no `$${` in the string → the **whole string** is treated as a bare
-  CEL expression and evaluated (backward compatibility).
+  CEL expression and evaluated.
 - Exactly one `EXPR` part and nothing else → evaluate it and **preserve the CEL
   return type** (number stays number, etc.).
 - All parts are TEXT/ESCAPED (no EXPR) → concatenate into a literal string.
@@ -197,15 +197,15 @@ The CEL source inside an `EXPR` part is handed to the CEL parser of §2.
 
 ## 4. Files
 
-| File | Role |
-| --- | --- |
-| `docs/grammar/cel.grammar.md` | this document (the formal grammar) |
-| `src/cel/grammar/lexer.ts` | CEL lexer (positioned tokens) |
-| `src/cel/grammar/grammar.ts` | machine-readable grammar + precedence |
-| `src/cel/grammar/lalr.ts` | LALR(1) table generator (dev/codegen use) |
-| `scripts/gen-cel-tables.ts` | writes `tables.generated.ts` from the grammar |
-| `src/cel/grammar/tables.generated.ts` | committed ACTION/GOTO tables |
-| `src/cel/grammar/parser.ts` | table-driven LR driver → typed AST |
-| `src/cel/grammar/ast.ts` | typed AST node definitions |
-| `src/cel/grammar/templateLexer.ts` | DSL `${}` template lexer |
-| `src/cel/grammar/template.ts` | DSL template parse → typed template AST |
+| File                                  | Role                                          |
+| ------------------------------------- | --------------------------------------------- |
+| `docs/grammar/cel.grammar.md`         | this document (the formal grammar)            |
+| `src/cel/grammar/lexer.ts`            | CEL lexer (positioned tokens)                 |
+| `src/cel/grammar/grammar.ts`          | machine-readable grammar + precedence         |
+| `src/cel/grammar/lalr.ts`             | LALR(1) table generator (dev/codegen use)     |
+| `scripts/gen-cel-tables.ts`           | writes `tables.generated.ts` from the grammar |
+| `src/cel/grammar/tables.generated.ts` | committed ACTION/GOTO tables                  |
+| `src/cel/grammar/parser.ts`           | table-driven LR driver → typed AST            |
+| `src/cel/grammar/ast.ts`              | typed AST node definitions                    |
+| `src/cel/grammar/templateLexer.ts`    | DSL `${}` template lexer                      |
+| `src/cel/grammar/template.ts`         | DSL template parse → typed template AST       |

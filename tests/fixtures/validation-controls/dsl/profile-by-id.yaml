@@ -1,0 +1,4 @@
+boundary: ProfileById
+contract_path: /profiles/{id}
+fallback_override: true
+schema: Profile

@@ -4,14 +4,13 @@
 # customer-by-id.yaml. Stripe ids are `cus_<token>`.
 resource: customer
 schema: customer
+response: stripeResponse
 
 identity:
   creation:
-    generate: "ts:customerId"
+    generate: "$concat('cus_', $uuidv7())"
 
 # Stripe-faithful response shaping (200-on-create, list envelope, deleted object).
-response: "ts:customerResponse"
-
 query_mapping:
   email: "state.email == param"
 
@@ -35,7 +34,7 @@ event_catalog:
     payload_template:
       id: "command.targetId"
       object: "'customer'"
-      created: "ts:unixNow"
+      created: "$unix()"
       livemode: "false"
       email: "has(command.payload.email) ? command.payload.email : null"
       name: "has(command.payload.name) ? command.payload.name : null"
@@ -59,7 +58,7 @@ event_catalog:
   # so the event carries only an audit timestamp and the reducer is a no-op.
   - type: CustomerDeleted
     payload_template:
-      deletedAt: "ts:unixNow"
+      deletedAt: "$unix()"
 
 reducers:
   # The create event carries the full object, so replace state wholesale.
@@ -73,9 +72,10 @@ reducers:
       - { op: replace, path: /phone, value: "${event.payload.phone}" }
       - { op: replace, path: /balance, value: "${event.payload.balance}" }
       - { op: replace, path: /metadata, value: "${event.payload.metadata}" }
-  # No CustomerDeleted reducer: the engine's own _deleted soft-delete marker
-  # (attached on DELETE) removes the entity from listings, and the deleted-object
-  # response is synthesized by the response transform — there is no state field to patch.
+  - on: CustomerDeleted
+    patches:
+      - { op: replace, path: /_deleted, value: "${true}" }
+      - { op: replace, path: /_deletedAt, value: "${event.payload.deletedAt}" }
 
 operations:
   - { op: PostCustomers, emit: CustomerCreated }

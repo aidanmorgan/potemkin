@@ -1,0 +1,16 @@
+version: 1
+specmatic: ./specmatic.yaml
+openapi:
+  - openapi/*.yaml
+modules:
+  - yaml/marker.yaml
+  - yaml/record-by-id.yaml
+  - yaml/side-receipt.yaml
+  - yaml/side-audit.yaml
+typescript:
+  scan:
+    - include:
+        - typescript/shared/**/*.ts
+        - typescript/mixed/**/*.ts
+      exclude:
+        - "**/*.d.ts"

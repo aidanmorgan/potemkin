@@ -156,6 +156,12 @@ paths:
                         type: boolean
                       nextCursor:
                         type: string
+        "400":
+          description: Invalid lead query parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
     post:
       operationId: createLead
       summary: Create a new lead
@@ -165,6 +171,7 @@ paths:
           required: false
           schema:
             type: string
+            pattern: "^0$"
         - name: Idempotency-Key
           in: header
           required: false
@@ -258,6 +265,7 @@ paths:
           required: false
           schema:
             type: string
+            pattern: "^[0-9]+$"
       requestBody:
         required: false
         content:
@@ -318,6 +326,7 @@ paths:
           required: false
           schema:
             type: string
+            pattern: "^[0-9]+$"
       requestBody:
         required: false
         content:
@@ -364,6 +373,7 @@ paths:
           required: false
           schema:
             type: string
+            pattern: "^[0-9]+$"
       requestBody:
         required: false
         content:
@@ -407,6 +417,7 @@ paths:
           required: false
           schema:
             type: string
+            pattern: "^[0-9]+$"
       requestBody:
         required: false
         content:
@@ -453,6 +464,7 @@ paths:
           required: false
           schema:
             type: string
+            pattern: "^[0-9]+$"
       requestBody:
         required: true
         content:
@@ -508,6 +520,7 @@ paths:
           required: false
           schema:
             type: string
+            pattern: "^[0-9]+$"
       requestBody:
         required: false
         content:
@@ -577,6 +590,12 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Campaign"
+        "400":
+          description: Invalid campaign query parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
     post:
       operationId: createCampaign
       summary: Create a new campaign
@@ -586,6 +605,7 @@ paths:
           required: false
           schema:
             type: string
+            pattern: "^0$"
       requestBody:
         required: true
         content:
@@ -676,6 +696,7 @@ paths:
           required: false
           schema:
             type: string
+            pattern: "^[0-9]+$"
       responses:
         "200":
           description: Campaign activated
@@ -712,6 +733,7 @@ paths:
           required: false
           schema:
             type: string
+            pattern: "^[0-9]+$"
       responses:
         "200":
           description: Campaign paused
@@ -748,6 +770,7 @@ paths:
           required: false
           schema:
             type: string
+            pattern: "^[0-9]+$"
       responses:
         "200":
           description: Campaign completed
@@ -795,6 +818,12 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Agent"
+        "400":
+          description: Invalid agent query parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
     post:
       operationId: createAgent
       summary: Create a new agent
@@ -804,6 +833,7 @@ paths:
           required: false
           schema:
             type: string
+            pattern: "^0$"
       requestBody:
         required: true
         content:
@@ -881,6 +911,7 @@ paths:
           required: false
           schema:
             type: string
+            pattern: "^[0-9]+$"
       requestBody:
         required: true
         content:
@@ -952,6 +983,12 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Call"
+        "400":
+          description: Invalid call query parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
     post:
       operationId: logCall
       summary: Log a completed call
@@ -961,6 +998,7 @@ paths:
           required: false
           schema:
             type: string
+            pattern: "^0$"
         - name: Idempotency-Key
           in: header
           required: false
@@ -976,7 +1014,8 @@ paths:
               required: [leadId, agentId, campaignId, outcome]
               properties:
                 leadId:
-                  type: [string, "null"]
+                  type: string
+                  nullable: true
                   format: uuid
                 agentId:
                   type: string
@@ -994,8 +1033,18 @@ paths:
                   type: integer
                   minimum: 0
                 outcome:
-                  type: [string, "null"]
-                  enum: [NO_ANSWER, CALLBACK_SCHEDULED, INTERESTED, NOT_INTERESTED, CONVERTED, DNC_REQUESTED, null]
+                  type: string
+                  nullable: true
+                  enum:
+                    [
+                      NO_ANSWER,
+                      CALLBACK_SCHEDULED,
+                      INTERESTED,
+                      NOT_INTERESTED,
+                      CONVERTED,
+                      DNC_REQUESTED,
+                      null,
+                    ]
                 notes:
                   type: string
                 recordingUrl:
@@ -1084,6 +1133,12 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Opportunity"
+        "400":
+          description: Invalid opportunity query parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
     post:
       operationId: createOpportunity
       summary: Create an opportunity
@@ -1116,6 +1171,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Opportunity"
+        "422":
+          description: Opportunity could not be created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /opportunities/{id}:
     get:
@@ -1158,6 +1219,7 @@ paths:
           required: false
           schema:
             type: string
+            pattern: "^[0-9]+$"
       requestBody:
         required: false
         content:
@@ -1206,6 +1268,7 @@ paths:
           required: false
           schema:
             type: string
+            pattern: "^[0-9]+$"
       requestBody:
         required: true
         content:
@@ -1577,7 +1640,8 @@ components:
           minimum: 0
         outcome:
           type: string
-          enum: [NO_ANSWER, CALLBACK_SCHEDULED, INTERESTED, NOT_INTERESTED, CONVERTED, DNC_REQUESTED]
+          enum:
+            [NO_ANSWER, CALLBACK_SCHEDULED, INTERESTED, NOT_INTERESTED, CONVERTED, DNC_REQUESTED]
         notes:
           type: string
         recordingUrl:
@@ -1820,3 +1884,19 @@ components:
         details:
           type: object
           additionalProperties: true
+          properties:
+            errors:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+                properties:
+                  params:
+                    type: object
+                    additionalProperties: true
+                    properties:
+                      allowedValues:
+                        type: array
+                        items:
+                          type: string
+                          nullable: true

@@ -1,49 +1,50 @@
-import { createContractValidator } from '../../../src/contract/validator';
-import { ContractViolationError, InternalExecutionError } from '../../../src/errors';
-import type { OpenApiDoc } from '../../../src/contract/loader';
+import { createContractValidator } from "../../../src/contract/validator";
+import { ContractViolationError, InternalExecutionError } from "../../../src/errors";
+import type { OpenApiDoc } from "../../../src/contract/loader";
 
-function makeDoc(overrides: Partial<OpenApiDoc['paths']> = {}, raw: object = {}): OpenApiDoc {
+function makeDoc(overrides: Partial<OpenApiDoc["paths"]> = {}, raw: object = {}): OpenApiDoc {
   return {
     raw,
     paths: {
-      '/loans': {
+      "/loans": {
         post: {
           requestBodySchema: {
-            type: 'object',
-            required: ['amount'],
+            type: "object",
+            required: ["amount"],
             properties: {
-              amount: { type: 'number' },
-              name: { type: 'string' },
+              amount: { type: "number" },
+              name: { type: "string" },
             },
             additionalProperties: false,
           },
           responseSchemas: {
-            '201': { type: 'object', properties: { id: { type: 'string' } } },
+            "201": { type: "object", properties: { id: { type: "string" } } },
           },
         },
         get: {
           parameters: [
-            { name: 'status', in: 'query', required: false, schema: { type: 'string' } },
-            { name: 'limit', in: 'query', required: false, schema: { type: 'integer' } },
+            { name: "status", in: "query", required: false, schema: { type: "string" } },
+            { name: "limit", in: "query", required: false, schema: { type: "integer" } },
           ],
           responseSchemas: {
-            '200': { type: 'array' },
+            "200": { type: "array" },
           },
         },
       },
-      '/loans/{id}': {
+      "/loans/{id}": {
         get: {
-          parameters: [
-            { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
-          ],
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
           responseSchemas: {
-            '200': { type: 'object', properties: { id: { type: 'string' }, amount: { type: 'number' } } },
+            "200": {
+              type: "object",
+              properties: { id: { type: "string" }, amount: { type: "number" } },
+            },
           },
         },
         patch: {
           requestBodySchema: {
-            type: 'object',
-            properties: { amount: { type: 'number' } },
+            type: "object",
+            properties: { amount: { type: "number" } },
           },
           responseSchemas: {},
         },
@@ -55,107 +56,160 @@ function makeDoc(overrides: Partial<OpenApiDoc['paths']> = {}, raw: object = {})
 
 const boundaries: any[] = [];
 
-describe('contract/validator', () => {
-  describe('validateRequest', () => {
-    it('passes when request body matches schema', () => {
+describe("contract/validator", () => {
+  describe("validateRequest", () => {
+    it("passes when request body matches schema", () => {
       const validator = createContractValidator(makeDoc(), boundaries);
       expect(() =>
-        validator.validateRequest('POST', '/loans', { amount: 100 }, {}, {}),
+        validator.validateRequest("POST", "/loans", { amount: 100 }, {}, {}),
       ).not.toThrow();
     });
 
-    it('throws ContractViolationError when required field is missing', () => {
+    it("throws ContractViolationError when required field is missing", () => {
+      const validator = createContractValidator(makeDoc(), boundaries);
+      expect(() => validator.validateRequest("POST", "/loans", {}, {}, {})).toThrow(
+        ContractViolationError,
+      );
+    });
+
+    it("throws ContractViolationError when additional property present (additionalProperties: false)", () => {
       const validator = createContractValidator(makeDoc(), boundaries);
       expect(() =>
-        validator.validateRequest('POST', '/loans', {}, {}, {}),
+        validator.validateRequest("POST", "/loans", { amount: 100, extra: "x" }, {}, {}),
       ).toThrow(ContractViolationError);
     });
 
-    it('throws ContractViolationError when additional property present (additionalProperties: false)', () => {
+    it("throws ContractViolationError when no route matches", () => {
       const validator = createContractValidator(makeDoc(), boundaries);
-      expect(() =>
-        validator.validateRequest('POST', '/loans', { amount: 100, extra: 'x' }, {}, {}),
-      ).toThrow(ContractViolationError);
+      expect(() => validator.validateRequest("GET", "/unknown", null, {}, {})).toThrow(
+        ContractViolationError,
+      );
     });
 
-    it('throws ContractViolationError when no route matches', () => {
+    it("passes when query param is present and valid", () => {
       const validator = createContractValidator(makeDoc(), boundaries);
       expect(() =>
-        validator.validateRequest('GET', '/unknown', null, {}, {}),
-      ).toThrow(ContractViolationError);
-    });
-
-    it('passes when query param is present and valid', () => {
-      const validator = createContractValidator(makeDoc(), boundaries);
-      expect(() =>
-        validator.validateRequest('GET', '/loans', null, { status: 'active' }, {}),
+        validator.validateRequest("GET", "/loans", null, { status: "active" }, {}),
       ).not.toThrow();
     });
 
-    it('passes when optional query param is absent', () => {
+    it("passes when optional query param is absent", () => {
       const validator = createContractValidator(makeDoc(), boundaries);
-      expect(() =>
-        validator.validateRequest('GET', '/loans', null, {}, {}),
-      ).not.toThrow();
+      expect(() => validator.validateRequest("GET", "/loans", null, {}, {})).not.toThrow();
     });
 
-    it('throws ContractViolationError when required path param is missing from pathParams map', () => {
+    it("throws ContractViolationError when required path param is missing from pathParams map", () => {
       const validator = createContractValidator(makeDoc(), boundaries);
       // Path param 'id' is required but pathParams is empty — throws ContractViolationError
-      expect(() =>
-        validator.validateRequest('GET', '/loans/abc', null, {}, {}),
-      ).toThrow(ContractViolationError);
+      expect(() => validator.validateRequest("GET", "/loans/abc", null, {}, {})).toThrow(
+        ContractViolationError,
+      );
     });
 
-    it('passes when path param matches string schema', () => {
+    it("passes when path param matches string schema", () => {
       const validator = createContractValidator(makeDoc(), boundaries);
       expect(() =>
-        validator.validateRequest('GET', '/loans/loan-123', null, {}, { id: 'loan-123' }),
+        validator.validateRequest("GET", "/loans/loan-123", null, {}, { id: "loan-123" }),
       ).not.toThrow();
     });
 
-    it('passes PATCH request without body schema', () => {
+    it("passes PATCH request without body schema", () => {
       const validator = createContractValidator(makeDoc(), boundaries);
       expect(() =>
-        validator.validateRequest('PATCH', '/loans/loan-123', { amount: 200 }, {}, {}),
+        validator.validateRequest("PATCH", "/loans/loan-123", { amount: 200 }, {}, {}),
       ).not.toThrow();
     });
   });
 
-  describe('validateResponse', () => {
-    it('passes when response body matches schema', () => {
+  describe("validateResponse", () => {
+    it("passes when response body matches schema", () => {
       const validator = createContractValidator(makeDoc(), boundaries);
-      expect(() =>
-        validator.validateResponse('POST', '/loans', 201, { id: 'abc' }),
-      ).not.toThrow();
+      expect(() => validator.validateResponse("POST", "/loans", 201, { id: "abc" })).not.toThrow();
     });
 
-    it('throws InternalExecutionError when no route matches', () => {
+    it("throws InternalExecutionError when no route matches", () => {
       const validator = createContractValidator(makeDoc(), boundaries);
-      expect(() =>
-        validator.validateResponse('GET', '/unknown', 200, {}),
-      ).toThrow(InternalExecutionError);
+      expect(() => validator.validateResponse("GET", "/unknown", 200, {})).toThrow(
+        InternalExecutionError,
+      );
     });
 
-    it('passes when no responseSchemas defined for operation', () => {
+    it("passes when no responseSchemas defined for operation", () => {
       const doc = makeDoc();
       const validator = createContractValidator(doc, boundaries);
-      expect(() =>
-        validator.validateResponse('PATCH', '/loans/loan-123', 200, {}),
-      ).not.toThrow();
+      expect(() => validator.validateResponse("PATCH", "/loans/loan-123", 200, {})).not.toThrow();
     });
 
-    it('passes when status code has no matching schema', () => {
+    it("passes when status code has no matching schema", () => {
       const validator = createContractValidator(makeDoc(), boundaries);
       // 404 is not in responseSchemas, so no validation occurs
       expect(() =>
-        validator.validateResponse('POST', '/loans', 404, { error: 'not found' }),
+        validator.validateResponse("POST", "/loans", 404, { error: "not found" }),
       ).not.toThrow();
     });
   });
 
-  describe('validatorCacheByKey size cap', () => {
-    it('key-based validator cache does not grow past the configured cap', () => {
+  describe("batch document validation", () => {
+    function batchValidator() {
+      return createContractValidator(
+        makeDoc({
+          "/batches": {
+            post: {
+              requestBodySchema: {
+                type: "array",
+                items: {
+                  type: "object",
+                  required: ["id"],
+                  properties: { id: { type: "string" } },
+                  additionalProperties: false,
+                },
+              },
+              responseSchemas: {
+                "201": {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    required: ["id"],
+                    properties: { id: { type: "string" } },
+                  },
+                },
+              },
+            },
+          },
+        }),
+        boundaries,
+      );
+    }
+
+    it("validates the array request and each expanded item against the item schema", () => {
+      const validator = batchValidator();
+      expect(() =>
+        validator.validateRequestBatch("POST", "/batches", [{ id: "one" }, { id: "two" }], {}, {}),
+      ).not.toThrow();
+      expect(() =>
+        validator.validateRequestItem("POST", "/batches", { id: "one" }, {}, {}),
+      ).not.toThrow();
+      expect(() => validator.validateRequestItem("POST", "/batches", { id: 2 }, {}, {})).toThrow(
+        ContractViolationError,
+      );
+    });
+
+    it("validates both item responses and the aggregated array response", () => {
+      const validator = batchValidator();
+      expect(() =>
+        validator.validateResponseItem("POST", "/batches", 201, { id: "one" }),
+      ).not.toThrow();
+      expect(() =>
+        validator.validateResponseBatch("POST", "/batches", 201, [{ id: "one" }]),
+      ).not.toThrow();
+      expect(() => validator.validateResponseItem("POST", "/batches", 201, { id: 2 })).toThrow(
+        InternalExecutionError,
+      );
+    });
+  });
+
+  describe("validatorCacheByKey size cap", () => {
+    it("key-based validator cache does not grow past the configured cap", () => {
       // createContractValidator accepts an optional cacheOptions.maxKeyedValidators cap.
       // We use a cap of 4 and drive 10 structurally-distinct schemas through it.
       const schemas: Record<string, any> = {};
@@ -163,9 +217,9 @@ describe('contract/validator', () => {
         schemas[`/route-${i}`] = {
           post: {
             requestBodySchema: {
-              type: 'object',
+              type: "object",
               required: [`field_${i}`],
-              properties: { [`field_${i}`]: { type: 'number' } },
+              properties: { [`field_${i}`]: { type: "number" } },
             },
           },
         };
@@ -176,54 +230,92 @@ describe('contract/validator', () => {
       for (let i = 0; i < 10; i++) {
         // Each call compiles (or evicts-then-recompiles) a distinct schema
         expect(() =>
-          validator.validateRequest('POST', `/route-${i}`, { [`field_${i}`]: i }, {}, {}),
+          validator.validateRequest("POST", `/route-${i}`, { [`field_${i}`]: i }, {}, {}),
         ).not.toThrow();
       }
       // Cache internals are not exposed, but the cap guarantee is observable:
       // after 10 passes the validator still works correctly (no internal error, no stale state)
       expect(() =>
-        validator.validateRequest('POST', `/route-0`, { field_0: 42 }, {}, {}),
+        validator.validateRequest("POST", `/route-0`, { field_0: 42 }, {}, {}),
       ).not.toThrow();
     });
 
-    it('default cap allows normal usage without premature eviction', () => {
+    it("default cap allows normal usage without premature eviction", () => {
       const validator = createContractValidator(makeDoc(), boundaries);
       // Standard usage: same schemas over many calls — should never throw
       for (let i = 0; i < 20; i++) {
         expect(() =>
-          validator.validateRequest('POST', '/loans', { amount: i }, {}, {}),
+          validator.validateRequest("POST", "/loans", { amount: i }, {}, {}),
         ).not.toThrow();
       }
     });
   });
 
-  describe('validateEntity', () => {
-    it('throws InternalExecutionError when no components section', () => {
+  describe("validateEntity", () => {
+    it("throws InternalExecutionError when no components section", () => {
       const validator = createContractValidator(makeDoc({}, {}), boundaries);
-      expect(() => validator.validateEntity('Lead', { id: 'x', amount: 100 })).toThrow(InternalExecutionError);
+      expect(() => validator.validateEntity("Lead", { id: "x", amount: 100 })).toThrow(
+        InternalExecutionError,
+      );
     });
 
-    it('throws InternalExecutionError when boundary schema not found', () => {
-      const validator = createContractValidator(makeDoc({}, { components: { schemas: {} } }), boundaries);
-      expect(() => validator.validateEntity('NonExistent', { id: 'x' })).toThrow(InternalExecutionError);
-    });
-
-    it('validates entity against boundary schema successfully', () => {
+    it("throws InternalExecutionError when boundary schema not found", () => {
       const validator = createContractValidator(
-        makeDoc({}, {
-          components: {
-            schemas: {
-              Lead: {
-                type: 'object',
-                required: ['id', 'amount'],
-                properties: { id: { type: 'string' }, amount: { type: 'number' } },
+        makeDoc({}, { components: { schemas: {} } }),
+        boundaries,
+      );
+      expect(() => validator.validateEntity("NonExistent", { id: "x" })).toThrow(
+        InternalExecutionError,
+      );
+    });
+
+    it("validates entity against boundary schema successfully", () => {
+      const validator = createContractValidator(
+        makeDoc(
+          {},
+          {
+            components: {
+              schemas: {
+                Lead: {
+                  type: "object",
+                  required: ["id", "amount"],
+                  properties: { id: { type: "string" }, amount: { type: "number" } },
+                },
               },
             },
           },
-        }),
+        ),
         boundaries,
       );
-      expect(() => validator.validateEntity('Lead', { id: 'loan-1', amount: 500 })).not.toThrow();
+      expect(() => validator.validateEntity("Lead", { id: "loan-1", amount: 500 })).not.toThrow();
+    });
+
+    it("does not treat runtime soft-delete metadata as public contract fields", () => {
+      const validator = createContractValidator(
+        makeDoc(
+          {},
+          {
+            components: {
+              schemas: {
+                Product: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["id"],
+                  properties: { id: { type: "string" } },
+                },
+              },
+            },
+          },
+        ),
+        boundaries,
+      );
+      expect(() =>
+        validator.validateEntity("Product", {
+          id: "prod_1",
+          _deleted: true,
+          _deletedAt: "2026-08-02T00:00:00.000Z",
+        }),
+      ).not.toThrow();
     });
   });
 });

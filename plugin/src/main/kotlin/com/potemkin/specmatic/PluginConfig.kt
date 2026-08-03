@@ -9,8 +9,8 @@ import java.io.File
  * Configuration for the Potemkin Specmatic plugin.
  *
  * Resolved in priority order:
- *  1. POTEMKIN_CONFIG_PATH env var (path to potemkin.yaml or legacy YAML/JSON)
- *  2. ./potemkin.yaml in the current working directory (reads the `plugin:` block)
+ *  1. POTEMKIN_CONFIG_PATH env var (path to the canonical potemkin.yml)
+ *  2. ./potemkin.yml in the current working directory (reads the `plugin:` block)
  *  3. Built-in defaults
  *
  * Routes to intercept are not configured statically — the plugin discovers
@@ -41,7 +41,7 @@ data class PluginConfig(
     val forwarderBackoffMs: Long = 50L,
     val circuitBreakerFailureRate: Int = 50,
     val circuitBreakerWaitMs: Long = 10_000L,
-    // Forward-blocks parsed from potemkin.yaml (seeds / workflow / overlay / governance).
+    // Forward-blocks parsed from potemkin.yml (seeds / workflow / overlay / governance).
     val forwardBlocks: ForwardBlocks = ForwardBlocks.EMPTY,
     // Authentication policy (the `auth:` block).
     val auth: AuthConfig = AuthConfig(),
@@ -51,8 +51,8 @@ data class PluginConfig(
 
         fun load(): PluginConfig {
             // Resolution order:
-            //   1. POTEMKIN_CONFIG_PATH env var (path to potemkin.yaml)
-            //   2. ./potemkin.yaml in cwd (reads the `plugin:` block; engine
+            //   1. POTEMKIN_CONFIG_PATH env var (path to potemkin.yml)
+            //   2. ./potemkin.yml in cwd (reads the `plugin:` block; engine
             //      consumes modules/typescript/seeds via /_engine/dsl)
             //   3. built-in defaults
             val envPath = System.getenv("POTEMKIN_CONFIG_PATH")
@@ -69,21 +69,21 @@ data class PluginConfig(
                 }
             }
 
-            val potemkinYaml = File("potemkin.yaml")
+            val potemkinYaml = File("potemkin.yml")
             if (potemkinYaml.exists()) {
                 log.info("Loading plugin block from {}", potemkinYaml.absolutePath)
                 return parsePotemkinYaml(potemkinYaml.readText())
             }
 
             log.info(
-                "No potemkin.yaml found; using defaults. " +
-                    "Create potemkin.yaml in the working directory to configure the backend URL.",
+                "No potemkin.yml found; using defaults. " +
+                    "Create potemkin.yml in the working directory to configure the backend URL.",
             )
             return PluginConfig()
         }
 
         /**
-         * Parse a potemkin.yaml document into a [PluginConfig], including the
+         * Parse a potemkin.yml document into a [PluginConfig], including the
          * `plugin:` block, the `auth:` block, and the four forward-blocks
          * (`seeds` / `workflow` / `overlay` / `governance`).
          *
@@ -92,7 +92,7 @@ data class PluginConfig(
          * structurally malformed.
          */
         @Suppress("UNCHECKED_CAST")
-        internal fun parsePotemkinYaml(text: String, source: String = "potemkin.yaml"): PluginConfig {
+        internal fun parsePotemkinYaml(text: String, source: String = "potemkin.yml"): PluginConfig {
             val raw: Map<String, Any?> = try {
                 Yaml().load<Map<String, Any?>>(text) ?: emptyMap()
             } catch (e: MarkedYAMLException) {

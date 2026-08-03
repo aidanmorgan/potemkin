@@ -37,13 +37,13 @@ class PluginLint(
         val errors = mutableListOf<String>()
         val url = config.backendUrl
         if (url.isBlank() || !(url.startsWith("http://") || url.startsWith("https://"))) {
-            errors.add("[plugin] potemkin.yaml plugin.engine.url '$url' is not a valid http(s) URL")
+            errors.add("[plugin] potemkin.yml plugin.engine.url '$url' is not a valid http(s) URL")
         }
         if (config.controlPort < 0 || config.controlPort > 65535) {
-            errors.add("[plugin] potemkin.yaml plugin.controlPort ${config.controlPort} is out of range 0..65535")
+            errors.add("[plugin] potemkin.yml plugin.controlPort ${config.controlPort} is out of range 0..65535")
         }
         if (config.forwardTimeoutMs <= 0) {
-            errors.add("[plugin] potemkin.yaml plugin.engine.timeoutMs (${config.forwardTimeoutMs}) must be > 0")
+            errors.add("[plugin] potemkin.yml plugin.engine.timeoutMs (${config.forwardTimeoutMs}) must be > 0")
         }
         return errors
     }

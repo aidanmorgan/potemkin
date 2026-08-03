@@ -1,0 +1,31 @@
+boundary: RecordBatch
+contract_path: /records/bulk
+identity:
+  creation:
+    generate: command.payload.id
+event_catalog:
+  - type: RecordCreated
+    payload_template:
+      id: command.payload.id
+      name: command.payload.name
+      source: "'yaml'"
+behaviors:
+  - name: createRecordBatch
+    match:
+      operationId: createRecordBatch
+      condition: "true"
+    emit: RecordCreated
+    dispatch_commands:
+      - boundary: BulkReceipt
+        intent: creation
+        operationId: createBulkReceipt
+        target_id: "$concat(command.targetId, '-receipt')"
+        payload:
+          recordId: command.targetId
+          kind: "'dispatch'"
+reducers:
+  - on: RecordCreated
+    patches:
+      - { op: replace, path: /id, value: "${event.payload.id}" }
+      - { op: replace, path: /name, value: "${event.payload.name}" }
+      - { op: replace, path: /source, value: "${event.payload.source}" }

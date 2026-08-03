@@ -1,0 +1,12 @@
+version: 1
+specmatic: ./specmatic.yaml
+openapi:
+  - openapi/jwt-parity.yaml
+modules:
+  - dsl/global.yaml
+typescript:
+  scan:
+    - include:
+        - typescript/mixed/**/*.ts
+      exclude:
+        - "**/*.d.ts"

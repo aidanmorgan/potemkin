@@ -1,0 +1,51 @@
+openapi: 3.0.3
+info:
+  title: Configured source matrix - things
+  version: 1.0.0
+paths:
+  /things:
+    post:
+      operationId: createThing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+      responses:
+        "201":
+          description: Thing created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, name, source]
+                properties:
+                  id: { type: string }
+                  name: { type: string }
+                  source: { type: string }
+  /things/{id}:
+    get:
+      operationId: getThing
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Thing found
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, name, source]
+                properties:
+                  id: { type: string }
+                  name: { type: string }
+                  source: { type: string }
+components:
+  schemas: {}

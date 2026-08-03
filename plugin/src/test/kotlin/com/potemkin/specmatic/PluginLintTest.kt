@@ -24,7 +24,7 @@ class PluginLintTest {
     @Test
     fun `combined report tags engine and plugin findings`() {
         val report = PluginLint().combinedReport(
-            selfErrors = listOf("[plugin] potemkin.yaml plugin.engine.url 'x' is not a valid http(s) URL"),
+            selfErrors = listOf("[plugin] potemkin.yml plugin.engine.url 'x' is not a valid http(s) URL"),
             engine = PluginLint.EngineLintReport(
                 passed = false,
                 errors = listOf(PluginLint.EngineFinding(code = "MASK_FIELD_UNKNOWN", message = "no such field", boundary = "cust")),

@@ -1,0 +1,16 @@
+version: 1
+specmatic: ./specmatic.yaml
+openapi:
+  - openapi/part-th*.yaml
+  - openapi/part-w*.yaml
+modules:
+  - yaml/shared/*.yaml
+  - yaml/ts-only/*.yaml
+typescript:
+  scan:
+    - include:
+        - typescript/shared/**/*.ts
+        - typescript/widget/**/*.ts
+      exclude:
+        - "**/excluded/**/*.ts"
+        - "**/*.d.ts"

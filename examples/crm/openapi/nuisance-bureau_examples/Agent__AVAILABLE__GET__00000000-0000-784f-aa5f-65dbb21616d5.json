@@ -1,0 +1,23 @@
+{
+  "http-request": {
+    "method": "GET",
+    "path": "/agents/00000000-0000-784f-aa5f-65dbb21616d5"
+  },
+  "http-response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "body": {
+      "id": "00000000-0000-784f-aa5f-65dbb21616d5",
+      "name": "export",
+      "email": "export@example.com",
+      "dailyCallQuota": 1,
+      "dailyCallCount": 0,
+      "currentStatus": "AVAILABLE",
+      "assignedCampaignIds": [],
+      "totalConversions": 0,
+      "skills": []
+    }
+  }
+}

@@ -3,8 +3,8 @@
  *
  * The Specmatic plugin reads its config (engine URL, control port, auth, and the
  * four forward-blocks `seeds`/`workflow`/`overlay`/`governance`) from the
- * potemkin.yaml at `POTEMKIN_CONFIG_PATH`. The harness writes a *synthetic*
- * potemkin.yaml carrying the dynamic ports; this module enriches that document
+ * potemkin.yml at `POTEMKIN_CONFIG_PATH`. The harness writes a *synthetic*
+ * potemkin.yml carrying the dynamic ports; this module enriches that document
  * with the fixture's auth + forward-blocks so the plugin exercises them through
  * the stub, exactly as production would.
  *
@@ -15,19 +15,23 @@
  * The launcher sets that env var so the served spec reflects the overlay.
  */
 
-import * as fs from 'node:fs';
-import * as os from 'node:os';
-import * as path from 'node:path';
-import * as yaml from 'js-yaml';
-import { translateOverlayPatches } from '../../../src/dsl/forwardBlocks';
-import { resolveFixtureDir } from '../../fixtures/index';
-import type { Patch } from '../../../src/dsl/patches';
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import * as yaml from "js-yaml";
+import { translateOverlayPatches } from "../../../src/dsl/forwardBlocks";
+import { resolveFixtureDir } from "../../fixtures/index";
+import type { Patch } from "../../../src/model/patches";
 
 export interface FixtureForwardBlocks {
-  /** YAML snippet (top-level keys) to splice into the plugin's potemkin.yaml. */
+  /** YAML snippet (top-level keys) to splice into the plugin's potemkin.yml. */
   readonly pluginConfigYaml: string;
   /** Absolute path to the generated Specmatic overlay file, or undefined when no overlay. */
   readonly overlayFilePath?: string;
+}
+
+export interface SharedForwardBlocks extends FixtureForwardBlocks {
+  readonly fixtureNames: readonly string[];
 }
 
 interface OverlayBlock {
@@ -35,56 +39,80 @@ interface OverlayBlock {
 }
 
 /**
- * Read a fixture's auth + forward-blocks and produce (a) the YAML to merge into
- * the plugin potemkin.yaml and (b) a written Specmatic overlay file when the
- * fixture declares `overlay.patches`. When the fixture has none, returns an empty
- * snippet and no overlay path.
+ * Build the immutable plugin-side expectations for the one Specmatic JVM used
+ * by the E2E run. Node configuration is reloaded per fixture; these contract
+ * expectations are therefore the union of every fixture's seed/workflow,
+ * overlay, and governance declarations.
  */
-export function buildFixtureForwardBlocks(fixtureName: string | undefined): FixtureForwardBlocks {
-  if (!fixtureName) return { pluginConfigYaml: '' };
-
-  const fixtureDir = resolveFixtureDir(fixtureName);
-  const potemkinPath = path.join(fixtureDir, 'potemkin.yaml');
-  const globalPath = path.join(fixtureDir, 'dsl', 'global.yaml');
-
-  const potemkinDoc = readYaml(potemkinPath);
-  const globalDoc = readYaml(globalPath);
-
-  // The plugin reads forward-blocks at the document root and `auth` under either
-  // `plugin.auth` or the root. The fixture authors auth in dsl/global.yaml (the
-  // engine's config), so we surface it to the plugin at the root here.
+export function buildSharedForwardBlocks(fixtureNames: readonly string[]): SharedForwardBlocks {
   const merged: Record<string, unknown> = {};
-  for (const key of ['seeds', 'workflow', 'overlay', 'governance'] as const) {
-    if (potemkinDoc[key] !== undefined) merged[key] = potemkinDoc[key];
+  const seeds: unknown[] = [];
+  const workflowIds: Record<string, unknown> = {};
+  const overlayPatches: Patch[] = [];
+  const governance: Record<string, unknown> = {};
+
+  for (const fixtureName of fixtureNames) {
+    const fixtureDir = resolveFixtureDir(fixtureName);
+    const potemkinDoc = readYaml(path.join(fixtureDir, "potemkin.yml"));
+    const fixtureSeeds = potemkinDoc["seeds"];
+    if (Array.isArray(fixtureSeeds)) seeds.push(...fixtureSeeds);
+    const fixtureWorkflow = asRecord(potemkinDoc["workflow"]);
+    const fixtureIds = asRecord(fixtureWorkflow["ids"]);
+    Object.assign(workflowIds, fixtureIds);
+    const fixtureOverlay = asRecord(potemkinDoc["overlay"]);
+    const fixturePatches = fixtureOverlay["patches"];
+    if (Array.isArray(fixturePatches)) overlayPatches.push(...(fixturePatches as Patch[]));
+    const fixtureGovernance = asRecord(potemkinDoc["governance"]);
+    Object.assign(governance, fixtureGovernance);
+
+    // Auth is deliberately resolved by the reloaded Node runtime. A single
+    // JVM cannot hold one static JWT/session policy while the Node config moves
+    // between fixtures.
   }
-  if (globalDoc['auth'] !== undefined) merged['auth'] = globalDoc['auth'];
 
-  const overlayFilePath = writeOverlayFile(fixtureName, potemkinDoc['overlay'] as OverlayBlock | undefined);
+  if (seeds.length > 0) merged["seeds"] = seeds;
+  if (Object.keys(workflowIds).length > 0) merged["workflow"] = { ids: workflowIds };
+  if (overlayPatches.length > 0) merged["overlay"] = { patches: overlayPatches };
+  if (Object.keys(governance).length > 0) merged["governance"] = governance;
 
-  const pluginConfigYaml = Object.keys(merged).length === 0 ? '' : yaml.dump(merged);
-  return overlayFilePath ? { pluginConfigYaml, overlayFilePath } : { pluginConfigYaml };
+  const overlayFilePath = writeOverlayFile("shared", { patches: overlayPatches });
+  const pluginConfigYaml = Object.keys(merged).length === 0 ? "" : yaml.dump(merged);
+  return {
+    fixtureNames: [...fixtureNames],
+    pluginConfigYaml,
+    ...(overlayFilePath === undefined ? {} : { overlayFilePath }),
+  };
 }
 
 function readYaml(p: string): Record<string, unknown> {
   if (!fs.existsSync(p)) return {};
-  const doc = yaml.load(fs.readFileSync(p, 'utf8'));
-  return doc !== null && typeof doc === 'object' ? (doc as Record<string, unknown>) : {};
+  const doc = yaml.load(fs.readFileSync(p, "utf8"));
+  return doc !== null && typeof doc === "object" ? (doc as Record<string, unknown>) : {};
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 /**
  * Translate `overlay.patches` into a Specmatic overlay document and write it to a
  * temp file. Returns the file path, or undefined when there are no patches.
  */
-function writeOverlayFile(fixtureName: string, overlay: OverlayBlock | undefined): string | undefined {
+function writeOverlayFile(
+  fixtureName: string,
+  overlay: OverlayBlock | undefined,
+): string | undefined {
   const patches = overlay?.patches;
   if (!patches || patches.length === 0) return undefined;
 
   const actions = translateOverlayPatches(patches).map((a) =>
     a.remove === true ? { target: a.target, remove: true } : { target: a.target, update: a.update },
   );
-  const overlayDoc = { overlay: '1.0.0', actions };
+  const overlayDoc = { overlay: "1.0.0", actions };
 
   const filePath = path.join(os.tmpdir(), `potemkin-overlay-${fixtureName}-${Date.now()}.yaml`);
-  fs.writeFileSync(filePath, yaml.dump(overlayDoc), 'utf8');
+  fs.writeFileSync(filePath, yaml.dump(overlayDoc), "utf8");
   return filePath;
 }

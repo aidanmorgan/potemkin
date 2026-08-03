@@ -1,0 +1,25 @@
+boundary: JwtRecord
+contract_path: /jwt-records
+fallback_override: false
+identity:
+  creation:
+    generate: command.payload.id
+event_catalog:
+  - type: JwtRecordCreated
+    payload_template:
+      id: command.payload.id
+      value: command.payload.value
+      status: "'CREATED'"
+behaviors:
+  - name: create-jwt-record
+    match:
+      operationId: createJwtRecord
+      condition: "true"
+      required_scopes: [writer]
+    emit: JwtRecordCreated
+reducers:
+  - on: JwtRecordCreated
+    patches:
+      - { op: replace, path: /id, value: "${event.payload.id}" }
+      - { op: replace, path: /value, value: "${event.payload.value}" }
+      - { op: replace, path: /status, value: "${event.payload.status}" }

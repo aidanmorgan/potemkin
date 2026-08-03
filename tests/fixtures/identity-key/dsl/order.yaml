@@ -37,7 +37,7 @@ event_catalog:
 behaviors:
   - name: placeOrder
     match:
-      operationId: placeOrder
+      operationId: placeOrderByRef
       condition: "true"
     emit: OrderPlaced
 

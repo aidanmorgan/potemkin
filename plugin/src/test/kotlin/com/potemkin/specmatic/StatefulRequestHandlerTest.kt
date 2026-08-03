@@ -15,7 +15,7 @@ import kotlin.test.assertTrue
 /**
  * Unit tests for [StatefulRequestHandler].
  *
- * Uses hand-rolled fakes for [RoutesDiscoveryClient], [CqrsBackendClient], and [FixturesClient]
+ * Uses hand-rolled fakes for [RoutesDiscoveryClient], [EngineRequestForwarder], and [FixturesClient]
  * to keep tests fast and dependency-free.
  */
 class StatefulRequestHandlerTest {
@@ -36,10 +36,10 @@ class StatefulRequestHandlerTest {
     }
 
     /**
-     * Fake client that returns a pre-configured response (or null to simulate engine errors).
+     * Fake forwarder that returns a pre-configured response (or null to simulate engine errors).
      * Tracks whether [forward] was called.
      */
-    private class FakeClient(private val response: HttpStubResponse?) : CqrsBackendClient("http://unused") {
+    private class FakeForwarder(private val response: HttpStubResponse?) : EngineRequestForwarder {
         var called = false
         var proxyCalled = false
         var proxiedPath: String? = null
@@ -79,7 +79,7 @@ class StatefulRequestHandlerTest {
 
     @Test
     fun `admin path is raw-proxied to the engine even when not a stateful route`() {
-        val client = FakeClient(cannedResponse(204))
+        val client = FakeForwarder(cannedResponse(204))
         // discovery says NOT stateful — admin paths must be claimed before the discovery check
         val handler = StatefulRequestHandler(FixedDiscoveryClient(false), client)
 
@@ -94,7 +94,7 @@ class StatefulRequestHandlerTest {
 
     @Test
     fun `admin proxy failure falls through to Specmatic`() {
-        val client = FakeClient(null) // proxy returns null (engine unreachable)
+        val client = FakeForwarder(null) // proxy returns null (engine unreachable)
         val handler = StatefulRequestHandler(FixedDiscoveryClient(false), client)
 
         val result = handler.handleRequest(request(method = "POST", path = "/_admin/faults"))
@@ -115,10 +115,10 @@ class StatefulRequestHandlerTest {
 
     @Test
     fun `non-stateful path applies the fallback policy instead of falling through`() {
-        val client = FakeClient(cannedResponse())
+        val client = FakeForwarder(cannedResponse())
         val fallback = FakeFallback(501)
         val handler = StatefulRequestHandler(
-            FixedDiscoveryClient(false), client, null, null, null, fallback,
+            FixedDiscoveryClient(false), client, null, null, fallback,
         )
 
         val result = handler.handleRequest(request(path = "/v1/payouts"))
@@ -131,17 +131,17 @@ class StatefulRequestHandlerTest {
 
     @Test
     fun `non-stateful path with no fallback wired falls through to Specmatic`() {
-        val client = FakeClient(cannedResponse())
+        val client = FakeForwarder(cannedResponse())
         val handler = StatefulRequestHandler(FixedDiscoveryClient(false), client)
         assertNull(handler.handleRequest(request(path = "/v1/payouts")))
     }
 
     @Test
     fun `a seeded path defers to Specmatic instead of applying the fallback`() {
-        val client = FakeClient(cannedResponse())
+        val client = FakeForwarder(cannedResponse())
         val fallback = FakeFallback(501)
         val handler = StatefulRequestHandler(
-            FixedDiscoveryClient(false), client, null, null, null, fallback,
+            FixedDiscoveryClient(false), client, null, null, fallback,
             setOf("GET" to "/seed-contract/contract-1"),
         )
 
@@ -160,7 +160,7 @@ class StatefulRequestHandlerTest {
     @Test
     fun `path matches and client returns response - handler returns response`() {
         val expectedResponse = cannedResponse(200)
-        val client = FakeClient(expectedResponse)
+        val client = FakeForwarder(expectedResponse)
         val handler = StatefulRequestHandler(FixedDiscoveryClient(true), client)
 
         val result = handler.handleRequest(request())
@@ -171,7 +171,7 @@ class StatefulRequestHandlerTest {
 
     @Test
     fun `path does not match - returns null without calling client`() {
-        val client = FakeClient(cannedResponse())
+        val client = FakeForwarder(cannedResponse())
         val handler = StatefulRequestHandler(FixedDiscoveryClient(false), client)
 
         val result = handler.handleRequest(request(path = "/products/1"))
@@ -182,7 +182,7 @@ class StatefulRequestHandlerTest {
 
     @Test
     fun `path matches but client returns null (engine unreachable) - handler returns null`() {
-        val client = FakeClient(null)
+        val client = FakeForwarder(null)
         val handler = StatefulRequestHandler(FixedDiscoveryClient(true), client)
 
         val result = handler.handleRequest(request())
@@ -193,10 +193,12 @@ class StatefulRequestHandlerTest {
 
     @Test
     fun `exception thrown inside client is caught - handler returns null`() {
-        val crashingClient = object : CqrsBackendClient("http://unused") {
+        val crashingClient = object : EngineRequestForwarder {
             override fun forward(httpRequest: HttpRequest): HttpStubResponse? {
                 throw RuntimeException("Unexpected crash")
             }
+
+            override fun proxyRaw(httpRequest: HttpRequest): HttpStubResponse? = null
         }
         val handler = StatefulRequestHandler(FixedDiscoveryClient(true), crashingClient)
 
@@ -208,13 +210,13 @@ class StatefulRequestHandlerTest {
 
     @Test
     fun `handler name is correct`() {
-        val handler = StatefulRequestHandler(FixedDiscoveryClient(true), FakeClient(null))
+        val handler = StatefulRequestHandler(FixedDiscoveryClient(true), FakeForwarder(null))
         assertEquals("potemkin-stateful", handler.name)
     }
 
     @Test
     fun `auth-error header yields 401 with WWW-Authenticate before forwarding`() {
-        val client = FakeClient(cannedResponse(200))
+        val client = FakeForwarder(cannedResponse(200))
         val handler = StatefulRequestHandler(FixedDiscoveryClient(true), client)
 
         val req = request().copy(
@@ -231,7 +233,7 @@ class StatefulRequestHandlerTest {
     @Test
     fun `4xx response from client is propagated`() {
         val notFound = cannedResponse(404)
-        val handler = StatefulRequestHandler(FixedDiscoveryClient(true), FakeClient(notFound))
+        val handler = StatefulRequestHandler(FixedDiscoveryClient(true), FakeForwarder(notFound))
 
         val result = handler.handleRequest(request())
 
@@ -243,7 +245,7 @@ class StatefulRequestHandlerTest {
 
     @Test
     fun `request in excludedPaths returns null without calling discovery or client`() {
-        val client = FakeClient(cannedResponse())
+        val client = FakeForwarder(cannedResponse())
         var discoveryCalled = false
         val discovery = object : RoutesDiscoveryClient(
             backendUrl = "http://unused",
@@ -266,7 +268,7 @@ class StatefulRequestHandlerTest {
 
     @Test
     fun `request NOT in excludedPaths is handled normally`() {
-        val client = FakeClient(cannedResponse(200))
+        val client = FakeForwarder(cannedResponse(200))
         val fixtures = FakeFixturesClient(excluded = setOf("DELETE" to "/other"))
         val handler = StatefulRequestHandler(FixedDiscoveryClient(true), client, fixtures)
 
@@ -278,7 +280,7 @@ class StatefulRequestHandlerTest {
 
     @Test
     fun `excludedPaths check is case-insensitive on method (uppercase normalised)`() {
-        val client = FakeClient(cannedResponse())
+        val client = FakeForwarder(cannedResponse())
         // The fixture was registered as uppercase "POST"
         val fixtures = FakeFixturesClient(excluded = setOf("POST" to "/loans"))
         val handler = StatefulRequestHandler(FixedDiscoveryClient(true), client, fixtures)
@@ -292,7 +294,7 @@ class StatefulRequestHandlerTest {
 
     @Test
     fun `null fixtures client - handler behaves as before (no short-circuit)`() {
-        val client = FakeClient(cannedResponse(200))
+        val client = FakeForwarder(cannedResponse(200))
         val handler = StatefulRequestHandler(FixedDiscoveryClient(true), client, fixtures = null)
 
         val result = handler.handleRequest(request(method = "GET", path = "/loans/123"))
@@ -303,7 +305,7 @@ class StatefulRequestHandlerTest {
 
     @Test
     fun `excluded path with different method is NOT excluded`() {
-        val client = FakeClient(cannedResponse(200))
+        val client = FakeForwarder(cannedResponse(200))
         // Only DELETE /loans is excluded, not GET /loans
         val fixtures = FakeFixturesClient(excluded = setOf("DELETE" to "/loans"))
         val handler = StatefulRequestHandler(FixedDiscoveryClient(true), client, fixtures)
@@ -316,7 +318,7 @@ class StatefulRequestHandlerTest {
 
     @Test
     fun `excluded path with different path is NOT excluded`() {
-        val client = FakeClient(cannedResponse(200))
+        val client = FakeForwarder(cannedResponse(200))
         val fixtures = FakeFixturesClient(excluded = setOf("GET" to "/loans"))
         val handler = StatefulRequestHandler(FixedDiscoveryClient(true), client, fixtures)
 

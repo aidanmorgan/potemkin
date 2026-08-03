@@ -1,5 +1,5 @@
-import type { HateoasEntry, DeprecationConfig } from './responseDslCompiler.js';
-import { parsePointer } from './patches.js';
+import type { HateoasEntry, DeprecationConfig } from "./responseDslCompiler.js";
+import { parsePointer } from "../model/patches.js";
 
 // Extracts HATEOAS and deprecation defaults from an OpenAPI operation.
 // Used when a boundary does not supply a `hateoas:` or `deprecation:` block.
@@ -30,8 +30,8 @@ export function extractDefaultHateoas(
   lookup: OperationLookup,
 ): HateoasEntry[] {
   if (!op?.responses) return [];
-  const codeKey = typeof statusCode === 'number' ? String(statusCode) : statusCode;
-  const responseObj = op.responses[codeKey] ?? op.responses['default'];
+  const codeKey = typeof statusCode === "number" ? String(statusCode) : statusCode;
+  const responseObj = op.responses[codeKey] ?? op.responses["default"];
   if (!responseObj?.links) return [];
   const out: HateoasEntry[] = [];
   for (const [rel, link] of Object.entries(responseObj.links)) {
@@ -58,11 +58,11 @@ function resolveLinkHref(link: OpenApiLinkObject, lookup: OperationLookup): stri
 
 // Extract the URL path from an internal `#/paths/<path>/<method>` operationRef.
 function extractPathFromOperationRef(operationRef: string): string | null {
-  if (!operationRef.startsWith('#/paths/')) return null;
+  if (!operationRef.startsWith("#/paths/")) return null;
   const segs = parsePointer(operationRef.slice(1));
-  if (segs.length !== 3 || segs[0] !== 'paths') return null;
+  if (segs.length !== 3 || segs[0] !== "paths") return null;
   const path = segs[1];
-  return path && path.startsWith('/') ? path : null;
+  return path && path.startsWith("/") ? path : null;
 }
 
 function applyLinkParameters(

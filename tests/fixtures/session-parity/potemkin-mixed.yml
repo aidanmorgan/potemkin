@@ -1,0 +1,13 @@
+version: 1
+specmatic: ./specmatic.yaml
+openapi:
+  - openapi/session-parity.yaml
+modules:
+  - dsl/global.yaml
+  - dsl/record-by-id.yaml
+typescript:
+  scan:
+    - include:
+        - typescript/mixed/**/*.ts
+      exclude:
+        - "**/*.d.ts"

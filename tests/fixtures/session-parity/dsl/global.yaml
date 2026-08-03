@@ -1,0 +1,12 @@
+auth:
+  mode: session
+  session:
+    cookie_name: parity_sid
+    ttl_seconds: 3600
+    csrf_header: x-parity-csrf
+    login_path: /sessions
+    logout_path: /sessions/current
+idempotency:
+  enabled: true
+  ttl_seconds: 60
+  hash_includes_body: true

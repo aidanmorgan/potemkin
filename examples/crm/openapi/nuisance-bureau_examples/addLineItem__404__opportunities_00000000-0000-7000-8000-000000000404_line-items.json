@@ -1,0 +1,24 @@
+{
+  "http-request": {
+    "method": "POST",
+    "path": "/opportunities/00000000-0000-7000-8000-000000000404/line-items",
+    "body": {
+      "description": "export",
+      "quantity": 1,
+      "unitPrice": 0
+    }
+  },
+  "http-response": {
+    "status": 404,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "body": {
+      "error": "ENTITY_ABSENCE",
+      "message": "Entity '00000000-0000-7000-8000-000000000404' not found in boundary 'OpportunityAddLineItem'",
+      "details": {
+        "code": "ENTITY_ABSENCE"
+      }
+    }
+  }
+}

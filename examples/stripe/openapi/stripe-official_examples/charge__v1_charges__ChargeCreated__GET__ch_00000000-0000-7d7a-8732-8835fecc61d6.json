@@ -1,0 +1,32 @@
+{
+  "http-request": {
+    "method": "GET",
+    "path": "/v1/charges/ch_00000000-0000-7d7a-8732-8835fecc61d6"
+  },
+  "http-response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "body": {
+      "id": "ch_00000000-0000-7d7a-8732-8835fecc61d6",
+      "object": "charge",
+      "created": 0,
+      "livemode": false,
+      "amount": 2000,
+      "currency": "usd",
+      "paid": true,
+      "captured": true,
+      "status": "succeeded",
+      "payment_intent": "pi_00000000-0000-7564-879e-bb495552a2fa",
+      "payment_method": null,
+      "customer": null,
+      "amount_captured": 2000,
+      "amount_refunded": 0,
+      "refunded": false,
+      "disputed": false,
+      "billing_details": {},
+      "metadata": {}
+    }
+  }
+}

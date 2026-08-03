@@ -16,6 +16,9 @@ object PotemkinHeaders {
      */
     const val AUTH_ERROR = "X-Potemkin-Auth-Error"
 
+    /** Structured authentication failure code produced by the JWT verifier. */
+    const val AUTH_ERROR_CODE = "X-Potemkin-Auth-Error-Code"
+
     /**
      * Optional client-supplied correlation id that scopes workflow id-propagation
      * to a single chain. When two clients run interleaved workflow chains that
@@ -26,7 +29,7 @@ object PotemkinHeaders {
     const val WORKFLOW_SESSION = "X-Potemkin-Workflow-Session"
 
     /**
-     * Set by the Node engine's forwarding handler (`src/forwarding/handler.ts`) when
+     * Set by the Node engine's runtime gateway forwarding surface when
      * drop-connection chaos fires on the plugin path. The gateway path destroys the TCP
      * socket directly (`res.socket?.destroy()`), but the forwarding layer cannot reach
      * the upstream socket, so it instead sends a synthetic 504 with this header.

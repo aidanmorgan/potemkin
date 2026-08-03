@@ -6,13 +6,13 @@
  * Run with:  npx tsx scripts/gen-cel-tables.ts
  */
 
-import { writeFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
-import { buildTables } from '../src/cel/grammar/lalr.js';
+import { writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+import { buildTables } from "../src/cel/grammar/lalr.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const outPath = join(here, '..', 'src', 'cel', 'grammar', 'tables.generated.ts');
+const outPath = join(here, "..", "src", "cel", "grammar", "tables.generated.ts");
 
 const tables = buildTables();
 
@@ -32,6 +32,6 @@ import type { ParseTables } from './lalr.js';
 
 const body = `\nexport const TABLES: ParseTables = ${JSON.stringify(tables, null, 1)};\n`;
 
-writeFileSync(outPath, banner + body, 'utf8');
+writeFileSync(outPath, banner + body, "utf8");
 // eslint-disable-next-line no-console
 console.log(`Wrote ${outPath} (${tables.stateCount} states)`);

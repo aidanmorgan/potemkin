@@ -5,12 +5,11 @@
 # the by-id path exposes only retrieve + update (no DELETE operation).
 resource: price
 schema: price
+response: stripeResponse
 
 identity:
   creation:
-    generate: "ts:priceId"
-
-response: "ts:priceResponse"
+    generate: "$concat('price_', $uuidv7())"
 
 query_mapping:
   product: "state.product == param"
@@ -21,7 +20,7 @@ event_catalog:
     payload_template:
       id: "command.targetId"
       object: "'price'"
-      created: "ts:unixNow"
+      created: "$unix()"
       livemode: "false"
       product: "command.payload.product"
       unit_amount: "has(command.payload.unit_amount) ? command.payload.unit_amount : null"

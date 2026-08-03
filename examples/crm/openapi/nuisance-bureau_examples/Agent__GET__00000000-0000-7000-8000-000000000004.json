@@ -1,0 +1,29 @@
+{
+  "http-request": {
+    "method": "GET",
+    "path": "/agents/00000000-0000-7000-8000-000000000004"
+  },
+  "http-response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "id": "00000000-0000-7000-8000-000000000004",
+      "name": "Bob Martinez",
+      "email": "bob@nuisance-bureau.com",
+      "skills": [
+        "Enterprise",
+        "Finance"
+      ],
+      "dailyCallQuota": 35,
+      "dailyCallCount": 0,
+      "currentStatus": "AVAILABLE",
+      "assignedCampaignIds": [
+        "00000000-0000-7000-8000-000000000001"
+      ],
+      "totalConversions": 8,
+      "lastActiveAt": "1970-01-01T00:00:00.000Z"
+    }
+  }
+}

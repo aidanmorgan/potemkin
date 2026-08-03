@@ -1,0 +1,266 @@
+openapi: "3.0.3"
+info:
+  title: Potemkin authoring parity contract
+  version: "1.0.0"
+paths:
+  /orders:
+    post:
+      operationId: createOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/Order"
+                  - $ref: "#/components/schemas/JsonApiOrder"
+        "202":
+          description: Accepted branch
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/Order"
+                  - $ref: "#/components/schemas/JsonApiOrder"
+        "409":
+          description: Idempotency conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "418":
+          description: Forced chaos response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Injected fault
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Selected response fault
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "504":
+          description: Scenario fault
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "508":
+          description: Cascade depth exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /orders/{id}:
+    get:
+      operationId: getOrder
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "404":
+          description: Missing order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      operationId: renameOrder
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: If-Match
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RenameOrder"
+      responses:
+        "200":
+          description: Renamed order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "404":
+          description: Missing order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "412":
+          description: Stale entity version
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /receipts:
+    post:
+      operationId: createReceipt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReceiptInput"
+      responses:
+        "201":
+          description: Receipt created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Receipt"
+  /receipts/{id}:
+    get:
+      operationId: getReceipt
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Receipt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Receipt"
+  /audits/{id}:
+    get:
+      operationId: getAudit
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Audit record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Audit"
+  /orders/summary:
+    get:
+      operationId: getOrderSummary
+      responses:
+        "200":
+          description: Projection endpoint is intentionally not stateful
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+components:
+  schemas:
+    OrderInput:
+      type: object
+      additionalProperties: false
+      required: [id, name, quantity, internalNote]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        quantity: { type: integer }
+        internalNote: { type: string }
+    RenameOrder:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: { type: string }
+    Order:
+      type: object
+      additionalProperties: false
+      required: [id, name, quantity, status]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        quantity: { type: integer }
+        internalNote: { type: string }
+        status: { type: string }
+        _events:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        _debug:
+          type: object
+          additionalProperties: true
+        _links:
+          type: object
+          additionalProperties: true
+    JsonApiOrder:
+      type: object
+      required: [data]
+      additionalProperties: false
+      properties:
+        data:
+          type: object
+          required: [type, id, attributes]
+          additionalProperties: false
+          properties:
+            type: { type: string }
+            id: { type: string }
+            attributes:
+              type: object
+              additionalProperties: true
+    ReceiptInput:
+      type: object
+      additionalProperties: true
+      required: [orderId, amount]
+      properties:
+        orderId: { type: string }
+        amount: { type: integer }
+    Receipt:
+      type: object
+      additionalProperties: true
+      required: [id, orderId, amount]
+      properties:
+        id: { type: string }
+        orderId: { type: string }
+        amount: { type: integer }
+    Audit:
+      type: object
+      additionalProperties: true
+      required: [id, orderId, action]
+      properties:
+        id: { type: string }
+        orderId: { type: string }
+        action: { type: string }
+    Error:
+      type: object
+      additionalProperties: true

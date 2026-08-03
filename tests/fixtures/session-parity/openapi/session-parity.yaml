@@ -1,0 +1,148 @@
+openapi: "3.0.3"
+info:
+  title: Potemkin session authoring parity contract
+  version: "1.0.0"
+paths:
+  /sessions:
+    post:
+      operationId: createSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SessionInput"
+      responses:
+        "200":
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "400":
+          description: Invalid session request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /sessions/current:
+    delete:
+      operationId: destroyCurrentSession
+      responses:
+        "204":
+          description: Session destroyed
+        "400":
+          description: Invalid session request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /records:
+    get:
+      operationId: listRecords
+      responses:
+        "200":
+          description: Records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Record"
+    post:
+      operationId: createRecord
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecordInput"
+      responses:
+        "201":
+          description: Record created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Record"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: CSRF or scope failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /records/{id}:
+    get:
+      operationId: getRecord
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Record"
+        "404":
+          description: Record not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+components:
+  schemas:
+    SessionInput:
+      type: object
+      additionalProperties: false
+      required: [actorId]
+      properties:
+        actorId:
+          type: string
+          minLength: 1
+        scopes:
+          type: array
+          items:
+            type: string
+    Session:
+      type: object
+      additionalProperties: true
+      required: [sessionId, csrfToken, actor, expiresAt]
+      properties:
+        sessionId: { type: string }
+        csrfToken: { type: string }
+        expiresAt: { type: string, format: date-time }
+        actor:
+          type: object
+          required: [id, scopes]
+          properties:
+            id: { type: string }
+            scopes:
+              type: array
+              items: { type: string }
+    RecordInput:
+      type: object
+      additionalProperties: false
+      required: [id, value]
+      properties:
+        id: { type: string }
+        value: { type: string }
+    Record:
+      type: object
+      additionalProperties: false
+      required: [id, value, status]
+      properties:
+        id: { type: string }
+        value: { type: string }
+        status: { type: string }
+    Error:
+      type: object
+      additionalProperties: true

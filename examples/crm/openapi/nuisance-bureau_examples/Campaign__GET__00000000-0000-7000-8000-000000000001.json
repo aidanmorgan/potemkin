@@ -1,0 +1,26 @@
+{
+  "http-request": {
+    "method": "GET",
+    "path": "/campaigns/00000000-0000-7000-8000-000000000001"
+  },
+  "http-response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "id": "00000000-0000-7000-8000-000000000001",
+      "name": "Q1 Website Leads",
+      "status": "ACTIVE",
+      "targetSource": "WEBSITE",
+      "script": "Hello, I'm calling from The Nuisance Bureau regarding your recent inquiry...",
+      "startedAt": "1970-01-01T00:00:00.000Z",
+      "endedAt": "1970-12-31T23:59:59.000Z",
+      "targetCalls": 500,
+      "targetConversions": 50,
+      "actualCalls": 0,
+      "actualConversions": 0,
+      "assignedAgentIds": []
+    }
+  }
+}

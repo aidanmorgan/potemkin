@@ -8,10 +8,10 @@
  * verbatim.
  */
 
-import type { SecurityHeadersConfig } from '../dsl/types.js';
+import type { SecurityHeadersConfig } from "../dsl/types.js";
 
 /** Default value for `Strict-Transport-Security` when `hsts` is enabled. */
-const HSTS_VALUE = 'max-age=31536000; includeSubDomains';
+const HSTS_VALUE = "max-age=31536000; includeSubDomains";
 
 export function buildSecurityHeaders(
   config: SecurityHeadersConfig | undefined,
@@ -20,10 +20,10 @@ export function buildSecurityHeaders(
   if (config.enabled === false) return {};
 
   const headers: Record<string, string> = {};
-  if (config.hsts) headers['Strict-Transport-Security'] = HSTS_VALUE;
-  if (config.nosniff) headers['X-Content-Type-Options'] = 'nosniff';
-  if (config.frame_deny) headers['X-Frame-Options'] = 'DENY';
-  if (config.referrer_policy) headers['Referrer-Policy'] = config.referrer_policy;
+  if (config.hsts) headers["Strict-Transport-Security"] = HSTS_VALUE;
+  if (config.nosniff) headers["X-Content-Type-Options"] = "nosniff";
+  if (config.frame_deny) headers["X-Frame-Options"] = "DENY";
+  if (config.referrer_policy) headers["Referrer-Policy"] = config.referrer_policy;
   if (config.custom_headers) {
     for (const [name, value] of Object.entries(config.custom_headers)) {
       headers[name] = value;

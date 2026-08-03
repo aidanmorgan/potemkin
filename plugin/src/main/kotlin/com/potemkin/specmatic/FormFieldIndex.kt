@@ -14,7 +14,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Lets the plugin coerce x-www-form-urlencoded request fields (which Specmatic
  * parses as strings) to the contract's declared types (integer/number/boolean)
  * before forwarding to the engine as JSON. The engine stays JSON-only and never
- * decodes form bodies — this is the HTTP/contract adapter doing its job.
+ * decodes form bodies; the transport boundary owns this contract conversion.
  *
  * Fetched lazily on first use and cached for the process lifetime; a failed fetch
  * leaves coercion disabled (fields pass through as strings) and is retried later.

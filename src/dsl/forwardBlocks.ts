@@ -1,5 +1,5 @@
-import type { Patch } from './patches.js';
-import { parsePointer } from './patches.js';
+import type { Patch } from "../model/patches.js";
+import { parsePointer } from "../model/patches.js";
 
 // Pure data transformations for the forward-blocks the plugin merges into Specmatic.
 
@@ -13,23 +13,23 @@ export interface WorkflowConfig {
 }
 
 export function validateWorkflowForward(raw: unknown): WorkflowConfig {
-  if (raw === null || typeof raw !== 'object') {
-    throw new Error('workflow: must be an object');
+  if (raw === null || typeof raw !== "object") {
+    throw new Error("workflow: must be an object");
   }
   const ids = (raw as { ids?: unknown }).ids;
-  if (ids === undefined || ids === null || typeof ids !== 'object') {
-    throw new Error('workflow.ids: must be an object');
+  if (ids === undefined || ids === null || typeof ids !== "object") {
+    throw new Error("workflow.ids: must be an object");
   }
   const out: Record<string, WorkflowIdEntry> = {};
   for (const [k, v] of Object.entries(ids as Record<string, unknown>)) {
-    if (v === null || typeof v !== 'object') {
+    if (v === null || typeof v !== "object") {
       throw new Error(`workflow.ids.${k}: must be { extract, use }`);
     }
     const obj = v as { extract?: unknown; use?: unknown };
-    if (typeof obj.extract !== 'string') {
+    if (typeof obj.extract !== "string") {
       throw new Error(`workflow.ids.${k}.extract: must be a JSONPath string`);
     }
-    if (typeof obj.use !== 'string') {
+    if (typeof obj.use !== "string") {
       throw new Error(`workflow.ids.${k}.use: must be a JSONPath string`);
     }
     out[k] = { extract: obj.extract, use: obj.use };
@@ -39,6 +39,7 @@ export function validateWorkflowForward(raw: unknown): WorkflowConfig {
 
 export interface GovernanceConfig {
   readonly report?: {
+    readonly format?: string;
     readonly successCriteria?: {
       readonly minCoverage?: number;
       readonly excludedEndpoints?: readonly string[];
@@ -48,22 +49,59 @@ export interface GovernanceConfig {
 }
 
 export function validateGovernanceForward(raw: unknown): GovernanceConfig {
-  if (raw === null || typeof raw !== 'object') {
-    throw new Error('governance: must be an object');
+  if (raw === null || typeof raw !== "object") {
+    throw new Error("governance: must be an object");
   }
   const obj = raw as Record<string, unknown>;
   const out: { -readonly [K in keyof GovernanceConfig]: GovernanceConfig[K] } = {};
-  if (obj['report'] !== undefined) {
-    if (obj['report'] === null || typeof obj['report'] !== 'object') {
-      throw new Error('governance.report: must be an object');
+  if (obj["report"] !== undefined) {
+    if (obj["report"] === null || typeof obj["report"] !== "object") {
+      throw new Error("governance.report: must be an object");
     }
-    out.report = obj['report'] as GovernanceConfig['report'];
+    const report = obj["report"] as Record<string, unknown>;
+    if (report["format"] !== undefined && typeof report["format"] !== "string") {
+      throw new Error("governance.report.format: must be a string");
+    }
+    if (report["successCriteria"] !== undefined) {
+      const criteria = report["successCriteria"];
+      if (criteria === null || typeof criteria !== "object" || Array.isArray(criteria)) {
+        throw new Error("governance.report.successCriteria: must be an object");
+      }
+      const values = criteria as Record<string, unknown>;
+      if (
+        values["minCoverage"] !== undefined &&
+        (typeof values["minCoverage"] !== "number" || !Number.isFinite(values["minCoverage"]))
+      ) {
+        throw new Error("governance.report.successCriteria.minCoverage: must be a finite number");
+      }
+      if (
+        values["excludedEndpoints"] !== undefined &&
+        (!Array.isArray(values["excludedEndpoints"]) ||
+          values["excludedEndpoints"].some((value) => typeof value !== "string"))
+      ) {
+        throw new Error(
+          "governance.report.successCriteria.excludedEndpoints: must be an array of strings",
+        );
+      }
+    }
+    out.report = {
+      ...(typeof report["format"] === "string" ? { format: report["format"] } : {}),
+      ...(report["successCriteria"] !== undefined
+        ? {
+            successCriteria: report["successCriteria"] as GovernanceConfig["report"] extends {
+              successCriteria?: infer Criteria;
+            }
+              ? Criteria
+              : never,
+          }
+        : {}),
+    };
   }
-  if (obj['successCriterion'] !== undefined) {
-    if (typeof obj['successCriterion'] !== 'string') {
-      throw new Error('governance.successCriterion: must be a string');
+  if (obj["successCriterion"] !== undefined) {
+    if (typeof obj["successCriterion"] !== "string") {
+      throw new Error("governance.successCriterion: must be a string");
     }
-    out.successCriterion = obj['successCriterion'];
+    out.successCriterion = obj["successCriterion"];
   }
   return out;
 }
@@ -83,15 +121,15 @@ export function translateOverlayPatches(patches: readonly Patch[]): OverlayActio
   const out: OverlayAction[] = [];
   for (const p of patches) {
     switch (p.op) {
-      case 'add':
-      case 'replace':
+      case "add":
+      case "replace":
         out.push({ target: pointerToJsonPath(p.path), update: p.value });
         break;
-      case 'remove':
+      case "remove":
         out.push({ target: pointerToJsonPath(p.path), remove: true });
         break;
-      case 'move':
-      case 'copy':
+      case "move":
+      case "copy":
         throw new Error(
           `Overlay '${p.op}' cannot be translated without the source spec ` +
             `(from '${p.from}' to '${p.path}'): the source value is not available ` +
@@ -106,8 +144,8 @@ export function translateOverlayPatches(patches: readonly Patch[]): OverlayActio
 
 function pointerToJsonPath(pointer: string): string {
   const segs = parsePointer(pointer);
-  if (segs.length === 0) return '$';
-  return '$.' + segs.join('.');
+  if (segs.length === 0) return "$";
+  return "$." + segs.join(".");
 }
 
 // Merge forward-block configs: scalars override, lists concatenate, objects merge recursively.
@@ -126,9 +164,9 @@ export function mergeForwardBlock<T extends Record<string, unknown>>(
       result[k] = [...existing, ...v];
     } else if (
       existing !== null &&
-      typeof existing === 'object' &&
+      typeof existing === "object" &&
       v !== null &&
-      typeof v === 'object' &&
+      typeof v === "object" &&
       !Array.isArray(existing) &&
       !Array.isArray(v)
     ) {

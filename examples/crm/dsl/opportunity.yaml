@@ -1,6 +1,68 @@
 boundary: Opportunity
 contract_path: /opportunities
 fallback_override: true
+export:
+  states:
+    - name: WON
+      steps:
+        - operationId: createOpportunity
+          body:
+            leadId: "00000000-0000-7000-8000-000000000010"
+            agentId: "00000000-0000-7000-8000-000000000003"
+            campaignId: "00000000-0000-7000-8000-000000000001"
+            value: 25000
+            probability: 80
+            expectedCloseDate: "2030-12-31"
+        - operationId: advanceOpportunity
+          body:
+            probability: 90
+        - operationId: closeOpportunity
+          body:
+            outcome: WON
+            closureReason: "Customer accepted the proposal"
+    - name: LOST
+      steps:
+        - operationId: createOpportunity
+          body:
+            leadId: "00000000-0000-7000-8000-000000000011"
+            agentId: "00000000-0000-7000-8000-000000000004"
+            campaignId: "00000000-0000-7000-8000-000000000002"
+            value: 12000
+            probability: 35
+            expectedCloseDate: "2030-11-30"
+        - operationId: closeOpportunity
+          body:
+            outcome: LOST
+            closureReason: "Budget was not approved"
+    - name: LeadConversionSaga
+      saga: LeadConversionSaga
+      steps:
+        - operationId: createLead
+          body:
+            companyName: "Export Saga Company"
+            contactName: "Export Contact"
+            phone: "+61 400 000 010"
+            email: "export-saga@example.com"
+            source: WEBSITE
+            assignedAgentId: "00000000-0000-7000-8000-000000000003"
+            assignedCampaignId: "00000000-0000-7000-8000-000000000001"
+        - operationId: logCall
+          body:
+            leadId: "$targetId"
+            agentId: "00000000-0000-7000-8000-000000000003"
+            campaignId: "00000000-0000-7000-8000-000000000001"
+            outcome: INTERESTED
+            durationSeconds: 120
+        - operationId: contactLead
+          body:
+            notes: "Exported saga contact"
+        - operationId: qualifyLead
+          body: {}
+        - operationId: convertLead
+          body:
+            value: 30000
+            probability: 75
+            expectedCloseDate: "2031-01-15"
 identity:
   creation:
     generate: $uuidv7()

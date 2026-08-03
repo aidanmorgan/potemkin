@@ -1,0 +1,30 @@
+boundary: Receipt
+contract_path: /receipts/{id}
+fallback_override: false
+identity:
+  creation:
+    generate: "command.targetId"
+event_catalog:
+  - type: ReceiptCreated
+    payload_template:
+      id: command.targetId
+      orderId: command.payload.orderId
+      amount: command.payload.amount
+behaviors:
+  - name: create-receipt
+    match:
+      operationId: createReceipt
+      condition: "true"
+    emit: ReceiptCreated
+reducers:
+  - on: ReceiptCreated
+    patches:
+      - op: replace
+        path: /id
+        value: "${event.payload.id}"
+      - op: replace
+        path: /orderId
+        value: "${event.payload.orderId}"
+      - op: replace
+        path: /amount
+        value: "${event.payload.amount}"

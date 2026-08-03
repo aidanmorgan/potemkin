@@ -1,0 +1,20 @@
+{
+  "http-request": {
+    "method": "POST",
+    "path": "/leads/00000000-0000-75fb-8b51-bbe3c0c67ce1/disqualify",
+    "body": {}
+  },
+  "http-response": {
+    "status": 422,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "body": {
+      "error": "INVALID_STATE_TRANSITION",
+      "message": "Operation disqualifyLead is not valid for the current entity state",
+      "details": {
+        "code": "INVALID_STATE_TRANSITION"
+      }
+    }
+  }
+}

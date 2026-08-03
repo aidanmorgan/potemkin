@@ -1,31 +1,133 @@
 {
-  "name": "specmatic-stateful-sim",
+  "name": "potemkin",
   "version": "0.1.0",
-  "description": "Specmatic Stateful Simulation Engine — CQRS/ES HTTP service simulator via OpenAPI + YAML DSL",
+  "description": "Potemkin — CQRS/ES HTTP service simulator via OpenAPI and YAML DSL",
   "license": "MIT",
-  "main": "dist/index.js",
-  "engines": {
-    "node": ">=20.6.0"
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "require": "./dist/src/index.js",
+      "default": "./dist/src/index.js"
+    },
+    "./parser": {
+      "types": "./dist/src/parser/public.d.ts",
+      "require": "./dist/src/parser/public.js",
+      "default": "./dist/src/parser/public.js"
+    },
+    "./parser/runtime": {
+      "types": "./dist/src/parser/runtime.d.ts",
+      "require": "./dist/src/parser/runtime.js",
+      "default": "./dist/src/parser/runtime.js"
+    },
+    "./parser/files": {
+      "types": "./dist/src/parser/files.d.ts",
+      "require": "./dist/src/parser/files.js",
+      "default": "./dist/src/parser/files.js"
+    },
+    "./parser/configured": {
+      "types": "./dist/src/parser/configured.d.ts",
+      "require": "./dist/src/parser/configured.js",
+      "default": "./dist/src/parser/configured.js"
+    },
+    "./parser/mixed": {
+      "types": "./dist/src/parser/mixed.d.ts",
+      "require": "./dist/src/parser/mixed.js",
+      "default": "./dist/src/parser/mixed.js"
+    },
+    "./parser/gateway": {
+      "types": "./dist/src/parser/gateway.d.ts",
+      "require": "./dist/src/parser/gateway.js",
+      "default": "./dist/src/parser/gateway.js"
+    },
+    "./config": {
+      "types": "./dist/src/config.d.ts",
+      "require": "./dist/src/config.js",
+      "default": "./dist/src/config.js"
+    },
+    "./model/builders": {
+      "types": "./dist/src/model/builders.d.ts",
+      "require": "./dist/src/model/builders.js",
+      "default": "./dist/src/model/builders.js"
+    },
+    "./model/compiler": {
+      "types": "./dist/src/model/compiler.d.ts",
+      "require": "./dist/src/model/compiler.js",
+      "default": "./dist/src/model/compiler.js"
+    },
+    "./model/patches": {
+      "types": "./dist/src/model/patches.d.ts",
+      "require": "./dist/src/model/patches.js",
+      "default": "./dist/src/model/patches.js"
+    },
+    "./model": {
+      "types": "./dist/src/model/index.d.ts",
+      "require": "./dist/src/model/index.js",
+      "default": "./dist/src/model/index.js"
+    },
+    "./runtime": {
+      "types": "./dist/src/runtime/system.d.ts",
+      "require": "./dist/src/runtime/system.js",
+      "default": "./dist/src/runtime/system.js"
+    },
+    "./http": {
+      "types": "./dist/src/http/runtimeGateway.d.ts",
+      "require": "./dist/src/http/runtimeGateway.js",
+      "default": "./dist/src/http/runtimeGateway.js"
+    },
+    "./contract": {
+      "types": "./dist/src/contract/loader.d.ts",
+      "require": "./dist/src/contract/loader.js",
+      "default": "./dist/src/contract/loader.js"
+    },
+    "./sdk": {
+      "types": "./dist/src/sdk/index.d.ts",
+      "require": "./dist/src/sdk/index.js",
+      "default": "./dist/src/sdk/index.js"
+    },
+    "./package.json": "./package.json"
   },
   "scripts": {
+    "prebuild": "node scripts/clean-dist.mjs",
     "build": "tsc",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "test:bdd": "cucumber-js --config cucumber.cjs",
-    "test:all": "npm test && npm run test:bdd",
+    "test:all": "pnpm test && pnpm run test:bdd",
     "lint": "eslint",
     "format": "prettier --write",
     "start": "tsx src/index.ts",
-    "start:example": "tsx examples/crm/run-crm-sim.ts",
-    "specmatic-cli:download": "node -e \"require('./tests/integration/specmatic-cli/_helpers/specmatic-binary').ensureSpecmaticJar().then(p => console.log('Cached at:', p)).catch(e => { console.error(e); process.exit(1); })\"",
-    "test:contract": "jest --config jest.contract.config.js",
-    "test:e2e": "jest --config jest.e2e.config.js --runInBand",
-    "test:e2e:engine": "jest --config jest.e2e.engine.config.js --runInBand",
-    "test:e2e:build": "cd plugin && ./gradlew shadowJar && cd .. && jest --config jest.e2e.config.js --runInBand",
+    "start:server": "tsx src/cli/server.ts",
     "lint:sim": "tsx src/cli/lint.ts",
+    "start:example": "tsx examples/crm/run-crm-sim.ts",
+    "test:contract": "jest --config jest.contract.config.js",
+    "test:conformance": "tsx src/conformance/cli.ts",
+    "test:conformance:crm": "tsx tests/conformance/crm-verifier.ts",
+    "test:conformance:crm:negative": "tsx tests/conformance/crm-negative-verifier.ts",
+    "test:conformance:crm:positive": "tsx tests/conformance/crm-positive-verifier.ts",
+    "test:e2e": "NODE_OPTIONS=--experimental-vm-modules jest --config jest.e2e.config.js --runInBand",
+    "test:equivalence": "jest --runInBand tests/unit/equivalence tests/integration/equivalence",
+    "test:e2e:build": "cd plugin && ./gradlew shadowJar && cd .. && NODE_OPTIONS=--experimental-vm-modules jest --config jest.e2e.config.js --runInBand",
+    "export:examples": "tsx src/cli/export-examples.ts",
+    "verify:examples": "pnpm run export:examples -- examples/crm --check && pnpm run export:examples -- examples/stripe --check",
     "test:examples": "jest --config jest.examples.config.js --runInBand",
-    "test:examples:build": "cd plugin && ./gradlew shadowJar && cd .. && jest --config jest.examples.config.js --runInBand"
+    "test:examples:build": "cd plugin && ./gradlew shadowJar && cd .. && jest --config jest.examples.config.js --runInBand",
+    "verify": "pnpm run verify:no-skips && verifyx && pnpm run verify:examples",
+    "verify:no-skips": "node scripts/check-no-skipped-tests.mjs",
+    "verify:complexity": "verifyx complexity --threshold 10 --ignore src/core/engine.ts --ignore src/dsl/schema.ts --ignore src/http/runtimeGateway.ts --ignore src/cel/evaluator.ts \"src/**/*.ts\"",
+    "verify:comments": "verifyx comments --max-lines 20 \"src/**/*.ts\"",
+    "verify:hardcoded-colors": "verifyx hardcoded-colors",
+    "verify:lint": "oxlint . --deny-warnings",
+    "verify:format": "oxfmt --check .",
+    "verify:check-types": "tsc --noEmit",
+    "verify:unused-code": "knip --no-progress --treat-config-hints-as-errors --exclude exports,types,duplicates",
+    "verify:duplicate-code": "jscpd --format typescript,tsx --threshold 2 --ignore \"**/*.test.*\" --ignore \"**/tables.generated.ts\" -r consoleFull src",
+    "verify:test": "jest --runInBand --forceExit"
   },
   "dependencies": {
     "@apidevtools/swagger-parser": "^10.1.0",
@@ -38,26 +140,31 @@
     "@opentelemetry/instrumentation-http": "^0.218.0",
     "@opentelemetry/instrumentation-pino": "^0.64.0",
     "@opentelemetry/resources": "^2.7.1",
+    "@opentelemetry/sdk-metrics": "^2.10.0",
     "@opentelemetry/sdk-node": "^0.218.0",
+    "@opentelemetry/sdk-trace-base": "^2.10.0",
     "@opentelemetry/semantic-conventions": "^1.29.0",
     "@types/async-retry": "^1.4.9",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
     "async-retry": "^1.3.3",
     "body-parser": "^1.20.3",
-    "chokidar": "^3.6.0",
     "cookie": "^1.1.1",
-    "esbuild": "^0.28.0",
     "express": "^4.21.2",
     "js-yaml": "^4.1.0",
     "jsonwebtoken": "^9.0.3",
+    "openapi-types": "^12.1.3",
     "pino": "^9.5.0",
     "pino-pretty": "^13.0.0",
+    "supertest": "^7.0.0",
     "tinyglobby": "^0.2.16",
+    "typescript": "^5.7.3",
     "uuidv7": "^1.0.2"
   },
   "devDependencies": {
     "@cucumber/cucumber": "^11.3.0",
+    "@makerx/verify": "1.2.0",
+    "@types/body-parser": "^1.19.6",
     "@types/cookie": "^0.6.0",
     "@types/express": "^5.0.0",
     "@types/jest": "^29.5.14",
@@ -70,14 +177,21 @@
     "eslint": "^9.18.0",
     "fast-check": "^3.23.2",
     "jest": "^29.7.0",
+    "jscpd": "^5.0.14",
+    "knip": "^6.31.0",
+    "oxfmt": "^0.61.0",
+    "oxlint": "^1.76.0",
     "prettier": "^3.4.2",
-    "supertest": "^7.0.0",
+    "skott": "^0.35.11",
     "ts-jest": "^29.2.5",
     "ts-node": "^10.9.2",
-    "tsx": "^4.19.2",
-    "typescript": "^5.7.3"
+    "tsx": "^4.19.2"
   },
   "overrides": {
     "uuid": ">=11.1.1"
-  }
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "packageManager": "pnpm@10.34.5"
 }

@@ -26,7 +26,7 @@ export interface Production {
   readonly prec?: Sym;
 }
 
-export type Assoc = 'left' | 'right' | 'nonassoc';
+export type Assoc = "left" | "right" | "nonassoc";
 
 /** Precedence levels, lowest binding first (index 0 = loosest). */
 export interface PrecLevel {
@@ -38,7 +38,7 @@ export interface PrecLevel {
  * Nonterminals of the grammar. The augmented start `S'` → `Expr $end` is added
  * by the generator.
  */
-export const START: Sym = 'Expr';
+export const START: Sym = "Expr";
 
 /**
  * Production list. Indices are STABLE — the generated tables and the reduce
@@ -47,110 +47,110 @@ export const START: Sym = 'Expr';
  */
 export const PRODUCTIONS: readonly Production[] = [
   // 0: Expr → Cond
-  { lhs: 'Expr', rhs: ['Cond'] },
+  { lhs: "Expr", rhs: ["Cond"] },
 
   // 1: Cond → Or
-  { lhs: 'Cond', rhs: ['Or'] },
+  { lhs: "Cond", rhs: ["Or"] },
   // 2: Cond → Or ? Expr : Expr        (ternary)
-  { lhs: 'Cond', rhs: ['Or', '?', 'Expr', ':', 'Expr'] },
+  { lhs: "Cond", rhs: ["Or", "?", "Expr", ":", "Expr"] },
 
   // 3: Or → Or || Or
-  { lhs: 'Or', rhs: ['Or', '||', 'Or'] },
+  { lhs: "Or", rhs: ["Or", "||", "Or"] },
   // 4: Or → And
-  { lhs: 'Or', rhs: ['And'] },
+  { lhs: "Or", rhs: ["And"] },
 
   // 5: And → And && And
-  { lhs: 'And', rhs: ['And', '&&', 'And'] },
+  { lhs: "And", rhs: ["And", "&&", "And"] },
   // 6: And → Rel
-  { lhs: 'And', rhs: ['Rel'] },
+  { lhs: "And", rhs: ["Rel"] },
 
   // 7..13: Rel → Rel <op> Rel  (==, !=, <, <=, >, >=, in)
-  { lhs: 'Rel', rhs: ['Rel', '==', 'Rel'] },   // 7
-  { lhs: 'Rel', rhs: ['Rel', '!=', 'Rel'] },   // 8
-  { lhs: 'Rel', rhs: ['Rel', '<',  'Rel'] },   // 9
-  { lhs: 'Rel', rhs: ['Rel', '<=', 'Rel'] },   // 10
-  { lhs: 'Rel', rhs: ['Rel', '>',  'Rel'] },   // 11
-  { lhs: 'Rel', rhs: ['Rel', '>=', 'Rel'] },   // 12
-  { lhs: 'Rel', rhs: ['Rel', 'in', 'Rel'] },   // 13
+  { lhs: "Rel", rhs: ["Rel", "==", "Rel"] }, // 7
+  { lhs: "Rel", rhs: ["Rel", "!=", "Rel"] }, // 8
+  { lhs: "Rel", rhs: ["Rel", "<", "Rel"] }, // 9
+  { lhs: "Rel", rhs: ["Rel", "<=", "Rel"] }, // 10
+  { lhs: "Rel", rhs: ["Rel", ">", "Rel"] }, // 11
+  { lhs: "Rel", rhs: ["Rel", ">=", "Rel"] }, // 12
+  { lhs: "Rel", rhs: ["Rel", "in", "Rel"] }, // 13
   // 14: Rel → Add
-  { lhs: 'Rel', rhs: ['Add'] },
+  { lhs: "Rel", rhs: ["Add"] },
 
   // 15,16: Add → Add +|- Add
-  { lhs: 'Add', rhs: ['Add', '+', 'Add'] },    // 15
-  { lhs: 'Add', rhs: ['Add', '-', 'Add'] },    // 16
+  { lhs: "Add", rhs: ["Add", "+", "Add"] }, // 15
+  { lhs: "Add", rhs: ["Add", "-", "Add"] }, // 16
   // 17: Add → Mul
-  { lhs: 'Add', rhs: ['Mul'] },
+  { lhs: "Add", rhs: ["Mul"] },
 
   // 18,19,20: Mul → Mul *|/|% Mul
-  { lhs: 'Mul', rhs: ['Mul', '*', 'Mul'] },    // 18
-  { lhs: 'Mul', rhs: ['Mul', '/', 'Mul'] },    // 19
-  { lhs: 'Mul', rhs: ['Mul', '%', 'Mul'] },    // 20
+  { lhs: "Mul", rhs: ["Mul", "*", "Mul"] }, // 18
+  { lhs: "Mul", rhs: ["Mul", "/", "Mul"] }, // 19
+  { lhs: "Mul", rhs: ["Mul", "%", "Mul"] }, // 20
   // 21: Mul → Unary
-  { lhs: 'Mul', rhs: ['Unary'] },
+  { lhs: "Mul", rhs: ["Unary"] },
 
   // 22: Unary → ! Unary
-  { lhs: 'Unary', rhs: ['!', 'Unary'], prec: 'UNOT' },
+  { lhs: "Unary", rhs: ["!", "Unary"], prec: "UNOT" },
   // 23: Unary → - Unary
-  { lhs: 'Unary', rhs: ['-', 'Unary'], prec: 'UMINUS' },
+  { lhs: "Unary", rhs: ["-", "Unary"], prec: "UMINUS" },
   // 24: Unary → Postfix
-  { lhs: 'Unary', rhs: ['Postfix'] },
+  { lhs: "Unary", rhs: ["Postfix"] },
 
   // 25: Postfix → Primary
-  { lhs: 'Postfix', rhs: ['Primary'] },
+  { lhs: "Postfix", rhs: ["Primary"] },
   // 26: Postfix → Postfix . IDENT                 (member)
-  { lhs: 'Postfix', rhs: ['Postfix', '.', 'IDENT'] },
+  { lhs: "Postfix", rhs: ["Postfix", ".", "IDENT"] },
   // 27: Postfix → Postfix . IDENT ( Args )         (method / comprehension)
-  { lhs: 'Postfix', rhs: ['Postfix', '.', 'IDENT', '(', 'Args', ')'] },
+  { lhs: "Postfix", rhs: ["Postfix", ".", "IDENT", "(", "Args", ")"] },
   // 28: Postfix → Postfix ?. IDENT                 (null-safe member)
-  { lhs: 'Postfix', rhs: ['Postfix', '?.', 'IDENT'] },
+  { lhs: "Postfix", rhs: ["Postfix", "?.", "IDENT"] },
   // 29: Postfix → Postfix ?. IDENT ( Args )         (null-safe method/compr.)
-  { lhs: 'Postfix', rhs: ['Postfix', '?.', 'IDENT', '(', 'Args', ')'] },
+  { lhs: "Postfix", rhs: ["Postfix", "?.", "IDENT", "(", "Args", ")"] },
   // 30: Postfix → Postfix [ Expr ]                 (index)
-  { lhs: 'Postfix', rhs: ['Postfix', '[', 'Expr', ']'] },
+  { lhs: "Postfix", rhs: ["Postfix", "[", "Expr", "]"] },
   // 31: Postfix → Postfix ?[ Expr ]                (null-safe index)
-  { lhs: 'Postfix', rhs: ['Postfix', '?[', 'Expr', ']'] },
+  { lhs: "Postfix", rhs: ["Postfix", "?[", "Expr", "]"] },
 
   // 32..35: Primary literals
-  { lhs: 'Primary', rhs: ['NUMBER'] },   // 32
-  { lhs: 'Primary', rhs: ['STRING'] },   // 33
-  { lhs: 'Primary', rhs: ['BOOL'] },     // 34
-  { lhs: 'Primary', rhs: ['NULL'] },     // 35
+  { lhs: "Primary", rhs: ["NUMBER"] }, // 32
+  { lhs: "Primary", rhs: ["STRING"] }, // 33
+  { lhs: "Primary", rhs: ["BOOL"] }, // 34
+  { lhs: "Primary", rhs: ["NULL"] }, // 35
   // 36: Primary → IDENT                  (bare identifier)
-  { lhs: 'Primary', rhs: ['IDENT'] },
+  { lhs: "Primary", rhs: ["IDENT"] },
   // 37: Primary → IDENT ( Args )          (function call)
-  { lhs: 'Primary', rhs: ['IDENT', '(', 'Args', ')'] },
+  { lhs: "Primary", rhs: ["IDENT", "(", "Args", ")"] },
   // 38: Primary → ( Expr )                (grouping)
-  { lhs: 'Primary', rhs: ['(', 'Expr', ')'] },
+  { lhs: "Primary", rhs: ["(", "Expr", ")"] },
   // 39: Primary → [ Elems ]               (list literal)
-  { lhs: 'Primary', rhs: ['[', 'Elems', ']'] },
+  { lhs: "Primary", rhs: ["[", "Elems", "]"] },
   // 40: Primary → { Entries }             (map literal)
-  { lhs: 'Primary', rhs: ['{', 'Entries', '}'] },
+  { lhs: "Primary", rhs: ["{", "Entries", "}"] },
 
   // 41,42,43: Args
-  { lhs: 'Args', rhs: [] },                       // 41 (empty)
-  { lhs: 'Args', rhs: ['ArgList'] },              // 42
-  { lhs: 'Args', rhs: ['ArgList', ','] },         // 43 (trailing comma)
+  { lhs: "Args", rhs: [] }, // 41 (empty)
+  { lhs: "Args", rhs: ["ArgList"] }, // 42
+  { lhs: "Args", rhs: ["ArgList", ","] }, // 43 (trailing comma)
   // 44,45: ArgList
-  { lhs: 'ArgList', rhs: ['Expr'] },              // 44
-  { lhs: 'ArgList', rhs: ['ArgList', ',', 'Expr'] }, // 45
+  { lhs: "ArgList", rhs: ["Expr"] }, // 44
+  { lhs: "ArgList", rhs: ["ArgList", ",", "Expr"] }, // 45
 
   // 46,47,48: Elems
-  { lhs: 'Elems', rhs: [] },                      // 46 (empty)
-  { lhs: 'Elems', rhs: ['ElemList'] },            // 47
-  { lhs: 'Elems', rhs: ['ElemList', ','] },       // 48 (trailing comma)
+  { lhs: "Elems", rhs: [] }, // 46 (empty)
+  { lhs: "Elems", rhs: ["ElemList"] }, // 47
+  { lhs: "Elems", rhs: ["ElemList", ","] }, // 48 (trailing comma)
   // 49,50: ElemList
-  { lhs: 'ElemList', rhs: ['Expr'] },             // 49
-  { lhs: 'ElemList', rhs: ['ElemList', ',', 'Expr'] }, // 50
+  { lhs: "ElemList", rhs: ["Expr"] }, // 49
+  { lhs: "ElemList", rhs: ["ElemList", ",", "Expr"] }, // 50
 
   // 51,52,53: Entries
-  { lhs: 'Entries', rhs: [] },                    // 51 (empty)
-  { lhs: 'Entries', rhs: ['EntryList'] },         // 52
-  { lhs: 'Entries', rhs: ['EntryList', ','] },    // 53 (trailing comma)
+  { lhs: "Entries", rhs: [] }, // 51 (empty)
+  { lhs: "Entries", rhs: ["EntryList"] }, // 52
+  { lhs: "Entries", rhs: ["EntryList", ","] }, // 53 (trailing comma)
   // 54,55: EntryList
-  { lhs: 'EntryList', rhs: ['Entry'] },           // 54
-  { lhs: 'EntryList', rhs: ['EntryList', ',', 'Entry'] }, // 55
+  { lhs: "EntryList", rhs: ["Entry"] }, // 54
+  { lhs: "EntryList", rhs: ["EntryList", ",", "Entry"] }, // 55
   // 56: Entry → Expr : Expr
-  { lhs: 'Entry', rhs: ['Expr', ':', 'Expr'] },   // 56
+  { lhs: "Entry", rhs: ["Expr", ":", "Expr"] }, // 56
 ];
 
 /**
@@ -158,12 +158,12 @@ export const PRODUCTIONS: readonly Production[] = [
  * grammar doc. `UMINUS`/`UNOT` are pseudo-terminals used only as `%prec` tags.
  */
 export const PRECEDENCE: readonly PrecLevel[] = [
-  { assoc: 'right', terminals: ['?', ':'] },
-  { assoc: 'left',  terminals: ['||'] },
-  { assoc: 'left',  terminals: ['&&'] },
-  { assoc: 'left',  terminals: ['==', '!=', '<', '<=', '>', '>=', 'in'] },
-  { assoc: 'left',  terminals: ['+', '-'] },
-  { assoc: 'left',  terminals: ['*', '/', '%'] },
-  { assoc: 'right', terminals: ['UMINUS', 'UNOT', '!'] },
-  { assoc: 'left',  terminals: ['.', '?.', '[', '?[', '('] },
+  { assoc: "right", terminals: ["?", ":"] },
+  { assoc: "left", terminals: ["||"] },
+  { assoc: "left", terminals: ["&&"] },
+  { assoc: "left", terminals: ["==", "!=", "<", "<=", ">", ">=", "in"] },
+  { assoc: "left", terminals: ["+", "-"] },
+  { assoc: "left", terminals: ["*", "/", "%"] },
+  { assoc: "right", terminals: ["UMINUS", "UNOT", "!"] },
+  { assoc: "left", terminals: [".", "?.", "[", "?[", "("] },
 ];

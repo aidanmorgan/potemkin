@@ -1,91 +1,88 @@
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import { loadOpenApi, lookupOperationId } from '../../../src/contract/loader';
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { loadOpenApi, lookupOperationId } from "../../../src/contract/loader";
 
 const sampleDoc = {
-  openapi: '3.0.0',
-  info: { title: 'Test', version: '1.0.0' },
+  openapi: "3.0.0",
+  info: { title: "Test", version: "1.0.0" },
   paths: {
-    '/leads': {
-      get: { operationId: 'listLeads', responses: {} },
-      post: { operationId: 'createLead', responses: {} },
+    "/leads": {
+      get: { operationId: "listLeads", responses: {} },
+      post: { operationId: "createLead", responses: {} },
     },
-    '/leads/{id}': {
-      get: { operationId: 'getLead', responses: {} },
-      patch: { operationId: 'patchLead', responses: {} },
+    "/leads/{id}": {
+      get: { operationId: "getLead", responses: {} },
+      patch: { operationId: "patchLead", responses: {} },
     },
-    '/leads/{id}/qualify': {
-      post: { operationId: 'qualifyLead', responses: {} },
+    "/leads/{id}/qualify": {
+      post: { operationId: "qualifyLead", responses: {} },
     },
     // Operation with no operationId declared — must be skipped by the index.
-    '/health': {
+    "/health": {
       get: { responses: {} },
     },
   },
 };
 
-describe('contract/lookupOperationId', () => {
-  it('exports lookupOperationId from loader', () => {
-    expect(typeof lookupOperationId).toBe('function');
+describe("contract/lookupOperationId", () => {
+  it("exports lookupOperationId from loader", () => {
+    expect(typeof lookupOperationId).toBe("function");
   });
 
-  it('resolves a collection POST to its operationId', async () => {
+  it("resolves a collection POST to its operationId", async () => {
     const doc = await loadOpenApi(sampleDoc);
-    expect(lookupOperationId(doc, '/leads', 'POST')).toBe('createLead');
+    expect(lookupOperationId(doc, "/leads", "POST")).toBe("createLead");
   });
 
-  it('resolves a templated sub-path POST to its operationId', async () => {
+  it("resolves a templated sub-path POST to its operationId", async () => {
     const doc = await loadOpenApi(sampleDoc);
-    expect(lookupOperationId(doc, '/leads/{id}/qualify', 'POST')).toBe('qualifyLead');
+    expect(lookupOperationId(doc, "/leads/{id}/qualify", "POST")).toBe("qualifyLead");
   });
 
-  it('resolves a GET on a collection', async () => {
+  it("resolves a GET on a collection", async () => {
     const doc = await loadOpenApi(sampleDoc);
-    expect(lookupOperationId(doc, '/leads', 'GET')).toBe('listLeads');
+    expect(lookupOperationId(doc, "/leads", "GET")).toBe("listLeads");
   });
 
-  it('resolves a PATCH on a templated path', async () => {
+  it("resolves a PATCH on a templated path", async () => {
     const doc = await loadOpenApi(sampleDoc);
-    expect(lookupOperationId(doc, '/leads/{id}', 'PATCH')).toBe('patchLead');
+    expect(lookupOperationId(doc, "/leads/{id}", "PATCH")).toBe("patchLead");
   });
 
-  it('matches method case-insensitively (lowercase post)', async () => {
+  it("matches method case-insensitively (lowercase post)", async () => {
     const doc = await loadOpenApi(sampleDoc);
-    expect(lookupOperationId(doc, '/leads', 'post')).toBe('createLead');
+    expect(lookupOperationId(doc, "/leads", "post")).toBe("createLead");
   });
 
-  it('returns undefined for an unknown method on a known path', async () => {
+  it("returns undefined for an unknown method on a known path", async () => {
     const doc = await loadOpenApi(sampleDoc);
-    expect(lookupOperationId(doc, '/leads', 'DELETE')).toBeUndefined();
+    expect(lookupOperationId(doc, "/leads", "DELETE")).toBeUndefined();
   });
 
-  it('returns undefined for an unknown path', async () => {
+  it("returns undefined for an unknown path", async () => {
     const doc = await loadOpenApi(sampleDoc);
-    expect(lookupOperationId(doc, '/nonexistent', 'GET')).toBeUndefined();
+    expect(lookupOperationId(doc, "/nonexistent", "GET")).toBeUndefined();
   });
 
-  it('returns undefined when the matched operation declares no operationId', async () => {
+  it("returns undefined when the matched operation declares no operationId", async () => {
     const doc = await loadOpenApi(sampleDoc);
-    expect(lookupOperationId(doc, '/health', 'GET')).toBeUndefined();
+    expect(lookupOperationId(doc, "/health", "GET")).toBeUndefined();
   });
 
-  it('works against a hand-built doc literal without a prebuilt index', () => {
+  it("works against a hand-built doc literal without a prebuilt index", () => {
     const literal = {
       raw: {},
       paths: {
-        '/leads': { post: { operationId: 'createLead' } },
+        "/leads": { post: { operationId: "createLead" } },
       },
     };
-    expect(lookupOperationId(literal, '/leads', 'POST')).toBe('createLead');
-    expect(lookupOperationId(literal, '/leads', 'GET')).toBeUndefined();
+    expect(lookupOperationId(literal, "/leads", "POST")).toBe("createLead");
+    expect(lookupOperationId(literal, "/leads", "GET")).toBeUndefined();
   });
 
-  describe('all CRM operationIds resolvable', () => {
-    it('resolves every operationId declared in the CRM contract', async () => {
-      const specPath = path.join(
-        __dirname,
-        '../../../examples/crm/openapi/nuisance-bureau.yaml',
-      );
+  describe("all CRM operationIds resolvable", () => {
+    it("resolves every operationId declared in the CRM contract", async () => {
+      const specPath = path.join(__dirname, "../../../examples/crm/openapi/nuisance-bureau.yaml");
       const doc = await loadOpenApi(specPath);
 
       // Collect every (path, method, operationId) from the loaded paths and
@@ -107,8 +104,8 @@ describe('contract/lookupOperationId', () => {
       }
 
       // Spot-check the two canonical examples from the task.
-      expect(lookupOperationId(doc, '/leads', 'POST')).toBe('createLead');
-      expect(lookupOperationId(doc, '/leads/{id}/qualify', 'POST')).toBe('qualifyLead');
+      expect(lookupOperationId(doc, "/leads", "POST")).toBe("createLead");
+      expect(lookupOperationId(doc, "/leads/{id}/qualify", "POST")).toBe("qualifyLead");
       expect(fs.existsSync(specPath)).toBe(true);
     });
   });

@@ -1,6 +1,5 @@
 package com.potemkin.specmatic
 
-import com.potemkin.specmatic.reliability.ResilientForwarder
 import io.specmatic.core.HttpRequest
 import io.specmatic.core.HttpResponse
 import io.specmatic.core.value.StringValue
@@ -10,8 +9,8 @@ import org.slf4j.LoggerFactory
 
 /**
  * Specmatic [RequestHandler] that intercepts requests whose paths are owned by the Node CQRS
- * engine (as discovered at runtime via [RoutesDiscoveryClient]) and forwards them to the engine
- * via [ResilientForwarder] (resilience4j retry + circuit-breaker wrapper around [CqrsBackendClient]).
+ * engine (as discovered at runtime via [RoutesDiscoveryClient]) and forwards them through the
+ * injected [EngineRequestForwarder]. Production supplies the resilience policy as that strategy.
  *
  * Contract:
  * - Returns `null` for any (method, path) tuple that was registered as a Specmatic stub via
@@ -22,18 +21,11 @@ import org.slf4j.LoggerFactory
  *   rather than Specmatic generating a fake success response.
  * - Returns the engine's response for matched paths that the engine handles successfully.
  * - NEVER throws — all exceptions are caught internally so Specmatic is never disrupted.
- *
- * The [client] parameter accepts either a [CqrsBackendClient] (legacy / test path) or a
- * [ResilientForwarder] (production). Both are subtypes of [ForwardingClient] (structural
- * duck-typed via the [forward] extension inside this file) — since [CqrsBackendClient]
- * returns nullable and [ResilientForwarder] is non-nullable, [StatefulRequestHandler]
- * wraps the call in a common [forward] helper.
  */
 class StatefulRequestHandler(
     private val discovery: RoutesDiscoveryClient,
-    private val client: CqrsBackendClient,
+    private val forwarder: EngineRequestForwarder,
     private val fixtures: FixturesClient? = null,
-    private val resilientForwarder: ResilientForwarder? = null,
     private val workflow: WorkflowPropagator? = null,
     private val fallback: FallbackPolicy? = null,
     /** (METHOD, path) tuples that Specmatic serves via a registered seed — the
@@ -65,7 +57,7 @@ class StatefulRequestHandler(
             // challenge). Emit a 401 before doing any forwarding or stub matching.
             httpRequest.headers[PotemkinHeaders.AUTH_ERROR]?.let { challenge ->
                 log.debug("Rejecting '{} {}' with 401 — JWT verification failed", method, path)
-                return unauthorized(challenge)
+                return unauthorized(challenge, httpRequest.headers[PotemkinHeaders.AUTH_ERROR_CODE])
             }
 
             // Admin control surface: proxy requests under /_admin/ straight to the engine's
@@ -73,7 +65,7 @@ class StatefulRequestHandler(
             // handled via /_engine/forward — a raw passthrough lets a consumer force state
             // THROUGH the stub URL (the Authorization admin token is preserved by the header copy).
             if (path.startsWith("/_admin/")) {
-                val adminResp = client.proxyRaw(httpRequest)
+                val adminResp = forwarder.proxyRaw(httpRequest)
                 if (adminResp != null) return adminResp
                 log.warn("Admin proxy for '{} {}' failed; falling through to Specmatic", method, path)
                 return null
@@ -90,43 +82,33 @@ class StatefulRequestHandler(
                 return null
             }
 
+            // A registered seed is intentional Specmatic-served content. Check this
+            // before discovery because the engine advertises the complete OpenAPI
+            // surface, including paths that are owned by a seed rather than a runtime
+            // boundary.
+            if (seededPaths.contains(method to path)) {
+                return null
+            }
+
             if (!discovery.isStateful(path)) {
-                // A registered seed is intentional Specmatic-served content — defer to
-                // Specmatic so it serves the seed (the fallback must not preempt it).
-                if (seededPaths.contains(method to path)) {
-                    return null
-                }
                 // Otherwise apply the engine's `fallback:` policy (static 501/404/custom)
                 // so the stub behaves like the direct engine, rather than letting
-                // Specmatic generate an example. When no fallback policy is wired
-                // (legacy tests), fall through to Specmatic.
+                // Specmatic generate an example. When no fallback policy is wired,
+                // fall through to Specmatic.
                 return fallback?.evaluate(method, path)
             }
 
-            // Use the resilient forwarder when available (production path).
-            if (resilientForwarder != null) {
-                val response = resilientForwarder.forward(httpRequest)
-                // 503 from ResilientForwarder means the engine is definitively unavailable.
-                // Return it directly so the caller sees the failure.
-                if (response.response.status == 503) {
-                    log.warn(
-                        "Node engine unavailable for owned path '{}' — returning 503",
-                        path,
-                    )
-                }
-                workflow?.observeResponse(httpRequest, response.response)
-                return response
-            }
-
-            // Legacy path: bare CqrsBackendClient (used in existing unit tests).
-            val response = client.forward(httpRequest)
+            val response = forwarder.forward(httpRequest)
             if (response == null) {
                 log.debug(
-                    "Node engine returned null for path '{}'; falling through to Specmatic stub matching",
+                    "Engine forwarder returned no response for path '{}'; falling through to Specmatic stub matching",
                     httpRequest.path,
                 )
             } else {
                 workflow?.observeResponse(httpRequest, response.response)
+                if (response.response.status == 503) {
+                    log.warn("Node engine unavailable for owned path '{}' — returning 503", path)
+                }
             }
             response
         } catch (e: Exception) {
@@ -146,8 +128,12 @@ class StatefulRequestHandler(
      * Build a 401 response with a `WWW-Authenticate: Bearer realm=...` challenge
      * when JWT verification fails.
      */
-    private fun unauthorized(challenge: String): HttpStubResponse {
-        val body = """{"error":"unauthorized"}"""
+    private fun unauthorized(challenge: String, code: String? = null): HttpStubResponse {
+        val body = if (code === null) {
+            """{"error":"unauthorized"}"""
+        } else {
+            """{"code":"$code","message":"Authentication failed","details":{"code":"$code"},"error":"$code"}"""
+        }
         return HttpStubResponse(
             response = HttpResponse(
                 status = 401,

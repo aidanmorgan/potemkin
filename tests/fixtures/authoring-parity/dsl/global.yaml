@@ -1,0 +1,63 @@
+idempotency:
+  enabled: true
+  ttl_seconds: 86400
+  hash_includes_body: true
+security_headers:
+  enabled: true
+  hsts: true
+  nosniff: true
+  frame_deny: true
+  referrer_policy: strict-origin-when-cross-origin
+  custom_headers:
+    X-Parity-Fixture: yaml-and-typescript
+fault_rules:
+  - name: parity-fault
+    match:
+      headers:
+        x-parity-fault: on
+      condition: "true"
+    response:
+      status: 503
+      body:
+        error: PARITY_FAULT
+        message: deliberate parity fixture fault
+      headers:
+        Retry-After: "5"
+derived_projections:
+  - name: OrderSummary
+    key: event.aggregateId
+    subscribe:
+      - "Order:OrderCreated"
+      - "OrderById:OrderRenamed"
+    reduce:
+      - on: "Order:OrderCreated"
+        patches:
+          - op: replace
+            path: /name
+            value: "${event.payload.name}"
+          - op: replace
+            path: /renameCount
+            value: "${0}"
+      - on: "OrderById:OrderRenamed"
+        patches:
+          - op: replace
+            path: /name
+            value: "${event.payload.name}"
+          - op: increment
+            path: /renameCount
+            by: 1
+webhooks:
+  - name: order-created-hook
+    trigger:
+      boundary: Order
+      intent: creation
+      condition: "event.type == 'OrderCreated'"
+    url: "'http://127.0.0.1:19878/order-hook'"
+    secret: parity-webhook-secret
+    payload:
+      orderId: "${event.aggregateId}"
+      event: "${event.type}"
+      name: "${event.payload.name}"
+    retry:
+      maxAttempts: 1
+      delayMs: 1

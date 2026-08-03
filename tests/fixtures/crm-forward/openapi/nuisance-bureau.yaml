@@ -981,7 +981,15 @@ paths:
                   minimum: 0
                 outcome:
                   type: string
-                  enum: [NO_ANSWER, CALLBACK_SCHEDULED, INTERESTED, NOT_INTERESTED, CONVERTED, DNC_REQUESTED]
+                  enum:
+                    [
+                      NO_ANSWER,
+                      CALLBACK_SCHEDULED,
+                      INTERESTED,
+                      NOT_INTERESTED,
+                      CONVERTED,
+                      DNC_REQUESTED,
+                    ]
                 notes:
                   type: string
                 recordingUrl:
@@ -1603,7 +1611,8 @@ components:
           minimum: 0
         outcome:
           type: string
-          enum: [NO_ANSWER, CALLBACK_SCHEDULED, INTERESTED, NOT_INTERESTED, CONVERTED, DNC_REQUESTED]
+          enum:
+            [NO_ANSWER, CALLBACK_SCHEDULED, INTERESTED, NOT_INTERESTED, CONVERTED, DNC_REQUESTED]
         notes:
           type: string
         recordingUrl:

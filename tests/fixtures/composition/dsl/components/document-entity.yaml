@@ -49,15 +49,15 @@ include:
 event_catalog:
   - type: DocumentCreated
     payload_template:
-      id:     "command.targetId"
+      id: "command.targetId"
       status: "'{{initialStatus}}'"
-      title:  "command.payload.title"
+      title: "command.payload.title"
 
   - type: DocumentUpdated
     payload_template:
-      id:     "command.targetId"
+      id: "command.targetId"
       status: "'UPDATED'"
-      title:  "command.payload.title"
+      title: "command.payload.title"
 
   - type: AuditLogged
     payload_template:

@@ -1,89 +1,65 @@
-# Design spec: YAML purity (block style, no inline TypeScript)
+# YAML purity and TypeScript configuration factories
 
-Status: proposed. Tracking: epic `potemkin-<epic>` and increments below.
+YAML remains declarative: it contains boundaries, policies, CEL expressions, and
+references to OpenAPI operations. TypeScript is loaded separately through the
+configured scan globs. The two authoring paths meet at the canonical runtime
+model.
 
-Two corrections, with the same intent: YAML files should read as YAML and contain only
-declarative configuration, never embedded code or JSON-shaped flow syntax.
+## Factory discovery
 
-## Correction A — block YAML, no inline JSON/flow
+The scanner parses selected TypeScript modules with the TypeScript AST and
+invokes only static methods decorated with the exact `@PotemkinConfigure`
+decorator imported from `potemkin/sdk`:
 
-Examples and fixtures currently use flow style in many places, e.g.
-`match: { operationId: createLead, condition: "true" }`, `retry: { maxAttempts: 3 }`,
-`- { op: add, path: /leads, value: "${0}" }`. Flow mappings/sequences are valid YAML but read
-like JSON. We want block style everywhere a developer reads the DSL.
+```typescript
+import { PotemkinConfigure, defineHelper, simulation } from "potemkin/sdk";
 
-Scope: every YAML fence in `README.md` and `docs/**/*.md`, and every `*.yaml` under
-`tests/fixtures/**`. The change is purely syntactic — the parsed structure is identical — so it is
-verified by the test suite staying green. CEL `${...}` strings are untouched.
+const sourceLabel = defineHelper("sourceLabel", (value: string) => value);
 
-Optional guard: a small repo check that flags flow-style mappings/sequences inside DSL YAML so the
-style does not regress. Treated as a follow-up, not a blocker.
-
-## Correction B — no inline TypeScript; annotation-based discovery
-
-Today an inline script is declared in YAML as `scripts: [{ name: computeScore, code: | <TS source> }]`
-and referenced with the `ts:computeScore` sentinel. We want the YAML to carry only the **id**; the
-function is authored in a scanned `.ts` file and discovered by an annotation, exactly as TypeScript
-reducers already work.
-
-The project already has the mechanism: `@potemkin/sdk` exposes a `@Reducer({ boundary, event })`
-class decorator; scanned `.ts` files self-register into the SDK registry on import; the scanner
-(`src/dsl/typescriptScanner.ts`) drains `sdkRegistry.snapshot()`. We extend the same pattern to
-scripts.
-
-### Target shape
-
-```ts
-// scripts/computeScore.ts (scanned via potemkin.yaml typescript.scan)
-import { Script, type ScriptContext } from '@potemkin/sdk';
-
-@Script('computeScore')                 // the annotation/id the YAML references
-export class ComputeScore {
-  run(ctx: ScriptContext): number {
-    const base: Record<string, number> = { REFERRAL: 80, WEBSITE: 50 };
-    return base[ctx.command.payload.source as string] ?? 30;
+class SharedConfiguration {
+  @PotemkinConfigure("shared")
+  static create() {
+    return simulation().helper(sourceLabel).build();
   }
 }
 ```
 
+The configured include/exclude globs identify entry modules. Relative imports
+from an entry module may be loaded as dependencies, including files excluded
+from discovery. An imported module is not itself a configuration factory unless
+its static method has the canonical decorator and is discovered by the AST
+scanner. Evaluated dependencies are also included in the watcher snapshot, so
+changes to an imported excluded helper reload the runtime; an excluded file
+that is not imported remains ignored.
+
+## Shared helpers
+
+`defineHelper` returns a typed callable and a source-independent helper
+definition. Registering it with `.helper()` or `.helpers()` puts the definition
+in the model. The YAML compiler receives those definitions before compiling CEL:
+
 ```yaml
-# event_catalog entry — references the annotation id only, no code
-payload_template:
-  score: "ts:computeScore"
-# No scripts: block. No inline `code:`.
+event_catalog:
+  - type: ThingCreated
+    payload_template:
+      source: "sourceLabel(command.payload.source)"
 ```
 
-### Decisions
+There is no sentinel declaration. Helper names are CEL identifiers,
+duplicate registrations fail canonical compilation, and helper results must be
+JSON values. TypeScript callbacks may call the helper directly, while YAML CEL
+uses its registered model name.
 
-- **Annotation form**: a class decorator `@Script(id)`, mirroring `@Reducer`, because free-function
-  decorators are not valid TS and the project already standardised on class decorators for scanned
-  code. A `defineScript(id, fn)` functional helper is provided alongside for parity with the
-  `reducer()` helper.
-- **Discovery**: the existing `typescript.scan` globs in `potemkin.yaml` are scanned at boot; the
-  scanner drains a script registry keyed by id, alongside the reducer registry.
-- **Resolution**: the `ts:<id>` sentinel resolves against the scanned script registry; an unknown id
-  halts boot with a clear `BOOT_ERR_DSL_REFERENCE`.
-- **Removal of inline code**: the inline `scripts: [{ name, code }]` form is removed. Using `code:`
-  (or the `scripts:` block) halts boot with `BOOT_ERR_REMOVED_SYNTAX` and a migration message. The
-  sandbox/transpile machinery is retained — it now executes scanned annotated scripts rather than
-  inline strings.
-- **Sandbox unchanged**: scripts still run in the `node:vm` sandbox under the 50 ms budget; only the
-  source of the code (a scanned annotated class vs an inline YAML string) changes.
+## Layering
 
-## Process note (applies to every bead)
+```text
+YAML parser + CEL ───────┐
+                         ├─> model ─> runtime engine ─> HTTP gateway
+TypeScript SDK + loader ─┘
+```
 
-Every increment below — and every other bead from here on — closes only after a **new adversarial
-sub-agent** verifies that the change is comprehensive, that all associated tests were updated, and
-that each acceptance criterion is objectively and quantitatively met. A failing review reopens the
-bead.
-
-## Delivery increments
-
-- **A1** — Convert all YAML fences in `README.md` and `docs/**/*.md` to block style.
-- **A2** — Convert inline-flow YAML in `tests/fixtures/**` to block style; suite stays green.
-- **B1** — Add `@Script(id)` decorator + `defineScript(id, fn)` helper + a script registry drained by the scanner.
-- **B2** — Resolve `ts:<id>` against the scanned script registry; unknown id → boot error; sandbox executes scanned scripts.
-- **B3** — Remove inline `scripts[].code`; `code:`/`scripts:` halts boot with `BOOT_ERR_REMOVED_SYNTAX`.
-- **B4** — Migrate every fixture using inline scripts (crm `computeScore`, others) to scanned annotated `.ts` files; update `typescript.scan` and the YAML; update affected tests.
-- **B5** — Docs: `docs/dsl.md` §10 and the README "running custom logic" recipe describe the annotation approach; no inline-TS example remains.
-- **B6** — E2E: the inline-typescript example (`11`) or a new engine-only suite demonstrates annotation-based script discovery (YAML holds only the id).
+The runtime receives the same boundary, policy, callback, reducer, and helper
+shapes from either source. It does not branch on the authoring language. The
+single `potemkin.yml` path is supplied through the CLI or environment; its YAML,
+OpenAPI, and TypeScript globs are monitored and a change triggers a clear-and-
+reload operation. `POST /_admin/force-reload` performs the operation immediately.

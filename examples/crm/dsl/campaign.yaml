@@ -1,6 +1,51 @@
 boundary: Campaign
 contract_path: /campaigns
 fallback_override: true
+export:
+  states:
+    - name: ACTIVE
+      steps:
+        - operationId: createCampaign
+          body:
+            name: "Export Active Campaign"
+            targetSource: WEBSITE
+            script: "Export campaign script"
+            startedAt: "2030-01-01T00:00:00.000Z"
+            endedAt: "2030-12-31T23:59:59.000Z"
+            targetCalls: 500
+            targetConversions: 50
+        - operationId: activateCampaign
+          body: {}
+    - name: PAUSED
+      steps:
+        - operationId: createCampaign
+          body:
+            name: "Export Paused Campaign"
+            targetSource: PARTNER
+            script: "Export campaign script"
+            startedAt: "2030-02-01T00:00:00.000Z"
+            endedAt: "2030-11-30T23:59:59.000Z"
+            targetCalls: 200
+            targetConversions: 20
+        - operationId: activateCampaign
+          body: {}
+        - operationId: pauseCampaign
+          body: {}
+    - name: COMPLETED
+      steps:
+        - operationId: createCampaign
+          body:
+            name: "Export Completed Campaign"
+            targetSource: REFERRAL
+            script: "Export campaign script"
+            startedAt: "2030-03-01T00:00:00.000Z"
+            endedAt: "2030-10-31T23:59:59.000Z"
+            targetCalls: 100
+            targetConversions: 10
+        - operationId: activateCampaign
+          body: {}
+        - operationId: completeCampaign
+          body: {}
 identity:
   creation:
     generate: $uuidv7()

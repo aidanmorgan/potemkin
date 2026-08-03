@@ -1,0 +1,20 @@
+{
+  "http-request": {
+    "method": "PATCH",
+    "path": "/opportunities/00000000-0000-7305-83de-2c27cd795184/advance",
+    "body": {}
+  },
+  "http-response": {
+    "status": 422,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "body": {
+      "error": "OPPORTUNITY_CLOSED",
+      "message": "Cannot advance a closed opportunity",
+      "details": {
+        "code": "OPPORTUNITY_CLOSED"
+      }
+    }
+  }
+}

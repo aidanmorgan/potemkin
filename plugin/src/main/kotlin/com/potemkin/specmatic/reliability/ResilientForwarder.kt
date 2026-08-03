@@ -1,6 +1,7 @@
 package com.potemkin.specmatic.reliability
 
 import com.potemkin.specmatic.CqrsBackendClient
+import com.potemkin.specmatic.EngineRequestForwarder
 import com.potemkin.specmatic.PluginConfig
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException
 import io.github.resilience4j.circuitbreaker.CircuitBreaker
@@ -37,7 +38,7 @@ import java.time.Duration
 class ResilientForwarder(
     private val delegate: CqrsBackendClient,
     private val config: ResilienceConfig = ResilienceConfig(),
-) {
+) : EngineRequestForwarder {
     private val log = LoggerFactory.getLogger(ResilientForwarder::class.java)
 
     private val retry: Retry = RetryRegistry.of(
@@ -65,7 +66,7 @@ class ResilientForwarder(
             .build(),
     ).circuitBreaker("forwarder")
 
-    fun forward(httpRequest: HttpRequest): HttpStubResponse {
+    override fun forward(httpRequest: HttpRequest): HttpStubResponse {
         return try {
             CircuitBreaker.decorateSupplier(circuitBreaker) {
                 Retry.decorateSupplier(retry) {
@@ -80,6 +81,8 @@ class ResilientForwarder(
             buildFailureResponse("engine-unavailable")
         }
     }
+
+    override fun proxyRaw(httpRequest: HttpRequest): HttpStubResponse? = delegate.proxyRaw(httpRequest)
 
     private fun buildFailureResponse(code: String): HttpStubResponse {
         val body = """{"error":"engine-unavailable","code":"ENGINE_UNAVAILABLE","detail":"$code"}"""

@@ -1,0 +1,12 @@
+version: 1
+specmatic: ./specmatic.yaml
+openapi:
+  - openapi/a-engine.yaml
+modules:
+  - dsl/*.yaml
+typescript:
+  scan:
+    - include:
+        - typescript/support/**/*.ts
+      exclude:
+        - "**/*.d.ts"

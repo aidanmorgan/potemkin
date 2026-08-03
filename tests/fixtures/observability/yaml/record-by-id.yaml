@@ -1,0 +1,6 @@
+boundary: RecordById
+contract_path: /records/bulk/{id}
+fallback_override: true
+event_catalog: []
+behaviors: []
+reducers: []

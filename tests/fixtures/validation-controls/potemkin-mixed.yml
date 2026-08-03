@@ -1,0 +1,13 @@
+version: 1
+specmatic: ./specmatic.yaml
+openapi:
+  - openapi/a-engine.yaml
+modules:
+  - dsl/profile.yaml
+  - dsl/profile-by-id.yaml
+typescript:
+  scan:
+    - include:
+        - typescript/mixed/**/*.ts
+      exclude:
+        - "**/*.d.ts"

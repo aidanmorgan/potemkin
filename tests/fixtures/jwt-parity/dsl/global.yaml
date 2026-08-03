@@ -1,0 +1,13 @@
+auth:
+  mode: jwt
+  jwt:
+    secret: potemkin-jwt-parity-secret
+    algorithm: HS256
+    issuer: potemkin-jwt-parity
+    audience: potemkin-jwt-api
+    subject_claim: sub
+    scopes_claim: scopes
+idempotency:
+  enabled: true
+  ttl_seconds: 60
+  hash_includes_body: true

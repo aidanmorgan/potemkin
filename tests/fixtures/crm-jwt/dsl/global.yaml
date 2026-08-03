@@ -1,6 +1,6 @@
 # The Nuisance Bureau CRM — JWT-flavoured global configuration
 # Identical to ../crm/dsl/global.yaml except for the addition of the auth:
-# block which switches the engine into JWT mode for the 41-jwt-auth e2e suite.
+# block which switches the engine into JWT mode for the jwt-auth e2e suite.
 #
 # The shared secret is hard-coded here for the test harness only — NEVER use this
 # in production. Tests mint JWTs in-process using the same secret.
@@ -151,7 +151,7 @@ fault_rules:
         Retry-After: "5"
 
   # ── Chaos-header response overrides (suite 46) ────────────────────────────
-  - name: force-status-599-backpressure
+  - name: force-status-599-custom
     match:
       condition: "true"
       headers:
@@ -159,8 +159,8 @@ fault_rules:
     response:
       status: 599
       body:
-        error: UPSTREAM_BACKPRESSURE
-        hint: "Client should back off and retry with a smaller batch."
+        error: FORCED_STATUS_599
+        hint: "Client should retry after the response is available."
       headers:
         Retry-After: "15"
 

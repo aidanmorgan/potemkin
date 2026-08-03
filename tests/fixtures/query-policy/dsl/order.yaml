@@ -1,0 +1,40 @@
+boundary: Order
+contract_path: /orders
+fallback_override: true
+hateoas:
+  - rel: self
+    href: /orders
+query:
+  fields:
+    threshold: "state.score >= int(query.threshold)"
+  filter: "state.active == true"
+  sort:
+    - field: score
+      direction: desc
+  page_size: 2
+  max_page_size: 2
+  cursor: "query.cursor"
+  expand: [customerIds]
+  pagination: envelope
+  include_deleted: true
+initialization:
+  - id: order-1
+    score: 1
+    active: true
+  - id: order-2
+    score: 3
+    active: true
+    customerIds: [order-1]
+  - id: order-3
+    score: 2
+    active: true
+  - id: order-4
+    score: 9
+    active: false
+  - id: order-deleted
+    score: 4
+    active: true
+    _deleted: true
+event_catalog: []
+behaviors: []
+reducers: []

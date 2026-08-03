@@ -1,0 +1,4 @@
+idempotency:
+  enabled: true
+  ttl_seconds: 86400
+  hash_includes_body: true

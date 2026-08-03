@@ -1,4 +1,249 @@
-// ── Core types ────────────────────────────────────────────────────────────────
+import type {
+  JsonScalar,
+  JsonArray,
+  JsonObject,
+  JsonValue,
+  Intent,
+  Origin,
+  Actor,
+  Command,
+  DomainEvent,
+  ExecutionResult,
+} from "./types.js";
+import {
+  SimError,
+  BootError,
+  ContractViolationError,
+  EntityAbsenceError,
+  EntityConflictError,
+  UnhandledOperationError,
+  ConcurrencyConflictError,
+  MissingPreconditionError,
+  InternalExecutionError,
+  InfiniteLoopError,
+  FaultSimulatedError,
+  AuthenticationRequiredError,
+  AuthorizationDeniedError,
+  IdempotencyConflictError,
+  ConfigurationError,
+  ExportError,
+  SessionLimitError,
+  deserializeSimError,
+  isConfigurationError,
+} from "./errors.js";
+import {
+  createDeterministicUuidv7Source,
+  nextUuidv7,
+  epochAnchoredUuidv7,
+  deterministicUuidv7,
+  isUuidv7,
+} from "./ids/uuidv7.js";
+import { createRuntimeDataGenerator, createSeededRandom, runtimeSeedHash } from "./model/data.js";
+import type { RuntimeDataFormat, RuntimeDataGenerator } from "./model/data.js";
+import type {
+  RuntimeValue,
+  RuntimePredicate,
+  RuntimeHelpers,
+  RuntimeRequest,
+  RuntimeRequestIdentity,
+  RuntimeControls,
+  RuntimeClock,
+  RuntimeCorrelationContext,
+  RuntimeRequestResponseObservation,
+  RuntimeRequestResponseObserver,
+  RuntimeCaptureDirection,
+  RuntimeRequestResponseCapturePolicy,
+  RuntimeCapturedBody,
+  RuntimeTransportRequest,
+  RuntimeTransportResponse,
+  RuntimeTransportObservation,
+  RuntimeTransportObserver,
+  MatchContext,
+  EventContext,
+  IdentityContext,
+  RuntimeReducerContext,
+  QueryContext,
+  ResponseContext,
+  PostCommitContext,
+  FaultContext,
+  WebhookContext,
+  SagaContext,
+  ProjectionContext,
+  RuntimeIdentity,
+  RuntimeEvent,
+  RuntimeGuard,
+  RuntimeEmission,
+  RuntimeSecondaryCommand,
+  RuntimeBehavior,
+  RuntimeReducer,
+  RuntimeResponsePolicy,
+  RuntimeResponse,
+  RuntimeDeprecation,
+  RuntimeLatency,
+  RuntimeLink,
+  RuntimeComputedField,
+  RuntimeStateSchema,
+  RuntimeFault,
+  RuntimeReaction,
+  RuntimeWebhook,
+  RuntimeSagaCompensation,
+  RuntimeSagaStep,
+  RuntimeSaga,
+  RuntimeDerivedProjection,
+  RuntimeSeed,
+  RuntimeIdempotency,
+  RuntimeAuth,
+  RuntimeAuthenticationPort,
+  RuntimeSecurityHeaders,
+  RuntimeHateoas,
+  RuntimeVersioning,
+  RuntimeFallback,
+  RuntimeQueryPolicy,
+  RuntimeEventStore,
+  RuntimeStateStore,
+  RuntimeIdempotencyStore,
+  RuntimeSession,
+  RuntimeSessionStore,
+  RuntimeWebhookTransport,
+  RuntimeForwardingPort,
+  RuntimeObservability,
+  RuntimeLifecycle,
+  RuntimeModelCoverage,
+  RuntimeExecutionResult,
+  RuntimeBoundary,
+  RuntimePolicies,
+  RuntimeContract,
+  RuntimeDependencies,
+  RuntimeProgram,
+} from "./model/runtime.js";
+import { compileRuntime } from "./model/compiler.js";
+import type { RuntimeDefinition, RuntimeModel } from "./model/index.js";
+import { RuntimeModelError } from "./model/errors.js";
+import { RuntimeEngine, createRuntimeEngine } from "./core/engine.js";
+import { RuntimeExecutionError } from "./core/errors.js";
+import {
+  runtimeEvent,
+  runtimeBehavior,
+  runtimeReducer,
+  runtimeBoundary,
+  runtimeProgram,
+} from "./model/builders.js";
+import type {
+  Patch,
+  PatchSource,
+  JournalEntry,
+  ApplyResult,
+  ApplyPatchesOptions,
+} from "./model/patches.js";
+import { JsonPointerError, PatchApplyError } from "./model/patches.js";
+import type {
+  OpenApiParameter,
+  OpenApiOperation,
+  OpenApiPathItem,
+  OpenApiDoc,
+} from "./contract/loader.js";
+import { loadOpenApi } from "./contract/loader.js";
+import type { ContractValidator } from "./contract/validator.js";
+import { createContractValidator } from "./contract/validator.js";
+import type {
+  FormFieldType,
+  FormFieldOperation,
+  FormFieldsResponse,
+  FormFieldsRuntimeHost,
+} from "./contract/formFields.js";
+import type { MatchedRoute } from "./contract/router.js";
+import { matchRoute } from "./contract/router.js";
+import type { TracingOptions } from "./observability/tracing.js";
+import { createRuntimeOtelRequestResponseObserver } from "./observability/runtimeExchange.js";
+import type { RuntimeOtelRequestResponseOptions } from "./observability/runtimeExchange.js";
+import type {
+  SchemaTypeKind,
+  ObjectGraphSchema,
+  BoundarySchemas,
+  ObjectGraphSchemaRegistry,
+} from "./schema/types.js";
+import { deriveSchemasFromOpenApi } from "./schema/fromOpenApi.js";
+import { resolvePath, isValidPath, pathExists } from "./schema/pathResolver.js";
+import { typeOfJson, isAssignable, validateEntityAgainstSchema } from "./schema/typeCheck.js";
+import { guardAssignPath, guardAssignedValue } from "./schema/runtimeGuard.js";
+import type {
+  ConformanceCaseKey,
+  ConformanceFailure,
+  ConformanceTestCase,
+  ConformanceReport,
+  ConformanceAllowlistEntry,
+  NamedConformanceAllowlist,
+  AllowlistDocument,
+  AllowlistEvaluation,
+  ProcessResult,
+  CommandRunner,
+  SpecmaticTestOptions,
+  SpecmaticTestResult,
+  ConformanceProvider,
+  ConformanceGateOptions,
+} from "./conformance/types.js";
+import { runConformanceGate } from "./conformance/gate.js";
+import { extractActor } from "./identity/actorExtractor.js";
+import { checkScopes } from "./identity/scopeChecker.js";
+import type { IdempotencyStore, IdempotencyEntry, CachedResponse } from "./idempotency/store.js";
+import { createIdempotencyStore } from "./idempotency/store.js";
+import type {
+  PluginControlConfig,
+  PluginControlClient,
+  ReadyNotification,
+  ShutdownNotification,
+  NotifyResult,
+} from "./lifecycle/types.js";
+import type { GracefulShutdownConfig } from "./lifecycle/gracefulShutdown.js";
+import { createPluginControlClient, PluginControlError } from "./lifecycle/pluginControlClient.js";
+import { installGracefulShutdown } from "./lifecycle/gracefulShutdown.js";
+import { bootRuntime, runtimeContract } from "./runtime/system.js";
+import { createDefaultRuntimeHost, createDeterministicRuntimeHost } from "./runtime/host.js";
+import type {
+  RuntimeBootInput,
+  RuntimeCompilationContext,
+  RuntimeSystem,
+  RuntimeSystemDependencies,
+} from "./runtime/system.js";
+import type { RuntimeHostServices } from "./runtime/host.js";
+import type {
+  Transition,
+  TransitionMachine,
+  TransitionModel,
+  TransitionWriteSet,
+} from "./model/transitionModel.js";
+import type { RuntimeTimerScheduler } from "./runtime/ports.js";
+import { createRuntimeGateway } from "./http/runtimeGateway.js";
+import {
+  defineGovernanceConfig,
+  defineOverlayConfig,
+  definePluginConfig,
+  definePotemkinConfig,
+  defineSeedConfig,
+  defineWorkflowConfig,
+  toEngineConfigurationResponse,
+} from "./config.js";
+import type {
+  EngineConfigurationResponse,
+  GovernanceDefinition,
+  GovernanceReportConfig,
+  GovernanceSuccessCriteria,
+  OverlayDefinition,
+  PluginConfiguration,
+  PluginAuthConfig,
+  PluginCircuitBreakerConfig,
+  PluginDiscoveryConfig,
+  PluginEngineConfig,
+  PluginHealthProbeConfig,
+  PluginJwk,
+  PluginResilienceConfig,
+  PotemkinConfiguration,
+  ScanConfig,
+  ScanEntry,
+  SeedDefinition,
+  WorkflowDefinition,
+} from "./config.js";
+
 export type {
   JsonScalar,
   JsonArray,
@@ -10,9 +255,158 @@ export type {
   Command,
   DomainEvent,
   ExecutionResult,
-} from './types.js';
+  RuntimeDataFormat,
+  RuntimeDataGenerator,
+  RuntimeValue,
+  RuntimePredicate,
+  RuntimeHelpers,
+  RuntimeRequest,
+  RuntimeRequestIdentity,
+  RuntimeControls,
+  RuntimeClock,
+  RuntimeCorrelationContext,
+  RuntimeRequestResponseObservation,
+  RuntimeRequestResponseObserver,
+  RuntimeCaptureDirection,
+  RuntimeRequestResponseCapturePolicy,
+  RuntimeCapturedBody,
+  RuntimeTransportRequest,
+  RuntimeTransportResponse,
+  RuntimeTransportObservation,
+  RuntimeTransportObserver,
+  MatchContext,
+  EventContext,
+  IdentityContext,
+  RuntimeReducerContext,
+  QueryContext,
+  ResponseContext,
+  PostCommitContext,
+  FaultContext,
+  WebhookContext,
+  SagaContext,
+  ProjectionContext,
+  RuntimeIdentity,
+  RuntimeEvent,
+  RuntimeGuard,
+  RuntimeEmission,
+  RuntimeSecondaryCommand,
+  RuntimeBehavior,
+  RuntimeReducer,
+  RuntimeResponsePolicy,
+  RuntimeResponse,
+  RuntimeDeprecation,
+  RuntimeLatency,
+  RuntimeLink,
+  RuntimeComputedField,
+  RuntimeStateSchema,
+  RuntimeFault,
+  RuntimeReaction,
+  RuntimeWebhook,
+  RuntimeSagaCompensation,
+  RuntimeSagaStep,
+  RuntimeSaga,
+  RuntimeDerivedProjection,
+  RuntimeSeed,
+  RuntimeIdempotency,
+  RuntimeAuth,
+  RuntimeAuthenticationPort,
+  RuntimeSecurityHeaders,
+  RuntimeHateoas,
+  RuntimeVersioning,
+  RuntimeFallback,
+  RuntimeQueryPolicy,
+  RuntimeEventStore,
+  RuntimeStateStore,
+  RuntimeIdempotencyStore,
+  RuntimeSession,
+  RuntimeSessionStore,
+  RuntimeWebhookTransport,
+  RuntimeForwardingPort,
+  RuntimeObservability,
+  RuntimeLifecycle,
+  RuntimeModelCoverage,
+  RuntimeExecutionResult,
+  RuntimeBoundary,
+  RuntimePolicies,
+  RuntimeContract,
+  RuntimeDependencies,
+  RuntimeProgram,
+  RuntimeDefinition,
+  RuntimeModel,
+  Transition,
+  TransitionMachine,
+  TransitionModel,
+  TransitionWriteSet,
+  Patch,
+  PatchSource,
+  JournalEntry,
+  ApplyResult,
+  ApplyPatchesOptions,
+  OpenApiParameter,
+  OpenApiOperation,
+  OpenApiPathItem,
+  OpenApiDoc,
+  ContractValidator,
+  FormFieldType,
+  FormFieldOperation,
+  FormFieldsResponse,
+  FormFieldsRuntimeHost,
+  MatchedRoute,
+  TracingOptions,
+  RuntimeOtelRequestResponseOptions,
+  SchemaTypeKind,
+  ObjectGraphSchema,
+  BoundarySchemas,
+  ObjectGraphSchemaRegistry,
+  ConformanceCaseKey,
+  ConformanceFailure,
+  ConformanceTestCase,
+  ConformanceReport,
+  ConformanceAllowlistEntry,
+  NamedConformanceAllowlist,
+  AllowlistDocument,
+  AllowlistEvaluation,
+  ProcessResult,
+  CommandRunner,
+  SpecmaticTestOptions,
+  SpecmaticTestResult,
+  ConformanceProvider,
+  ConformanceGateOptions,
+  IdempotencyStore,
+  IdempotencyEntry,
+  CachedResponse,
+  PluginControlConfig,
+  PluginControlClient,
+  ReadyNotification,
+  ShutdownNotification,
+  NotifyResult,
+  GracefulShutdownConfig,
+  RuntimeBootInput,
+  RuntimeCompilationContext,
+  RuntimeSystem,
+  RuntimeSystemDependencies,
+  RuntimeHostServices,
+  RuntimeTimerScheduler,
+  ScanEntry,
+  ScanConfig,
+  PluginConfiguration,
+  SeedDefinition,
+  WorkflowDefinition,
+  OverlayDefinition,
+  GovernanceDefinition,
+  PotemkinConfiguration,
+  EngineConfigurationResponse,
+  GovernanceReportConfig,
+  GovernanceSuccessCriteria,
+  PluginAuthConfig,
+  PluginCircuitBreakerConfig,
+  PluginDiscoveryConfig,
+  PluginEngineConfig,
+  PluginHealthProbeConfig,
+  PluginJwk,
+  PluginResilienceConfig,
+};
 
-// ── Errors ────────────────────────────────────────────────────────────────────
 export {
   SimError,
   BootError,
@@ -28,143 +422,61 @@ export {
   AuthenticationRequiredError,
   AuthorizationDeniedError,
   IdempotencyConflictError,
-} from './errors.js';
-
-// ── IDs ───────────────────────────────────────────────────────────────────────
-export { nextUuidv7, epochAnchoredUuidv7, isUuidv7 } from './ids/uuidv7.js';
-
-// ── CEL ───────────────────────────────────────────────────────────────────────
-export { CelPhase } from './cel/phases.js';
-export type { BuiltinContext } from './cel/builtins.js';
-export { BUILTINS, callBuiltin } from './cel/builtins.js';
-export type { CompiledCel, CelContext, CelEvaluator } from './cel/evaluator.js';
-export { createCelEvaluator } from './cel/evaluator.js';
-
-// ── DSL ───────────────────────────────────────────────────────────────────────
-export type {
-  EventCatalogEntry,
-  BehaviorRule,
-  RequiresGuard,
-  EmitWhenEntry,
-  SecondaryCommandSpec,
-  ReducerRule,
-  IdentityConfig,
-  BoundaryConfig,
-  CompiledDsl,
-  SagaConfig,
-  SagaStep,
-  SagaTrigger,
-  SagaCompensation,
-  IdempotencyConfig,
-  DerivedProjectionConfig,
-  DerivedProjectionReduceEntry,
-} from './dsl/types.js';
-export { validateBoundaryConfig, validateGlobalConfig } from './dsl/schema.js';
-export type { GlobalConfig } from './dsl/schema.js';
-export { parseDslYaml, compileDsl } from './dsl/parser.js';
-
-// ── Scripts (scanned @Script host functions) ──────────────────────────────────
-export type {
-  ScriptContext,
-  ScriptHelpers,
-  ScriptHandle,
-  ScriptRegistry,
-} from './scripts/types.js';
-export { buildCompositeScriptRegistry } from './scripts/registry.js';
-
-// ── Contract ──────────────────────────────────────────────────────────────────
-export type {
-  OpenApiParameter,
-  OpenApiOperation,
-  OpenApiPathItem,
-  OpenApiDoc,
-} from './contract/loader.js';
-export { loadOpenApi } from './contract/loader.js';
-export type { ContractValidator } from './contract/validator.js';
-export { createContractValidator } from './contract/validator.js';
-export type { MatchedRoute } from './contract/router.js';
-export { matchRoute } from './contract/router.js';
-
-// ── Event Store ───────────────────────────────────────────────────────────────
-export type { EventStore } from './eventstore/store.js';
-export { createEventStore } from './eventstore/store.js';
-
-// ── State Graph ───────────────────────────────────────────────────────────────
-export type { StateGraph } from './stategraph/graph.js';
-export { createStateGraph, deepClone, deepMerge } from './stategraph/graph.js';
-export type { ShadowGraph } from './stategraph/shadow.js';
-export { createShadowGraph } from './stategraph/shadow.js';
-
-// ── Engine ────────────────────────────────────────────────────────────────────
-export type { IntentTranslationInput } from './engine/router.js';
-export { translateIntent } from './engine/router.js';
-export type {
-  PatternMatchInput,
-  PatternMatchOutcome,
-} from './engine/patternMatcher.js';
-export { runPatternMatch } from './engine/patternMatcher.js';
-export type { ProjectionInput } from './engine/projection.js';
-export { projectEvent } from './engine/projection.js';
-export type { UowInput } from './engine/uow.js';
-export { executeUnitOfWork } from './engine/uow.js';
-export type { BootInput, BootedSystem } from './engine/boot.js';
-export { bootSystem } from './engine/boot.js';
-export { resetSystem } from './engine/reset.js';
-export type { QueryRequest } from './engine/query.js';
-export { runQuery } from './engine/query.js';
-export type { FaultSignal } from './engine/faultSim.js';
-export { extractFaultSignal } from './engine/faultSim.js';
-
-// ── HTTP ──────────────────────────────────────────────────────────────────────
-export type { ExpressApp } from './http/gateway.js';
-export { createGateway } from './http/gateway.js';
-
-// ── Forwarding (/_engine/*) ───────────────────────────────────────────────────
-export type { ForwardedRequest, ForwardedResponse, RoutesDiscoveryResponse, FixtureStub, FixturesResponse } from './forwarding/index.js';
-export { createForwardingHandler, healthHandler, createRoutesHandler, createFixturesHandler } from './forwarding/index.js';
-export { deriveFixtures } from './forwarding/index.js';
-export { registerAdminRoutes } from './http/adminRoutes.js';
-
-// ── Schema ────────────────────────────────────────────────────────────────────
-export type {
-  SchemaTypeKind,
-  ObjectGraphSchema,
-  BoundarySchemas,
-  ObjectGraphSchemaRegistry,
-} from './schema/types.js';
-export { deriveSchemasFromOpenApi } from './schema/fromOpenApi.js';
-export { resolvePath, isValidPath, pathExists } from './schema/pathResolver.js';
-export { typeOfJson, isAssignable, validateEntityAgainstSchema } from './schema/typeCheck.js';
-export { staticCheckDsl } from './schema/dslStaticChecker.js';
-export type { DslCheckError } from './schema/dslStaticChecker.js';
-export { guardAssignPath, guardAssignedValue } from './schema/runtimeGuard.js';
-
-// ── Identity ──────────────────────────────────────────────────────────────────
-export { extractActor } from './identity/actorExtractor.js';
-export { checkScopes } from './identity/scopeChecker.js';
-
-// ── Idempotency ───────────────────────────────────────────────────────────────
-export type { IdempotencyStore, IdempotencyEntry, CachedResponse } from './idempotency/store.js';
-export { createIdempotencyStore } from './idempotency/store.js';
-
-// ── Sagas ─────────────────────────────────────────────────────────────────────
-export { runSaga, findTriggeredSagas } from './sagas/orchestrator.js';
-
-// ── Derived Projections ───────────────────────────────────────────────────────
-export type { DerivedStateMap, DerivedProjectionRegistry } from './projections/types.js';
-export {
-  createDerivedProjectionRegistry,
-  applyEventToDerivedProjections,
-  getDerivedProjection,
-} from './projections/engine.js';
-
-// ── Lifecycle (graceful shutdown + plugin notifications) ──────────────────────
-export type {
-  PluginControlConfig,
-  PluginControlClient,
-  ReadyNotification,
-  ShutdownNotification,
-  NotifyResult,
-  GracefulShutdownConfig,
-} from './lifecycle/index.js';
-export { createPluginControlClient, installGracefulShutdown } from './lifecycle/index.js';
+  ConfigurationError,
+  ExportError,
+  SessionLimitError,
+  deserializeSimError,
+  isConfigurationError,
+  createDeterministicUuidv7Source,
+  nextUuidv7,
+  epochAnchoredUuidv7,
+  deterministicUuidv7,
+  isUuidv7,
+  createRuntimeDataGenerator,
+  createSeededRandom,
+  runtimeSeedHash,
+  compileRuntime,
+  RuntimeEngine,
+  RuntimeExecutionError,
+  RuntimeModelError,
+  createRuntimeEngine,
+  runtimeEvent,
+  runtimeBehavior,
+  runtimeReducer,
+  runtimeBoundary,
+  runtimeProgram,
+  PatchApplyError,
+  JsonPointerError,
+  loadOpenApi,
+  createContractValidator,
+  matchRoute,
+  createRuntimeOtelRequestResponseObserver,
+  deriveSchemasFromOpenApi,
+  resolvePath,
+  isValidPath,
+  pathExists,
+  typeOfJson,
+  isAssignable,
+  validateEntityAgainstSchema,
+  guardAssignPath,
+  guardAssignedValue,
+  runConformanceGate,
+  extractActor,
+  checkScopes,
+  createIdempotencyStore,
+  createPluginControlClient,
+  PluginControlError,
+  installGracefulShutdown,
+  bootRuntime,
+  createDefaultRuntimeHost,
+  createDeterministicRuntimeHost,
+  runtimeContract,
+  createRuntimeGateway,
+  definePotemkinConfig,
+  definePluginConfig,
+  defineWorkflowConfig,
+  defineOverlayConfig,
+  defineGovernanceConfig,
+  defineSeedConfig,
+  toEngineConfigurationResponse,
+};

@@ -7,8 +7,8 @@
  * Benign patterns run synchronously via the native RegExp engine.
  */
 
-import { createCelEvaluator, detectCatastrophicRegexShape } from '../../../src/cel/evaluator';
-import { CelPhase } from '../../../src/cel/phases';
+import { createCelEvaluator, detectCatastrophicRegexShape } from "../../../src/cel/evaluator";
+import { CelPhase } from "../../../src/cel/phases";
 
 const cel = createCelEvaluator();
 
@@ -19,37 +19,39 @@ function evaluate(expr: string, ctx: Record<string, unknown> = {}): unknown {
 // ---------------------------------------------------------------------------
 // Gap 1a: Benign pattern + benign input → normal evaluation
 // ---------------------------------------------------------------------------
-describe('matches() — benign patterns (ReDoS protection must not interfere)', () => {
-  it('matches a simple literal pattern', () => {
+describe("matches() — benign patterns (ReDoS protection must not interfere)", () => {
+  it("matches a simple literal pattern", () => {
     expect(evaluate('"hello world".matches("hello")')).toBe(true);
   });
 
-  it('does not match when pattern is absent', () => {
+  it("does not match when pattern is absent", () => {
     expect(evaluate('"goodbye".matches("hello")')).toBe(false);
   });
 
-  it('matches an anchored numeric pattern', () => {
+  it("matches an anchored numeric pattern", () => {
     expect(evaluate('"LOAN-12345".matches("^LOAN-[0-9]+$")')).toBe(true);
   });
 
-  it('returns false for anchored pattern mismatch', () => {
+  it("returns false for anchored pattern mismatch", () => {
     expect(evaluate('"LOAN-abc".matches("^LOAN-[0-9]+$")')).toBe(false);
   });
 
-  it('matches with alternation', () => {
+  it("matches with alternation", () => {
     expect(evaluate('"ACTIVE".matches("ACTIVE|DRAFT|SETTLED")')).toBe(true);
     expect(evaluate('"PENDING".matches("ACTIVE|DRAFT|SETTLED")')).toBe(false);
   });
 
-  it('matches a raw-string pattern (no double-escaping)', () => {
-    expect(evaluate('state.label.matches(r"^LOAN-\\d+$")', { state: { label: 'LOAN-99' } })).toBe(true);
+  it("matches a raw-string pattern (no double-escaping)", () => {
+    expect(evaluate('state.label.matches(r"^LOAN-\\d+$")', { state: { label: "LOAN-99" } })).toBe(
+      true,
+    );
   });
 
-  it('throws CEL_TYPE_ERROR for an invalid regex pattern', () => {
+  it("throws CEL_TYPE_ERROR for an invalid regex pattern", () => {
     expect(() => evaluate('"test".matches("[")')).toThrow(/CEL_TYPE_ERROR/);
   });
 
-  it('throws CEL_TYPE_ERROR when pattern arg is not a string', () => {
+  it("throws CEL_TYPE_ERROR when pattern arg is not a string", () => {
     expect(() => evaluate('"test".matches(42)')).toThrow(/CEL_TYPE_ERROR/);
   });
 });
@@ -57,22 +59,22 @@ describe('matches() — benign patterns (ReDoS protection must not interfere)', 
 // ---------------------------------------------------------------------------
 // Nested-quantifier patterns are rejected at parse time, regardless of input.
 // ---------------------------------------------------------------------------
-describe('matches() — nested-quantifier patterns are rejected', () => {
-  it('rejects (a+)+$ regardless of input length', () => {
-    const shortInput = 'a'.repeat(10) + 'X';
+describe("matches() — nested-quantifier patterns are rejected", () => {
+  it("rejects (a+)+$ regardless of input length", () => {
+    const shortInput = "a".repeat(10) + "X";
     expect(() => evaluate(`"${shortInput}".matches("(a+)+$")`)).toThrow(/REGEX_REJECTED/);
   });
 
-  it('rejects (a+)+ regardless of whether it would match', () => {
+  it("rejects (a+)+ regardless of whether it would match", () => {
     expect(() => evaluate('"aaa".matches("(a+)+")')).toThrow(/REGEX_REJECTED/);
   });
 
-  it('rejects (a*)* shape', () => {
+  it("rejects (a*)* shape", () => {
     expect(() => evaluate('"aaa".matches("(a*)*")')).toThrow(/REGEX_REJECTED/);
   });
 
-  it('rejects pattern fast: throws synchronously without running the regex', () => {
-    const adversarialInput = 'a'.repeat(30) + 'X';
+  it("rejects pattern fast: throws synchronously without running the regex", () => {
+    const adversarialInput = "a".repeat(30) + "X";
     const start = Date.now();
     expect(() => evaluate(`"${adversarialInput}".matches("(a+)+$")`)).toThrow(/REGEX_REJECTED/);
     const elapsed = Date.now() - start;
@@ -80,7 +82,7 @@ describe('matches() — nested-quantifier patterns are rejected', () => {
     expect(elapsed).toBeLessThan(200);
   });
 
-  it('rejects overlapping alternation under an unbounded quantifier (a|a)+', () => {
+  it("rejects overlapping alternation under an unbounded quantifier (a|a)+", () => {
     expect(() => evaluate('"aaa".matches("(a|a)+")')).toThrow(/REGEX_REJECTED/);
   });
 });
@@ -88,34 +90,34 @@ describe('matches() — nested-quantifier patterns are rejected', () => {
 // ---------------------------------------------------------------------------
 // Shape detector unit tests — exercise detectCatastrophicRegexShape directly.
 // ---------------------------------------------------------------------------
-describe('detectCatastrophicRegexShape — catastrophic shapes are detected', () => {
+describe("detectCatastrophicRegexShape — catastrophic shapes are detected", () => {
   it.each([
-    ['(a+)+'],
-    ['(a*)*'],
-    ['(a+)*'],
-    ['(\\d+)+'],
-    ['(a+){2,}'],
-    ['^(a+)+$'],
-    ['(a|a)+'],
-    ['(a|ab)+'],
-  ])('rejects %s', (pattern) => {
+    ["(a+)+"],
+    ["(a*)*"],
+    ["(a+)*"],
+    ["(\\d+)+"],
+    ["(a+){2,}"],
+    ["^(a+)+$"],
+    ["(a|a)+"],
+    ["(a|ab)+"],
+  ])("rejects %s", (pattern) => {
     expect(detectCatastrophicRegexShape(pattern)).not.toBeNull();
   });
 });
 
-describe('detectCatastrophicRegexShape — benign shapes are accepted', () => {
+describe("detectCatastrophicRegexShape — benign shapes are accepted", () => {
   it.each([
-    ['^LOAN-[0-9]+$'],
-    ['ACTIVE|DRAFT|SETTLED'],
-    ['hello'],
-    ['^[a-z]{3,8}$'],
-    ['\\d{4}-\\d{2}-\\d{2}'],
-    ['(abc)+'],          // single repeated group with no inner quantifier/alternation
-    ['(abc){2,5}'],      // bounded outer repeat
-    ['a+b+c+'],          // two adjacent unbounded quantifiers — below the threshold
-    ['[A-Z]+@[a-z]+'],
-    ['^[a-z]+@[a-z]+\\.[a-z]+$'],  // typical email-like pattern: two + quantifiers separated by literals
-  ])('accepts %s', (pattern) => {
+    ["^LOAN-[0-9]+$"],
+    ["ACTIVE|DRAFT|SETTLED"],
+    ["hello"],
+    ["^[a-z]{3,8}$"],
+    ["\\d{4}-\\d{2}-\\d{2}"],
+    ["(abc)+"], // single repeated group with no inner quantifier/alternation
+    ["(abc){2,5}"], // bounded outer repeat
+    ["a+b+c+"], // two adjacent unbounded quantifiers — below the threshold
+    ["[A-Z]+@[a-z]+"],
+    ["^[a-z]+@[a-z]+\\.[a-z]+$"], // typical email-like pattern: two + quantifiers separated by literals
+  ])("accepts %s", (pattern) => {
     expect(detectCatastrophicRegexShape(pattern)).toBeNull();
   });
 });
@@ -123,26 +125,26 @@ describe('detectCatastrophicRegexShape — benign shapes are accepted', () => {
 // ---------------------------------------------------------------------------
 // Sequential-unbounded-quantifier shapes: a*a*a*...b
 // ---------------------------------------------------------------------------
-describe('detectCatastrophicRegexShape — sequential-unbounded-quantifier shapes are rejected', () => {
-  it('rejects a*a*a*b (three adjacent * quantifiers, the minimal pathological case)', () => {
-    expect(detectCatastrophicRegexShape('a*a*a*b')).not.toBeNull();
+describe("detectCatastrophicRegexShape — sequential-unbounded-quantifier shapes are rejected", () => {
+  it("rejects a*a*a*b (three adjacent * quantifiers, the minimal pathological case)", () => {
+    expect(detectCatastrophicRegexShape("a*a*a*b")).not.toBeNull();
   });
 
-  it('rejects the pathological a*.repeat(20) + b shape', () => {
-    const pattern = 'a*'.repeat(20) + 'b';
+  it("rejects the pathological a*.repeat(20) + b shape", () => {
+    const pattern = "a*".repeat(20) + "b";
     expect(detectCatastrophicRegexShape(pattern)).not.toBeNull();
   });
 
-  it('rejects a+a+a+b (three adjacent + quantifiers)', () => {
-    expect(detectCatastrophicRegexShape('a+a+a+b')).not.toBeNull();
+  it("rejects a+a+a+b (three adjacent + quantifiers)", () => {
+    expect(detectCatastrophicRegexShape("a+a+a+b")).not.toBeNull();
   });
 
-  it('matches() throws REGEX_REJECTED for the sequential-quantifier pattern', () => {
-    const pattern = 'a*'.repeat(20) + 'b';
+  it("matches() throws REGEX_REJECTED for the sequential-quantifier pattern", () => {
+    const pattern = "a*".repeat(20) + "b";
     expect(() => evaluate(`"aaaa".matches("${pattern}")`)).toThrow(/REGEX_REJECTED/);
   });
 
-  it('matches() still works normally for a legitimate email-like pattern', () => {
+  it("matches() still works normally for a legitimate email-like pattern", () => {
     expect(evaluate('"user@example.com".matches("^[a-z]+@[a-z]+\\\\.[a-z]+$")')).toBe(true);
     expect(evaluate('"notanemail".matches("^[a-z]+@[a-z]+\\\\.[a-z]+$")')).toBe(false);
   });
@@ -151,22 +153,22 @@ describe('detectCatastrophicRegexShape — sequential-unbounded-quantifier shape
 // ---------------------------------------------------------------------------
 // Gap 1d: Multiple concurrent invocations do not share state
 // ---------------------------------------------------------------------------
-describe('matches() — concurrent invocations do not share state', () => {
-  it('concurrent benign evaluations all return correct independent results', () => {
+describe("matches() — concurrent invocations do not share state", () => {
+  it("concurrent benign evaluations all return correct independent results", () => {
     // Run 5 independent evaluations in the same synchronous frame
     // (fewer workers to avoid OS resource contention in parallel test runs)
     const results: boolean[] = [];
     for (let i = 0; i < 5; i++) {
-      const input = i % 2 === 0 ? 'hello' : 'world';
-      const pattern = i % 2 === 0 ? 'hello' : 'world';
+      const input = i % 2 === 0 ? "hello" : "world";
+      const pattern = i % 2 === 0 ? "hello" : "world";
       results.push(evaluate(`"${input}".matches("${pattern}")`) as boolean);
     }
     // All should be true (each matched its own pattern)
-    expect(results.every(r => r === true)).toBe(true);
+    expect(results.every((r) => r === true)).toBe(true);
   });
 
-  it('concurrent evaluations with different patterns return independent results', () => {
-    const trueResult  = evaluate('"LOAN-123".matches("^LOAN-[0-9]+$")');
+  it("concurrent evaluations with different patterns return independent results", () => {
+    const trueResult = evaluate('"LOAN-123".matches("^LOAN-[0-9]+$")');
     const falseResult = evaluate('"ACCT-abc".matches("^LOAN-[0-9]+$")');
     expect(trueResult).toBe(true);
     expect(falseResult).toBe(false);
@@ -182,8 +184,8 @@ describe('matches() — concurrent invocations do not share state', () => {
 // The benchmark below measures 20 sequential calls — a realistic request
 // workload — and asserts each call completes well within the 50ms timeout.
 // ---------------------------------------------------------------------------
-describe('matches() — benign patterns evaluate correctly without catastrophic backtracking', () => {
-  it('20 benign matches all return the correct result and complete far below any ReDoS threshold', () => {
+describe("matches() — benign patterns evaluate correctly without catastrophic backtracking", () => {
+  it("20 benign matches all return the correct result and complete far below any ReDoS threshold", () => {
     const ITERATIONS = 20;
     const start = Date.now();
     for (let i = 0; i < ITERATIONS; i++) {

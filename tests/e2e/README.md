@@ -24,57 +24,52 @@ Or use the combined script:
 npm run test:e2e:build
 ```
 
-## Engine-only subset (no Java required)
+All suites in this directory are Specmatic-backed. Feature requests must go to
+the `E2eApp.stubUrl`, where the real Specmatic JVM and Kotlin plugin forward
+owned routes to the Node engine. The engine URL is reserved for control-plane
+inspection and test lifecycle operations such as route discovery, state, and
+clock administration.
 
-A subset of suites exercise behaviour that lives entirely in the Node engine and
-reach it only through the engine HTTP surface (`/_engine/forward` + `/_admin`).
-These boot via `startEngineOnlyApp` (no Specmatic JVM, no Kotlin plugin) and run
-UNCONDITIONALLY — including on CI hosts with no Java:
-
-```sh
-npm run test:e2e:engine     # jest.e2e.engine.config.js — no Java needed
-```
-
-The full `npm run test:e2e` (jest.e2e.config.js) still requires Java + the
-plugin JAR for the Specmatic-backed suites. As more suites migrate to
-`startEngineOnlyApp`, add their path to `engineOnlySuites` in
-`jest.e2e.engine.config.js`.
+Lower-level runtime/parser tests that do not need the JVM live under
+`tests/runtime/` and use the normal Jest configuration. They are deliberately
+not named or configured as E2E suites.
 
 ## What gets downloaded automatically
 
-- **Specmatic JAR v2.6.0** — downloaded on first run from the GitHub releases page and cached at `tests/e2e/.cache/specmatic-2.6.0.jar`.
+- **Specmatic JAR v2.46.2** — downloaded on first run and cached at `tests/e2e/.cache/specmatic-2.46.2.jar`.
 
 ## Test files
 
-| File | Description |
-|------|-------------|
-| `00-bootstrap` | Specmatic starts; plugin loads via SPI; control server responds |
-| `01-route-discovery` | Plugin fetches `/_engine/routes`; CRM paths present |
-| `02-fixture-push` | Seeded entities pushed to Specmatic as expectations |
-| `03-forwarding` | POST /leads via Specmatic stub → plugin → Node → state mutated |
-| `04-cqrs-cascade` | POST /calls → Lead callIds updated (secondary command dispatch) |
-| `05-rbac` | DNC without manager scope → 403; with scope → 200 |
-| `06-idempotency` | Same Idempotency-Key returns replay response |
-| `07-reliability` | Plugin health monitor reacts to engine up/down transitions |
-| `08-shutdown-notification` | Engine boot sends /ready; stop sends /shutdown to plugin |
-| `09-fixture-hot-reload` | Restart engine → plugin re-fetches fixtures on /ready |
-| `10-full-crm-flow` | Full CRM happy-path: lead → call → qualify → convert → close WON |
-| `11-inline-typescript` | computeScore script sets correct score on lead creation |
-| `12-saga-compensation` | LeadConversionSaga creates Opportunity on convert |
+| File                    | Description                                                                           |
+| ----------------------- | ------------------------------------------------------------------------------------- |
+| `bootstrap`             | Specmatic starts; plugin loads via SPI; control server responds                       |
+| `route-discovery`       | Plugin fetches `/_engine/routes`; CRM paths present                                   |
+| `fixture-push`          | Seeded entities pushed to Specmatic as expectations                                   |
+| `forwarding`            | POST /leads via Specmatic stub → plugin → Node → state mutated                        |
+| `cqrs-cascade`          | POST /calls → Lead callIds updated (secondary command dispatch)                       |
+| `rbac`                  | DNC without manager scope → 403; with scope → 200                                     |
+| `idempotency`           | Same Idempotency-Key returns replay response                                          |
+| `reliability`           | Plugin health monitor reacts to engine up/down transitions                            |
+| `shutdown-notification` | Engine boot sends /ready; stop sends /shutdown to plugin                              |
+| `fixture-hot-reload`    | Restart engine → POST `/_admin/force-reload` → plugin re-fetches fixtures immediately |
+| `full-crm-flow`         | Full CRM happy-path: lead → call → qualify → convert → close WON                      |
+| `typescript-factory`    | configured TypeScript factory behaviour through Specmatic                             |
+| `authoring-parity`      | YAML, TypeScript, and mixed authoring side-effect/response parity through Specmatic   |
+| `saga-compensation`     | LeadConversionSaga creates Opportunity on convert                                     |
 
-## Harness files (`_harness/`)
+## Harness files
 
-| File | Purpose |
-|------|---------|
-| `binary-fetcher.ts` | Downloads Specmatic JAR; builds plugin JAR via Gradle |
-| `port-allocator.ts` | Allocates ephemeral OS ports via `net.createServer().listen(0)` |
-| `specmatic-driver.ts` | Spawns Specmatic JVM child process; waits for readiness; SIGTERM on teardown |
-| `engine-driver.ts` | Boots Node engine in-process; exposes start/stop/restart |
-| `e2e-test-app.ts` | Combined factory: allocates ports, writes plugin config, starts Specmatic + engine |
+| File                                  | Purpose                                                                            |
+| ------------------------------------- | ---------------------------------------------------------------------------------- |
+| `src/conformance/binaries.ts`         | Downloads Specmatic JAR; builds plugin JAR via Gradle                              |
+| `src/conformance/portAllocator.ts`    | Allocates ephemeral OS ports via `net.createServer().listen(0)`                    |
+| `src/conformance/specmaticProcess.ts` | Spawns Specmatic JVM child process; waits for readiness; SIGTERM on teardown       |
+| `engine-driver.ts`                    | Boots Node engine in-process; exposes start/stop/restart                           |
+| `e2e-test-app.ts`                     | Combined factory: allocates ports, writes plugin config, starts Specmatic + engine |
 
-## Skip behaviour
+## Required runtime
 
-Every test file has a `javaAvailable()` guard. If `java -version` fails, all tests in the file are marked `skip` rather than `fail`. This allows CI without Java to continue without noise.
+Every Specmatic-backed test requires Java. If `java -version` fails, the suite fails during setup; no E2E suite is silently marked `skip`.
 
 ## Port allocation
 

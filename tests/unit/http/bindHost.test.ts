@@ -2,8 +2,8 @@
  * Tests for src/http/bindHost.ts.
  */
 
-import { resolveBindHost } from '../../../src/http/bindHost.js';
-import { BootError } from '../../../src/errors.js';
+import { resolveBindHost } from "../../../src/http/bindHost.js";
+import { BootError } from "../../../src/errors.js";
 
 function expectBootCode(fn: () => unknown, code: string): void {
   let caught: BootError | null = null;
@@ -15,51 +15,51 @@ function expectBootCode(fn: () => unknown, code: string): void {
   expect(caught?.code).toBe(code);
 }
 
-describe('resolveBindHost — default', () => {
-  it('returns 127.0.0.1 when the env has no override', () => {
-    expect(resolveBindHost('dsl', { env: {} })).toBe('127.0.0.1');
-    expect(resolveBindHost('state', { env: {} })).toBe('127.0.0.1');
+describe("resolveBindHost — default", () => {
+  it("returns 127.0.0.1 when the env has no override", () => {
+    expect(resolveBindHost("dsl", { env: {} })).toBe("127.0.0.1");
+    expect(resolveBindHost("state", { env: {} })).toBe("127.0.0.1");
   });
 
-  it('returns 127.0.0.1 even when override equals 127.0.0.1', () => {
-    expect(
-      resolveBindHost('dsl', { env: { POTEMKIN_DSL_BIND_HOST: '127.0.0.1' } }),
-    ).toBe('127.0.0.1');
+  it("returns 127.0.0.1 even when override equals 127.0.0.1", () => {
+    expect(resolveBindHost("dsl", { env: { POTEMKIN_DSL_BIND_HOST: "127.0.0.1" } })).toBe(
+      "127.0.0.1",
+    );
   });
 });
 
-describe('resolveBindHost — override requires allow-remote', () => {
-  it('refuses POTEMKIN_DSL_BIND_HOST without POTEMKIN_ALLOW_REMOTE_DSL=1', () => {
+describe("resolveBindHost — override requires allow-remote", () => {
+  it("refuses POTEMKIN_DSL_BIND_HOST without POTEMKIN_ALLOW_REMOTE_DSL=1", () => {
     expectBootCode(
-      () => resolveBindHost('dsl', { env: { POTEMKIN_DSL_BIND_HOST: '0.0.0.0' } }),
-      'BOOT_ERR_REMOTE_DSL_NOT_ALLOWED',
+      () => resolveBindHost("dsl", { env: { POTEMKIN_DSL_BIND_HOST: "0.0.0.0" } }),
+      "BOOT_ERR_REMOTE_DSL_NOT_ALLOWED",
     );
   });
 
-  it('allows POTEMKIN_DSL_BIND_HOST when POTEMKIN_ALLOW_REMOTE_DSL=1', () => {
+  it("allows POTEMKIN_DSL_BIND_HOST when POTEMKIN_ALLOW_REMOTE_DSL=1", () => {
     expect(
-      resolveBindHost('dsl', {
-        env: { POTEMKIN_DSL_BIND_HOST: '0.0.0.0', POTEMKIN_ALLOW_REMOTE_DSL: '1' },
+      resolveBindHost("dsl", {
+        env: { POTEMKIN_DSL_BIND_HOST: "0.0.0.0", POTEMKIN_ALLOW_REMOTE_DSL: "1" },
       }),
-    ).toBe('0.0.0.0');
+    ).toBe("0.0.0.0");
   });
 
-  it('refuses POTEMKIN_STATE_BIND_HOST without POTEMKIN_ALLOW_REMOTE_STATE=1', () => {
+  it("refuses POTEMKIN_STATE_BIND_HOST without POTEMKIN_ALLOW_REMOTE_STATE=1", () => {
     expectBootCode(
-      () => resolveBindHost('state', { env: { POTEMKIN_STATE_BIND_HOST: '10.0.0.1' } }),
-      'BOOT_ERR_REMOTE_STATE_NOT_ALLOWED',
+      () => resolveBindHost("state", { env: { POTEMKIN_STATE_BIND_HOST: "10.0.0.1" } }),
+      "BOOT_ERR_REMOTE_STATE_NOT_ALLOWED",
     );
   });
 });
 
 describe('resolveBindHost — refuses "localhost" by name', () => {
-  it('refuses POTEMKIN_DSL_BIND_HOST=localhost even with allow-remote=1', () => {
+  it("refuses POTEMKIN_DSL_BIND_HOST=localhost even with allow-remote=1", () => {
     expectBootCode(
       () =>
-        resolveBindHost('dsl', {
-          env: { POTEMKIN_DSL_BIND_HOST: 'localhost', POTEMKIN_ALLOW_REMOTE_DSL: '1' },
+        resolveBindHost("dsl", {
+          env: { POTEMKIN_DSL_BIND_HOST: "localhost", POTEMKIN_ALLOW_REMOTE_DSL: "1" },
         }),
-      'BOOT_ERR_REMOTE_DSL_NOT_ALLOWED',
+      "BOOT_ERR_REMOTE_DSL_NOT_ALLOWED",
     );
   });
 });

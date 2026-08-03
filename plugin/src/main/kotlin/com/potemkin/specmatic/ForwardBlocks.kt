@@ -2,7 +2,7 @@ package com.potemkin.specmatic
 
 /**
  * Typed Kotlin structures for the forward-blocks the plugin reads out of
- * potemkin.yaml: `seeds`, `workflow`, `overlay`, and `governance`.
+ * potemkin.yml: `seeds`, `workflow`, `overlay`, and `governance`.
  *
  * Shapes mirror the TS definitions in `src/dsl/configSchema.ts` and
  * `src/dsl/forwardBlocks.ts` exactly, so the plugin and engine agree on the
@@ -64,7 +64,7 @@ data class GovernanceBlock(
 )
 
 /**
- * The four forward-blocks parsed out of potemkin.yaml, exposed to
+ * The four forward-blocks parsed out of potemkin.yml, exposed to
  * [PluginInitializer]. Each block defaults to empty when absent.
  */
 data class ForwardBlocks(
@@ -77,7 +77,7 @@ data class ForwardBlocks(
         val EMPTY = ForwardBlocks()
 
         /**
-         * Parse the forward-blocks from a decoded potemkin.yaml root map.
+         * Parse the forward-blocks from a decoded potemkin.yml root map.
          * Throws [IllegalArgumentException] on a malformed block shape; the
          * caller ([PluginConfig.parsePotemkinYaml]) wraps that into a
          * BOOT_ERR_INVALID_YAML diagnostic.

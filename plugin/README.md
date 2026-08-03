@@ -24,6 +24,7 @@ The fat-JAR bundles all transitive dependencies (OkHttp, Jackson, SnakeYAML, SLF
 1. **Build or download the JAR** (see above, or grab a release artifact).
 
 2. **Place the JAR next to `specmatic.jar`** (or anywhere on the classpath):
+
    ```
    ./specmatic.jar
    ./potemkin-stateful-plugin.jar
@@ -32,6 +33,7 @@ The fat-JAR bundles all transitive dependencies (OkHttp, Jackson, SnakeYAML, SLF
 
 3. **Create `potemkin-plugin.yaml`** in the same directory from which you launch Specmatic.  
    Copy `potemkin-plugin.example.yaml` from the plugin's `src/main/resources/` directory as a starting point:
+
    ```yaml
    backendUrl: "http://localhost:3000"
    forwardTimeoutMs: 5000
@@ -39,11 +41,13 @@ The fat-JAR bundles all transitive dependencies (OkHttp, Jackson, SnakeYAML, SLF
    ```
 
 4. **Start the Specmatic stub server** with the plugin on the classpath:
+
    ```sh
    java -cp specmatic.jar:potemkin-stateful-plugin.jar \
         io.specmatic.application.ApplicationKt stub \
         --config=specmatic.yaml
    ```
+
    On Windows, replace `:` with `;` in the classpath.
 
 5. **Start the Node CQRS engine** (in a separate terminal):
@@ -51,8 +55,8 @@ The fat-JAR bundles all transitive dependencies (OkHttp, Jackson, SnakeYAML, SLF
    npm run start
    ```
    The engine must expose:
-   - `GET  /_engine/routes`   — returns the list of stateful paths to intercept.
-   - `POST /_engine/forward`  — handles forwarded requests for those paths.
+   - `GET  /_engine/routes` — returns the list of stateful paths to intercept.
+   - `POST /_engine/forward` — handles forwarded requests for those paths.
 
 ---
 
@@ -97,11 +101,11 @@ If the initial `GET /_engine/routes` request fails (engine not yet running, netw
 
 ## Configuration reference
 
-| Field | Default | Description |
-|---|---|---|
-| `backendUrl` | `http://localhost:3000` | Base URL of the Node CQRS engine. |
-| `forwardTimeoutMs` | `5000` | Timeout (ms) for `POST /_engine/forward` calls. |
-| `discoveryRefreshOnFailureMs` | `5000` | Back-off (ms) before retrying discovery after a failed fetch. |
+| Field                         | Default                 | Description                                                   |
+| ----------------------------- | ----------------------- | ------------------------------------------------------------- |
+| `backendUrl`                  | `http://localhost:3000` | Base URL of the Node CQRS engine.                             |
+| `forwardTimeoutMs`            | `5000`                  | Timeout (ms) for `POST /_engine/forward` calls.               |
+| `discoveryRefreshOnFailureMs` | `5000`                  | Back-off (ms) before retrying discovery after a failed fetch. |
 
 > **Note:** `pathPatterns` is no longer used. If present in an existing config file it is silently ignored (a warning is logged). Remove it to suppress the warning.
 
@@ -131,7 +135,7 @@ The Node engine is not running or is bound to a different port. Start the engine
 `specmatic-core` is a `compileOnly` dependency — it is intentionally absent from the fat-JAR. It must be present on the Specmatic runtime classpath (it always is when using `specmatic.jar`).
 
 **Drop-connection chaos returns 504 instead of a TCP reset**  
-When drop-connection chaos is configured, the gateway path (`gateway.ts`) destroys the TCP socket directly. The plugin path cannot do this — `RequestHandler.handleRequest` and `ResponseInterceptor.interceptResponse` return `HttpResponse` objects; there is no API to close the Specmatic HTTP connection from inside the plugin. Instead the forwarding handler (`src/forwarding/handler.ts`) emits a synthetic `504` with header `x-potemkin-dropped: true`, which the plugin propagates verbatim. Tests asserting drop-connection chaos on the plugin path must expect a `504` response, not a connection reset.
+When drop-connection chaos is configured, the direct runtime gateway destroys the TCP socket. The plugin path cannot do this — `RequestHandler.handleRequest` and `ResponseInterceptor.interceptResponse` return `HttpResponse` objects; there is no API to close the Specmatic HTTP connection from inside the plugin. The runtime gateway's forwarding surface therefore emits a synthetic `504` with header `x-potemkin-dropped: true`, which the plugin propagates verbatim. Tests asserting drop-connection chaos on the plugin path must expect a `504` response, not a connection reset.
 
 ---
 

@@ -1,0 +1,6 @@
+boundary: ThingById
+contract_path: /things/{id}
+fallback_override: true
+event_catalog: []
+behaviors: []
+reducers: []

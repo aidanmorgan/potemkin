@@ -1,0 +1,15 @@
+{
+  "CONTRACT_VIOLATION": "invalid_request_error",
+  "ENTITY_ABSENCE": "invalid_request_error",
+  "ENTITY_CONFLICT": "invalid_request_error",
+  "UNHANDLED_OPERATION": "invalid_request_error",
+  "CONCURRENCY_CONFLICT": "invalid_request_error",
+  "MISSING_PRECONDITION": "invalid_request_error",
+  "INTERNAL_EXECUTION_ERROR": "api_error",
+  "INFINITE_LOOP": "api_error",
+  "REACTION_BUDGET_EXCEEDED": "api_error",
+  "AUTH_MISSING": "invalid_request_error",
+  "AUTH_INSUFFICIENT_SCOPES": "invalid_request_error",
+  "IDEMPOTENCY_KEY_CONFLICT": "idempotency_error",
+  "FAULT_SIMULATED": "api_error"
+}

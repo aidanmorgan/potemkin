@@ -7,8 +7,8 @@ reference kinds the linker rewrites).
 ## Problem
 
 Today every globbed file with a `boundary:` key becomes a live boundary, and boundary names must be
-globally unique (`src/dsl/parser.ts:74`); the loader partitions files into live boundaries vs global
-modules (`src/dsl/configLoader.ts`). You cannot author a boundary as a reusable definition, reuse one
+globally unique (`src/parser/yamlParser.ts`); the loader partitions files into live boundaries vs global
+modules (`src/parser/configLoader.ts`). You cannot author a boundary as a reusable definition, reuse one
 definition more than once, reference a boundary defined elsewhere, share event/reducer/behaviour
 fragments, or parameterise a definition. This blocks compositional assembly of a larger API under
 test from reusable building blocks.
@@ -17,7 +17,7 @@ test from reusable building blocks.
 
 Let a developer define an entity (events, reducers, behaviours) once in a component file and map it
 into a simulation from a different file, any number of times, with named parameters. Backward
-compatible: existing boundary files (those with `contract_path`) stay live by default.
+valid: boundary files with `contract_path` remain valid definitions by default.
 
 Design decisions (confirmed): inert components activated by an explicit `use:`; both whole-boundary
 instantiation and fragment/mixin inclusion; named parameters with types/defaults; beads interleaved
@@ -26,7 +26,7 @@ with the reactions epic by true dependency.
 ## Model
 
 A **linker pass** runs between file loading and the existing compile/boot validation and emits the
-same flat `CompiledDsl` the engine consumes. The runtime is unchanged.
+same parser-owned YAML program, which is immediately lowered to `RuntimeProgram`. The runtime is unchanged and never consumes the linked YAML representation.
 
 ### Components (inert definitions)
 
@@ -52,8 +52,8 @@ reducers:
   - on: DocumentArchived
     patches:
       - op: replace
-        path: "/{{statusField}}"          # parameter substitution (link-time)
-        value: "${'ARCHIVED'}"            # CEL, untouched by the linker
+        path: "/{{statusField}}" # parameter substitution (link-time)
+        value: "${'ARCHIVED'}" # CEL, untouched by the linker
 ```
 
 ### Whole-boundary instantiation (`use:`)
@@ -72,7 +72,7 @@ use:
     contract_path: /archived-documents
     with:
       initialStatus: "ARCHIVED"
-    bind: {}                              # map component-local sibling refs -> concrete names
+    bind: {} # map component-local sibling refs -> concrete names
 ```
 
 Each `use` produces a distinct concrete `BoundaryConfig` (name = `as`, the bound `contract_path`,
@@ -139,7 +139,7 @@ different concrete targets purely through `as` + `bind`.
 
 ## Runtime
 
-Unchanged. The linker feeds `compileDsl` / boot exactly the `byBoundaryName` structure they already
+Unchanged. The linker feeds `compileYaml` / boot exactly the `byBoundaryName` structure they already
 expect. The duplicate-name guard moves to operate on concrete names.
 
 ## Interaction with the reactions epic

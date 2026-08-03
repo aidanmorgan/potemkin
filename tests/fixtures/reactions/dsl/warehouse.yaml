@@ -20,16 +20,16 @@ identity:
 event_catalog:
   - type: StockInitialised
     payload_template:
-      id:            "command.payload.id"
-      location:      "command.payload.location"
-      totalStock:    "command.payload.totalStock"
-      allocatedQty:  "0"
-      lastOrderId:   "''"
+      id: "command.payload.id"
+      location: "command.payload.location"
+      totalStock: "command.payload.totalStock"
+      allocatedQty: "0"
+      lastOrderId: "''"
 
   - type: StockAllocated
     payload_template:
-      id:           "state.id"
-      orderId:      "event.aggregateId"
+      id: "state.id"
+      orderId: "event.aggregateId"
       allocatedQty: "event.payload.qty"
 
 behaviors:
@@ -75,5 +75,5 @@ reactions:
     target: "'warehouse-main'"
     emit: StockAllocated
     payload:
-      orderId:      "event.aggregateId"
+      orderId: "event.aggregateId"
       allocatedQty: "event.payload.qty"

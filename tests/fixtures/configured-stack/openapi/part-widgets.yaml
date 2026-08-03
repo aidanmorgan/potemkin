@@ -1,0 +1,65 @@
+openapi: 3.0.3
+info:
+  title: Configured source matrix - widgets
+  version: 1.0.0
+paths:
+  /widgets:
+    post:
+      operationId: createWidget
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+      responses:
+        "201":
+          description: Widget created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, name, source]
+                properties:
+                  id: { type: string }
+                  name: { type: string }
+                  source: { type: string }
+  /widgets/{id}:
+    get:
+      operationId: getWidget
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Widget found
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, name, source]
+                properties:
+                  id: { type: string }
+                  name: { type: string }
+                  source: { type: string }
+  /unimplemented:
+    get:
+      operationId: getUnimplementedWidget
+      responses:
+        "501":
+          description: Runtime boundary is not configured
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error, message]
+                properties:
+                  error: { type: string, enum: [BOUNDARY_NOT_IMPLEMENTED] }
+                  message: { type: string }
+components:
+  schemas: {}

@@ -1,0 +1,51 @@
+sagas:
+  - name: record-created-saga-receipt
+    trigger:
+      boundary: RecordBatch
+      intent: creation
+      condition: "true"
+    steps:
+      - name: create-saga-receipt
+        boundary: BulkReceipt
+        intent: creation
+        operationId: createBulkReceipt
+        target_id: "$concat(event.aggregateId, '-saga-receipt')"
+        payload:
+          recordId: event.aggregateId
+          kind: "'saga'"
+derived_projections:
+  - name: BulkSummary
+    key: event.aggregateId
+    subscribe:
+      - "RecordBatch:RecordCreated"
+    reduce:
+      - on: "RecordBatch:RecordCreated"
+        patches:
+          - op: replace
+            path: /name
+            value: "${event.payload.name}"
+          - op: replace
+            path: /created
+            value: "${true}"
+reactions:
+  - name: audit-record-creation
+    on: "RecordBatch:RecordCreated"
+    intent: creation
+    boundary: BulkAudit
+    emit: BulkAuditRecorded
+    payload:
+      recordId: event.aggregateId
+webhooks:
+  - name: record-created-hook
+    trigger:
+      boundary: RecordBatch
+      intent: creation
+      condition: "event.type == 'RecordCreated'"
+    url: "'http://127.0.0.1:19879/bulk-hook'"
+    payload:
+      recordId: "${event.aggregateId}"
+      event: "${event.type}"
+      name: "${event.payload.name}"
+    retry:
+      maxAttempts: 1
+      delayMs: 1

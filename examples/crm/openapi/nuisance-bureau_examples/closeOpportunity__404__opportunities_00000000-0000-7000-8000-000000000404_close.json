@@ -1,0 +1,22 @@
+{
+  "http-request": {
+    "method": "PATCH",
+    "path": "/opportunities/00000000-0000-7000-8000-000000000404/close",
+    "body": {
+      "outcome": "WON"
+    }
+  },
+  "http-response": {
+    "status": 404,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "body": {
+      "error": "ENTITY_ABSENCE",
+      "message": "Entity '00000000-0000-7000-8000-000000000404' not found in boundary 'OpportunityClose'",
+      "details": {
+        "code": "ENTITY_ABSENCE"
+      }
+    }
+  }
+}

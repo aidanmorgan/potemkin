@@ -2,8 +2,7 @@
 
 ## Overview
 
-Gherkin/Cucumber scenarios proving every numbered requirement in
-`requirements.md` and `REQUIREMENTS_ADDENDUM.md`.
+Gherkin/Cucumber scenarios proving the requirements in `requirements.md`.
 
 ## Running
 
@@ -28,7 +27,8 @@ tests/bdd/
 
 ## Adding scenarios
 
-1. Place a `.feature` file in `features/` (see `REQUIREMENTS_TRACEABILITY.md`).
+1. Place a `.feature` file in `features/` and update the traceability map in
+   `tests/bdd/steps/traceability.steps.ts`.
 2. Implement step definitions in `steps/` using `Given/When/Then` from
    `@cucumber/cucumber`.
 3. Access `this` as `SimWorld` for typed access to `bootedSystem`,
@@ -36,5 +36,5 @@ tests/bdd/
 
 ## Traceability
 
-See `REQUIREMENTS_TRACEABILITY.md` at the repo root for the full mapping of
-requirement numbers to feature files and scenario names.
+The traceability step definitions contain the full mapping of requirement
+numbers to feature files and scenario names.

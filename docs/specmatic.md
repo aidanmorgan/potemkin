@@ -97,7 +97,7 @@ java -cp "specmatic.jar:potemkin-plugin.jar" \
   path/to/nuisance-bureau.yaml
 ```
 
-This is exactly how the e2e harness launches it (see `tests/e2e/_harness/specmatic-driver.ts`). The plugin intercepts every request the stub serves and forwards it to the Node engine (configured via `potemkin.yaml`, see §3) before Specmatic's default stub behaviour.
+This is exactly how the e2e harness launches it (see `src/conformance/specmaticProcess.ts`). The plugin intercepts every request the stub serves and forwards it to the Node engine (configured via `potemkin.yml`, see §3) before Specmatic's default stub behaviour.
 
 ---
 
@@ -105,22 +105,22 @@ This is exactly how the e2e harness launches it (see `tests/e2e/_harness/specmat
 
 ### Plugin configuration
 
-The plugin is configured from a `potemkin.yaml` file (NOT JVM system properties). It is
+The plugin is configured from a `potemkin.yml` file (NOT JVM system properties). It is
 resolved in this order (see `PluginConfig.load()` in `plugin/src/main/kotlin/.../PluginConfig.kt`):
 
 1. The path in the `POTEMKIN_CONFIG_PATH` environment variable, if set.
-2. `./potemkin.yaml` in the working directory.
+2. `./potemkin.yml` in the working directory.
 3. Built-in defaults if neither is found.
 
 The plugin reads the `plugin:` block:
 
 ```yaml
-# potemkin.yaml
+# potemkin.yml
 plugin:
   engine:
-    url: "${POTEMKIN_ENGINE_URL:http://localhost:3000}"  # Node engine base URL
-    timeoutMs: 30000                                      # per-forward HTTP timeout (ms)
-  controlPort: 0                                          # plugin control server port (0 = ephemeral)
+    url: "${POTEMKIN_ENGINE_URL:http://localhost:3000}" # Node engine base URL
+    timeoutMs: 30000 # per-forward HTTP timeout (ms)
+  controlPort: 0 # plugin control server port (0 = ephemeral)
   # Optional resilience / health tuning:
   resilience:
     maxRetries: 5
@@ -132,16 +132,16 @@ plugin:
     refreshOnFailureMs: 8000
 ```
 
-| Key | Default | Description |
-|-----|---------|-------------|
-| `plugin.engine.url` | `http://localhost:3000` | Base URL of the Node engine's `/_engine/forward` endpoint |
-| `plugin.engine.timeoutMs` | `10000` | HTTP timeout (milliseconds) for each forward call |
-| `plugin.controlPort` | `0` | Plugin control server port (`0` = ephemeral) |
+| Key                       | Default                 | Description                                               |
+| ------------------------- | ----------------------- | --------------------------------------------------------- |
+| `plugin.engine.url`       | `http://localhost:3000` | Base URL of the Node engine's `/_engine/forward` endpoint |
+| `plugin.engine.timeoutMs` | `10000`                 | HTTP timeout (milliseconds) for each forward call         |
+| `plugin.controlPort`      | `0`                     | Plugin control server port (`0` = ephemeral)              |
 
 Run with an explicit config path:
 
 ```bash
-POTEMKIN_CONFIG_PATH=/path/to/potemkin.yaml \
+POTEMKIN_CONFIG_PATH=/path/to/potemkin.yml \
   java -cp "specmatic.jar:potemkin-plugin.jar" \
        application.SpecmaticApplication stub --port 9000 path/to/contract.yaml
 ```
@@ -180,13 +180,13 @@ The plugin converts each Specmatic `HttpRequest` to an HTTP POST sent to the Nod
 }
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `method` | string | HTTP method, uppercase |
-| `path` | string | Path component only (no query string) |
-| `headers` | object | Request headers as string-to-string map |
-| `query` | object | Query parameters as string-to-string-or-array map |
-| `body` | any | Parsed JSON body, or `null` if absent |
+| Field     | Type   | Description                                       |
+| --------- | ------ | ------------------------------------------------- |
+| `method`  | string | HTTP method, uppercase                            |
+| `path`    | string | Path component only (no query string)             |
+| `headers` | object | Request headers as string-to-string map           |
+| `query`   | object | Query parameters as string-to-string-or-array map |
+| `body`    | any    | Parsed JSON body, or `null` if absent             |
 
 ---
 
@@ -211,11 +211,11 @@ a JSON object shaped to match `HttpStubResponse`:
 }
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `status` | number | HTTP status code |
+| Field     | Type   | Description                              |
+| --------- | ------ | ---------------------------------------- |
+| `status`  | number | HTTP status code                         |
 | `headers` | object | Response headers as string-to-string map |
-| `body` | any | JSON response body, or `null` |
+| `body`    | any    | JSON response body, or `null`            |
 
 The plugin wraps this in a Specmatic `HttpStubResponse` object and returns it to the
 Specmatic test runner, which then validates the body against the OpenAPI schema.
@@ -238,7 +238,7 @@ plugin/
           PotemkinResponseInterceptor.kt← outbound response (_patches, Warning header)
           StatefulRequestHandler.kt     ← forwards matched requests to the engine
           CqrsBackendClient.kt          ← HTTP client for the engine /_engine/forward endpoint
-          PluginConfig.kt               ← potemkin.yaml parsing (engine.url, timeoutMs, …)
+          PluginConfig.kt               ← potemkin.yml parsing (engine.url, timeoutMs, …)
           reliability/HealthMonitor.kt  ← engine health probing
           reliability/FixtureLifecycleManager.kt ← fixture seating lifecycle
       resources/
@@ -258,32 +258,32 @@ The Node engine's `/forward` endpoint is implemented by a separate agent (see th
 
 ### What Specmatic provides (no longer the engine's concern)
 
-| Specmatic capability | Owner |
-|----------------------|-------|
-| OpenAPI spec loading and parsing | Specmatic |
-| Contract test scenario generation | Specmatic |
-| Response schema validation | Specmatic |
-| Report generation | Specmatic |
+| Specmatic capability                     | Owner     |
+| ---------------------------------------- | --------- |
+| OpenAPI spec loading and parsing         | Specmatic |
+| Contract test scenario generation        | Specmatic |
+| Response schema validation               | Specmatic |
+| Report generation                        | Specmatic |
 | CLI (`specmatic test`, `specmatic stub`) | Specmatic |
-| Gherkin / Kotlin contract DSL | Specmatic |
-| WSDL, gRPC, AsyncAPI support | Specmatic |
-| `--strict` mode | Specmatic |
+| Gherkin / Kotlin contract DSL            | Specmatic |
+| WSDL, gRPC, AsyncAPI support             | Specmatic |
+| `--strict` mode                          | Specmatic |
 
 ### What the Node engine provides
 
-| Engine capability | Description |
-|-------------------|-------------|
-| CQRS / Event Sourcing pipeline | Stateful domain event processing |
-| DSL boundary configuration | YAML-driven behavior rules |
-| CEL expression evaluation | Guard conditions, derived properties |
-| Schema registry | Runtime and static type checking from OpenAPI |
-| Saga orchestration | Multi-step distributed transaction compensation |
-| Identity and RBAC | Actor extraction, scope enforcement |
-| Idempotency | Key-based request deduplication |
-| Derived projections | Aggregated read-model views |
-| Fault simulation | `x-specmatic-fault` header bypass |
-| Admin endpoints | Reset, state dump, event log, health check |
-| OpenTelemetry instrumentation | Spans and metrics for all engine operations |
+| Engine capability              | Description                                       |
+| ------------------------------ | ------------------------------------------------- |
+| CQRS / Event Sourcing pipeline | Stateful domain event processing                  |
+| DSL boundary configuration     | YAML-driven behavior rules                        |
+| CEL expression evaluation      | Guard conditions, derived properties              |
+| Schema registry                | Runtime and static type checking from OpenAPI     |
+| Saga orchestration             | Multi-step distributed transaction compensation   |
+| Identity and RBAC              | Actor extraction, scope enforcement               |
+| Idempotency                    | Key-based request deduplication                   |
+| Derived projections            | Aggregated read-model views                       |
+| Fault simulation               | Canonical `X-Potemkin-*` fault and chaos controls |
+| Admin endpoints                | Reset, state dump, event log, health check        |
+| OpenTelemetry instrumentation  | Spans and metrics for all engine operations       |
 
 ---
 
@@ -291,13 +291,13 @@ The Node engine's `/forward` endpoint is implemented by a separate agent (see th
 
 The engine's `/_admin/*` endpoints remain available for test setup and teardown:
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/_admin/reset` | `POST` | Reset CQRS state to post-boot baseline. Returns 204. |
-| `/_admin/state` | `GET` | Dump full entity state graph. |
-| `/_admin/events` | `GET` | List all events (supports `?aggregateId`, `?limit`, `?offset`). |
-| `/_admin/health` | `GET` | Liveness probe with version, uptime, counts. |
-| `/_admin/derived/:name` | `GET` | Derived projection state; 404 if unknown. |
+| Endpoint                | Method | Description                                                     |
+| ----------------------- | ------ | --------------------------------------------------------------- |
+| `/_admin/reset`         | `POST` | Reset CQRS state to post-boot baseline. Returns 204.            |
+| `/_admin/state`         | `GET`  | Dump full entity state graph.                                   |
+| `/_admin/events`        | `GET`  | List all events (supports `?aggregateId`, `?limit`, `?offset`). |
+| `/_admin/health`        | `GET`  | Liveness probe with version, uptime, counts.                    |
+| `/_admin/derived/:name` | `GET`  | Derived projection state; 404 if unknown.                       |
 
 If `ADMIN_TOKEN` is set, all admin routes require `Authorization: Bearer <token>`.
 

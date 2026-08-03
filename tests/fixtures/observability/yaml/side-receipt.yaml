@@ -1,0 +1,23 @@
+boundary: BulkReceipt
+contract_path: /bulk-receipts/{id}
+identity:
+  creation:
+    generate: command.targetId
+event_catalog:
+  - type: BulkReceiptCreated
+    payload_template:
+      id: command.targetId
+      recordId: command.payload.recordId
+      kind: command.payload.kind
+behaviors:
+  - name: createBulkReceipt
+    match:
+      operationId: createBulkReceipt
+      condition: "true"
+    emit: BulkReceiptCreated
+reducers:
+  - on: BulkReceiptCreated
+    patches:
+      - { op: replace, path: /id, value: "${event.payload.id}" }
+      - { op: replace, path: /recordId, value: "${event.payload.recordId}" }
+      - { op: replace, path: /kind, value: "${event.payload.kind}" }

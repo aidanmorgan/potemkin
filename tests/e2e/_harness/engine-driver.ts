@@ -1,18 +1,22 @@
 /**
- * Engine driver — starts and stops the Potemkin Node CQRS engine in-process,
- * using the real `bootSystem` + `createGateway` API.  Each instance is
+ * Engine driver — starts and stops the Potemkin Node runtime in-process,
+ * using the real YAML parser + canonical `RuntimeSystem` + runtime gateway. Each instance is
  * independent; multiple drivers can coexist on different ports within a test
  * suite (serialised via maxWorkers: 1).
  */
 
-import type * as http from 'node:http';
-import type { BootedSystem } from '../../../src/engine/boot';
-import { bootSystem } from '../../../src/engine/boot';
-import { resetSystem } from '../../../src/engine/reset';
-import { createGateway } from '../../../src/http/gateway';
-import { loadEngineFixture } from '../../fixtures/index';
-import { expandByContractPath } from '../../integration/_helpers/crm-boot';
-import { getFreePort } from './port-allocator';
+import type * as http from "node:http";
+import type { RuntimeSystem } from "../../../src/runtime/system";
+import type { RuntimeObservability } from "../../../src/model/runtime";
+import type { OpenApiDoc } from "../../../src/contract/loader";
+import { bootYamlRuntimeFromConfig } from "../../../src/parser/files";
+import { createDefaultRuntimeHost } from "../../../src/runtime/host";
+import { createRuntimeWebhookTransport } from "../../../src/webhooks/transport";
+import { createYamlRuntimeExtensions } from "../../../src/parser/gateway";
+import { createRuntimeGateway } from "../../../src/http/runtimeGateway";
+import { createPluginControlClient } from "../../../src/lifecycle/pluginControlClient";
+import { loadEngineFixture } from "../../fixtures/index";
+import { getFreePort } from "../../../src/conformance/portAllocator.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -21,7 +25,7 @@ import { getFreePort } from './port-allocator';
 export interface EngineHandle {
   readonly port: number;
   readonly url: string;
-  readonly system: BootedSystem;
+  readonly system: RuntimeSystem;
   stop(): Promise<void>;
   restart(pluginControlUrl?: string): Promise<void>;
 }
@@ -32,12 +36,18 @@ interface EngineDriverOpts {
   pluginControlUrl?: string;
   /**
    * Fixture directory under tests/fixtures (e.g. "crm", "crm-jwt",
-   * "crm-session", "ts-reducer"). Defaults to "crm". When the fixture declares
-   * a typescript: reducer block, the engine boots via its potemkin.yaml so the
-   * TS reducers are scanned + registered; otherwise it boots from the composed
-   * CompiledDsl + global config.
+   * "crm-session"). Defaults to "crm". When the fixture declares TypeScript
+   * factories, the engine boots via its potemkin.yml so the configured SDK
+   * modules are discovered by the parser boot path.
    */
   fixtureName?: string;
+  /** Boot a caller-supplied potemkin.yml instead of a named test fixture. */
+  potemkinConfigPath?: string;
+  /** Composite OpenAPI document for a caller-supplied potemkin.yml. */
+  openapi?: OpenApiDoc;
+  onConfigurationError?: (error: unknown) => void;
+  /** Test-owned transport observation port for real Specmatic assertions. */
+  observability?: RuntimeObservability;
 }
 
 // ---------------------------------------------------------------------------
@@ -46,9 +56,15 @@ interface EngineDriverOpts {
 
 export async function startEngine(opts: EngineDriverOpts = {}): Promise<EngineHandle> {
   const port = opts.port ?? (await getFreePort());
-  const fixtureName = opts.fixtureName ?? 'crm';
-
-  let sys = await _boot(opts.pluginControlUrl, fixtureName);
+  const fixtureName = opts.fixtureName ?? "crm";
+  let sys = await _boot(
+    opts.pluginControlUrl,
+    fixtureName,
+    opts.potemkinConfigPath,
+    opts.openapi,
+    opts.onConfigurationError,
+    opts.observability,
+  );
   let server = await _serve(sys, port);
 
   const handle: EngineHandle = {
@@ -63,22 +79,22 @@ export async function startEngine(opts: EngineDriverOpts = {}): Promise<EngineHa
     },
 
     async stop(): Promise<void> {
-      // Notify the plugin control server that the engine is shutting down,
-      // mirroring what installGracefulShutdown does on SIGTERM.
-      if (opts.pluginControlUrl) {
-        await _notifyShutdown(opts.pluginControlUrl).catch(() => { /* non-fatal */ });
-      }
       await _closeServer(server);
+      await sys.dispose();
     },
 
     async restart(newPluginControlUrl?: string) {
       const controlUrl = newPluginControlUrl ?? opts.pluginControlUrl;
-      if (controlUrl) {
-        await _notifyShutdown(controlUrl).catch(() => { /* non-fatal */ });
-      }
       await _closeServer(server);
-      resetSystem(sys);
-      sys = await _boot(controlUrl, fixtureName);
+      await sys.dispose();
+      sys = await _boot(
+        controlUrl,
+        fixtureName,
+        opts.potemkinConfigPath,
+        opts.openapi,
+        opts.onConfigurationError,
+        opts.observability,
+      );
       server = await _serve(sys, port);
     },
   };
@@ -90,52 +106,80 @@ export async function startEngine(opts: EngineDriverOpts = {}): Promise<EngineHa
 // Private helpers
 // ---------------------------------------------------------------------------
 
-async function _boot(pluginControlUrl?: string, fixtureName = 'crm'): Promise<BootedSystem> {
-  // Each bootSystem() creates its own idempotency store, so a fresh boot
-  // already starts with a clean slate. Every fixture boots through its
-  // potemkin.yaml (the canonical loader) so module globbing/exclusions, the
-  // global-config merge, and the TypeScript-reducer scan all run identically
-  // to production.
+async function _boot(
+  pluginControlUrl?: string,
+  fixtureName = "crm",
+  potemkinConfigPath?: string,
+  openapi?: OpenApiDoc,
+  onConfigurationError?: (error: unknown) => void,
+  observability?: RuntimeObservability,
+): Promise<RuntimeSystem> {
+  if (potemkinConfigPath !== undefined) {
+    if (openapi === undefined)
+      throw new Error("openapi is required when potemkinConfigPath is supplied");
+    return bootYamlRuntimeFromConfig({
+      openapi,
+      potemkinConfigPath,
+      host: createDefaultRuntimeHost(),
+      webhooks: createRuntimeWebhookTransport({
+        fetch: globalThis.fetch,
+        timeoutSignal: (milliseconds) => AbortSignal.timeout(milliseconds),
+      }),
+      ...(pluginControlUrl === undefined
+        ? {}
+        : {
+            pluginControl: createPluginControlClient(
+              { url: pluginControlUrl, timeoutMs: 2_000 },
+              {
+                fetch: globalThis.fetch,
+                nowMs: Date.now,
+                timeoutSignal: (milliseconds) => AbortSignal.timeout(milliseconds),
+              },
+            ),
+          }),
+      ...(onConfigurationError === undefined ? {} : { onConfigurationError }),
+      ...(observability === undefined ? {} : { observability }),
+    });
+  }
+  // Every fixture boots through potemkin.yml so module globbing/exclusions,
+  // global policy compilation, and the TypeScript extension scan run exactly
+  // as they do in production.
   const fixture = await loadEngineFixture(fixtureName);
-  const pluginControl = pluginControlUrl
-    ? { pluginControl: { url: pluginControlUrl, timeoutMs: 2000 } }
-    : {};
-  const sys = await bootSystem({
+  return bootYamlRuntimeFromConfig({
     openapi: fixture.openapi,
     potemkinConfigPath: fixture.potemkinConfigPath,
-    ...pluginControl,
+    host: createDefaultRuntimeHost(),
+    webhooks: createRuntimeWebhookTransport({
+      fetch: globalThis.fetch,
+      timeoutSignal: (milliseconds) => AbortSignal.timeout(milliseconds),
+    }),
+    ...(pluginControlUrl === undefined
+      ? {}
+      : {
+          pluginControl: createPluginControlClient(
+            { url: pluginControlUrl, timeoutMs: 2_000 },
+            {
+              fetch: globalThis.fetch,
+              nowMs: Date.now,
+              timeoutSignal: (milliseconds) => AbortSignal.timeout(milliseconds),
+            },
+          ),
+        }),
+    ...(onConfigurationError === undefined ? {} : { onConfigurationError }),
+    ...(observability === undefined ? {} : { observability }),
   });
-  // Expand byContractPath so the gateway registers routes for all OpenAPI
-  // sub-paths (e.g. /leads/{id}/contact), not just the boundary base paths.
-  expandByContractPath(sys);
-  return sys;
 }
 
-async function _serve(sys: BootedSystem, port: number): Promise<http.Server> {
-  const app = createGateway(sys);
+async function _serve(sys: RuntimeSystem, port: number): Promise<http.Server> {
+  const app = createRuntimeGateway(sys, createYamlRuntimeExtensions(sys));
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { resolveBindHost } = require('../../../src/http/bindHost.js');
-  const host: string = resolveBindHost('dsl');
+  const { resolveBindHost } = require("../../../src/http/bindHost.js");
+  const host: string = resolveBindHost("dsl");
   return new Promise<http.Server>((resolve, reject) => {
     const srv = app.listen(port, host, () => resolve(srv));
-    srv.on('error', reject);
+    srv.unref();
+    srv.on("error", reject);
   });
-}
-
-async function _notifyShutdown(pluginControlUrl: string): Promise<void> {
-  const url = `${pluginControlUrl}/shutdown`;
-  const body = JSON.stringify({
-    engine: 'potemkin-stateful',
-    version: '0.1.0',
-    reason: 'SIGTERM',
-    stoppedAt: new Date().toISOString(),
-  });
-  await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body,
-    signal: AbortSignal.timeout(500),
-  }).catch(() => { /* fire-and-forget */ });
 }
 
 function _closeServer(srv: http.Server): Promise<void> {

@@ -1,10 +1,12 @@
 export type JsonScalar = string | number | boolean | null;
 export type JsonArray = Array<JsonValue>;
-export interface JsonObject { [k: string]: JsonValue }
+export interface JsonObject {
+  [k: string]: JsonValue;
+}
 export type JsonValue = JsonScalar | JsonArray | JsonObject;
 
-export type Intent = 'creation' | 'mutation' | 'query';
-export type Origin = 'inbound' | 'secondary';
+export type Intent = "creation" | "mutation" | "query";
+export type Origin = "inbound" | "secondary";
 
 /** Actor identity extracted from Authorization header */
 export interface Actor {
@@ -13,10 +15,10 @@ export interface Actor {
 }
 
 export interface Command {
-  readonly commandId: string;          // UUIDv7
-  readonly boundary: string;           // logical namespace (e.g. "Opportunity")
+  readonly commandId: string; // UUIDv7
+  readonly boundary: string; // logical namespace (e.g. "Opportunity")
   readonly intent: Intent;
-  readonly targetId: string | null;    // null for collection queries
+  readonly targetId: string | null; // null for collection queries
   readonly payload: JsonObject;
   readonly queryParams: Record<string, string | string[]>;
   readonly httpMethod: string;
@@ -27,10 +29,9 @@ export interface Command {
    * it undefined and let the pattern matcher resolve it from (path, method).
    */
   readonly operationId?: string;
-  readonly sequenceVersion?: number;   // optimistic-concurrency from request
-  readonly faultSignal?: string;       // §31 fault simulation
+  readonly sequenceVersion?: number; // optimistic-concurrency from request
   readonly origin: Origin;
-  readonly depth: number;              // 0 for inbound, +1 per secondary cascade
+  readonly depth: number; // 0 for inbound, +1 per secondary cascade
   /** Optional actor identity from Authorization Bearer token */
   readonly actor?: Actor;
   /** Request headers (lowercased keys) — available for header matching and snapshots. */
@@ -44,10 +45,14 @@ export interface EventRequestSnapshot {
   readonly query?: Record<string, string | string[]>;
   readonly headers: Record<string, string>;
   readonly payload: JsonObject;
-  /** Actor id at the time of the request (when authenticated). */
+  /** Effective actor id at the time of the request (when authenticated). */
   readonly actorId?: string;
-  /** Actor scopes at the time of the request. */
+  /** Effective actor scopes at the time of the request. */
   readonly actorScopes?: readonly string[];
+  /** Original authenticated actor id before an admin-gated override. */
+  readonly originalActorId?: string;
+  /** Original authenticated actor scopes before an admin-gated override. */
+  readonly originalActorScopes?: readonly string[];
 }
 
 /** Snapshot of the response emitted alongside the event. */
@@ -58,14 +63,16 @@ export interface EventResponseSnapshot {
 }
 
 export interface DomainEvent {
-  readonly eventId: string;            // UUIDv7 — real-time, except baseline anchored to epoch
+  readonly eventId: string; // UUIDv7 — real-time, except baseline anchored to epoch
   readonly boundary: string;
-  readonly aggregateId: string;        // targetId of affected entity
-  readonly type: string;               // event-catalog key, or 'System.GenericUpdateEvent', or 'BaselineEntityCreatedEvent'
+  readonly aggregateId: string; // targetId of affected entity
+  readonly type: string; // event-catalog key, or 'System.GenericUpdateEvent', or 'BaselineEntityCreatedEvent'
   readonly payload: JsonObject;
-  readonly timestamp: string;          // ISO-8601 UTC
-  readonly sequenceVersion: number;    // monotonic per aggregate, starts at 1
-  readonly causedBy: string | null;    // originating commandId; null for baseline
+  readonly timestamp: string; // ISO-8601 UTC
+  readonly sequenceVersion: number; // monotonic per aggregate, starts at 1
+  readonly causedBy: string | null; // originating commandId; null for baseline
+  /** Intent of the command that produced this event, when known. */
+  readonly intent?: Intent;
   /** Request snapshot — captured at event emission time for reducer chaining. */
   readonly request?: EventRequestSnapshot;
   /** Response snapshot — attached post-commit by the UoW. */
@@ -73,8 +80,8 @@ export interface DomainEvent {
 }
 
 export interface ExecutionResult {
-  readonly status: number;             // HTTP status
+  readonly status: number; // HTTP status
   readonly body: JsonValue;
   readonly headers?: Record<string, string>;
-  readonly events: readonly DomainEvent[];   // committed events from this UoW
+  readonly events: readonly DomainEvent[]; // committed events from this UoW
 }

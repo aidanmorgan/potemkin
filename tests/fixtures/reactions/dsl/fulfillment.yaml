@@ -13,9 +13,9 @@ identity:
 event_catalog:
   - type: FulfillmentScheduled
     payload_template:
-      id:      "$uuidv7()"
+      id: "$uuidv7()"
       orderId: "event.payload.orderId"
-      status:  "'SCHEDULED'"
+      status: "'SCHEDULED'"
 
 behaviors: []
 

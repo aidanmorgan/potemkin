@@ -27,59 +27,64 @@ import {
   InternalExecutionError,
   InfiniteLoopError,
   FaultSimulatedError,
-} from '../../../src/errors.js';
+} from "../../../src/errors.js";
 
 // ---------------------------------------------------------------------------
 // All concrete error classes for table-driven tests
 // ---------------------------------------------------------------------------
 
-const ALL_HTTP_ERRORS: Array<{ name: string; error: SimError; expectedCode: string; expectedStatus: number }> = [
+const ALL_HTTP_ERRORS: Array<{
+  name: string;
+  error: SimError;
+  expectedCode: string;
+  expectedStatus: number;
+}> = [
   {
-    name: 'ContractViolationError',
-    error: new ContractViolationError('msg', { detail: 1 }),
-    expectedCode: 'CONTRACT_VIOLATION',
+    name: "ContractViolationError",
+    error: new ContractViolationError("msg", { detail: 1 }),
+    expectedCode: "CONTRACT_VIOLATION",
     expectedStatus: 400,
   },
   {
-    name: 'EntityAbsenceError',
-    error: new EntityAbsenceError('msg', { id: 'x' }),
-    expectedCode: 'ENTITY_ABSENCE',
+    name: "EntityAbsenceError",
+    error: new EntityAbsenceError("msg", { id: "x" }),
+    expectedCode: "ENTITY_ABSENCE",
     expectedStatus: 404,
   },
   {
-    name: 'EntityConflictError',
-    error: new EntityConflictError('msg'),
-    expectedCode: 'ENTITY_CONFLICT',
+    name: "EntityConflictError",
+    error: new EntityConflictError("msg"),
+    expectedCode: "ENTITY_CONFLICT",
     expectedStatus: 409,
   },
   {
-    name: 'UnhandledOperationError',
-    error: new UnhandledOperationError('msg'),
-    expectedCode: 'UNHANDLED_OPERATION',
+    name: "UnhandledOperationError",
+    error: new UnhandledOperationError("msg"),
+    expectedCode: "UNHANDLED_OPERATION",
     expectedStatus: 422,
   },
   {
-    name: 'ConcurrencyConflictError',
-    error: new ConcurrencyConflictError('msg', { expected: 1, current: 2 }),
-    expectedCode: 'CONCURRENCY_CONFLICT',
+    name: "ConcurrencyConflictError",
+    error: new ConcurrencyConflictError("msg", { expected: 1, current: 2 }),
+    expectedCode: "CONCURRENCY_CONFLICT",
     expectedStatus: 412,
   },
   {
-    name: 'MissingPreconditionError',
-    error: new MissingPreconditionError('msg'),
-    expectedCode: 'MISSING_PRECONDITION',
+    name: "MissingPreconditionError",
+    error: new MissingPreconditionError("msg"),
+    expectedCode: "MISSING_PRECONDITION",
     expectedStatus: 428,
   },
   {
-    name: 'InternalExecutionError',
-    error: new InternalExecutionError('msg', { sub: 'SCHEMA_TYPE_MISMATCH' }),
-    expectedCode: 'INTERNAL_EXECUTION_ERROR',
+    name: "InternalExecutionError",
+    error: new InternalExecutionError("msg", { sub: "SCHEMA_TYPE_MISMATCH" }),
+    expectedCode: "INTERNAL_EXECUTION_ERROR",
     expectedStatus: 500,
   },
   {
-    name: 'InfiniteLoopError',
-    error: new InfiniteLoopError('msg', { depth: 6 }),
-    expectedCode: 'INFINITE_LOOP',
+    name: "InfiniteLoopError",
+    error: new InfiniteLoopError("msg", { depth: 6 }),
+    expectedCode: "INFINITE_LOOP",
     expectedStatus: 508,
   },
 ];
@@ -88,11 +93,11 @@ const ALL_HTTP_ERRORS: Array<{ name: string; error: SimError; expectedCode: stri
 // instanceof preservation gap
 // ---------------------------------------------------------------------------
 
-describe('errors — JSON roundtrip preserves discriminating code', () => {
-  it('toJSON().code can be used to reconstruct the correct error type after JSON roundtrip', () => {
-    const err = new ContractViolationError('bad request');
+describe("errors — JSON roundtrip preserves discriminating code", () => {
+  it("toJSON().code can be used to reconstruct the correct error type after JSON roundtrip", () => {
+    const err = new ContractViolationError("bad request");
     const json = JSON.parse(JSON.stringify(err.toJSON())) as { code: string };
-    expect(json.code).toBe('CONTRACT_VIOLATION');
+    expect(json.code).toBe("CONTRACT_VIOLATION");
   });
 });
 
@@ -100,7 +105,7 @@ describe('errors — JSON roundtrip preserves discriminating code', () => {
 // code AND details presence
 // ---------------------------------------------------------------------------
 
-describe('errors — code and details presence', () => {
+describe("errors — code and details presence", () => {
   for (const { name, error, expectedCode } of ALL_HTTP_ERRORS) {
     it(`${name} has code = '${expectedCode}'`, () => {
       expect(error.code).toBe(expectedCode);
@@ -108,23 +113,32 @@ describe('errors — code and details presence', () => {
 
     it(`${name}.toJSON() includes both code and details fields`, () => {
       const json = error.toJSON();
-      expect('code' in json).toBe(true);
-      expect('details' in json).toBe(true);
+      expect("code" in json).toBe(true);
+      expect("details" in json).toBe(true);
     });
 
     it(`${name}.toJSON().details is null when no details provided`, () => {
       // Construct with no details
       const errNoDetails = (() => {
         switch (name) {
-          case 'ContractViolationError': return new ContractViolationError('m');
-          case 'EntityAbsenceError': return new EntityAbsenceError('m');
-          case 'EntityConflictError': return new EntityConflictError('m');
-          case 'UnhandledOperationError': return new UnhandledOperationError('m');
-          case 'ConcurrencyConflictError': return new ConcurrencyConflictError('m');
-          case 'MissingPreconditionError': return new MissingPreconditionError('m');
-          case 'InternalExecutionError': return new InternalExecutionError('m');
-          case 'InfiniteLoopError': return new InfiniteLoopError('m');
-          default: return new ContractViolationError('m');
+          case "ContractViolationError":
+            return new ContractViolationError("m");
+          case "EntityAbsenceError":
+            return new EntityAbsenceError("m");
+          case "EntityConflictError":
+            return new EntityConflictError("m");
+          case "UnhandledOperationError":
+            return new UnhandledOperationError("m");
+          case "ConcurrencyConflictError":
+            return new ConcurrencyConflictError("m");
+          case "MissingPreconditionError":
+            return new MissingPreconditionError("m");
+          case "InternalExecutionError":
+            return new InternalExecutionError("m");
+          case "InfiniteLoopError":
+            return new InfiniteLoopError("m");
+          default:
+            return new ContractViolationError("m");
         }
       })();
       expect(errNoDetails.toJSON().details).toBeNull();
@@ -136,15 +150,15 @@ describe('errors — code and details presence', () => {
 // HTTP status consistency
 // ---------------------------------------------------------------------------
 
-describe('errors — HTTP status codes', () => {
+describe("errors — HTTP status codes", () => {
   for (const { name, error, expectedStatus } of ALL_HTTP_ERRORS) {
     it(`${name} has HTTP status ${expectedStatus}`, () => {
       expect((error as unknown as { status: number }).status).toBe(expectedStatus);
     });
   }
 
-  it('BootError has NO status property (boot-time error, pre-HTTP)', () => {
-    const err = new BootError('BOOT_ERR_DSL_SYNTAX', 'parse error');
+  it("BootError has NO status property (boot-time error, pre-HTTP)", () => {
+    const err = new BootError("BOOT_ERR_DSL_SYNTAX", "parse error");
     expect((err as unknown as { status?: number }).status).toBeUndefined();
   });
 });
@@ -153,40 +167,41 @@ describe('errors — HTTP status codes', () => {
 // toJSON symmetry with HTTP gateway output
 // ---------------------------------------------------------------------------
 
-describe('errors — toJSON symmetry with gateway HTTP response body', () => {
-  it('EntityAbsenceError.toJSON() has name, code, message, details (matches gateway res.json(err.toJSON()))', () => {
-    const err = new EntityAbsenceError('not found', { id: 'xyz' });
+describe("errors — toJSON symmetry with gateway HTTP response body", () => {
+  it("EntityAbsenceError.toJSON() has name, code, message, details (matches gateway res.json(err.toJSON()))", () => {
+    const err = new EntityAbsenceError("not found", { id: "xyz" });
     const json = err.toJSON();
     expect(json).toMatchObject({
-      name: 'EntityAbsenceError',
-      code: 'ENTITY_ABSENCE',
-      message: 'not found',
-      details: { id: 'xyz' },
+      name: "EntityAbsenceError",
+      code: "ENTITY_ABSENCE",
+      message: "not found",
+      details: { id: "xyz" },
     });
   });
 
-  it('InternalExecutionError.toJSON() does NOT expose a `status` field (status is only in the HTTP response, not body)', () => {
-    const err = new InternalExecutionError('internal');
+  it("InternalExecutionError.toJSON() does NOT expose a `status` field (status is only in the HTTP response, not body)", () => {
+    const err = new InternalExecutionError("internal");
     const json = err.toJSON();
     // Gateway uses err.toJSON() as the response body — the HTTP status code is set
     // separately via res.status(500). The body itself should not re-expose `status`.
-    expect(json['status']).toBeUndefined();
+    expect(json["status"]).toBeUndefined();
   });
 
-  it(
-    'FaultSimulatedError.toJSON() matches the HTTP response body emitted by gateway (symmetry restored)',
-    () => {
-      const err = new FaultSimulatedError(503, { error: 'SERVICE_UNAVAILABLE' }, { 'Retry-After': '30' });
+  it("FaultSimulatedError.toJSON() matches the HTTP response body emitted by gateway (symmetry restored)", () => {
+    const err = new FaultSimulatedError(
+      503,
+      { error: "SERVICE_UNAVAILABLE" },
+      { "Retry-After": "30" },
+    );
 
-      // Gateway now calls res.status(err.status).json(err.toJSON()) — both return the simulated body.
-      // err.toJSON() returns the simulated body directly, so gateway and toJSON() are in sync.
-      const simulatedResponse = err.simulatedBody;
-      expect(simulatedResponse).toEqual(err.toJSON());
-    },
-  );
+    // Gateway now calls res.status(err.status).json(err.toJSON()) — both return the simulated body.
+    // err.toJSON() returns the simulated body directly, so gateway and toJSON() are in sync.
+    const simulatedResponse = err.simulatedBody;
+    expect(simulatedResponse).toEqual(err.toJSON());
+  });
 
-  it('gateway uses err.toJSON() for FaultSimulatedError — same shape as err.simulatedBody', () => {
-    const simulatedBody = { error: 'SERVICE_UNAVAILABLE' };
+  it("gateway uses err.toJSON() for FaultSimulatedError — same shape as err.simulatedBody", () => {
+    const simulatedBody = { error: "SERVICE_UNAVAILABLE" };
     const err = new FaultSimulatedError(503, simulatedBody);
 
     // toJSON() now returns the simulated body directly — same as what the gateway sends
@@ -200,28 +215,28 @@ describe('errors — toJSON symmetry with gateway HTTP response body', () => {
 // FaultSimulatedError edge cases
 // ---------------------------------------------------------------------------
 
-describe('errors — FaultSimulatedError edge cases', () => {
-  it('simulatedBody can be null', () => {
+describe("errors — FaultSimulatedError edge cases", () => {
+  it("simulatedBody can be null", () => {
     const err = new FaultSimulatedError(503, null);
     expect(err.simulatedBody).toBeNull();
     // toJSON() returns { body: null } when simulatedBody is null (non-object fallback)
-    expect(err.toJSON()['body']).toBeNull();
+    expect(err.toJSON()["body"]).toBeNull();
   });
 
-  it('simulatedBody can be a string', () => {
-    const err = new FaultSimulatedError(503, 'plain text fault');
-    expect(err.simulatedBody).toBe('plain text fault');
+  it("simulatedBody can be a string", () => {
+    const err = new FaultSimulatedError(503, "plain text fault");
+    expect(err.simulatedBody).toBe("plain text fault");
   });
 
-  it('simulatedHeaders is accessible on the error instance when provided', () => {
-    const err = new FaultSimulatedError(503, {}, { 'Retry-After': '60' });
+  it("simulatedHeaders is accessible on the error instance when provided", () => {
+    const err = new FaultSimulatedError(503, {}, { "Retry-After": "60" });
     // simulatedHeaders is available as a property for the gateway to set response headers
-    expect(err.simulatedHeaders).toEqual({ 'Retry-After': '60' });
+    expect(err.simulatedHeaders).toEqual({ "Retry-After": "60" });
     // toJSON() returns the simulated body — headers are applied separately by the gateway
     expect(err.toJSON()).toEqual({});
   });
 
-  it('simulatedHeaders is undefined on instance when not provided', () => {
+  it("simulatedHeaders is undefined on instance when not provided", () => {
     const err = new FaultSimulatedError(503, {});
     expect(err.simulatedHeaders).toBeUndefined();
   });
@@ -231,19 +246,19 @@ describe('errors — FaultSimulatedError edge cases', () => {
 // Error name and stack
 // ---------------------------------------------------------------------------
 
-describe('errors — error name and stack', () => {
-  it('each error subclass name matches the constructor name', () => {
+describe("errors — error name and stack", () => {
+  it("each error subclass name matches the constructor name", () => {
     const cases: Array<[string, SimError]> = [
-      ['BootError', new BootError('CODE', 'msg')],
-      ['ContractViolationError', new ContractViolationError('msg')],
-      ['EntityAbsenceError', new EntityAbsenceError('msg')],
-      ['EntityConflictError', new EntityConflictError('msg')],
-      ['UnhandledOperationError', new UnhandledOperationError('msg')],
-      ['ConcurrencyConflictError', new ConcurrencyConflictError('msg')],
-      ['MissingPreconditionError', new MissingPreconditionError('msg')],
-      ['InternalExecutionError', new InternalExecutionError('msg')],
-      ['InfiniteLoopError', new InfiniteLoopError('msg')],
-      ['FaultSimulatedError', new FaultSimulatedError(503, {})],
+      ["BootError", new BootError("CODE", "msg")],
+      ["ContractViolationError", new ContractViolationError("msg")],
+      ["EntityAbsenceError", new EntityAbsenceError("msg")],
+      ["EntityConflictError", new EntityConflictError("msg")],
+      ["UnhandledOperationError", new UnhandledOperationError("msg")],
+      ["ConcurrencyConflictError", new ConcurrencyConflictError("msg")],
+      ["MissingPreconditionError", new MissingPreconditionError("msg")],
+      ["InternalExecutionError", new InternalExecutionError("msg")],
+      ["InfiniteLoopError", new InfiniteLoopError("msg")],
+      ["FaultSimulatedError", new FaultSimulatedError(503, {})],
     ];
 
     for (const [expectedName, err] of cases) {
@@ -251,11 +266,11 @@ describe('errors — error name and stack', () => {
     }
   });
 
-  it('all error subclasses have a stack trace', () => {
+  it("all error subclasses have a stack trace", () => {
     const errors: SimError[] = [
-      new ContractViolationError('msg'),
-      new EntityAbsenceError('msg'),
-      new InternalExecutionError('msg'),
+      new ContractViolationError("msg"),
+      new EntityAbsenceError("msg"),
+      new InternalExecutionError("msg"),
       new FaultSimulatedError(500, {}),
     ];
     for (const err of errors) {
@@ -269,15 +284,15 @@ describe('errors — error name and stack', () => {
 // toJSON returns plain object
 // ---------------------------------------------------------------------------
 
-describe('errors — toJSON returns plain object (not class instance)', () => {
-  it('ContractViolationError.toJSON() returns a plain Record, not a SimError instance', () => {
-    const err = new ContractViolationError('msg');
+describe("errors — toJSON returns plain object (not class instance)", () => {
+  it("ContractViolationError.toJSON() returns a plain Record, not a SimError instance", () => {
+    const err = new ContractViolationError("msg");
     const json = err.toJSON();
     expect(json).not.toBeInstanceOf(SimError);
     expect(json.constructor).toBe(Object);
   });
 
-  it('FaultSimulatedError.toJSON() returns a plain Record', () => {
+  it("FaultSimulatedError.toJSON() returns a plain Record", () => {
     const err = new FaultSimulatedError(503, {});
     const json = err.toJSON();
     expect(json.constructor).toBe(Object);
@@ -288,20 +303,20 @@ describe('errors — toJSON returns plain object (not class instance)', () => {
 // Numeric details serialisation
 // ---------------------------------------------------------------------------
 
-describe('errors — numeric details serialisation', () => {
-  it('ConcurrencyConflictError with numeric details serialises correctly via JSON.stringify', () => {
-    const err = new ConcurrencyConflictError('mismatch', { expected: 5, current: 3 });
+describe("errors — numeric details serialisation", () => {
+  it("ConcurrencyConflictError with numeric details serialises correctly via JSON.stringify", () => {
+    const err = new ConcurrencyConflictError("mismatch", { expected: 5, current: 3 });
     const serialised = JSON.parse(JSON.stringify(err.toJSON())) as Record<string, unknown>;
-    expect(serialised['details']).toEqual({ expected: 5, current: 3 });
+    expect(serialised["details"]).toEqual({ expected: 5, current: 3 });
   });
 
-  it('InfiniteLoopError with deeply nested details serialises correctly', () => {
-    const err = new InfiniteLoopError('depth exceeded', {
+  it("InfiniteLoopError with deeply nested details serialises correctly", () => {
+    const err = new InfiniteLoopError("depth exceeded", {
       depth: 6,
       maxDepth: 5,
-      boundary: 'Customer',
+      boundary: "Customer",
     });
     const json = err.toJSON();
-    expect(json.details).toEqual({ depth: 6, maxDepth: 5, boundary: 'Customer' });
+    expect(json.details).toEqual({ depth: 6, maxDepth: 5, boundary: "Customer" });
   });
 });

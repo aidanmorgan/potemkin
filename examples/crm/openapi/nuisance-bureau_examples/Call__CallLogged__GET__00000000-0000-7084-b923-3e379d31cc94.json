@@ -1,0 +1,30 @@
+{
+  "http-request": {
+    "method": "GET",
+    "path": "/calls/00000000-0000-7084-b923-3e379d31cc94"
+  },
+  "http-response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "body": {
+      "id": "00000000-0000-7084-b923-3e379d31cc94",
+      "leadId": "00000000-0000-75e8-ac8a-de8e4e52c9bb",
+      "agentId": "00000000-0000-7000-8000-000000000003",
+      "campaignId": "00000000-0000-7000-8000-000000000001",
+      "startedAt": "1970-01-01T00:00:00.000Z",
+      "endedAt": "1970-01-01T00:00:00.000Z",
+      "durationSeconds": 120,
+      "outcome": "INTERESTED",
+      "notes": "",
+      "transcript": [],
+      "_links": {
+        "self": {
+          "href": "/calls/00000000-0000-7084-b923-3e379d31cc94",
+          "method": "GET"
+        }
+      }
+    }
+  }
+}

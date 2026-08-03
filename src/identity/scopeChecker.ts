@@ -3,11 +3,8 @@
  * declared on a behavior's `match.required_scopes` field.
  */
 
-import type { Actor } from '../types.js';
-import {
-  AuthenticationRequiredError,
-  AuthorizationDeniedError,
-} from '../errors.js';
+import type { Actor } from "../types.js";
+import { AuthenticationRequiredError, AuthorizationDeniedError } from "../errors.js";
 
 /**
  * Check that `actor` has all `requiredScopes`.
@@ -24,17 +21,17 @@ export function checkScopes(
 
   if (!actor) {
     throw new AuthenticationRequiredError(
-      `Behavior "${behaviorName}" requires authentication (scopes: ${requiredScopes.join(', ')})`,
+      `Behavior "${behaviorName}" requires authentication (scopes: ${requiredScopes.join(", ")})`,
       { behavior: behaviorName, requiredScopes: requiredScopes as string[] },
     );
   }
 
   const actorScopeSet = new Set(actor.scopes);
-  const missing = requiredScopes.filter(s => !actorScopeSet.has(s));
+  const missing = requiredScopes.filter((s) => !actorScopeSet.has(s));
 
   if (missing.length > 0) {
     throw new AuthorizationDeniedError(
-      `Actor "${actor.id}" lacks required scopes for behavior "${behaviorName}": ${missing.join(', ')}`,
+      `Actor "${actor.id}" lacks required scopes for behavior "${behaviorName}": ${missing.join(", ")}`,
       {
         behavior: behaviorName,
         actorId: actor.id,

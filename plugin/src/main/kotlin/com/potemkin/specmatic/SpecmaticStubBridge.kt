@@ -11,7 +11,7 @@ import org.slf4j.LoggerFactory
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
- * Shim that registers [FixtureStub]s with Specmatic's [HttpStub] as dynamic expectations.
+ * Registry that registers [FixtureStub]s with Specmatic's [HttpStub] as dynamic expectations.
  *
  * ## Specmatic stub-registration API
  *
@@ -26,12 +26,12 @@ import java.util.concurrent.CopyOnWriteArrayList
  * the Specmatic call in a try/catch and logs + returns false on any failure. This ensures plugin
  * boot never fails due to an unregisterable fixture.
  *
- * ## Clearing registered stubs
+ * ## Clearing registered expectations
  *
- * [clearExpectations] removes all stubs previously registered via [registerStub] from Specmatic's
- * internal `threadSafeHttpStubs` list via [ThreadSafeListOfStubs.remove]. The stubs are tracked
- * in [registeredStubData] (the `List<HttpStubData>` returned by each [setExpectation] call).
- * Specmatic does not expose a `clearAll` API, so we use the tracked handles.
+ * [clearExpectations] removes all expectations previously registered via
+ * [registerStub] from the canonical Specmatic `httpExpectations.dynamic`
+ * partition. The expectations are tracked in [registeredStubData] (the
+ * `List<HttpStubData>` returned by each [setExpectation] call).
  *
  * ## Body serialisation
  *
@@ -122,24 +122,7 @@ open class SpecmaticStubBridge(private val httpStub: HttpStub?) {
      */
     protected open fun doClearExpectations() {
         if (httpStub == null || registeredStubData.isEmpty()) return
-        // Access the private threadSafeHttpStubs field via reflection.
-        // Specmatic (2.6.0) stores registered stubs in HttpStub.threadSafeHttpStubs:ThreadSafeListOfStubs.
-        // ThreadSafeListOfStubs.remove(HttpStubData) is the public per-stub remove API.
-        try {
-            val field = httpStub.javaClass.getDeclaredField("threadSafeHttpStubs")
-            field.isAccessible = true
-            val threadSafeStubs = field.get(httpStub)
-            val removeMethod = threadSafeStubs.javaClass.getMethod("remove", HttpStubData::class.java)
-            for (stubData in registeredStubData) {
-                try {
-                    removeMethod.invoke(threadSafeStubs, stubData)
-                } catch (e: Exception) {
-                    log.debug("SpecmaticStubBridge: could not remove stub data: {}", e.message)
-                }
-            }
-        } catch (e: Exception) {
-            log.warn("SpecmaticStubBridge: reflection-based clear failed: {} — stubs may persist", e.message)
-        }
+        SpecmaticReflectionContract.removeExpectations(httpStub, registeredStubData)
     }
 
     /**

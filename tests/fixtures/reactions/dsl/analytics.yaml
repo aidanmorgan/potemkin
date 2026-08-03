@@ -14,9 +14,9 @@ identity:
 event_catalog:
   - type: AnalyticsRecorded
     payload_template:
-      id:         "$uuidv7()"
+      id: "$uuidv7()"
       dispatchId: "event.aggregateId"
-      recorded:   "true"
+      recorded: "true"
 
 behaviors: []
 

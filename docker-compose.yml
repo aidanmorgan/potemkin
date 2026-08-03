@@ -1,0 +1,32 @@
+services:
+  engine:
+    build: .
+    working_dir: /workspace
+    command: ["node", "/app/dist/src/cli/server.js"]
+    environment:
+      NODE_ENV: development
+      POTEMKIN_CONFIG_PATH: /workspace/potemkin.yml
+      POTEMKIN_ENGINE_PORT: "3000"
+      POTEMKIN_PLUGIN_CONTROL_URL: http://specmatic:9090
+    volumes:
+      - .:/workspace
+    ports:
+      - "3000:3000"
+
+  specmatic:
+    build: .
+    working_dir: /workspace
+    depends_on:
+      - engine
+    command:
+      - sh
+      - -c
+      - node /app/scripts/start-specmatic.mjs
+    environment:
+      POTEMKIN_CONFIG_PATH: /workspace/potemkin.yml
+      SPECMATIC_PORT: "9000"
+    volumes:
+      - .:/workspace
+    ports:
+      - "9000:9000"
+      - "9090:9090"

@@ -17,13 +17,13 @@ import {
   InMemorySpanExporter,
   SimpleSpanProcessor,
   BasicTracerProvider,
-} from '@opentelemetry/sdk-trace-base';
+} from "@opentelemetry/sdk-trace-base";
 import {
   MeterProvider,
   InMemoryMetricExporter,
   PeriodicExportingMetricReader,
-} from '@opentelemetry/sdk-metrics';
-import { AggregationTemporality } from '@opentelemetry/sdk-metrics';
+} from "@opentelemetry/sdk-metrics";
+import { AggregationTemporality } from "@opentelemetry/sdk-metrics";
 
 export interface InMemoryOtel {
   readonly spanExporter: InMemorySpanExporter;

@@ -1,0 +1,22 @@
+{
+  "http-request": {
+    "method": "PATCH",
+    "path": "/agents/00000000-0000-7000-8000-000000000404/status",
+    "body": {
+      "currentStatus": "AVAILABLE"
+    }
+  },
+  "http-response": {
+    "status": 404,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "body": {
+      "error": "ENTITY_ABSENCE",
+      "message": "Entity '00000000-0000-7000-8000-000000000404' not found in boundary 'AgentStatus'",
+      "details": {
+        "code": "ENTITY_ABSENCE"
+      }
+    }
+  }
+}

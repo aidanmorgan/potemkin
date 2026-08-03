@@ -156,7 +156,7 @@ fault_rules:
   # absent the header they never fire (a normal request omits these headers).
 
   # X-Potemkin-Force-Status: 599 → YAML body overrides the generic forced-status body.
-  - name: force-status-599-backpressure
+  - name: force-status-599-custom
     match:
       condition: "true"
       headers:
@@ -164,8 +164,8 @@ fault_rules:
     response:
       status: 599
       body:
-        error: UPSTREAM_BACKPRESSURE
-        hint: "Client should back off and retry with a smaller batch."
+        error: FORCED_STATUS_599
+        hint: "Client should retry after the response is available."
       headers:
         Retry-After: "15"
 

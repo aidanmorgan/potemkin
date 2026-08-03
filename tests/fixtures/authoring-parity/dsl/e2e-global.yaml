@@ -1,0 +1,208 @@
+idempotency:
+  enabled: true
+  ttl_seconds: 60
+  hash_includes_body: true
+security_headers:
+  enabled: true
+  hsts: true
+  nosniff: true
+  frame_deny: true
+  referrer_policy: strict-origin-when-cross-origin
+  custom_headers:
+    X-Parity-Fixture: yaml-and-typescript
+fault_rules:
+  - name: parity-fault
+    match:
+      headers:
+        x-parity-fault: on
+      condition: "true"
+    response:
+      status: 503
+      body:
+        error: PARITY_FAULT
+        message: deliberate parity fixture fault
+      headers:
+        Retry-After: "5"
+  - name: maintenance-response
+    match:
+      headers:
+        x-potemkin-force-response: maintenance
+      condition: "true"
+    response:
+      status: 502
+      body:
+        error: MAINTENANCE_RESPONSE
+        message: selected maintenance response
+  - name: scenario-response
+    match:
+      headers:
+        x-potemkin-scenario: slow_db
+      condition: "true"
+    response:
+      status: 504
+      body:
+        error: SCENARIO_RESPONSE
+        message: selected scenario response
+  - name: feature-response
+    match:
+      potemkin:
+        feature_flag: parity-beta
+      condition: "true"
+    response:
+      status: 418
+      body:
+        error: FEATURE_RESPONSE
+        message: selected feature response
+  - name: probability-response
+    match:
+      headers:
+        x-parity-probability: on
+      probability: 1
+      condition: "true"
+    response:
+      status: 503
+      body:
+        error: PROBABILITY_RESPONSE
+        message: selected probability response
+  - name: probability-off
+    match:
+      headers:
+        x-parity-probability: off
+      probability: 0
+      condition: "true"
+    response:
+      status: 503
+      body:
+        error: PROBABILITY_OFF_SHOULD_NOT_FIRE
+        message: this response must not be selected
+  - name: intermediate-probability
+    match:
+      headers:
+        x-parity-probability-half: on
+      probability: 0.5
+      condition: "true"
+    response:
+      status: 503
+      body:
+        error: INTERMEDIATE_PROBABILITY_RESPONSE
+        message: selected intermediate probability response
+  - name: operation-method-fault
+    match:
+      operationId: createOrder
+      method: POST
+      headers:
+        x-parity-operation: on
+      condition: "true"
+    response:
+      status: 503
+      body:
+        error: OPERATION_METHOD_RESPONSE
+        message: selected operation and method response
+  - name: guarded-scoped-fault
+    match:
+      headers:
+        x-parity-guarded: on
+      required_scopes: [writer]
+      requires:
+        - name: parity-required-header
+          condition: "request.headers['x-parity-required'] == 'on'"
+          error_code: PARITY_REQUIRED_HEADER
+          error_message: the parity required header must be enabled
+      condition: "true"
+    response:
+      status: 503
+      body:
+        error: GUARDED_SCOPED_RESPONSE
+        message: selected guarded and scoped response
+  - name: boundary-intent-condition-fault
+    match:
+      boundary: Order
+      intent: creation
+      headers:
+        x-parity-boundary: on
+      condition: "command.payload['quantity'] > 2"
+    response:
+      status: 503
+      body:
+        error: BOUNDARY_INTENT_RESPONSE
+        message: selected boundary intent condition response
+  - name: ordered-first
+    match:
+      headers:
+        x-parity-order: same
+      condition: "true"
+    response:
+      status: 503
+      body:
+        error: ORDERED_FIRST
+  - name: ordered-second
+    match:
+      headers:
+        x-parity-order: same
+      condition: "true"
+    response:
+      status: 418
+      body:
+        error: ORDERED_SECOND
+  - name: wildcard-selector
+    match:
+      headers:
+        x-parity-wildcard: "*"
+      condition: "true"
+    response:
+      status: 502
+      body:
+        error: WILDCARD_SELECTOR
+sagas:
+  - name: order-created-saga-receipt
+    trigger:
+      boundary: Order
+      intent: creation
+      condition: "true"
+    steps:
+      - name: create-saga-receipt
+        boundary: Receipt
+        intent: creation
+        operationId: createReceipt
+        target_id: "$concat(event.aggregateId, '-saga-receipt')"
+        payload:
+          orderId: event.aggregateId
+          amount: "event.payload.quantity"
+derived_projections:
+  - name: OrderSummary
+    key: event.aggregateId
+    subscribe:
+      - "Order:OrderCreated"
+      - "OrderById:OrderRenamed"
+    reduce:
+      - on: "Order:OrderCreated"
+        patches:
+          - op: replace
+            path: /name
+            value: "${event.payload.name}"
+          - op: replace
+            path: /renameCount
+            value: "${0}"
+      - on: "OrderById:OrderRenamed"
+        patches:
+          - op: replace
+            path: /name
+            value: "${event.payload.name}"
+          - op: increment
+            path: /renameCount
+            by: 1
+webhooks:
+  - name: order-created-hook
+    trigger:
+      boundary: Order
+      intent: creation
+      condition: "event.type == 'OrderCreated'"
+    url: "'http://127.0.0.1:19878/order-hook'"
+    secret: parity-webhook-secret
+    payload:
+      orderId: "${event.aggregateId}"
+      event: "${event.type}"
+      name: "${event.payload.name}"
+    retry:
+      maxAttempts: 1
+      delayMs: 1

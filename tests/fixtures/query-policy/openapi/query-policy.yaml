@@ -1,0 +1,121 @@
+openapi: 3.0.3
+info:
+  title: Potemkin query policy parity
+  version: 1.0.0
+paths:
+  /orders:
+    get:
+      operationId: listOrders
+      parameters:
+        - name: threshold
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: includeDeleted
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Order collection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderPage"
+  /orders/{id}:
+    get:
+      operationId: getOrder
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Order fallback
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/Order"
+                  - $ref: "#/components/schemas/OrderNotFound"
+        "404":
+          description: Missing order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderNotFound"
+  /probes/{id}:
+    get:
+      operationId: probeOrder
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "404":
+          description: Missing probe
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderNotFound"
+components:
+  schemas:
+    Order:
+      type: object
+      required: [id, score, active]
+      properties:
+        id:
+          type: string
+        score:
+          type: integer
+        active:
+          type: boolean
+        customerIds:
+          type: array
+          items:
+            type: string
+        _customerIds:
+          type: array
+          items:
+            type: object
+            required: [id]
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+    OrderPage:
+      type: object
+      required: [items, totalCount, offset, limit, hasMore]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Order"
+        totalCount:
+          type: integer
+        offset:
+          type: integer
+        limit:
+          type: integer
+        hasMore:
+          type: boolean
+        nextCursor:
+          type: string
+    OrderNotFound:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string

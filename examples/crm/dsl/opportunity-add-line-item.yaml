@@ -19,12 +19,12 @@ state:
 event_catalog:
   - type: LineItemAdded
     payload_template:
-      id: "ts:generateLineItemId"
+      id: "$uuidv7()"
       description: "command.payload.description"
       quantity: "command.payload.quantity"
       unitPrice: "command.payload.unitPrice"
-      lineTotal: "ts:computeLineTotal"
-      total: "ts:computeLineTotal"
+      lineTotal: "command.payload.quantity * command.payload.unitPrice"
+      total: "command.payload.quantity * command.payload.unitPrice"
       addedAt: "$now()"
 
 behaviors:

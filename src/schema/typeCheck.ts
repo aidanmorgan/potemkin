@@ -1,7 +1,7 @@
-import type { JsonValue, JsonObject } from '../types.js';
-import type { ObjectGraphSchema, SchemaTypeKind } from './types.js';
-import { getTracer, withSpan } from '../observability/tracing.js';
-import { detectCatastrophicRegexShape } from '../cel/evaluator.js';
+import type { JsonValue, JsonObject } from "../types.js";
+import type { ObjectGraphSchema, SchemaTypeKind } from "./types.js";
+import { createNoopTracer, withSpan, type Tracer } from "../observability/tracing.js";
+import { detectCatastrophicRegexShape } from "./regexSafety.js";
 
 // ── pattern validation (ReDoS-safe) ───────────────────────────────────────────
 
@@ -23,7 +23,7 @@ function compilePatternSafe(pattern: string): RegExp {
 
 const FORMAT_PATTERNS: Record<string, RegExp> = {
   uuid: /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/,
-  'date-time': /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/,
+  "date-time": /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/,
   date: /^\d{4}-\d{2}-\d{2}$/,
   email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
 };
@@ -37,12 +37,12 @@ function validateFormat(value: string, format: string): boolean {
 // ── helpers ────────────────────────────────────────────────────────────────────
 
 export function typeOfJson(v: JsonValue): SchemaTypeKind {
-  if (v === null) return 'null';
-  if (typeof v === 'boolean') return 'boolean';
-  if (typeof v === 'number') return Number.isInteger(v) ? 'integer' : 'number';
-  if (typeof v === 'string') return 'string';
-  if (Array.isArray(v)) return 'array';
-  return 'object';
+  if (v === null) return "null";
+  if (typeof v === "boolean") return "boolean";
+  if (typeof v === "number") return Number.isInteger(v) ? "integer" : "number";
+  if (typeof v === "string") return "string";
+  if (Array.isArray(v)) return "array";
+  return "object";
 }
 
 /**
@@ -59,29 +59,29 @@ export function typeOfJson(v: JsonValue): SchemaTypeKind {
  *  - kind === 'array'                           → value must be array; items checked if schema has items
  */
 export function isAssignable(value: JsonValue, target: ObjectGraphSchema): boolean {
-  if (target.kind === 'any') return true;
-  if (value === null) return target.nullable === true || target.kind === 'null';
+  if (target.kind === "any") return true;
+  if (value === null) return target.nullable === true || target.kind === "null";
 
   const kind = typeOfJson(value);
 
-  if (target.kind === 'union') {
+  if (target.kind === "union") {
     const members = target.union ?? [];
-    if (target.unionVariant === 'oneOf') {
+    if (target.unionVariant === "oneOf") {
       const matchCount = members.filter((m) => isAssignable(value, m)).length;
       return matchCount === 1;
     }
     return members.some((member) => isAssignable(value, member));
   }
 
-  if (target.kind === 'null') return value === null;
+  if (target.kind === "null") return value === null;
 
   // Enum check applies to all primitive kinds
   if (target.enum && target.enum.length > 0) {
     return (target.enum as JsonValue[]).includes(value);
   }
 
-  if (target.kind === 'integer') {
-    if (kind !== 'integer') return false;
+  if (target.kind === "integer") {
+    if (kind !== "integer") return false;
     const n = value as number;
     if (target.minimum !== undefined && n < target.minimum) return false;
     if (target.maximum !== undefined && n > target.maximum) return false;
@@ -90,8 +90,8 @@ export function isAssignable(value: JsonValue, target: ObjectGraphSchema): boole
     return true;
   }
 
-  if (target.kind === 'number') {
-    if (kind !== 'integer' && kind !== 'number') return false;
+  if (target.kind === "number") {
+    if (kind !== "integer" && kind !== "number") return false;
     const n = value as number;
     if (target.minimum !== undefined && n < target.minimum) return false;
     if (target.maximum !== undefined && n > target.maximum) return false;
@@ -100,10 +100,10 @@ export function isAssignable(value: JsonValue, target: ObjectGraphSchema): boole
     return true;
   }
 
-  if (target.kind === 'boolean') return kind === 'boolean';
+  if (target.kind === "boolean") return kind === "boolean";
 
-  if (target.kind === 'string') {
-    if (kind !== 'string') return false;
+  if (target.kind === "string") {
+    if (kind !== "string") return false;
     const s = value as string;
     if (target.minLength !== undefined && s.length < target.minLength) return false;
     if (target.maxLength !== undefined && s.length > target.maxLength) return false;
@@ -112,7 +112,7 @@ export function isAssignable(value: JsonValue, target: ObjectGraphSchema): boole
     return true;
   }
 
-  if (target.kind === 'array') {
+  if (target.kind === "array") {
     if (!Array.isArray(value)) return false;
     if (target.items) {
       return (value as JsonValue[]).every((item) => isAssignable(item, target.items!));
@@ -120,8 +120,8 @@ export function isAssignable(value: JsonValue, target: ObjectGraphSchema): boole
     return true;
   }
 
-  if (target.kind === 'object') {
-    if (typeof value !== 'object' || Array.isArray(value)) return false;
+  if (target.kind === "object") {
+    if (typeof value !== "object" || Array.isArray(value)) return false;
     const obj = value as JsonObject;
     const props = target.properties ?? {};
     const required = target.required ?? [];
@@ -139,7 +139,7 @@ export function isAssignable(value: JsonValue, target: ObjectGraphSchema): boole
       } else {
         // Unknown property
         if (addlProps === false || addlProps === undefined) return false;
-        if (typeof addlProps === 'object') {
+        if (typeof addlProps === "object") {
           if (!isAssignable(v, addlProps as ObjectGraphSchema)) return false;
         }
         // addlProps === true → allowed
@@ -165,27 +165,28 @@ function validateNode(
   path: string,
   errors: ValidationError[],
 ): void {
-  if (schema.kind === 'any') return;
+  if (schema.kind === "any") return;
 
   if (value === null) {
-    if (!schema.nullable && schema.kind !== 'null') {
+    if (!schema.nullable && schema.kind !== "null") {
       errors.push({ path, reason: `null not permitted (nullable: false)` });
     }
     return;
   }
 
-  if (schema.kind === 'union') {
+  if (schema.kind === "union") {
     const members = schema.union ?? [];
     let ok: boolean;
-    if (schema.unionVariant === 'oneOf') {
+    if (schema.unionVariant === "oneOf") {
       const matchCount = members.filter((m) => isAssignable(value, m)).length;
       ok = matchCount === 1;
       if (!ok) {
         errors.push({
           path,
-          reason: matchCount === 0
-            ? `value does not match any oneOf member`
-            : `value matches ${matchCount} oneOf members (exactly one required)`,
+          reason:
+            matchCount === 0
+              ? `value does not match any oneOf member`
+              : `value matches ${matchCount} oneOf members (exactly one required)`,
         });
       }
     } else {
@@ -204,22 +205,25 @@ function validateNode(
 
   // Enum check applies across all primitive kinds
   if (schema.enum && schema.enum.length > 0 && !(schema.enum as JsonValue[]).includes(value)) {
-    errors.push({ path, reason: `value '${String(value)}' not in enum ${JSON.stringify(schema.enum)}` });
+    errors.push({
+      path,
+      reason: `value '${String(value)}' not in enum ${JSON.stringify(schema.enum)}`,
+    });
     return;
   }
 
-  if (schema.kind === 'null') {
+  if (schema.kind === "null") {
     if (value !== null) errors.push({ path, reason: `expected null` });
     return;
   }
 
-  if (schema.kind === 'boolean') {
-    if (kind !== 'boolean') errors.push({ path, reason: `expected boolean, got ${kind}` });
+  if (schema.kind === "boolean") {
+    if (kind !== "boolean") errors.push({ path, reason: `expected boolean, got ${kind}` });
     return;
   }
 
-  if (schema.kind === 'integer') {
-    if (kind !== 'integer') {
+  if (schema.kind === "integer") {
+    if (kind !== "integer") {
       errors.push({ path, reason: `expected integer, got ${kind}` });
       return;
     }
@@ -229,14 +233,20 @@ function validateNode(
     if (schema.maximum !== undefined && n > schema.maximum)
       errors.push({ path, reason: `value ${n} is greater than maximum ${schema.maximum}` });
     if (schema.exclusiveMinimum !== undefined && n <= schema.exclusiveMinimum)
-      errors.push({ path, reason: `value ${n} is not greater than exclusiveMinimum ${schema.exclusiveMinimum}` });
+      errors.push({
+        path,
+        reason: `value ${n} is not greater than exclusiveMinimum ${schema.exclusiveMinimum}`,
+      });
     if (schema.exclusiveMaximum !== undefined && n >= schema.exclusiveMaximum)
-      errors.push({ path, reason: `value ${n} is not less than exclusiveMaximum ${schema.exclusiveMaximum}` });
+      errors.push({
+        path,
+        reason: `value ${n} is not less than exclusiveMaximum ${schema.exclusiveMaximum}`,
+      });
     return;
   }
 
-  if (schema.kind === 'number') {
-    if (kind !== 'integer' && kind !== 'number') {
+  if (schema.kind === "number") {
+    if (kind !== "integer" && kind !== "number") {
       errors.push({ path, reason: `expected number, got ${kind}` });
       return;
     }
@@ -246,22 +256,34 @@ function validateNode(
     if (schema.maximum !== undefined && n > schema.maximum)
       errors.push({ path, reason: `value ${n} is greater than maximum ${schema.maximum}` });
     if (schema.exclusiveMinimum !== undefined && n <= schema.exclusiveMinimum)
-      errors.push({ path, reason: `value ${n} is not greater than exclusiveMinimum ${schema.exclusiveMinimum}` });
+      errors.push({
+        path,
+        reason: `value ${n} is not greater than exclusiveMinimum ${schema.exclusiveMinimum}`,
+      });
     if (schema.exclusiveMaximum !== undefined && n >= schema.exclusiveMaximum)
-      errors.push({ path, reason: `value ${n} is not less than exclusiveMaximum ${schema.exclusiveMaximum}` });
+      errors.push({
+        path,
+        reason: `value ${n} is not less than exclusiveMaximum ${schema.exclusiveMaximum}`,
+      });
     return;
   }
 
-  if (schema.kind === 'string') {
-    if (kind !== 'string') {
+  if (schema.kind === "string") {
+    if (kind !== "string") {
       errors.push({ path, reason: `expected string, got ${kind}` });
       return;
     }
     const s = value as string;
     if (schema.minLength !== undefined && s.length < schema.minLength)
-      errors.push({ path, reason: `string length ${s.length} is less than minLength ${schema.minLength}` });
+      errors.push({
+        path,
+        reason: `string length ${s.length} is less than minLength ${schema.minLength}`,
+      });
     if (schema.maxLength !== undefined && s.length > schema.maxLength)
-      errors.push({ path, reason: `string length ${s.length} is greater than maxLength ${schema.maxLength}` });
+      errors.push({
+        path,
+        reason: `string length ${s.length} is greater than maxLength ${schema.maxLength}`,
+      });
     if (schema.pattern !== undefined) {
       const compiled = compilePatternSafe(schema.pattern);
       if (!compiled.test(s))
@@ -272,7 +294,7 @@ function validateNode(
     return;
   }
 
-  if (schema.kind === 'array') {
+  if (schema.kind === "array") {
     if (!Array.isArray(value)) {
       errors.push({ path, reason: `expected array, got ${kind}` });
       return;
@@ -285,8 +307,8 @@ function validateNode(
     return;
   }
 
-  if (schema.kind === 'object') {
-    if (typeof value !== 'object' || Array.isArray(value)) {
+  if (schema.kind === "object") {
+    if (typeof value !== "object" || Array.isArray(value)) {
       errors.push({ path, reason: `expected object, got ${kind}` });
       return;
     }
@@ -307,7 +329,7 @@ function validateNode(
         validateNode(v, props[k], childPath, errors);
       } else if (addlProps === false || addlProps === undefined) {
         errors.push({ path: childPath, reason: `additional property not allowed` });
-      } else if (typeof addlProps === 'object') {
+      } else if (typeof addlProps === "object") {
         validateNode(v, addlProps as ObjectGraphSchema, childPath, errors);
       }
       // addlProps === true → allow any value
@@ -319,11 +341,17 @@ function validateNode(
 export async function validateEntityAgainstSchema(
   entity: JsonObject,
   schema: ObjectGraphSchema,
+  options: { readonly tracer?: Tracer } = {},
 ): Promise<{ ok: true } | { ok: false; errors: readonly ValidationError[] }> {
-  return withSpan(getTracer(), 'schema.validateEntity', () => {
-    const errors: ValidationError[] = [];
-    validateNode(entity, schema, '', errors);
-    if (errors.length === 0) return { ok: true as const };
-    return { ok: false as const, errors };
-  }, { 'schema.name': schema.name });
+  return withSpan(
+    options.tracer ?? createNoopTracer(),
+    "schema.validateEntity",
+    () => {
+      const errors: ValidationError[] = [];
+      validateNode(entity, schema, "", errors);
+      if (errors.length === 0) return { ok: true as const };
+      return { ok: false as const, errors };
+    },
+    { "schema.name": schema.name },
+  );
 }

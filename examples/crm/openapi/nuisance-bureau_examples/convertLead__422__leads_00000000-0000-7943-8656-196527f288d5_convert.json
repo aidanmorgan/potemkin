@@ -1,0 +1,22 @@
+{
+  "http-request": {
+    "method": "POST",
+    "path": "/leads/00000000-0000-7943-8656-196527f288d5/convert",
+    "body": {
+      "value": 0
+    }
+  },
+  "http-response": {
+    "status": 422,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "body": {
+      "error": "INVALID_STATE_TRANSITION",
+      "message": "Operation convertLead is not valid for the current entity state",
+      "details": {
+        "code": "INVALID_STATE_TRANSITION"
+      }
+    }
+  }
+}

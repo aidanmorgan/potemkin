@@ -1,0 +1,178 @@
+openapi: 3.0.3
+info:
+  title: Potemkin Stripe Layer-A conformance contract
+  version: 1.0.0
+
+# The vendored Stripe contract is intentionally retained as the authoritative
+# contract used by the Potemkin engine and the consumer-facing Specmatic stub.
+# Specmatic 2.46.2 cannot parse that document in test mode because it exceeds
+# the JVM parser's 3,145,728-code-point limit. This is the executable Layer-A
+# slice: it preserves the request validation shapes and the error response
+# boundary for every simulated collection mutation while keeping the test JVM
+# below that parser limit.
+paths:
+  /v1/customers:
+    get:
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200": { $ref: "#/components/responses/SuccessfulObject" }
+        "400": { $ref: "#/components/responses/Error" }
+    post:
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                email: { type: string }
+                name: { type: string }
+                description: { type: string }
+                phone: { type: string }
+              required: [email]
+      responses:
+        "200": { $ref: "#/components/responses/SuccessfulObject" }
+        "400": { $ref: "#/components/responses/Error" }
+
+  /v1/products:
+    get:
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200": { $ref: "#/components/responses/SuccessfulObject" }
+        "400": { $ref: "#/components/responses/Error" }
+    post:
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                name: { type: string }
+                description: { type: string }
+                active: { type: boolean }
+              required: [name]
+      responses:
+        "200": { $ref: "#/components/responses/SuccessfulObject" }
+        "400": { $ref: "#/components/responses/Error" }
+
+  /v1/prices:
+    get:
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200": { $ref: "#/components/responses/SuccessfulObject" }
+        "400": { $ref: "#/components/responses/Error" }
+    post:
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                currency: { type: string }
+                product: { type: string }
+                unit_amount: { type: integer }
+                active: { type: boolean }
+              required: [currency, product]
+      responses:
+        "200": { $ref: "#/components/responses/SuccessfulObject" }
+        "400": { $ref: "#/components/responses/Error" }
+
+  /v1/payment_intents:
+    get:
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200": { $ref: "#/components/responses/SuccessfulObject" }
+        "400": { $ref: "#/components/responses/Error" }
+    post:
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                amount: { type: integer }
+                currency: { type: string }
+                customer: { type: string }
+                payment_method: { type: string }
+                capture_method: { type: string }
+              required: [amount, currency]
+      responses:
+        "200": { $ref: "#/components/responses/SuccessfulObject" }
+        "400": { $ref: "#/components/responses/Error" }
+
+  /v1/refunds:
+    get:
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200": { $ref: "#/components/responses/SuccessfulObject" }
+        "400": { $ref: "#/components/responses/Error" }
+    post:
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                charge: { type: string }
+                amount: { type: integer }
+                reason: { type: string }
+              required: [charge, amount]
+      responses:
+        "200": { $ref: "#/components/responses/SuccessfulObject" }
+        "400": { $ref: "#/components/responses/Error" }
+
+components:
+  responses:
+    SuccessfulObject:
+      description: Successful Stripe object response
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+    Error:
+      description: Stripe error response
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true

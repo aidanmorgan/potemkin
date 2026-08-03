@@ -1,0 +1,9 @@
+version: 3
+specmatic:
+  settings:
+    test:
+      # The fixture itself is the positive set. Disabling schema-resiliency
+      # generation keeps Specmatic from expanding the large collection schema.
+      schemaResiliencyTests: none
+      maxTestRequestCombinations: 10
+      maxTestCount: 30

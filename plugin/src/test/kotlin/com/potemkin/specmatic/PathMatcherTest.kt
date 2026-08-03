@@ -93,6 +93,12 @@ class PathMatcherTest {
     }
 
     @Test
+    fun `hyphenated literal with named capture matches correctly`() {
+        val m = PathMatcher(listOf("/orders/{ref}"))
+        assertTrue(m.matches("/orders/ord_path_derived_001"))
+    }
+
+    @Test
     fun `multiple patterns - first matches`() {
         val m = PathMatcher(listOf("/loans/**", "/customers/{id}"))
         assertTrue(m.matches("/loans/anything"))

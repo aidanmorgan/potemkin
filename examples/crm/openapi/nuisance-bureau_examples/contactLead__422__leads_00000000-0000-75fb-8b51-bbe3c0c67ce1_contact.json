@@ -1,0 +1,20 @@
+{
+  "http-request": {
+    "method": "POST",
+    "path": "/leads/00000000-0000-75fb-8b51-bbe3c0c67ce1/contact",
+    "body": {}
+  },
+  "http-response": {
+    "status": 422,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "body": {
+      "error": "LEAD_ALREADY_CONVERTED",
+      "message": "Cannot contact a lead that has already been converted",
+      "details": {
+        "code": "LEAD_ALREADY_CONVERTED"
+      }
+    }
+  }
+}

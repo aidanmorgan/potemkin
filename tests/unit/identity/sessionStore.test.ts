@@ -1,9 +1,9 @@
 /**
  * Session Store unit tests — exercises createSessionStore() in isolation.
  *
- * This is the foundation of the upcoming session/cookie auth mode. The gateway
- * middleware that wires it into request handling is not yet hooked up, so we
- * verify the store contract here directly:
+ * The production gateway also exercises this store through the session/cookie
+ * authentication path; these tests keep the store's lifecycle contract
+ * independently verifiable:
  *
  *   1. create()  — produces a session with id, actor, createdAt, expiresAt, csrfToken
  *   2. get()     — returns the session for a valid id
@@ -25,31 +25,67 @@
  * Sweep-timer tests use jest fake timers for setInterval/clearInterval control
  * while keeping the injected clock for expiry logic.
  */
-import { createSessionStore } from '../../../src/identity/sessionStore';
-import type { Actor } from '../../../src/types';
+import { createSessionStore } from "../../../src/identity/sessionStore";
+import type { Actor } from "../../../src/types";
+import type { SessionStoreOptions } from "../../../src/identity/sessionStore";
+import type { RuntimeTimerScheduler } from "../../../src/runtime/ports";
+import { SessionLimitError } from "../../../src/errors";
+import type { SessionStore } from "../../../src/identity/sessionStore";
 
-const ACTOR_ALICE: Actor = { id: 'alice', scopes: ['admin'] };
-const ACTOR_BOB: Actor = { id: 'bob', scopes: ['viewer', 'agent'] };
+const ACTOR_ALICE: Actor = { id: "alice", scopes: ["admin"] };
+const ACTOR_BOB: Actor = { id: "bob", scopes: ["viewer", "agent"] };
 const TTL_MS = 60_000;
 
-describe('identity/sessionStore', () => {
-  it('create() returns a session with id, actor, createdAt, expiresAt, csrfToken', () => {
+let testUuid = 0;
+let testCsrfToken = 0;
+const testScheduler: RuntimeTimerScheduler = {
+  setInterval: (callback, milliseconds) => setInterval(callback, milliseconds),
+  clearInterval: (handle) => clearInterval(handle as ReturnType<typeof setInterval>),
+  setTimeout: (callback, milliseconds) => setTimeout(callback, milliseconds),
+  clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+};
+const storesCreatedByTest: SessionStore[] = [];
+const createTestSessionStore = (options: Partial<SessionStoreOptions> = {}) =>
+  trackStore(
+    createSessionStore({
+      nowMs: options.nowMs ?? (() => 1_700_000_000_000),
+      uuid: options.uuid ?? (() => `test-session-${++testUuid}`),
+      csrfToken: options.csrfToken ?? (() => `test-csrf-${++testCsrfToken}`.padEnd(64, "0")),
+      scheduler: options.scheduler ?? testScheduler,
+      ...(options.sweepIntervalMs === undefined
+        ? {}
+        : { sweepIntervalMs: options.sweepIntervalMs }),
+      ...(options.maxSessions === undefined ? {} : { maxSessions: options.maxSessions }),
+    }),
+  );
+
+function trackStore(store: SessionStore): SessionStore {
+  storesCreatedByTest.push(store);
+  return store;
+}
+
+describe("identity/sessionStore", () => {
+  afterEach(() => {
+    for (const store of storesCreatedByTest.splice(0)) store.dispose();
+  });
+
+  it("create() returns a session with id, actor, createdAt, expiresAt, csrfToken", () => {
     const fixedNow = 1_700_000_000_000;
-    const store = createSessionStore({ nowMs: () => fixedNow });
+    const store = createTestSessionStore({ nowMs: () => fixedNow });
 
     const session = store.create(ACTOR_ALICE, TTL_MS);
 
-    expect(typeof session.id).toBe('string');
+    expect(typeof session.id).toBe("string");
     expect(session.id.length).toBeGreaterThan(0);
     expect(session.actor).toEqual(ACTOR_ALICE);
     expect(session.createdAt).toBe(fixedNow);
     expect(session.expiresAt).toBe(fixedNow + TTL_MS);
-    expect(typeof session.csrfToken).toBe('string');
+    expect(typeof session.csrfToken).toBe("string");
     expect(session.csrfToken.length).toBe(64); // 32 bytes hex-encoded
   });
 
-  it('get() returns the session for a valid id', () => {
-    const store = createSessionStore();
+  it("get() returns the session for a valid id", () => {
+    const store = createTestSessionStore();
     const created = store.create(ACTOR_ALICE, TTL_MS);
 
     const fetched = store.get(created.id);
@@ -60,20 +96,20 @@ describe('identity/sessionStore', () => {
     expect(fetched?.csrfToken).toBe(created.csrfToken);
   });
 
-  it('get() returns null for an unknown session id', () => {
-    const store = createSessionStore();
+  it("get() returns null for an unknown session id", () => {
+    const store = createTestSessionStore();
     store.create(ACTOR_ALICE, TTL_MS);
 
-    const result = store.get('00000000-0000-0000-0000-000000000000');
+    const result = store.get("00000000-0000-0000-0000-000000000000");
 
     expect(result).toBeNull();
   });
 
-  it('get() returns null after the TTL elapses and evicts the expired entry', () => {
+  it("get() returns null after the TTL elapses and evicts the expired entry", () => {
     // Drive the store's clock forward manually — equivalent to jest fake timers
     // but without touching globals.
     let now = 1_700_000_000_000;
-    const store = createSessionStore({ nowMs: () => now });
+    const store = createTestSessionStore({ nowMs: () => now });
     const session = store.create(ACTOR_ALICE, TTL_MS);
 
     // Before expiry: still resolvable.
@@ -88,8 +124,8 @@ describe('identity/sessionStore', () => {
     expect(store.size()).toBe(0);
   });
 
-  it('destroy() removes the session; subsequent get() returns null', () => {
-    const store = createSessionStore();
+  it("destroy() removes the session; subsequent get() returns null", () => {
+    const store = createTestSessionStore();
     const session = store.create(ACTOR_ALICE, TTL_MS);
 
     const removed = store.destroy(session.id);
@@ -98,16 +134,16 @@ describe('identity/sessionStore', () => {
     expect(store.get(session.id)).toBeNull();
   });
 
-  it('destroy() returns false for an unknown id', () => {
-    const store = createSessionStore();
+  it("destroy() returns false for an unknown id", () => {
+    const store = createTestSessionStore();
 
-    const removed = store.destroy('not-a-real-session-id');
+    const removed = store.destroy("not-a-real-session-id");
 
     expect(removed).toBe(false);
   });
 
-  it('reset() clears all sessions', () => {
-    const store = createSessionStore();
+  it("reset() clears all sessions", () => {
+    const store = createTestSessionStore();
     const a = store.create(ACTOR_ALICE, TTL_MS);
     const b = store.create(ACTOR_BOB, TTL_MS);
     expect(store.size()).toBe(2);
@@ -119,8 +155,8 @@ describe('identity/sessionStore', () => {
     expect(store.get(b.id)).toBeNull();
   });
 
-  it('two sessions get different csrfTokens and different ids', () => {
-    const store = createSessionStore();
+  it("two sessions get different csrfTokens and different ids", () => {
+    const store = createTestSessionStore();
 
     const a = store.create(ACTOR_ALICE, TTL_MS);
     const b = store.create(ACTOR_BOB, TTL_MS);
@@ -129,9 +165,9 @@ describe('identity/sessionStore', () => {
     expect(a.csrfToken).not.toBe(b.csrfToken);
   });
 
-  it('size() returns the count of live (non-expired) sessions', () => {
+  it("size() returns the count of live (non-expired) sessions", () => {
     let now = 1_700_000_000_000;
-    const store = createSessionStore({ nowMs: () => now });
+    const store = createTestSessionStore({ nowMs: () => now });
 
     expect(store.size()).toBe(0);
 
@@ -146,8 +182,8 @@ describe('identity/sessionStore', () => {
     expect(store.size()).toBe(0);
   });
 
-  it('size() decrements after destroy()', () => {
-    const store = createSessionStore();
+  it("size() decrements after destroy()", () => {
+    const store = createTestSessionStore();
     const a = store.create(ACTOR_ALICE, TTL_MS);
     const b = store.create(ACTOR_BOB, TTL_MS);
     expect(store.size()).toBe(2);
@@ -159,9 +195,9 @@ describe('identity/sessionStore', () => {
     expect(store.size()).toBe(0);
   });
 
-  it('expired session is still destroyable (no error)', () => {
+  it("expired session is still destroyable (no error)", () => {
     let now = 1_700_000_000_000;
-    const store = createSessionStore({ nowMs: () => now });
+    const store = createTestSessionStore({ nowMs: () => now });
     const session = store.create(ACTOR_ALICE, TTL_MS);
 
     // Advance past TTL so get() would evict, then explicitly destroy.
@@ -174,8 +210,8 @@ describe('identity/sessionStore', () => {
     expect(store.get(session.id)).toBeNull();
   });
 
-  it('preserves the original actor object identity on lookup', () => {
-    const store = createSessionStore();
+  it("preserves the original actor object identity on lookup", () => {
+    const store = createTestSessionStore();
     const session = store.create(ACTOR_ALICE, TTL_MS);
 
     const fetched = store.get(session.id);
@@ -185,7 +221,7 @@ describe('identity/sessionStore', () => {
     expect(fetched?.actor.scopes).toEqual(ACTOR_ALICE.scopes);
   });
 
-  describe('background sweep', () => {
+  describe("background sweep", () => {
     beforeEach(() => {
       jest.useFakeTimers();
     });
@@ -194,9 +230,9 @@ describe('identity/sessionStore', () => {
       jest.useRealTimers();
     });
 
-    it('sessions never looked up are removed by the sweep once expired', () => {
+    it("sessions never looked up are removed by the sweep once expired", () => {
       let now = 1_700_000_000_000;
-      const store = createSessionStore({
+      const store = createTestSessionStore({
         nowMs: () => now,
         sweepIntervalMs: 30_000,
       });
@@ -224,9 +260,9 @@ describe('identity/sessionStore', () => {
       store.dispose();
     });
 
-    it('dispose() stops the sweep timer so no callback fires after dispose', () => {
+    it("dispose() stops the sweep timer so no callback fires after dispose", () => {
       let now = 1_700_000_000_000;
-      const store = createSessionStore({
+      const store = createTestSessionStore({
         nowMs: () => now,
         sweepIntervalMs: 30_000,
       });
@@ -247,9 +283,9 @@ describe('identity/sessionStore', () => {
       expect(pendingTimers).toBe(0);
     });
 
-    it('after reset(), a session that is created and never get()-d is still evicted by the sweep once it expires', () => {
+    it("after reset(), a session that is created and never get()-d is still evicted by the sweep once it expires", () => {
       let now = 1_700_000_000_000;
-      const store = createSessionStore({
+      const store = createTestSessionStore({
         nowMs: () => now,
         sweepIntervalMs: 30_000,
       });
@@ -277,9 +313,9 @@ describe('identity/sessionStore', () => {
       store.dispose();
     });
 
-    it('reset() clears sessions but leaves the sweep timer running', () => {
+    it("reset() clears sessions but leaves the sweep timer running", () => {
       let now = 1_700_000_000_000;
-      const store = createSessionStore({
+      const store = createTestSessionStore({
         nowMs: () => now,
         sweepIntervalMs: 30_000,
       });
@@ -296,29 +332,48 @@ describe('identity/sessionStore', () => {
     });
   });
 
-  describe('maxSessions cap', () => {
-    it('create() rejects once maxSessions is reached', () => {
-      const store = createSessionStore({ maxSessions: 2 });
+  describe("maxSessions cap", () => {
+    it("create() rejects once maxSessions is reached", () => {
+      const store = createTestSessionStore({ maxSessions: 2 });
       store.create(ACTOR_ALICE, TTL_MS);
       store.create(ACTOR_BOB, TTL_MS);
 
-      expect(() => store.create(ACTOR_ALICE, TTL_MS)).toThrow(/session limit/i);
+      expect(() => store.create(ACTOR_ALICE, TTL_MS)).toThrow(SessionLimitError);
     });
 
-    it('create() succeeds again after a session is destroyed', () => {
-      const store = createSessionStore({ maxSessions: 1 });
+    it("create() succeeds again after a session is destroyed", () => {
+      const store = createTestSessionStore({ maxSessions: 1 });
       const session = store.create(ACTOR_ALICE, TTL_MS);
 
-      expect(() => store.create(ACTOR_BOB, TTL_MS)).toThrow(/session limit/i);
+      expect(() => store.create(ACTOR_BOB, TTL_MS)).toThrow(SessionLimitError);
 
       store.destroy(session.id);
       // Should no longer throw after freeing a slot.
       expect(() => store.create(ACTOR_BOB, TTL_MS)).not.toThrow();
     });
 
-    it('create() counts only live sessions toward the cap', () => {
+    it("uses the injected scheduler for background maintenance", () => {
+      const intervals: Array<() => void> = [];
+      const cleared: unknown[] = [];
+      const scheduler: RuntimeTimerScheduler = {
+        setInterval: (callback) => {
+          intervals.push(callback);
+          return callback;
+        },
+        clearInterval: (handle) => cleared.push(handle),
+        setTimeout: () => undefined,
+        clearTimeout: () => undefined,
+      };
+      const store = createTestSessionStore({ scheduler, sweepIntervalMs: 30_000 });
+
+      expect(intervals).toHaveLength(1);
+      store.dispose();
+      expect(cleared).toEqual([intervals[0]]);
+    });
+
+    it("create() counts only live sessions toward the cap", () => {
       let now = 1_700_000_000_000;
-      const store = createSessionStore({ nowMs: () => now, maxSessions: 1 });
+      const store = createTestSessionStore({ nowMs: () => now, maxSessions: 1 });
       store.create(ACTOR_ALICE, TTL_MS);
 
       // Advance past expiry so the session is logically gone.

@@ -1,0 +1,20 @@
+{
+  "http-request": {
+    "method": "PATCH",
+    "path": "/campaigns/00000000-0000-7c59-a02d-9c09322d544b/activate",
+    "body": {}
+  },
+  "http-response": {
+    "status": 422,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "body": {
+      "error": "CAMPAIGN_NOT_ACTIVATABLE",
+      "message": "Campaign must be in DRAFT or PAUSED status to activate",
+      "details": {
+        "code": "CAMPAIGN_NOT_ACTIVATABLE"
+      }
+    }
+  }
+}

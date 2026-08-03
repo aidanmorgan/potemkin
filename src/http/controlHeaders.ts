@@ -15,17 +15,35 @@
  */
 
 import {
-  POTEMKIN_DRY_RUN, POTEMKIN_INCLUDE_EVENTS, POTEMKIN_ECHO,
-  POTEMKIN_SEED, POTEMKIN_CLOCK_OFFSET,
-  POTEMKIN_SKIP_SAGAS, POTEMKIN_SKIP_WEBHOOKS, POTEMKIN_SKIP_PROJECTIONS,
-  POTEMKIN_SKIP_DISPATCH, POTEMKIN_MAX_CASCADE_DEPTH, POTEMKIN_BULK_TRANSACTIONAL,
-  POTEMKIN_ACTOR_OVERRIDE, POTEMKIN_CAUSED_BY, POTEMKIN_IMPERSONATE,
-  POTEMKIN_READ_AT_VERSION, POTEMKIN_REPLAY_EVENT,
-  POTEMKIN_RESPONSE_FORMAT, POTEMKIN_PAGINATION_STYLE, POTEMKIN_MASK,
-  POTEMKIN_TRACE_ID, POTEMKIN_SPAN_NAME, POTEMKIN_LOG_LEVEL, POTEMKIN_METRIC_TAG,
-  POTEMKIN_SKIP_REQUEST_VALIDATION, POTEMKIN_SKIP_RESPONSE_VALIDATION,
+  POTEMKIN_DRY_RUN,
+  POTEMKIN_INCLUDE_EVENTS,
+  POTEMKIN_ECHO,
+  POTEMKIN_SEED,
+  POTEMKIN_CLOCK_OFFSET,
+  POTEMKIN_SKIP_SAGAS,
+  POTEMKIN_SKIP_WEBHOOKS,
+  POTEMKIN_SKIP_PROJECTIONS,
+  POTEMKIN_SKIP_REACTIONS,
+  POTEMKIN_SKIP_DISPATCH,
+  POTEMKIN_MAX_CASCADE_DEPTH,
+  POTEMKIN_BULK_TRANSACTIONAL,
+  POTEMKIN_ACTOR_OVERRIDE,
+  POTEMKIN_CAUSED_BY,
+  POTEMKIN_IMPERSONATE,
+  POTEMKIN_READ_AT_VERSION,
+  POTEMKIN_REPLAY_EVENT,
+  POTEMKIN_RESPONSE_FORMAT,
+  POTEMKIN_PAGINATION_STYLE,
+  POTEMKIN_MASK,
+  POTEMKIN_TRACE_ID,
+  POTEMKIN_SPAN_NAME,
+  POTEMKIN_LOG_LEVEL,
+  POTEMKIN_METRIC_TAG,
+  POTEMKIN_SKIP_REQUEST_VALIDATION,
+  POTEMKIN_SKIP_RESPONSE_VALIDATION,
   POTEMKIN_ALLOW_ADDITIONAL_PROPERTIES,
-} from './potemkinHeaders.js';
+} from "./potemkinHeaders.js";
+import { ConfigurationError } from "../errors.js";
 
 export interface TransparencyControls {
   readonly dryRun?: boolean;
@@ -40,6 +58,7 @@ export interface SideEffectControls {
   readonly skipSagas?: boolean;
   readonly skipWebhooks?: boolean;
   readonly skipProjections?: boolean;
+  readonly skipReactions?: boolean;
   readonly skipDispatch?: boolean;
   readonly maxCascadeDepth?: number;
   readonly bulkTransactional?: boolean;
@@ -59,8 +78,8 @@ export interface TimeTravelControls {
   readonly replayEvent?: string;
 }
 
-export type ResponseFormat = 'hal' | 'jsonapi' | 'plain';
-export type PaginationStyle = 'envelope' | 'raw' | 'link-header';
+export type ResponseFormat = "hal" | "jsonapi" | "plain";
+export type PaginationStyle = "envelope" | "raw" | "link-header";
 
 export interface FormatControls {
   readonly responseFormat?: ResponseFormat;
@@ -68,7 +87,7 @@ export interface FormatControls {
   readonly maskFields?: readonly string[];
 }
 
-export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+export type LogLevel = "debug" | "info" | "warn" | "error";
 
 export interface ObservabilityControls {
   readonly traceId?: string;
@@ -94,6 +113,83 @@ export interface ControlHeaders {
   readonly validation: ValidationControls;
 }
 
+/** A complete, empty policy used when no authored defaults were supplied. */
+export const EMPTY_CONTROL_HEADERS: ControlHeaders = Object.freeze({
+  transparency: Object.freeze({}),
+  sideEffects: Object.freeze({}),
+  identity: Object.freeze({}),
+  timeTravel: Object.freeze({}),
+  format: Object.freeze({}),
+  observability: Object.freeze({}),
+  validation: Object.freeze({}),
+});
+
+/**
+ * Merge request controls over an authored default policy.  Every nested tier
+ * is copied, so request handling never mutates the TypeScript definition that
+ * was installed at boot.
+ */
+export function mergeControlHeaders(
+  defaults: PartialControlHeaders | undefined,
+  request: ControlHeaders,
+): ControlHeaders {
+  const base = defaults ?? EMPTY_CONTROL_HEADERS;
+  return {
+    transparency: { ...base.transparency, ...request.transparency },
+    sideEffects: { ...base.sideEffects, ...request.sideEffects },
+    identity: { ...base.identity, ...request.identity },
+    timeTravel: { ...base.timeTravel, ...request.timeTravel },
+    format: { ...base.format, ...request.format },
+    observability: { ...base.observability, ...request.observability },
+    validation: { ...base.validation, ...request.validation },
+  };
+}
+
+/** TypeScript authoring may omit tiers and individual controls. */
+export type PartialControlHeaders = {
+  readonly transparency?: TransparencyControls;
+  readonly sideEffects?: SideEffectControls;
+  readonly identity?: IdentityControls;
+  readonly timeTravel?: TimeTravelControls;
+  readonly format?: FormatControls;
+  readonly observability?: ObservabilityControls;
+  readonly validation?: ValidationControls;
+};
+
+/**
+ * Validate a control policy supplied by JavaScript or generated code.  Header
+ * values are deliberately checked here rather than silently ignored: a bad
+ * authored default would otherwise affect every request in the process.
+ */
+export function validateControlHeaders(raw: unknown): PartialControlHeaders {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new ConfigurationError("controlHeaders must be an object", { field: "controlHeaders" });
+  }
+  const input = raw as Record<string, unknown>;
+  const allowed = new Set([
+    "transparency",
+    "sideEffects",
+    "identity",
+    "timeTravel",
+    "format",
+    "observability",
+    "validation",
+  ]);
+  for (const key of Object.keys(input)) {
+    if (!allowed.has(key))
+      throw new ConfigurationError(`controlHeaders: unknown tier "${key}"`, {
+        field: `controlHeaders.${key}`,
+      });
+    const tier = input[key];
+    if (tier !== undefined && (tier === null || typeof tier !== "object" || Array.isArray(tier))) {
+      throw new ConfigurationError(`controlHeaders.${key} must be an object`, {
+        field: `controlHeaders.${key}`,
+      });
+    }
+  }
+  return raw as PartialControlHeaders;
+}
+
 function readHeader(
   headers: Record<string, string | string[] | undefined> | undefined,
   name: string,
@@ -107,14 +203,14 @@ function readHeader(
 function parseBool(raw: string | undefined): boolean | undefined {
   if (raw === undefined) return undefined;
   const v = raw.trim().toLowerCase();
-  if (v === '' ) return undefined;
-  if (v === 'true' || v === '1' || v === 'yes' || v === 'on') return true;
-  if (v === 'false' || v === '0' || v === 'no' || v === 'off') return false;
+  if (v === "") return undefined;
+  if (v === "true" || v === "1" || v === "yes" || v === "on") return true;
+  if (v === "false" || v === "0" || v === "no" || v === "off") return false;
   return undefined;
 }
 
 function parseSignedInt(raw: string | undefined): number | undefined {
-  if (raw === undefined || raw.trim() === '') return undefined;
+  if (raw === undefined || raw.trim() === "") return undefined;
   const n = Number(raw);
   if (!Number.isInteger(n)) return undefined;
   return n;
@@ -129,32 +225,35 @@ function parseNonNegInt(raw: string | undefined): number | undefined {
 function parseResponseFormat(raw: string | undefined): ResponseFormat | undefined {
   if (raw === undefined) return undefined;
   const v = raw.trim().toLowerCase();
-  if (v === 'hal' || v === 'jsonapi' || v === 'plain') return v;
+  if (v === "hal" || v === "jsonapi" || v === "plain") return v;
   return undefined;
 }
 
 function parsePaginationStyle(raw: string | undefined): PaginationStyle | undefined {
   if (raw === undefined) return undefined;
   const v = raw.trim().toLowerCase();
-  if (v === 'envelope' || v === 'raw' || v === 'link-header') return v;
+  if (v === "envelope" || v === "raw" || v === "link-header") return v;
   return undefined;
 }
 
 function parseLogLevel(raw: string | undefined): LogLevel | undefined {
   if (raw === undefined) return undefined;
   const v = raw.trim().toLowerCase();
-  if (v === 'debug' || v === 'info' || v === 'warn' || v === 'error') return v;
+  if (v === "debug" || v === "info" || v === "warn" || v === "error") return v;
   return undefined;
 }
 
 function parseCsv(raw: string | undefined): readonly string[] | undefined {
-  if (raw === undefined || raw.trim() === '') return undefined;
-  return raw.split(',').map(s => s.trim()).filter(s => s.length > 0);
+  if (raw === undefined || raw.trim() === "") return undefined;
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
 }
 
-function parseMetricTag(raw: string | undefined): ObservabilityControls['metricTag'] {
-  if (raw === undefined || raw.trim() === '') return undefined;
-  const eq = raw.indexOf('=');
+function parseMetricTag(raw: string | undefined): ObservabilityControls["metricTag"] {
+  if (raw === undefined || raw.trim() === "") return undefined;
+  const eq = raw.indexOf("=");
   if (eq <= 0 || eq === raw.length - 1) return undefined;
   return { key: raw.slice(0, eq).trim(), value: raw.slice(eq + 1).trim() };
 }
@@ -165,8 +264,9 @@ function parseMetricTag(raw: string | undefined): ObservabilityControls['metricT
  */
 export function parseControlHeaders(
   headers: Record<string, string | string[] | undefined> | undefined,
+  defaults?: PartialControlHeaders,
 ): ControlHeaders {
-  return {
+  const request: ControlHeaders = {
     transparency: {
       ...(parseBool(readHeader(headers, POTEMKIN_DRY_RUN)) !== undefined
         ? { dryRun: parseBool(readHeader(headers, POTEMKIN_DRY_RUN)) }
@@ -186,59 +286,94 @@ export function parseControlHeaders(
     },
     sideEffects: {
       ...(parseBool(readHeader(headers, POTEMKIN_SKIP_SAGAS)) !== undefined
-        ? { skipSagas: parseBool(readHeader(headers, POTEMKIN_SKIP_SAGAS)) } : {}),
+        ? { skipSagas: parseBool(readHeader(headers, POTEMKIN_SKIP_SAGAS)) }
+        : {}),
       ...(parseBool(readHeader(headers, POTEMKIN_SKIP_WEBHOOKS)) !== undefined
-        ? { skipWebhooks: parseBool(readHeader(headers, POTEMKIN_SKIP_WEBHOOKS)) } : {}),
+        ? { skipWebhooks: parseBool(readHeader(headers, POTEMKIN_SKIP_WEBHOOKS)) }
+        : {}),
       ...(parseBool(readHeader(headers, POTEMKIN_SKIP_PROJECTIONS)) !== undefined
-        ? { skipProjections: parseBool(readHeader(headers, POTEMKIN_SKIP_PROJECTIONS)) } : {}),
+        ? { skipProjections: parseBool(readHeader(headers, POTEMKIN_SKIP_PROJECTIONS)) }
+        : {}),
+      ...(parseBool(readHeader(headers, POTEMKIN_SKIP_REACTIONS)) !== undefined
+        ? { skipReactions: parseBool(readHeader(headers, POTEMKIN_SKIP_REACTIONS)) }
+        : {}),
       ...(parseBool(readHeader(headers, POTEMKIN_SKIP_DISPATCH)) !== undefined
-        ? { skipDispatch: parseBool(readHeader(headers, POTEMKIN_SKIP_DISPATCH)) } : {}),
+        ? { skipDispatch: parseBool(readHeader(headers, POTEMKIN_SKIP_DISPATCH)) }
+        : {}),
       ...(parseNonNegInt(readHeader(headers, POTEMKIN_MAX_CASCADE_DEPTH)) !== undefined
-        ? { maxCascadeDepth: parseNonNegInt(readHeader(headers, POTEMKIN_MAX_CASCADE_DEPTH)) } : {}),
+        ? { maxCascadeDepth: parseNonNegInt(readHeader(headers, POTEMKIN_MAX_CASCADE_DEPTH)) }
+        : {}),
       ...(parseBool(readHeader(headers, POTEMKIN_BULK_TRANSACTIONAL)) !== undefined
-        ? { bulkTransactional: parseBool(readHeader(headers, POTEMKIN_BULK_TRANSACTIONAL)) } : {}),
+        ? { bulkTransactional: parseBool(readHeader(headers, POTEMKIN_BULK_TRANSACTIONAL)) }
+        : {}),
     },
     identity: {
       ...(readHeader(headers, POTEMKIN_ACTOR_OVERRIDE) !== undefined
-        ? { actorOverride: readHeader(headers, POTEMKIN_ACTOR_OVERRIDE) } : {}),
+        ? { actorOverride: readHeader(headers, POTEMKIN_ACTOR_OVERRIDE) }
+        : {}),
       ...(readHeader(headers, POTEMKIN_CAUSED_BY) !== undefined
-        ? { causedBy: readHeader(headers, POTEMKIN_CAUSED_BY) } : {}),
+        ? { causedBy: readHeader(headers, POTEMKIN_CAUSED_BY) }
+        : {}),
       ...(readHeader(headers, POTEMKIN_IMPERSONATE) !== undefined
-        ? { impersonate: readHeader(headers, POTEMKIN_IMPERSONATE) } : {}),
+        ? { impersonate: readHeader(headers, POTEMKIN_IMPERSONATE) }
+        : {}),
     },
     timeTravel: {
       ...(parseNonNegInt(readHeader(headers, POTEMKIN_READ_AT_VERSION)) !== undefined
-        ? { readAtVersion: parseNonNegInt(readHeader(headers, POTEMKIN_READ_AT_VERSION)) } : {}),
+        ? { readAtVersion: parseNonNegInt(readHeader(headers, POTEMKIN_READ_AT_VERSION)) }
+        : {}),
       ...(readHeader(headers, POTEMKIN_REPLAY_EVENT) !== undefined
-        ? { replayEvent: readHeader(headers, POTEMKIN_REPLAY_EVENT) } : {}),
+        ? { replayEvent: readHeader(headers, POTEMKIN_REPLAY_EVENT) }
+        : {}),
     },
     format: {
       ...(parseResponseFormat(readHeader(headers, POTEMKIN_RESPONSE_FORMAT)) !== undefined
-        ? { responseFormat: parseResponseFormat(readHeader(headers, POTEMKIN_RESPONSE_FORMAT)) } : {}),
+        ? { responseFormat: parseResponseFormat(readHeader(headers, POTEMKIN_RESPONSE_FORMAT)) }
+        : {}),
       ...(parsePaginationStyle(readHeader(headers, POTEMKIN_PAGINATION_STYLE)) !== undefined
-        ? { paginationStyle: parsePaginationStyle(readHeader(headers, POTEMKIN_PAGINATION_STYLE)) } : {}),
+        ? { paginationStyle: parsePaginationStyle(readHeader(headers, POTEMKIN_PAGINATION_STYLE)) }
+        : {}),
       ...(parseCsv(readHeader(headers, POTEMKIN_MASK)) !== undefined
-        ? { maskFields: parseCsv(readHeader(headers, POTEMKIN_MASK)) } : {}),
+        ? { maskFields: parseCsv(readHeader(headers, POTEMKIN_MASK)) }
+        : {}),
     },
     observability: {
       ...(readHeader(headers, POTEMKIN_TRACE_ID) !== undefined
-        ? { traceId: readHeader(headers, POTEMKIN_TRACE_ID) } : {}),
+        ? { traceId: readHeader(headers, POTEMKIN_TRACE_ID) }
+        : {}),
       ...(readHeader(headers, POTEMKIN_SPAN_NAME) !== undefined
-        ? { spanName: readHeader(headers, POTEMKIN_SPAN_NAME) } : {}),
+        ? { spanName: readHeader(headers, POTEMKIN_SPAN_NAME) }
+        : {}),
       ...(parseLogLevel(readHeader(headers, POTEMKIN_LOG_LEVEL)) !== undefined
-        ? { logLevel: parseLogLevel(readHeader(headers, POTEMKIN_LOG_LEVEL)) } : {}),
+        ? { logLevel: parseLogLevel(readHeader(headers, POTEMKIN_LOG_LEVEL)) }
+        : {}),
       ...(parseMetricTag(readHeader(headers, POTEMKIN_METRIC_TAG)) !== undefined
-        ? { metricTag: parseMetricTag(readHeader(headers, POTEMKIN_METRIC_TAG)) } : {}),
+        ? { metricTag: parseMetricTag(readHeader(headers, POTEMKIN_METRIC_TAG)) }
+        : {}),
     },
     validation: {
       ...(parseBool(readHeader(headers, POTEMKIN_SKIP_REQUEST_VALIDATION)) !== undefined
-        ? { skipRequestValidation: parseBool(readHeader(headers, POTEMKIN_SKIP_REQUEST_VALIDATION)) } : {}),
+        ? {
+            skipRequestValidation: parseBool(readHeader(headers, POTEMKIN_SKIP_REQUEST_VALIDATION)),
+          }
+        : {}),
       ...(parseBool(readHeader(headers, POTEMKIN_SKIP_RESPONSE_VALIDATION)) !== undefined
-        ? { skipResponseValidation: parseBool(readHeader(headers, POTEMKIN_SKIP_RESPONSE_VALIDATION)) } : {}),
+        ? {
+            skipResponseValidation: parseBool(
+              readHeader(headers, POTEMKIN_SKIP_RESPONSE_VALIDATION),
+            ),
+          }
+        : {}),
       ...(parseBool(readHeader(headers, POTEMKIN_ALLOW_ADDITIONAL_PROPERTIES)) !== undefined
-        ? { allowAdditionalProperties: parseBool(readHeader(headers, POTEMKIN_ALLOW_ADDITIONAL_PROPERTIES)) } : {}),
+        ? {
+            allowAdditionalProperties: parseBool(
+              readHeader(headers, POTEMKIN_ALLOW_ADDITIONAL_PROPERTIES),
+            ),
+          }
+        : {}),
     },
   };
+  return mergeControlHeaders(defaults, request);
 }
 
 /** Return true if any admin-gated header was present (validation, impersonation, actor-override). */
@@ -256,21 +391,18 @@ export function requiresAdminAuth(c: ControlHeaders): boolean {
  * Mask named fields in an entity (recursively walks objects and arrays).
  * Returns a new copy with the listed top-level keys replaced by `"[MASKED]"`.
  */
-export function applyMask(
-  body: unknown,
-  fields: readonly string[],
-): unknown {
+export function applyMask(body: unknown, fields: readonly string[]): unknown {
   if (fields.length === 0) return body;
-  if (Array.isArray(body)) return body.map(item => applyMask(item, fields));
-  if (body !== null && typeof body === 'object') {
+  if (Array.isArray(body)) return body.map((item) => applyMask(item, fields));
+  if (body !== null && typeof body === "object") {
     const out: Record<string, unknown> = { ...(body as Record<string, unknown>) };
     for (const field of fields) {
-      if (field in out) out[field] = '[MASKED]';
+      if (field in out) out[field] = "[MASKED]";
     }
     // Recurse into nested values (e.g. envelope.items[]).
     for (const k of Object.keys(out)) {
       const v = out[k];
-      if (Array.isArray(v) || (v !== null && typeof v === 'object')) {
+      if (Array.isArray(v) || (v !== null && typeof v === "object")) {
         out[k] = applyMask(v, fields);
       }
     }

@@ -1,320 +1,1307 @@
-# Potemkin — stateful HTTP simulation engine
+# Potemkin
 
-Potemkin turns a pair of files — an OpenAPI contract and a YAML behaviour file — into a real, stateful HTTP server you can drive end-to-end. You describe what a service does; Potemkin runs it. No application code required.
+Potemkin is a stateful HTTP simulator. An OpenAPI contract describes the wire format. YAML describes the state transitions. The Node engine keeps an in-memory event log and state graph, and the Kotlin plugin lets Specmatic drive the same simulation through HTTP.
 
-The engine applies CQRS and event sourcing: every inbound request becomes a command, commands match against your YAML rules, matched rules emit events, and events project into an in-memory state graph. That cycle is the whole machine. Because all state is volatile and the boot-time seed is frozen, `POST /_admin/reset` always returns you to exactly the same starting point.
+This repository has two authoring surfaces with one execution model:
 
-It runs in two modes:
+- TypeScript definitions are the primary runtime model. Engineers use interfaces, builders, pure
+  functions, and typed callbacks.
+- YAML is parsed and compiled into those same runtime types. CEL and the YAML DSL exist only in
+  the parser; they are not evaluated by the core engine.
 
-- **Standalone** — an Express gateway you boot directly with `bootSystem` + `createGateway`.
-- **Specmatic plugin** — a Kotlin plugin that sits inside a Specmatic stub, intercepts stateful routes, and forwards them to the engine. The same contract then serves both stateless stubs and stateful simulation.
+Both surfaces lower to one immutable `RuntimeProgram` and execute through the same core engine,
+policies, storage ports, and HTTP gateway. The parser is an authoring layer; it is not a second
+runtime. The less-common combinations and their evidence are tracked in [`requirements.md`](requirements.md)
+and the [parity design](docs/design/typescript-yaml-parity.md).
 
-## Contents
+## Current status
 
-- [Architecture](#architecture)
-- [Quick start](#quick-start)
-- [The e2e tests are the examples](#the-e2e-tests-are-the-examples)
-- [Defining what you are simulating](#defining-what-you-are-simulating)
-  - [Binding a boundary to an OpenAPI contract](#binding-a-boundary-to-an-openapi-contract)
-  - [Splitting the simulation across multiple files](#splitting-the-simulation-across-multiple-files)
-  - [Seeding initial state and resetting to a known baseline](#seeding-initial-state-and-resetting-to-a-known-baseline)
-  - [Generating an entity id on creation](#generating-an-entity-id-on-creation)
-  - [Taking the entity id from a header, query param, or request body](#taking-the-entity-id-from-a-header-query-param-or-request-body)
-  - [Declaring the events a boundary can emit](#declaring-the-events-a-boundary-can-emit)
-  - [Validating an event payload against an OpenAPI schema](#validating-an-event-payload-against-an-openapi-schema)
-  - [Defining an entity once and reusing it across paths](#defining-an-entity-once-and-reusing-it-across-paths)
-  - [Sharing events and reducers across entities](#sharing-events-and-reducers-across-entities)
-- [Writing behaviour: turning requests into events](#writing-behaviour-turning-requests-into-events)
-  - [Routing a request to a behaviour by operation](#routing-a-request-to-a-behaviour-by-operation)
-  - [Allowing a transition only from certain states](#allowing-a-transition-only-from-certain-states)
-  - [Enforcing domain invariants before a transition runs](#enforcing-domain-invariants-before-a-transition-runs)
-  - [Selecting a behaviour based on request headers](#selecting-a-behaviour-based-on-request-headers)
-  - [Emitting different events depending on intermediate state](#emitting-different-events-depending-on-intermediate-state)
-  - [Updating another entity in the same request](#updating-another-entity-in-the-same-request)
-- [Projecting events onto state](#projecting-events-onto-state)
-  - [Updating entity state when an event happens](#updating-entity-state-when-an-event-happens)
-  - [Choosing the right patch op](#choosing-the-right-patch-op)
-  - [Writing to nested paths and maintaining computed totals](#writing-to-nested-paths-and-maintaining-computed-totals)
-  - [Recording who changed an entity and when](#recording-who-changed-an-entity-and-when)
-- [Reading and querying the graph](#reading-and-querying-the-graph)
-  - [Filtering a collection by a field](#filtering-a-collection-by-a-field)
-  - [Returning one page at a time](#returning-one-page-at-a-time)
-  - [Sorting by multiple fields](#sorting-by-multiple-fields)
-  - [Filtering by array membership](#filtering-by-array-membership)
-  - [Letting clients pick which fields come back](#letting-clients-pick-which-fields-come-back)
-- [Consistency, idempotency, and auth](#consistency-idempotency-and-auth)
-  - [Making a request safe to retry](#making-a-request-safe-to-retry)
-  - [Rejecting a stale update](#rejecting-a-stale-update)
-  - [Requiring a scope to call an operation](#requiring-a-scope-to-call-an-operation)
-  - [Verifying real JWTs from your auth server](#verifying-real-jwts-from-your-auth-server)
-  - [Simulating cookie-based login and CSRF protection](#simulating-cookie-based-login-and-csrf-protection)
-- [Workflows, reactions, and side effects](#workflows-reactions-and-side-effects)
-  - [Coordinating a multi-step workflow with automatic rollback](#coordinating-a-multi-step-workflow-with-automatic-rollback)
-  - [Building a cross-boundary read model](#building-a-cross-boundary-read-model)
-  - [Reacting to another boundary's events without coupling the source](#reacting-to-another-boundarys-events-without-coupling-the-source)
-  - [Updating an existing entity from a reaction, only when a condition holds](#updating-an-existing-entity-from-a-reaction-only-when-a-condition-holds)
-  - [Running custom logic that CEL can't express](#running-custom-logic-that-cel-cant-express)
-  - [Owning an event's projection in TypeScript](#owning-an-events-projection-in-typescript)
-  - [Calling out to another service when an event fires](#calling-out-to-another-service-when-an-event-fires)
-- [Shaping responses](#shaping-responses)
-  - [Adding hypermedia links to a response](#adding-hypermedia-links-to-a-response)
-  - [Hiding a field from a response](#hiding-a-field-from-a-response)
-  - [Marking an endpoint deprecated](#marking-an-endpoint-deprecated)
-  - [Adding security headers to every response](#adding-security-headers-to-every-response)
-  - [Slowing a boundary down on purpose](#slowing-a-boundary-down-on-purpose)
-  - [Routing by URL version prefix](#routing-by-url-version-prefix)
-- [Chaos and runtime control](#chaos-and-runtime-control)
-  - [Returning an error for matching requests](#returning-an-error-for-matching-requests)
-  - [Injecting chaos per request](#injecting-chaos-per-request)
-  - [Driving engine behaviour at request time with control headers](#driving-engine-behaviour-at-request-time-with-control-headers)
-- [Running inside Specmatic](#running-inside-specmatic)
-  - [Connecting the engine to the Specmatic stub](#connecting-the-engine-to-the-specmatic-stub)
-  - [Letting the plugin find your stateful routes](#letting-the-plugin-find-your-stateful-routes)
-  - [Driving seeds, workflows, and overlays through the stub](#driving-seeds-workflows-and-overlays-through-the-stub)
-  - [Handling engine restarts and hot reload](#handling-engine-restarts-and-hot-reload)
-  - [Validating requests against the contract](#validating-requests-against-the-contract)
-- [Further reference](#further-reference)
+The authoritative feature baseline is the README on `main`, recorded in
+[`docs/design/main-readme-feature-completeness.md`](docs/design/main-readme-feature-completeness.md).
+The canonical runtime is the only supported execution path. Remaining combinations that need
+additional evidence are listed in
+[`docs/design/main-readme-operational-feature-completeness.md`](docs/design/main-readme-operational-feature-completeness.md).
 
----
+The bounded checks below passed in the current checkout. The suites are run separately to keep the
+canonical runtime, parser, and Specmatic fixtures within the local Node heap limit.
 
-## Architecture
+```text
+pnpm exec jest --runInBand tests/unit tests/runtime tests/integration
+                                                         194 suites, 2,718 tests
+pnpm run test:e2e                                      Specmatic-backed E2E suites
+pnpm run test:bdd                                       48 scenarios
+pnpm exec tsc --noEmit                                 passed
+pnpm run lint                                           passed (warnings remain)
+```
 
-Five layers, each with a single job:
+The full Specmatic stack and the examples suite require Java and the built plugin. Their results
+depend on the local Specmatic cache. Lower-level runtime/parser checks are kept under
+`tests/runtime` and run with the normal Jest configuration. The
+OpenTelemetry exchange requirement has direct YAML/TypeScript coverage and real
+Specmatic-forwarding coverage, including the nested forwarded request and complete final response
+envelope, in [`tests/runtime/runtime-otel.runtime.test.ts`](tests/runtime/runtime-otel.runtime.test.ts)
+and [`tests/e2e/runtime-observability.e2e-test.ts`](tests/e2e/runtime-observability.e2e-test.ts).
 
-- **Write model (event log)** — an append-only ledger of immutable domain events, keyed by UUIDv7.
-- **Read model (state graph)** — a `Map<TargetId, JsonObject>` continuously projected from that log.
-- **DSL behaviours** — YAML-declared rules evaluated by a sandboxed CEL expression engine.
-- **Pattern matcher** — compares each inbound command against the ordered behaviour list; the first match wins.
-- **Unit of Work** — an atomic transaction boundary that manages the shadow graph and any secondary commands before committing.
+### Open backlog
 
-All state is in-memory and intentionally volatile. Nothing is persisted to disk. The frozen baseline is what makes `POST /_admin/reset` deterministic: it replays seeds, not a database.
+`REQ-76` is complete. The runtime emits one final OpenTelemetry exchange observation per handled
+request, preserving the original inbound request and the exact response (or transport-close
+outcome) after matching, mutation, projections, sagas, webhooks, response shaping, masking,
+validation, chaos, and rollback. The observation uses the same trace and Potemkin command
+correlation for YAML and TypeScript authoring, with injected redaction and byte-size policies.
+Direct-gateway and real Specmatic-forwarding coverage includes success, rejection, faults, chaos,
+admin, bulk rollback, and closed-connection cases. The full acceptance criteria and evidence are
+recorded in [`requirements.md`](requirements.md), under `Observability backlog`, `REQ-76`, and the
+`Agent backlog task for REQ-76` checklist.
 
-## Quick start
+## What a developer builds
+
+A small simulation needs these files:
+
+```text
+examples/my-service/
+  potemkin.yml           # Potemkin entry point
+  specmatic.yaml         # Specmatic configuration, when using the plugin
+  openapi/api.yaml       # contract
+  dsl/
+    global.yaml
+    leads.yaml
+  typescript/            # scanned @PotemkinConfigure configuration modules and helpers
+```
+
+The CRM simulation in [`examples/crm`](examples/crm) is the main worked example. It models leads, campaigns, calls, agents, opportunities, reactions, a conversion saga, derived projections, helpers, faults, and consumer-side Specmatic tests. The Stripe simulation in [`examples/stripe`](examples/stripe) shows resource expansion, form requests, prefixed identifiers, a payment state machine, and reaction-created resources.
+
+## Prerequisites
+
+- Node.js 24.x
+- pnpm 10.x
+- Java 17 or newer for the Kotlin plugin and full Specmatic tests
 
 ```sh
-npm install
-npm test                 # full unit + integration suite (no Java required)
-
-# Engine-only e2e examples — boot the real engine in-process, no Java/JVM needed
-npm run test:e2e:engine
-
-# Full Specmatic-stack e2e (requires Java 17+; builds the Kotlin plugin JAR)
-npm run test:e2e:build
+node --version
+pnpm --version
+java --version
+pnpm install
 ```
 
-To boot the engine yourself from a compiled DSL and an OpenAPI document:
+## First run: the CRM example
 
-```ts
-import { loadOpenApi, bootSystem, createGateway } from './src/index.js';
-// compiledDsl comes from parseDslYaml + compileDsl (or loadPotemkinConfig for a fixture dir)
-const sys = await bootSystem({ openapi, compiledDsl });
-const app = createGateway(sys);   // a standard Express app
-app.listen(3000);
+Build the plugin once, then run the example tests:
+
+```sh
+cd plugin
+./gradlew shadowJar
+cd ..
+
+pnpm run test:examples
 ```
 
-## The e2e tests are the examples
+The test harness starts the Node engine, the Specmatic stub, and the plugin. Tests send requests to the stub URL, not directly to the engine. Specmatic validates the request and response against the contract, and the plugin exercises the forwarding path used by a consumer.
 
-Every feature in this guide links to an end-to-end test under [`tests/e2e/`](tests/e2e/). Each test is both proof the system works and the canonical worked example for its feature. The behaviour is declared entirely in YAML fixtures under [`tests/fixtures/`](tests/fixtures/) — the test files only send HTTP requests and assert on responses and state.
+The CRM example can also be started from its entry point:
 
-To understand a feature, read the fixture YAML (the system under test) alongside the linked test file (the assertions). They are the recipe and the result.
+```sh
+pnpm run start:example
+```
 
-Two harness flavours:
+The command prints the stub URL. Use that URL for the requests below. The exact command is also documented in [`examples/crm/README.md`](examples/crm/README.md).
 
-- **Engine-only** tests (e.g. `60`–`65`) boot the engine in-process via `startEngineOnlyApp` and need no Java.
-- **Full-stack** tests boot a real Specmatic JVM with the Kotlin plugin and exercise the complete wire.
+## Step 1: bind the simulation to OpenAPI
 
----
+Create `potemkin.yml`:
 
-## Defining what you are simulating
+```yaml
+version: 1
+specmatic: ./specmatic.yaml
 
-### Binding a boundary to an OpenAPI contract
+modules:
+  - "dsl/**/*.yaml"
 
-If you want to introduce a new aggregate root into the simulation, you declare a *boundary*. A boundary is the unit of composition in Potemkin: it names the aggregate (`boundary: Lead`), points at the OpenAPI base path (`contract_path: /leads`), and carries the event catalog, behaviours, and reducers that govern that slice of the domain. The OpenAPI document owns the structural shape of every request and response; the YAML DSL owns what happens when those requests arrive.
+typescript:
+  scan:
+    - include:
+        - "typescript/**/*.ts"
+      exclude:
+        - "**/*.test.ts"
+        - "**/*.d.ts"
+plugin:
+  engine:
+    url: "${POTEMKIN_ENGINE_URL:http://localhost:3000}"
+    timeoutMs: 30000
+  controlPort: 0
+```
 
-One boundary, one file is the natural grain, though nothing prevents you from splitting further:
+The OpenAPI file is configured in `specmatic.yaml`. Potemkin uses the operation IDs from that contract when it selects a behavior. A route that is in the contract but has no behavior uses the configured fallback policy. A path that is not in the contract returns `404 NO_ROUTE`.
+
+Create a boundary in `dsl/leads.yaml`:
 
 ```yaml
 boundary: Lead
 contract_path: /leads
-fallback_override: false
-event_catalog: []
-behaviors: []
-reducers: []
-```
 
-The [`13-crm-smoke`](tests/e2e/13-crm-smoke.e2e-test.ts) test drives all five CRM boundaries through the full Specmatic stack and is a good first read if you want to see a realistic multi-boundary setup.
-
-### Splitting the simulation across multiple files
-
-If you want to keep a large simulation manageable, you can spread it across as many YAML files as you like. The loader globs everything matching the `modules:` pattern in `potemkin.yaml` (typically `dsl/**/*.yaml`), merges the boundaries, and resolves cross-boundary references at boot. You don't register files individually — drop a new `*.yaml` into the module directory and it's picked up automatically.
-
-The [`50-multi-yaml-composition`](tests/e2e/50-multi-yaml-composition.e2e-test.ts) test verifies that boundaries defined in separate files compose correctly at runtime.
-
-### Seeding initial state and resetting to a known baseline
-
-If you want the simulation to start with pre-existing entities — or to snap back to a predictable state between test runs — use `initialization`. Each entry is a plain object that becomes a seeded entity in the state graph. Seeds are replayed verbatim on `POST /_admin/reset`, so post-reset state is byte-for-byte identical to a cold boot. There is no randomness in the reset path.
-
-```yaml
-initialization:
-  - id: "00000000-0000-7000-8000-000000000010"
-    companyName: "Apex Solutions Ltd"
-    status: "NEW"
-    callIds: []
-```
-
-[`16-initialization-queries`](tests/e2e/16-initialization-queries.e2e-test.ts) shows seeded entities being queried immediately after boot. Deterministic reset and test isolation are covered in [`24-ephemeral-lifecycle`](tests/e2e/24-ephemeral-lifecycle.e2e-test.ts).
-
-### Generating an entity id on creation
-
-If you want the simulation to mint a new aggregate id when a creation request arrives, declare `identity.creation.generate`. The expression is CEL and is evaluated at creation time — `$uuidv7()` is the standard choice because it embeds a sortable timestamp.
-
-```yaml
 identity:
   creation:
     generate: "$uuidv7()"
-```
 
-[`16-initialization-queries`](tests/e2e/16-initialization-queries.e2e-test.ts) exercises this alongside seeded entities.
-
-### Taking the entity id from a header, query param, or request body
-
-If you want to identify the aggregate from somewhere other than the `{id}` path parameter — a request header, a query parameter, a named path segment, or a pointer into the request body — use `identity.key`. This is common when the aggregate id is a token or correlation id supplied by the caller rather than assigned by the server.
-
-```yaml
-identity:
-  key:
-    from: header        # path | query | header | payload
-    name: x-token-id    # header / query / path name
-```
-
-For a body-derived key, set `from: payload` and point at the field with `pointer` (a dot path, so nested fields work):
-
-```yaml
-identity:
-  key:
-    from: payload
-    pointer: accountId   # reads body.accountId
-```
-
-When the named source is absent on a creation request, the engine falls back to `identity.creation.generate`, so a caller can either supply the key or let the server mint one. (There is no `cel:` source — an arbitrary CEL key is rejected at boot; use one of the four concrete sources.)
-
-The [`61-identity-key`](tests/e2e/61-identity-key.e2e-test.ts) test covers all four sources — header, named path segment, query param, and payload pointer — each resolving to the same aggregate on create and read-back, alongside the generated-id fallback.
-
-### Declaring the events a boundary can emit
-
-If you want to name the domain events a boundary produces and control how their payloads are built from the incoming command, use `event_catalog`. Each entry names the event type and provides a `payload_template` — a map of field names to CEL expressions evaluated during event hydration. You can call `$uuidv7()` and `$now()` here because this phase runs after the command is matched but before the event is committed.
-
-```yaml
 event_catalog:
   - type: LeadCreated
     payload_template:
       id: "command.targetId"
       companyName: "command.payload.companyName"
+      status: "'NEW'"
       createdAt: "$now()"
+
+behaviors: []
+reducers: []
 ```
 
-[`14-object-graph-mutations`](tests/e2e/14-object-graph-mutations.e2e-test.ts) shows event catalog entries being exercised across a sequence of mutations.
+Run the simulation linter before starting the stack:
 
-### Validating an event payload against an OpenAPI schema
+```sh
 
-If you want a hard guarantee that an event's payload conforms to a schema you've already defined in your OpenAPI document, add `schema_ref` to the event catalog entry. The engine validates the hydrated payload against the referenced component schema before committing. A mismatch aborts the Unit of Work with `SCHEMA_TYPE_MISMATCH` and returns HTTP 500 — fail fast, no silent drift.
-
-```yaml
-event_catalog:
-  - type: PaymentRecorded
-    schema_ref: "#/components/schemas/StrictPayload"
-    payload_template:
-      amount: "command.payload.amount"
 ```
 
-The `schema_ref` describe block in [`60-reducer-patch-ops`](tests/e2e/60-reducer-patch-ops.e2e-test.ts) demonstrates both the happy path and the validation failure.
+The linter catches duplicate boundaries, unknown operation IDs, invalid event references, bad CEL, and several boot-time configuration errors.
 
-### Defining an entity once and reusing it across paths
+Keep a boundary small and split a simulation across files. Every file matched by
+`modules` is loaded and linked at boot:
 
-If you want the same entity shape (events, behaviors, reducers) to appear at two or more URL paths without duplicating the YAML, declare the entity as a *component* (`kind: component`) and activate it with `use:` entries in a separate mapping file. Each `use:` entry becomes an independent concrete boundary with its own name and path; changing the component definition updates every instantiation at once.
+```text
+dsl/
+  global.yaml
+  leads.yaml
+  lead-actions.yaml
+  campaigns.yaml
+```
 
-Create the component file (no `contract_path`):
+Set `fallback_override: true` when an operation should use the generic CRUD fallback
+for unmatched requests. A GET reads the current graph node; a mutation merges the
+request into state. Leave it false when an unhandled operation should return an
+error instead.
 
 ```yaml
-kind: component
-name: DocumentEntity
+boundary: Lead
+contract_path: /leads
+fallback_override: true
+```
 
-parameters:
-  initialStatus:
-    type: string
-    required: true
-  createOp:
-    type: string
-    required: true
+## Step 2: seed deterministic state
 
+Add `initialization` to the boundary. Seed IDs explicitly when tests need stable URLs:
+
+```yaml
+initialization:
+  - id: "00000000-0000-7000-8000-000000000010"
+    companyName: "Apex Solutions Ltd"
+    contactName: "Mina Cole"
+    email: "mina@apex.example"
+    status: "CONTACTED"
+    tags: ["priority", "enterprise"]
+    callIds: []
+```
+
+Boot records become the reset baseline:
+
+```sh
+curl -s -X POST "$STUB_URL/_admin/reset"
+curl -s "$STUB_URL/leads/00000000-0000-7000-8000-000000000010"
+```
+
+Reset clears events, state, derived projections, idempotency entries, faults, clock offsets, and other runtime bookkeeping, then restores the initialization records.
+
+Other identity sources are useful for APIs that do not put the aggregate ID in the usual `{id}` path parameter:
+
+```yaml
 identity:
-  creation:
-    generate: "$uuidv7()"
+  key:
+    from: header # path, query, header, or payload
+    name: x-token-id
+```
 
-event_catalog:
-  - type: DocumentCreated
-    payload_template:
-      id:     "command.targetId"
-      status: "'{{initialStatus}}'"
-      title:  "command.payload.title"
+For a body field, use a payload pointer:
 
+```yaml
+identity:
+  key:
+    from: payload
+    pointer: accountId
+```
+
+The identity tests in [`tests/e2e/identity-key.e2e-test.ts`](tests/e2e/identity-key.e2e-test.ts) cover header, path, query, payload, and generated IDs.
+
+## Step 3: turn requests into events
+
+Behaviors are evaluated in order. The first matching behavior wins. Match on the OpenAPI operation ID and add a CEL condition for domain rules:
+
+```yaml
 behaviors:
-  - name: create-document
+  - name: createLead
     match:
-      operationId: "{{createOp}}"
+      operationId: createLead
       condition: "true"
-    emit: DocumentCreated
+    emit: LeadCreated
 
+  - name: qualifyLead
+    match:
+      operationId: qualifyLead
+      condition: "state.status == 'CONTACTED'"
+    emit: LeadQualified
+```
+
+The request pipeline is:
+
+```text
+OpenAPI request validation
+  -> fault rules
+  -> behavior matching
+  -> guards and scope checks
+  -> event hydration
+  -> reducers and reactions in a shadow state
+  -> atomic commit
+  -> response shaping and validation
+```
+
+A behavior can require fields or scopes before it emits anything:
+
+```yaml
+- name: closeLead
+  match:
+    operationId: closeLead
+    condition: "state.status == 'QUALIFIED'"
+    requires:
+      - name: closeReason
+        condition: "size(command.payload.reason) > 0"
+        error_code: CLOSE_REASON_REQUIRED
+        error_message: "A close reason is required"
+    required_scopes:
+      - leads:write
+  emit: LeadClosed
+```
+
+Failed validation or guards leave the event log and state graph unchanged.
+
+### Event payloads and schema checks
+
+The event catalogue defines the event types a boundary can emit. CEL expressions are evaluated when the event is hydrated:
+
+```yaml
+event_catalog:
+  - type: LeadQualified
+    schema_ref: "#/components/schemas/LeadQualified"
+    payload_template:
+      id: "command.targetId"
+      qualifiedBy: "actor.id"
+      qualifiedAt: "$now()"
+      score: "state.score"
+```
+
+`schema_ref` checks the hydrated event payload against an OpenAPI component before the unit of work commits. Use `$uuidv7()`, `$now()`, request data, actor data, and current state in the appropriate DSL phase. The complete phase rules are in [`docs/cel.md`](docs/cel.md).
+
+### Conditional events and commands
+
+One request can choose among several events:
+
+```yaml
+- name: updateLead
+  match:
+    operationId: updateLead
+    condition: "true"
+  emit_when:
+    - when: "command.payload.status == 'QUALIFIED'"
+      emit: LeadQualified
+    - when: "command.payload.status == 'CLOSED'"
+      emit: LeadClosed
+  postcondition: "state.status == command.payload.status"
+```
+
+Dispatch a second command in the same unit of work when one boundary owns a workflow step in another boundary:
+
+```yaml
+- name: convertLead
+  match:
+    operationId: convertLead
+    condition: "state.status == 'QUALIFIED'"
+  emit: LeadConverted
+  dispatch_commands:
+    - boundary: Opportunity
+      intent: creation
+      operationId: createOpportunity
+      target_id: "$uuidv7()"
+      payload:
+        leadId: "command.targetId"
+        value: "command.payload.value"
+```
+
+A behavior may also be dispatch-only when the primary boundary must remain
+unchanged while secondary work is executed atomically. The TypeScript builder
+uses `.dispatch(...)` without `.emit(...)`; YAML uses `dispatch_commands` without
+`emit` or `emit_when`. Both forms compile to the same runtime behavior.
+
+Dispatches, reactions, and reducers run against a shadow graph. If any step fails, the original request commits no partial state.
+
+### Header matching and audit fields
+
+Add a header predicate when the same operation needs separate simulated outcomes:
+
+```yaml
+- name: slow-database-scenario
+  match:
+    operationId: createCall
+    headers:
+      x-potemkin-scenario: slow_db
+    condition: "true"
+  emit: CallCreated
+```
+
+Set `audit_fields: true` on a boundary to stamp `updatedAt` and `updatedBy` on
+non-baseline events. `updatedBy` comes from the authenticated actor, or is null
+when the request has no actor:
+
+```yaml
+boundary: Note
+contract_path: /notes
+audit_fields: true
+```
+
+## Step 4: project events with reducers
+
+A reducer turns an event into JSON Patch-style updates. The common operations are `add`, `replace`, `remove`, `move`, `copy`, `test`, `increment`, and `append`:
+
+```yaml
 reducers:
-  - on: DocumentCreated
+  - on: LeadCreated
     patches:
       - op: add
         path: /status
         value: "${event.payload.status}"
+      - op: add
+        path: /score
+        value: "${0}"
+      - op: add
+        path: /audit
+        value:
+          createdBy: "${event.payload.createdBy}"
+
+  - on: LeadQualified
+    patches:
+      - op: replace
+        path: /status
+        value: QUALIFIED
+      - op: increment
+        path: /qualificationCount
+        by: 1
+      - op: append
+        path: /history
+        value:
+          event: "${event.type}"
+          at: "${event.payload.qualifiedAt}"
+
+  - on: LeadClosed
+    patches:
+      - op: test
+        path: /status
+        value: QUALIFIED
+      - op: remove
+        path: /openTasks/0
 ```
 
-Then instantiate it from a mapping file (only a `use:` key — no `boundary:` or `contract_path` at the top level):
+Nested JSON Pointer paths and CEL values are supported:
 
 ```yaml
-use:
-  - component: DocumentEntity
-    as: Document
-    contract_path: /documents
-    with:
-      initialStatus: "DRAFT"
-      createOp: createDocument
-
-  - component: DocumentEntity
-    as: Draft
-    contract_path: /drafts
-    with:
-      initialStatus: "PENDING"
-      createOp: createDraft
+- on: OpportunityCreated
+  patches:
+    - op: replace
+      path: /totals/value
+      value: "${coalesce(state.totals.value, 0) + event.payload.value}"
 ```
 
-Both `Document` and `Draft` are live boundaries at boot. The component file itself produces no boundary. Two `use:` entries for the same component with different `as`/`contract_path` values are always distinct — there is no collision. If two entries share the same name or path, boot fails with `BOOT_ERR_DSL_DUPLICATE_BOUNDARY`.
+Reducers are deterministic. They cannot perform network calls or depend on mutable process state. The patch tests in [`tests/e2e/reducer-patch-ops.e2e-test.ts`](tests/e2e/reducer-patch-ops.e2e-test.ts) cover the supported operations and failure behavior.
 
-See [`tests/e2e/68-composition.e2e-test.ts`](tests/e2e/68-composition.e2e-test.ts) for the full worked example including independent state, parameter substitution, and reactions across instances.
+Computed fields are declared on the boundary and recalculated when their
+dependencies change:
 
-### Sharing events and reducers across entities
+```yaml
+state:
+  computed:
+    - name: lineTotal
+      formula: "state.quantity * state.unitPrice"
+      depends_on: [quantity, unitPrice]
+```
 
-If you want a slice of behavior — an audit trail, a status lifecycle, a set of computed fields — to appear in several boundaries without copying it, extract it into a fragment component and `include:` it from each host. Host event types and behavior names win over identically-named included entries; reducers are additive — both host and included reducers for the same event type run.
+With the default `strict_schema: true`, every `state.*` reference in a formula
+must appear in `depends_on`. Set it to false only while developing a fixture.
 
-Create the fragment (no `contract_path`, no `behaviors` required):
+## Step 5: query the state graph
+
+A query reads current state without appending an event. The CRM contract maps query parameters to filters, ordering, pagination, and sparse fields:
+
+```sh
+# Filter by a scalar field
+curl -s "$STUB_URL/leads?status=QUALIFIED"
+
+# Sort and paginate
+curl -s "$STUB_URL/leads?sort=-createdAt,companyName&offset=0&limit=10"
+
+# Match an array member
+curl -s "$STUB_URL/leads?tags=enterprise"
+
+# Ask for a sparse response where the contract supports it
+curl -s "$STUB_URL/leads?fields=id,companyName,status"
+```
+
+The query layer supports equality, array membership, ordering by several fields, offset/limit pagination, sparse fields, and response envelopes defined by the contract. Invalid query shape is rejected before a behavior runs; business guards remain in the DSL.
+
+Declare application-specific filters with `query_mapping`. The `query` object
+contains parsed URL values and `state` is the candidate graph node:
+
+```yaml
+query_mapping:
+  status: "state.status == query.status"
+  campaignId: "state.campaignId == query.campaignId"
+```
+
+For policies that need explicit default ordering, page limits, cursor values,
+or a targeted fallback, use the source-neutral `query` block. Its CEL fields
+compile to the same `RuntimeQueryPolicy` used by the TypeScript SDK:
+
+```yaml
+query:
+  fields:
+    threshold: "state.score >= int(query.threshold)"
+  filter: "state.active == true"
+  sort:
+    - field: score
+      direction: desc
+  page_size: 25
+  max_page_size: 100
+  cursor: "query.cursor"
+  expand: [customer]
+  pagination: envelope
+  include_deleted: false
+  fallback:
+    code: ORDER_NOT_FOUND
+```
+
+`fields` entries are active only when their matching query parameter is
+present. `fallback` is returned for a targeted query that has no matching
+entity. YAML and TypeScript compile these declarations into the same runtime
+model; TypeScript supplies callbacks directly through `boundary(...).query(...)`.
+
+## Consistency and identity
+
+### Idempotency
+
+Enable idempotency in the global module:
+
+```yaml
+idempotency:
+  enabled: true
+  ttl_seconds: 86400
+  hash_includes_body: true
+```
+
+Send the same key and request twice:
+
+```sh
+curl -s -X POST "$STUB_URL/leads" \
+  -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: create-apex-001' \
+  -d '{"companyName":"Apex Solutions Ltd","contactName":"Mina Cole","email":"mina@apex.example"}'
+
+curl -s -X POST "$STUB_URL/leads" \
+  -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: create-apex-001' \
+  -d '{"companyName":"Apex Solutions Ltd","contactName":"Mina Cole","email":"mina@apex.example"}'
+```
+
+The second request replays the stored response instead of creating another event. Reusing the key with a different body is rejected.
+
+### Optimistic concurrency and HTTP validators
+
+Mutation responses include the current version and ETag when configured. Supply the version or `If-Match` value on the next write:
+
+```sh
+curl -s -X PATCH "$STUB_URL/leads/$LEAD_ID" \
+  -H 'Content-Type: application/json' \
+  -H 'If-Match: "3"' \
+  -d '{"status":"QUALIFIED"}'
+```
+
+A stale `If-Match` value returns a concurrency error and does not commit. Conditional GET supports `If-None-Match` and returns `304` when the entity has not changed.
+
+## Authentication and request identity
+
+The default bearer-token mode is convenient for tests. The token is deliberately simple and is not cryptographically verified. Put the actor ID first, followed by comma-separated scopes:
+
+```yaml
+behaviors:
+  - name: updateLead
+    match:
+      operationId: updateLead
+      required_scopes:
+        - lead:write
+      condition: "true"
+    emit: LeadUpdated
+```
+
+```sh
+curl -s "$STUB_URL/leads" \
+  -H 'Authorization: Bearer alice:lead:read,lead:write'
+```
+
+Require a scope in a behavior with `match.required_scopes`, as shown earlier. The actor is available to CEL and event templates through `actor.id`, `actor.scopes`, and related fields.
+
+JWT verification is also supported for tests that need a real token boundary. Configure the issuer, audience, algorithm, and key material in the global auth block. [`tests/e2e/forward-blocks-and-jwt.e2e-test.ts`](tests/e2e/forward-blocks-and-jwt.e2e-test.ts) covers valid, expired, and missing-token cases.
+
+Cookie sessions and CSRF checks are available for browser-shaped simulations. Configure the session cookie and CSRF header, then send both on a state-changing request:
+
+```sh
+LOGIN_RESPONSE=$(curl -s -X POST "$STUB_URL/sessions" -c cookies.txt \
+  -H 'Content-Type: application/json' \
+  -d '{"actorId":"alice","scopes":["agent","viewer"]}')
+CSRF_TOKEN=$(printf '%s' "$LOGIN_RESPONSE" | jq -r '.csrfToken')
+
+curl -s -X POST "$STUB_URL/leads" -b cookies.txt \
+  -H "X-CSRF-Token: $CSRF_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"companyName":"Browser Client","contactName":"Alice","phone":"+61 2 0000 0001","email":"alice@example.com","source":"WEBSITE"}'
+```
+
+Keep admin endpoints on a trusted network. Set `ADMIN_TOKEN` to require `Authorization: Bearer <token>` for reset, state, events, clock, and fault controls.
+
+## Workflows and side effects
+
+### Sagas
+
+Use a saga for a multi-step workflow with compensation. This example creates an opportunity after a lead conversion and closes it if a later step fails:
+
+```yaml
+sagas:
+  - name: LeadConversion
+    trigger:
+      boundary: Lead
+      intent: mutation
+      condition: "event.type == 'LeadConverted'"
+    steps:
+      - name: createOpportunity
+        boundary: Opportunity
+        intent: creation
+        operationId: createOpportunity
+        target_id: "$uuidv7()"
+        payload:
+          leadId: "event.aggregateId"
+          value: "command.payload.value"
+        compensation:
+          intent: mutation
+          operationId: closeOpportunity
+          payload:
+            stage: "'withdrawn'"
+```
+
+The saga tests in [`tests/e2e/full-crm-flow.e2e-test.ts`](tests/e2e/full-crm-flow.e2e-test.ts) verify the success and compensation paths.
+
+### Reactions
+
+Reactions let the receiving boundary subscribe without changing the source boundary:
+
+```yaml
+# inventory.yaml
+reactions:
+  - name: reserve-inventory
+    on: "Order:OrderPlaced"
+    intent: creation
+    emit: InventoryReserved
+
+# notification.yaml
+reactions:
+  - name: queue-order-notification
+    on: "Order:OrderPlaced"
+    intent: creation
+    emit: NotificationQueued
+```
+
+Use `intent: mutation`, `when`, `target`, and `payload` to update an existing aggregate conditionally:
+
+```yaml
+reactions:
+  - name: allocate-stock
+    on: "Order:OrderPlaced"
+    when: "event.payload.quantity > 0"
+    intent: mutation
+    target: "'warehouse-main'"
+    emit: StockAllocated
+    payload:
+      orderId: "event.aggregateId"
+      quantity: "event.payload.quantity"
+```
+
+Reaction events are part of the same unit of work. A failure rolls back the source event and all reaction events. The fan-out and chaining example is [`tests/e2e/reactions-fanout.e2e-test.ts`](tests/e2e/reactions-fanout.e2e-test.ts).
+
+### Derived projections
+
+Derived projections build a read model from events across boundaries:
+
+```yaml
+derived_projections:
+  - name: LeadSummary
+    key: "event.aggregateId"
+    subscribe:
+      - "Lead:LeadCreated"
+      - "Opportunity:OpportunityCreated"
+    reduce:
+      - on: LeadCreated
+        patches:
+          - op: replace
+            path: /lead_id
+            value: "${event.aggregateId}"
+          - op: replace
+            path: /companyName
+            value: "${event.payload.companyName}"
+      - on: OpportunityCreated
+        patches:
+          - op: increment
+            path: /total_opportunities
+            by: 1
+```
+
+Inspect it during a test:
+
+```sh
+curl -s "$STUB_URL/_admin/derived/LeadSummary"
+```
+
+### Webhooks
+
+Webhooks run after the unit of work commits. The engine sends an HMAC signature and retries failed deliveries:
+
+```yaml
+webhooks:
+  - name: lead-converted
+    trigger:
+      boundary: Lead
+      condition: "event.type == 'LeadConverted'"
+    url: "'http://127.0.0.1:19876/webhook'"
+    secret: "local-test-secret"
+    payload:
+      leadId: "${event.aggregateId}"
+      event: "${event.type}"
+    retry:
+      maxAttempts: 3
+      delayMs: 100
+```
+
+The receiver test is [`tests/e2e/webhook-hmac.e2e-test.ts`](tests/e2e/webhook-hmac.e2e-test.ts).
+
+## TypeScript authoring
+
+TypeScript supplies the simulation model directly. Callbacks are phase-specific and typed; CEL
+and DSL strings are parser inputs, not a second TypeScript expression language. Use the semantic
+reference constructors from `potemkin/sdk` for boundary names, operation IDs, event types,
+contract paths, and response field paths. The runtime model still contains canonical strings at
+the source-neutral boundary, but TypeScript authoring cannot interchange these identifier roles.
+Import authoring from `potemkin/sdk` and runtime boot/transport from their explicit package
+surfaces; application code does not need to import internal `src/` modules.
+
+This example boots the same HTTP runtime used by the YAML path:
+
+```ts
+import { bootRuntime, createRuntimeGateway } from "potemkin";
+import {
+  boundary,
+  boundaryName,
+  contractPath,
+  event,
+  eventType,
+  expression,
+  operationId,
+  pathSegment,
+  reducerRule,
+  simulation,
+  type EventContext,
+  type IdentityContext,
+} from "potemkin/sdk";
+
+interface InvoiceInput {
+  invoiceId: string;
+  amount: number;
+}
+
+const invoice = boundary(boundaryName("Invoice"), contractPath(pathSegment("invoices")))
+  .identity({
+    generate: expression("identity", ({ payload }: IdentityContext) =>
+      String((payload as InvoiceInput).invoiceId),
+    ),
+  })
+  .eventCatalog(
+    event(eventType("InvoiceCreated"), {
+      id: expression("event", ({ command }: EventContext) => command.targetId ?? ""),
+      amount: expression("event", ({ payload }: EventContext) => (payload as InvoiceInput).amount),
+      status: expression("event", () => "OPEN"),
+    }),
+  )
+  .behavior({
+    name: "create-invoice",
+    operationId: operationId("createInvoice"),
+    condition: expression("behavior", () => true),
+    emit: eventType("InvoiceCreated"),
+  })
+  .reducer(
+    reducerRule(eventType("InvoiceCreated"))
+      .apply(({ state, event }) => ({
+        ...state,
+        id: event.payload.id,
+        amount: event.payload.amount,
+        status: "OPEN",
+      }))
+      .build(),
+  )
+  .build();
+
+const model = simulation().boundary(invoice).build();
+const system = await bootRuntime({ openapi, definition: model });
+const app = createRuntimeGateway(system);
+```
+
+For mixed authoring, compile both sources into the shared model and give the resulting
+`RuntimeProgram` to the source-independent runtime:
+
+```ts
+import { compileMixedProgram } from "potemkin/parser/mixed";
+
+const system = await bootRuntime({
+  openapi,
+  programFactory: (context) =>
+    compileMixedProgram({ yaml: { modules, globalYaml }, direct: model }, context),
+});
+```
+
+When YAML is the only source, use the parser-owned boot helper. It compiles YAML and then calls
+the same runtime boot operation used by TypeScript:
+
+```ts
+import { bootYamlRuntime } from "potemkin/parser/runtime";
+
+const system = await bootYamlRuntime({
+  openapi,
+  yamlProgram: {
+    modules: [{ name: "invoices.yaml", yaml: invoiceYaml }],
+    globalYaml,
+  },
+});
+```
+
+`createRuntimeGateway` is the only HTTP transport for both authoring forms. YAML is compiled before
+the gateway is created; the core runtime receives only the shared model and does not inspect YAML,
+DSL, or CEL values.
+
+Resource expansion is also available without YAML:
+
+```ts
+const model = defineSimulation({
+  boundaries: [],
+  resources: [
+    {
+      resource: "Invoice",
+      schema: "Invoice",
+      eventCatalog: [
+        event(eventType("InvoiceCreated"), {
+          id: expression("event-hydration", ({ command }) => command.targetId ?? ""),
+        }),
+      ],
+      reducers: [
+        reducerRule(eventType("InvoiceCreated"))
+          .apply(({ state, event }) => ({ ...state, id: event.payload.id }))
+          .build(),
+      ],
+      operations: [
+        { operationId: operationId("createInvoice"), emit: eventType("InvoiceCreated") },
+        { operationId: operationId("listInvoices"), query: true },
+      ],
+    },
+  ],
+});
+```
+
+Pass the OpenAPI document to `defineSimulation` or the builder when operation IDs need to be
+resolved to paths. The explicit `contractPath` form is useful in unit tests.
+
+### `@PotemkinConfigure` and shared helpers
+
+Declare one or more TypeScript include/exclude groups in `potemkin.yml`:
+
+```yaml
+typescript:
+  scan:
+    - include:
+        - "scenarios/**/*.ts"
+        - "shared/**/*.ts"
+      exclude:
+        - "**/*.test.ts"
+        - "**/*.d.ts"
+```
+
+The AST scanner invokes only static methods decorated with the exact
+`@PotemkinConfigure` decorator imported from `potemkin/sdk`:
+
+```ts
+import {
+  PotemkinConfigure,
+  boundaryName,
+  contractPath,
+  boundary,
+  defineHelper,
+  event,
+  eventType,
+  operationId,
+  pathSegment,
+  reducerRule,
+  simulation,
+} from "potemkin/sdk";
+
+const sourceLabel = defineHelper("sourceLabel", (source: string) => source);
+
+class WidgetConfiguration {
+  @PotemkinConfigure("widgets")
+  static create() {
+    return simulation()
+      .helper(sourceLabel)
+      .boundary(
+        boundary(boundaryName("Widget"), contractPath(pathSegment("widgets")))
+          .eventCatalog(
+            event(eventType("WidgetCreated"), {
+              source: ({ command }) => sourceLabel(String(command.payload.source ?? "")),
+            }),
+          )
+          .behavior({
+            name: "createWidget",
+            operationId: operationId("createWidget"),
+            emit: eventType("WidgetCreated"),
+          })
+          .reducer(
+            reducerRule(eventType("WidgetCreated"))
+              .apply(({ state, event }) => ({ ...state, source: event.payload.source }))
+              .build(),
+          )
+          .build(),
+      )
+      .build();
+  }
+}
+```
+
+`defineHelper` returns a callable typed function. Register it on the simulation
+with `.helper()` or `.helpers()` and YAML can invoke the same function from CEL:
+
+```yaml
+event_catalog:
+  - type: ThingCreated
+    payload_template:
+      source: "sourceLabel(command.payload.source)"
+```
+
+Helpers are pure JSON-in/JSON-out functions. The loader registers them before
+the YAML compiler runs, so a YAML-only boundary can use a helper supplied by a
+TypeScript factory without a sentinel or runtime source
+branch. Both loaders produce the same canonical model before the engine runs.
+
+### Configuration-driven TypeScript scenarios
+
+The same `typescript.scan` include/exclude globs can select full TypeScript
+scenario modules as well as `@PotemkinConfigure` helpers. A selected scenario module is
+configured only through a static method annotated with `@PotemkinConfigure`:
+
+```yaml
+version: 1
+specmatic: ./specmatic.yaml
+openapi:
+  - "openapi/**/*.yaml"
+modules:
+  - "dsl/**/*.yaml"
+typescript:
+  scan:
+    - include: ["scenarios/**/*.ts"]
+      exclude: ["**/*.test.ts", "**/*.d.ts"]
+  watchIntervalMs: 10000
+```
+
+```ts
+import {
+  boundary,
+  boundaryName,
+  contractPath,
+  pathSegment,
+  simulation,
+  PotemkinConfigure,
+  type FactoryContext,
+} from "potemkin/sdk";
+
+class WidgetScenario {
+  @PotemkinConfigure("widgets")
+  static create(_context: FactoryContext) {
+    return simulation()
+      .boundary(boundary(boundaryName("Widget"), contractPath(pathSegment("widgets"))).build())
+      .build();
+  }
+}
+```
+
+The annotation is the complete discovery contract: default exports, named
+simulation exports, and free-standing factory functions are not loaded as
+engine configuration. All selected TypeScript files are evaluated for
+dependencies and registration, then the annotated static factories are invoked
+in deterministic source/name order. YAML modules are loaded by the separate
+YAML source loader and both authoring forms compile into the same runtime model.
+
+`modules` and `openapi` accept multiple globs. The server always polls the single
+`potemkin.yml` and every selected YAML, OpenAPI, and TypeScript file every ten
+seconds by default. A detected change clears the runtime and boots the new
+configuration from its initialization state. Start the server with
+the one configuration path supplied by environment or command line:
+
+```sh
+POTEMKIN_CONFIG_PATH=/workspace/potemkin.yml pnpm run start:server
+# or: pnpm run start:server -- --config /workspace/potemkin.yml
+```
+
+#### Running the real Specmatic stack in Docker
+
+The repository includes a Docker Compose stack with the production Potemkin
+server and Specmatic/plugin. Mount the directory containing the one
+`potemkin.yml` into `/workspace`; both services read that same file, including
+its multiple OpenAPI globs:
+
+```sh
+docker compose up --build
+```
+
+Specmatic is exposed on port `9000` and Potemkin on port `3000`. Override the
+configuration location with `POTEMKIN_CONFIG_PATH` in both services when the
+mounted file is not `/workspace/potemkin.yml`.
+
+### Native reducers
+
+TypeScript reducers are ordinary immutable functions. A reducer receives the
+current state and event and returns the complete next state; it does not use a
+decorator, path string, or operation string:
+
+```ts
+import { eventType, reducerRule } from "potemkin/sdk";
+
+reducerRule(eventType("LeadQualified"))
+  .apply(({ state, event }) => ({
+    ...state,
+    status: "QUALIFIED",
+    qualificationCount: Number(state.qualificationCount ?? 0) + 1,
+    id: event.payload.id,
+  }))
+  .build();
+```
+
+### Testing a pure TypeScript model
+
+REQ-48 through REQ-75 require every YAML type, variant, and combination to have a TypeScript equivalent. That includes boundaries, resources, initialization, identity, event catalogues, behaviors, guards, reducers, queries, reactions, sagas, derived projections, response shaping, auth, idempotency, concurrency, faults, forwarding, webhooks, composition, and resource expansion.
+
+The API uses typed interfaces, immutable values, functional composition, and builders. It can
+compile a TypeScript-authored boundary or resource directly, install direct TypeScript reducers,
+run typed expressions in the current evaluator phases, and retain lifecycle declarations. The
+runtime authoring checks live under `tests/runtime/`, while public behavior is proved by the
+Specmatic-backed suites under `tests/e2e/`.
+
+Run the lower-level authoring checks directly while working on the API:
+
+```sh
+PATH=/opt/homebrew/opt/node@24/bin:$PATH \
+  pnpm exec jest --runInBand \
+  tests/runtime/authoring-typescript.runtime.test.ts \
+  tests/runtime/typescript-resource.runtime.test.ts
+```
+
+The YAML-only counterpart is `tests/runtime/authoring-yaml.runtime.test.ts`.
+The observable parity trace is `tests/runtime/pure-authoring-observables.runtime.test.ts` and
+boots one YAML system and one TypeScript system, then compares their responses, events, state,
+headers, and side-effect observations.
+
+### Using the source-independent runtime directly
+
+For lower-level runtime tests, use the runtime builders. This path has no YAML module, CEL expression, or
+YAML parser representation in it. The parser module described below produces the same
+`RuntimeProgram` when the source is YAML.
+
+```ts
+import {
+  createRuntimeEngine,
+  runtimeBehavior,
+  runtimeBoundary,
+  runtimeEvent,
+  runtimeProgram,
+  runtimeReducer,
+} from "potemkin";
+
+const orders = runtimeBoundary("Order", "/orders")
+  .event(
+    runtimeEvent("OrderCreated")
+      .payload({
+        id: ({ payload }) => payload.id,
+        total: ({ payload }) => payload.total,
+      })
+      .build(),
+  )
+  .behavior(
+    runtimeBehavior("createOrder")
+      .operation("createOrder")
+      .emit("OrderCreated")
+      .scopes("orders:write")
+      .build(),
+  )
+  .reducer(
+    runtimeReducer("OrderCreated")
+      .apply(({ event }) => [
+        { op: "replace", path: "/id", value: event.payload.id },
+        { op: "replace", path: "/total", value: event.payload.total },
+      ])
+      .build(),
+  )
+  .response({
+    mask: ["/internalNote"],
+    deprecated: { date: "2027-01-01", replacement: "/v2/orders" },
+  })
+  .build();
+
+const engine = createRuntimeEngine(
+  runtimeProgram()
+    .boundary(orders)
+    .policies({
+      faults: [
+        {
+          name: "maintenance",
+          matches: ({ headers }) => headers["x-maintenance"] === "on",
+          response: { status: 503, body: { error: "MAINTENANCE" } },
+        },
+      ],
+      sagas: [
+        {
+          name: "fulfil-order",
+          trigger: { boundary: "Order", intent: "creation", condition: () => true },
+          steps: [],
+        },
+      ],
+      webhooks: [
+        {
+          name: "order-created",
+          trigger: ({ event }) => event?.type === "OrderCreated",
+          url: () => "https://hooks.example.test/orders",
+          secret: process.env.ORDER_WEBHOOK_SECRET,
+        },
+      ],
+    })
+    .compile({
+      contract: { operationIdFor: () => "createOrder" },
+      helpers: {
+        now: () => new Date().toISOString(),
+        uuid: () => crypto.randomUUID(),
+        random: Math.random,
+        clone: structuredClone,
+      },
+      webhooks: {
+        deliver: async (delivery) =>
+          fetch(delivery.url, {
+            method: "POST",
+            headers: delivery.headers,
+            body: delivery.body,
+          }).then(() => undefined),
+      },
+    }),
+);
+```
+
+The usual development sequence is:
+
+1. Put the runtime definition in a normal `.ts` test or module.
+2. Inject deterministic `helpers`, a contract binding, and test transports.
+3. Call `engine.execute` with a `Command` and request headers.
+4. Inspect `result.events` and `engine.snapshot()` alongside the response.
+5. Call `engine.reset()` between scenarios; it clears state, events, projections,
+   idempotency records, and fault effects before reseeding.
+
+Use `bootYamlRuntime({ yamlProgram })`, or call `compileYamlProgram` from the `parser` subpath when
+the source is YAML. Faults, reactions,
+dispatch, sagas and compensation, projections, HMAC webhooks, response policies, lifecycle hooks,
+queries, auth, idempotency, optimistic concurrency, fallback, and reset are runtime capabilities;
+their authoring syntax belongs to the TypeScript definition or the parser, not to the core.
+
+## Response shaping
+
+Response shaping happens after the state transition and before the response is checked against the contract.
+
+### HATEOAS
+
+Enable dynamic self links globally and add static links directly to a boundary file:
+
+```yaml
+hateoas:
+  enabled: true
+  self_links: true
+```
+
+In `dsl/leads.yaml`, add a static link:
+
+```yaml
+boundary: Lead
+contract_path: /leads
+hateoas:
+  - rel: campaign
+    href: /campaigns
+```
+
+The global form can also add action links with `link_name` and `link_condition`. See [`tests/e2e/hateoas.e2e-test.ts`](tests/e2e/hateoas.e2e-test.ts).
+
+### Masking, deprecation, and headers
+
+Hide internal fields, advertise an endpoint sunset, and add security headers:
+
+```yaml
+mask:
+  - internalNotes
+
+deprecated:
+  date: "2025-01-01"
+  sunset: "2027-01-01T00:00:00Z"
+  replacement: /v2/leads
+
+security_headers:
+  enabled: true
+  hsts: true
+  nosniff: true
+  frame_deny: true
+  referrer_policy: strict-origin-when-cross-origin
+  custom_headers:
+    X-Custom-Sim-Header: potemkin-sim
+```
+
+Masking is applied to responses and does not change stored state. Deprecation produces `Deprecation`, `Sunset`, and `Link` headers. Security headers also apply to errors and admin responses.
+
+### Latency and version routing
+
+Add deterministic delay to a boundary:
+
+```yaml
+latency:
+  fixed_ms: 20
+  min_ms: 30
+  max_ms: 60
+```
+
+Configure URL versions in the global module:
+
+```yaml
+versioning:
+  enabled: true
+  versions:
+    - version: v1
+      prefix: /v1
+    - version: v2
+      prefix: /v2
+      default: true
+```
+
+The gateway strips the prefix for contract lookup and reports the selected version in
+`X-Potemkin-Version`. Specmatic-facing versioned requests are included in route discovery and
+are resolved by the same gateway logic after the plugin forwards them to the Node engine.
+
+## Fault injection and runtime controls
+
+Fault rules run before behavior matching:
+
+```yaml
+fault_rules:
+  - name: dnc-registry-timeout
+    match:
+      boundary: Lead
+      intent: mutation
+      condition: "command.payload.reason == 'REGISTRY_CHECK'"
+    response:
+      status: 504
+      body:
+        error: DNC_REGISTRY_TIMEOUT
+      delay_ms: 100
+
+  - name: rate-limit-header
+    match:
+      condition: "true"
+      potemkin:
+        rate_limit: "*"
+    response:
+      status: 429
+      body:
+        error: RATE_LIMITED
+      headers:
+        Retry-After: "30"
+```
+
+For one request, use chaos headers instead of editing YAML:
+
+```sh
+curl -s "$STUB_URL/leads/$LEAD_ID" \
+  -H 'X-Potemkin-Force-Latency: 250'
+
+curl -s "$STUB_URL/leads/$LEAD_ID" \
+  -H 'X-Potemkin-Force-Status: 503'
+```
+
+Other control headers support dry runs, time-travel reads, clock offsets, response format control, observability injection, and admin-gated validation controls. The canonical names are in [`src/http/potemkinHeaders.ts`](src/http/potemkinHeaders.ts). The matrix is exercised by [`tests/e2e/chaos-headers.e2e-test.ts`](tests/e2e/chaos-headers.e2e-test.ts) and [`tests/e2e/control-headers.e2e-test.ts`](tests/e2e/control-headers.e2e-test.ts).
+
+The controls most often used in a consumer test are:
+
+| Header                                   | Example          | Effect                                                            |
+| ---------------------------------------- | ---------------- | ----------------------------------------------------------------- |
+| `X-Potemkin-Dry-Run`                     | `true`           | Run the unit of work, then discard its events and state changes.  |
+| `X-Potemkin-Include-Events`              | `true`           | Add the staged events to the response for assertions.             |
+| `X-Potemkin-Skip-Sagas`                  | `true`           | Commit primary events without running saga triggers.              |
+| `X-Potemkin-Skip-Webhooks`               | `true`           | Commit state without delivering webhooks.                         |
+| `X-Potemkin-Skip-Projections`            | `true`           | Commit events without applying derived projections.               |
+| `X-Potemkin-Skip-Reactions`              | `true`           | Commit events without running reaction subscribers.               |
+| `X-Potemkin-Skip-Dispatch`               | `true`           | Stop secondary command cascades for this request.                 |
+| `X-Potemkin-Max-Cascade-Depth`           | `3`              | Override the cascade depth for one request.                       |
+| `X-Potemkin-Bulk-Transactional`          | `true`           | Make an array-body request all-or-nothing.                        |
+| `X-Potemkin-Seed`                        | `42`             | Seed `$fake()` and `$uuidv7()` deterministically for one request. |
+| `X-Potemkin-Echo`                        | `true`           | Add request routing details to the response.                      |
+| `X-Potemkin-Actor`                       | `alice:admin`    | Supply an admin-gated actor override.                             |
+| `X-Potemkin-Impersonate`                 | `bob:agent`      | Run as another actor while recording the original actor.          |
+| `X-Potemkin-Caused-By`                   | `<event-id>`     | Set the `causedBy` field on emitted events.                       |
+| `X-Potemkin-Read-At-Version`             | `12`             | Read state at an earlier event sequence.                          |
+| `X-Potemkin-Replay-Event`                | `<event-id>`     | Re-emit a historic event.                                         |
+| `X-Potemkin-Response-Format`             | `hal`            | Select `hal`, `jsonapi`, or `plain` response shaping.             |
+| `X-Potemkin-Pagination-Style`            | `link-header`    | Select collection envelope, raw, or link-header pagination.       |
+| `X-Potemkin-Mask`                        | `internalNotes`  | Replace named response fields with `[MASKED]`.                    |
+| `X-Potemkin-Trace-Id`                    | `test-123`       | Inject a trace ID into the response and telemetry.                |
+| `X-Potemkin-Span-Name`                   | `checkout`       | Set the request span name.                                        |
+| `X-Potemkin-Log-Level`                   | `debug`          | Change the request log level.                                     |
+| `X-Potemkin-Metric-Tag`                  | `scenario=retry` | Attach a tag to request metrics.                                  |
+| `X-Potemkin-Skip-Request-Validation`     | `true`           | Skip request validation; admin-gated.                             |
+| `X-Potemkin-Skip-Response-Validation`    | `true`           | Skip response validation; admin-gated.                            |
+| `X-Potemkin-Allow-Additional-Properties` | `true`           | Relax a closed object schema; admin-gated.                        |
+
+For deterministic clock-dependent responses:
+
+```sh
+curl -s "$STUB_URL/leads/$LEAD_ID" \
+  -H 'X-Potemkin-Clock-Offset: 86400000'
+```
+
+## Composition and resource expansion
+
+### Components, `use`, and `include`
+
+Extract a reusable component:
 
 ```yaml
 kind: component
-name: AuditMixin
+name: AuditedEntity
 
 parameters:
   actorField:
     type: string
-    default: "lastActor"
-
-event_catalog:
-  - type: AuditLogged
-    payload_template:
-      actor: "'system'"
+    default: lastActor
 
 reducers:
   - on: AuditLogged
@@ -324,729 +1311,196 @@ reducers:
         value: "${event.payload.actor}"
 ```
 
-Include it from a live boundary or from another component:
+Instantiate it at two paths:
 
 ```yaml
-boundary: Document
-contract_path: /documents
-
-include:
-  - component: AuditMixin
+use:
+  - component: AuditedEntity
+    as: Document
+    contract_path: /documents
     with:
-      actorField: "lastActor"
-
-event_catalog:
-  - type: DocumentCreated
-    payload_template:
-      id: "command.targetId"
+      actorField: lastActor
+  - component: AuditedEntity
+    as: Invoice
+    contract_path: /invoices
+    with:
+      actorField: updatedBy
 ```
 
-After linking, `Document` carries both `DocumentCreated` (local) and `AuditLogged` + its reducer (from the mixin). A second boundary that includes the same mixin gets identical audit behavior independently.
+Use `include` when a live boundary or component should inherit a fragment. Local behavior and event names override included entries; reducers are additive. Duplicate or unresolved composition references fail at boot. The full example is [`tests/e2e/composition.e2e-test.ts`](tests/e2e/composition.e2e-test.ts).
 
-Merge rules: local event types and behavior names shadow the mixin's entry of the same key. Reducer `on` is not a unique key — a host reducer and an included reducer on the same event both run; there is no shadowing and no clash error for `on`. Two included fragments that both contribute the same event type or behavior name with no local override cause `BOOT_ERR_DSL_SYNTAX`.
+### Resource files
 
-`include:` on a component file is also supported; every boundary instantiated from that component inherits the mixin automatically.
-
-See [`tests/e2e/68-composition.e2e-test.ts`](tests/e2e/68-composition.e2e-test.ts) for a variant where `AuditMixin` is included inside `DocumentEntity` and thus propagates to both `Document` and `Draft` instances.
-
----
-
-## Writing behaviour: turning requests into events
-
-Behaviours are an ordered list. The engine evaluates them top-to-bottom and runs the first match. Order matters: put more specific rules before general ones.
-
-### Routing a request to a behaviour by operation
-
-If you want a behaviour to fire only for a specific OpenAPI `operationId`, set `match.operationId`. Behaviours whose `operationId` doesn't match the incoming operation are skipped entirely, so you can have multiple behaviours for the same boundary without worrying about accidental cross-operation matches.
+For an API with repeated CRUD conventions, a `*.resource.yaml` file expands one resource declaration into operation-specific boundaries:
 
 ```yaml
-behaviors:
-  - name: createLead
-    match:
-      operationId: createLead
-      condition: "true"
-    emit: LeadCreated
+resource: Product
+schema: product
+operations:
+  - { op: PostProducts, emit: ProductCreated }
+  - { op: GetProducts, query: true }
+  - { op: GetProductsId, query: true }
+  - { op: PostProductsId, emit: ProductUpdated }
 ```
 
-[`55-operationid-dispatch`](tests/e2e/55-operationid-dispatch.e2e-test.ts) verifies that each operation routes to its intended behaviour and not its neighbours.
+The Stripe example uses this for customers, products, prices, payment intents, charges, and refunds. The expansion is in [`src/dsl/resourceExpander.ts`](src/dsl/resourceExpander.ts), and concrete files are in [`examples/stripe/dsl`](examples/stripe/dsl).
 
-### Allowing a transition only from certain states
+## Admin and inspection endpoints
 
-If you want a behaviour to fire only when the aggregate is in a particular state — enforcing valid state-machine transitions — use `match.condition`. The condition is a CEL predicate with access to both `command` (the incoming request) and `state` (the current projected aggregate). When the condition is false, the engine moves to the next behaviour; if no behaviour matches, the request is rejected.
+Use these endpoints while developing a simulation:
 
-```yaml
-match:
-  operationId: qualifyLead
-  condition: "state.status == 'CONTACTED'"
+```sh
+curl -s "$ENGINE_URL/_admin/health"
+curl -s "$ENGINE_URL/_admin/state"
+curl -s "$ENGINE_URL/_admin/events"
+curl -s "$ENGINE_URL/_admin/derived/LeadSummary"
+curl -s "$ENGINE_URL/_engine/routes"
+curl -s "$ENGINE_URL/_engine/fixtures"
+curl -s "$ENGINE_URL/_engine/state"
+curl -s -X POST "$ENGINE_URL/_admin/reset"
 ```
 
-[`21-state-transitions`](tests/e2e/21-state-transitions.e2e-test.ts) walks through a full state machine with valid and invalid transition attempts.
+Reload the configured source graph immediately, without waiting for the polling interval, with:
 
-### Enforcing domain invariants before a transition runs
-
-If you want to block a request outright when a domain invariant is violated — rather than falling through to the next behaviour — use `match.requires`. Guards are evaluated before `condition`. A failing guard returns HTTP 422 with your `error_code` and `error_message` immediately; evaluation stops there and does not continue down the behaviour list.
-
-```yaml
-match:
-  operationId: contactLead
-  requires:
-    - name: not-dnc
-      condition: "state.status != 'DNC'"
-      error_code: LEAD_IS_DNC
-      error_message: "Cannot contact a lead marked Do Not Call"
+```sh
+curl -s -X POST "$ENGINE_URL/_admin/force-reload"
 ```
 
-[`18-guard-failures`](tests/e2e/18-guard-failures.e2e-test.ts) covers multiple guard scenarios including chained invariants.
+The force-reload endpoint clears the active runtime and compiles the current YAML, TypeScript, and
+OpenAPI sources into one canonical `RuntimeModel`.
 
-### Selecting a behaviour based on request headers
+The plugin uses `/_engine/forward` for requests intercepted by Specmatic. It discovers stateful routes through `/_engine/routes`, pushes seeded fixtures through `/_engine/fixtures`, and monitors `/_potemkin/ready` during startup and restart.
 
-If you want two behaviours bound to the same `operationId` to diverge based on a request header — for example, routing mobile and desktop clients to different event flows — use `match.headers`. All declared headers must match (AND semantics). Because the engine uses first-match-wins, place the more specific header-matched rule before the general fallback.
+Admin routes are fail-open when `ADMIN_TOKEN` is unset. Set it before exposing the
+engine outside a trusted test process:
 
-```yaml
-behaviors:
-  - name: submitOrder.mobile
-    match:
-      operationId: submitOrder
-      headers:
-        x-channel: mobile
-    emit: MobileOrderPlaced
-  - name: submitOrder.default
-    match:
-      operationId: submitOrder
-      condition: "true"
-    emit: OrderPlaced
+```sh
+ADMIN_TOKEN='local-admin-token' pnpm run start:example
+curl -s "$ENGINE_URL/_admin/state" \
+  -H 'Authorization: Bearer local-admin-token'
 ```
 
-Behaviour-level header matching is exercised in [`62-behavior-header-match`](tests/e2e/62-behavior-header-match.e2e-test.ts). Header and method matching for fault rules is covered separately in [`40-header-matching`](tests/e2e/40-header-matching.e2e-test.ts).
+State and event admin responses are raw diagnostic data. They are not subject to
+the response `mask` policy.
 
-### Emitting different events depending on intermediate state
+## Specmatic and cross-boundary testing
 
-If you want a single behaviour to branch — emitting one event or another based on a condition evaluated against state that may have changed during the same Unit of Work — use `emit_when`. Each `when` clause is a CEL predicate checked in order; the first truthy clause wins and its `emit` fires. You can also attach a `postcondition`: a CEL invariant checked after projection completes. A false postcondition aborts the entire Unit of Work, so you can express hard constraints like "balance must never go negative."
+The full topology is:
 
-```yaml
-emit_when:
-  - when: "command.payload.amount == state.balance"
-    emit: LoanSettled
-  - when: "command.payload.amount < state.balance"
-    emit: LoanRepaid
-postcondition: "state.balance >= 0"
+```text
+consumer test
+  -> Specmatic stub
+  -> Kotlin Potemkin plugin
+  -> Node engine /_engine/forward
 ```
 
-[`20-features-combined`](tests/e2e/20-features-combined.e2e-test.ts) demonstrates `emit_when` and `postcondition` together. Lifecycle branching across a longer sequence is covered in [`19-campaign-lifecycle`](tests/e2e/19-campaign-lifecycle.e2e-test.ts).
+Build and run the full stack:
 
-### Updating another entity in the same request
-
-If you want a single request to mutate entities in more than one boundary — atomically — use `dispatch_commands`. Secondary commands are queued within the current Unit of Work and processed depth-first; all events across all boundaries commit together or not at all. The recursion depth is capped at 5; exceeding it returns HTTP 508. The `condition` field lets you skip the dispatch when the payload doesn't warrant it.
-
-```yaml
-dispatch_commands:
-  - boundary: Lead
-    intent: mutation
-    operationId: patchLead
-    target_id: "command.payload.leadId"
-    payload:
-      opportunityId: "command.targetId"
-    condition: "command.payload.leadId != null"
+```sh
+cd plugin
+./gradlew shadowJar
+cd ..
+pnpm run test:e2e
 ```
 
-[`22-cross-boundary-dispatch`](tests/e2e/22-cross-boundary-dispatch.e2e-test.ts) is the canonical example. A deeper secondary-command cascade is in [`04-cqrs-cascade`](tests/e2e/04-cqrs-cascade.e2e-test.ts), and a multi-boundary variant is in [`17-multi-boundary-cascades`](tests/e2e/17-multi-boundary-cascades.e2e-test.ts). When you want the *other* boundaries to react on their own terms instead of being driven from here, see [Reacting to another boundary's events without coupling the source](#reacting-to-another-boundarys-events-without-coupling-the-source) below.
+The plugin can forward control operations for seeds, workflows, overlays, governance, reset, and JWT-authenticated requests. The forwarding fixtures are in [`tests/e2e/forward-blocks-and-jwt.e2e-test.ts`](tests/e2e/forward-blocks-and-jwt.e2e-test.ts).
 
----
+Engine restarts are covered by [`tests/e2e/reliability.e2e-test.ts`](tests/e2e/reliability.e2e-test.ts), shutdown notifications by [`tests/e2e/shutdown-notification.e2e-test.ts`](tests/e2e/shutdown-notification.e2e-test.ts), and fixture refresh by [`tests/e2e/fixture-hot-reload.e2e-test.ts`](tests/e2e/fixture-hot-reload.e2e-test.ts).
 
-## Projecting events onto state
+The plugin is a working integration path. `pnpm run test:conformance` and
+`pnpm run export:examples` are available. The repository contains reusable pieces for
+contract-backed model equivalence—normalization, identifier mapping, sequence generation,
+shrinkers, metamorphic relations, and divergence ledgers. Stripe behavior is tested locally
+against the vendored OpenAPI contract through Specmatic; the test suite does not call Stripe's
+network APIs.
 
-### Updating entity state when an event happens
+## Testing and known repository issues
 
-If you want to update entity state when a specific event fires, declare a reducer that binds to an event type and lists patch operations. Each operation targets a path expressed as a JSON Pointer, and the value may be a bare string literal or a `${...}` expression that CEL evaluates at projection time — type is preserved, so a numeric expression stays a number.
+Run the relevant check after changing a simulation:
 
-```yaml
-reducers:
-  - on: LeadContacted
-    patches:
-      - op: replace
-        path: /status
-        value: "${'CONTACTED'}"
-      - op: append
-        path: /callIds
-        value: "${event.payload.callId}"
-      - op: increment
-        path: /contactAttempts
-        by: 1
+```sh
+NODE_OPTIONS=--max-old-space-size=8192 pnpm exec jest --runInBand
+pnpm run test:bdd
+pnpm run test:e2e
+pnpm run test:examples
+pnpm run test:coverage
 ```
 
-The engine applies each patch in order against the current aggregate snapshot. Reducers are deterministic: replaying the same event log always produces the same state, which is what makes `POST /_admin/reset` work.
-
-### Choosing the right patch op
-
-If you want to know which operation to reach for, here are all ten, with a short description of each:
-
-- `add` — write a value at a path that does not yet exist (errors if the path already exists).
-- `replace` — overwrite a value at an existing path.
-- `remove` — delete a key or array element.
-- `append` — push a value onto the end of an array.
-- `prepend` — push a value onto the front of an array.
-- `increment` — add a numeric `by` delta to the value at the path; `by` defaults to `1` when omitted (and `value` is accepted as an alias for `by`).
-- `merge` — shallow-merge an object into the value at the path.
-- `upsert` — find an element in an array by a `key` field and replace it, or append if absent.
-- `copy` — copy the value at `from` to `path`.
-- `move` — move the value at `from` to `path`, removing the source.
-
-[`60-reducer-patch-ops`](tests/e2e/60-reducer-patch-ops.e2e-test.ts) has one focused `describe` block per op, so it is the quickest way to see each one exercised end-to-end.
-
-### Writing to nested paths and maintaining computed totals
-
-If you want to patch a field inside a nested object, write the path as a full JSON Pointer. Intermediate objects and arrays are created automatically if they do not exist, so you do not need a prior `add` for the parent.
-
-```yaml
-- op: replace
-  path: /address/city
-  value: "${event.payload.city}"
-```
-
-For running totals across a collection, use a computed field. Computed state is derived after every projection pass — for example, `totalValue` can be expressed as `sum(lineItems.*.lineTotal)` and will reflect the current array contents without any explicit accumulator patch. See [`54-computed-totals-end-to-end`](tests/e2e/54-computed-totals-end-to-end.e2e-test.ts) for a full worked example, and [`51-object-graph-evolution`](tests/e2e/51-object-graph-evolution.e2e-test.ts) for a long mutation sequence that exercises nested paths across many events.
-
-By default, the engine validates at boot that every state reference inside a computed field's formula is listed in its `depends_on`; an undeclared dependency halts boot with `BOOT_ERR_COMPUTED_FIELD_INCOMPLETE_DEPS`. Set `strict_schema: false` on the boundary to downgrade that check to a warning while formulas are still evolving. [`69-strict-schema`](tests/e2e/69-strict-schema.e2e-test.ts) boots a non-strict boundary and computes its field, then shows the same boundary failing boot under the strict default.
-
-### Recording who changed an entity and when
-
-If you want every mutation to stamp an audit trail onto the entity without writing the patches yourself, set `audit_fields: true` on the boundary. On every non-baseline event the engine fills `updatedAt` with the event's timestamp and `updatedBy` with the acting actor's id (resolved from the request's auth), so each write records who touched the aggregate and when. A request with no identified actor leaves `updatedBy` null.
-
-```yaml
-boundary: Note
-contract_path: /notes
-audit_fields: true
-```
-
-[`72-audit-fields`](tests/e2e/72-audit-fields.e2e-test.ts) creates and then mutates an entity as different actors, asserting `updatedBy` follows the actor that made each change (not the original creator) and that the timestamp lands within the request window.
-
----
-
-## Reading and querying the graph
-
-### Filtering a collection by a field
-
-If you want URL query parameters to filter the state graph, declare a `query_mapping` block that translates each parameter name into a CEL predicate. Multiple parameters compose as AND — only entities that satisfy every active predicate are returned.
-
-```yaml
-query_mapping:
-  status: "state.status == query.status"
-  minValue: "state.value >= double(query.minValue)"
-```
-
-`GET /leads?status=NEW` returns only entities where `state.status` equals `"NEW"`. You can use any CEL expression here, including type coercions and comparisons against nested fields. [`34-query-edge-cases`](tests/e2e/34-query-edge-cases.e2e-test.ts) covers edge cases in filter evaluation, and [`52-get-subsets-of-graph`](tests/e2e/52-get-subsets-of-graph.e2e-test.ts) shows returning controlled subsets of the full graph.
-
-### Returning one page at a time
-
-If you want paginated results, add a `?limit` parameter to the request. The engine wraps the filtered set in an envelope and adds RFC 5988 `Link` headers for cursor navigation.
-
-```
-GET /leads?limit=10&offset=20
-```
-
-The response body becomes `{ items, totalCount, offset, limit, hasMore }` rather than a bare array, and the `Link` header carries `rel="next"` and `rel="prev"` entries with the correct offset values. Clients that omit `?limit` continue to receive the raw array, so the change is backward-compatible. [`36-pagination-envelope`](tests/e2e/36-pagination-envelope.e2e-test.ts) demonstrates the envelope shape and verifies the `Link` header values.
-
-### Sorting by multiple fields
-
-If you want to sort results by more than one field, pass a comma-separated `?sort` parameter. Prefix a field name with `-` for descending order.
-
-```
-GET /leads?sort=status,-score
-```
-
-No YAML is required — the query engine parses the `sort` parameter directly. [`39-multisort-array-operators`](tests/e2e/39-multisort-array-operators.e2e-test.ts) covers multi-field sort together with array operators.
-
-### Filtering by array membership
-
-If you want to return only entities whose array field contains a given value, use the `:contains` or `:arrayContains` suffix on any query parameter.
-
-```
-GET /leads?callIds:contains=<uuid>
-GET /leads?callIds:arrayContains=<uuid>
-```
-
-Both forms are built into the query engine; no `query_mapping` entry is needed. The same test file, [`39-multisort-array-operators`](tests/e2e/39-multisort-array-operators.e2e-test.ts), exercises these alongside sort.
-
-### Letting clients pick which fields come back
-
-If you want to return a sparse fieldset rather than the full entity, clients pass a `?fields` parameter with a comma-separated list of top-level field names.
-
-```
-GET /leads?fields=id,companyName,score
-```
-
-The engine projects each entity down to the requested fields before serialising the response. This works alongside pagination and filters, and requires no YAML configuration. [`43-query-extensions`](tests/e2e/43-query-extensions.e2e-test.ts) covers sparse fieldsets and other read-shaping extensions.
-
----
-
-## Consistency, idempotency, and auth
-
-### Making a request safe to retry
-
-If you want to guarantee that a non-GET command executes at most once, configure idempotency in the global config. When the engine receives a request carrying an `Idempotency-Key` header it has seen before, it replays the original response verbatim and adds `X-Idempotency-Replay: true` — no events are emitted, no state changes. If the same key arrives with a different request body, the engine returns 409.
-
-The TTL controls how long keys are remembered. Setting `hash_includes_body: true` means the conflict check covers the payload, not just the key string.
-
-```yaml
-idempotency:
-  enabled: true
-  ttl_seconds: 86400
-  hash_includes_body: true
-```
-
-[`06-idempotency`](tests/e2e/06-idempotency.e2e-test.ts) shows the replay path, and [`26-concurrency-idempotency`](tests/e2e/26-concurrency-idempotency.e2e-test.ts) covers key lifecycle and races.
-
-### Rejecting a stale update
-
-If you want to prevent lost updates when two clients edit the same resource concurrently, use the ETag and conditional-request support. Every single-entity GET response includes an `ETag` derived from the entity's sequence version and a `Last-Modified` header. A subsequent mutation that sends `If-Match: "5"` gets a `412 Precondition Failed` if the entity has moved on since version 5; if you require the header to be present and it's missing, the engine returns `428`.
-
-On the read side, `If-None-Match` and `If-Modified-Since` work as you'd expect — a matching version yields `304 Not Modified` with no body.
-
-[`37-conditional-requests`](tests/e2e/37-conditional-requests.e2e-test.ts) covers the full set of status codes.
-
-### Requiring a scope to call an operation
-
-If you want to gate a behaviour on the caller's permissions, add `required_scopes` to the `match` block. The engine reads the actor from the request (either the simulation bearer token or a verified JWT, depending on your auth mode). A request with no recognisable actor returns 401; a recognised actor that lacks the required scope returns 403.
-
-```yaml
-match:
-  operationId: markLeadDNC
-  required_scopes:
-    - manager
-```
-
-The simulation bearer format is `Authorization: Bearer alice:manager,lead:write`, which lets you test different role combinations without issuing real tokens.
-
-[`05-rbac`](tests/e2e/05-rbac.e2e-test.ts) exercises both the allowed and denied paths.
-
-### Verifying real JWTs from your auth server
-
-If you want the simulation to enforce the same token rules as your production service, configure JWT auth. The engine verifies the signature, checks `alg` against your allow-list, and validates `exp`, `nbf`, `iss`, and `aud`. The actor id and scopes are extracted from whichever claims you name in `subject_claim` and `scopes_claim`, so the same RBAC rules apply regardless of auth mode.
-
-```yaml
-auth:
-  mode: jwt
-  jwt:
-    secret: "your-shared-secret"
-    algorithm: HS256
-    issuer: "potemkin-test"
-    audience: "potemkin-api"
-    subject_claim: "sub"
-    scopes_claim: "scopes"
-```
-
-[`41-jwt-auth`](tests/e2e/41-jwt-auth.e2e-test.ts) is the worked example.
-
-### Simulating cookie-based login and CSRF protection
-
-If you want to test a session-authenticated flow — including login, logout, and CSRF enforcement — configure session auth. Clients POST credentials to `login_path` and receive a `Set-Cookie`; subsequent requests carry that cookie. Mutations must also supply the `csrf_header` value; requests that omit it are rejected before any behaviour is evaluated. Sessions expire after `ttl_seconds`.
-
-```yaml
-auth:
-  mode: session
-  session:
-    cookie_name: "potemkin_sid"
-    ttl_seconds: 3600
-    login_path: "/sessions"
-    logout_path: "/sessions/current"
-    csrf_header: "x-csrf-token"
-```
-
-[`42-session-auth`](tests/e2e/42-session-auth.e2e-test.ts) walks through login, an authenticated mutation, and a CSRF rejection.
-
----
-
-## Workflows, reactions, and side effects
-
-### Coordinating a multi-step workflow with automatic rollback
-
-If you want to model a saga — a sequence of operations across boundaries that must all succeed or all be undone — declare it in the global `sagas` config. The saga runs after the primary Unit of Work commits, so the trigger event is already persisted when the steps begin. Each step dispatches a command to a boundary; if any step fails, the engine compensates the already-completed steps in reverse order.
-
-Lifecycle events (`SagaStarted`, `SagaStepCompleted`, `SagaStepFailed`, `SagaCompensated`, `SagaFailed`) are recorded under the `__saga__` boundary, giving you a full audit trail you can query.
-
-```yaml
-sagas:
-  - name: OrderFulfillmentSaga
-    trigger:
-      boundary: Order
-      intent: mutation
-      condition: "event.type == 'OrderPlaced'"
-    steps:
-      - name: reserveInventory
-        boundary: Reservation
-        intent: creation
-        target_id: "$uuidv7()"
-        payload:
-          orderId: "event.aggregateId"
-        compensation:
-          intent: mutation
-          operationId: cancelReservation
-          payload:
-            reason: "'saga-failed'"
-```
-
-[`63-saga-compensation`](tests/e2e/63-saga-compensation.e2e-test.ts) forces a step failure and asserts the compensation chain; the happy path is in [`12-saga-compensation`](tests/e2e/12-saga-compensation.e2e-test.ts).
-
-### Building a cross-boundary read model
-
-If you want a materialised view that aggregates events from more than one boundary — say, a campaign dashboard that counts leads and opportunities together — use a derived projection. The projection subscribes to named event types across boundaries, applies patch operations as events arrive, and is exposed at `GET /_admin/derived/:name`.
-
-The `key` field is a CEL expression evaluated on each event to determine which projection entry to update, so you can fan events from multiple aggregates into a single keyed read model.
-
-```yaml
-derived_projections:
-  - name: CampaignDashboard
-    key: "event.payload.campaignId"
-    subscribe:
-      - "Lead:LeadCreated"
-      - "Opportunity:OpportunityCreated"
-    reduce:
-      - on: "Lead:LeadCreated"
-        patches:
-          - op: add
-            path: /leads
-            value: "${0}"
-```
-
-[`10-full-crm-flow`](tests/e2e/10-full-crm-flow.e2e-test.ts) updates and verifies the dashboard projection.
-
-### Running custom logic that CEL can't express
-
-If you want to compute something — a scoring algorithm, a lookup table, a transformation — that goes beyond what CEL supports, author a `@Script`-annotated TypeScript class in a scanned `.ts` file and reference it as `ts:<id>` anywhere a CEL expression is accepted (reducers excepted). The YAML holds only the id; there is no inline code in the boundary file.
-
-First, declare the scan glob in `potemkin.yaml`:
-
-```yaml
-typescript:
-  scan:
-    - include:
-        - "scripts/**/*.ts"
-      exclude:
-        - "**/*.test.ts"
-        - "**/*.d.ts"
-```
-
-Then author the class in the scanned directory:
-
-```typescript
-// scripts/computeScore.ts
-import { Script, type ScriptContext } from '@potemkin/sdk';
-
-@Script('computeScore')
-export class ComputeScore {
-  run(ctx: ScriptContext): number {
-    const base: Record<string, number> = { REFERRAL: 80, WEBSITE: 50 };
-    return base[ctx.command.payload['source'] as string] ?? 30;
-  }
-}
-```
-
-Then reference the id in the YAML — no `scripts:` block required:
-
-```yaml
-event_catalog:
-  - type: LeadCreated
-    payload_template:
-      score: "ts:computeScore"
-```
-
-Scanned scripts execute as trusted host code. The `node:vm` context used during boot-time scanning prevents accidental imports of `fs`, `net`, `process`, and similar modules, but it is not a security sandbox — it does not prevent a malicious or untrusted file from reaching the host process via prototype-chain access. Only load `.ts` files that are version-controlled in the same repository as the rest of the simulation. An unknown `ts:<id>` halts boot with `BOOT_ERR_DSL_REFERENCE`. The removed inline `scripts[].code` form halts boot with `BOOT_ERR_REMOVED_SYNTAX`.
-
-[`67-annotation-script`](tests/e2e/67-annotation-script.e2e-test.ts) shows the scanned `@Script` setting a score on lead creation end-to-end using the [`tests/fixtures/ts-script/`](tests/fixtures/ts-script/) fixture.
-
-### Owning an event's projection in TypeScript
-
-If you want full programmatic control over how an event updates aggregate state — beyond what patch operations can express — export a TypeScript `reducer()` for a `(boundary, eventType)` pair. Potemkin scans and registers these at boot via a glob declared in `potemkin.yaml` under `typescript.scan`; the TypeScript reducer takes precedence over any YAML patches declared for the same event.
-
-[`53-ts-reducer-end-to-end`](tests/e2e/53-ts-reducer-end-to-end.e2e-test.ts) runs a function-style reducer through the full stack.
-
-### Reacting to another boundary's events without coupling the source
-
-If you want one operation to atomically update several boundaries — and you want each downstream boundary to subscribe on its own terms, without the source knowing about any of them — declare `reactions` in the reacting boundaries' files. Each reaction names the event it subscribes to, the event it will emit, and a `target` CEL expression that resolves to the affected aggregate id. The source boundary needs no changes at all: add a new subscriber by dropping a new YAML file with a `reactions:` block, and the source is unmodified.
-
-All reaction-emitted events are committed in the same atomic Unit of Work as the original event. Any reaction failure aborts the entire transaction. Reactions can chain — a reaction-emitted event may itself trigger further reactions in other boundaries — without being bounded by the `dispatch_commands` depth limit of 5. Termination is guaranteed by a fired-set that allows each `(reaction, aggregate)` pair to fire at most once per UoW, plus an event budget backstop.
-
-```yaml
-# inventory.yaml — declares its own subscription; order.yaml is untouched
-reactions:
-  - name: reserve-inventory-on-order-placed
-    on: "Order:OrderPlaced"
-    intent: creation
-    emit: InventoryReserved
-```
-
-```yaml
-# notification.yaml — independently subscribes to the same source event
-reactions:
-  - name: queue-notification-on-order-placed
-    on: "Order:OrderPlaced"
-    intent: creation
-    emit: NotificationQueued
-```
-
-```yaml
-# audit.yaml — a third subscriber; source still has no reactions key
-reactions:
-  - name: record-audit-on-order-placed
-    on: "Order:OrderPlaced"
-    intent: creation
-    emit: AuditRecorded
-```
-
-A single `POST /orders` then commits four events — `OrderPlaced`, `InventoryReserved`, `NotificationQueued`, and `AuditRecorded` — atomically. The nine-boundary variant in [`66-reactions-fanout`](tests/e2e/66-reactions-fanout.e2e-test.ts) chains six hops deep (past the dispatch depth limit) and fans out to three independent legs, all in one request.
-
-### Updating an existing entity from a reaction, only when a condition holds
-
-The reactions above all create new aggregates. If instead you want a reaction to *mutate* an entity that already exists — and only fire when the trigger event meets some condition — set `intent: mutation`, gate it with `when:`, point `target:` at the existing aggregate id, and shape the emitted event with a `payload:` override:
-
-```yaml
-# warehouse.yaml — reacts to an order, but only allocates stock for non-empty orders
-reactions:
-  - name: allocate-stock-on-order-placed
-    on: "Order:OrderPlaced"
-    when: "event.payload.qty > 0"          # skip the reaction entirely when false
-    intent: mutation
-    target: "'warehouse-main'"             # CEL resolving to an existing aggregate id
-    emit: StockAllocated
-    payload:                               # merged over the event's payload_template
-      orderId:      "event.aggregateId"
-      allocatedQty: "event.payload.qty"
-```
-
-When `when:` evaluates false the reaction does not fire and the target is left untouched; when it holds, the mutation lands on the targeted aggregate with the overridden payload. `when:`, `target:`, and `payload:` evaluate against the trigger event (`event`, with `payload` aliasing `event.payload`). The gated-mutation reaction is exercised against a seeded warehouse aggregate in [`66-reactions-fanout`](tests/e2e/66-reactions-fanout.e2e-test.ts), which asserts both the skipped and the fired paths.
-
-### Calling out to another service when an event fires
-
-If you want to notify an external system whenever a subscribed event is emitted — a payment processor, a fulfillment service, a logging endpoint — configure an outbound webhook. The engine POSTs the payload to your URL after the Unit of Work commits, signs the body with `x-potemkin-signature: sha256=<hmac>`, and retries with backoff up to `maxAttempts` times on failure.
-
-The `url` and `payload` fields are CEL expressions, so you can construct the destination and body dynamically from the event.
-
-```yaml
-webhooks:
-  - name: shipment-created-webhook
-    trigger:
-      boundary: Shipment
-      condition: "event.type == 'ShipmentCreated'"
-    url: "'http://127.0.0.1:19877/webhook'"
-    secret: "your-webhook-secret"
-    payload:
-      shipmentId: "${event.aggregateId}"
-      event: "${event.type}"
-    retry:
-      maxAttempts: 3
-      delayMs: 100
-```
-
-[`64-webhook-hmac`](tests/e2e/64-webhook-hmac.e2e-test.ts) stands up a local receiver and verifies the signature.
-
----
-
-## Shaping responses
-
-### Adding hypermedia links to a response
-
-If you want responses to carry discoverable action links alongside data, enable HATEOAS in your global config and annotate each behaviour that should surface a link. The engine adds `_links.self` automatically; conditional action links appear only when their predicate is true for the current state.
-
-In the global config:
-
-```yaml
-hateoas:
-  enabled: true
-  self_links: true
-```
-
-On each behaviour that should surface an action link:
-
-```yaml
-- name: qualifyLead
-  link_name: qualify
-  link_condition: "state.status == 'CONTACTED'"
-  match:
-    operationId: qualifyLead
-    method: POST
-```
-
-Per-boundary static links (a list of `rel`/`href` pairs under `hateoas:`) are also available when you just need fixed URLs that do not depend on state. [`44-hateoas`](tests/e2e/44-hateoas.e2e-test.ts) verifies both the self link and the state-dependent action links.
-
-### Hiding a field from a response
-
-If you want to strip an internal field so it never reaches the caller, list it under `mask:` on the boundary. The field is removed from every response that boundary emits — collections, single-entity GETs, and mutation responses alike.
-
-```yaml
-mask:
-  - internalNotes
-```
-
-The engine-only [`71-mask-fields`](tests/e2e/71-mask-fields.e2e-test.ts) test walks the full path: the masked fields are stripped from the served response while the rest of the body is untouched. Masking is applied as a response-shaping step after contract validation — over the forwarding endpoint the removals travel in the response's `_patches` envelope for the consumer to apply, so a contract-required field can be masked without failing validation. The Specmatic-stack [`56-response-mutations`](tests/e2e/56-response-mutations.e2e-test.ts) test confirms the same through the plugin.
-
-### Marking an endpoint deprecated
-
-If you want the engine to emit RFC 8594 deprecation headers on a boundary's responses, add a `deprecated:` block with a date, an optional sunset timestamp, and a successor URL. The engine sets `Deprecation` and `Sunset` as HTTP-dates and adds a `Link` header pointing to the replacement.
-
-```yaml
-deprecated:
-  date: "2025-01-01"
-  sunset: "2027-01-01T00:00:00Z"
-  replacement: /v2/documents
-```
-
-The deprecation/sunset headers are checked in [`45-polish-features`](tests/e2e/45-polish-features.e2e-test.ts), and masking combined with deprecation in [`56-response-mutations`](tests/e2e/56-response-mutations.e2e-test.ts).
-
-### Adding security headers to every response
-
-If you want standard hardening headers on every response the engine emits — including error and admin responses — enable `security_headers` in your global config. Each flag maps to the corresponding header, and `custom_headers` lets you append anything else.
-
-```yaml
-security_headers:
-  enabled: true
-  hsts: true
-  nosniff: true
-  frame_deny: true
-  referrer_policy: "strict-origin-when-cross-origin"
-  custom_headers:
-    X-Custom-Sim-Header: "potemkin-sim"
-```
-
-[`38-security-headers`](tests/e2e/38-security-headers.e2e-test.ts) checks the headers on success, error, and admin responses.
-
-### Slowing a boundary down on purpose
-
-If you want to simulate a sluggish downstream, add a `latency:` block to the boundary. Use `fixed_ms` for a deterministic delay, or `min_ms`/`max_ms` for a uniform-random sample drawn fresh on each request. The two stack — supply all three and each response waits `fixed_ms` plus a random draw from `[min_ms, max_ms]`.
-
-```yaml
-latency:
-  fixed_ms: 20      # deterministic floor
-  min_ms: 30        # plus a uniform-random sample in [30, 60]
-  max_ms: 60
-```
-
-[`65-latency`](tests/e2e/65-latency.e2e-test.ts) measures the fixed delay, the random range, and the stacked combination, asserting each response is held back by at least the configured floor.
-
-### Routing by URL version prefix
-
-If you want requests under `/v1/...` and `/v2/...` to resolve to the same boundaries while tagging each response with which version handled it, enable versioning in the global config. The engine strips the prefix before matching routes and sets `X-Potemkin-Version` on every response.
-
-```yaml
-versioning:
-  enabled: true
-  versions:
-    - version: "v1"
-      prefix: "/v1"
-    - version: "v2"
-      prefix: "/v2"
-      default: true
-```
-
-This applies on the in-process gateway HTTP path (engine-direct mode); it does not run on the `/_engine/forward` body, where the path arrives already resolved from the plugin.
-
-[`47-api-versioning`](tests/e2e/47-api-versioning.e2e-test.ts) checks that each prefix routes to the right version label.
-
----
-
-## Chaos and runtime control
-
-### Returning an error for matching requests
-
-If you want a deterministic error response for a specific scenario — a registry timeout, a downstream that rejects certain payloads — declare a fault rule. Fault rules are evaluated before behaviours, so the matched request never reaches event processing.
-
-```yaml
-fault_rules:
-  - name: dnc-registry-slow
-    match:
-      boundary: LeadDNC
-      intent: mutation
-      condition: "command.payload.reason == 'REGISTRY_CHECK'"
-    response:
-      status: 504
-      body:
-        error: DNC_REGISTRY_TIMEOUT
-      delay_ms: 100
-```
-
-You can also target requests by header. The `potemkin:` shorthand in a `match` block expands to the corresponding `X-Potemkin-*` header check, so you do not need to spell out the full header name:
-
-```yaml
-  - name: rate-limit-via-header
-    match:
-      condition: "true"
-      potemkin:
-        rate_limit: "*"
-    response:
-      status: 429
-      body:
-        error: RATE_LIMITED
-```
-
-[`30-fault-injection`](tests/e2e/30-fault-injection.e2e-test.ts) is the main example; resilience and cascade tolerance are in [`25-fault-resilience`](tests/e2e/25-fault-resilience.e2e-test.ts), and header/method matching in [`40-header-matching`](tests/e2e/40-header-matching.e2e-test.ts).
-
-### Injecting chaos per request
-
-If you want to trigger a fault on a single request without touching YAML, send one of the chaos request headers. They stack on top of any YAML fault rules and take effect for that request only.
-
-- `X-Potemkin-Force-Latency: <ms>` — add a delay before the response.
-- `X-Potemkin-Force-Status: <code>` — override the response status code.
-- `X-Potemkin-Error-Class: <name>` — return a named error class.
-
-This is useful during exploratory testing or when you want to script a flaky-dependency scenario from a test without changing fixture files. [`46-chaos-headers`](tests/e2e/46-chaos-headers.e2e-test.ts) exercises each header.
-
-### Driving engine behaviour at request time with control headers
-
-If you want to inspect what a mutation would produce without committing it, travel a read back to an earlier version, or otherwise adjust engine behaviour for one call, use the `X-Potemkin-*` control headers. They cover seven tiers of runtime behaviour. Canonical header names are defined in [`src/http/potemkinHeaders.ts`](src/http/potemkinHeaders.ts).
-
-Two common ones:
-
-- `X-Potemkin-Read-At-Version: <n>` — return state as it was at event sequence `n` (time-travel read).
-- `X-Potemkin-Dry-Run: true` — run the full evaluation pipeline including guards, conditions, and event hydration, then discard the result without writing to the event log.
-
-These headers are how you build test assertions around idempotency, version history, and speculative execution without spinning up separate engine instances. [`48-control-headers`](tests/e2e/48-control-headers.e2e-test.ts) drives every tier through the stack.
-
-### Admin surface access model
-
-The `/_admin/*` endpoints are fail-open by default: when `ADMIN_TOKEN` is not set, all admin routes — including `/_admin/reset`, `/_admin/state`, `/_admin/events`, clock manipulation, and fault injection — are open to any caller on the network. This is intentional for local development and CI where the engine runs in a trusted environment.
-
-For any deployment reachable from an untrusted network, set the `ADMIN_TOKEN` environment variable. All admin routes then require `Authorization: Bearer <token>`.
-
-`/_admin/state` and `/_admin/events` return raw, unmasked state and event payloads by design — they are debugging surfaces. Do not expose them on an untrusted network, even with `ADMIN_TOKEN` set, if the state contains sensitive data.
-
----
-
-## Running inside Specmatic
-
-### Connecting the engine to the Specmatic stub
-
-If you want the same OpenAPI contract to serve both Specmatic's stateless stub and Potemkin's stateful simulation, add the Kotlin plugin to the Specmatic classpath. The plugin intercepts requests for routes registered as stateful and forwards them to the engine at `/_engine/forward`; requests for unregistered routes fall through to the normal Specmatic stub.
-
-[`03-forwarding`](tests/e2e/03-forwarding.e2e-test.ts) drives a request through the full Specmatic → plugin → engine path.
-
-### Letting the plugin find your stateful routes
-
-If you want the plugin to know which routes are handled by the engine rather than the stub, the engine exposes `/_engine/routes`. The plugin calls this on startup and uses the result to decide which incoming requests to intercept. Seeded entities are pushed into Specmatic's stub registry via `/_engine/fixtures` so a seeded GET is served without a round-trip to the engine.
-
-Route discovery is covered in [`01-route-discovery`](tests/e2e/01-route-discovery.e2e-test.ts) and fixture push in [`02-fixture-push`](tests/e2e/02-fixture-push.e2e-test.ts).
-
-### Driving seeds, workflows, and overlays through the stub
-
-If you want seeded data, scripted multi-step workflows, or response overlays to be visible to a client that talks to the Specmatic stub address (rather than the engine directly), use forward blocks. The plugin routes these through the stub, so the client sees a consistent view regardless of which layer handled each request.
-
-[`57-forward-blocks-and-jwt`](tests/e2e/57-forward-blocks-and-jwt.e2e-test.ts) proves the seeds, workflow, and overlay forms all reach the client through Specmatic. The engine-only [`70-seeds-engine-only`](tests/e2e/70-seeds-engine-only.e2e-test.ts) test verifies the same seed compilation and the cross-file `use:` mapping without needing the JVM.
-
-### Handling engine restarts and hot reload
-
-If you want the Specmatic plugin to stay in sync when the engine restarts — for example, during test isolation resets or fixture changes — the engine sends a `/_potemkin/ready` signal on boot and a `/shutdown` signal before stopping. The plugin monitors health and re-fetches fixtures after a restart, so the stub registry stays consistent.
-
-The shutdown and ready signals are in [`08-shutdown-notification`](tests/e2e/08-shutdown-notification.e2e-test.ts), hot reload in [`09-fixture-hot-reload`](tests/e2e/09-fixture-hot-reload.e2e-test.ts), and health monitoring in [`07-reliability`](tests/e2e/07-reliability.e2e-test.ts).
-
-### Validating requests against the contract
-
-If you want the engine to reject structurally invalid requests before they reach behaviour evaluation, that happens by default. Every inbound request is validated against the OpenAPI contract; anything that violates it gets a `400 CONTRACT_VIOLATION` response and produces no events.
-
-[`33-contract-validation`](tests/e2e/33-contract-validation.e2e-test.ts) sends a range of invalid payloads and confirms no events are written.
-
----
-
-## Further reference
-
-- **[docs/dsl.md](docs/dsl.md)** — the complete DSL reference (every field, boot/runtime errors, worked examples, and the response-generation section).
-- **[docs/cel.md](docs/cel.md)** — the CEL expression language: built-ins, operators, phase restrictions, and determinism guarantees.
-- **[docs/specmatic.md](docs/specmatic.md)** — the Specmatic integration guide.
-- **[docs/design/multi-boundary-reactions.md](docs/design/multi-boundary-reactions.md)** — design spec for multi-boundary atomic reactions (R1–R5, R7 shipped); covers grammar, semantics, CEL context, termination, and ordering.
-- **[tests/e2e/README.md](tests/e2e/README.md)** — how to run the e2e harness (engine-only vs full stack).
+The current caveats are:
+
+- The default conformance command covers the contract-invalid 400 layer. Stateful 404/422 cases
+  remain a separate behaviour concern and are not silently folded into that gate.
+- The positive conformance layer needs Java, the plugin JAR, and the cached Specmatic artifact.
+- MakerX Verify passes the lint, formatting, type, unused-code, duplication, and test gates.
+
+## Current work
+
+The remaining implementation work is concentrated in these areas:
+
+1. **Complete TypeScript/YAML parity.** The direct definition model, builders, functional helpers,
+   typed contexts, direct boot path, lifecycle runtime, and parity normalizer exist. The remaining
+   work is the long tail of typed constructors and runtime coverage for every YAML variant,
+   optional field, discriminated union, and valid cross-feature combination. The authoritative
+   inventory is §17 of [`docs/design/typescript-yaml-parity.md`](docs/design/typescript-yaml-parity.md).
+
+2. **Specmatic conformance gate — implemented for the bounded 400 layer.** The verifier, JUnit
+   parser, allowlist handling, CLI, generated negative cases, and positive-example selection exist.
+   The default run is the contract-invalid layer; the exported positive corpus and fixture Layer-B
+   verifier are also wired through the real Specmatic JVM path. Route- and status-scoped stateful
+   runs remain the bounded conformance checks while the broader generated mutation surface is
+   completed. See [`docs/design/specmatic-conformance-gate.md`](docs/design/specmatic-conformance-gate.md).
+
+3. **Specmatic example export — implemented for the deterministic engine path.**
+   `pnpm run export:examples` writes stable request/response examples and supports `--check`.
+   The CRM and Stripe repositories contain generated Tier-1 baseline and contract-backed Tier-2
+   state-machine/side-effect snapshots, including explicit branch and saga drives declared by
+   boundary `export:` blocks. The plain Specmatic harness independently serves every
+   generated example without the Potemkin engine or plugin, including Tier-3 declared-error
+   examples. See [`docs/design/specmatic-export-examples.md`](docs/design/specmatic-export-examples.md).
+
+4. **Contract-backed behavioral equivalence — implemented locally.** The retained equivalence
+   harness compares local Potemkin runtimes, while the Stripe example is exercised through its
+   vendored OpenAPI contract and the Specmatic JVM. No external provider or Stripe API credentials
+   are used by the repository test path. See [`docs/design/specmatic-equivalence-testing.md`](docs/design/specmatic-equivalence-testing.md).
+
+5. **Contract-shaped errors — implemented.** Fallback, gateway, and forwarding failures use the
+   matched operation's exact or default error schema, with deterministic values and boot-time
+   validation for static fault bodies.
+
+6. **Static model analysis — implemented as MODEL1/MODEL2.** `/_admin/model`
+   exposes the extracted model, and lint reports structural findings. Inference-uncertain dead
+   states are warnings; explicit unreachable states and invalid suppressions remain errors.
+
+7. **Plugin reflection hardening — implemented.** Reflection is centralized, version-checked, and
+   covered by Kotlin tests so an incompatible Specmatic surface fails clearly.
+
+8. **Tooling and documentation cleanup.** Node 24, pnpm, the production build, contract test
+   script, and lint errors are fixed. Remaining work is broader example coverage for the parity
+   long tail and keeping the README and design matrices aligned with the implementation.
+
+9. **Test suite re-packaging and value review.** Inventory the tests by behavior and layer,
+   regroup them under descriptive unnumbered names, and remove migration-only, duplicate, or
+   low-value tests only after their useful assertions are protected by canonical unit, runtime,
+   YAML/TypeScript parity, or real Specmatic-backed E2E coverage. The acceptance checklist is
+   tracked as REQ-98 in [`requirements.md`](requirements.md).
+
+10. **Full layer and module-structure sweep.** Audit the source tree and public package boundaries,
+    then refactor misplaced or mixed-responsibility code so the YAML/CEL, TypeScript SDK/loader,
+    model, runtime, transport, CLI, and composition layers follow clear conventional TypeScript
+    module boundaries. The acceptance checklist is tracked as REQ-99 in
+    [`requirements.md`](requirements.md).
+
+## Reference material
+
+- [`requirements.md`](requirements.md): EARS requirements and BDD traceability.
+- [`docs/dsl.md`](docs/dsl.md): YAML grammar, lifecycle, errors, composition, response generation, and limits.
+- [`docs/cel.md`](docs/cel.md): CEL operators, built-ins, phase rules, and shared TypeScript helpers.
+- [`docs/specmatic.md`](docs/specmatic.md): plugin and forwarding notes.
+- [`docs/design/typescript-yaml-parity.md`](docs/design/typescript-yaml-parity.md): planned TypeScript authoring model.
+- [`tests/e2e/README.md`](tests/e2e/README.md): Specmatic-backed E2E harness.
+- [`examples/crm/README.md`](examples/crm/README.md): complete CRM simulation.
+- [`examples/stripe/README.md`](examples/stripe/README.md): stateful Stripe subset.
+
+## Contributing
+
+When behavior changes, update the requirement or design document, add a focused test, and update the example that demonstrates the behavior. Keep YAML and the future TypeScript model semantically equivalent. Avoid adding a configuration field without documenting its phase, error behavior, and reset behavior.

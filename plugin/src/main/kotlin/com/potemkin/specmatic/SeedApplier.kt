@@ -3,7 +3,7 @@ package com.potemkin.specmatic
 import org.slf4j.LoggerFactory
 
 /**
- * Compiles `seeds[]` from potemkin.yaml and registers them with Specmatic as
+ * Compiles `seeds[]` from potemkin.yml and registers them with Specmatic as
  * dynamic expectations via [SpecmaticStubBridge] (which calls
  * `httpStub.setExpectation(ScenarioStub)`).
  *

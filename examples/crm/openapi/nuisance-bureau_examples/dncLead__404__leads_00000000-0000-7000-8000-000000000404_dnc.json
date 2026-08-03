@@ -1,0 +1,20 @@
+{
+  "http-request": {
+    "method": "POST",
+    "path": "/leads/00000000-0000-7000-8000-000000000404/dnc",
+    "body": {}
+  },
+  "http-response": {
+    "status": 404,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "body": {
+      "error": "ENTITY_ABSENCE",
+      "message": "Entity '00000000-0000-7000-8000-000000000404' not found in boundary 'LeadDNC'",
+      "details": {
+        "code": "ENTITY_ABSENCE"
+      }
+    }
+  }
+}

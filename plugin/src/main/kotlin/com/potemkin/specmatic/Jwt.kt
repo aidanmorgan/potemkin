@@ -15,7 +15,7 @@ import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
 /**
- * Authentication policy from the `auth:` block of potemkin.yaml.
+ * Authentication policy from the `auth:` block of potemkin.yml.
  *
  *  - `mode: jwt` enables JWT verification on the request interceptor.
  *  - `algorithm: HS256 | RS256` selects the verification scheme.
@@ -31,6 +31,8 @@ data class AuthConfig(
     val secret: String? = null,
     val jwks: List<Jwk> = emptyList(),
     val jwksUrl: String? = null,
+    val issuer: String? = null,
+    val audience: String? = null,
     val realm: String = "potemkin",
 ) {
     val isJwt: Boolean get() = mode.equals("jwt", ignoreCase = true)
@@ -51,6 +53,8 @@ data class AuthConfig(
             val secret = field("secret") as? String
             val realm = field("realm") as? String ?: "potemkin"
             val jwksUrl = field("jwksUrl") as? String
+            val issuer = field("issuer") as? String
+            val audience = field("audience") as? String
             val jwks = when (val j = field("jwks")) {
                 null -> emptyList()
                 is List<*> -> j.map { entry ->
@@ -73,6 +77,8 @@ data class AuthConfig(
                 secret = secret,
                 jwks = jwks,
                 jwksUrl = jwksUrl,
+                issuer = issuer,
+                audience = audience,
                 realm = realm,
             )
         }
@@ -159,9 +165,24 @@ class HttpJwksProvider(
 }
 
 /** Result of verifying a token: either the decoded claims, or a failure reason. */
+enum class JwtFailureCode {
+    JWT_MALFORMED,
+    JWT_BLANK_SECRET,
+    JWT_UNSUPPORTED_ALG,
+    JWT_INVALID_SIGNATURE,
+    JWT_EXPIRED,
+    JWT_NOT_YET_VALID,
+    JWT_INVALID_ISSUER,
+    JWT_INVALID_AUDIENCE,
+    JWT_AUTHENTICATION_FAILED,
+}
+
 sealed class JwtResult {
     data class Valid(val claims: Map<String, Any?>) : JwtResult()
-    data class Invalid(val reason: String) : JwtResult()
+    data class Invalid(
+        val reason: String,
+        val code: JwtFailureCode = JwtFailureCode.JWT_AUTHENTICATION_FAILED,
+    ) : JwtResult()
 }
 
 /**
@@ -183,7 +204,7 @@ class JwtVerifier(
 
     fun verify(token: String): JwtResult {
         val parts = token.split(".")
-        if (parts.size != 3) return JwtResult.Invalid("token is not a well-formed JWS (expected 3 segments)")
+        if (parts.size != 3) return invalid("token is not a well-formed JWS (expected 3 segments)", JwtFailureCode.JWT_MALFORMED)
 
         val header: Map<String, Any?>
         val claims: Map<String, Any?>
@@ -191,20 +212,20 @@ class JwtVerifier(
             header = decodeJson(parts[0])
             claims = decodeJson(parts[1])
         } catch (e: Exception) {
-            return JwtResult.Invalid("token header/payload is not valid base64url JSON: ${e.message}")
+            return invalid("token header/payload is not valid base64url JSON: ${e.message}", JwtFailureCode.JWT_MALFORMED)
         }
 
         val alg = header["alg"] as? String
-            ?: return JwtResult.Invalid("token header missing 'alg'")
+            ?: return invalid("token header missing 'alg'", JwtFailureCode.JWT_MALFORMED)
         if (!alg.equals(config.algorithm, ignoreCase = true)) {
-            return JwtResult.Invalid("token alg '$alg' does not match configured algorithm '${config.algorithm}'")
+            return invalid("token alg '$alg' does not match configured algorithm '${config.algorithm}'", JwtFailureCode.JWT_UNSUPPORTED_ALG)
         }
 
         val signingInput = (parts[0] + "." + parts[1]).toByteArray(Charsets.US_ASCII)
         val signature = try {
             urlDecoder.decode(parts[2])
         } catch (e: Exception) {
-            return JwtResult.Invalid("signature is not valid base64url")
+            return invalid("signature is not valid base64url", JwtFailureCode.JWT_MALFORMED)
         }
 
         val sigFailReason: String? = when (alg.uppercase()) {
@@ -213,16 +234,30 @@ class JwtVerifier(
                 val rs256Result = verifyRs256(signingInput, signature, header["kid"] as? String)
                 if (rs256Result is JwtResult.Invalid) return rs256Result else null
             }
-            else -> return JwtResult.Invalid("unsupported alg '$alg'")
+            else -> return invalid("unsupported alg '$alg'", JwtFailureCode.JWT_UNSUPPORTED_ALG)
         }
-        if (sigFailReason != null) return JwtResult.Invalid(sigFailReason)
+        if (sigFailReason != null) return invalid(sigFailReason, JwtFailureCode.JWT_INVALID_SIGNATURE)
 
         val now = clockSeconds()
         (claims["exp"] as? Number)?.let {
-            if (now >= it.toLong()) return JwtResult.Invalid("token expired")
+            if (now >= it.toLong()) return invalid("token expired", JwtFailureCode.JWT_EXPIRED)
         }
         (claims["nbf"] as? Number)?.let {
-            if (now < it.toLong()) return JwtResult.Invalid("token not yet valid (nbf)")
+            if (now < it.toLong()) return invalid("token not yet valid (nbf)", JwtFailureCode.JWT_NOT_YET_VALID)
+        }
+
+        config.issuer?.let { expected ->
+            if (claims["iss"] != expected) {
+                return invalid("token issuer does not match configured issuer", JwtFailureCode.JWT_INVALID_ISSUER)
+            }
+        }
+        config.audience?.let { expected ->
+            val matches = when (val actual = claims["aud"]) {
+                is String -> actual == expected
+                is List<*> -> actual.any { it == expected }
+                else -> false
+            }
+            if (!matches) return invalid("token audience does not match configured audience", JwtFailureCode.JWT_INVALID_AUDIENCE)
         }
 
         return JwtResult.Valid(claims)
@@ -243,7 +278,7 @@ class JwtVerifier(
         val keys = jwksProvider.keys()
         val candidates = if (kid != null) {
             val matched = keys.filter { it.kid == kid }
-            if (matched.isEmpty()) return JwtResult.Invalid("no JWK matches kid '$kid'")
+            if (matched.isEmpty()) return invalid("no JWK matches kid '$kid'", JwtFailureCode.JWT_INVALID_SIGNATURE)
             matched
         } else {
             keys
@@ -262,8 +297,10 @@ class JwtVerifier(
                 // try next key
             }
         }
-        return JwtResult.Invalid("signature verification failed")
+        return invalid("signature verification failed", JwtFailureCode.JWT_INVALID_SIGNATURE)
     }
+
+    private fun invalid(reason: String, code: JwtFailureCode): JwtResult.Invalid = JwtResult.Invalid(reason, code)
 
     @Suppress("UNCHECKED_CAST")
     private fun decodeJson(segment: String): Map<String, Any?> {

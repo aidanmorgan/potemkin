@@ -1,5 +1,14 @@
-import type { OpenApiDoc, OpenApiOperation } from './loader.js';
-import type { VersioningConfig } from '../dsl/types.js';
+import type { OpenApiDoc, OpenApiOperation } from "./loader.js";
+
+/** Version routing options understood by the contract router. */
+export interface VersioningOptions {
+  readonly enabled?: boolean;
+  readonly versions?: readonly Readonly<{
+    readonly version: string;
+    readonly prefix: string;
+    readonly default?: boolean;
+  }>[];
+}
 
 export interface MatchedRoute {
   readonly contractPath: string;
@@ -30,20 +39,20 @@ export interface VersionResolution {
  */
 export function resolveVersion(
   path: string,
-  versioning: VersioningConfig | undefined,
+  versioning: VersioningOptions | undefined,
 ): VersionResolution {
   if (!versioning?.enabled || !versioning.versions || versioning.versions.length === 0) {
     return { path };
   }
 
-  const pathOnly = path.split('?')[0]!;
+  const pathOnly = path.split("?")[0]!;
 
   // Longest prefix first for deterministic specificity (e.g. /v1/beta over /v1).
   const sorted = [...versioning.versions].sort((a, b) => b.prefix.length - a.prefix.length);
   for (const v of sorted) {
     const prefix = v.prefix;
-    if (pathOnly === prefix || pathOnly.startsWith(prefix + '/')) {
-      const stripped = pathOnly.slice(prefix.length) || '/';
+    if (pathOnly === prefix || pathOnly.startsWith(prefix + "/")) {
+      const stripped = pathOnly.slice(prefix.length) || "/";
       return { path: stripped, version: v.version };
     }
   }
@@ -59,9 +68,9 @@ export function resolveVersion(
  */
 function staticPrefixLength(pathTemplate: string): number {
   return pathTemplate
-    .split('/')
-    .filter((seg) => seg.length > 0 && !seg.startsWith('{'))
-    .join('/').length;
+    .split("/")
+    .filter((seg) => seg.length > 0 && !seg.startsWith("{"))
+    .join("/").length;
 }
 
 /**
@@ -70,15 +79,15 @@ function staticPrefixLength(pathTemplate: string): number {
  */
 function templateToRegex(template: string): RegExp {
   const escaped = template
-    .split('/')
+    .split("/")
     .map((seg) => {
-      if (seg.startsWith('{') && seg.endsWith('}')) {
+      if (seg.startsWith("{") && seg.endsWith("}")) {
         const name = seg.slice(1, -1);
         return `(?<${name}>[^/]+)`;
       }
-      return seg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return seg.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     })
-    .join('\\/');
+    .join("\\/");
   return new RegExp(`^${escaped}$`);
 }
 
@@ -89,20 +98,16 @@ function templateToRegex(template: string): RegExp {
  * Deterministic ordering: templates with longer static prefixes are tried first,
  * ensuring /loans/active beats /loans/{id}.
  */
-export function matchRoute(
-  doc: OpenApiDoc,
-  method: string,
-  path: string,
-): MatchedRoute | null {
+export function matchRoute(doc: OpenApiDoc, method: string, path: string): MatchedRoute | null {
   const lowerMethod = method.toLowerCase();
 
   // Strip query string before matching so callers passing raw req.url still match.
-  const normalizedPath = path.split('?')[0]!;
+  const normalizedPath = path.split("?")[0]!;
 
   // Count the number of parameter (wildcard) segments in a path template.
   // Used as a secondary sort key: fewer params = more specific = wins ties.
   function paramSegmentCount(pathTemplate: string): number {
-    return pathTemplate.split('/').filter((seg) => seg.startsWith('{')).length;
+    return pathTemplate.split("/").filter((seg) => seg.startsWith("{")).length;
   }
 
   // Sort by descending static-prefix length; fewer param segments wins ties; lexicographic for full determinism.
@@ -129,7 +134,7 @@ export function matchRoute(
     const pathParams: Record<string, string> = {};
     if (match.groups) {
       for (const [key, value] of Object.entries(match.groups)) {
-        if (typeof value === 'string') {
+        if (typeof value === "string") {
           try {
             pathParams[key] = decodeURIComponent(value);
           } catch {

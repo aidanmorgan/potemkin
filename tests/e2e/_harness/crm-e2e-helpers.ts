@@ -6,12 +6,9 @@
  * used in integration tests with HTTP queries to /_admin/ endpoints.
  */
 
-
-import { execSync } from 'node:child_process';
-import { applyPatches, type Patch } from '../../../src/dsl/patches.js';
-import type { JsonValue } from '../../../src/types.js';
-
-export interface JsonObject { [key: string]: unknown }
+export interface JsonObject {
+  [key: string]: unknown;
+}
 export interface DomainEvent {
   eventId: string;
   boundary: string;
@@ -23,36 +20,10 @@ export interface DomainEvent {
   causedBy: string | null;
 }
 
-export interface ForwardedResponse {
+export interface PublicResponse {
   status: number;
   body: unknown;
   headers: Record<string, string>;
-  /**
-   * Response-mutation patches (HATEOAS / mask) carried by the engine for the
-   * consumer to apply. The Kotlin plugin applies these after Specmatic contract
-   * validation so masking a contract-required field does not fail validation.
-   * Applying these to `body` produces the client-visible (mutated) response.
-   */
-  _patches?: readonly Patch[];
-}
-
-/**
- * Apply the response-mutation patches from a ForwardedResponse to its base body,
- * mirroring the consumer contract (plugin or test harness).
- *
- * Response-mutation patches travel in `_patches` rather than being pre-applied to
- * `body` so the Kotlin plugin can pass the BASE body through Specmatic contract
- * validation first, then apply the patches to produce the client-visible response.
- * A `remove` on a present field succeeds; patches are applied in order.
- *
- * Use this in engine-only tests wherever you need to assert on the final
- * client-visible body (masked fields absent, HATEOAS links present).
- */
-export function applyForwardPatches(res: ForwardedResponse): JsonValue {
-  if (!res._patches || res._patches.length === 0) {
-    return res.body as JsonValue;
-  }
-  return applyPatches(res.body as JsonValue, res._patches as readonly Patch[], 'hateoas', { autoVivify: true }).newState;
 }
 
 export async function getGraphNode(engineUrl: string, id: string): Promise<JsonObject | null> {
@@ -67,7 +38,10 @@ export async function getAllEntities(engineUrl: string): Promise<Record<string, 
   return body.entities;
 }
 
-export async function getEventsByAggregate(engineUrl: string, aggregateId: string): Promise<DomainEvent[]> {
+export async function getEventsByAggregate(
+  engineUrl: string,
+  aggregateId: string,
+): Promise<DomainEvent[]> {
   const res = await fetch(`${engineUrl}/_admin/events?aggregateId=${aggregateId}`);
   const body = (await res.json()) as { events: DomainEvent[] };
   return body.events;
@@ -91,44 +65,47 @@ export async function getEventCount(engineUrl: string): Promise<number> {
   return body.eventCount;
 }
 
-export async function fwd(
-  engineUrl: string,
+export async function requestThroughSpecmatic(
+  stubUrl: string,
   method: string,
   path: string,
   body: unknown = null,
   headers: Record<string, string> = {},
   query: Record<string, string> = {},
-): Promise<ForwardedResponse> {
-  // Contract: the Kotlin plugin lowercases all header keys before POSTing a
-  // ForwardedRequest to the engine. The harness must honour the same contract so
-  // engine-direct tests exercise the real lowercased-key path (e.g. If-Match →
-  // if-match for optimistic-concurrency conflict detection).
-  const res = await fetch(`${engineUrl}/_engine/forward`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ method, path, headers: lowercaseKeys(headers), query, body }),
-  });
-  return res.json() as Promise<ForwardedResponse>;
-}
+): Promise<PublicResponse> {
+  const target = new URL(path, `${stubUrl.replace(/\/$/, "")}/`);
+  for (const [key, value] of Object.entries(query)) target.searchParams.set(key, value);
 
-/** Lowercase every key in a header map, matching the plugin's forwarding contract. */
-function lowercaseKeys(headers: Record<string, string>): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(headers)) {
-    out[k.toLowerCase()] = v;
+  // Specmatic may close its pooled keep-alive socket while the plugin is
+  // replacing dynamic expectations during a configuration reload. Explicitly
+  // close each E2E request so a subsequent request cannot reuse a socket that
+  // the JVM has already retired at that lifecycle boundary.
+  const requestHeaders: Record<string, string> = { connection: "close", ...headers };
+  if (body !== null && body !== undefined) requestHeaders["content-type"] ??= "application/json";
+
+  // Public request path: Specmatic validates the request, the plugin decides
+  // whether the route is stateful, and only then does it call Potemkin.
+  const res = await fetch(target, {
+    method,
+    headers: requestHeaders,
+    ...(body === null || body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+  const text = await res.text();
+  let responseBody: unknown = null;
+  if (text.length > 0) {
+    try {
+      responseBody = JSON.parse(text) as unknown;
+    } catch {
+      responseBody = text;
+    }
   }
-  return out;
+  return {
+    status: res.status,
+    body: responseBody,
+    headers: Object.fromEntries(res.headers.entries()),
+  };
 }
 
 export async function adminReset(engineUrl: string): Promise<void> {
-  await fetch(`${engineUrl}/_admin/reset`, { method: 'POST' });
-}
-
-export function javaAvailable(): boolean {
-  try {
-    execSync('java -version', { stdio: 'pipe' });
-    return true;
-  } catch {
-    return false;
-  }
+  await fetch(`${engineUrl}/_admin/reset`, { method: "POST" });
 }

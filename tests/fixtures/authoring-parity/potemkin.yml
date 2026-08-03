@@ -1,0 +1,8 @@
+version: 1
+specmatic: ./specmatic.yaml
+modules:
+  - dsl/audit.yaml
+  - dsl/global.yaml
+  - dsl/order-by-id.yaml
+  - dsl/order.yaml
+  - dsl/receipt.yaml

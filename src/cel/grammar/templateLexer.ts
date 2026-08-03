@@ -15,14 +15,17 @@ export interface Position {
 }
 
 export type TemplateToken =
-  | { type: 'TEXT';    text: string; pos: Position }
-  | { type: 'EXPR';    src: string;  pos: Position }   // CEL source inside ${...}
-  | { type: 'ESCAPED'; text: string; pos: Position };  // literal "${...}" body
+  | { type: "TEXT"; text: string; pos: Position }
+  | { type: "EXPR"; src: string; pos: Position } // CEL source inside ${...}
+  | { type: "ESCAPED"; text: string; pos: Position }; // literal "${...}" body
 
 export class TemplateLexError extends Error {
-  constructor(message: string, readonly pos: Position) {
+  constructor(
+    message: string,
+    readonly pos: Position,
+  ) {
     super(message);
-    this.name = 'TemplateLexError';
+    this.name = "TemplateLexError";
   }
 }
 
@@ -30,14 +33,17 @@ export class TemplateLexError extends Error {
  * Find the index of the brace that closes a `${`/`$${` opened just before
  * `start` (depth begins at 1). Returns -1 if unbalanced. Quote handling is not
  * needed for matching because CEL string literals cannot contain a raw `{`/`}`
- * that would unbalance — but to be safe and to mirror the legacy
- * `findClosingBrace`, we count braces directly (legacy did the same).
+ * that would unbalance — but to be safe and to mirror `findClosingBrace`,
+ * we count braces directly.
  */
 function findClosingBrace(s: string, start: number): number {
   let depth = 1;
   for (let i = start; i < s.length; i++) {
-    if (s[i] === '{') depth++;
-    else if (s[i] === '}') { depth--; if (depth === 0) return i; }
+    if (s[i] === "{") depth++;
+    else if (s[i] === "}") {
+      depth--;
+      if (depth === 0) return i;
+    }
   }
   return -1;
 }
@@ -48,32 +54,39 @@ export function lexTemplate(s: string): TemplateToken[] {
   let i = 0;
   let line = 1;
   let col = 1;
-  let buf = '';
+  let buf = "";
   let bufPos: Position = { line, col, offset: 0 };
 
   const posAt = (offset: number): Position => ({ line, col, offset });
 
   const flushText = (): void => {
     if (buf.length > 0) {
-      tokens.push({ type: 'TEXT', text: buf, pos: bufPos });
-      buf = '';
+      tokens.push({ type: "TEXT", text: buf, pos: bufPos });
+      buf = "";
     }
   };
 
-  const startBuf = (): void => { if (buf.length === 0) bufPos = posAt(i); };
+  const startBuf = (): void => {
+    if (buf.length === 0) bufPos = posAt(i);
+  };
 
   const advanceCols = (text: string): void => {
     for (const ch of text) {
-      if (ch === '\n') { line++; col = 1; } else { col++; }
+      if (ch === "\n") {
+        line++;
+        col = 1;
+      } else {
+        col++;
+      }
     }
   };
 
   while (i < s.length) {
     // Escaped interpolation: $${ body } → literal "${body}".
-    if (s[i] === '$' && s[i + 1] === '$' && s[i + 2] === '{') {
+    if (s[i] === "$" && s[i + 1] === "$" && s[i + 2] === "{") {
       const close = findClosingBrace(s, i + 3);
       if (close === -1) {
-        // Unbalanced — treat the '$' as plain text (legacy fallback).
+        // Unbalanced — treat the '$' as plain text.
         startBuf();
         buf += s[i];
         advanceCols(s[i]!);
@@ -82,14 +95,14 @@ export function lexTemplate(s: string): TemplateToken[] {
       }
       flushText();
       const body = s.slice(i + 3, close);
-      tokens.push({ type: 'ESCAPED', text: body, pos: posAt(i) });
+      tokens.push({ type: "ESCAPED", text: body, pos: posAt(i) });
       advanceCols(s.slice(i, close + 1));
       i = close + 1;
       continue;
     }
 
     // Interpolation: ${ expr }.
-    if (s[i] === '$' && s[i + 1] === '{') {
+    if (s[i] === "$" && s[i + 1] === "{") {
       const close = findClosingBrace(s, i + 2);
       if (close === -1) {
         startBuf();
@@ -100,7 +113,7 @@ export function lexTemplate(s: string): TemplateToken[] {
       }
       flushText();
       const src = s.slice(i + 2, close);
-      tokens.push({ type: 'EXPR', src, pos: posAt(i) });
+      tokens.push({ type: "EXPR", src, pos: posAt(i) });
       advanceCols(s.slice(i, close + 1));
       i = close + 1;
       continue;

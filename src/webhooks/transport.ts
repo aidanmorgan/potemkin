@@ -1,45 +1,51 @@
 /**
- * Default webhook transport — a thin adapter over the global `fetch` that
- * satisfies the injectable `FetchLike` contract used by `deliverWebhook`.
- *
- * Boot wires this onto the BootedSystem so production dispatch performs real
- * HTTP POSTs; tests inject a fake `FetchLike` instead so deliveries can be
- * asserted without a network. The adapter never throws for a non-2xx response —
- * it reports `ok`/`status` so the retry loop in `deliverWebhook` decides.
+ * Default webhook transport for the canonical RuntimeSystem. Tests inject
+ * the runtime port instead, so delivery can be asserted without a network.
  */
 
-import type { FetchLike } from './dispatcher.js';
+import type { RuntimeWebhookTransport } from "../model/runtime.js";
 
 /** Default per-delivery HTTP timeout in milliseconds. */
 const DEFAULT_DELIVERY_TIMEOUT_MS = 10_000;
 
-/**
- * Build a `FetchLike` backed by the global `fetch`. Throws at construction time
- * when no global fetch is available so the missing dependency is surfaced loudly
- * rather than silently manufacturing permanent delivery failures.
- *
- * @param deliveryTimeoutMs  Per-attempt HTTP timeout in ms (default 10 000).
- *                           Each fetch is wrapped in `AbortSignal.timeout` so a
- *                           hung endpoint does not hold a connection open beyond
- *                           this window.
- */
-export function createFetchWebhookTransport(
-  deliveryTimeoutMs: number = DEFAULT_DELIVERY_TIMEOUT_MS,
-): FetchLike {
-  const globalFetch = (globalThis as { fetch?: typeof fetch }).fetch;
-  if (typeof globalFetch !== 'function') {
-    throw new Error(
-      'createFetchWebhookTransport: globalThis.fetch is not available. ' +
-        'Upgrade to Node 18+ or supply a custom webhookTransport to bootEngine().',
-    );
+export interface RuntimeWebhookTransportDependencies {
+  /** HTTP request function supplied by the host composition root. */
+  readonly fetch: typeof globalThis.fetch;
+  /** Abort-signal factory supplied by the host composition root. */
+  readonly timeoutSignal: (milliseconds: number) => AbortSignal;
+}
+
+export interface RuntimeWebhookTransportOptions extends RuntimeWebhookTransportDependencies {
+  readonly deliveryTimeoutMs?: number;
+}
+
+export class RuntimeWebhookDeliveryError extends Error {
+  readonly code = "WEBHOOK_DELIVERY_FAILED" as const;
+
+  constructor(
+    readonly status: number,
+    readonly url: string,
+  ) {
+    super(`HTTP ${status} from webhook endpoint ${url}`);
+    this.name = "RuntimeWebhookDeliveryError";
+    Object.setPrototypeOf(this, new.target.prototype);
   }
-  return async (url, init) => {
-    const res = await globalFetch(url, {
-      method: init.method,
-      headers: init.headers,
-      body: init.body,
-      signal: AbortSignal.timeout(deliveryTimeoutMs),
-    });
-    return { ok: res.ok, status: res.status };
+}
+
+/** Build the transport from host-supplied HTTP and timeout dependencies. */
+export function createRuntimeWebhookTransport(
+  options: RuntimeWebhookTransportOptions,
+): RuntimeWebhookTransport {
+  const deliveryTimeoutMs = options.deliveryTimeoutMs ?? DEFAULT_DELIVERY_TIMEOUT_MS;
+  return {
+    deliver: async ({ url, body, headers }) => {
+      const response = await options.fetch(url, {
+        method: "POST",
+        headers,
+        body,
+        signal: options.timeoutSignal(deliveryTimeoutMs),
+      });
+      if (!response.ok) throw new RuntimeWebhookDeliveryError(response.status, url);
+    },
   };
 }

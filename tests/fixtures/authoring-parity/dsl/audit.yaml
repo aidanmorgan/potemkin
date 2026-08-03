@@ -1,0 +1,30 @@
+boundary: Audit
+contract_path: /audits/{id}
+fallback_override: false
+identity:
+  creation:
+    generate: "$uuidv7()"
+event_catalog:
+  - type: AuditRecorded
+    payload_template:
+      id: "$uuidv7()"
+      orderId: event.aggregateId
+      action: "'created'"
+behaviors: []
+reducers:
+  - on: AuditRecorded
+    patches:
+      - op: replace
+        path: /id
+        value: "${event.payload.id}"
+      - op: replace
+        path: /orderId
+        value: "${event.payload.orderId}"
+      - op: replace
+        path: /action
+        value: "${event.payload.action}"
+reactions:
+  - name: audit-order-creation
+    on: "Order:OrderCreated"
+    intent: creation
+    emit: AuditRecorded

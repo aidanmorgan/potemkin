@@ -14,18 +14,22 @@
  */
 
 import {
-  PRODUCTIONS, PRECEDENCE, START,
-  type Production, type Sym, type Assoc,
-} from './grammar.js';
+  PRODUCTIONS,
+  PRECEDENCE,
+  START,
+  type Production,
+  type Sym,
+  type Assoc,
+} from "./grammar.js";
 
-export const EOF = '$end';
+export const EOF = "$end";
 const AUG_START = "S'";
 
 /** A shift/goto, reduce, or accept table entry. */
 export type Action =
-  | { type: 'shift'; state: number }
-  | { type: 'reduce'; production: number }
-  | { type: 'accept' };
+  | { type: "shift"; state: number }
+  | { type: "reduce"; production: number }
+  | { type: "accept" };
 
 export interface ParseTables {
   /** Number of states. */
@@ -109,7 +113,10 @@ function computeFirst(g: AnalyzedGrammar, nullable: Set<Sym>): Map<Sym, Set<Sym>
       for (const s of p.rhs) {
         const fs = first.get(s)!;
         for (const t of fs) {
-          if (!fl.has(t)) { fl.add(t); changed = true; }
+          if (!fl.has(t)) {
+            fl.add(t);
+            changed = true;
+          }
         }
         if (!nullable.has(s)) break;
       }
@@ -126,7 +133,10 @@ function computeNullable(g: AnalyzedGrammar): Set<Sym> {
     changed = false;
     for (const p of g.productions) {
       if (nullable.has(p.lhs)) continue;
-      if (p.rhs.every(s => nullable.has(s))) { nullable.add(p.lhs); changed = true; }
+      if (p.rhs.every((s) => nullable.has(s))) {
+        nullable.add(p.lhs);
+        changed = true;
+      }
     }
   }
   return nullable;
@@ -143,7 +153,10 @@ function firstOfSeq(
   let allNullable = true;
   for (const s of seq) {
     for (const t of first.get(s)!) result.add(t);
-    if (!nullable.has(s)) { allNullable = false; break; }
+    if (!nullable.has(s)) {
+      allNullable = false;
+      break;
+    }
   }
   if (allNullable) result.add(lookahead);
   return result;
@@ -154,9 +167,9 @@ function firstOfSeq(
 // ---------------------------------------------------------------------------
 
 interface LR1Item {
-  readonly prod: number;   // production index (-1 = augmented S' → · Expr $)
-  readonly dot: number;    // position of the dot in the rhs
-  readonly look: Sym;      // lookahead terminal
+  readonly prod: number; // production index (-1 = augmented S' → · Expr $)
+  readonly dot: number; // position of the dot in the rhs
+  readonly look: Sym; // lookahead terminal
 }
 
 const AUG_PROD: Production = { lhs: AUG_START, rhs: [START] };
@@ -165,7 +178,9 @@ function prodOf(prod: number): Production {
   return prod === -1 ? AUG_PROD : PRODUCTIONS[prod]!;
 }
 
-function itemKey(it: LR1Item): string { return `${it.prod}:${it.dot}:${it.look}`; }
+function itemKey(it: LR1Item): string {
+  return `${it.prod}:${it.dot}:${it.look}`;
+}
 
 function closure(
   g: AnalyzedGrammar,
@@ -177,7 +192,10 @@ function closure(
   const queue: LR1Item[] = [];
   for (const it of items) {
     const k = itemKey(it);
-    if (!set.has(k)) { set.set(k, it); queue.push(it); }
+    if (!set.has(k)) {
+      set.set(k, it);
+      queue.push(it);
+    }
   }
   while (queue.length) {
     const it = queue.shift()!;
@@ -190,7 +208,10 @@ function closure(
       for (const la of lookaheads) {
         const ni: LR1Item = { prod: pIdx, dot: 0, look: la };
         const nk = itemKey(ni);
-        if (!set.has(nk)) { set.set(nk, ni); queue.push(ni); }
+        if (!set.has(nk)) {
+          set.set(nk, ni);
+          queue.push(ni);
+        }
       }
     }
   }
@@ -219,11 +240,11 @@ function coreSignature(items: LR1Item[]): string {
   // LR(0) core: prod:dot pairs (ignore lookahead), sorted+deduped.
   const cores = new Set<string>();
   for (const it of items) cores.add(`${it.prod}:${it.dot}`);
-  return [...cores].sort().join('|');
+  return [...cores].sort().join("|");
 }
 
 function fullSignature(items: LR1Item[]): string {
-  return [...items].map(itemKey).sort().join('|');
+  return [...items].map(itemKey).sort().join("|");
 }
 
 // ---------------------------------------------------------------------------
@@ -267,7 +288,7 @@ export function buildTables(): ParseTables {
 
   // 2) Merge LR(1) states sharing the same LR(0) core → LALR(1).
   const coreToMerged = new Map<string, number>();
-  const oldToMerged: number[] = new Array(states.length);
+  const oldToMerged: number[] = Array.from({ length: states.length });
   const mergedItems: LR1Item[][] = [];
   for (let s = 0; s < states.length; s++) {
     const core = coreSignature(states[s]!);
@@ -282,7 +303,7 @@ export function buildTables(): ParseTables {
     oldToMerged[s] = m;
   }
   // Dedup merged item sets (same prod:dot:look may arrive from both halves).
-  const mergedDedup: LR1Item[][] = mergedItems.map(items => {
+  const mergedDedup: LR1Item[][] = mergedItems.map((items) => {
     const map = new Map<string, LR1Item>();
     for (const it of items) map.set(itemKey(it), it);
     return [...map.values()];
@@ -307,7 +328,7 @@ export function buildTables(): ParseTables {
       if (g.nonterminals.has(sym)) {
         gotoTbl[s]![sym] = to;
       } else {
-        setAction(g, action[s]!, sym, { type: 'shift', state: to }, s);
+        setAction(g, action[s]!, sym, { type: "shift", state: to }, s);
       }
     }
     // Reduces / accept from items with the dot at the end.
@@ -316,10 +337,10 @@ export function buildTables(): ParseTables {
       if (it.dot !== prod.rhs.length) continue;
       if (it.prod === -1) {
         // S' → Expr ·  on $end ⇒ accept
-        if (it.look === EOF) setAction(g, action[s]!, EOF, { type: 'accept' }, s);
+        if (it.look === EOF) setAction(g, action[s]!, EOF, { type: "accept" }, s);
         continue;
       }
-      setAction(g, action[s]!, it.look, { type: 'reduce', production: it.prod }, s);
+      setAction(g, action[s]!, it.look, { type: "reduce", production: it.prod }, s);
     }
   }
 
@@ -327,7 +348,7 @@ export function buildTables(): ParseTables {
     stateCount: mergedDedup.length,
     action,
     goto: gotoTbl,
-    productions: PRODUCTIONS.map(p => ({ lhs: p.lhs, length: p.rhs.length })),
+    productions: PRODUCTIONS.map((p) => ({ lhs: p.lhs, length: p.rhs.length })),
   };
 
   // --- conflict-aware action setter (closure over g) ---
@@ -339,11 +360,20 @@ export function buildTables(): ParseTables {
     stateIdx: number,
   ): void {
     const existing = row[term];
-    if (!existing) { row[term] = next; return; }
+    if (!existing) {
+      row[term] = next;
+      return;
+    }
     if (existing.type === next.type) {
-      if (existing.type === 'shift' && next.type === 'shift' && existing.state === next.state) return;
-      if (existing.type === 'reduce' && next.type === 'reduce' && existing.production === next.production) return;
-      if (existing.type === 'accept') return;
+      if (existing.type === "shift" && next.type === "shift" && existing.state === next.state)
+        return;
+      if (
+        existing.type === "reduce" &&
+        next.type === "reduce" &&
+        existing.production === next.production
+      )
+        return;
+      if (existing.type === "accept") return;
     }
     const resolved = resolveConflict(gram, existing, next, term, stateIdx);
     row[term] = resolved;
@@ -358,8 +388,8 @@ function resolveConflict(
   term: Sym,
   stateIdx: number,
 ): Action {
-  const shift = a.type === 'shift' ? a : b.type === 'shift' ? b : undefined;
-  const reduce = a.type === 'reduce' ? a : b.type === 'reduce' ? b : undefined;
+  const shift = a.type === "shift" ? a : b.type === "shift" ? b : undefined;
+  const reduce = a.type === "reduce" ? a : b.type === "reduce" ? b : undefined;
 
   // shift/reduce
   if (shift && reduce) {
@@ -367,25 +397,25 @@ function resolveConflict(
     const prodPrecTerm = productionPrec(g, PRODUCTIONS[reduce.production]!);
     const prodPrec = prodPrecTerm ? g.precOf.get(prodPrecTerm) : undefined;
     if (termPrec && prodPrec) {
-      if (prodPrec.level > termPrec.level) return reduce;       // reduce binds tighter
-      if (prodPrec.level < termPrec.level) return shift;        // shift binds tighter
+      if (prodPrec.level > termPrec.level) return reduce; // reduce binds tighter
+      if (prodPrec.level < termPrec.level) return shift; // shift binds tighter
       // equal precedence → use associativity of the level
-      if (prodPrec.assoc === 'left') return reduce;
-      if (prodPrec.assoc === 'right') return shift;
+      if (prodPrec.assoc === "left") return reduce;
+      if (prodPrec.assoc === "right") return shift;
       // nonassoc → error; but we have none in this grammar
     }
     throw new Error(
       `LALR conflict: unresolved shift/reduce on '${term}' in state ${stateIdx} ` +
-      `(reduce by production ${reduce.production} ${PRODUCTIONS[reduce.production]!.lhs})`,
+        `(reduce by production ${reduce.production} ${PRODUCTIONS[reduce.production]!.lhs})`,
     );
   }
 
   // reduce/reduce — prefer the earlier production (yacc convention) only when
   // it is safe; otherwise it is a genuine grammar ambiguity → throw.
-  if (a.type === 'reduce' && b.type === 'reduce') {
+  if (a.type === "reduce" && b.type === "reduce") {
     throw new Error(
       `LALR conflict: reduce/reduce on '${term}' in state ${stateIdx} ` +
-      `(productions ${a.production} and ${b.production})`,
+        `(productions ${a.production} and ${b.production})`,
     );
   }
 

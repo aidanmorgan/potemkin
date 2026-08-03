@@ -10,11 +10,18 @@
  * Terminus owns all signal handling — do not add custom signal listeners here.
  */
 
-import { createTerminus } from '@godaddy/terminus';
-import type { Server } from 'http';
-import { childLogger } from '../observability/logger.js';
-import type { Logger } from '../observability/logger.js';
-import type { PluginControlClient, ShutdownNotification } from './types.js';
+import { createTerminus } from "@godaddy/terminus";
+import type { Server } from "http";
+import { childLogger } from "../observability/logger.js";
+import type { Logger } from "../observability/logger.js";
+import type { PluginControlClient, ShutdownNotification } from "./types.js";
+import { ConfigurationError } from "../errors.js";
+import {
+  createLifecycleHelpers,
+  runLifecyclePhase,
+  type LifecycleDefinition,
+  type LifecycleDependencies,
+} from "../authoring/lifecycle.js";
 
 export interface GracefulShutdownConfig {
   readonly server: Server;
@@ -27,11 +34,19 @@ export interface GracefulShutdownConfig {
   readonly shutdownPayload?: () => ShutdownNotification;
   /** Total drain budget in ms. Default: 10_000. */
   readonly timeoutMs?: number;
+  /** Load-balancer drain delay before terminus begins shutdown. Default: 0. */
+  readonly beforeShutdownDelayMs?: number;
   /** Signals to handle. Default: ['SIGTERM', 'SIGINT']. */
   readonly signals?: readonly NodeJS.Signals[];
   /** Optional health-check routes to register with terminus. */
   readonly healthChecks?: { readonly [path: string]: () => Promise<unknown> };
   readonly logger?: Logger;
+  /** TypeScript lifecycle definition installed alongside the running system. */
+  readonly lifecycle?: LifecycleDefinition;
+  /** Runtime services used by the lifecycle definition. */
+  readonly lifecycleDependencies?: LifecycleDependencies & { readonly nowMs: () => number };
+  /** Reason exposed to the TypeScript shutdown hook when no plugin payload is supplied. */
+  readonly shutdownReason?: string;
   /**
    * Optional hook invoked after connections have drained (inside onShutdown,
    * after the 'engine drained' log).  Use this to close any resources that
@@ -48,22 +63,28 @@ export interface GracefulShutdownConfig {
  * Call this once after `server.listen(...)` has been invoked.
  */
 export function installGracefulShutdown(config: GracefulShutdownConfig): void {
+  if (config.lifecycle !== undefined && config.lifecycleDependencies === undefined) {
+    throw new ConfigurationError(
+      "GracefulShutdownConfig.lifecycleDependencies is required with lifecycle",
+      { field: "lifecycleDependencies" },
+    );
+  }
   const log = config.logger
-    ? childLogger(config.logger, { name: 'lifecycle.shutdown' })
+    ? childLogger(config.logger, { name: "lifecycle.shutdown" })
     : undefined;
 
   const timeoutMs = config.timeoutMs ?? 10_000;
-  const signals = (config.signals ?? ['SIGTERM', 'SIGINT']) as NodeJS.Signals[];
+  const signals = (config.signals ?? ["SIGTERM", "SIGINT"]) as NodeJS.Signals[];
 
-  // Give load-balancers a chance to drain before stopping connections; defaults to 0 in dev.
-  const beforeShutdownDelayMs = (() => {
-    const raw = process.env['BEFORE_SHUTDOWN_DELAY_MS'];
-    if (raw !== undefined) {
-      const parsed = Number(raw);
-      if (Number.isFinite(parsed) && parsed >= 0) return parsed;
-    }
-    return 0;
-  })();
+  // Give load-balancers a chance to drain before stopping connections. The
+  // composition root owns environment parsing; this lifecycle module receives
+  // the already-typed policy explicitly.
+  const beforeShutdownDelayMs = config.beforeShutdownDelayMs ?? 0;
+  if (!Number.isFinite(beforeShutdownDelayMs) || beforeShutdownDelayMs < 0) {
+    throw new ConfigurationError("beforeShutdownDelayMs must be a finite non-negative number", {
+      field: "beforeShutdownDelayMs",
+    });
+  }
 
   createTerminus(config.server, {
     signals,
@@ -74,37 +95,68 @@ export function installGracefulShutdown(config: GracefulShutdownConfig): void {
 
     beforeShutdown(): Promise<void> {
       if (beforeShutdownDelayMs <= 0) return Promise.resolve();
-      log?.info({ delayMs: beforeShutdownDelayMs }, 'lifecycle.shutdown: waiting for load-balancer drain');
+      log?.info(
+        { delayMs: beforeShutdownDelayMs },
+        "lifecycle.shutdown: waiting for load-balancer drain",
+      );
       return new Promise((resolve) => setTimeout(resolve, beforeShutdownDelayMs));
     },
 
     async onSignal(): Promise<void> {
-      log?.info('lifecycle.shutdown: signal received — notifying plugin');
+      log?.info("lifecycle.shutdown: signal received — notifying plugin");
 
       if (config.pluginControl && config.shutdownPayload) {
         try {
           const payload = config.shutdownPayload();
           const result = await config.pluginControl.notifyShutdown(payload);
           if (result.ok) {
-            log?.info({ attempts: result.attempts, durationMs: result.durationMs }, 'lifecycle.shutdown: plugin notified');
+            log?.info(
+              { attempts: result.attempts, durationMs: result.durationMs },
+              "lifecycle.shutdown: plugin notified",
+            );
           } else {
-            log?.warn({ attempts: result.attempts, error: result.error }, 'lifecycle.shutdown: plugin notification failed (non-fatal)');
+            log?.warn(
+              { attempts: result.attempts, error: result.error },
+              "lifecycle.shutdown: plugin notification failed (non-fatal)",
+            );
           }
         } catch (err) {
           // notifyShutdown never throws, but guard defensively so shutdown always proceeds.
-          log?.warn({ err }, 'lifecycle.shutdown: unexpected error notifying plugin (non-fatal)');
+          log?.warn({ err }, "lifecycle.shutdown: unexpected error notifying plugin (non-fatal)");
         }
       }
     },
 
     async onShutdown(): Promise<void> {
-      log?.info('lifecycle.shutdown: engine drained — process exiting');
+      log?.info("lifecycle.shutdown: engine drained — process exiting");
+
+      if (config.lifecycle) {
+        await runLifecyclePhase(
+          config.lifecycle,
+          "shutdown",
+          {
+            reason: config.shutdownReason ?? "signal",
+            helpers: createLifecycleHelpers(config.lifecycleDependencies!),
+          },
+          {
+            failure: "continue",
+            nowMs: config.lifecycleDependencies!.nowMs,
+            logger: log,
+            onError: (err, hookName, phase) => {
+              log?.warn(
+                { err, hookName, phase },
+                "lifecycle.shutdown: TypeScript hook failed (non-fatal)",
+              );
+            },
+          },
+        );
+      }
 
       if (config.afterDrain) {
         try {
           await config.afterDrain();
         } catch (err) {
-          log?.warn({ err }, 'lifecycle.shutdown: afterDrain hook failed (non-fatal)');
+          log?.warn({ err }, "lifecycle.shutdown: afterDrain hook failed (non-fatal)");
         }
       }
     },

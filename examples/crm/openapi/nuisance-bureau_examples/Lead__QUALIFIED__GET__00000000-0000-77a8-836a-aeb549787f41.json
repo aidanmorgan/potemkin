@@ -1,0 +1,50 @@
+{
+  "http-request": {
+    "method": "GET",
+    "path": "/leads/00000000-0000-77a8-836a-aeb549787f41"
+  },
+  "http-response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "body": {
+      "id": "00000000-0000-77a8-836a-aeb549787f41",
+      "companyName": "export",
+      "contactName": "export",
+      "phone": "export",
+      "email": "export@example.com",
+      "source": "WEBSITE",
+      "status": "QUALIFIED",
+      "score": 50,
+      "createdAt": "1970-01-01T00:00:00.000Z",
+      "callIds": [
+        "00000000-0000-7000-8000-000000000010"
+      ],
+      "notes": [],
+      "assignedAgentId": null,
+      "assignedCampaignId": null,
+      "updatedAt": "1970-01-01T00:00:00.000Z",
+      "updatedBy": null,
+      "lastContactedAt": "1970-01-01T00:00:00.000Z",
+      "_links": {
+        "self": {
+          "href": "/leads/00000000-0000-77a8-836a-aeb549787f41",
+          "method": "GET"
+        },
+        "convert": {
+          "href": "/leads/00000000-0000-77a8-836a-aeb549787f41/convert",
+          "method": "POST"
+        },
+        "disqualify": {
+          "href": "/leads/00000000-0000-77a8-836a-aeb549787f41/disqualify",
+          "method": "POST"
+        },
+        "dnc": {
+          "href": "/leads/00000000-0000-77a8-836a-aeb549787f41/dnc",
+          "method": "POST"
+        }
+      }
+    }
+  }
+}

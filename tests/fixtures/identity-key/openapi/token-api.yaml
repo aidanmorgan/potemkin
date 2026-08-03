@@ -5,7 +5,7 @@ info:
 # identity-key fixture — exercises every identity.key source.
 #
 # /tokens          — from: header (X-Token-Id)
-# /orders/{ref}    — from: path (path param named "ref", not the default "id")
+# /orders/{ref} — from: path (path param named "ref", not the default "id")
 # /session-events  — from: query (?sessionId=...)
 # /subscriptions   — from: payload (body field "accountId")
 #
@@ -66,7 +66,7 @@ paths:
   # without an explicit GET behavior.
   /orders/{ref}:
     post:
-      operationId: placeOrder
+      operationId: placeOrderByRef
       summary: Place an order; aggregate id is taken from the {ref} path parameter
       parameters:
         - name: ref
@@ -94,7 +94,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Order"
     get:
-      operationId: getOrder
+      operationId: getOrderByRef
       summary: Retrieve an order by its ref path parameter
       parameters:
         - name: ref

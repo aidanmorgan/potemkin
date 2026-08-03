@@ -1,13 +1,16 @@
-import Ajv from 'ajv';
-import addFormats from 'ajv-formats';
-import type { ValidateFunction } from 'ajv';
-import type { JsonObject, JsonValue } from '../types.js';
-import type { OpenApiDoc } from './loader.js';
-import { decycleSchema } from './loader.js';
-import type { BoundaryConfig } from '../dsl/types.js';
-import { ContractViolationError, InternalExecutionError } from '../errors.js';
-import { matchRoute } from './router.js';
-import { createLogger, getTracer } from '../observability/index.js';
+import Ajv from "ajv";
+import addFormats from "ajv-formats";
+import type { ValidateFunction } from "ajv";
+import type { JsonObject, JsonValue } from "../types.js";
+import type { OpenApiDoc } from "./loader.js";
+import { decycleSchema } from "./loader.js";
+import { InternalExecutionError } from "../errors.js";
+import { matchRoute } from "./router.js";
+import { resolveResponseSchema } from "./responseSchema.js";
+import { createNoopLogger, type Logger } from "../observability/logger.js";
+import { createNoopTracer, type Tracer } from "../observability/tracing.js";
+import { createRequestValidator } from "./requestValidator.js";
+import type { RequestHeaders } from "./requestValidator.js";
 
 export interface ContractValidator {
   /**
@@ -20,6 +23,31 @@ export interface ContractValidator {
     payload: JsonValue,
     queryParams: Record<string, string | string[]>,
     pathParams: Record<string, string>,
+    headers?: RequestHeaders,
+  ): void;
+
+  /**
+   * Validate the original payload of a runtime batch. Array request schemas
+   * are checked as one document; object request schemas are validated against
+   * each expanded command instead.
+   */
+  validateRequestBatch(
+    method: string,
+    path: string,
+    payload: JsonValue,
+    queryParams: Record<string, string | string[]>,
+    pathParams: Record<string, string>,
+    headers?: RequestHeaders,
+  ): void;
+
+  /** Validate one expanded command from a runtime batch. */
+  validateRequestItem(
+    method: string,
+    path: string,
+    payload: JsonValue,
+    queryParams: Record<string, string | string[]>,
+    pathParams: Record<string, string>,
+    headers?: RequestHeaders,
   ): void;
 
   /**
@@ -38,14 +66,33 @@ export interface ContractValidator {
     options?: { readonly allowAdditionalProperties?: boolean },
   ): void;
 
+  /** Validate the response body for one expanded runtime batch item. */
+  validateResponseItem(
+    method: string,
+    path: string,
+    status: number,
+    body: JsonValue,
+    options?: { readonly allowAdditionalProperties?: boolean },
+  ): void;
+
+  /** Validate the aggregated response body for a runtime batch. */
+  validateResponseBatch(
+    method: string,
+    path: string,
+    status: number,
+    body: JsonValue,
+    options?: { readonly allowAdditionalProperties?: boolean },
+  ): void;
+
   /**
    * Validate a state-graph entity against the schema for its boundary.
    * @throws {InternalExecutionError} (500) on failure.
    */
   validateEntity(boundary: string, entity: JsonObject): void;
-}
 
-const logger = createLogger({ name: 'contract.validator' });
+  /** Validate a payload against a JSON Schema or OpenAPI component reference. */
+  validateSchema(schemaRef: string, payload: JsonObject): void;
+}
 
 /**
  * Return a deep copy of a JSON-Schema fragment with every strict
@@ -59,10 +106,10 @@ const logger = createLogger({ name: 'contract.validator' });
 function relaxAdditionalProperties(schema: JsonObject): JsonObject {
   const relax = (node: JsonValue): JsonValue => {
     if (Array.isArray(node)) return node.map(relax);
-    if (node === null || typeof node !== 'object') return node;
+    if (node === null || typeof node !== "object") return node;
     const out: JsonObject = {};
     for (const [key, value] of Object.entries(node)) {
-      if ((key === 'additionalProperties' || key === 'unevaluatedProperties') && value === false) {
+      if ((key === "additionalProperties" || key === "unevaluatedProperties") && value === false) {
         // Drop the strict constraint entirely (default is permissive).
         continue;
       }
@@ -71,41 +118,6 @@ function relaxAdditionalProperties(schema: JsonObject): JsonObject {
     return out;
   };
   return relax(schema) as JsonObject;
-}
-
-/** Numeric value-range keywords the engine owns at runtime, not the request contract. */
-const VALUE_RANGE_KEYWORDS = new Set([
-  'minimum',
-  'maximum',
-  'exclusiveMinimum',
-  'exclusiveMaximum',
-]);
-
-/**
- * Return a deep copy of a JSON-Schema fragment with every numeric value-range
- * keyword (`minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`) removed.
- *
- * Value ranges describe business rules the engine enforces at runtime — DSL
- * `requires` guards (e.g. `dailyCallQuota > 0` → 422 INVALID_QUOTA) and the query
- * engine's pagination clamping (negative offset → 0, limit handling → 200). The
- * request contract validates SHAPE only (type, required, format, enum, length,
- * additionalProperties); a right-typed-but-out-of-range value must reach the
- * engine so the guard fires (422) or the value is clamped (200) rather than being
- * pre-empted by a 400. Type/required/enum/format constraints are left intact so a
- * genuinely malformed request (wrong type, missing field) still 400s.
- */
-function stripValueRanges(schema: JsonObject): JsonObject {
-  const strip = (node: JsonValue): JsonValue => {
-    if (Array.isArray(node)) return node.map(strip);
-    if (node === null || typeof node !== 'object') return node;
-    const out: JsonObject = {};
-    for (const [key, value] of Object.entries(node)) {
-      if (VALUE_RANGE_KEYWORDS.has(key)) continue;
-      out[key] = strip(value);
-    }
-    return out;
-  };
-  return strip(schema) as JsonObject;
 }
 
 export interface ContractValidatorCacheOptions {
@@ -118,21 +130,52 @@ export interface ContractValidatorCacheOptions {
   readonly maxKeyedValidators?: number;
 }
 
+/** Source-neutral boundary metadata accepted by the validator factory. */
+export interface ContractBoundaryReference {
+  readonly boundary: string;
+  readonly schema?: string;
+}
+
+export interface ContractValidatorObservability {
+  readonly logger?: Logger;
+  readonly tracer?: Tracer;
+}
+
+/**
+ * OpenAPI documents may define domain-specific formats that are meaningful to
+ * the provider contract but are not portable JSON Schema validators. Register
+ * them explicitly so AJV treats them as known vocabulary while the contract's
+ * type/pattern constraints remain authoritative.
+ */
+const NON_VALIDATING_DOCUMENT_FORMATS = ["currency", "decimal", "unix-time"] as const;
+
+function registerDocumentFormats(ajv: Ajv): void {
+  for (const format of NON_VALIDATING_DOCUMENT_FORMATS) ajv.addFormat(format, true);
+}
+
 export function createContractValidator(
   doc: OpenApiDoc,
-  _boundaries: readonly BoundaryConfig[],
+  _boundaries: readonly ContractBoundaryReference[] = [],
   cacheOptions?: ContractValidatorCacheOptions,
+  observability: ContractValidatorObservability = {},
 ): ContractValidator {
+  const logger = observability.logger ?? createNoopLogger();
+  const tracer = observability.tracer ?? createNoopTracer();
   const ajv = new Ajv({ allErrors: true, strict: false, useDefaults: true });
   addFormats(ajv);
+  registerDocumentFormats(ajv);
 
   // Case-insensitive schema map: boundary names that differ only in casing (e.g. "opportunity" vs "Opportunity") still resolve.
   const caseInsensitiveSchemaMap = new Map<string, unknown>();
   const rawDocForInit = doc.raw as Record<string, unknown>;
-  const componentsForInit = rawDocForInit['components'];
-  if (componentsForInit && typeof componentsForInit === 'object' && !Array.isArray(componentsForInit)) {
-    const schemasForInit = (componentsForInit as Record<string, unknown>)['schemas'];
-    if (schemasForInit && typeof schemasForInit === 'object' && !Array.isArray(schemasForInit)) {
+  const componentsForInit = rawDocForInit["components"];
+  if (
+    componentsForInit &&
+    typeof componentsForInit === "object" &&
+    !Array.isArray(componentsForInit)
+  ) {
+    const schemasForInit = (componentsForInit as Record<string, unknown>)["schemas"];
+    if (schemasForInit && typeof schemasForInit === "object" && !Array.isArray(schemasForInit)) {
       for (const [key, val] of Object.entries(schemasForInit as Record<string, unknown>)) {
         caseInsensitiveSchemaMap.set(key.toLowerCase(), val);
       }
@@ -177,101 +220,47 @@ export function createContractValidator(
     return compiled;
   }
 
-  function coerceParamValue(
-    value: string,
-    schema: JsonObject | undefined,
-  ): unknown {
-    /* istanbul ignore next — callers always provide schema (checked before calling) */
-    if (!schema) return value;
-    const t = schema['type'];
-    if (t === 'number' || t === 'integer') {
-      const n = Number(value);
-      if (!Number.isNaN(n)) return n;
-    }
-    return value;
-  }
+  const requestValidator = createRequestValidator({ doc, getValidator, logger });
 
-  function validateRequest(
+  function validateResponseWithMode(
     method: string,
     path: string,
-    payload: JsonValue,
-    queryParams: Record<string, string | string[]>,
-    pathParams: Record<string, string>,
+    status: number,
+    body: JsonValue,
+    options?: { readonly allowAdditionalProperties?: boolean },
+    mode: "full" | "batch" | "batch-item" = "full",
   ): void {
     const matched = matchRoute(doc, method, path);
     if (!matched) {
-      throw new ContractViolationError(`No route matches ${method} ${path}`);
+      throw new InternalExecutionError(
+        `Response failed contract validation: no route matches ${method} ${path}`,
+      );
     }
 
-    const { operation } = matched;
+    const schema = resolveResponseSchema(doc, method, path, status);
+    if (!schema) return;
 
-    if (operation.parameters) {
-      for (const param of operation.parameters) {
-        if (param.in === 'path') {
-          const rawValue = pathParams[param.name];
-          if (rawValue === undefined) {
-            if (param.required) {
-              throw new ContractViolationError(
-                `Missing required path parameter: ${param.name}`,
-              );
-            }
-            continue;
-          }
-          if (param.schema) {
-            const coerced = coerceParamValue(rawValue, param.schema);
-            const validate = getValidator(param.schema);
-            if (!validate(coerced)) {
-              logger.debug(
-                { param: param.name, errors: validate.errors },
-                'Path parameter validation failed',
-              );
-              throw new ContractViolationError(
-                `Path parameter '${param.name}' failed validation`,
-                { errors: validate.errors as JsonValue },
-              );
-            }
-          }
-        } else if (param.in === 'query') {
-          const rawValue = queryParams[param.name];
-          if (rawValue === undefined) {
-            if (param.required) {
-              throw new ContractViolationError(
-                `Missing required query parameter: ${param.name}`,
-              );
-            }
-            continue;
-          }
-          if (param.schema) {
-            const valueToValidate = Array.isArray(rawValue) ? rawValue[0] : rawValue;
-            const coerced = coerceParamValue(valueToValidate, param.schema);
-            const validate = getValidator(stripValueRanges(param.schema));
-            if (!validate(coerced)) {
-              logger.debug(
-                { param: param.name, errors: validate.errors },
-                'Query parameter validation failed',
-              );
-              throw new ContractViolationError(
-                `Query parameter '${param.name}' failed validation`,
-                { errors: validate.errors as JsonValue },
-              );
-            }
-          }
-        }
-      }
-    }
+    if (mode === "batch" && schema.type !== "array") return;
+    const itemSchema =
+      mode === "batch-item" && schema.type === "array"
+        ? (schema.items as JsonObject | undefined)
+        : schema;
+    if (itemSchema === undefined) return;
 
-    // Validate request body shape only — value-range bounds are stripped so a right-typed
-    // but out-of-range value reaches the engine and trips the DSL `requires` guard (422)
-    // rather than being pre-empted by a 400.
-    if (operation.requestBodySchema) {
-      const validate = getValidator(stripValueRanges(operation.requestBodySchema));
-      if (!validate(payload)) {
-        logger.debug({ errors: validate.errors }, 'Request body validation failed');
-        throw new ContractViolationError(
-          `Request body failed contract validation for ${method} ${path}`,
-          { errors: validate.errors as JsonValue },
-        );
-      }
+    const effectiveSchema =
+      options?.allowAdditionalProperties === true
+        ? relaxAdditionalProperties(itemSchema)
+        : itemSchema;
+
+    const validate = getValidator(effectiveSchema);
+    if (!validate(body)) {
+      logger.debug(
+        { method, path, status, errors: validate.errors },
+        "Response body validation failed",
+      );
+      throw new InternalExecutionError("Response failed contract validation", {
+        errors: validate.errors as JsonValue,
+      });
     }
   }
 
@@ -282,55 +271,43 @@ export function createContractValidator(
     body: JsonValue,
     options?: { readonly allowAdditionalProperties?: boolean },
   ): void {
-    const matched = matchRoute(doc, method, path);
-    if (!matched) {
-      throw new InternalExecutionError(
-        `Response failed contract validation: no route matches ${method} ${path}`,
-      );
-    }
+    validateResponseWithMode(method, path, status, body, options);
+  }
 
-    const { operation } = matched;
-    const responseSchemas = operation.responseSchemas;
-    if (!responseSchemas) return;
+  function validateResponseItem(
+    method: string,
+    path: string,
+    status: number,
+    body: JsonValue,
+    options?: { readonly allowAdditionalProperties?: boolean },
+  ): void {
+    validateResponseWithMode(method, path, status, body, options, "batch-item");
+  }
 
-    const schema =
-      responseSchemas[String(status)] ??
-      responseSchemas['default'];
-
-    if (!schema) return;
-
-    const effectiveSchema = options?.allowAdditionalProperties === true
-      ? relaxAdditionalProperties(schema)
-      : schema;
-
-    const validate = getValidator(effectiveSchema);
-    if (!validate(body)) {
-      logger.debug(
-        { method, path, status, errors: validate.errors },
-        'Response body validation failed',
-      );
-      throw new InternalExecutionError(
-        'Response failed contract validation',
-        { errors: validate.errors as JsonValue },
-      );
-    }
+  function validateResponseBatch(
+    method: string,
+    path: string,
+    status: number,
+    body: JsonValue,
+    options?: { readonly allowAdditionalProperties?: boolean },
+  ): void {
+    validateResponseWithMode(method, path, status, body, options, "batch");
   }
 
   function validateEntity(boundary: string, entity: JsonObject): void {
-    const tracer = getTracer('contract');
-    tracer.startActiveSpan('contract.validateEntity', (span) => {
+    tracer.startActiveSpan("contract.validateEntity", (span) => {
       try {
         const rawDoc = doc.raw as Record<string, unknown>;
-        const components = rawDoc['components'];
-        if (!components || typeof components !== 'object' || Array.isArray(components)) {
-          throw new InternalExecutionError('Entity violates contract', {
+        const components = rawDoc["components"];
+        if (!components || typeof components !== "object" || Array.isArray(components)) {
+          throw new InternalExecutionError("Entity violates contract", {
             boundary,
             errors: `No components section in OpenAPI document` as unknown as JsonValue,
           });
         }
-        const schemas = (components as Record<string, unknown>)['schemas'];
-        if (!schemas || typeof schemas !== 'object' || Array.isArray(schemas)) {
-          throw new InternalExecutionError('Entity violates contract', {
+        const schemas = (components as Record<string, unknown>)["schemas"];
+        if (!schemas || typeof schemas !== "object" || Array.isArray(schemas)) {
+          throw new InternalExecutionError("Entity violates contract", {
             boundary,
             errors: `No components.schemas section in OpenAPI document` as unknown as JsonValue,
           });
@@ -339,20 +316,24 @@ export function createContractValidator(
         const schema =
           (schemas as Record<string, unknown>)[boundary] ??
           caseInsensitiveSchemaMap.get(boundary.toLowerCase());
-        if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
-          throw new InternalExecutionError('Entity violates contract', {
+        if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
+          throw new InternalExecutionError("Entity violates contract", {
             boundary,
             errors: `No schema found for boundary '${boundary}'` as unknown as JsonValue,
           });
         }
 
         const validate = getValidator(schema as JsonObject);
-        if (!validate(entity)) {
-          logger.debug(
-            { boundary, errors: validate.errors },
-            'Entity validation failed',
-          );
-          throw new InternalExecutionError('Entity violates contract', {
+        // `_deleted` and `_deletedAt` are runtime graph metadata. They are
+        // intentionally not part of an API resource schema, so validate the
+        // public entity shape without those internal markers while retaining
+        // them in the in-memory state graph for query semantics.
+        const contractEntity = { ...entity };
+        delete contractEntity["_deleted"];
+        delete contractEntity["_deletedAt"];
+        if (!validate(contractEntity)) {
+          logger.debug({ boundary, errors: validate.errors }, "Entity validation failed");
+          throw new InternalExecutionError("Entity violates contract", {
             boundary,
             errors: validate.errors as JsonValue,
           });
@@ -363,9 +344,47 @@ export function createContractValidator(
     });
   }
 
+  function validateSchema(schemaRef: string, payload: JsonObject): void {
+    const raw = doc.raw as Record<string, unknown>;
+    const segments = schemaRef
+      .replace(/^#\//, "")
+      .split("/")
+      .map((segment) => segment.replace(/~1/g, "/").replace(/~0/g, "~"));
+    let current: unknown = raw;
+    for (const segment of segments) {
+      if (current === null || typeof current !== "object" || Array.isArray(current)) {
+        current = undefined;
+        break;
+      }
+      current = (current as Record<string, unknown>)[segment];
+    }
+    if (
+      current === undefined ||
+      current === null ||
+      typeof current !== "object" ||
+      Array.isArray(current)
+    ) {
+      throw new InternalExecutionError("Event payload schema reference was not found", {
+        schemaRef,
+        code: "SCHEMA_TYPE_MISMATCH",
+      });
+    }
+    const validate = getValidator(current as JsonObject);
+    if (!validate(payload)) {
+      throw new InternalExecutionError("Event payload failed schema validation", {
+        schemaRef,
+        code: "SCHEMA_TYPE_MISMATCH",
+        errors: validate.errors as JsonValue,
+      });
+    }
+  }
+
   return {
-    validateRequest,
+    ...requestValidator,
     validateResponse,
+    validateResponseItem,
+    validateResponseBatch,
     validateEntity,
+    validateSchema,
   };
 }

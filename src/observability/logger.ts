@@ -1,53 +1,64 @@
-import pino from 'pino';
-import type { Logger, LoggerOptions } from 'pino';
-import { randomUUID } from 'node:crypto';
-import { nextUuidv7 } from '../ids/uuidv7.js';
+import pino from "pino";
+import type { Logger, LoggerOptions } from "pino";
+import { randomUUID } from "node:crypto";
+import { nextUuidv7 } from "../ids/uuidv7.js";
 
 export type { Logger };
+
+/**
+ * Inert library logger used when a host has not supplied a diagnostic sink.
+ * Production composition roots can pass a real logger; importing parser and
+ * contract modules therefore never creates process-global logging state.
+ */
+export function createNoopLogger(): Logger {
+  return {
+    debug: () => undefined,
+    info: () => undefined,
+    warn: () => undefined,
+    error: () => undefined,
+  } as unknown as Logger;
+}
 
 export interface CreateLoggerOptions {
   readonly name?: string;
   readonly level?: pino.Level | pino.LevelWithSilent;
   readonly pretty?: boolean;
   readonly bindings?: Record<string, unknown>;
-  /** Test-only: writable stream to capture pino output. Requires _resetRootPinoForTest() before use. */
+  /** Host-provided environment values used only for logger defaults. */
+  readonly env?: Readonly<Record<string, string | undefined>>;
+  /** Optional writable stream for hosts and tests that need captured output. */
   readonly _dest?: NodeJS.WritableStream;
 }
 
-function resolvePrettyTransport(): LoggerOptions['transport'] {
+function resolvePrettyDestination(): NodeJS.WritableStream | undefined {
   try {
-    require.resolve('pino-pretty');
-    return { target: 'pino-pretty', options: { colorize: true } };
+    const prettyModule = require(require.resolve("pino-pretty")) as (
+      options: Readonly<Record<string, unknown>>,
+    ) => NodeJS.WritableStream;
+    return prettyModule({ colorize: true });
   } catch {
     return undefined;
   }
 }
 
-// Shared root pino instance. Constructing a new pino with a transport on every
-// createLogger() call leaked process exit listeners — each transport stream
-// registers its own — and triggered MaxListenersExceededWarning under test load.
-// A single shared root with .child() bindings produces identical output without
-// the leak.
-let _rootPino: Logger | undefined;
-function getRootPino(
+function createPino(
   level: pino.LevelWithSilent,
   usePretty: boolean,
   dest?: NodeJS.WritableStream,
 ): Logger {
-  if (_rootPino) return _rootPino;
-  const transport = usePretty ? resolvePrettyTransport() : undefined;
   const pinoOpts: LoggerOptions = {
     level: level as string,
     timestamp: pino.stdTimeFunctions.isoTime,
-    transport,
   };
-  _rootPino = dest ? pino(pinoOpts, dest) : pino(pinoOpts);
-  return _rootPino;
+  if (dest !== undefined) return pino(pinoOpts, dest);
+  const pretty = usePretty ? resolvePrettyDestination() : undefined;
+  return pretty === undefined ? pino(pinoOpts) : pino(pinoOpts, pretty);
 }
 
 export function createLogger(opts?: CreateLoggerOptions): Logger {
+  const env = opts?.env ?? {};
   const level: pino.LevelWithSilent =
-    (opts?.level ?? (process.env['LOG_LEVEL'] as pino.LevelWithSilent | undefined)) ?? 'info';
+    opts?.level ?? (env["LOG_LEVEL"] as pino.LevelWithSilent | undefined) ?? "info";
 
   // When a custom dest is provided (test-only), skip pretty so JSON goes directly to the stream.
   const usePretty =
@@ -55,7 +66,7 @@ export function createLogger(opts?: CreateLoggerOptions): Logger {
       ? false
       : opts?.pretty !== undefined
         ? opts.pretty
-        : process.env['NODE_ENV'] !== 'production';
+        : env["NODE_ENV"] !== "production";
 
   // Generate a stable instanceId for root loggers; may throw NotImplemented in tests
   let instanceId: string;
@@ -66,26 +77,12 @@ export function createLogger(opts?: CreateLoggerOptions): Logger {
   }
 
   const baseBindings: Record<string, unknown> = {
-    name: opts?.name ?? 'specmatic-stateful-sim',
+    name: opts?.name ?? "potemkin",
     instanceId,
     ...opts?.bindings,
   };
 
-  return getRootPino(level, usePretty, opts?._dest).child(baseBindings);
-}
-
-/** Reset the shared pino root so a test can inject a custom destination. */
-export function _resetRootPinoForTest(): void {
-  _rootPino = undefined;
-}
-
-let _rootLogger: Logger | undefined;
-
-export function rootLogger(): Logger {
-  if (!_rootLogger) {
-    _rootLogger = createLogger();
-  }
-  return _rootLogger;
+  return createPino(level, usePretty, opts?._dest).child(baseBindings);
 }
 
 export function childLogger(parent: Logger, bindings: Record<string, unknown>): Logger {

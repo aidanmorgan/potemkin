@@ -9,6 +9,19 @@ boundary: Job
 contract_path: /jobs
 fallback_override: false
 
+fault_rules:
+  - name: delayed-job-fault
+    match:
+      headers:
+        x-latency-fault: on
+      condition: "true"
+    response:
+      status: 503
+      body:
+        error: DELAYED_JOB_FAULT
+        message: simulated delayed job failure
+    delay_ms: 25
+
 latency:
   fixed_ms: 60
 

@@ -4,12 +4,11 @@
 # `updated` Unix timestamp, so the create event materialises all of them.
 resource: product
 schema: product
+response: stripeResponse
 
 identity:
   creation:
-    generate: "ts:productId"
-
-response: "ts:productResponse"
+    generate: "$concat('prod_', $uuidv7())"
 
 query_mapping:
   active: "state.active == param"
@@ -19,8 +18,8 @@ event_catalog:
     payload_template:
       id: "command.targetId"
       object: "'product'"
-      created: "ts:unixNow"
-      updated: "ts:unixNow"
+      created: "$unix()"
+      updated: "$unix()"
       livemode: "false"
       name: "command.payload.name"
       description: "has(command.payload.description) ? command.payload.description : null"
@@ -36,13 +35,13 @@ event_catalog:
       description: "has(command.payload.description) ? command.payload.description : state.description"
       active: "has(command.payload.active) ? command.payload.active : state.active"
       metadata: "has(command.payload.metadata) ? command.payload.metadata : state.metadata"
-      updated: "ts:unixNow"
+      updated: "$unix()"
   # The deleted object ({id, object, deleted:true}) is synthesized by the response
   # transform and the engine's _deleted marker drives soft-delete; the event
   # carries only an audit timestamp (no `deleted` field exists on the schema).
   - type: ProductDeleted
     payload_template:
-      deletedAt: "ts:unixNow"
+      deletedAt: "$unix()"
 
 reducers:
   - on: ProductCreated
@@ -54,8 +53,10 @@ reducers:
       - { op: replace, path: /active, value: "${event.payload.active}" }
       - { op: replace, path: /metadata, value: "${event.payload.metadata}" }
       - { op: replace, path: /updated, value: "${event.payload.updated}" }
-  # No ProductDeleted reducer: soft-delete is handled by the engine's _deleted
-  # marker and the deleted-object response is synthesized by the response transform.
+  - on: ProductDeleted
+    patches:
+      - { op: replace, path: /_deleted, value: "${true}" }
+      - { op: replace, path: /_deletedAt, value: "${event.payload.deletedAt}" }
 
 operations:
   - { op: PostProducts, emit: ProductCreated }

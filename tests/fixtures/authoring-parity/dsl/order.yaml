@@ -1,0 +1,83 @@
+boundary: Order
+contract_path: /orders
+fallback_override: false
+identity:
+  creation:
+    generate: "command.payload.id"
+hateoas:
+  - rel: self
+    href: /orders
+mask:
+  - internalNote
+event_catalog:
+  - type: OrderCreatedFirst
+    payload_template:
+      id: command.payload.id
+      name: command.payload.name
+      quantity: command.payload.quantity
+      internalNote: command.payload.internalNote
+      status: "'FIRST'"
+  - type: OrderCreated
+    payload_template:
+      id: command.payload.id
+      name: command.payload.name
+      quantity: command.payload.quantity
+      internalNote: command.payload.internalNote
+      status: "'CREATED'"
+behaviors:
+  - name: create-order-first
+    match:
+      operationId: createOrder
+      headers:
+        x-parity-behavior-order: first
+      condition: "true"
+    response_status: 202
+    emit: OrderCreatedFirst
+  - name: create-order
+    match:
+      operationId: createOrder
+      condition: "true"
+    emit: OrderCreated
+    dispatch_commands:
+      - boundary: Receipt
+        intent: creation
+        operationId: createReceipt
+        target_id: "$concat(command.targetId, '-receipt')"
+        payload:
+          orderId: command.targetId
+          amount: command.payload.quantity
+reducers:
+  - on: OrderCreatedFirst
+    patches:
+      - op: replace
+        path: /id
+        value: "${event.payload.id}"
+      - op: replace
+        path: /name
+        value: "${event.payload.name}"
+      - op: replace
+        path: /quantity
+        value: "${event.payload.quantity}"
+      - op: replace
+        path: /internalNote
+        value: "${event.payload.internalNote}"
+      - op: replace
+        path: /status
+        value: "${event.payload.status}"
+  - on: OrderCreated
+    patches:
+      - op: replace
+        path: /id
+        value: "${event.payload.id}"
+      - op: replace
+        path: /name
+        value: "${event.payload.name}"
+      - op: replace
+        path: /quantity
+        value: "${event.payload.quantity}"
+      - op: replace
+        path: /internalNote
+        value: "${event.payload.internalNote}"
+      - op: replace
+        path: /status
+        value: "${event.payload.status}"

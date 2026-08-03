@@ -40,14 +40,19 @@ export interface ShutdownNotification {
   /** Package version from package.json. */
   readonly version: string;
   /** Signal or manual reason for shutdown. */
-  readonly reason: 'SIGTERM' | 'SIGINT' | 'manual';
+  readonly reason: "SIGTERM" | "SIGINT" | "manual";
   /** ISO timestamp of when shutdown was initiated. */
   readonly stoppedAt: string;
 }
 
 export type NotifyResult =
   | { readonly ok: true; readonly attempts: number; readonly durationMs: number }
-  | { readonly ok: false; readonly attempts: number; readonly durationMs: number; readonly error: string };
+  | {
+      readonly ok: false;
+      readonly attempts: number;
+      readonly durationMs: number;
+      readonly error: string;
+    };
 
 export interface PluginControlClient {
   notifyReady(payload: ReadyNotification): Promise<NotifyResult>;

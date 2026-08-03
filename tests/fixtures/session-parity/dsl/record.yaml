@@ -1,0 +1,25 @@
+boundary: Record
+contract_path: /records
+fallback_override: false
+identity:
+  creation:
+    generate: command.payload.id
+event_catalog:
+  - type: RecordCreated
+    payload_template:
+      id: command.payload.id
+      value: command.payload.value
+      status: "'CREATED'"
+behaviors:
+  - name: create-record
+    match:
+      operationId: createRecord
+      condition: "true"
+      required_scopes: [writer]
+    emit: RecordCreated
+reducers:
+  - on: RecordCreated
+    patches:
+      - { op: replace, path: /id, value: "${event.payload.id}" }
+      - { op: replace, path: /value, value: "${event.payload.value}" }
+      - { op: replace, path: /status, value: "${event.payload.status}" }

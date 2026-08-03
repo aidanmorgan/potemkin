@@ -1,0 +1,10 @@
+version: 1
+specmatic: ./specmatic.yaml
+openapi:
+  - openapi/authoring-parity.yaml
+modules:
+  - dsl/audit.yaml
+  - dsl/e2e-global.yaml
+  - dsl/order-by-id.yaml
+  - dsl/order.yaml
+  - dsl/receipt.yaml

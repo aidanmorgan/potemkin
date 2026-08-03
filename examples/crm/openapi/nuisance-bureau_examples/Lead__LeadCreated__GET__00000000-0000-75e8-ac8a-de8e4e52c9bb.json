@@ -1,0 +1,38 @@
+{
+  "http-request": {
+    "method": "GET",
+    "path": "/leads/00000000-0000-75e8-ac8a-de8e4e52c9bb"
+  },
+  "http-response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "body": {
+      "id": "00000000-0000-75e8-ac8a-de8e4e52c9bb",
+      "companyName": "Export Saga Company",
+      "contactName": "Export Contact",
+      "phone": "+61 400 000 010",
+      "email": "export-saga@example.com",
+      "source": "WEBSITE",
+      "status": "CONVERTED",
+      "score": 50,
+      "createdAt": "1970-01-01T00:00:00.000Z",
+      "callIds": [
+        "00000000-0000-7084-b923-3e379d31cc94"
+      ],
+      "notes": [],
+      "assignedAgentId": "00000000-0000-7000-8000-000000000003",
+      "assignedCampaignId": "00000000-0000-7000-8000-000000000001",
+      "updatedAt": "1970-01-01T00:00:00.000Z",
+      "updatedBy": null,
+      "lastContactedAt": "1970-01-01T00:00:00.000Z",
+      "_links": {
+        "self": {
+          "href": "/leads/00000000-0000-75e8-ac8a-de8e4e52c9bb",
+          "method": "GET"
+        }
+      }
+    }
+  }
+}

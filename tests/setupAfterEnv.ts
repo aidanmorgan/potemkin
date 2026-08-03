@@ -7,8 +7,7 @@
 // Snapshot env before each test and restore it after, so every test sees a
 // pristine, isolated environment regardless of what others do.
 
-import { registry as sdkRegistry, scriptRegistry as sdkScriptRegistry } from '../src/sdk/index.js';
-import { runTeardowns, runFileTeardowns } from './_support/testTeardown.js';
+import { runTeardowns, runFileTeardowns } from "./_support/testTeardown.js";
 
 let envSnapshot: Record<string, string | undefined>;
 
@@ -17,12 +16,8 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  // Close any TypeScript watchers a test started and drain the
-  // process-wide SDK reducer registry so a TS reducer registered by one test
-  // (via scanTypescriptReducers) never leaks into another test's projection.
+  // Close any resources a test started before restoring its environment.
   await runTeardowns();
-  await sdkRegistry.reset();
-  sdkScriptRegistry.resetSync();
 });
 
 afterAll(async () => {
@@ -33,8 +28,9 @@ afterAll(async () => {
 });
 
 afterEach(() => {
+  if (envSnapshot === undefined) return;
   // Remove keys added during the test.
-  for (const key of Object.keys(process.env)) {
+  for (const key of Object.keys(process.env ?? {})) {
     if (!(key in envSnapshot)) delete process.env[key];
   }
   // Restore keys that were changed or deleted during the test.

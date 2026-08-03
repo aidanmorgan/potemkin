@@ -15,22 +15,22 @@ openedAt: "$now()"
 status: "state.balance - event.payload.amount == 0 ? 'SETTLED' : 'ACTIVE'"
 ```
 
-This implementation is based on [Google Common Expression Language](https://github.com/google/cel-spec) but is a hand-rolled recursive-descent interpreter specific to this engine. It operates on JSON-native values (`string`, `number`, `bool`, `null`, `list`, `map`) rather than proto messages. Several extensions have been added and several upstream features have been intentionally omitted. Divergences are called out throughout this document and summarised in [Section 15](#15-compatibility-with-upstream-google-cel).
+This implementation is based on [Google Common Expression Language](https://github.com/google/cel-spec) but is a hand-rolled recursive-descent interpreter specific to this engine. It operates on JSON-native values (`string`, `number`, `bool`, `null`, `list`, `map`) rather than proto messages. Several extensions have been added and several upstream features have been intentionally omitted. Divergences are called out throughout this document and summarised in [Section 15](#compatibility-with-upstream-google-cel).
 
 ### Where CEL appears in the DSL
 
 See `docs/dsl.md` for the full list of DSL fields that accept CEL strings. Key locations:
 
-| DSL field | CEL phase |
-|---|---|
-| `behaviors[].match.condition` | Behavior |
-| `behaviors[].match.requires[].condition` | Behavior |
-| `behaviors[].postcondition` | Behavior |
-| `behaviors[].dispatch_commands[].condition` | Behavior |
-| `event_catalog[].payload_template.*` | EventHydration |
-| `identity.creation.generate` | EventHydration |
-| `reducers[].assign.*` | Reducer |
-| `reducers[].append.*` | Reducer |
+| DSL field                                   | CEL phase      |
+| ------------------------------------------- | -------------- |
+| `behaviors[].match.condition`               | Behavior       |
+| `behaviors[].match.requires[].condition`    | Behavior       |
+| `behaviors[].postcondition`                 | Behavior       |
+| `behaviors[].dispatch_commands[].condition` | Behavior       |
+| `event_catalog[].payload_template.*`        | EventHydration |
+| `identity.creation.generate`                | EventHydration |
+| `reducers[].assign.*`                       | Reducer        |
+| `reducers[].append.*`                       | Reducer        |
 
 ---
 
@@ -66,15 +66,15 @@ Any numeric literal containing a decimal point: `3.14`, `-0.5`, `1.0`.
 
 Single-quoted or double-quoted. Both forms accept the same escape sequences:
 
-| Escape | Meaning |
-|---|---|
-| `\n` | newline |
-| `\t` | tab |
-| `\r` | carriage return |
-| `\\` | backslash |
-| `\"` | double quote |
-| `\'` | single quote |
-| `\x` (other) | literal `x` |
+| Escape       | Meaning         |
+| ------------ | --------------- |
+| `\n`         | newline         |
+| `\t`         | tab             |
+| `\r`         | carriage return |
+| `\\`         | backslash       |
+| `\"`         | double quote    |
+| `\'`         | single quote    |
+| `\x` (other) | literal `x`     |
 
 ```cel
 "hello\nworld"
@@ -131,17 +131,17 @@ Keys must be expressions that evaluate to strings. Bare identifiers as keys are 
 
 The `type(x)` function returns a `string` identifying the runtime type:
 
-| CEL type name | JavaScript backing | Notes |
-|---|---|---|
-| `"null"` | `null` or `undefined` | |
-| `"bool"` | `boolean` | |
-| `"int"` | `number` where `Number.isInteger` is true | |
-| `"double"` | `number` where `Number.isInteger` is false | |
-| `"string"` | `string` | |
-| `"bytes"` | `number[]` with all elements 0–255 and integer | Returned by `bytes()` |
-| `"list"` | `Array` (not bytes) | |
-| `"map"` | non-array, non-null `object` | |
-| `"unknown"` | anything else | Should not arise in practice |
+| CEL type name | JavaScript backing                             | Notes                        |
+| ------------- | ---------------------------------------------- | ---------------------------- |
+| `"null"`      | `null` or `undefined`                          |                              |
+| `"bool"`      | `boolean`                                      |                              |
+| `"int"`       | `number` where `Number.isInteger` is true      |                              |
+| `"double"`    | `number` where `Number.isInteger` is false     |                              |
+| `"string"`    | `string`                                       |                              |
+| `"bytes"`     | `number[]` with all elements 0–255 and integer | Returned by `bytes()`        |
+| `"list"`      | `Array` (not bytes)                            |                              |
+| `"map"`       | non-array, non-null `object`                   |                              |
+| `"unknown"`   | anything else                                  | Should not arise in practice |
 
 ### 3.2 No Implicit Coercion
 
@@ -170,18 +170,18 @@ The `==` and `!=` operators implement deep structural equality. See [Section 4](
 
 ### 4.1 Operator Table
 
-| Operator | Arity | Precedence (high = binds tighter) | Associativity | Example |
-|---|---|---|---|---|
-| `!` | unary prefix | 8 | right | `!active` |
-| `-` | unary prefix | 8 | right | `-amount` |
-| `*` `/` `%` | binary | 7 | left | `a * b` |
-| `+` `-` | binary | 6 | left | `a + b` |
-| `<` `<=` `>` `>=` | binary | 5 | left | `x > 0` |
-| `==` `!=` | binary | 4 | left | `x == y` |
-| `in` | binary | 4 | left | `"k" in m` |
-| `&&` | binary | 3 | left | `a && b` |
-| `\|\|` | binary | 2 | left | `a \|\| b` |
-| `?:` | ternary | 1 | right | `c ? a : b` |
+| Operator          | Arity        | Precedence (high = binds tighter) | Associativity | Example     |
+| ----------------- | ------------ | --------------------------------- | ------------- | ----------- |
+| `!`               | unary prefix | 8                                 | right         | `!active`   |
+| `-`               | unary prefix | 8                                 | right         | `-amount`   |
+| `*` `/` `%`       | binary       | 7                                 | left          | `a * b`     |
+| `+` `-`           | binary       | 6                                 | left          | `a + b`     |
+| `<` `<=` `>` `>=` | binary       | 5                                 | left          | `x > 0`     |
+| `==` `!=`         | binary       | 4                                 | left          | `x == y`    |
+| `in`              | binary       | 4                                 | left          | `"k" in m`  |
+| `&&`              | binary       | 3                                 | left          | `a && b`    |
+| `\|\|`            | binary       | 2                                 | left          | `a \|\| b`  |
+| `?:`              | ternary      | 1                                 | right         | `c ? a : b` |
 
 ### 4.2 Arithmetic Operators
 
@@ -363,13 +363,13 @@ Comprehensions are special method calls that introduce a scoped iteration variab
 
 ### 7.1 Macro Reference
 
-| Macro | Signature | Returns | Empty input |
-|---|---|---|---|
-| `all` | `lst.all(x, predicate)` | `bool` | `true` (vacuous truth) |
-| `exists` | `lst.exists(x, predicate)` | `bool` | `false` |
-| `exists_one` | `lst.exists_one(x, predicate)` | `bool` | `false` |
-| `filter` | `lst.filter(x, predicate)` | `list` | `[]` |
-| `map` | `lst.map(x, transform)` | `list` | `[]` |
+| Macro        | Signature                      | Returns | Empty input            |
+| ------------ | ------------------------------ | ------- | ---------------------- |
+| `all`        | `lst.all(x, predicate)`        | `bool`  | `true` (vacuous truth) |
+| `exists`     | `lst.exists(x, predicate)`     | `bool`  | `false`                |
+| `exists_one` | `lst.exists_one(x, predicate)` | `bool`  | `false`                |
+| `filter`     | `lst.filter(x, predicate)`     | `list`  | `[]`                   |
+| `map`        | `lst.map(x, transform)`        | `list`  | `[]`                   |
 
 ### 7.2 `all`
 
@@ -461,13 +461,13 @@ Phase abbreviations used throughout: **B** = Behavior, **H** = EventHydration, *
 
 Source: `src/cel/builtins.ts`
 
-| Function | Signature | Returns | Phases | Notes |
-|---|---|---|---|---|
-| `int` | `int(x)` | `int` | B, H, R | Truncates doubles; parses strings; `bool` → 0/1. Throws `CEL_TYPE_ERROR` for unconvertible input. |
-| `double` | `double(x)` | `double` | B, H, R | Converts number or parses string. `bool` → 0/1. |
-| `string` | `string(x)` | `string` | B, H, R | Converts any value. `null` → `"null"`. Lists and maps are serialised as JSON. |
-| `bool` | `bool(x)` | `bool` | B, H, R | Parses `"true"`/`"false"` strings; number `0` → `false`, non-zero → `true`. Throws on other strings. |
-| `bytes` | `bytes(x)` | `list[int]` | B, H, R | Returns UTF-16 code units (0–255) for each character. Throws if not a string. |
+| Function | Signature   | Returns     | Phases  | Notes                                                                                                |
+| -------- | ----------- | ----------- | ------- | ---------------------------------------------------------------------------------------------------- |
+| `int`    | `int(x)`    | `int`       | B, H, R | Truncates doubles; parses strings; `bool` → 0/1. Throws `CEL_TYPE_ERROR` for unconvertible input.    |
+| `double` | `double(x)` | `double`    | B, H, R | Converts number or parses string. `bool` → 0/1.                                                      |
+| `string` | `string(x)` | `string`    | B, H, R | Converts any value. `null` → `"null"`. Lists and maps are serialised as JSON.                        |
+| `bool`   | `bool(x)`   | `bool`      | B, H, R | Parses `"true"`/`"false"` strings; number `0` → `false`, non-zero → `true`. Throws on other strings. |
+| `bytes`  | `bytes(x)`  | `list[int]` | B, H, R | Returns UTF-16 code units (0–255) for each character. Throws if not a string.                        |
 
 ```cel
 int("42")             // 42
@@ -487,16 +487,16 @@ bytes("abc")          // [97, 98, 99]
 
 Source: `src/cel/builtins.ts`
 
-| Function | Signature | Returns | Phases | Notes |
-|---|---|---|---|---|
-| `abs` | `abs(x)` | `number` | B, H, R | Absolute value. |
-| `min` | `min(a, b, ...)` or `min(list)` | `number` | B, H, R | Minimum of arguments or a single list. Throws `CEL_RUNTIME_ERROR` on empty list. |
-| `max` | `max(a, b, ...)` or `max(list)` | `number` | B, H, R | Maximum of arguments or a single list. Throws `CEL_RUNTIME_ERROR` on empty list. |
-| `floor` | `floor(x)` | `int` | B, H, R | Floor toward negative infinity. |
-| `ceil` | `ceil(x)` | `int` | B, H, R | Ceiling toward positive infinity. |
-| `round` | `round(x)` | `int` | B, H, R | Round to nearest integer (half-up). |
-| `pow` | `pow(a, b)` | `number` | B, H, R | `a` raised to the power `b`. |
-| `sqrt` | `sqrt(x)` | `number` | B, H, R | Square root. Throws `CEL_RUNTIME_ERROR` for negative input. |
+| Function | Signature                       | Returns  | Phases  | Notes                                                                            |
+| -------- | ------------------------------- | -------- | ------- | -------------------------------------------------------------------------------- |
+| `abs`    | `abs(x)`                        | `number` | B, H, R | Absolute value.                                                                  |
+| `min`    | `min(a, b, ...)` or `min(list)` | `number` | B, H, R | Minimum of arguments or a single list. Throws `CEL_RUNTIME_ERROR` on empty list. |
+| `max`    | `max(a, b, ...)` or `max(list)` | `number` | B, H, R | Maximum of arguments or a single list. Throws `CEL_RUNTIME_ERROR` on empty list. |
+| `floor`  | `floor(x)`                      | `int`    | B, H, R | Floor toward negative infinity.                                                  |
+| `ceil`   | `ceil(x)`                       | `int`    | B, H, R | Ceiling toward positive infinity.                                                |
+| `round`  | `round(x)`                      | `int`    | B, H, R | Round to nearest integer (half-up).                                              |
+| `pow`    | `pow(a, b)`                     | `number` | B, H, R | `a` raised to the power `b`.                                                     |
+| `sqrt`   | `sqrt(x)`                       | `number` | B, H, R | Square root. Throws `CEL_RUNTIME_ERROR` for negative input.                      |
 
 ```cel
 abs(-5)          // 5
@@ -513,15 +513,15 @@ sqrt(9)          // 3
 
 Source: `src/cel/builtins.ts`
 
-| Function | Signature | Returns | Phases | Notes |
-|---|---|---|---|---|
-| `size` | `size(x)` | `int` | B, H, R | Length of string, list, or key count of map. |
-| `length` | `length(x)` | `int` | B, H, R | Alias for `size()`. |
-| `sum` | `sum(list)` or `sum(a, b, ...)` | `number` | B, H, R | Sum of a numeric list (or spread args). `null` elements counted as 0. Throws `CEL_TYPE_ERROR` for non-number elements. |
-| `keys` | `keys(m)` | `list[string]` | B, H, R | Keys of map `m` as a list. |
-| `values` | `values(m)` | `list` | B, H, R | Values of map `m` as a list. |
-| `range` | `range(end)` | `list[int]` | B, H, R | `[0, 1, ..., end-1]`. |
-| `range` | `range(start, end)` | `list[int]` | B, H, R | `[start, ..., end-1]`. |
+| Function | Signature                       | Returns        | Phases  | Notes                                                                                                                  |
+| -------- | ------------------------------- | -------------- | ------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `size`   | `size(x)`                       | `int`          | B, H, R | Length of string, list, or key count of map.                                                                           |
+| `length` | `length(x)`                     | `int`          | B, H, R | Alias for `size()`.                                                                                                    |
+| `sum`    | `sum(list)` or `sum(a, b, ...)` | `number`       | B, H, R | Sum of a numeric list (or spread args). `null` elements counted as 0. Throws `CEL_TYPE_ERROR` for non-number elements. |
+| `keys`   | `keys(m)`                       | `list[string]` | B, H, R | Keys of map `m` as a list.                                                                                             |
+| `values` | `values(m)`                     | `list`         | B, H, R | Values of map `m` as a list.                                                                                           |
+| `range`  | `range(end)`                    | `list[int]`    | B, H, R | `[0, 1, ..., end-1]`.                                                                                                  |
+| `range`  | `range(start, end)`             | `list[int]`    | B, H, R | `[start, ..., end-1]`.                                                                                                 |
 
 ```cel
 size("hello")           // 5
@@ -543,26 +543,26 @@ All string methods are called as receiver methods: `str.method(...)`.
 
 Source: `src/cel/evaluator.ts` (`evalStringMethod`)
 
-| Method | Signature | Returns | Phases | Notes |
-|---|---|---|---|---|
-| `startsWith` | `str.startsWith(prefix)` | `bool` | B, H, R | True if `str` begins with `prefix`. |
-| `endsWith` | `str.endsWith(suffix)` | `bool` | B, H, R | True if `str` ends with `suffix`. |
-| `contains` | `str.contains(sub)` | `bool` | B, H, R | True if `sub` appears anywhere in `str`. |
-| `size` | `str.size()` | `int` | B, H, R | Length in UTF-16 code units. |
-| `matches` | `str.matches(pattern)` | `bool` | B, H, R | True if `str` matches regex `pattern`. See note below. |
-| `replace` | `str.replace(old, new)` | `string` | B, H, R | Replaces all occurrences of `old` with `new`. |
-| `replace` | `str.replace(old, new, n)` | `string` | B, H, R | Replaces up to `n` occurrences (integer). |
-| `split` | `str.split(sep)` | `list[string]` | B, H, R | Splits on literal separator `sep`. |
-| `substring` | `str.substring(start)` | `string` | B, H, R | Returns suffix from `start` (inclusive). |
-| `substring` | `str.substring(start, end)` | `string` | B, H, R | Returns `str[start..end)`. |
-| `indexOf` | `str.indexOf(sub)` | `int` | B, H, R | First index of `sub`, or `-1`. |
-| `lastIndexOf` | `str.lastIndexOf(sub)` | `int` | B, H, R | Last index of `sub`, or `-1`. |
-| `lowerAscii` | `str.lowerAscii()` | `string` | B, H, R | Converts to lowercase. |
-| `upperAscii` | `str.upperAscii()` | `string` | B, H, R | Converts to uppercase. |
-| `trim` | `str.trim()` | `string` | B, H, R | Strips leading and trailing whitespace. |
-| `trimStart` | `str.trimStart()` | `string` | B, H, R | Strips leading whitespace only. |
-| `trimEnd` | `str.trimEnd()` | `string` | B, H, R | Strips trailing whitespace only. |
-| `charAt` | `str.charAt(i)` | `string` | B, H, R | Character at index `i`. Throws if out of range. |
+| Method        | Signature                   | Returns        | Phases  | Notes                                                  |
+| ------------- | --------------------------- | -------------- | ------- | ------------------------------------------------------ |
+| `startsWith`  | `str.startsWith(prefix)`    | `bool`         | B, H, R | True if `str` begins with `prefix`.                    |
+| `endsWith`    | `str.endsWith(suffix)`      | `bool`         | B, H, R | True if `str` ends with `suffix`.                      |
+| `contains`    | `str.contains(sub)`         | `bool`         | B, H, R | True if `sub` appears anywhere in `str`.               |
+| `size`        | `str.size()`                | `int`          | B, H, R | Length in UTF-16 code units.                           |
+| `matches`     | `str.matches(pattern)`      | `bool`         | B, H, R | True if `str` matches regex `pattern`. See note below. |
+| `replace`     | `str.replace(old, new)`     | `string`       | B, H, R | Replaces all occurrences of `old` with `new`.          |
+| `replace`     | `str.replace(old, new, n)`  | `string`       | B, H, R | Replaces up to `n` occurrences (integer).              |
+| `split`       | `str.split(sep)`            | `list[string]` | B, H, R | Splits on literal separator `sep`.                     |
+| `substring`   | `str.substring(start)`      | `string`       | B, H, R | Returns suffix from `start` (inclusive).               |
+| `substring`   | `str.substring(start, end)` | `string`       | B, H, R | Returns `str[start..end)`.                             |
+| `indexOf`     | `str.indexOf(sub)`          | `int`          | B, H, R | First index of `sub`, or `-1`.                         |
+| `lastIndexOf` | `str.lastIndexOf(sub)`      | `int`          | B, H, R | Last index of `sub`, or `-1`.                          |
+| `lowerAscii`  | `str.lowerAscii()`          | `string`       | B, H, R | Converts to lowercase.                                 |
+| `upperAscii`  | `str.upperAscii()`          | `string`       | B, H, R | Converts to uppercase.                                 |
+| `trim`        | `str.trim()`                | `string`       | B, H, R | Strips leading and trailing whitespace.                |
+| `trimStart`   | `str.trimStart()`           | `string`       | B, H, R | Strips leading whitespace only.                        |
+| `trimEnd`     | `str.trimEnd()`             | `string`       | B, H, R | Strips trailing whitespace only.                       |
+| `charAt`      | `str.charAt(i)`             | `string`       | B, H, R | Character at index `i`. Throws if out of range.        |
 
 **Regex format for `matches`**: the `pattern` argument is passed directly to JavaScript's `RegExp` constructor. Use standard JS regex syntax without delimiters (`[0-9]+`, not `/[0-9]+/`). Use raw strings (`r"..."`) to avoid double-escaping backslashes in YAML.
 
@@ -609,17 +609,17 @@ All list methods are called as receiver methods: `lst.method(...)`.
 
 Source: `src/cel/evaluator.ts` (`evalListMethod`)
 
-| Method | Signature | Returns | Phases | Notes |
-|---|---|---|---|---|
-| `size` | `lst.size()` | `int` | B, H, R | Number of elements. |
-| `contains` | `lst.contains(v)` | `bool` | B, H, R | True if any element deep-equals `v`. |
-| `indexOf` | `lst.indexOf(v)` | `int` | B, H, R | First index of `v` (deep equality), or `-1`. |
-| `lastIndexOf` | `lst.lastIndexOf(v)` | `int` | B, H, R | Last index of `v` (deep equality), or `-1`. |
-| `sort` | `lst.sort()` | `list` | B, H, R | Sorted copy. Numbers by value; strings lexicographically; booleans false < true. Non-destructive. |
-| `reverse` | `lst.reverse()` | `list` | B, H, R | Reversed copy. Non-destructive. |
-| `join` | `lst.join(sep)` | `string` | B, H, R | Joins string elements with separator `sep`. Elements are coerced via `String(v)`. |
-| `flatten` | `lst.flatten()` | `list` | B, H, R | One level of nesting removed. Does not recurse. |
-| `distinct` | `lst.distinct()` | `list` | B, H, R | Removes duplicates (deep equality), preserving first occurrence. |
+| Method        | Signature            | Returns  | Phases  | Notes                                                                                             |
+| ------------- | -------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------- |
+| `size`        | `lst.size()`         | `int`    | B, H, R | Number of elements.                                                                               |
+| `contains`    | `lst.contains(v)`    | `bool`   | B, H, R | True if any element deep-equals `v`.                                                              |
+| `indexOf`     | `lst.indexOf(v)`     | `int`    | B, H, R | First index of `v` (deep equality), or `-1`.                                                      |
+| `lastIndexOf` | `lst.lastIndexOf(v)` | `int`    | B, H, R | Last index of `v` (deep equality), or `-1`.                                                       |
+| `sort`        | `lst.sort()`         | `list`   | B, H, R | Sorted copy. Numbers by value; strings lexicographically; booleans false < true. Non-destructive. |
+| `reverse`     | `lst.reverse()`      | `list`   | B, H, R | Reversed copy. Non-destructive.                                                                   |
+| `join`        | `lst.join(sep)`      | `string` | B, H, R | Joins string elements with separator `sep`. Elements are coerced via `String(v)`.                 |
+| `flatten`     | `lst.flatten()`      | `list`   | B, H, R | One level of nesting removed. Does not recurse.                                                   |
+| `distinct`    | `lst.distinct()`     | `list`   | B, H, R | Removes duplicates (deep equality), preserving first occurrence.                                  |
 
 ```cel
 [1, 2, 3].size()                  // 3
@@ -640,12 +640,12 @@ All map methods are called as receiver methods: `m.method(...)`.
 
 Source: `src/cel/evaluator.ts` (`evalMapMethod`)
 
-| Method | Signature | Returns | Phases | Notes |
-|---|---|---|---|---|
-| `size` | `m.size()` | `int` | B, H, R | Number of keys. |
-| `has` | `m.has(key)` | `bool` | B, H, R | True if string `key` is present. |
-| `keys` | `m.keys()` | `list[string]` | B, H, R | List of key strings. |
-| `values` | `m.values()` | `list` | B, H, R | List of values. |
+| Method   | Signature    | Returns        | Phases  | Notes                            |
+| -------- | ------------ | -------------- | ------- | -------------------------------- |
+| `size`   | `m.size()`   | `int`          | B, H, R | Number of keys.                  |
+| `has`    | `m.has(key)` | `bool`         | B, H, R | True if string `key` is present. |
+| `keys`   | `m.keys()`   | `list[string]` | B, H, R | List of key strings.             |
+| `values` | `m.values()` | `list`         | B, H, R | List of values.                  |
 
 ```cel
 {"a": 1, "b": 2}.size()           // 2
@@ -668,22 +668,22 @@ Source: `src/cel/builtins.ts`
 
 > ⚠️ `timestamp()`, `now()`, and `$now()` are **banned in the Reducer phase**. See Section 9.
 
-| Function | Signature | Returns | Phases | Notes |
-|---|---|---|---|---|
-| `timestamp` | `timestamp(s)` | `string` | B, H | Validates ISO-8601 string and returns canonical UTC ISO-8601 (e.g. `"2024-01-15T10:00:00.000Z"`). Throws if unparseable. |
-| `duration` | `duration(s)` | `int` (ms) | B, H, R | Parses ISO 8601 duration or shorthand to milliseconds. |
-| `now` | `now()` | `string` | B, H | Current UTC time as ISO-8601 string. |
+| Function    | Signature      | Returns    | Phases  | Notes                                                                                                                    |
+| ----------- | -------------- | ---------- | ------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `timestamp` | `timestamp(s)` | `string`   | B, H    | Validates ISO-8601 string and returns canonical UTC ISO-8601 (e.g. `"2024-01-15T10:00:00.000Z"`). Throws if unparseable. |
+| `duration`  | `duration(s)`  | `int` (ms) | B, H, R | Parses ISO 8601 duration or shorthand to milliseconds.                                                                   |
+| `now`       | `now()`        | `string`   | B, H    | Current UTC time as ISO-8601 string.                                                                                     |
 
 **Duration formats** accepted by `duration()`:
 
-| Format | Example | Milliseconds |
-|---|---|---|
-| ISO 8601 | `"P1D"` | 86,400,000 |
-| ISO 8601 full | `"P1DT2H3M4S"` | 93,784,000 |
-| Shorthand seconds | `"30s"` | 30,000 |
-| Shorthand minutes | `"1m"` | 60,000 |
-| Shorthand hours | `"2h"` | 7,200,000 |
-| Shorthand days | `"3d"` | 259,200,000 |
+| Format            | Example        | Milliseconds |
+| ----------------- | -------------- | ------------ |
+| ISO 8601          | `"P1D"`        | 86,400,000   |
+| ISO 8601 full     | `"P1DT2H3M4S"` | 93,784,000   |
+| Shorthand seconds | `"30s"`        | 30,000       |
+| Shorthand minutes | `"1m"`         | 60,000       |
+| Shorthand hours   | `"2h"`         | 7,200,000    |
+| Shorthand days    | `"3d"`         | 259,200,000  |
 
 ```cel
 timestamp("2024-01-15T10:00:00Z")   // "2024-01-15T10:00:00.000Z"
@@ -696,10 +696,10 @@ now()                                // "2024-01-15T10:00:00.123Z" (current time
 
 Source: `src/cel/builtins.ts`
 
-| Function | Signature | Returns | Phases | Notes |
-|---|---|---|---|---|
-| `coalesce` | `coalesce(a, b, c, ...)` | `any` | B, H, R | Returns first non-null argument. Returns `null` if all arguments are null. |
-| `default` | `default(a, fallback)` | `any` | B, H, R | Returns `a` if non-null, otherwise `fallback`. |
+| Function   | Signature                | Returns | Phases  | Notes                                                                      |
+| ---------- | ------------------------ | ------- | ------- | -------------------------------------------------------------------------- |
+| `coalesce` | `coalesce(a, b, c, ...)` | `any`   | B, H, R | Returns first non-null argument. Returns `null` if all arguments are null. |
+| `default`  | `default(a, fallback)`   | `any`   | B, H, R | Returns `a` if non-null, otherwise `fallback`.                             |
 
 ```cel
 coalesce(null, "b", "c")              // "b"
@@ -712,9 +712,9 @@ coalesce(state?.score, 0)            // 0 when state.score is absent
 
 ### 8.9 Type Introspection
 
-| Function | Signature | Returns | Phases | Notes |
-|---|---|---|---|---|
-| `type` | `type(x)` | `string` | B, H, R | Returns the CEL type name (see Section 3.1). |
+| Function | Signature | Returns  | Phases  | Notes                                        |
+| -------- | --------- | -------- | ------- | -------------------------------------------- |
+| `type`   | `type(x)` | `string` | B, H, R | Returns the CEL type name (see Section 3.1). |
 
 ```cel
 type("hello")   // "string"
@@ -732,14 +732,14 @@ These functions are engine-provided and are prefixed with `$` to distinguish the
 
 Source: `src/cel/builtins.ts`; phase rules in `src/cel/phases.ts`
 
-| Function | Signature | Returns | Phases | Notes |
-|---|---|---|---|---|
-| `$uuidv7` | `$uuidv7()` | `string` | B, H | Generates a time-ordered UUIDv7. **Banned in Reducer.** |
-| `$now` | `$now()` | `string` | B, H | Current UTC time as ISO-8601. Alias for `now()`. **Banned in Reducer.** |
-| `$concat` | `$concat(a, b, ...)` | `string` | B, H, R | Concatenates all arguments as strings. `null`/`undefined` → `""`. Lists and maps → JSON. |
-| `$fake` | `$fake(spec)` | `string` | B, H | Generate fake data. `spec` is `"module.method"` (e.g. `"person.firstName"`, `"internet.email"`). **Banned in Reducer.** |
-| `$fakeSeed` | `$fakeSeed(n)` | `number` | B, H | Seed the per-request faker RNG with integer `n` for deterministic output. Returns `n`. **Banned in Reducer.** |
-| `$fakeFromFormat` | `$fakeFromFormat(fmt)` | `string` | B, H | Generate a fake value for a JSON Schema format string: `"email"`, `"uuid"`, `"date"`, `"date-time"`, `"uri"`, `"url"`, `"hostname"`, `"ipv4"`. Others → random alphanumeric. **Banned in Reducer.** |
+| Function          | Signature              | Returns  | Phases  | Notes                                                                                                                                                                                               |
+| ----------------- | ---------------------- | -------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `$uuidv7`         | `$uuidv7()`            | `string` | B, H    | Generates a time-ordered UUIDv7. **Banned in Reducer.**                                                                                                                                             |
+| `$now`            | `$now()`               | `string` | B, H    | Current UTC time as ISO-8601. Alias for `now()`. **Banned in Reducer.**                                                                                                                             |
+| `$concat`         | `$concat(a, b, ...)`   | `string` | B, H, R | Concatenates all arguments as strings. `null`/`undefined` → `""`. Lists and maps → JSON.                                                                                                            |
+| `$fake`           | `$fake(spec)`          | `string` | B, H    | Generate fake data. `spec` is `"module.method"` (e.g. `"person.firstName"`, `"internet.email"`). **Banned in Reducer.**                                                                             |
+| `$fakeSeed`       | `$fakeSeed(n)`         | `number` | B, H    | Seed the per-request faker RNG with integer `n` for deterministic output. Returns `n`. **Banned in Reducer.**                                                                                       |
+| `$fakeFromFormat` | `$fakeFromFormat(fmt)` | `string` | B, H    | Generate a fake value for a JSON Schema format string: `"email"`, `"uuid"`, `"date"`, `"date-time"`, `"uri"`, `"url"`, `"hostname"`, `"ipv4"`. Others → random alphanumeric. **Banned in Reducer.** |
 
 ```cel
 $uuidv7()                              // "0190abcd-1234-7xxx-xxxx-xxxxxxxxxxxx"
@@ -761,13 +761,13 @@ command.path == $concat('/leads/', command.targetId, '/qualify')
 
 **`$fake` supported categories and methods:**
 
-| Category | Methods |
-|---|---|
-| `person` | `firstName`, `lastName`, `fullName` |
-| `internet` | `email`, `url`, `domainName` |
-| `phone` | `number` |
-| `company` | `name` |
-| `address` | `city`, `streetAddress` |
+| Category   | Methods                             |
+| ---------- | ----------------------------------- |
+| `person`   | `firstName`, `lastName`, `fullName` |
+| `internet` | `email`, `url`, `domainName`        |
+| `phone`    | `number`                            |
+| `company`  | `name`                              |
+| `address`  | `city`, `streetAddress`             |
 
 **Faker RNG seeding**: each request has its own isolated RNG. Supply the `X-Potemkin-Seed` request header to make all `$fake*` calls deterministic and reproducible for that request. `$fakeSeed(n)` seeds the same per-request RNG from within an expression. The seed does not persist across requests.
 
@@ -779,11 +779,11 @@ command.path == $concat('/leads/', command.targetId, '/qualify')
 
 Every CEL expression is evaluated in one of three phases, determined by where in the DSL it appears:
 
-| Phase | Description | Typical DSL fields |
-|---|---|---|
-| **Behavior** | Pattern matching and rule selection | `match.condition`, `match.requires[].condition`, `postcondition`, `dispatch_commands[].condition` |
-| **EventHydration** | Building the domain event payload | `event_catalog[].payload_template.*`, `identity.creation.generate` |
-| **Reducer** | Projecting events onto state | `reducers[].assign.*`, `reducers[].append.*` |
+| Phase              | Description                         | Typical DSL fields                                                                                |
+| ------------------ | ----------------------------------- | ------------------------------------------------------------------------------------------------- |
+| **Behavior**       | Pattern matching and rule selection | `match.condition`, `match.requires[].condition`, `postcondition`, `dispatch_commands[].condition` |
+| **EventHydration** | Building the domain event payload   | `event_catalog[].payload_template.*`, `identity.creation.generate`                                |
+| **Reducer**        | Projecting events onto state        | `reducers[].assign.*`, `reducers[].append.*`                                                      |
 
 Phase values are defined in `src/cel/phases.ts` as `CelPhase.Behavior`, `CelPhase.EventHydration`, `CelPhase.Reducer`.
 
@@ -795,16 +795,16 @@ Non-deterministic functions are allowed in **Behavior** and **EventHydration** p
 
 ### 9.3 Phase Enforcement Matrix
 
-| Function | Behavior | EventHydration | Reducer |
-|---|---|---|---|
-| `$uuidv7` | allowed | allowed | **BANNED** |
-| `$now` | allowed | allowed | **BANNED** |
-| `now` | allowed | allowed | **BANNED** |
-| `timestamp` | allowed | allowed | **BANNED** |
-| `$fake` | allowed | allowed | **BANNED** |
-| `$fakeSeed` | allowed | allowed | **BANNED** |
-| `$fakeFromFormat` | allowed | allowed | **BANNED** |
-| All other builtins | allowed | allowed | allowed |
+| Function           | Behavior | EventHydration | Reducer    |
+| ------------------ | -------- | -------------- | ---------- |
+| `$uuidv7`          | allowed  | allowed        | **BANNED** |
+| `$now`             | allowed  | allowed        | **BANNED** |
+| `now`              | allowed  | allowed        | **BANNED** |
+| `timestamp`        | allowed  | allowed        | **BANNED** |
+| `$fake`            | allowed  | allowed        | **BANNED** |
+| `$fakeSeed`        | allowed  | allowed        | **BANNED** |
+| `$fakeFromFormat`  | allowed  | allowed        | **BANNED** |
+| All other builtins | allowed  | allowed        | allowed    |
 
 Source: `REDUCER_BANNED` set in `src/cel/builtins.ts`.
 
@@ -828,17 +828,17 @@ Set `LOG_LEVEL=trace` to see CEL parse and evaluation diagnostics in the `cel` l
 
 All errors from the CEL evaluator are JavaScript `Error` instances whose message begins with a machine-readable prefix.
 
-| Prefix | When thrown |
-|---|---|
-| `CEL_PARSE_ERROR` | Unclosed string literal |
-| `CEL_TOKENIZE` | Unexpected character in source |
-| `CEL_PARSE` | Structural parse error (unexpected token, missing `)`, etc.) |
-| `CEL_EVAL` | Runtime evaluation error (undefined identifier, wrong type for operator, unknown method) |
-| `CEL_RUNTIME_ERROR` | Arithmetic errors (divide by zero, sqrt of negative, out-of-range index) |
-| `CEL_TYPE_ERROR` | Type mismatch in builtin arguments |
-| `CEL_UNKNOWN_BUILTIN` | Call to an unrecognised top-level function name |
-| `CEL_PHASE_BANNED` | Non-deterministic function called in Reducer phase |
-| `CEL_TYPE_ERROR: REGEX_REJECTED` | `matches()` pattern has a catastrophic-backtracking shape (synchronous shape guard) |
+| Prefix                           | When thrown                                                                              |
+| -------------------------------- | ---------------------------------------------------------------------------------------- |
+| `CEL_PARSE_ERROR`                | Unclosed string literal                                                                  |
+| `CEL_TOKENIZE`                   | Unexpected character in source                                                           |
+| `CEL_PARSE`                      | Structural parse error (unexpected token, missing `)`, etc.)                             |
+| `CEL_EVAL`                       | Runtime evaluation error (undefined identifier, wrong type for operator, unknown method) |
+| `CEL_RUNTIME_ERROR`              | Arithmetic errors (divide by zero, sqrt of negative, out-of-range index)                 |
+| `CEL_TYPE_ERROR`                 | Type mismatch in builtin arguments                                                       |
+| `CEL_UNKNOWN_BUILTIN`            | Call to an unrecognised top-level function name                                          |
+| `CEL_PHASE_BANNED`               | Non-deterministic function called in Reducer phase                                       |
+| `CEL_TYPE_ERROR: REGEX_REJECTED` | `matches()` pattern has a catastrophic-backtracking shape (synchronous shape guard)      |
 
 ### Error Propagation
 
@@ -852,7 +852,7 @@ Source: `src/cel/evaluator.ts` (the `evaluate` method wraps evaluation in a try/
 
 ### 11.1 Simple Match Condition
 
-From `tests/fixtures/crm/dsl/lead.yaml`:
+From `examples/crm/dsl/lead.yaml`:
 
 ```cel
 // Qualify behavior — only fires on the correct path with a positive score
@@ -915,7 +915,7 @@ state.opportunityIds.all(id, id.startsWith('opp-'))
 
 ### 11.7 Append a Map Literal in a Reducer
 
-From `tests/fixtures/crm/dsl/call.yaml`:
+From `examples/crm/dsl/call.yaml`:
 
 ```yaml
 append:
@@ -984,7 +984,7 @@ payload_template:
 reducers:
   - on: LoanDisbursed
     assign:
-      lastDisbursedAt: "event.payload.at"   # safe: reading, not generating
+      lastDisbursedAt: "event.payload.at" # safe: reading, not generating
 ```
 
 ### 12.5 `matches()` Uses a Synchronous Shape-Based ReDoS Guard
@@ -996,6 +996,7 @@ CEL_TYPE_ERROR: REGEX_REJECTED — regex /(a+)+/ has a nested-quantifier shape .
 ```
 
 **What this means for you:**
+
 - Legitimate patterns always pass the shape check and execute inline with no overhead.
 - Patterns with dangerous shapes (e.g. `(a+)+$`, `(\d+)+`) are rejected at expression evaluation time with `CEL_TYPE_ERROR: REGEX_REJECTED`.
 - There is **no** runtime timeout — patterns are either pre-rejected by shape, or they run to completion inline.
@@ -1040,37 +1041,42 @@ If you want numeric addition, ensure both sides are numbers first.
 
 ---
 
-## 13. TypeScript Script Fallback (`@Script`)
+## 13. TypeScript helpers registered by configuration factories
 
-When a CEL expression becomes unreasonably complex, the engine supports a TypeScript escape hatch. Any DSL field that accepts a CEL string also accepts `ts:<id>` to delegate evaluation to a `@Script`-annotated TypeScript class discovered at boot via the `typescript.scan` globs in `potemkin.yaml`.
-
-See [`docs/dsl.md` Section 10](./dsl.md#10-typescript-scripts-script-tier-1) for the full API, including the `@Script` class shape, scan configuration, and `ScriptContext`.
-
-> ⚠️ TypeScript scripts (`ts:`) are **banned in all Reducer-phase fields** by the DSL schema, for the same determinism reasons as `now()` and `$uuidv7()`.
-
-Example: a CEL expression that computes a running IRR would require iterative numeric methods not available in CEL. A TypeScript script handles this cleanly:
+CEL remains the only expression language in YAML. When a reusable computation is
+better expressed as TypeScript, define it as a typed helper and register it from
+an annotated static configuration factory:
 
 ```typescript
-// scripts/computeIrr.ts  (picked up by typescript.scan)
-import { Script, type ScriptContext } from '@potemkin/sdk';
+import { PotemkinConfigure, defineHelper, simulation } from "potemkin/sdk";
 
-@Script('computeIrr')
-export class ComputeIrr {
-  run(ctx: ScriptContext): number {
-    // ... iterative IRR calculation ...
-    return 0.12;
+const interestRate = defineHelper(
+  "interestRate",
+  (principal: number, years: number) => principal * (1 + 0.05 * years),
+);
+
+class LoanConfiguration {
+  @PotemkinConfigure("loans")
+  static create() {
+    return simulation().helper(interestRate).build();
   }
 }
 ```
+
+The YAML compiler receives the registered helper definitions before compiling
+CEL, so YAML can call the same function by its CEL identifier:
 
 ```yaml
 event_catalog:
   - type: LoanRepaid
     payload_template:
-      irr: "ts:computeIrr"
+      balance: "interestRate(command.payload.principal, command.payload.years)"
 ```
 
-> Note: `ts:computeIrr` in a reducer field would halt boot with `BOOT_ERR_SCRIPT_IN_REDUCER`.
+The returned `defineHelper` value is also a normal callable TypeScript function,
+so TypeScript behaviour and event callbacks can use it directly. Helpers are
+JSON-in/JSON-out and deterministic; reducer callbacks remain ordinary immutable
+state transitions.
 
 ---
 
@@ -1145,6 +1151,7 @@ ident          = [a-zA-Z_$] [a-zA-Z0-9_$]*
 **Operator precedence** (highest to lowest): `! -` (unary), `* / %`, `+ -`, `< <= > >=`, `== != in`, `&&`, `||`, `?:`.
 
 **Notes**:
+
 - `has(obj.field)` is parsed via the `primary → ident '(' args ')'` rule as a
   top-level CALL node (not a postfix method). The evaluator recognises `fn === 'has'`
   and implements field-presence semantics: it evaluates `obj` and checks whether
@@ -1175,42 +1182,42 @@ ident          = [a-zA-Z_$] [a-zA-Z0-9_$]*
 
 ### 15.2 Extensions (Not in Upstream CEL)
 
-| Extension | Description |
-|---|---|
-| `?.` null-safe dot | Short-circuits to `null` instead of erroring |
-| `?[` null-safe bracket | Short-circuits to `null` instead of erroring |
-| Raw string literals `r"..."` | Backslash not interpreted |
-| `coalesce(a, b, ...)` | Multi-argument null fallback |
-| `default(a, fallback)` | Two-argument null fallback |
-| `$uuidv7()` | Engine-provided UUIDv7 generator |
-| `$now()` | Engine-provided wall-clock alias |
-| `$concat(...)` | Variadic string concatenation |
-| `$fake(spec)` | Synthetic data generation |
-| `$fakeSeed(n)` | Deterministic faker seeding |
-| `$fakeFromFormat(fmt)` | JSON-Schema-format-aware fake generation |
-| `duration()` shorthand | `"30s"`, `"1m"`, `"2h"`, `"3d"` formats |
-| `length()` | Alias of `size()` |
-| `sum()` | Numeric list summation |
-| Extended string methods | `replace`, `split`, `substring`, `indexOf`, `lastIndexOf`, `lowerAscii`, `upperAscii`, `trim`, `trimStart`, `trimEnd`, `charAt` |
-| Extended list methods | `indexOf`, `lastIndexOf`, `sort`, `reverse`, `join`, `flatten`, `distinct` |
-| Map receiver methods | `has`, `keys`, `values`, `size` as receiver methods |
-| `exists_one` macro | Not in all upstream implementations |
-| Null-safe comprehensions `?.macro(...)` | Short-circuit to null on null receiver |
-| Value-based numeric equality | `1 == 1.0` is `true`; upstream CEL treats int/double as distinct |
+| Extension                               | Description                                                                                                                     |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `?.` null-safe dot                      | Short-circuits to `null` instead of erroring                                                                                    |
+| `?[` null-safe bracket                  | Short-circuits to `null` instead of erroring                                                                                    |
+| Raw string literals `r"..."`            | Backslash not interpreted                                                                                                       |
+| `coalesce(a, b, ...)`                   | Multi-argument null fallback                                                                                                    |
+| `default(a, fallback)`                  | Two-argument null fallback                                                                                                      |
+| `$uuidv7()`                             | Engine-provided UUIDv7 generator                                                                                                |
+| `$now()`                                | Engine-provided wall-clock alias                                                                                                |
+| `$concat(...)`                          | Variadic string concatenation                                                                                                   |
+| `$fake(spec)`                           | Synthetic data generation                                                                                                       |
+| `$fakeSeed(n)`                          | Deterministic faker seeding                                                                                                     |
+| `$fakeFromFormat(fmt)`                  | JSON-Schema-format-aware fake generation                                                                                        |
+| `duration()` shorthand                  | `"30s"`, `"1m"`, `"2h"`, `"3d"` formats                                                                                         |
+| `length()`                              | Alias of `size()`                                                                                                               |
+| `sum()`                                 | Numeric list summation                                                                                                          |
+| Extended string methods                 | `replace`, `split`, `substring`, `indexOf`, `lastIndexOf`, `lowerAscii`, `upperAscii`, `trim`, `trimStart`, `trimEnd`, `charAt` |
+| Extended list methods                   | `indexOf`, `lastIndexOf`, `sort`, `reverse`, `join`, `flatten`, `distinct`                                                      |
+| Map receiver methods                    | `has`, `keys`, `values`, `size` as receiver methods                                                                             |
+| `exists_one` macro                      | Not in all upstream implementations                                                                                             |
+| Null-safe comprehensions `?.macro(...)` | Short-circuit to null on null receiver                                                                                          |
+| Value-based numeric equality            | `1 == 1.0` is `true`; upstream CEL treats int/double as distinct                                                                |
 
 ### 15.3 Omissions (Present in Upstream, Not Here)
 
-| Upstream feature | Status in this engine |
-|---|---|
-| Protobuf message types | Not applicable — all values are JSON-native |
-| `bytes` literal syntax (`b"..."`) | Not supported; use `bytes("...")` function instead |
+| Upstream feature                              | Status in this engine                                                  |
+| --------------------------------------------- | ---------------------------------------------------------------------- |
+| Protobuf message types                        | Not applicable — all values are JSON-native                            |
+| `bytes` literal syntax (`b"..."`)             | Not supported; use `bytes("...")` function instead                     |
 | Timestamp arithmetic (`timestamp + duration`) | Not supported; `duration()` returns milliseconds for manual arithmetic |
-| Numeric overflow errors | JavaScript `number` does not overflow; returns `Infinity` |
-| Multi-line string literals | Not tested; expressions are embedded in single-line YAML values |
-| Block comments | Not supported |
-| Namespaced functions (`pkg.func()`) | Not supported |
-| `select` operator (proto field presence) | Replaced by `has()` macro |
+| Numeric overflow errors                       | JavaScript `number` does not overflow; returns `Infinity`              |
+| Multi-line string literals                    | Not tested; expressions are embedded in single-line YAML values        |
+| Block comments                                | Not supported                                                          |
+| Namespaced functions (`pkg.func()`)           | Not supported                                                          |
+| `select` operator (proto field presence)      | Replaced by `has()` macro                                              |
 
 ### 15.4 Design Scope Note
 
-This CEL implementation is purpose-built for writing declarative business rules in a stateful HTTP simulator. It is not intended as a general-purpose or production CEL runtime. For environment-specific policy enforcement, Rego/OPA may be more appropriate. For complex algorithmic logic, use the `ts:` script escape hatch (see Section 13).
+This CEL implementation is purpose-built for writing declarative business rules in a stateful HTTP simulator. It is not intended as a general-purpose or production CEL runtime. For environment-specific policy enforcement, Rego/OPA may be more appropriate. Reusable native computations should be registered as typed helpers (see Section 13).

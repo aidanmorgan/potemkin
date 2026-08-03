@@ -104,6 +104,31 @@ class FixtureLifecycleManager(
         scope.cancel()
     }
 
+    /**
+     * Refresh the fixture partition synchronously after an explicit engine-ready
+     * notification. The control plane uses this as its completion barrier: when
+     * this method returns, stale dynamic expectations have been removed and the
+     * current fixture set has been registered, subject to the engine remaining UP.
+     *
+     * The fetch stays outside [transitionMutex] so health transitions cannot be
+     * blocked by network I/O. The sequence check then prevents an older refresh
+     * from winning over a newer lifecycle transition.
+     */
+    internal suspend fun refreshNow() {
+        val seq = transitionSeq.incrementAndGet()
+        val fixtures = safelyFetch() ?: return
+        val signal = changeSignal(fixtures)
+
+        transitionMutex.withLock {
+            if (transitionSeq.get() != seq || monitor.currentState() != HealthState.Up) {
+                log.debug("FixtureLifecycleManager: explicit refresh superseded or engine is down")
+                return
+            }
+            clearFixtures()
+            applyPush(fixtures, signal)
+        }
+    }
+
     override fun onTransition(from: HealthState, to: HealthState) {
         // Increment the sequence number before dispatching so any in-flight coroutine
         // from a prior transition can detect it is stale and exit without acting.

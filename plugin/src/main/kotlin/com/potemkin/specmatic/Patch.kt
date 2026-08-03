@@ -1,7 +1,7 @@
 package com.potemkin.specmatic
 
 /**
- * Kotlin port of the canonical Patch vocabulary defined in `src/dsl/patches.ts`.
+ * Kotlin port of the canonical Patch vocabulary defined in `src/model/patches.ts`.
  *
  * RFC 6902 ops (add/remove/replace/move/copy) plus Potemkin extensions
  * (append/prepend/increment/merge/upsert). Paths are RFC 6901 JSON Pointers;

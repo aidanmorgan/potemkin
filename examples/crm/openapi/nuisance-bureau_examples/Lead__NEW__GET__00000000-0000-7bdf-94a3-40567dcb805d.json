@@ -1,0 +1,43 @@
+{
+  "http-request": {
+    "method": "GET",
+    "path": "/leads/00000000-0000-7bdf-94a3-40567dcb805d"
+  },
+  "http-response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "body": {
+      "id": "00000000-0000-7bdf-94a3-40567dcb805d",
+      "companyName": "export",
+      "contactName": "export",
+      "phone": "export",
+      "email": "export@example.com",
+      "source": "WEBSITE",
+      "status": "NEW",
+      "score": 50,
+      "createdAt": "1970-01-01T00:00:00.000Z",
+      "callIds": [],
+      "notes": [],
+      "assignedAgentId": null,
+      "assignedCampaignId": null,
+      "updatedAt": "1970-01-01T00:00:00.000Z",
+      "updatedBy": null,
+      "_links": {
+        "self": {
+          "href": "/leads/00000000-0000-7bdf-94a3-40567dcb805d",
+          "method": "GET"
+        },
+        "contact": {
+          "href": "/leads/00000000-0000-7bdf-94a3-40567dcb805d/contact",
+          "method": "POST"
+        },
+        "dnc": {
+          "href": "/leads/00000000-0000-7bdf-94a3-40567dcb805d/dnc",
+          "method": "POST"
+        }
+      }
+    }
+  }
+}

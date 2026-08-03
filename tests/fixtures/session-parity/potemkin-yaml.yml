@@ -1,0 +1,8 @@
+version: 1
+specmatic: ./specmatic.yaml
+openapi:
+  - openapi/session-parity.yaml
+modules:
+  - dsl/global.yaml
+  - dsl/record.yaml
+  - dsl/record-by-id.yaml

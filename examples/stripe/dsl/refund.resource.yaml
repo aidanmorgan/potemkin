@@ -3,12 +3,11 @@
 # updates the target charge's amount_refunded/refunded (see charge.resource.yaml).
 resource: refund
 schema: refund
+response: stripeResponse
 
 identity:
   creation:
-    generate: "ts:refundId"
-
-response: "ts:refundResponse"
+    generate: "$concat('re_', $uuidv7())"
 
 query_mapping:
   charge: "state.charge == param"
@@ -18,7 +17,7 @@ event_catalog:
     payload_template:
       id: "command.targetId"
       object: "'refund'"
-      created: "ts:unixNow"
+      created: "$unix()"
       livemode: "false"
       amount: "has(command.payload.amount) ? command.payload.amount : 0"
       currency: "has(command.payload.currency) ? command.payload.currency : 'usd'"
@@ -39,7 +38,15 @@ reducers:
       - { op: replace, path: /metadata, value: "${event.payload.metadata}" }
 
 operations:
-  - { op: PostRefunds, emit: RefundCreated }
+  - op: PostRefunds
+    emit: RefundCreated
+    dispatch_commands:
+      - boundary: charge__v1_charges_By_charge
+        intent: mutation
+        operationId: GetChargesCharge
+        target_id: "command.payload.charge"
+        payload:
+          amount: "command.payload.amount"
   - { op: GetRefunds, query: true }
   - { op: GetRefundsRefund, query: true }
   - { op: PostRefundsRefund, emit: RefundUpdated }

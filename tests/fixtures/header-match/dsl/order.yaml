@@ -12,7 +12,7 @@
 #   value (no match.headers constraint → always passes the header check).
 #   Emits OrderPlaced → reducer sets channel=standard, priority=NORMAL.
 #
-# Header match semantics (src/engine/headerMatch.ts):
+# Header match semantics (src/core/engine.ts):
 #   - Name lookup is case-insensitive (x-channel == X-Channel == X-CHANNEL).
 #   - Value comparison is exact (equality); '*' and 'present' are wildcard sentinels.
 #   - AND semantics: all declared headers must match.

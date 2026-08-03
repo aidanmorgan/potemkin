@@ -1,0 +1,13 @@
+version: 1
+specmatic: ./specmatic.yaml
+openapi:
+  - openapi/latency-demo.yaml
+modules:
+  - dsl/global.yaml
+  - dsl/job-by-id.yaml
+typescript:
+  scan:
+    - include:
+        - typescript/mixed/**/*.ts
+      exclude:
+        - "**/*.d.ts"

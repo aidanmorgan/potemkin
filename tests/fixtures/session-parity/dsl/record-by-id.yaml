@@ -1,0 +1,10 @@
+boundary: RecordById
+contract_path: /records/{id}
+fallback_override: true
+identity:
+  key:
+    from: path
+    name: id
+event_catalog: []
+behaviors: []
+reducers: []

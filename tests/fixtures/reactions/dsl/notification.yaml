@@ -15,7 +15,7 @@ identity:
 event_catalog:
   - type: NotificationQueued
     payload_template:
-      id:      "$uuidv7()"
+      id: "$uuidv7()"
       orderId: "event.aggregateId"
       channel: "'EMAIL'"
 

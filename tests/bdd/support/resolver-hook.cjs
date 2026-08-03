@@ -9,21 +9,17 @@
  *
  * This file is loaded via --require before ts-node/register.
  */
-'use strict';
+"use strict";
 
-const Module = require('module');
+const Module = require("module");
 const originalResolveFilename = Module._resolveFilename;
 
 Module._resolveFilename = function patchedResolveFilename(request, parent, isMain, options) {
-  if (
-    typeof request === 'string' &&
-    request.startsWith('.') &&
-    request.endsWith('.js')
-  ) {
+  if (typeof request === "string" && request.startsWith(".") && request.endsWith(".js")) {
     const stripped = request.slice(0, -3);
     try {
       return originalResolveFilename.call(this, stripped, parent, isMain, options);
-    } catch (_) {
+    } catch {
       // fall through to original resolution
     }
   }

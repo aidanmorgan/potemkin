@@ -55,14 +55,17 @@ class PotemkinRequestInterceptor(
             }
             is JwtResult.Invalid -> {
                 log.debug("JWT verification failed: {}", result.reason)
-                annotate(httpRequest, cleaned, error = result.reason)
+                annotate(httpRequest, cleaned, error = result.reason, code = result.code.name)
             }
         }
     }
 
-    private fun annotate(original: HttpRequest, cleaned: Map<String, String>, error: String): HttpRequest {
+    private fun annotate(original: HttpRequest, cleaned: Map<String, String>, error: String, code: String? = null): HttpRequest {
         // The error detail is logged; the header carries the challenge to echo back.
-        return original.copy(headers = cleaned + (PotemkinHeaders.AUTH_ERROR to challenge))
+        val headers = cleaned.toMutableMap()
+        headers[PotemkinHeaders.AUTH_ERROR] = challenge
+        if (code !== null) headers[PotemkinHeaders.AUTH_ERROR_CODE] = code
+        return original.copy(headers = headers)
     }
 
     private fun extractBearer(headers: Map<String, String>): String? {

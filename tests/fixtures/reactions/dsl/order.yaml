@@ -19,11 +19,11 @@ identity:
 event_catalog:
   - type: OrderPlaced
     payload_template:
-      id:         "command.targetId"
+      id: "command.targetId"
       customerId: "command.payload.customerId"
-      productId:  "command.payload.productId"
-      qty:        "command.payload.qty != null ? command.payload.qty : 0"
-      status:     "'PLACED'"
+      productId: "command.payload.productId"
+      qty: "command.payload.qty != null ? command.payload.qty : 0"
+      status: "'PLACED'"
 
 behaviors:
   - name: place-order
