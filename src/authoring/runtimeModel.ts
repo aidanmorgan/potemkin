@@ -1,4 +1,4 @@
-import type { DeepReadonly, JsonObject, JsonValue } from "../types.js";
+import type { Command, DeepReadonly, JsonObject, JsonValue } from "../types.js";
 import { compileRuntime } from "../model/compiler.js";
 import type { RuntimeDefinition, RuntimeModel } from "../model/index.js";
 import type {
@@ -6,6 +6,7 @@ import type {
   EventContext,
   FaultContext,
   IdentityContext,
+  PostCommitContext,
   ProjectionContext,
   QueryContext,
   ResponseContext,
@@ -26,7 +27,6 @@ import type {
   RuntimeSaga,
   RuntimeSagaCompensation,
   RuntimeSagaStep,
-  RuntimeSecondaryCommand,
   RuntimeWebhook,
   RuntimeValue,
   SagaContext,
@@ -104,34 +104,35 @@ export type TypedEventDefinition<
   }>;
 };
 
-export interface BehaviorDefinition extends Omit<
-  RuntimeBehavior,
-  | "operationId"
-  | "emit"
-  | "emitWhen"
-  | "dispatchCommands"
-  | "method"
-  | "requiredScopes"
-  | "linkName"
-  | "requires"
-> {
+export interface BehaviorEmissionDefinition {
+  readonly when: RuntimePredicate<MatchContext>;
+  readonly event: EventType;
+}
+
+export interface SecondaryCommandDefinition {
+  readonly boundary: BoundaryName;
+  readonly intent: Command["intent"];
+  readonly operationId: OperationId;
+  readonly targetId?: RuntimeValue<MatchContext, string | null>;
+  readonly payload?: Readonly<Record<string, RuntimeValue<MatchContext, JsonValue>>>;
+  readonly condition?: RuntimePredicate<MatchContext>;
+}
+
+export interface BehaviorDefinition {
   readonly name: BehaviorName;
   readonly operationId: OperationId;
-  readonly method?: HttpMethod;
-  readonly requiredScopes?: readonly ScopeName[];
+  readonly condition?: RuntimePredicate<MatchContext>;
   readonly requires?: readonly GuardDefinition[];
-  readonly linkName?: LinkRelation;
+  readonly requiredScopes?: readonly ScopeName[];
+  readonly method?: HttpMethod;
+  readonly headers?: Readonly<Record<string, string>>;
   readonly emit?: EventType;
-  readonly emitWhen?: readonly (Omit<NonNullable<RuntimeBehavior["emitWhen"]>[number], "event"> & {
-    readonly event: EventType;
-  })[];
-  readonly dispatchCommands?: readonly (Omit<
-    RuntimeSecondaryCommand,
-    "boundary" | "operationId"
-  > & {
-    readonly boundary: BoundaryName;
-    readonly operationId: OperationId;
-  })[];
+  readonly emitWhen?: readonly BehaviorEmissionDefinition[];
+  readonly dispatchCommands?: readonly SecondaryCommandDefinition[];
+  readonly postcondition?: RuntimePredicate<PostCommitContext>;
+  readonly linkName?: LinkRelation;
+  readonly linkCondition?: RuntimePredicate<MatchContext>;
+  readonly responseStatus?: number;
 }
 export interface ReducerDefinition<State extends object = object> extends Omit<
   RuntimeReducer<State>,
@@ -142,9 +143,6 @@ export interface ReducerDefinition<State extends object = object> extends Omit<
 export type GuardDefinition = Omit<RuntimeGuard, "name"> & {
   readonly name: GuardName;
 };
-export type SecondaryCommandDefinition = NonNullable<
-  BehaviorDefinition["dispatchCommands"]
->[number];
 export type IdentityKeyDefinition =
   | {
       readonly from: "path" | "query" | "header";
