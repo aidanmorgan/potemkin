@@ -1,4 +1,5 @@
 import { boundary, simulation } from "../../../src/authoring/runtimeModel.js";
+import { reducerRule } from "../../../src/authoring/nativeReducer.js";
 import {
   composeBoundaries,
   defineComponent,
@@ -24,7 +25,11 @@ describe("direct TypeScript component composition", () => {
   it("materializes use and include into ordinary runtime boundaries", () => {
     const fragment = defineComponent(componentName("AuditFragment"), () => ({
       eventCatalog: [{ type: eventType("AuditRecorded"), payload: {} }],
-      reducers: [{ on: eventType("AuditRecorded"), apply: () => [] }],
+      reducers: [
+        reducerRule(eventType("AuditRecorded"))
+          .apply(() => ({}))
+          .build(),
+      ],
     }));
     const component = defineComponent(componentName("Resource"), (parameters) => ({
       eventCatalog: [
@@ -47,7 +52,11 @@ describe("direct TypeScript component composition", () => {
           ],
         },
       ],
-      reducers: [{ on: eventType("ResourceCreated"), apply: () => [] }],
+      reducers: [
+        reducerRule(eventType("ResourceCreated"))
+          .apply(() => ({}))
+          .build(),
+      ],
       include: [include(fragment)],
     }));
 
@@ -153,7 +162,11 @@ describe("direct TypeScript component composition", () => {
             ],
           },
         ],
-        reducers: [{ on: eventType("Created"), apply: () => [] }],
+        reducers: [
+          reducerRule(eventType("Created"))
+            .apply(() => ({}))
+            .build(),
+        ],
         initialization: [],
         response: {},
         mask: [],

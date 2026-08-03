@@ -73,7 +73,9 @@ function buildMachine(
         if (reducer === undefined) continue;
         const next: TransitionWriteSet = {
           fields: [],
-          replaceState: reducer.replaceState === true,
+          // TypeScript reducers always return the complete resultant state;
+          // the native authoring contract has no patch-mode escape hatch.
+          replaceState: true,
           derivedClosure: [],
           volatile: [],
         };

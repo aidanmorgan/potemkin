@@ -65,6 +65,9 @@ const reducer = reducerRule<CreatedPayload, ResultState>(eventType("ContractCrea
   })
   .build();
 
+// @ts-expect-error Built TypeScript reducers expose resultant-state transitions, not patch APIs.
+reducer.apply;
+
 const contract = boundary(boundaryName("Contract"), contractPath(pathSegment("contracts")))
   .event(created)
   .reducer(reducer)

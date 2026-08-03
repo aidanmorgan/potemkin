@@ -27,7 +27,6 @@ import type {
   BehaviorDefinition,
   EventDefinition,
   FaultDefinition,
-  ReducerDefinition,
   ReactionDefinition,
   ResponseDefinition,
   IdentityDefinition,
@@ -38,6 +37,7 @@ import type {
   LatencyDefinition,
   StateDefinition,
 } from "./runtimeModel.js";
+import type { NativeReducer } from "./nativeReducer.js";
 
 /**
  * A direct TypeScript component is a factory over values, not a template
@@ -72,7 +72,7 @@ export interface ComponentSource {
   readonly fallbackOverride?: boolean;
   readonly eventCatalog?: readonly EventDefinition[];
   readonly behaviors?: readonly BehaviorDefinition[];
-  readonly reducers?: readonly ReducerDefinition[];
+  readonly reducers?: readonly NativeReducer<object, object>[];
   readonly identity?: IdentityDefinition;
   readonly query?: QueryDefinition;
   readonly queryMapping?: QueryMappingDefinition;

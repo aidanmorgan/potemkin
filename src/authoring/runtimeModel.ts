@@ -15,7 +15,6 @@ import type {
   RuntimeDependencies,
   RuntimeEvent,
   RuntimePredicate,
-  RuntimeReducer,
   RuntimeReducerContext,
   RuntimeResponse,
   RuntimeSaga,
@@ -39,6 +38,7 @@ import type {
 import type { OpenApiDoc } from "../contract/loader.js";
 import { expandResources, type ResourceDefinition } from "./resourceModel.js";
 import type { TypeScriptHelperDefinition, TypeScriptHelperRegistration } from "./helpers.js";
+import type { NativeReducer } from "./nativeReducer.js";
 import { definitionError, TypeScriptAuthoringError } from "./errors.js";
 import { runtimeLatencyProblem } from "../model/latency.js";
 import {
@@ -128,12 +128,6 @@ export interface BehaviorDefinition {
   readonly linkName?: LinkRelation;
   readonly linkCondition?: RuntimePredicate<MatchContext>;
   readonly responseStatus?: number;
-}
-export interface ReducerDefinition<State extends object = object> extends Omit<
-  RuntimeReducer<State>,
-  "on"
-> {
-  readonly on: EventType;
 }
 export interface GuardDefinition {
   readonly name: GuardName;
@@ -252,7 +246,7 @@ export interface ProjectionDefinition {
   readonly name: ProjectionName;
   readonly key: RuntimeValue<ProjectionContext, string>;
   readonly subscribe: readonly EventSelector[];
-  readonly reduce: readonly ReducerDefinition[];
+  readonly reduce: readonly NativeReducer<object, object>[];
   readonly reset?: () => void;
 }
 export type BoundaryDefinition = Omit<
@@ -280,7 +274,7 @@ export type BoundaryDefinition = Omit<
   readonly schema?: SchemaReference;
   readonly eventCatalog: readonly EventDefinition[];
   readonly behaviors: readonly BehaviorDefinition[];
-  readonly reducers: readonly ReducerDefinition[];
+  readonly reducers: readonly NativeReducer<object, object>[];
   readonly identity?: IdentityDefinition;
   readonly query?: QueryDefinition;
   readonly queryMapping?: QueryMappingDefinition;
@@ -743,7 +737,7 @@ export interface BoundaryBuilder {
   event(...values: readonly EventDefinition[]): BoundaryBuilder;
   eventCatalog(...values: readonly EventDefinition[]): BoundaryBuilder;
   behavior(...values: readonly BehaviorDefinition[]): BoundaryBuilder;
-  reducer(...values: readonly ReducerDefinition[]): BoundaryBuilder;
+  reducer(...values: readonly NativeReducer<object, object>[]): BoundaryBuilder;
   seed(...values: readonly InitializationDefinition[]): BoundaryBuilder;
   initialization(...values: readonly InitializationDefinition[]): BoundaryBuilder;
   response(value: ResponseDefinition): BoundaryBuilder;

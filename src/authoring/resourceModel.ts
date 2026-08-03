@@ -13,11 +13,11 @@ import type {
   InitializationDefinition,
   QueryDefinition,
   LatencyDefinition,
-  ReducerDefinition,
   ReactionDefinition,
   ResponseDefinition,
   StateDefinition,
 } from "./runtimeModel.js";
+import type { NativeReducer } from "./nativeReducer.js";
 import type {
   ContractPath,
   EventType,
@@ -52,7 +52,7 @@ export interface ResourceDefinition {
   readonly response?: ResponseDefinition;
   readonly query?: QueryDefinition;
   readonly eventCatalog: readonly EventDefinition[];
-  readonly reducers: readonly ReducerDefinition[];
+  readonly reducers: readonly NativeReducer<object, object>[];
   readonly initialization?: readonly InitializationDefinition[];
   readonly operations: readonly ResourceOperation[];
   readonly mask?: readonly FieldPath[];

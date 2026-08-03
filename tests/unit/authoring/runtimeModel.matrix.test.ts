@@ -18,6 +18,7 @@ import {
   type TypedEventContext,
 } from "../../../src/authoring/runtimeModel.js";
 import { defineComponent, use } from "../../../src/authoring/composition.js";
+import { reducerRule } from "../../../src/authoring/nativeReducer.js";
 import { defineHelper } from "../../../src/authoring/helpers.js";
 import { defineResource } from "../../../src/authoring/resourceModel.js";
 import {
@@ -188,7 +189,9 @@ describe("source-neutral TypeScript runtime model builders", () => {
 
   it("builds a boundary through all optional source-neutral policies", () => {
     const resourceEvent = event(eventType("ResourceCreated"), { id: () => "id-1" });
-    const reducer = { on: eventType("ResourceCreated"), apply: () => [] };
+    const reducer = reducerRule(eventType("ResourceCreated"))
+      .apply(() => ({}))
+      .build();
     const fault = {
       name: faultName("unavailable"),
       matches: () => true,

@@ -15,6 +15,7 @@ import {
   stateFieldName,
 } from "../../../src/authoring/references.js";
 import type { OpenApiDoc } from "../../../src/contract/loader.js";
+import { reducerRule } from "../../../src/authoring/nativeReducer.js";
 
 const openapi = {
   paths: {
@@ -35,7 +36,11 @@ const fullResource: ResourceDefinition = {
   identity: { generate: () => "order-1" },
   query: { pagination: "raw" },
   eventCatalog: [{ type: eventType("OrderCreated"), payload: {} }],
-  reducers: [{ on: eventType("OrderCreated"), apply: () => [] }],
+  reducers: [
+    reducerRule(eventType("OrderCreated"))
+      .apply(() => ({}))
+      .build(),
+  ],
   initialization: [{ state: { id: "seed-1" } }],
   response: { mask: [fieldPath(field("secret"))] },
   mask: [fieldPath(field("internal"))],
