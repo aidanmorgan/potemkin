@@ -4,6 +4,7 @@ import {
   behaviorName,
   defineFault,
   event,
+  faultName,
   factoryName,
   reducerRule,
   simulation,
@@ -35,7 +36,7 @@ function jobBoundary(
     })
     .faults(
       defineFault({
-        name: "delayed-job-fault",
+        name: faultName("delayed-job-fault"),
         headers: { "x-latency-fault": "on" },
         matches: ({ headers }) => headers["x-latency-fault"] === "on",
         response: {

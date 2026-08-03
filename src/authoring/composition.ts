@@ -22,7 +22,12 @@ import type {
   FieldPath,
   SchemaReference,
 } from "./references.js";
-import type { BehaviorDefinition, EventDefinition, ReducerDefinition } from "./runtimeModel.js";
+import type {
+  BehaviorDefinition,
+  EventDefinition,
+  FaultDefinition,
+  ReducerDefinition,
+} from "./runtimeModel.js";
 
 /**
  * A direct TypeScript component is a factory over values, not a template
@@ -50,6 +55,7 @@ export type ComponentSource = Partial<
     | "behaviors"
     | "reducers"
     | "mask"
+    | "faults"
     | "include"
   >
 > & {
@@ -58,6 +64,7 @@ export type ComponentSource = Partial<
   readonly behaviors?: readonly BehaviorDefinition[];
   readonly reducers?: readonly ReducerDefinition[];
   readonly mask?: readonly FieldPath[];
+  readonly faults?: readonly FaultDefinition[];
   readonly include?: readonly ComponentInclude[];
 };
 

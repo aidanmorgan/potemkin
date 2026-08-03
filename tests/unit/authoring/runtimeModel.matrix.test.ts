@@ -3,6 +3,7 @@ import {
   boundary,
   event,
   simulation,
+  type FaultDefinition,
   type TypedEventContext,
 } from "../../../src/authoring/runtimeModel.js";
 import { defineComponent, use } from "../../../src/authoring/composition.js";
@@ -14,6 +15,7 @@ import {
   componentName,
   contractPath,
   eventType,
+  faultName,
   field,
   fieldPath,
   helperName,
@@ -28,6 +30,10 @@ import type { RuntimeGuard } from "../../../src/model/runtime.js";
 import type { JsonObject } from "../../../src/types.js";
 
 describe("source-neutral TypeScript runtime model builders", () => {
+  // @ts-expect-error Fault names use the canonical faultName constructor.
+  const rawFaultName: FaultDefinition["name"] = "raw-fault";
+  void rawFaultName;
+
   it("preserves payload inference through incremental event builder calls", () => {
     const inferred = event(eventType("Inferred"))
       .payload({ id: () => "order-1" })
@@ -127,7 +133,7 @@ describe("source-neutral TypeScript runtime model builders", () => {
     const resourceEvent = event(eventType("ResourceCreated"), { id: () => "id-1" });
     const reducer = { on: eventType("ResourceCreated"), apply: () => [] };
     const fault = {
-      name: "unavailable",
+      name: faultName("unavailable"),
       matches: () => true,
       response: { status: 503, body: { code: "UNAVAILABLE" } },
     };

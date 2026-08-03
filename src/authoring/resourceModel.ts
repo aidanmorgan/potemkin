@@ -16,7 +16,12 @@ import type {
 } from "../model/runtime.js";
 import type { JsonObject } from "../types.js";
 import { definitionError } from "./errors.js";
-import type { BehaviorDefinition, EventDefinition, ReducerDefinition } from "./runtimeModel.js";
+import type {
+  BehaviorDefinition,
+  EventDefinition,
+  FaultDefinition,
+  ReducerDefinition,
+} from "./runtimeModel.js";
 import type {
   ContractPath,
   EventType,
@@ -61,7 +66,7 @@ export interface ResourceDefinition {
   readonly latency?: RuntimeLatency;
   readonly state?: RuntimeStateSchema;
   readonly strictSchema?: boolean;
-  readonly faults?: readonly RuntimeFault[];
+  readonly faults?: readonly FaultDefinition[];
 }
 
 interface IndexedOperation {

@@ -1,7 +1,9 @@
 import {
   boundaryName,
+  behaviorName,
   contractPath,
   eventType,
+  faultName,
   operationId,
   pathParameter,
   pathSegment,
@@ -166,7 +168,7 @@ function directDefinition() {
       }),
     )
     .behavior({
-      name: "create-order",
+      name: behaviorName("create-order"),
       operationId: operationId("createOrder"),
       condition: expression("behavior", () => true),
       emit: eventType("OrderCreated"),
@@ -196,7 +198,7 @@ function directDefinition() {
       }),
     )
     .behavior({
-      name: "create-receipt",
+      name: behaviorName("create-receipt"),
       operationId: operationId("createReceipt"),
       condition: expression("behavior", () => true),
       emit: eventType("ReceiptCreated"),
@@ -224,7 +226,7 @@ function directDefinition() {
         idempotency: { enabled: true, ttlSeconds: 60, hashIncludesBody: true },
         faults: [
           {
-            name: "chaos",
+            name: faultName("chaos"),
             headers: { "x-chaos": "on" },
             matches: (_context: FaultContext) => true,
             response: { status: 503, body: { code: "CHAOS" } },

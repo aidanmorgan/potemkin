@@ -1,7 +1,9 @@
 import {
   boundaryName,
+  behaviorName,
   contractPath,
   eventType,
+  faultName,
   field,
   fieldPath,
   operationId,
@@ -157,7 +159,7 @@ function definition(): SimulationDefinition {
       }),
     )
     .behavior(
-      behavior("create-order-first")
+      behavior(behaviorName("create-order-first"))
         .operation(operationId("createOrder"))
         .headers({ "x-parity-behavior-order": "first" })
         .condition((_input: MatchContext) => true)
@@ -167,7 +169,7 @@ function definition(): SimulationDefinition {
     )
     .behavior(
       behavior({
-        name: "create-order",
+        name: behaviorName("create-order"),
         operationId: operationId("createOrder"),
         condition: (_input: MatchContext) => true,
         emit: eventType("OrderCreated"),
@@ -236,7 +238,7 @@ function definition(): SimulationDefinition {
       }),
     )
     .behavior(
-      behavior("rename-order-dispatch-only")
+      behavior(behaviorName("rename-order-dispatch-only"))
         .operation(operationId("renameOrder"))
         .headers({ "x-parity-dispatch-only": "on" })
         .condition((_input: MatchContext) => true)
@@ -255,7 +257,7 @@ function definition(): SimulationDefinition {
     )
     .behavior(
       behavior({
-        name: "rename-order",
+        name: behaviorName("rename-order"),
         operationId: operationId("renameOrder"),
         condition: (_input: MatchContext) => true,
         emit: eventType("OrderRenamed"),
@@ -288,7 +290,7 @@ function definition(): SimulationDefinition {
     )
     .behavior(
       behavior({
-        name: "create-receipt",
+        name: behaviorName("create-receipt"),
         operationId: operationId("createReceipt"),
         condition: (_input: MatchContext) => true,
         emit: eventType("ReceiptCreated"),
@@ -351,7 +353,7 @@ function definition(): SimulationDefinition {
         },
         faults: [
           {
-            name: "parity-fault",
+            name: faultName("parity-fault"),
             matches: ({ headers }: FaultContext) => headers["x-parity-fault"] === "on",
             response: {
               status: 503,

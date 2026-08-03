@@ -6,6 +6,7 @@ import {
   defineGlobal,
   defineHelper,
   event,
+  faultName,
   factoryName,
   helperName,
   reducerRule,
@@ -228,7 +229,7 @@ export class AuthoringParityFactory {
           },
           faults: [
             {
-              name: "parity-fault",
+              name: faultName("parity-fault"),
               headers: { "x-parity-fault": "on" },
               matches: ({ headers }) => headers["x-parity-fault"] === "on",
               response: {

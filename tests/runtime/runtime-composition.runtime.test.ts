@@ -1,5 +1,6 @@
 import {
   boundaryName,
+  behaviorName,
   componentName,
   contractPath,
   eventType,
@@ -138,7 +139,7 @@ function directDefinition() {
       event(eventType("AuditRecorded"), { audited: () => true }),
     ],
     behaviors: [
-      behavior("create-order")
+      behavior(behaviorName("create-order"))
         .operation(operationId("createOrder"))
         .emitWhen(
           { when: expression("behavior", () => true), event: eventType("OrderCreated") },

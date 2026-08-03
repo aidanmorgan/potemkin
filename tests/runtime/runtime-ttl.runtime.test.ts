@@ -1,7 +1,9 @@
 import {
   boundaryName,
+  behaviorName,
   contractPath,
   eventType,
+  scopeName,
   operationId,
   pathSegment,
 } from "../../src/authoring/references.js";
@@ -119,9 +121,9 @@ function directDefinition() {
         .identity({ generate: ({ payload }: IdentityContext) => String(payload.id) })
         .eventCatalog(created)
         .behavior({
-          name: "create-resource",
+          name: behaviorName("create-resource"),
           operationId: operationId("createResource"),
-          requiredScopes: ["resource:write"],
+          requiredScopes: [scopeName("resource:write")],
           emit: eventType("ResourceCreated"),
         })
         .reducer(reducer)

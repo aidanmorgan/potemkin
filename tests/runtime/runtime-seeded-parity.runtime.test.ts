@@ -1,5 +1,6 @@
 import {
   boundaryName,
+  behaviorName,
   contractPath,
   eventType,
   operationId,
@@ -101,7 +102,7 @@ function typescriptDefinition() {
           }),
         )
         .behavior({
-          name: "create-resource",
+          name: behaviorName("create-resource"),
           operationId: operationId("createResource"),
           condition: expression("behavior", () => true),
           emit: eventType("ResourceCreated"),

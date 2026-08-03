@@ -312,7 +312,7 @@ function toSymbolicSequence(
       route.operation.requestBodySchema?.properties !== null &&
       typeof route.operation.requestBodySchema?.properties === "object" &&
       !Array.isArray(route.operation.requestBodySchema?.properties)
-        ? route.operation.requestBodySchema.properties
+        ? (route.operation.requestBodySchema.properties as JsonObject)
         : undefined;
     const input = Object.fromEntries(
       Object.entries(step.input).filter(([name]) => properties?.[name] !== undefined),
@@ -396,8 +396,9 @@ function representativeBody(
     charge: "ch_equivalence",
     payment_method: "pm_card_visa",
   };
+  const objectProperties = properties as JsonObject;
   for (const [name, value] of Object.entries(defaults)) {
-    if (properties[name] !== undefined && body[name] === undefined) additions[name] = value;
+    if (objectProperties[name] !== undefined && body[name] === undefined) additions[name] = value;
   }
   return { ...body, ...additions };
 }

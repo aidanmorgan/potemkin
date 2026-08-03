@@ -1,5 +1,6 @@
 import {
   boundaryName,
+  behaviorName,
   contractPath,
   eventType,
   operationId,
@@ -20,7 +21,7 @@ import {
 } from "../../src/authoring/runtimeModel.js";
 import { reducerRule } from "../../src/authoring/nativeReducer.js";
 import { createRuntimeDataGenerator } from "../../src/model/data.js";
-import type { EventContext, RuntimeHelpers } from "../../src/model/runtime.js";
+import type { EventContext, IdentityContext, RuntimeHelpers } from "../../src/model/runtime.js";
 
 const OPENAPI = `
 openapi: "3.0.3"
@@ -95,7 +96,9 @@ function directDefinition() {
     .boundary(
       boundary(boundaryName("Job"), contractPath(pathSegment("jobs")))
         .latency(LATENCY)
-        .identity({ generate: expression("identity", ({ payload }) => String(payload.id)) })
+        .identity({
+          generate: expression("identity", ({ payload }: IdentityContext) => String(payload.id)),
+        })
         .eventCatalog(
           event(eventType("JobCreated"), {
             id: expression("event", ({ command }: EventContext) => String(command.payload.id)),
@@ -103,7 +106,7 @@ function directDefinition() {
           }),
         )
         .behavior({
-          name: "create-job",
+          name: behaviorName("create-job"),
           operationId: operationId("createJob"),
           condition: expression("behavior", () => true),
           emit: eventType("JobCreated"),

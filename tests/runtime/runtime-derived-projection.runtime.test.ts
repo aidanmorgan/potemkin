@@ -1,5 +1,6 @@
 import {
   boundaryName,
+  behaviorName,
   contractPath,
   eventType,
   operationId,
@@ -112,7 +113,7 @@ function typescriptDefinition() {
           }),
         )
         .behavior({
-          name: "create-order",
+          name: behaviorName("create-order"),
           operationId: operationId("createOrder"),
           condition: expression("behavior", () => true),
           emit: eventType("OrderCreated"),

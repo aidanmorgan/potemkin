@@ -1,5 +1,6 @@
 import {
   boundaryName,
+  behaviorName,
   contractPath,
   eventType,
   operationId,
@@ -124,7 +125,7 @@ function definition(): SimulationDefinition {
           }),
         )
         .behavior({
-          name: "create-widget",
+          name: behaviorName("create-widget"),
           operationId: operationId("createWidget"),
           condition: (_input: MatchContext) => true,
           emit: eventType("WidgetCreated"),

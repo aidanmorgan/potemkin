@@ -1,5 +1,6 @@
 import {
   boundaryName,
+  behaviorName,
   contractPath,
   eventType,
   operationId,
@@ -97,7 +98,7 @@ function directDefinition() {
           }),
         )
         .behavior({
-          name: "create-item",
+          name: behaviorName("create-item"),
           operationId: operationId("createItem"),
           condition: () => true,
           emit: eventType("ItemCreated"),

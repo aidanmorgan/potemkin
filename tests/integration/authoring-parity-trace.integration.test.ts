@@ -1,5 +1,6 @@
 import {
   boundaryName,
+  behaviorName,
   contractPath,
   eventType,
   operationId,
@@ -60,7 +61,7 @@ function definition(operationName = "createShipment"): SimulationDefinition {
           }),
         )
         .behavior({
-          name: "create-shipment",
+          name: behaviorName("create-shipment"),
           operationId: operationId(operationName),
           emit: eventType("ShipmentCreated"),
         })

@@ -1,5 +1,6 @@
 import {
   boundaryName,
+  behaviorName,
   contractPath,
   eventType,
   operationId,
@@ -74,7 +75,7 @@ function definition() {
           }),
         )
         .behavior({
-          name: "createThing",
+          name: behaviorName("createThing"),
           operationId: operationId("createThing"),
           condition: expression("behavior", ({ payload }: MatchContext) => payload !== null),
           emit: eventType("ThingCreated"),

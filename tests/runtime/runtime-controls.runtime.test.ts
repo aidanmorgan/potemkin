@@ -1,7 +1,9 @@
 import {
   boundaryName,
+  behaviorName,
   contractPath,
   eventType,
+  faultName,
   operationId,
   pathParameter,
   pathSegment,
@@ -170,19 +172,19 @@ function directDefinition() {
     generated: ({ helpers }: EventContext) => helpers.uuid(),
   });
   const maintenance = {
-    name: "maintenance",
+    name: faultName("maintenance"),
     selectors: { forceResponse: "maintenance" },
     matches: ({ headers }: FaultContext) => headers["x-potemkin-force-response"] === "maintenance",
     response: { status: 503, body: { code: "MAINTENANCE" } },
   } as const;
   const slowScenario = {
-    name: "slow-scenario",
+    name: faultName("slow-scenario"),
     selectors: { scenario: "slow" },
     matches: () => true,
     response: { status: 429, body: { code: "SLOW_SCENARIO" } },
   } as const;
   const betaResponse = {
-    name: "beta-response",
+    name: faultName("beta-response"),
     selectors: { featureFlag: "beta" },
     matches: () => true,
     response: { status: 418, body: { code: "BETA_RESPONSE" } },
@@ -211,7 +213,7 @@ function directDefinition() {
         .eventCatalog(created)
         .behavior(
           behavior({
-            name: "create-resource",
+            name: behaviorName("create-resource"),
             operationId: operationId("createResource"),
             emit: eventType("ResourceCreated"),
           }),
@@ -230,7 +232,7 @@ function directDefinition() {
         .eventCatalog(updated)
         .behavior(
           behavior({
-            name: "update-resource",
+            name: behaviorName("update-resource"),
             operationId: operationId("updateResource"),
             emit: eventType("ResourceUpdated"),
           }),

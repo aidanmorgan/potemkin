@@ -1,5 +1,6 @@
 import {
   boundaryName,
+  behaviorName,
   contractPath,
   eventType,
   operationId,
@@ -136,7 +137,7 @@ function typescriptDefinition() {
         })
         .event(createEvent)
         .behavior({
-          name: "create-record",
+          name: behaviorName("create-record"),
           operationId: operationId("createRecord"),
           condition: expression("behavior", () => true),
           emit: eventType("RecordCreated"),
@@ -159,7 +160,7 @@ function typescriptDefinition() {
         .fallbackOverride()
         .event(updateEvent)
         .behavior({
-          name: "update-record",
+          name: behaviorName("update-record"),
           operationId: operationId("updateRecord"),
           condition: expression("behavior", () => true),
           emit: eventType("RecordUpdated"),

@@ -16,6 +16,7 @@ import {
 } from "../../../src/authoring/runtimeModel";
 import {
   boundaryName,
+  behaviorName,
   contractPath,
   eventType,
   operationId,
@@ -181,7 +182,7 @@ describe("static contract-error lint", () => {
         defineBoundary(boundaryName("Order"), contractPath(pathSegment("orders")))
           .event(event(eventType("OrderCreated"), {}))
           .behavior(
-            behavior("create")
+            behavior(behaviorName("create"))
               .operation(operationId("createOrder"))
               .emit(eventType("OrderCreated"))
               .requires({

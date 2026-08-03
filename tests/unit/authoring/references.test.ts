@@ -4,6 +4,7 @@ import {
   componentName,
   contractPath,
   eventType,
+  faultName,
   field,
   fieldPath,
   factoryName,
@@ -31,6 +32,7 @@ describe("TypeScript semantic references", () => {
     expect(resourceName("Order")).toBe("Order");
     expect(operationId("createOrder")).toBe("createOrder");
     expect(eventType("OrderCreated")).toBe("OrderCreated");
+    expect(faultName("unavailable")).toBe("unavailable");
     expect(schemaReference("#/components/schemas/Order")).toBe("#/components/schemas/Order");
     expect(contractPath(pathSegment("orders"), pathParameter("id"))).toBe("/orders/{id}");
     expect(fieldPath(field("customer"), field("email"))).toBe("/customer/email");
@@ -56,6 +58,7 @@ describe("TypeScript semantic references", () => {
     expect(sdk.resourceName("Order")).toBe("Order");
     expect(sdk.contractPath(sdk.pathSegment("orders"))).toBe("/orders");
     expect(sdk.eventType("OrderCreated")).toBe("OrderCreated");
+    expect(sdk.faultName("unavailable")).toBe("unavailable");
     expect(sdk.expression("event", () => "value")({})).toBe("value");
   });
 });

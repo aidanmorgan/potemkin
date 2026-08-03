@@ -17,8 +17,7 @@ import {
 import type { TypeScriptDiscoveryDependencies } from "./typescriptDiscovery.js";
 import type { OpenApiDoc } from "../contract/loader.js";
 import type { PotemkinConfiguration, ScanConfig } from "../config.js";
-import type { SimulationDefinition } from "../authoring/runtimeModel.js";
-import type { RuntimePolicies } from "../model/runtime.js";
+import type { GlobalDefinition, SimulationDefinition } from "../authoring/runtimeModel.js";
 import { mergeRuntimePolicies } from "../core/policyMerge.js";
 import { createTypeScriptSdk, sdk, type TypeScriptSdk } from "../sdk/index.js";
 import {
@@ -147,7 +146,7 @@ function normalizeFactoryOutput(
 function mergeDefinitions(definitions: readonly SimulationDefinition[]): SimulationDefinition {
   const policies = definitions
     .map((definition) => definition.policies)
-    .filter((value): value is RuntimePolicies => value !== undefined);
+    .filter((value): value is GlobalDefinition => value !== undefined);
   return {
     boundaries: definitions.flatMap((definition) => definition.boundaries),
     ...(definitions.some((definition) => definition.resources !== undefined)
@@ -163,6 +162,10 @@ function mergeDefinitions(definitions: readonly SimulationDefinition[]): Simulat
   };
 }
 
-function mergePolicies(policies: readonly RuntimePolicies[]): RuntimePolicies {
-  return mergeRuntimePolicies(policies);
+function mergePolicies(policies: readonly GlobalDefinition[]): GlobalDefinition {
+  const merged = mergeRuntimePolicies(policies);
+  return {
+    ...merged,
+    faults: policies.flatMap((policy) => policy.faults ?? []),
+  };
 }
