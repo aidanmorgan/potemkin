@@ -19,9 +19,11 @@ export type BoundaryName = PotemkinReference<"boundary-name">;
 export type BehaviorName = PotemkinReference<"behavior-name">;
 export type FaultName = PotemkinReference<"fault-name">;
 export type GuardName = PotemkinReference<"guard-name">;
+export type ReactionName = PotemkinReference<"reaction-name">;
 export type SagaName = PotemkinReference<"saga-name">;
 export type SagaStepName = PotemkinReference<"saga-step-name">;
 export type WebhookName = PotemkinReference<"webhook-name">;
+export type ProjectionName = PotemkinReference<"projection-name">;
 export type ResourceName = PotemkinReference<"resource-name">;
 export type ComponentName = PotemkinReference<"component-name">;
 export type HelperName = PotemkinReference<"helper-name">;
@@ -84,6 +86,10 @@ export function guardName(value: string): GuardName {
   return reference("guard-name", value);
 }
 
+export function reactionName(value: string): ReactionName {
+  return reference("reaction-name", value);
+}
+
 export function sagaName(value: string): SagaName {
   return reference("saga-name", value);
 }
@@ -94,6 +100,10 @@ export function sagaStepName(value: string): SagaStepName {
 
 export function webhookName(value: string): WebhookName {
   return reference("webhook-name", value);
+}
+
+export function projectionName(value: string): ProjectionName {
+  return reference("projection-name", value);
 }
 
 export function resourceName(value: string): ResourceName {

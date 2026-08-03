@@ -12,6 +12,8 @@ import {
   operationId,
   pathParameter,
   pathSegment,
+  projectionName,
+  reactionName,
   sagaName,
   sagaStepName,
   webhookName,
@@ -196,7 +198,7 @@ export function bulkGlobal() {
     ],
     derivedProjections: [
       {
-        name: "BulkSummary",
+        name: projectionName("BulkSummary"),
         key: ({ event }) => event?.aggregateId ?? "",
         subscribe: [eventReference(boundaryName("RecordBatch"), eventType("RecordCreated"))],
         reduce: [
@@ -212,7 +214,7 @@ export function bulkGlobal() {
     ],
     reactions: [
       {
-        name: "audit-record-creation",
+        name: reactionName("audit-record-creation"),
         on: eventReference(boundaryName("RecordBatch"), eventType("RecordCreated")),
         intent: "creation",
         boundary: boundaryName("BulkAudit"),

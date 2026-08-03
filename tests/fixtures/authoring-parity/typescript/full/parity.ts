@@ -24,6 +24,8 @@ import {
   operationId,
   pathParameter,
   pathSegment,
+  projectionName,
+  reactionName,
   reducerRule,
   simulation,
   schemaReference,
@@ -423,7 +425,7 @@ export class AuthoringParityFactory {
           ],
           derivedProjections: [
             {
-              name: "OrderSummary",
+              name: projectionName("OrderSummary"),
               key: ({ event: emitted }) => emitted?.aggregateId ?? "",
               subscribe: [
                 eventReference(boundaryName("Order"), eventType("OrderCreated")),
@@ -449,7 +451,7 @@ export class AuthoringParityFactory {
           ],
           reactions: [
             {
-              name: "audit-order-creation",
+              name: reactionName("audit-order-creation"),
               on: eventReference(boundaryName("Order"), eventType("OrderCreated")),
               intent: "creation",
               boundary: boundaryName("Audit"),

@@ -13,17 +13,14 @@ import type {
   RuntimeBehavior,
   RuntimeBoundary,
   RuntimeDependencies,
-  RuntimeDerivedProjection,
   RuntimeEvent,
   RuntimePredicate,
-  RuntimeReaction,
   RuntimeReducer,
   RuntimeReducerContext,
   RuntimeResponse,
   RuntimeSaga,
   RuntimeSagaCompensation,
   RuntimeSagaStep,
-  RuntimeWebhook,
   RuntimeValue,
   SagaContext,
   WebhookContext,
@@ -63,7 +60,9 @@ import type {
   HttpMethod,
   LinkRelation,
   OperationId,
+  ProjectionName,
   QueryPath,
+  ReactionName,
   StateFieldName,
   SagaName,
   SagaStepName,
@@ -212,14 +211,24 @@ export interface FaultDefinition {
   readonly delayMs?: number;
   readonly requires?: readonly GuardDefinition[];
 }
-export type ReactionDefinition = Omit<RuntimeReaction, "on" | "boundary" | "emit"> & {
+export interface ReactionDefinition {
+  readonly name?: ReactionName;
   readonly on: EventSelector;
+  readonly when?: RuntimePredicate<PostCommitContext>;
   readonly boundary: BoundaryName;
   readonly emit: EventType;
-};
-export type WebhookDefinition = Omit<RuntimeWebhook, "name"> & {
+  readonly intent?: "mutation" | "creation";
+  readonly target?: RuntimeValue<PostCommitContext, string | null>;
+  readonly payload?: Readonly<Record<string, RuntimeValue<PostCommitContext, JsonValue>>>;
+}
+export interface WebhookDefinition {
   readonly name: WebhookName;
-};
+  readonly trigger: RuntimePredicate<WebhookContext>;
+  readonly url: RuntimeValue<WebhookContext, string>;
+  readonly payload?: Readonly<Record<string, RuntimeValue<WebhookContext, JsonValue>>>;
+  readonly secret?: string;
+  readonly retry?: Readonly<{ maxAttempts?: number; delayMs?: number }>;
+}
 export type SagaCompensationDefinition = Omit<RuntimeSagaCompensation, "operationId"> & {
   readonly operationId: OperationId;
 };
@@ -239,10 +248,13 @@ export type SagaDefinition = Omit<RuntimeSaga, "name" | "trigger" | "steps"> & {
   };
   readonly steps: readonly SagaStepDefinition[];
 };
-export type ProjectionDefinition = Omit<RuntimeDerivedProjection, "subscribe" | "reduce"> & {
+export interface ProjectionDefinition {
+  readonly name: ProjectionName;
+  readonly key: RuntimeValue<ProjectionContext, string>;
   readonly subscribe: readonly EventSelector[];
   readonly reduce: readonly ReducerDefinition[];
-};
+  readonly reset?: () => void;
+}
 export type BoundaryDefinition = Omit<
   ComposableBoundary,
   | "boundary"
