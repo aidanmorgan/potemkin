@@ -15,7 +15,13 @@ import type {
   RuntimeQueryPolicy,
   RuntimeExportConfig,
 } from "../model/runtime.js";
-import type { BoundaryName, ContractPath } from "./references.js";
+import type {
+  BoundaryName,
+  ComponentName,
+  ContractPath,
+  FieldPath,
+  SchemaReference,
+} from "./references.js";
 import type { BehaviorDefinition, EventDefinition, ReducerDefinition } from "./runtimeModel.js";
 
 /**
@@ -24,7 +30,7 @@ import type { BehaviorDefinition, EventDefinition, ReducerDefinition } from "./r
  * the parser; TypeScript callers pass ordinary typed values to this factory.
  */
 export interface ComponentDefinition {
-  readonly name: string;
+  readonly name: ComponentName;
   readonly instantiate: (parameters: Readonly<JsonObject>) => ComponentSource;
 }
 
@@ -37,13 +43,21 @@ export interface ComponentInclude {
 export type ComponentSource = Partial<
   Omit<
     RuntimeBoundary,
-    "boundary" | "contractPath" | "eventCatalog" | "behaviors" | "reducers" | "mask" | "include"
+    | "boundary"
+    | "contractPath"
+    | "schema"
+    | "eventCatalog"
+    | "behaviors"
+    | "reducers"
+    | "mask"
+    | "include"
   >
 > & {
+  readonly schema?: SchemaReference;
   readonly eventCatalog?: readonly EventDefinition[];
   readonly behaviors?: readonly BehaviorDefinition[];
   readonly reducers?: readonly ReducerDefinition[];
-  readonly mask?: readonly import("./references.js").FieldPath[];
+  readonly mask?: readonly FieldPath[];
   readonly include?: readonly ComponentInclude[];
 };
 
@@ -61,7 +75,7 @@ export interface UseDefinition {
 }
 
 export function defineComponent(
-  name: string,
+  name: ComponentName,
   source: ComponentSource | ((parameters: Readonly<JsonObject>) => ComponentSource),
 ): ComponentDefinition {
   if (name.trim() === "") throw compositionError("A component requires a non-empty name");

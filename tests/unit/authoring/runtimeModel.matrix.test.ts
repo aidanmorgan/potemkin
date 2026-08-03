@@ -10,6 +10,7 @@ import { defineHelper } from "../../../src/authoring/helpers.js";
 import { defineResource } from "../../../src/authoring/resourceModel.js";
 import {
   boundaryName,
+  componentName,
   contractPath,
   eventType,
   field,
@@ -162,7 +163,7 @@ describe("source-neutral TypeScript runtime model builders", () => {
       .faults(fault)
       .reactions(reaction)
       .include({
-        component: defineComponent("Audit", { eventCatalog: [] }),
+        component: defineComponent(componentName("Audit"), { eventCatalog: [] }),
         parameters: { enabled: true },
       })
       .build();
@@ -196,7 +197,7 @@ describe("source-neutral TypeScript runtime model builders", () => {
   });
 
   it("builds simulations with boundaries, resources, uses, policies, helpers, and compilation inputs", () => {
-    const component = defineComponent("Audit", { eventCatalog: [] });
+    const component = defineComponent(componentName("Audit"), { eventCatalog: [] });
     const resource = defineResource({
       resource: resourceName("Order"),
       schema: schemaReference("Order"),

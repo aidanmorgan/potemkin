@@ -7,6 +7,7 @@ import {
 } from "../../../src/authoring/composition.js";
 import {
   boundaryName,
+  componentName,
   contractPath,
   eventType,
   operationId,
@@ -18,11 +19,11 @@ import type { ComponentSource } from "../../../src/authoring/composition.js";
 
 describe("direct TypeScript component composition", () => {
   it("materializes use and include into ordinary runtime boundaries", () => {
-    const fragment = defineComponent("AuditFragment", () => ({
+    const fragment = defineComponent(componentName("AuditFragment"), () => ({
       eventCatalog: [{ type: eventType("AuditRecorded"), payload: {} }],
       reducers: [{ on: eventType("AuditRecorded"), apply: () => [] }],
     }));
-    const component = defineComponent("Resource", (parameters) => ({
+    const component = defineComponent(componentName("Resource"), (parameters) => ({
       eventCatalog: [
         {
           type: eventType("ResourceCreated"),
@@ -68,7 +69,7 @@ describe("direct TypeScript component composition", () => {
   });
 
   it("applies local event and behavior definitions over included fragments", () => {
-    const fragment = defineComponent("Shared", () => ({
+    const fragment = defineComponent(componentName("Shared"), () => ({
       eventCatalog: [
         { type: eventType("SharedEvent"), payload: {} },
         { type: eventType("IncludedOnly"), payload: {} },
@@ -111,7 +112,7 @@ describe("direct TypeScript component composition", () => {
   });
 
   it("rejects cyclic components and duplicate live boundaries", () => {
-    const cyclic = defineComponent("Cycle", () => ({ include: [include(cyclic)] }));
+    const cyclic = defineComponent(componentName("Cycle"), () => ({ include: [include(cyclic)] }));
     expect(() =>
       composeBoundaries(
         [],
@@ -128,9 +129,9 @@ describe("direct TypeScript component composition", () => {
   });
 
   it("merges every source-neutral component field and rewrites aliases for use", () => {
-    const fragment = defineComponent("Part", () => {
+    const fragment = defineComponent(componentName("Part"), () => {
       const source: ComponentSource = {
-        schema: "Part",
+        schema: schemaReference("Part"),
         fallbackOverride: true,
         identity: { generate: () => "generated" },
         query: {},
@@ -194,9 +195,19 @@ describe("direct TypeScript component composition", () => {
     ]);
   });
 
+  it("requires semantic component names and schema references", () => {
+    const component = defineComponent(componentName("Typed"), {
+      schema: schemaReference("Typed"),
+    });
+    expect(component.name).toBe("Typed");
+    // @ts-expect-error Component sources cannot leak raw runtime schema strings.
+    const invalidSource: ComponentSource = { schema: "Typed" };
+    void invalidSource;
+  });
+
   it("rejects include clashes, identity/schema conflicts, state conflicts, and unbound aliases", () => {
     const event = (name: string) =>
-      defineComponent(name, () => ({
+      defineComponent(componentName(name), () => ({
         eventCatalog: [{ type: eventType("Shared"), payload: {} }],
         behaviors: [{ name: "shared", operationId: operationId(name), emit: eventType("Shared") }],
         reducers: [],
@@ -209,7 +220,9 @@ describe("direct TypeScript component composition", () => {
       .build();
     expect(() => composeBoundaries([host])).toThrow("include clash");
 
-    const identity = defineComponent("Identity", () => ({ identity: { generate: () => "id" } }));
+    const identity = defineComponent(componentName("Identity"), () => ({
+      identity: { generate: () => "id" },
+    }));
     const identityHost = boundary(
       boundaryName("IdentityHost"),
       contractPath(pathSegment("identity")),
@@ -219,14 +232,16 @@ describe("direct TypeScript component composition", () => {
       .build();
     expect(() => composeBoundaries([identityHost])).toThrow("identity is already supplied");
 
-    const schema = defineComponent("Schema", () => ({ schema: "Schema" }));
+    const schema = defineComponent(componentName("Schema"), () => ({
+      schema: schemaReference("Schema"),
+    }));
     const schemaHost = boundary(boundaryName("SchemaHost"), contractPath(pathSegment("schema")))
       .schema(schemaReference("Host"))
       .include(include(schema))
       .build();
     expect(() => composeBoundaries([schemaHost])).toThrow("schema is already supplied");
 
-    const state = defineComponent("State", () => ({
+    const state = defineComponent(componentName("State"), () => ({
       state: { computed: [{ name: "same", dependsOn: [], formula: () => true }], internal: [] },
     }));
     const stateHost = boundary(boundaryName("StateHost"), contractPath(pathSegment("state")))
@@ -235,7 +250,7 @@ describe("direct TypeScript component composition", () => {
       .build();
     expect(() => composeBoundaries([stateHost])).toThrow("state field");
 
-    const alias = defineComponent("Alias", () => ({
+    const alias = defineComponent(componentName("Alias"), () => ({
       behaviors: [
         {
           name: "alias-dispatch",
@@ -259,13 +274,17 @@ describe("direct TypeScript component composition", () => {
   });
 
   it("validates component and use construction boundaries", () => {
-    expect(() => defineComponent(" ", {})).toThrow("non-empty name");
+    expect(() => componentName(" ")).toThrow("Invalid Potemkin component-name");
     expect(() =>
-      use(defineComponent("Part", {}), boundaryName(" "), contractPath(pathSegment("x"))),
+      use(
+        defineComponent(componentName("Part"), {}),
+        boundaryName(" "),
+        contractPath(pathSegment("x")),
+      ),
     ).toThrow("Invalid Potemkin boundary-name");
-    expect(() => use(defineComponent("Part", {}), boundaryName("X"), "" as ContractPath)).toThrow(
-      "requires a contract path",
-    );
-    expect(include(defineComponent("Part", {}))).toMatchObject({ parameters: {} });
+    expect(() =>
+      use(defineComponent(componentName("Part"), {}), boundaryName("X"), "" as ContractPath),
+    ).toThrow("requires a contract path");
+    expect(include(defineComponent(componentName("Part"), {}))).toMatchObject({ parameters: {} });
   });
 });

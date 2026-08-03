@@ -1,5 +1,6 @@
 import {
   boundaryName,
+  componentName,
   contractPath,
   eventType,
   operationId,
@@ -113,7 +114,7 @@ use:
 `;
 
 function directDefinition() {
-  const audit = defineComponent("Audit", () => ({
+  const audit = defineComponent(componentName("Audit"), () => ({
     eventCatalog: [event(eventType("AuditRecorded"), { audited: () => true })],
     reducers: [
       reducerRule(eventType("AuditRecorded"))
@@ -124,7 +125,7 @@ function directDefinition() {
         .build(),
     ],
   }));
-  const order = defineComponent("Order", () => ({
+  const order = defineComponent(componentName("Order"), () => ({
     identity: {
       generate: expression("identity", ({ helpers }: IdentityContext) => helpers.uuid()),
     },

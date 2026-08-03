@@ -197,6 +197,14 @@ export type WebhookExpression = RuntimeValue<WebhookContext, string>;
 export type SagaExpression = RuntimeValue<SagaContext, string | null>;
 export type ProjectionExpression = RuntimeValue<ProjectionContext, string>;
 
+export function expression<Value, Phase extends ExpressionPhase>(
+  phase: Phase,
+  callback: () => Value,
+): Expression<unknown, Value, Phase>;
+export function expression<Context, Value, Phase extends ExpressionPhase>(
+  phase: Phase,
+  callback: (context: Readonly<Context>) => Value,
+): Expression<Context, Value, Phase>;
 export function expression<Context, Value, Phase extends ExpressionPhase>(
   phase: Phase,
   callback: (context: Readonly<Context>) => Value,
