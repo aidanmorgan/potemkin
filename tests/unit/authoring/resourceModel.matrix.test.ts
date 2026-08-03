@@ -10,6 +10,8 @@ import {
   fieldPath,
   operationId,
   pathSegment,
+  resourceName,
+  schemaReference,
 } from "../../../src/authoring/references.js";
 import type { OpenApiDoc } from "../../../src/contract/loader.js";
 
@@ -27,8 +29,8 @@ const openapi = {
 } as unknown as OpenApiDoc;
 
 const fullResource: ResourceDefinition = {
-  resource: "Order",
-  schema: "Order",
+  resource: resourceName("Order"),
+  schema: schemaReference("Order"),
   identity: { generate: () => "order-1" },
   query: { pagination: "raw" },
   eventCatalog: [{ type: eventType("OrderCreated"), payload: {} }],
@@ -54,12 +56,15 @@ const fullResource: ResourceDefinition = {
     {
       operationId: operationId("fallbackCreate"),
       contractPath: contractPath(pathSegment("fallback")),
-      method: "patch",
+      method: "PATCH",
       behavior: { emitWhen: [{ when: () => true, event: eventType("Fallback") }] },
     },
   ],
 };
 const blankOperationId = " " as unknown as ResourceDefinition["operations"][number]["operationId"];
+// @ts-expect-error Resource operations use the canonical uppercase HTTP method union.
+const lowercaseResourceMethod: ResourceDefinition["operations"][number]["method"] = "patch";
+void lowercaseResourceMethod;
 
 describe("TypeScript resource expansion", () => {
   it("expands collection/detail paths and preserves optional source-neutral fields", () => {
@@ -93,7 +98,7 @@ describe("TypeScript resource expansion", () => {
   it("supports detail-only resources and attaches initialization/reactions once", () => {
     const detailOnly: ResourceDefinition = {
       ...fullResource,
-      resource: "Detail",
+      resource: resourceName("Detail"),
       operations: [
         { operationId: operationId("readOrder"), query: true },
         { operationId: operationId("updateOrder"), emit: eventType("OrderUpdated") },

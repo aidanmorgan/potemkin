@@ -10,6 +10,7 @@ import {
   fieldPath,
   operationId,
   pathSegment,
+  resourceName,
   schemaReference,
 } from "../../../src/authoring/references.js";
 import type { RuntimeGuard } from "../../../src/model/runtime.js";
@@ -169,8 +170,8 @@ describe("source-neutral TypeScript runtime model builders", () => {
   it("builds simulations with boundaries, resources, uses, policies, helpers, and compilation inputs", () => {
     const component = defineComponent("Audit", { eventCatalog: [] });
     const resource = defineResource({
-      resource: "Order",
-      schema: "Order",
+      resource: resourceName("Order"),
+      schema: schemaReference("Order"),
       eventCatalog: [],
       reducers: [],
       operations: [

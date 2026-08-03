@@ -12,6 +12,7 @@ import {
   operationId,
   pathParameter,
   pathSegment,
+  resourceName,
   schemaReference,
   TypeScriptReferenceError,
 } from "./references.js";
@@ -62,6 +63,7 @@ import type {
   FieldPathSegment,
   HttpMethod,
   OperationId,
+  ResourceName,
   SchemaReference,
 } from "./references.js";
 
@@ -124,6 +126,7 @@ export {
   operationId,
   pathParameter,
   pathSegment,
+  resourceName,
   schemaReference,
   TypeScriptReferenceError,
   defineHelper,
@@ -170,6 +173,7 @@ export type {
   FieldPathSegment,
   HttpMethod,
   OperationId,
+  ResourceName,
   SchemaReference,
 };
 

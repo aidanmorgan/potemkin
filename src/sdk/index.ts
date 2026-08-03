@@ -38,6 +38,7 @@ import type {
   FieldPathSegment,
   HttpMethod,
   OperationId,
+  ResourceName,
   SchemaReference,
 } from "../authoring/references.js";
 import type {
@@ -94,6 +95,7 @@ const {
   operationId,
   pathParameter,
   pathSegment,
+  resourceName,
   schemaReference,
   TypeScriptReferenceError,
 } = references;
@@ -137,6 +139,7 @@ export const sdk = Object.freeze({
   operationId,
   pathParameter,
   pathSegment,
+  resourceName,
   schemaReference,
   TypeScriptReferenceError,
   PotemkinConfigure,
@@ -197,6 +200,7 @@ export type {
   FieldPathSegment,
   HttpMethod,
   OperationId,
+  ResourceName,
   SchemaReference,
 };
 

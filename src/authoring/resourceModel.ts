@@ -17,13 +17,21 @@ import type {
 import type { JsonObject } from "../types.js";
 import { definitionError } from "./errors.js";
 import type { BehaviorDefinition, EventDefinition, ReducerDefinition } from "./runtimeModel.js";
-import type { ContractPath, EventType, FieldPath, OperationId } from "./references.js";
+import type {
+  ContractPath,
+  EventType,
+  FieldPath,
+  HttpMethod,
+  OperationId,
+  ResourceName,
+  SchemaReference,
+} from "./references.js";
 
 /** An OpenAPI operation projected into a typed resource boundary. */
 export interface ResourceOperation {
   readonly operationId: OperationId;
   readonly contractPath?: ContractPath;
-  readonly method?: string;
+  readonly method?: HttpMethod;
   readonly emit?: EventType;
   readonly query?: boolean;
   readonly behavior?: Omit<BehaviorDefinition, "name" | "operationId">;
@@ -37,8 +45,8 @@ export interface ResourceOperation {
  * reducers, and policies.
  */
 export interface ResourceDefinition {
-  readonly resource: string;
-  readonly schema: string;
+  readonly resource: ResourceName;
+  readonly schema: SchemaReference;
   readonly identity?: RuntimeIdentity;
   readonly response?: RuntimeResponsePolicy;
   readonly query?: RuntimeQueryPolicy;
@@ -58,7 +66,24 @@ export interface ResourceDefinition {
 
 interface IndexedOperation {
   readonly path: string;
-  readonly method: string;
+  readonly method: HttpMethod;
+}
+
+function httpMethod(value: string): HttpMethod {
+  const normalized = value.toUpperCase();
+  switch (normalized) {
+    case "GET":
+    case "POST":
+    case "PUT":
+    case "PATCH":
+    case "DELETE":
+    case "HEAD":
+    case "OPTIONS":
+    case "TRACE":
+      return normalized;
+    default:
+      throw definitionError(`Unsupported HTTP method "${value}" in a resource operation`);
+  }
 }
 
 function pathSuffix(path: string): string {
@@ -83,7 +108,7 @@ function operationIndex(openapi?: OpenApiDoc): ReadonlyMap<string, IndexedOperat
   for (const [path, item] of Object.entries(openapi?.paths ?? {})) {
     for (const [method, operation] of Object.entries(item)) {
       if (operation?.operationId !== undefined) {
-        result.set(operation.operationId, { path, method: method.toUpperCase() });
+        result.set(operation.operationId, { path, method: httpMethod(method) });
       }
     }
   }
@@ -97,7 +122,7 @@ function resolveOperation(
   const indexed = index.get(operation.operationId);
   if (indexed !== undefined) return indexed;
   if (operation.contractPath !== undefined) {
-    return { path: operation.contractPath, method: (operation.method ?? "POST").toUpperCase() };
+    return { path: operation.contractPath, method: operation.method ?? "POST" };
   }
   throw definitionError(
     `Resource operation "${operation.operationId}" is not present in the OpenAPI contract`,

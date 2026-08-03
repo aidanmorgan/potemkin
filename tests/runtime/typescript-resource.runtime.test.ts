@@ -1,4 +1,9 @@
-import { eventType, operationId } from "../../src/authoring/references.js";
+import {
+  eventType,
+  operationId,
+  resourceName,
+  schemaReference,
+} from "../../src/authoring/references.js";
 /** Pure TypeScript resource expansion e2e path. */
 
 import { loadOpenApi } from "../../src/contract/loader.js";
@@ -61,8 +66,8 @@ function definition(_openapi: Awaited<ReturnType<typeof loadOpenApi>>) {
     boundaries: [],
     resources: [
       defineResource({
-        resource: "Invoice",
-        schema: "Invoice",
+        resource: resourceName("Invoice"),
+        schema: schemaReference("Invoice"),
         identity: {
           generate: expression("identity", ({ helpers }: IdentityContext) => helpers.uuid()),
         },

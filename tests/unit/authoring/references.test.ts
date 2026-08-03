@@ -7,6 +7,7 @@ import {
   operationId,
   pathParameter,
   pathSegment,
+  resourceName,
   schemaReference,
   TypeScriptReferenceError,
 } from "../../../src/authoring/references.js";
@@ -15,6 +16,7 @@ import { sdk } from "../../../src/sdk/index.js";
 describe("TypeScript semantic references", () => {
   it("builds canonical identifiers and paths from typed constructors", () => {
     expect(boundaryName("Orders")).toBe("Orders");
+    expect(resourceName("Order")).toBe("Order");
     expect(operationId("createOrder")).toBe("createOrder");
     expect(eventType("OrderCreated")).toBe("OrderCreated");
     expect(schemaReference("#/components/schemas/Order")).toBe("#/components/schemas/Order");
@@ -33,6 +35,7 @@ describe("TypeScript semantic references", () => {
 
   it("publishes the constructors through the supported SDK object", () => {
     expect(sdk.boundaryName("Orders")).toBe("Orders");
+    expect(sdk.resourceName("Order")).toBe("Order");
     expect(sdk.contractPath(sdk.pathSegment("orders"))).toBe("/orders");
     expect(sdk.eventType("OrderCreated")).toBe("OrderCreated");
     expect(sdk.expression("event", () => "value")({})).toBe("value");

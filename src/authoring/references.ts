@@ -16,6 +16,7 @@ export type PotemkinReference<Kind extends string> = string & {
 };
 
 export type BoundaryName = PotemkinReference<"boundary-name">;
+export type ResourceName = PotemkinReference<"resource-name">;
 export type OperationId = PotemkinReference<"operation-id">;
 export type EventType = PotemkinReference<"event-type">;
 export type ContractPath = PotemkinReference<"contract-path">;
@@ -54,6 +55,10 @@ export class TypeScriptReferenceError extends TypeScriptAuthoringError {
 
 export function boundaryName(value: string): BoundaryName {
   return reference("boundary-name", value);
+}
+
+export function resourceName(value: string): ResourceName {
+  return reference("resource-name", value);
 }
 
 export function operationId(value: string): OperationId {
