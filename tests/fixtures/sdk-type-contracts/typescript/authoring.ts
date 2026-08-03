@@ -2,6 +2,7 @@ import {
   boundary,
   boundaryName,
   contractPath,
+  defineGlobal,
   event,
   eventType,
   behaviorName,
@@ -66,5 +67,23 @@ const contract = boundary(boundaryName("Contract"), contractPath(pathSegment("co
     emit: eventType("ContractCreated"),
   });
 
+const policies = defineGlobal({
+  auth: { mode: "jwt", jwt: { secret: "compile-time-secret", algorithm: "HS256" } },
+  idempotency: { enabled: true, ttlSeconds: 60, hashIncludesBody: true },
+  fallback: {
+    rules: [
+      {
+        match: { method: "POST", inContract: false },
+        respond: { status: 404, body: { error: "NOT_FOUND" } },
+      },
+    ],
+  },
+  lifecycle: { boot: async () => undefined },
+});
+
+// @ts-expect-error Global auth modes are a closed canonical union.
+defineGlobal({ auth: { mode: "oauth" } });
+
 void contract;
+void policies;
 void payloadShapeIsInferred;

@@ -82,6 +82,19 @@ import type {
 } from "../model/runtime.js";
 import type { NativeReducer, NativeReducerBuilder, NativeReducerContext } from "./nativeReducer.js";
 import type {
+  AuthDefinition,
+  ControlDefaultsDefinition,
+  CoverageDefinition,
+  FallbackDefinition,
+  FallbackRuleDefinition,
+  HateoasDefinition,
+  IdempotencyDefinition,
+  LifecycleDefinition,
+  SecurityHeadersDefinition,
+  VersionDefinition,
+  VersioningDefinition,
+} from "./policyModel.js";
+import type {
   BoundaryName,
   BehaviorName,
   ContractPath,
@@ -196,6 +209,17 @@ export type {
   TypedEventDefinition,
   FaultDefinition,
   GlobalDefinition,
+  AuthDefinition,
+  ControlDefaultsDefinition,
+  CoverageDefinition,
+  FallbackDefinition,
+  FallbackRuleDefinition,
+  HateoasDefinition,
+  IdempotencyDefinition,
+  LifecycleDefinition,
+  SecurityHeadersDefinition,
+  VersionDefinition,
+  VersioningDefinition,
   GuardDefinition,
   IdentityDefinition,
   IdentityKeyDefinition,

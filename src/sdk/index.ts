@@ -111,6 +111,19 @@ import type {
   TypedReducerContext,
   WebhookDefinition,
 } from "../authoring/runtimeModel.js";
+import type {
+  AuthDefinition,
+  ControlDefaultsDefinition,
+  CoverageDefinition,
+  FallbackDefinition,
+  FallbackRuleDefinition,
+  HateoasDefinition,
+  IdempotencyDefinition,
+  LifecycleDefinition,
+  SecurityHeadersDefinition,
+  VersionDefinition,
+  VersioningDefinition,
+} from "../authoring/policyModel.js";
 
 const {
   all,
@@ -334,6 +347,17 @@ export type {
   EventDefinition,
   FaultDefinition,
   GlobalDefinition,
+  AuthDefinition,
+  ControlDefaultsDefinition,
+  CoverageDefinition,
+  FallbackDefinition,
+  FallbackRuleDefinition,
+  HateoasDefinition,
+  IdempotencyDefinition,
+  LifecycleDefinition,
+  SecurityHeadersDefinition,
+  VersionDefinition,
+  VersioningDefinition,
   GuardDefinition,
   IdentityDefinition,
   IdentityKeyDefinition,

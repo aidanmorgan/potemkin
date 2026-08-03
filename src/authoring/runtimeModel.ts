@@ -17,7 +17,6 @@ import type {
   RuntimeFault,
   RuntimeGuard,
   RuntimeLink,
-  RuntimePolicies,
   RuntimePredicate,
   RuntimeReaction,
   RuntimeReducer,
@@ -33,6 +32,17 @@ import type {
   SagaContext,
   WebhookContext,
 } from "../model/runtime.js";
+import type {
+  AuthDefinition,
+  ControlDefaultsDefinition,
+  CoverageDefinition,
+  FallbackDefinition,
+  HateoasDefinition,
+  IdempotencyDefinition,
+  LifecycleDefinition,
+  SecurityHeadersDefinition,
+  VersioningDefinition,
+} from "./policyModel.js";
 import type { OpenApiDoc } from "../contract/loader.js";
 import { expandResources, type ResourceDefinition } from "./resourceModel.js";
 import type { TypeScriptHelperDefinition, TypeScriptHelperRegistration } from "./helpers.js";
@@ -240,16 +250,22 @@ export type BoundaryDefinition = Omit<
   readonly faults?: readonly FaultDefinition[];
   readonly reactions?: readonly ReactionDefinition[];
 };
-export type GlobalDefinition = Omit<
-  RuntimePolicies,
-  "faults" | "reactions" | "derivedProjections" | "sagas" | "webhooks"
-> & {
+export interface GlobalDefinition {
+  readonly auth?: AuthDefinition;
+  readonly idempotency?: IdempotencyDefinition;
+  readonly securityHeaders?: SecurityHeadersDefinition;
+  readonly hateoas?: HateoasDefinition;
+  readonly versioning?: VersioningDefinition;
+  readonly fallback?: FallbackDefinition;
+  readonly lifecycle?: LifecycleDefinition;
+  readonly controlDefaults?: ControlDefaultsDefinition;
+  readonly coverage?: Readonly<Record<string, CoverageDefinition>>;
   readonly faults?: readonly FaultDefinition[];
   readonly reactions?: readonly ReactionDefinition[];
   readonly derivedProjections?: readonly ProjectionDefinition[];
   readonly sagas?: readonly SagaDefinition[];
   readonly webhooks?: readonly WebhookDefinition[];
-};
+}
 
 export interface SimulationDefinition {
   readonly boundaries: readonly BoundaryDefinition[];
