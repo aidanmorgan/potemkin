@@ -130,7 +130,25 @@ export type GuardDefinition = Omit<RuntimeGuard, "name"> & {
 export type SecondaryCommandDefinition = NonNullable<
   BehaviorDefinition["dispatchCommands"]
 >[number];
-export type IdentityDefinition = NonNullable<RuntimeBoundary["identity"]>;
+export type IdentityKeyDefinition =
+  | {
+      readonly from: "path" | "query" | "header";
+      readonly name: string;
+      readonly pointer?: never;
+    }
+  | {
+      readonly from: "payload";
+      readonly name: string;
+      readonly pointer?: string;
+    }
+  | {
+      readonly from: "payload";
+      readonly name?: string;
+      readonly pointer: string;
+    };
+export type IdentityDefinition = Omit<NonNullable<RuntimeBoundary["identity"]>, "key"> & {
+  readonly key?: IdentityKeyDefinition;
+};
 export type ResponseLinkDefinition = Omit<RuntimeLink, "rel"> & {
   readonly rel: LinkRelation;
 };
@@ -184,6 +202,7 @@ export type BoundaryDefinition = Omit<
   | "reducers"
   | "mask"
   | "faults"
+  | "identity"
   | "response"
   | "reactions"
 > & {
@@ -193,6 +212,7 @@ export type BoundaryDefinition = Omit<
   readonly eventCatalog: readonly EventDefinition[];
   readonly behaviors: readonly BehaviorDefinition[];
   readonly reducers: readonly ReducerDefinition[];
+  readonly identity?: IdentityDefinition;
   readonly response?: ResponseDefinition;
   readonly mask?: readonly FieldPath[];
   readonly faults?: readonly FaultDefinition[];
@@ -565,7 +585,7 @@ export function defineGlobal(value: GlobalDefinition): GlobalDefinition {
 export interface BoundaryBuilder {
   schema(value: SchemaReference): BoundaryBuilder;
   fallbackOverride(enabled?: boolean): BoundaryBuilder;
-  identity(value: NonNullable<RuntimeBoundary["identity"]>): BoundaryBuilder;
+  identity(value: IdentityDefinition): BoundaryBuilder;
   query(value: NonNullable<RuntimeBoundary["query"]>): BoundaryBuilder;
   queryMapping(value: NonNullable<RuntimeBoundary["queryMapping"]>): BoundaryBuilder;
   event(...values: readonly EventDefinition[]): BoundaryBuilder;

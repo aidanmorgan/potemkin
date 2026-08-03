@@ -29,6 +29,7 @@ import type {
   ReducerDefinition,
   ReactionDefinition,
   ResponseDefinition,
+  IdentityDefinition,
 } from "./runtimeModel.js";
 
 /**
@@ -58,6 +59,7 @@ export type ComponentSource = Partial<
     | "reducers"
     | "mask"
     | "faults"
+    | "identity"
     | "response"
     | "reactions"
     | "include"
@@ -67,6 +69,7 @@ export type ComponentSource = Partial<
   readonly eventCatalog?: readonly EventDefinition[];
   readonly behaviors?: readonly BehaviorDefinition[];
   readonly reducers?: readonly ReducerDefinition[];
+  readonly identity?: IdentityDefinition;
   readonly response?: ResponseDefinition;
   readonly mask?: readonly FieldPath[];
   readonly faults?: readonly FaultDefinition[];

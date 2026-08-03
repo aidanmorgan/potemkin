@@ -5,6 +5,7 @@ import {
   simulation,
   type FaultDefinition,
   type GuardDefinition,
+  type IdentityKeyDefinition,
   type ProjectionDefinition,
   type ReactionDefinition,
   type ResponseDefinition,
@@ -58,6 +59,19 @@ describe("source-neutral TypeScript runtime model builders", () => {
   // @ts-expect-error Webhook names use the canonical webhookName constructor.
   const rawWebhookName: WebhookDefinition["name"] = "raw-webhook";
   void rawWebhookName;
+  // @ts-expect-error Path/query/header identity keys require a source name.
+  const unnamedPathIdentityKey: IdentityKeyDefinition = { from: "path" };
+  void unnamedPathIdentityKey;
+  // @ts-expect-error Only payload identity keys may use a payload pointer.
+  const headerIdentityKeyWithPointer: IdentityKeyDefinition = {
+    from: "header",
+    name: "x-order-id",
+    pointer: "/id",
+  };
+  void headerIdentityKeyWithPointer;
+  // @ts-expect-error Payload identity keys must provide either name or pointer.
+  const unnamedPayloadIdentityKey: IdentityKeyDefinition = { from: "payload" };
+  void unnamedPayloadIdentityKey;
 
   it("preserves payload inference through incremental event builder calls", () => {
     const inferred = event(eventType("Inferred"))
