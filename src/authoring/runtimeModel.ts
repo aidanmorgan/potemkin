@@ -102,10 +102,11 @@ export type SagaDefinition = RuntimeSaga;
 export type ProjectionDefinition = RuntimeDerivedProjection;
 export type BoundaryDefinition = Omit<
   ComposableBoundary,
-  "boundary" | "contractPath" | "eventCatalog" | "behaviors" | "reducers" | "mask"
+  "boundary" | "contractPath" | "schema" | "eventCatalog" | "behaviors" | "reducers" | "mask"
 > & {
   readonly boundary: BoundaryName;
   readonly contractPath: ContractPath;
+  readonly schema?: SchemaReference;
   readonly eventCatalog: readonly EventDefinition[];
   readonly behaviors: readonly BehaviorDefinition[];
   readonly reducers: readonly ReducerDefinition[];
@@ -415,7 +416,7 @@ export function defineGlobal(value: GlobalDefinition): GlobalDefinition {
 }
 
 export interface BoundaryBuilder {
-  schema(value: string): BoundaryBuilder;
+  schema(value: SchemaReference): BoundaryBuilder;
   fallbackOverride(enabled?: boolean): BoundaryBuilder;
   identity(value: NonNullable<RuntimeBoundary["identity"]>): BoundaryBuilder;
   query(value: NonNullable<RuntimeBoundary["query"]>): BoundaryBuilder;

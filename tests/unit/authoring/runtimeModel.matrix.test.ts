@@ -101,7 +101,7 @@ describe("source-neutral TypeScript runtime model builders", () => {
     };
 
     const definition = boundary(boundaryName("Orders"), contractPath(pathSegment("orders")))
-      .schema("Order")
+      .schema(schemaReference("Order"))
       .fallbackOverride()
       .identity({ key: { from: "path", name: "orderId" }, generate: () => "order-1" })
       .query({

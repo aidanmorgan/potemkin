@@ -7,6 +7,7 @@ import {
   event,
   reducerRule,
   simulation,
+  schemaReference,
   type FactoryContext,
 } from "potemkin/sdk";
 
@@ -99,7 +100,7 @@ export class AuthoringParityFactory {
 
     const orderById = boundary("OrderById", "/orders/{id}")
       .fallbackOverride(true)
-      .schema("Order")
+      .schema(schemaReference("Order"))
       .identity({ key: { from: "path", name: "id" } })
       .response({
         hateoas: [{ rel: "self", href: "/orders/{id}" }],

@@ -11,6 +11,7 @@ import {
   eventType,
   operationId,
   pathSegment,
+  schemaReference,
   type ContractPath,
 } from "../../../src/authoring/references.js";
 import type { ComponentSource } from "../../../src/authoring/composition.js";
@@ -220,7 +221,7 @@ describe("direct TypeScript component composition", () => {
 
     const schema = defineComponent("Schema", () => ({ schema: "Schema" }));
     const schemaHost = boundary(boundaryName("SchemaHost"), contractPath(pathSegment("schema")))
-      .schema("Host")
+      .schema(schemaReference("Host"))
       .include(include(schema))
       .build();
     expect(() => composeBoundaries([schemaHost])).toThrow("schema is already supplied");

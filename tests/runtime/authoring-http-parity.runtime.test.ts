@@ -7,6 +7,7 @@ import {
   operationId,
   pathParameter,
   pathSegment,
+  schemaReference,
 } from "../../src/authoring/references.js";
 /**
  * HTTP parity for the two authoring paths.
@@ -214,7 +215,7 @@ function definition(): SimulationDefinition {
     contractPath(pathSegment("orders"), pathParameter("id")),
   )
     .fallbackOverride(true)
-    .schema("Order")
+    .schema(schemaReference("Order"))
     .identity({ key: { from: "path", name: "id" } })
     .response({
       hateoas: [{ rel: "self", href: "/orders/{id}" }],
