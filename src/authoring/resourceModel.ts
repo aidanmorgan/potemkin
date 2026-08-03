@@ -4,7 +4,6 @@ import type { ComposableBoundary } from "./composition.js";
 import type {
   RuntimeDeprecation,
   RuntimeLatency,
-  RuntimeQueryPolicy,
   RuntimeStateSchema,
   RuntimeValue,
 } from "../model/runtime.js";
@@ -15,6 +14,7 @@ import type {
   EventDefinition,
   FaultDefinition,
   IdentityDefinition,
+  QueryDefinition,
   ReducerDefinition,
   ReactionDefinition,
   ResponseDefinition,
@@ -51,7 +51,7 @@ export interface ResourceDefinition {
   readonly schema: SchemaReference;
   readonly identity?: IdentityDefinition;
   readonly response?: ResponseDefinition;
-  readonly query?: RuntimeQueryPolicy;
+  readonly query?: QueryDefinition;
   readonly eventCatalog: readonly EventDefinition[];
   readonly reducers: readonly ReducerDefinition[];
   readonly initialization?: readonly JsonObject[];

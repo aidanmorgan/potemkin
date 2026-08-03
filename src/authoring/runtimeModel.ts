@@ -57,6 +57,7 @@ import type {
   HttpMethod,
   LinkRelation,
   OperationId,
+  QueryPath,
   SagaName,
   SagaStepName,
   ScopeName,
@@ -203,6 +204,7 @@ export type BoundaryDefinition = Omit<
   | "mask"
   | "faults"
   | "identity"
+  | "query"
   | "response"
   | "reactions"
 > & {
@@ -213,6 +215,7 @@ export type BoundaryDefinition = Omit<
   readonly behaviors: readonly BehaviorDefinition[];
   readonly reducers: readonly ReducerDefinition[];
   readonly identity?: IdentityDefinition;
+  readonly query?: QueryDefinition;
   readonly response?: ResponseDefinition;
   readonly mask?: readonly FieldPath[];
   readonly faults?: readonly FaultDefinition[];
@@ -289,6 +292,23 @@ export type Expression<Context, Value, Phase extends ExpressionPhase = Expressio
   Readonly<{ phase: Phase }>;
 
 export type QueryExpression = RuntimePredicate<QueryContext>;
+export type QueryValue<Value> = (context: Readonly<QueryContext>) => Value;
+export interface QueryDefinition {
+  readonly fields?: Readonly<Record<string, QueryExpression>>;
+  readonly filter?: QueryExpression;
+  readonly sort?: (
+    left: Readonly<JsonObject>,
+    right: Readonly<JsonObject>,
+    input: Readonly<QueryContext>,
+  ) => number;
+  readonly pageSize?: QueryValue<number>;
+  readonly maxPageSize?: number;
+  readonly cursor?: QueryValue<string | undefined>;
+  readonly expand?: readonly QueryPath[];
+  readonly pagination?: "raw" | "envelope";
+  readonly includeDeleted?: boolean;
+  readonly fallback?: QueryValue<JsonValue | undefined>;
+}
 export type ResponseExpression = RuntimeValue<ResponseContext, RuntimeResponse | null | undefined>;
 export type EventHydrationExpression = RuntimeValue<EventContext, JsonValue>;
 export type ReducerExpression = RuntimeValue<RuntimeReducerContext, JsonValue>;
@@ -586,7 +606,7 @@ export interface BoundaryBuilder {
   schema(value: SchemaReference): BoundaryBuilder;
   fallbackOverride(enabled?: boolean): BoundaryBuilder;
   identity(value: IdentityDefinition): BoundaryBuilder;
-  query(value: NonNullable<RuntimeBoundary["query"]>): BoundaryBuilder;
+  query(value: QueryDefinition): BoundaryBuilder;
   queryMapping(value: NonNullable<RuntimeBoundary["queryMapping"]>): BoundaryBuilder;
   event(...values: readonly EventDefinition[]): BoundaryBuilder;
   eventCatalog(...values: readonly EventDefinition[]): BoundaryBuilder;

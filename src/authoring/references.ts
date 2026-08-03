@@ -35,6 +35,7 @@ export type EventSelector = EventType | EventReference;
 export type ContractPath = PotemkinReference<"contract-path">;
 export type SchemaReference = PotemkinReference<"schema-reference">;
 export type FieldPath = PotemkinReference<"field-path">;
+export type QueryPath = PotemkinReference<"query-path">;
 
 /** OpenAPI/HTTP methods supported by the Potemkin authoring surface. */
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS" | "TRACE";
@@ -182,4 +183,10 @@ export function fieldPath(...segments: readonly FieldPathSegment[]): FieldPath {
     .join("/");
   const value = segments.length === 1 ? pointer : `/${pointer}`;
   return reference("field-path", value) as FieldPath;
+}
+
+/** Build a dot-delimited state path used by query sorting and expansion. */
+export function queryPath(...segments: readonly FieldPathSegment[]): QueryPath {
+  if (segments.length === 0) throw new TypeScriptReferenceError("query path", "needs a segment");
+  return reference("query-path", segments.map((segment) => segment.value).join(".")) as QueryPath;
 }

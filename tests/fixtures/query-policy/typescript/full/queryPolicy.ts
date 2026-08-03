@@ -1,4 +1,12 @@
-import { PotemkinConfigure, boundary, factoryName, linkRelation, simulation } from "potemkin/sdk";
+import {
+  PotemkinConfigure,
+  boundary,
+  factoryName,
+  field,
+  linkRelation,
+  queryPath,
+  simulation,
+} from "potemkin/sdk";
 import type { QueryContext } from "potemkin/sdk";
 
 const query = {
@@ -14,7 +22,7 @@ const query = {
   maxPageSize: 2,
   cursor: ({ query }: Readonly<QueryContext>) =>
     typeof query["cursor"] === "string" ? query["cursor"] : undefined,
-  expand: ["customerIds"],
+  expand: [queryPath(field("customerIds"))],
   pagination: "envelope" as const,
   includeDeleted: true,
 };

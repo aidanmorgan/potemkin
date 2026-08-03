@@ -7,6 +7,7 @@ import {
   type GuardDefinition,
   type IdentityKeyDefinition,
   type ProjectionDefinition,
+  type QueryDefinition,
   type ReactionDefinition,
   type ResponseDefinition,
   type SagaDefinition,
@@ -31,6 +32,7 @@ import {
   linkRelation,
   operationId,
   pathSegment,
+  queryPath,
   resourceName,
   schemaReference,
   scopeName,
@@ -72,6 +74,9 @@ describe("source-neutral TypeScript runtime model builders", () => {
   // @ts-expect-error Payload identity keys must provide either name or pointer.
   const unnamedPayloadIdentityKey: IdentityKeyDefinition = { from: "payload" };
   void unnamedPayloadIdentityKey;
+  // @ts-expect-error Query expansion paths use queryPath(...), not raw strings.
+  const rawQueryExpansion: NonNullable<QueryDefinition["expand"]>[number] = "customer";
+  void rawQueryExpansion;
 
   it("preserves payload inference through incremental event builder calls", () => {
     const inferred = event(eventType("Inferred"))
@@ -199,7 +204,7 @@ describe("source-neutral TypeScript runtime model builders", () => {
         pageSize: () => 10,
         maxPageSize: 100,
         cursor: () => undefined,
-        expand: ["customer"],
+        expand: [queryPath(field("customer"))],
         pagination: "envelope",
         includeDeleted: true,
         fallback: () => ({ fallback: true }),

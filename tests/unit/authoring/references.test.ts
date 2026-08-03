@@ -9,6 +9,7 @@ import {
   guardName,
   field,
   fieldPath,
+  queryPath,
   factoryName,
   helperName,
   operationId,
@@ -48,6 +49,7 @@ describe("TypeScript semantic references", () => {
     expect(schemaReference("#/components/schemas/Order")).toBe("#/components/schemas/Order");
     expect(contractPath(pathSegment("orders"), pathParameter("id"))).toBe("/orders/{id}");
     expect(fieldPath(field("customer"), field("email"))).toBe("/customer/email");
+    expect(queryPath(field("customer"), field("email"))).toBe("customer.email");
   });
 
   it("rejects malformed semantic references before compilation", () => {
@@ -57,6 +59,7 @@ describe("TypeScript semantic references", () => {
     expect(() => operationId(" ")).toThrow(TypeScriptReferenceError);
     expect(() => pathSegment("orders/items")).toThrow(TypeScriptReferenceError);
     expect(() => fieldPath()).toThrow(TypeScriptReferenceError);
+    expect(() => queryPath()).toThrow(TypeScriptReferenceError);
   });
 
   it("publishes the constructors through the supported SDK object", () => {
@@ -69,6 +72,7 @@ describe("TypeScript semantic references", () => {
     expect(sdk.linkRelation("self")).toBe("self");
     expect(sdk.resourceName("Order")).toBe("Order");
     expect(sdk.contractPath(sdk.pathSegment("orders"))).toBe("/orders");
+    expect(sdk.queryPath(sdk.field("customer"), sdk.field("email"))).toBe("customer.email");
     expect(sdk.eventType("OrderCreated")).toBe("OrderCreated");
     expect(sdk.eventReference(sdk.boundaryName("Orders"), sdk.eventType("OrderCreated"))).toBe(
       "Orders:OrderCreated",

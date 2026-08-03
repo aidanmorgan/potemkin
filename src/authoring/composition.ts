@@ -12,7 +12,6 @@ import type {
   RuntimeReducer,
   RuntimeResponsePolicy,
   RuntimeStateSchema,
-  RuntimeQueryPolicy,
   RuntimeExportConfig,
 } from "../model/runtime.js";
 import type {
@@ -30,6 +29,7 @@ import type {
   ReactionDefinition,
   ResponseDefinition,
   IdentityDefinition,
+  QueryDefinition,
 } from "./runtimeModel.js";
 
 /**
@@ -60,6 +60,7 @@ export type ComponentSource = Partial<
     | "mask"
     | "faults"
     | "identity"
+    | "query"
     | "response"
     | "reactions"
     | "include"
@@ -70,6 +71,7 @@ export type ComponentSource = Partial<
   readonly behaviors?: readonly BehaviorDefinition[];
   readonly reducers?: readonly ReducerDefinition[];
   readonly identity?: IdentityDefinition;
+  readonly query?: QueryDefinition;
   readonly response?: ResponseDefinition;
   readonly mask?: readonly FieldPath[];
   readonly faults?: readonly FaultDefinition[];
@@ -124,7 +126,7 @@ interface MutableSource {
   schema?: string;
   fallbackOverride?: boolean;
   identity?: RuntimeIdentity;
-  query?: RuntimeQueryPolicy;
+  query?: RuntimeBoundary["query"];
   queryMapping?: NonNullable<RuntimeBoundary["queryMapping"]>;
   eventCatalog: RuntimeEvent[];
   behaviors: RuntimeBehavior[];
