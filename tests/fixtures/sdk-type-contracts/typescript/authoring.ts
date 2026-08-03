@@ -7,7 +7,9 @@ import {
   defineGlobal,
   event,
   eventType,
+  faultName,
   behaviorName,
+  guardName,
   operationId,
   pathSegment,
   reducerRule,
@@ -82,10 +84,40 @@ const policies = defineGlobal({
     ],
   },
   lifecycle: { boot: async () => undefined },
+  faults: [
+    {
+      name: faultName("payment-timeout"),
+      matches: () => true,
+      requires: [
+        {
+          name: guardName("can-simulate"),
+          check: () => true,
+          errorCode: "SIMULATION_FORBIDDEN",
+          errorMessage: "The scenario cannot be simulated.",
+        },
+      ],
+      selectors: { errorClass: "timeout" },
+      response: { status: 504, body: { error: "TIMEOUT" } },
+    },
+  ],
 });
 
 // @ts-expect-error Global auth modes are a closed canonical union.
 defineGlobal({ auth: { mode: "oauth" } });
+
+defineGlobal({
+  faults: [
+    {
+      name: faultName("invalid"),
+      matches: () => true,
+      selectors: {
+        // @ts-expect-error Fault error classes are a closed canonical union.
+        errorClass: "unknown",
+      },
+      response: { status: 500 },
+    },
+  ],
+});
 
 const componentSource: ComponentSource = {
   fallbackOverride: true,

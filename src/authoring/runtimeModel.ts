@@ -15,8 +15,6 @@ import type {
   RuntimeDependencies,
   RuntimeDerivedProjection,
   RuntimeEvent,
-  RuntimeFault,
-  RuntimeGuard,
   RuntimeLink,
   RuntimePredicate,
   RuntimeReaction,
@@ -140,9 +138,13 @@ export interface ReducerDefinition<State extends object = object> extends Omit<
 > {
   readonly on: EventType;
 }
-export type GuardDefinition = Omit<RuntimeGuard, "name"> & {
+export interface GuardDefinition {
   readonly name: GuardName;
-};
+  readonly check: RuntimePredicate<MatchContext | FaultContext>;
+  readonly errorCode: string;
+  readonly errorMessage: string;
+  readonly errorStatus?: number;
+}
 export type IdentityKeyDefinition =
   | {
       readonly from: "path" | "query" | "header";
@@ -174,11 +176,40 @@ export type ResponseDefinition = Omit<
   readonly deprecated?: DeprecationDefinition;
   readonly latency?: LatencyDefinition;
 };
-export type FaultDefinition = Omit<RuntimeFault, "name" | "requiredScopes" | "requires"> & {
+export type FaultErrorClass =
+  | "timeout"
+  | "throttle"
+  | "outage"
+  | "bad_gateway"
+  | "conflict"
+  | "auth"
+  | "forbidden";
+
+export interface FaultSelectorDefinition {
+  readonly signal?: string;
+  readonly forceResponse?: string;
+  readonly scenario?: string;
+  readonly featureFlag?: string;
+  readonly errorClass?: FaultErrorClass;
+}
+
+export interface FaultResponseDefinition {
+  readonly status: number;
+  readonly body?: JsonValue;
+  readonly headers?: Readonly<Record<string, string>>;
+}
+
+export interface FaultDefinition {
   readonly name: FaultName;
+  readonly matches: RuntimePredicate<FaultContext>;
+  readonly probability?: number;
   readonly requiredScopes?: readonly ScopeName[];
+  readonly headers?: Readonly<Record<string, string>>;
+  readonly selectors?: Readonly<FaultSelectorDefinition>;
+  readonly response: Readonly<FaultResponseDefinition>;
+  readonly delayMs?: number;
   readonly requires?: readonly GuardDefinition[];
-};
+}
 export type ReactionDefinition = Omit<RuntimeReaction, "on" | "boundary" | "emit"> & {
   readonly on: EventSelector;
   readonly boundary: BoundaryName;
