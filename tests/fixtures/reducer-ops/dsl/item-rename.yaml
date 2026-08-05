@@ -9,13 +9,13 @@ fallback_override: false
 event_catalog:
   - type: ItemRenamed
     payload_template:
-      name: "command.payload.name"
+      name: 'command.payload.name'
 
 behaviors:
   - name: renameItem
     match:
       operationId: renameItem
-      condition: "true"
+      condition: 'true'
     emit: ItemRenamed
 
 reducers:
@@ -24,6 +24,6 @@ reducers:
       # op: replace — overwrite the existing /name field with the new value
       - op: replace
         path: /name
-        value: "${event.payload.name}"
+        value: '${event.payload.name}'
 
 initialization: []

@@ -1,7 +1,8 @@
-import { loadOpenApi } from "../../../src/contract/loader";
-import { createDefaultRuntimeHost } from "../../../src/runtime/host";
-import { bootRuntime } from "../../../src/runtime/system";
-import { compileProgram, simulation } from "../../../src/authoring/runtimeModel";
+import { loadOpenApi } from '../../../src/contract/loader';
+import { createDefaultRuntimeHost } from '../../../src/runtime/host';
+import { bootRuntime } from '../../../src/runtime/system';
+import { compileProgram } from '../../../src/authoring/compiler';
+import { simulation } from '../../../src/authoring/builders';
 
 const OPENAPI = `
 openapi: "3.0.3"
@@ -14,8 +15,8 @@ paths:
         "200": { description: OK, content: { application/json: { schema: { type: array, items: { type: object } } } } }
 `;
 
-describe("runtime boot dependency composition", () => {
-  it("injects default stores into the canonical program before engine creation", async () => {
+describe('runtime boot dependency composition', () => {
+  it('injects default stores into the canonical program before engine creation', async () => {
     const system = await bootRuntime({
       host: createDefaultRuntimeHost(),
       openapi: await loadOpenApi(OPENAPI),

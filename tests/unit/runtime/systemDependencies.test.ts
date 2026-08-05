@@ -1,15 +1,17 @@
-import { loadOpenApi } from "../../../src/contract/loader.js";
-import type { RuntimeClock, RuntimeHelpers } from "../../../src/model/runtime.js";
-import { createRuntimeDataGenerator } from "../../../src/model/data.js";
-import type { PluginControlClient } from "../../../src/lifecycle/types.js";
-import { bootRuntime } from "../../../src/runtime/system.js";
-import { createDefaultRuntimeHost } from "../../../src/runtime/host.js";
-import { bootYamlRuntime } from "../../../src/parser/runtime.js";
-import { compileProgram, simulation } from "../../../src/authoring/runtimeModel.js";
-import { createContractValidator } from "../../../src/contract/validator.js";
-import { runtimeContract } from "../../../src/runtime/system.js";
+import { loadOpenApi } from '../../../src/contract/loader.js';
+import type { RuntimeHelpers } from '../../../src/model/runtime.js';
+import type { RuntimeClock } from '../../../src/contracts/ports.js';
+import { createRuntimeDataGenerator } from '../../../src/model/data.js';
+import type { PluginControlClient } from '../../../src/contracts/lifecycle.js';
+import { bootRuntime } from '../../../src/runtime/system.js';
+import { createDefaultRuntimeHost } from '../../../src/runtime/host.js';
+import { bootYamlRuntime } from '../../../src/parser/runtime.js';
+import { compileProgram } from '../../../src/authoring/compiler.js';
+import { simulation } from '../../../src/authoring/builders.js';
+import { createContractValidator } from '../../../src/contract/validator.js';
+import { runtimeContract } from '../../../src/runtime/system.js';
 
-const FIXED_NOW = "2030-01-02T03:04:05.000Z";
+const FIXED_NOW = '2030-01-02T03:04:05.000Z';
 
 const OPENAPI = `
 openapi: "3.0.3"
@@ -26,7 +28,7 @@ function runtimeHelpers(): RuntimeHelpers {
   const random = () => 0;
   return {
     now: () => FIXED_NOW,
-    uuid: () => "00000000-0000-7000-8000-000000000001",
+    uuid: () => '00000000-0000-7000-8000-000000000001',
     random,
     data: createRuntimeDataGenerator(random),
     clone: <T>(value: T) => structuredClone(value),
@@ -49,8 +51,8 @@ function pluginControl(): jest.Mocked<PluginControlClient> {
   };
 }
 
-describe("runtime host dependency injection", () => {
-  it("shapes only operation/status pairs declared by the contract", async () => {
+describe('runtime host dependency injection', () => {
+  it('shapes only operation/status pairs declared by the contract', async () => {
     const openapi = await loadOpenApi(`
       openapi: "3.0.3"
       info: { title: error shaping, version: "1.0.0" }
@@ -75,36 +77,36 @@ describe("runtime host dependency injection", () => {
               "200": { description: ok }
     `);
     const contract = runtimeContract(openapi, createContractValidator(openapi));
-    const generic = { code: "UNHANDLED_OPERATION", message: "guard failed" };
+    const generic = { code: 'UNHANDLED_OPERATION', message: 'guard failed' };
 
-    expect(contract.shapeError?.("guarded", 422, generic)).toEqual({
-      error: "UNHANDLED_OPERATION",
+    expect(contract.shapeError?.('guarded', 422, generic)).toEqual({
+      error: 'UNHANDLED_OPERATION',
     });
-    expect(contract.shapeError?.("undeclared", 422, generic)).toEqual(generic);
+    expect(contract.shapeError?.('undeclared', 422, generic)).toEqual(generic);
   });
 
-  it.each(["YAML", "TypeScript"] as const)(
-    "%s lifecycle notifications use the injected helper clock",
+  it.each(['YAML', 'TypeScript'] as const)(
+    '%s lifecycle notifications use the injected helper clock',
     async (source) => {
       const openapi = await loadOpenApi(OPENAPI);
       const control = pluginControl();
       const dependencies = {
         helpers: runtimeHelpers(),
         clock: runtimeClock(),
-        sessionToken: () => "injected-session-token",
+        sessionToken: () => 'injected-session-token',
         pluginControl: control,
-        version: "test-version",
+        version: 'test-version',
       };
       const system =
-        source === "YAML"
+        source === 'YAML'
           ? await bootYamlRuntime({
               host: createDefaultRuntimeHost(),
               openapi,
               yamlProgram: {
                 modules: [
                   {
-                    name: "empty.yaml",
-                    yaml: "boundary: Empty\ncontract_path: /empty\nbehaviors: []\nreducers: []",
+                    name: 'empty.yaml',
+                    yaml: 'boundary: Empty\ncontract_path: /empty\nbehaviors: []\nreducers: []',
                   },
                 ],
               },
@@ -119,13 +121,13 @@ describe("runtime host dependency injection", () => {
             });
 
       expect(control.notifyReady).toHaveBeenCalledWith(
-        expect.objectContaining({ startedAt: FIXED_NOW, version: "test-version" }),
+        expect.objectContaining({ startedAt: FIXED_NOW, version: 'test-version' }),
       );
 
       await system.dispose();
 
       expect(control.notifyShutdown).toHaveBeenCalledWith(
-        expect.objectContaining({ stoppedAt: FIXED_NOW, version: "test-version" }),
+        expect.objectContaining({ stoppedAt: FIXED_NOW, version: 'test-version' }),
       );
     },
   );

@@ -1,15 +1,15 @@
-import type { ScanEntry } from "../config.js";
-import { createTypeScriptSdk, sdk, type TypeScriptSdk } from "../sdk/index.js";
-import { FactoryCollector } from "../authoring/factory.js";
-import type { RegisteredFactory } from "../authoring/factory.js";
-import { TypeScriptModuleLoader } from "./typescriptModuleLoader.js";
-import type { TypeScriptModuleLoaderDependencies } from "./typescriptModuleLoader.js";
+import type { ScanEntry } from '../contracts/config.js';
+import { createTypeScriptSdk, sdk, type TypeScriptSdk } from '../sdk/index.js';
+import { FactoryCollector } from '../authoring/factory.js';
+import type { RegisteredFactory } from '../authoring/factory.js';
+import { TypeScriptModuleLoader } from './typescriptModuleLoader.js';
+import type { TypeScriptModuleLoaderDependencies } from './typescriptModuleLoader.js';
 import {
   createDefaultTypeScriptDiscoveryDependencies,
   isDecoratedTypeScriptModule,
   resolveTypeScriptScanFiles,
-} from "./typescriptDiscovery.js";
-import type { TypeScriptDiscoveryDependencies } from "./typescriptDiscovery.js";
+} from './typescriptDiscovery.js';
+import type { TypeScriptDiscoveryDependencies } from './typescriptDiscovery.js';
 
 export interface FactoryScanConfig {
   readonly scan: readonly ScanEntry[];

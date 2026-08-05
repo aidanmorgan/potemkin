@@ -1,11 +1,11 @@
-import { assertAllowlistIsUnique, evaluateAllowlist } from "./allowlist.js";
-import type { ConformanceFailure, ConformanceGateOptions, SpecmaticTestResult } from "./types.js";
+import { assertAllowlistIsUnique, evaluateAllowlist } from './allowlist.js';
+import type { ConformanceFailure, ConformanceGateOptions, SpecmaticTestResult } from './types.js';
 
 export class ConformanceGateFailure extends Error {
-  readonly code = "CONFORMANCE_GATE_FAILED";
+  readonly code = 'CONFORMANCE_GATE_FAILED';
   constructor(message: string) {
     super(message);
-    this.name = "ConformanceGateFailure";
+    this.name = 'ConformanceGateFailure';
   }
 }
 
@@ -18,7 +18,7 @@ function describe(
   const reportProblems: string[] = [];
   if (result.report.tests === 0)
     reportProblems.push(
-      "Specmatic reported no tests; check the selected layer and --filter expression.",
+      'Specmatic reported no tests; check the selected layer and --filter expression.',
     );
   if (result.report.failures > result.report.cases.length) {
     reportProblems.push(
@@ -26,11 +26,11 @@ function describe(
     );
   }
   const lines = [
-    `Specmatic conformance gate failed: ${unexpected.length} unexpected failure(s), ${stale.length} stale allowlist entr${stale.length === 1 ? "y" : "ies"}.`,
+    `Specmatic conformance gate failed: ${unexpected.length} unexpected failure(s), ${stale.length} stale allowlist entr${stale.length === 1 ? 'y' : 'ies'}.`,
     `JUnit totals: ${result.report.tests} test(s), ${result.report.failures} failure(s), ${result.report.errors} error(s), ${result.report.skipped} skipped.`,
     `Allowlisted failures: ${allowedCount}.`,
     ...(result.report.sourceFiles.length > 0
-      ? [`JUnit reports: ${result.report.sourceFiles.join(", ")}`]
+      ? [`JUnit reports: ${result.report.sourceFiles.join(', ')}`]
       : []),
     ...reportProblems.map((problem) => `- report error: ${problem}`),
   ];
@@ -39,12 +39,12 @@ function describe(
       `Specmatic verifier terminated with ${
         result.process.signal
           ? `signal ${result.process.signal}`
-          : `exit code ${result.process.exitCode ?? "unknown"}`
+          : `exit code ${result.process.exitCode ?? 'unknown'}`
       }.`,
     );
     const diagnostics = [result.process.stderr.trim(), result.process.stdout.trim()]
       .filter(Boolean)
-      .join("\n");
+      .join('\n');
     if (diagnostics) lines.push(`Verifier diagnostics:\n${diagnostics.slice(-4000)}`);
   }
   for (const failure of unexpected) {
@@ -54,14 +54,14 @@ function describe(
       `expected=${failure.expectedStatus}`,
       `actual=${failure.actualStatus}`,
       ...(failure.ruleId ? [`rule=${failure.ruleId}`] : []),
-    ].join(", ");
-    const details = failure.details.trim().replace(/\s+/g, " ");
+    ].join(', ');
+    const details = failure.details.trim().replace(/\s+/g, ' ');
     lines.push(
-      `- ${identity}: ${failure.testName}: ${failure.message}${details && details !== failure.message ? `; details=${details}` : ""}`,
+      `- ${identity}: ${failure.testName}: ${failure.message}${details && details !== failure.message ? `; details=${details}` : ''}`,
     );
   }
   for (const entry of stale) lines.push(`- stale allowlist entry: ${entry.id}`);
-  return lines.join("\n");
+  return lines.join('\n');
 }
 
 export async function runConformanceGate(

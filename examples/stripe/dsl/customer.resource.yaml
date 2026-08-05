@@ -12,16 +12,16 @@ identity:
 
 # Stripe-faithful response shaping (200-on-create, list envelope, deleted object).
 query_mapping:
-  email: "state.email == param"
+  email: 'state.email == param'
 
 # A seeded customer so consumer tests can read a known, deterministic entity.
 initialization:
-  - id: "cus_seed000000000000000001"
-    object: "customer"
+  - id: 'cus_seed000000000000000001'
+    object: 'customer'
     created: 1700000000
     livemode: false
-    email: "seeded@example.com"
-    name: "Seeded Customer"
+    email: 'seeded@example.com'
+    name: 'Seeded Customer'
     description: null
     phone: null
     balance: 0
@@ -32,33 +32,33 @@ initialization:
 event_catalog:
   - type: CustomerCreated
     payload_template:
-      id: "command.targetId"
+      id: 'command.targetId'
       object: "'customer'"
-      created: "$unix()"
-      livemode: "false"
-      email: "has(command.payload.email) ? command.payload.email : null"
-      name: "has(command.payload.name) ? command.payload.name : null"
-      description: "has(command.payload.description) ? command.payload.description : null"
-      phone: "has(command.payload.phone) ? command.payload.phone : null"
-      balance: "has(command.payload.balance) ? command.payload.balance : 0"
-      currency: "null"
-      delinquent: "false"
-      metadata: "has(command.payload.metadata) ? command.payload.metadata : {}"
+      created: '$unix()'
+      livemode: 'false'
+      email: 'has(command.payload.email) ? command.payload.email : null'
+      name: 'has(command.payload.name) ? command.payload.name : null'
+      description: 'has(command.payload.description) ? command.payload.description : null'
+      phone: 'has(command.payload.phone) ? command.payload.phone : null'
+      balance: 'has(command.payload.balance) ? command.payload.balance : 0'
+      currency: 'null'
+      delinquent: 'false'
+      metadata: 'has(command.payload.metadata) ? command.payload.metadata : {}'
   # Stripe update semantics: only supplied params change; the rest are preserved.
   - type: CustomerUpdated
     payload_template:
-      email: "has(command.payload.email) ? command.payload.email : state.email"
-      name: "has(command.payload.name) ? command.payload.name : state.name"
-      description: "has(command.payload.description) ? command.payload.description : state.description"
-      phone: "has(command.payload.phone) ? command.payload.phone : state.phone"
-      balance: "has(command.payload.balance) ? command.payload.balance : state.balance"
-      metadata: "has(command.payload.metadata) ? command.payload.metadata : state.metadata"
+      email: 'has(command.payload.email) ? command.payload.email : state.email'
+      name: 'has(command.payload.name) ? command.payload.name : state.name'
+      description: 'has(command.payload.description) ? command.payload.description : state.description'
+      phone: 'has(command.payload.phone) ? command.payload.phone : state.phone'
+      balance: 'has(command.payload.balance) ? command.payload.balance : state.balance'
+      metadata: 'has(command.payload.metadata) ? command.payload.metadata : state.metadata'
   # The deleted object ({id, object, deleted:true}) is synthesized by the
   # response transform; the real Stripe customer schema has no `deleted` field,
   # so the event carries only an audit timestamp and the reducer is a no-op.
   - type: CustomerDeleted
     payload_template:
-      deletedAt: "$unix()"
+      deletedAt: '$unix()'
 
 reducers:
   # The create event carries the full object, so replace state wholesale.
@@ -66,16 +66,16 @@ reducers:
     replace_state: true
   - on: CustomerUpdated
     patches:
-      - { op: replace, path: /email, value: "${event.payload.email}" }
-      - { op: replace, path: /name, value: "${event.payload.name}" }
-      - { op: replace, path: /description, value: "${event.payload.description}" }
-      - { op: replace, path: /phone, value: "${event.payload.phone}" }
-      - { op: replace, path: /balance, value: "${event.payload.balance}" }
-      - { op: replace, path: /metadata, value: "${event.payload.metadata}" }
+      - { op: replace, path: /email, value: '${event.payload.email}' }
+      - { op: replace, path: /name, value: '${event.payload.name}' }
+      - { op: replace, path: /description, value: '${event.payload.description}' }
+      - { op: replace, path: /phone, value: '${event.payload.phone}' }
+      - { op: replace, path: /balance, value: '${event.payload.balance}' }
+      - { op: replace, path: /metadata, value: '${event.payload.metadata}' }
   - on: CustomerDeleted
     patches:
-      - { op: replace, path: /_deleted, value: "${true}" }
-      - { op: replace, path: /_deletedAt, value: "${event.payload.deletedAt}" }
+      - { op: replace, path: /_deleted, value: '${true}' }
+      - { op: replace, path: /_deletedAt, value: '${event.payload.deletedAt}' }
 
 operations:
   - { op: PostCustomers, emit: CustomerCreated }

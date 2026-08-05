@@ -1,7 +1,7 @@
-openapi: "3.0.3"
+openapi: '3.0.3'
 info:
   title: The Nuisance Bureau CRM API (session-auth variant)
-  version: "1.0.0"
+  version: '1.0.0'
   description: |
     Minimal CRM contract exercising session/cookie auth.
     Adds /sessions login + /sessions/current logout endpoints alongside a small
@@ -30,7 +30,7 @@ paths:
                   items:
                     type: string
       responses:
-        "200":
+        '200':
           description: Session created
           content:
             application/json:
@@ -60,7 +60,7 @@ paths:
       operationId: destroyCurrentSession
       summary: Log out — destroy the session bound to the current cookie
       responses:
-        "204":
+        '204':
           description: Session destroyed (or no session present)
 
   # ── Leads ──────────────────────────────────────────────────────────────────
@@ -69,14 +69,14 @@ paths:
       operationId: listLeads
       summary: List leads
       responses:
-        "200":
+        '200':
           description: List of leads
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Lead"
+                  $ref: '#/components/schemas/Lead'
     post:
       operationId: createLead
       summary: Create a new lead
@@ -104,18 +104,18 @@ paths:
                   type: string
                   enum: [WEBSITE, COLD_LIST, REFERRAL, PARTNER]
       responses:
-        "201":
+        '201':
           description: Lead created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Lead"
-        "400":
+                $ref: '#/components/schemas/Lead'
+        '400':
           description: Bad request
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
 
   /leads/{id}:
     get:
@@ -129,18 +129,18 @@ paths:
             type: string
             format: uuid
       responses:
-        "200":
+        '200':
           description: Lead found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Lead"
-        "404":
+                $ref: '#/components/schemas/Lead'
+        '404':
           description: Lead not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
 
   /leads/{id}/dnc:
     post:
@@ -164,24 +164,24 @@ paths:
                 reason:
                   type: string
       responses:
-        "200":
+        '200':
           description: Lead marked DNC
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Lead"
-        "401":
+                $ref: '#/components/schemas/Lead'
+        '401':
           description: Authentication required
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
-        "403":
+                $ref: '#/components/schemas/Error'
+        '403':
           description: Insufficient scope
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
 
 components:
   schemas:
@@ -234,9 +234,9 @@ components:
     # Sub-path boundary schemas — mirror the Lead schema so the engine's
     # schema registry can resolve every boundary declared in the DSL.
     LeadById:
-      $ref: "#/components/schemas/Lead"
+      $ref: '#/components/schemas/Lead'
     LeadDNC:
-      $ref: "#/components/schemas/Lead"
+      $ref: '#/components/schemas/Lead'
 
     Error:
       type: object

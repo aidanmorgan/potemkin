@@ -17,14 +17,14 @@ identity:
 event_catalog:
   - type: StackedJobSubmitted
     payload_template:
-      id: "command.targetId"
-      name: "command.payload.name"
+      id: 'command.targetId'
+      name: 'command.payload.name'
 
 behaviors:
   - name: submitStackedJob
     match:
       operationId: submitStackedJob
-      condition: "true"
+      condition: 'true'
     emit: StackedJobSubmitted
 
 reducers:
@@ -32,9 +32,9 @@ reducers:
     patches:
       - op: replace
         path: /id
-        value: "${event.payload.id}"
+        value: '${event.payload.id}'
       - op: replace
         path: /name
-        value: "${event.payload.name}"
+        value: '${event.payload.name}'
 
 initialization: []

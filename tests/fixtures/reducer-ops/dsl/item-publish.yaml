@@ -8,13 +8,13 @@ fallback_override: false
 event_catalog:
   - type: ItemPublished
     payload_template:
-      draftBody: "command.payload.draftBody"
+      draftBody: 'command.payload.draftBody'
 
 behaviors:
   - name: publishItem
     match:
       operationId: publishItem
-      condition: "true"
+      condition: 'true'
     emit: ItemPublished
 
 reducers:
@@ -23,7 +23,7 @@ reducers:
       # op: add — write /draftBody from the event payload so move has a source
       - op: add
         path: /draftBody
-        value: "${event.payload.draftBody}"
+        value: '${event.payload.draftBody}'
       # op: move — move /draftBody → /publishedBody; /draftBody is removed
       - op: move
         from: /draftBody

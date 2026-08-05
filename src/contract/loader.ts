@@ -1,16 +1,16 @@
-import SwaggerParser from "@apidevtools/swagger-parser";
-import type { OpenAPI } from "openapi-types";
-import * as yaml from "js-yaml";
-import * as fs from "node:fs";
-import * as path from "node:path";
-import { glob } from "tinyglobby";
-import { createNoopLogger, type Logger } from "../observability/logger.js";
-import { createNoopTracer, withSpan, type Tracer } from "../observability/tracing.js";
-import type { JsonObject } from "../types.js";
+import SwaggerParser from '@apidevtools/swagger-parser';
+import type { OpenAPI } from 'openapi-types';
+import * as yaml from 'js-yaml';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { glob } from 'tinyglobby';
+import { createNoopLogger, type Logger } from '../observability/logger.js';
+import { createNoopTracer, withSpan, type Tracer } from '../observability/tracing.js';
+import type { JsonObject } from '../contracts/value.js';
 
 export interface OpenApiParameter {
   readonly name: string;
-  readonly in: "path" | "query" | "header";
+  readonly in: 'path' | 'query' | 'header';
   readonly required?: boolean;
   readonly schema?: JsonObject;
   readonly [key: `x-${string}`]: unknown;
@@ -31,6 +31,10 @@ export interface OpenApiPathItem {
 }
 
 export interface OpenApiDoc {
+  /** Original contract document, retained for source-oriented tooling such as type generation. */
+  readonly source?: unknown;
+  /** Local source files represented by this document, when known. */
+  readonly sourcePaths?: readonly string[];
   readonly raw: unknown;
   readonly paths: Record<string, OpenApiPathItem>;
   /** Optional flat engine-error-code -> contract-error-value map colocated with an example. */
@@ -46,16 +50,16 @@ export interface OpenApiDoc {
 }
 
 function loadErrorCodeMap(source: string | object): Readonly<Record<string, string>> | undefined {
-  if (typeof source !== "string") return undefined;
+  if (typeof source !== 'string') return undefined;
   const sourcePath = path.resolve(source);
   if (!fs.existsSync(sourcePath) || !fs.statSync(sourcePath).isFile()) return undefined;
-  const mapPath = path.join(path.dirname(path.dirname(sourcePath)), "error-code-map.json");
+  const mapPath = path.join(path.dirname(path.dirname(sourcePath)), 'error-code-map.json');
   if (!fs.existsSync(mapPath)) return undefined;
   try {
-    const parsed: unknown = JSON.parse(fs.readFileSync(mapPath, "utf8"));
-    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
+    const parsed: unknown = JSON.parse(fs.readFileSync(mapPath, 'utf8'));
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
     const entries = Object.entries(parsed as Record<string, unknown>);
-    if (entries.some(([, value]) => typeof value !== "string")) return undefined;
+    if (entries.some(([, value]) => typeof value !== 'string')) return undefined;
     return Object.fromEntries(entries) as Readonly<Record<string, string>>;
   } catch {
     return undefined;
@@ -68,7 +72,7 @@ export interface OpenApiLoadObservability {
 }
 
 function asJsonObject(v: unknown): JsonObject | undefined {
-  if (v !== null && typeof v === "object" && !Array.isArray(v)) {
+  if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
     return v as JsonObject;
   }
   return undefined;
@@ -101,7 +105,7 @@ const MAX_OPERATION_SCHEMA_DEPTH = 8;
  * field, so the resource's own top-level required scalars remain fully validated.
  */
 export function decycleSchema(value: unknown, path: Set<object> = new Set(), depth = 0): unknown {
-  if (value === null || typeof value !== "object") return value;
+  if (value === null || typeof value !== 'object') return value;
   if (Array.isArray(value)) {
     return value.map((item) => decycleSchema(item, path, depth));
   }
@@ -134,43 +138,43 @@ export function decycleSchema(value: unknown, path: Set<object> = new Set(), dep
  *     simulation legitimately emits as `null`.
  */
 function normalizeNullable(node: Record<string, unknown>): Record<string, unknown> {
-  if (node["nullable"] !== true) return node;
+  if (node['nullable'] !== true) return node;
   const { nullable: _drop, ...rest } = node;
   // An `enum` rejects null regardless of `type`, so add null to the allowed set.
-  if (Array.isArray(rest["enum"]) && !(rest["enum"] as unknown[]).includes(null)) {
-    rest["enum"] = [...(rest["enum"] as unknown[]), null];
+  if (Array.isArray(rest['enum']) && !(rest['enum'] as unknown[]).includes(null)) {
+    rest['enum'] = [...(rest['enum'] as unknown[]), null];
   }
-  const t = rest["type"];
-  if (typeof t === "string" && t !== "null") {
-    rest["type"] = [t, "null"];
+  const t = rest['type'];
+  if (typeof t === 'string' && t !== 'null') {
+    rest['type'] = [t, 'null'];
     return rest;
   }
   if (Array.isArray(t)) {
-    if (!t.includes("null")) rest["type"] = [...t, "null"];
+    if (!t.includes('null')) rest['type'] = [...t, 'null'];
     return rest;
   }
   // No bare `type` (anyOf / oneOf / allOf / $ref content): permit null via anyOf.
-  return { anyOf: [rest, { type: "null" }] };
+  return { anyOf: [rest, { type: 'null' }] };
 }
 
 function extractParameters(rawParams: unknown): readonly OpenApiParameter[] {
   if (!Array.isArray(rawParams)) return [];
   const result: OpenApiParameter[] = [];
   for (const p of rawParams) {
-    if (p === null || typeof p !== "object" || Array.isArray(p)) continue;
+    if (p === null || typeof p !== 'object' || Array.isArray(p)) continue;
     const param = p as Record<string, unknown>;
-    if (typeof param["name"] !== "string") continue;
-    const inVal = param["in"];
-    if (inVal !== "path" && inVal !== "query" && inVal !== "header") continue;
+    if (typeof param['name'] !== 'string') continue;
+    const inVal = param['in'];
+    if (inVal !== 'path' && inVal !== 'query' && inVal !== 'header') continue;
     const extensions: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(param)) {
-      if (k.startsWith("x-")) extensions[k] = v;
+      if (k.startsWith('x-')) extensions[k] = v;
     }
     result.push({
-      name: param["name"],
+      name: param['name'],
       in: inVal,
-      required: typeof param["required"] === "boolean" ? param["required"] : undefined,
-      schema: asJsonObject(param["schema"]),
+      required: typeof param['required'] === 'boolean' ? param['required'] : undefined,
+      schema: asJsonObject(param['schema']),
       ...extensions,
     });
   }
@@ -178,17 +182,17 @@ function extractParameters(rawParams: unknown): readonly OpenApiParameter[] {
 }
 
 function extractOperation(rawOp: unknown): OpenApiOperation | undefined {
-  if (rawOp === null || typeof rawOp !== "object" || Array.isArray(rawOp)) return undefined;
+  if (rawOp === null || typeof rawOp !== 'object' || Array.isArray(rawOp)) return undefined;
   const op = rawOp as Record<string, unknown>;
 
-  const operationId = typeof op["operationId"] === "string" ? op["operationId"] : undefined;
+  const operationId = typeof op['operationId'] === 'string' ? op['operationId'] : undefined;
 
   let requestBodySchema: JsonObject | undefined;
-  const rb = op["requestBody"];
-  if (rb !== null && typeof rb === "object" && !Array.isArray(rb)) {
+  const rb = op['requestBody'];
+  if (rb !== null && typeof rb === 'object' && !Array.isArray(rb)) {
     const rbObj = rb as Record<string, unknown>;
-    const content = rbObj["content"];
-    if (content !== null && typeof content === "object" && !Array.isArray(content)) {
+    const content = rbObj['content'];
+    if (content !== null && typeof content === 'object' && !Array.isArray(content)) {
       const contentObj = content as Record<string, unknown>;
       // Prefer JSON, but fall back to form-encoded media types so operations that
       // declare their body only as application/x-www-form-urlencoded (e.g. the
@@ -196,12 +200,12 @@ function extractOperation(rawOp: unknown): OpenApiOperation | undefined {
       // invalid form-op body skips validation, mutates state, and only trips
       // response validation — surfacing as a 500 instead of a 400.
       const mediaType =
-        contentObj["application/json"] ??
-        contentObj["application/x-www-form-urlencoded"] ??
-        contentObj["multipart/form-data"];
-      if (mediaType !== null && typeof mediaType === "object" && !Array.isArray(mediaType)) {
+        contentObj['application/json'] ??
+        contentObj['application/x-www-form-urlencoded'] ??
+        contentObj['multipart/form-data'];
+      if (mediaType !== null && typeof mediaType === 'object' && !Array.isArray(mediaType)) {
         const mtObj = mediaType as Record<string, unknown>;
-        const rbSchema = asJsonObject(mtObj["schema"]);
+        const rbSchema = asJsonObject(mtObj['schema']);
         requestBodySchema = rbSchema ? (decycleSchema(rbSchema) as JsonObject) : undefined;
       }
     }
@@ -209,37 +213,37 @@ function extractOperation(rawOp: unknown): OpenApiOperation | undefined {
 
   const responseSchemas: Record<string, JsonObject> = {};
   const responseHeaders: Record<string, readonly string[]> = {};
-  const responses = op["responses"];
-  if (responses !== null && typeof responses === "object" && !Array.isArray(responses)) {
+  const responses = op['responses'];
+  if (responses !== null && typeof responses === 'object' && !Array.isArray(responses)) {
     for (const [status, resp] of Object.entries(responses as Record<string, unknown>)) {
       // The runtime resolver intentionally supports only an exact numeric
       // status or `default`. OpenAPI also permits response ranges such as
       // `4XX`, but treating those as a catch-all here would make an operation
       // appear to declare statuses it does not actually expose to Potemkin's
       // deterministic error mappers.
-      if (status !== "default" && !/^\d{3}$/.test(status)) continue;
-      if (resp === null || typeof resp !== "object" || Array.isArray(resp)) continue;
+      if (status !== 'default' && !/^\d{3}$/.test(status)) continue;
+      if (resp === null || typeof resp !== 'object' || Array.isArray(resp)) continue;
       const respObj = resp as Record<string, unknown>;
-      const headers = respObj["headers"];
-      if (headers !== null && typeof headers === "object" && !Array.isArray(headers)) {
+      const headers = respObj['headers'];
+      if (headers !== null && typeof headers === 'object' && !Array.isArray(headers)) {
         responseHeaders[status] = Object.keys(headers as Record<string, unknown>).map((name) =>
           name.toLowerCase(),
         );
       }
-      const content = respObj["content"];
-      if (content === null || typeof content !== "object" || Array.isArray(content)) continue;
+      const content = respObj['content'];
+      if (content === null || typeof content !== 'object' || Array.isArray(content)) continue;
       const contentObj = content as Record<string, unknown>;
-      const json = contentObj["application/json"];
-      if (json === null || typeof json !== "object" || Array.isArray(json)) continue;
+      const json = contentObj['application/json'];
+      if (json === null || typeof json !== 'object' || Array.isArray(json)) continue;
       const jsonObj = json as Record<string, unknown>;
-      const schema = asJsonObject(jsonObj["schema"]);
+      const schema = asJsonObject(jsonObj['schema']);
       if (schema) responseSchemas[status] = decycleSchema(schema) as JsonObject;
     }
   }
 
   const operationExtensions: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(op)) {
-    if (k.startsWith("x-")) operationExtensions[k] = v;
+    if (k.startsWith('x-')) operationExtensions[k] = v;
   }
 
   return {
@@ -247,22 +251,22 @@ function extractOperation(rawOp: unknown): OpenApiOperation | undefined {
     requestBodySchema,
     responseSchemas: Object.keys(responseSchemas).length > 0 ? responseSchemas : undefined,
     responseHeaders: Object.keys(responseHeaders).length > 0 ? responseHeaders : undefined,
-    parameters: extractParameters(op["parameters"]),
+    parameters: extractParameters(op['parameters']),
     ...operationExtensions,
   };
 }
 
-const HTTP_METHODS = ["get", "put", "post", "delete", "options", "head", "patch", "trace"] as const;
+const HTTP_METHODS = ['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace'] as const;
 
 function normalisePaths(rawDoc: OpenAPI.Document): Record<string, OpenApiPathItem> {
   const paths: Record<string, OpenApiPathItem> = {};
-  const rawPaths = (rawDoc as Record<string, unknown>)["paths"];
-  if (rawPaths === null || typeof rawPaths !== "object" || Array.isArray(rawPaths)) {
+  const rawPaths = (rawDoc as Record<string, unknown>)['paths'];
+  if (rawPaths === null || typeof rawPaths !== 'object' || Array.isArray(rawPaths)) {
     return paths;
   }
 
   for (const [pathTemplate, rawPathItem] of Object.entries(rawPaths as Record<string, unknown>)) {
-    if (rawPathItem === null || typeof rawPathItem !== "object" || Array.isArray(rawPathItem))
+    if (rawPathItem === null || typeof rawPathItem !== 'object' || Array.isArray(rawPathItem))
       continue;
     const pathItemObj = rawPathItem as Record<string, unknown>;
     const pathItem: Record<string, OpenApiOperation> = {};
@@ -315,23 +319,23 @@ export async function loadOpenApi(
   observability: OpenApiLoadObservability = {},
 ): Promise<OpenApiDoc> {
   const logger = observability.logger ?? createNoopLogger();
-  return withSpan(observability.tracer ?? createNoopTracer(), "contract.load", async () => {
+  return withSpan(observability.tracer ?? createNoopTracer(), 'contract.load', async () => {
     let parseTarget: string | OpenAPI.Document;
 
     const normalizedSource: string | object = Buffer.isBuffer(source)
-      ? (source as Buffer).toString("utf8")
+      ? (source as Buffer).toString('utf8')
       : source;
 
-    if (typeof normalizedSource === "string") {
+    if (typeof normalizedSource === 'string') {
       const trimmed = normalizedSource.trimStart();
-      if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+      if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
         parseTarget = JSON.parse(normalizedSource) as OpenAPI.Document;
       } else if (
-        !normalizedSource.startsWith("http://") &&
-        !normalizedSource.startsWith("https://") &&
-        !normalizedSource.startsWith("/") &&
+        !normalizedSource.startsWith('http://') &&
+        !normalizedSource.startsWith('https://') &&
+        !normalizedSource.startsWith('/') &&
         !normalizedSource.match(/^[a-zA-Z]:\\/) &&
-        (normalizedSource.includes("\n") || normalizedSource.includes(":"))
+        (normalizedSource.includes('\n') || normalizedSource.includes(':'))
       ) {
         // Likely inline YAML
         parseTarget = yaml.load(normalizedSource) as OpenAPI.Document;
@@ -342,6 +346,10 @@ export async function loadOpenApi(
       parseTarget = normalizedSource as OpenAPI.Document;
     }
 
+    // Keep the authoring document separate from the dereferenced runtime graph. The
+    // latter is deliberately decycled below and may contain cycles introduced by
+    // `$ref` resolution, while generators need the original reusable components.
+    const sourceDocument = await SwaggerParser.parse(parseTarget);
     const dereferenced = await SwaggerParser.dereference(parseTarget);
 
     const paths = normalisePaths(dereferenced);
@@ -351,11 +359,18 @@ export async function loadOpenApi(
       0,
     );
 
-    logger.info({ pathCount, operationCount }, "OpenAPI contract loaded");
+    logger.info({ pathCount, operationCount }, 'OpenAPI contract loaded');
 
     const errorCodeMap = loadErrorCodeMap(source);
 
     return {
+      source: sourceDocument,
+      ...(typeof normalizedSource === 'string' &&
+      !normalizedSource.startsWith('http://') &&
+      !normalizedSource.startsWith('https://') &&
+      fs.existsSync(path.resolve(normalizedSource))
+        ? { sourcePaths: [path.resolve(normalizedSource)] }
+        : {}),
       raw: dereferenced,
       paths,
       ...(errorCodeMap !== undefined ? { errorCodeMap } : {}),
@@ -370,7 +385,7 @@ export async function loadOpenApiDocuments(
   cwd = process.cwd(),
   observability: OpenApiLoadObservability = {},
 ): Promise<OpenApiDoc> {
-  const patterns = (typeof sources === "string" ? [sources] : [...sources]).flatMap((source) =>
+  const patterns = (typeof sources === 'string' ? [sources] : [...sources]).flatMap((source) =>
     source
       .split(/[\n,]/)
       .map((value) => value.trim())
@@ -379,7 +394,7 @@ export async function loadOpenApiDocuments(
   const files = await glob(patterns, { cwd, absolute: true, onlyFiles: true });
   const uniqueFiles = [...new Set(files.map((file) => path.resolve(file)))].sort();
   if (uniqueFiles.length === 0)
-    throw new Error(`No OpenAPI documents matched: ${patterns.join(", ")}`);
+    throw new Error(`No OpenAPI documents matched: ${patterns.join(', ')}`);
   const documents = await Promise.all(uniqueFiles.map((file) => loadOpenApi(file, observability)));
   return documents.length === 1 ? documents[0] : mergeOpenApiDocuments(documents, uniqueFiles);
 }
@@ -424,6 +439,8 @@ function mergeOpenApiDocuments(
   }
 
   return {
+    source: mergeRawOpenApiDocuments(documents.map((document) => document.source ?? document.raw)),
+    sourcePaths: documents.flatMap((document) => document.sourcePaths ?? []),
     raw: mergeRawOpenApiDocuments(documents.map((document) => document.raw)),
     paths,
     ...(Object.keys(errorCodeMap).length === 0 ? {} : { errorCodeMap }),
@@ -433,39 +450,39 @@ function mergeOpenApiDocuments(
 
 function mergeRawOpenApiDocuments(rawDocuments: readonly unknown[]): unknown {
   const merged = cloneRecord(rawDocuments[0]);
-  const mergedPaths = asRecord(merged["paths"]);
-  const mergedComponents = asRecord(merged["components"]);
+  const mergedPaths = asRecord(merged['paths']);
+  const mergedComponents = asRecord(merged['components']);
   for (const raw of rawDocuments.slice(1)) {
     const document = cloneRecord(raw);
-    const paths = asRecord(document["paths"]);
+    const paths = asRecord(document['paths']);
     for (const [routePath, item] of Object.entries(paths)) {
       const existing = asRecord(mergedPaths[routePath]);
       if (existing === undefined) mergedPaths[routePath] = item;
       else Object.assign(existing, item);
     }
-    const components = asRecord(document["components"]);
+    const components = asRecord(document['components']);
     for (const [kind, values] of Object.entries(components)) {
       const existing = asRecord(mergedComponents[kind]);
       if (existing === undefined) mergedComponents[kind] = values;
       else Object.assign(existing, values);
     }
     for (const [key, value] of Object.entries(document)) {
-      if (key !== "paths" && key !== "components" && merged[key] === undefined) merged[key] = value;
+      if (key !== 'paths' && key !== 'components' && merged[key] === undefined) merged[key] = value;
     }
   }
-  merged["paths"] = mergedPaths;
-  if (Object.keys(mergedComponents).length > 0) merged["components"] = mergedComponents;
+  merged['paths'] = mergedPaths;
+  if (Object.keys(mergedComponents).length > 0) merged['components'] = mergedComponents;
   return merged;
 }
 
-function cloneRecord(value: unknown): Record<string, any> {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (structuredClone(value) as Record<string, any>)
+function cloneRecord(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (structuredClone(value) as Record<string, unknown>)
     : {};
 }
 
-function asRecord(value: unknown): Record<string, any> {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, any>)
+function asRecord(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
     : {};
 }

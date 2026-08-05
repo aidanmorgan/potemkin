@@ -5,42 +5,42 @@ identity:
   creation:
     generate: $uuidv7()
 query_mapping:
-  currentStatus: "state.currentStatus == param"
+  currentStatus: 'state.currentStatus == param'
 
 event_catalog:
   - type: AgentCreated
     payload_template:
-      id: "command.targetId"
-      name: "command.payload.name"
-      email: "command.payload.email"
-      dailyCallQuota: "command.payload.dailyCallQuota"
-      skills: "command.payload.skills"
+      id: 'command.targetId'
+      name: 'command.payload.name'
+      email: 'command.payload.email'
+      dailyCallQuota: 'command.payload.dailyCallQuota'
+      skills: 'command.payload.skills'
 
   - type: AgentStatusChanged
     payload_template:
-      newStatus: "command.payload.currentStatus"
-      changedAt: "$now()"
+      newStatus: 'command.payload.currentStatus'
+      changedAt: '$now()'
 
   - type: AgentCallCountIncremented
     payload_template:
-      callId: "command.payload.callId"
-      incrementAt: "$now()"
+      callId: 'command.payload.callId'
+      incrementAt: '$now()'
 
   - type: AgentConversionIncremented
     payload_template:
-      incrementAt: "$now()"
+      incrementAt: '$now()'
 
 behaviors:
   # Create agent — match.requires to validate quota > 0
   - name: createAgent
     match:
       operationId: createAgent
-      condition: "true"
+      condition: 'true'
       requires:
         - name: valid-quota
-          condition: "command.payload.dailyCallQuota > 0"
+          condition: 'command.payload.dailyCallQuota > 0'
           error_code: INVALID_QUOTA
-          error_message: "Daily call quota must be greater than zero"
+          error_message: 'Daily call quota must be greater than zero'
     emit: AgentCreated
 
   # Update status — emit_when with 2 branches based on new status
@@ -58,14 +58,14 @@ behaviors:
   - name: incrementCallCount
     match:
       operationId: updateAgentStatus
-      condition: "has(command.payload.callId) && command.payload.callId != null && command.payload.incrementCall == true"
+      condition: 'has(command.payload.callId) && command.payload.callId != null && command.payload.incrementCall == true'
     emit: AgentCallCountIncremented
 
   # Increment conversions (secondary command from opportunity win)
   - name: incrementConversions
     match:
       operationId: updateAgentStatus
-      condition: "command.payload.incrementConversions == true"
+      condition: 'command.payload.incrementConversions == true'
     emit: AgentConversionIncremented
 
 reducers:
@@ -73,91 +73,91 @@ reducers:
     patches:
       - op: replace
         path: /id
-        value: "${event.payload.id}"
+        value: '${event.payload.id}'
       - op: replace
         path: /name
-        value: "${event.payload.name}"
+        value: '${event.payload.name}'
       - op: replace
         path: /email
-        value: "${event.payload.email}"
+        value: '${event.payload.email}'
       - op: replace
         path: /dailyCallQuota
-        value: "${event.payload.dailyCallQuota}"
+        value: '${event.payload.dailyCallQuota}'
       - op: replace
         path: /dailyCallCount
-        value: "${0}"
+        value: '${0}'
       - op: replace
         path: /currentStatus
         value: "${'AVAILABLE'}"
       - op: replace
         path: /assignedCampaignIds
-        value: "${[]}"
+        value: '${[]}'
       - op: replace
         path: /totalConversions
-        value: "${0}"
+        value: '${0}'
       - op: replace
         path: /skills
-        value: "${event.payload.skills != null ? event.payload.skills : []}"
+        value: '${event.payload.skills != null ? event.payload.skills : []}'
 
   - on: AgentStatusChanged
     patches:
       - op: replace
         path: /currentStatus
-        value: "${event.payload.newStatus}"
+        value: '${event.payload.newStatus}'
       - op: replace
         path: /lastActiveAt
-        value: "${event.payload.changedAt}"
+        value: '${event.payload.changedAt}'
 
   - on: AgentCallCountIncremented
     patches:
       - op: replace
         path: /dailyCallCount
-        value: "${state.dailyCallCount + 1}"
+        value: '${state.dailyCallCount + 1}'
 
   - on: AgentConversionIncremented
     patches:
       - op: replace
         path: /totalConversions
-        value: "${state.totalConversions + 1}"
+        value: '${state.totalConversions + 1}'
 
 initialization:
-  - id: "00000000-0000-7000-8000-000000000003"
-    name: "Alice Thompson"
-    email: "alice@nuisance-bureau.com"
+  - id: '00000000-0000-7000-8000-000000000003'
+    name: 'Alice Thompson'
+    email: 'alice@nuisance-bureau.com'
     skills:
-      - "B2B"
-      - "SaaS"
+      - 'B2B'
+      - 'SaaS'
     dailyCallQuota: 40
     dailyCallCount: 0
-    currentStatus: "AVAILABLE"
+    currentStatus: 'AVAILABLE'
     assignedCampaignIds:
-      - "00000000-0000-7000-8000-000000000001"
+      - '00000000-0000-7000-8000-000000000001'
     totalConversions: 12
-    lastActiveAt: "1970-01-01T00:00:00.000Z"
+    lastActiveAt: '1970-01-01T00:00:00.000Z'
 
-  - id: "00000000-0000-7000-8000-000000000004"
-    name: "Bob Martinez"
-    email: "bob@nuisance-bureau.com"
+  - id: '00000000-0000-7000-8000-000000000004'
+    name: 'Bob Martinez'
+    email: 'bob@nuisance-bureau.com'
     skills:
-      - "Enterprise"
-      - "Finance"
+      - 'Enterprise'
+      - 'Finance'
     dailyCallQuota: 35
     dailyCallCount: 0
-    currentStatus: "AVAILABLE"
+    currentStatus: 'AVAILABLE'
     assignedCampaignIds:
-      - "00000000-0000-7000-8000-000000000001"
+      - '00000000-0000-7000-8000-000000000001'
     totalConversions: 8
-    lastActiveAt: "1970-01-01T00:00:00.000Z"
+    lastActiveAt: '1970-01-01T00:00:00.000Z'
 
-  - id: "00000000-0000-7000-8000-000000000005"
-    name: "Carla Nguyen"
-    email: "carla@nuisance-bureau.com"
+  - id: '00000000-0000-7000-8000-000000000005'
+    name: 'Carla Nguyen'
+    email: 'carla@nuisance-bureau.com'
     skills:
-      - "SMB"
-      - "Retail"
+      - 'SMB'
+      - 'Retail'
     dailyCallQuota: 50
     dailyCallCount: 0
-    currentStatus: "OFFLINE"
+    currentStatus: 'OFFLINE'
     assignedCampaignIds: []
     totalConversions: 5
-    lastActiveAt: "1970-01-01T00:00:00.000Z"
+    lastActiveAt: '1970-01-01T00:00:00.000Z'

@@ -14,237 +14,237 @@ import {
   ExportError,
   SessionLimitError,
   deserializeSimError,
-} from "../../src/errors";
+} from '../../src/errors';
 
-describe("errors", () => {
-  describe("SimError base class", () => {
-    it("is abstract — cannot be directly instantiated", () => {
+describe('errors', () => {
+  describe('SimError base class', () => {
+    it('is abstract — cannot be directly instantiated', () => {
       // BootError is the easiest concrete subclass
-      const err = new BootError("CODE", "msg");
+      const err = new BootError('CODE', 'msg');
       expect(err).toBeInstanceOf(SimError);
     });
 
-    it("sets message", () => {
-      const err = new ContractViolationError("bad request");
-      expect(err.message).toBe("bad request");
+    it('sets message', () => {
+      const err = new ContractViolationError('bad request');
+      expect(err.message).toBe('bad request');
     });
 
-    it("sets name to class name", () => {
-      const err = new EntityAbsenceError("not found");
-      expect(err.name).toBe("EntityAbsenceError");
+    it('sets name to class name', () => {
+      const err = new EntityAbsenceError('not found');
+      expect(err.name).toBe('EntityAbsenceError');
     });
 
-    it("stores optional details", () => {
-      const err = new ContractViolationError("msg", { field: "amount" });
-      expect(err.details).toEqual({ field: "amount" });
+    it('stores optional details', () => {
+      const err = new ContractViolationError('msg', { field: 'amount' });
+      expect(err.details).toEqual({ field: 'amount' });
     });
 
-    it("details is undefined when not provided", () => {
-      const err = new ContractViolationError("msg");
+    it('details is undefined when not provided', () => {
+      const err = new ContractViolationError('msg');
       expect(err.details).toBeUndefined();
     });
 
-    it("instanceof check works correctly (prototype chain fix)", () => {
-      const err = new EntityAbsenceError("msg");
+    it('instanceof check works correctly (prototype chain fix)', () => {
+      const err = new EntityAbsenceError('msg');
       expect(err instanceof EntityAbsenceError).toBe(true);
       expect(err instanceof SimError).toBe(true);
       expect(err instanceof Error).toBe(true);
     });
 
-    it("toJSON includes name, code, message, details", () => {
-      const err = new ContractViolationError("bad", { x: 1 });
+    it('toJSON includes name, code, message, details', () => {
+      const err = new ContractViolationError('bad', { x: 1 });
       const json = err.toJSON();
-      expect(json.name).toBe("ContractViolationError");
-      expect(json.code).toBe("CONTRACT_VIOLATION");
-      expect(json.message).toBe("bad");
+      expect(json.name).toBe('ContractViolationError');
+      expect(json.code).toBe('CONTRACT_VIOLATION');
+      expect(json.message).toBe('bad');
       expect(json.details).toEqual({ x: 1 });
     });
 
-    it("toJSON details is null when details not provided", () => {
-      const err = new ContractViolationError("msg");
+    it('toJSON details is null when details not provided', () => {
+      const err = new ContractViolationError('msg');
       expect(err.toJSON().details).toBeNull();
     });
   });
 
-  describe("BootError", () => {
-    it("stores the code", () => {
-      const err = new BootError("BOOT_ERR_DSL_SYNTAX", "parse error");
-      expect(err.code).toBe("BOOT_ERR_DSL_SYNTAX");
+  describe('BootError', () => {
+    it('stores the code', () => {
+      const err = new BootError('BOOT_ERR_DSL_SYNTAX', 'parse error');
+      expect(err.code).toBe('BOOT_ERR_DSL_SYNTAX');
     });
 
-    it("is an instance of SimError", () => {
-      expect(new BootError("X", "y")).toBeInstanceOf(SimError);
-    });
-  });
-
-  describe("ContractViolationError", () => {
-    it("has status 400", () => {
-      expect(new ContractViolationError("msg").status).toBe(400);
-    });
-
-    it("has code CONTRACT_VIOLATION", () => {
-      expect(new ContractViolationError("msg").code).toBe("CONTRACT_VIOLATION");
+    it('is an instance of SimError', () => {
+      expect(new BootError('X', 'y')).toBeInstanceOf(SimError);
     });
   });
 
-  describe("EntityAbsenceError", () => {
-    it("has status 404", () => {
-      expect(new EntityAbsenceError("msg").status).toBe(404);
+  describe('ContractViolationError', () => {
+    it('has status 400', () => {
+      expect(new ContractViolationError('msg').status).toBe(400);
     });
 
-    it("has code ENTITY_ABSENCE", () => {
-      expect(new EntityAbsenceError("msg").code).toBe("ENTITY_ABSENCE");
-    });
-  });
-
-  describe("EntityConflictError", () => {
-    it("has status 409", () => {
-      expect(new EntityConflictError("msg").status).toBe(409);
-    });
-
-    it("has code ENTITY_CONFLICT", () => {
-      expect(new EntityConflictError("msg").code).toBe("ENTITY_CONFLICT");
+    it('has code CONTRACT_VIOLATION', () => {
+      expect(new ContractViolationError('msg').code).toBe('CONTRACT_VIOLATION');
     });
   });
 
-  describe("UnhandledOperationError", () => {
-    it("has status 422", () => {
-      expect(new UnhandledOperationError("msg").status).toBe(422);
+  describe('EntityAbsenceError', () => {
+    it('has status 404', () => {
+      expect(new EntityAbsenceError('msg').status).toBe(404);
     });
 
-    it("has code UNHANDLED_OPERATION", () => {
-      expect(new UnhandledOperationError("msg").code).toBe("UNHANDLED_OPERATION");
-    });
-  });
-
-  describe("ConcurrencyConflictError", () => {
-    it("has status 412", () => {
-      expect(new ConcurrencyConflictError("msg").status).toBe(412);
-    });
-
-    it("has code CONCURRENCY_CONFLICT", () => {
-      expect(new ConcurrencyConflictError("msg").code).toBe("CONCURRENCY_CONFLICT");
+    it('has code ENTITY_ABSENCE', () => {
+      expect(new EntityAbsenceError('msg').code).toBe('ENTITY_ABSENCE');
     });
   });
 
-  describe("MissingPreconditionError", () => {
-    it("has status 428", () => {
-      expect(new MissingPreconditionError("msg").status).toBe(428);
+  describe('EntityConflictError', () => {
+    it('has status 409', () => {
+      expect(new EntityConflictError('msg').status).toBe(409);
     });
 
-    it("has code MISSING_PRECONDITION", () => {
-      expect(new MissingPreconditionError("msg").code).toBe("MISSING_PRECONDITION");
-    });
-  });
-
-  describe("InternalExecutionError", () => {
-    it("has status 500", () => {
-      expect(new InternalExecutionError("msg").status).toBe(500);
-    });
-
-    it("has code INTERNAL_EXECUTION_ERROR", () => {
-      expect(new InternalExecutionError("msg").code).toBe("INTERNAL_EXECUTION_ERROR");
+    it('has code ENTITY_CONFLICT', () => {
+      expect(new EntityConflictError('msg').code).toBe('ENTITY_CONFLICT');
     });
   });
 
-  describe("InfiniteLoopError", () => {
-    it("has status 508", () => {
-      expect(new InfiniteLoopError("msg").status).toBe(508);
+  describe('UnhandledOperationError', () => {
+    it('has status 422', () => {
+      expect(new UnhandledOperationError('msg').status).toBe(422);
     });
 
-    it("has code INFINITE_LOOP", () => {
-      expect(new InfiniteLoopError("msg").code).toBe("INFINITE_LOOP");
+    it('has code UNHANDLED_OPERATION', () => {
+      expect(new UnhandledOperationError('msg').code).toBe('UNHANDLED_OPERATION');
     });
   });
 
-  describe("FaultSimulatedError", () => {
-    it("stores status", () => {
-      const err = new FaultSimulatedError(503, { error: "service unavailable" });
+  describe('ConcurrencyConflictError', () => {
+    it('has status 412', () => {
+      expect(new ConcurrencyConflictError('msg').status).toBe(412);
+    });
+
+    it('has code CONCURRENCY_CONFLICT', () => {
+      expect(new ConcurrencyConflictError('msg').code).toBe('CONCURRENCY_CONFLICT');
+    });
+  });
+
+  describe('MissingPreconditionError', () => {
+    it('has status 428', () => {
+      expect(new MissingPreconditionError('msg').status).toBe(428);
+    });
+
+    it('has code MISSING_PRECONDITION', () => {
+      expect(new MissingPreconditionError('msg').code).toBe('MISSING_PRECONDITION');
+    });
+  });
+
+  describe('InternalExecutionError', () => {
+    it('has status 500', () => {
+      expect(new InternalExecutionError('msg').status).toBe(500);
+    });
+
+    it('has code INTERNAL_EXECUTION_ERROR', () => {
+      expect(new InternalExecutionError('msg').code).toBe('INTERNAL_EXECUTION_ERROR');
+    });
+  });
+
+  describe('InfiniteLoopError', () => {
+    it('has status 508', () => {
+      expect(new InfiniteLoopError('msg').status).toBe(508);
+    });
+
+    it('has code INFINITE_LOOP', () => {
+      expect(new InfiniteLoopError('msg').code).toBe('INFINITE_LOOP');
+    });
+  });
+
+  describe('FaultSimulatedError', () => {
+    it('stores status', () => {
+      const err = new FaultSimulatedError(503, { error: 'service unavailable' });
       expect(err.status).toBe(503);
     });
 
-    it("has code FAULT_SIMULATED", () => {
-      expect(new FaultSimulatedError(500, {}).code).toBe("FAULT_SIMULATED");
+    it('has code FAULT_SIMULATED', () => {
+      expect(new FaultSimulatedError(500, {}).code).toBe('FAULT_SIMULATED');
     });
 
-    it("stores simulatedBody", () => {
-      const body = { message: "fault" };
+    it('stores simulatedBody', () => {
+      const body = { message: 'fault' };
       const err = new FaultSimulatedError(503, body);
       expect(err.simulatedBody).toEqual(body);
     });
 
-    it("stores simulatedHeaders when provided", () => {
-      const headers = { "retry-after": "30" };
+    it('stores simulatedHeaders when provided', () => {
+      const headers = { 'retry-after': '30' };
       const err = new FaultSimulatedError(503, {}, headers);
       expect(err.simulatedHeaders).toEqual(headers);
     });
 
-    it("simulatedHeaders is undefined when not provided", () => {
+    it('simulatedHeaders is undefined when not provided', () => {
       expect(new FaultSimulatedError(500, {}).simulatedHeaders).toBeUndefined();
     });
 
-    it("toJSON returns the simulated body directly (matching gateway HTTP response shape)", () => {
-      const err = new FaultSimulatedError(503, { msg: "fault" });
+    it('toJSON returns the simulated body directly (matching gateway HTTP response shape)', () => {
+      const err = new FaultSimulatedError(503, { msg: 'fault' });
       const json = err.toJSON();
       // toJSON() returns the simulated body — same shape the gateway sends via res.json(err.toJSON())
-      expect(json).toEqual({ msg: "fault" });
+      expect(json).toEqual({ msg: 'fault' });
     });
 
-    it("is instanceof SimError", () => {
+    it('is instanceof SimError', () => {
       expect(new FaultSimulatedError(500, {})).toBeInstanceOf(SimError);
     });
   });
 
-  describe("ConfigurationError", () => {
-    it("has a stable code and structured field details", () => {
-      const err = new ConfigurationError("modules must be configured", { field: "modules" });
+  describe('ConfigurationError', () => {
+    it('has a stable code and structured field details', () => {
+      const err = new ConfigurationError('modules must be configured', { field: 'modules' });
       expect(err).toBeInstanceOf(SimError);
-      expect(err.code).toBe("CONFIG_INVALID");
-      expect(err.details).toEqual({ field: "modules" });
+      expect(err.code).toBe('CONFIG_INVALID');
+      expect(err.details).toEqual({ field: 'modules' });
     });
 
-    it("round-trips through the SimError discriminator", () => {
-      const original = new ConfigurationError("invalid config", { field: "version" });
+    it('round-trips through the SimError discriminator', () => {
+      const original = new ConfigurationError('invalid config', { field: 'version' });
       const restored = deserializeSimError(original.toJSON());
       expect(restored).toBeInstanceOf(ConfigurationError);
-      expect(restored?.code).toBe("CONFIG_INVALID");
-      expect(restored?.details).toEqual({ field: "version" });
+      expect(restored?.code).toBe('CONFIG_INVALID');
+      expect(restored?.details).toEqual({ field: 'version' });
     });
   });
 
-  describe("ExportError", () => {
-    it("preserves the typed export code and boundary/path diagnostics", () => {
-      const error = new ExportError("invalid exported response", {
-        boundary: "Lead",
-        path: "/leads/example",
+  describe('ExportError', () => {
+    it('preserves the typed export code and boundary/path diagnostics', () => {
+      const error = new ExportError('invalid exported response', {
+        boundary: 'Lead',
+        path: '/leads/example',
       });
       expect(error).toBeInstanceOf(SimError);
-      expect(error.code).toBe("EXPORT_INVALID");
-      expect(error.details).toEqual({ boundary: "Lead", path: "/leads/example" });
+      expect(error.code).toBe('EXPORT_INVALID');
+      expect(error.details).toEqual({ boundary: 'Lead', path: '/leads/example' });
       expect(deserializeSimError(error.toJSON())).toBeInstanceOf(ExportError);
     });
   });
 
-  describe("SessionLimitError", () => {
-    it("has a stable code, status, and capacity diagnostic", () => {
+  describe('SessionLimitError', () => {
+    it('has a stable code, status, and capacity diagnostic', () => {
       const error = new SessionLimitError(3);
       expect(error).toBeInstanceOf(SimError);
       expect(error.status).toBe(429);
-      expect(error.code).toBe("SESSION_LIMIT_EXCEEDED");
+      expect(error.code).toBe('SESSION_LIMIT_EXCEEDED');
       expect(error.maxSessions).toBe(3);
       expect(error.details).toEqual({ maxSessions: 3 });
     });
 
-    it("round-trips through the typed error discriminator", () => {
+    it('round-trips through the typed error discriminator', () => {
       const restored = deserializeSimError(new SessionLimitError(4).toJSON());
       expect(restored).toBeInstanceOf(SessionLimitError);
       expect((restored as SessionLimitError).maxSessions).toBe(4);
     });
 
-    it("rejects non-object and unknown wire values safely", () => {
+    it('rejects non-object and unknown wire values safely', () => {
       expect(deserializeSimError(null)).toBeNull();
       expect(deserializeSimError([])).toBeNull();
-      expect(deserializeSimError({ code: "NOT_A_SIM_ERROR" })).toBeNull();
+      expect(deserializeSimError({ code: 'NOT_A_SIM_ERROR' })).toBeNull();
     });
   });
 });

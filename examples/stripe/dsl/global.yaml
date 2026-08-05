@@ -26,7 +26,7 @@ fault_rules:
       status: 402
       body:
         error:
-          type: "card_error"
-          code: "card_declined"
-          decline_code: "generic_decline"
-          message: "Your card was declined."
+          type: 'card_error'
+          code: 'card_declined'
+          decline_code: 'generic_decline'
+          message: 'Your card was declined.'

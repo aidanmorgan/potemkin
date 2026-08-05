@@ -21,7 +21,7 @@
  *    unknown {{token}}, or unknown arg (not in parameters block).
  */
 
-import { BootError } from "../errors.js";
+import { BootError } from '../errors.js';
 import type {
   BehaviorRule,
   ComponentDefinition,
@@ -29,10 +29,9 @@ import type {
   IdentityConfig,
   IncludeEntry,
   ReactionRule,
-  ReducerPatchOp,
   ReducerRule,
-} from "./types.js";
-import type { DeclaredState } from "./schemaTypes.js";
+} from './types.js';
+import type { DeclaredState } from './schemaTypes.js';
 
 // ---------------------------------------------------------------------------
 // Token detection
@@ -54,8 +53,8 @@ function celSpanEnd(value: string, start: number): number {
   let depth = 0;
   for (let j = start + 1; j < value.length; j++) {
     const c = value[j];
-    if (c === "{") depth++;
-    else if (c === "}") {
+    if (c === '{') depth++;
+    else if (c === '}') {
       depth--;
       if (depth === 0) return j + 1;
     }
@@ -79,7 +78,7 @@ type ResolvedParams = ReadonlyMap<string, string | number | boolean>;
  * required, type-check, and reject unknown args.
  */
 function resolveParameters(
-  parameters: ComponentDefinition["parameters"],
+  parameters: ComponentDefinition['parameters'],
   args: Record<string, string | number | boolean>,
   componentName: string,
 ): ResolvedParams {
@@ -89,7 +88,7 @@ function resolveParameters(
   for (const argName of Object.keys(args)) {
     if (!parameters || !(argName in parameters)) {
       throw new BootError(
-        "BOOT_ERR_DSL_SYNTAX",
+        'BOOT_ERR_DSL_SYNTAX',
         `${ctx}: unknown parameter "${argName}" — not declared in parameters block`,
         { parameter: argName, component: componentName },
       );
@@ -106,7 +105,7 @@ function resolveParameters(
     if (raw === undefined) {
       if (decl.required) {
         throw new BootError(
-          "BOOT_ERR_DSL_SYNTAX",
+          'BOOT_ERR_DSL_SYNTAX',
           `${pctx}: required parameter "${paramName}" was not supplied`,
           { parameter: paramName, component: componentName },
         );
@@ -121,7 +120,7 @@ function resolveParameters(
     const jsType = typeof raw;
     if (jsType !== decl.type) {
       throw new BootError(
-        "BOOT_ERR_DSL_SYNTAX",
+        'BOOT_ERR_DSL_SYNTAX',
         `${pctx}: parameter "${paramName}" expects type ${decl.type} but received ${jsType} (${JSON.stringify(raw)})`,
         { parameter: paramName, expected: decl.type, received: jsType, component: componentName },
       );
@@ -152,14 +151,14 @@ export function substituteTokens(
   componentName: string,
 ): string | number | boolean {
   // Fast path: no token present.
-  if (!value.includes("{{")) return value;
+  if (!value.includes('{{')) return value;
 
   // Exact single-token substitution (preserves native type).
   if (isExactToken(value)) {
     const name = exactTokenName(value);
     if (!resolved.has(name)) {
       throw new BootError(
-        "BOOT_ERR_DSL_SYNTAX",
+        'BOOT_ERR_DSL_SYNTAX',
         `component "${componentName}": unknown token "{{${name}}}" — no declared parameter with that name`,
         { token: name, component: componentName },
       );
@@ -170,23 +169,23 @@ export function substituteTokens(
   // Embedded-token substitution (always yields a string). Scan left-to-right,
   // copying CEL ${...} spans verbatim (so {{...}} inside a CEL map literal like
   // ${{'k': v}} is never matched) and replacing {{name}} tokens elsewhere.
-  let out = "";
+  let out = '';
   let i = 0;
   const n = value.length;
   while (i < n) {
-    if (value[i] === "$" && value[i + 1] === "{") {
+    if (value[i] === '$' && value[i + 1] === '{') {
       const end = celSpanEnd(value, i);
       out += value.slice(i, end); // CEL interpolation — copied unchanged
       i = end;
       continue;
     }
-    if (value[i] === "{" && value[i + 1] === "{") {
-      const close = value.indexOf("}}", i + 2);
+    if (value[i] === '{' && value[i + 1] === '{') {
+      const close = value.indexOf('}}', i + 2);
       if (close !== -1) {
         const name = value.slice(i + 2, close);
         if (!resolved.has(name)) {
           throw new BootError(
-            "BOOT_ERR_DSL_SYNTAX",
+            'BOOT_ERR_DSL_SYNTAX',
             `component "${componentName}": unknown token "{{${name}}}" — no declared parameter with that name`,
             { token: name, component: componentName },
           );
@@ -211,28 +210,28 @@ export function substituteTokens(
  * every string leaf (both object values and object keys).
  */
 function walkValue(v: unknown, resolved: ResolvedParams, componentName: string): unknown {
-  if (typeof v === "string") {
+  if (typeof v === 'string') {
     return substituteTokens(v, resolved, componentName);
   }
   if (Array.isArray(v)) {
     return v.map((item) => walkValue(item, resolved, componentName));
   }
-  if (v !== null && typeof v === "object") {
-    return walkRecord(v as Record<string, unknown>, resolved, componentName);
+  if (v !== null && typeof v === 'object') {
+    return walkRecord(v, resolved, componentName);
   }
   // number, boolean, null — no tokens possible
   return v;
 }
 
 function walkRecord(
-  obj: Record<string, unknown>,
+  obj: object,
   resolved: ResolvedParams,
   componentName: string,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(obj)) {
     // Substitute tokens in the key too (e.g. JSON-Pointer path segments used as keys).
-    const newKey = typeof k === "string" ? String(substituteTokens(k, resolved, componentName)) : k;
+    const newKey = typeof k === 'string' ? String(substituteTokens(k, resolved, componentName)) : k;
     out[newKey] = walkValue(v, resolved, componentName);
   }
   return out;
@@ -260,21 +259,7 @@ function walkReducers(
   componentName: string,
 ): readonly ReducerRule[] | undefined {
   if (!rules) return undefined;
-  return rules.map((r) => {
-    const walked = walkRecord(r as unknown as Record<string, unknown>, resolved, componentName);
-    // patches is readonly ReducerPatchOp[] — preserve it correctly
-    if (r.patches !== undefined) {
-      walked["patches"] = r.patches.map(
-        (p) =>
-          walkRecord(
-            p as unknown as Record<string, unknown>,
-            resolved,
-            componentName,
-          ) as unknown as ReducerPatchOp,
-      );
-    }
-    return walked as unknown as ReducerRule;
-  });
+  return rules.map((r) => walkValue(r, resolved, componentName) as ReducerRule);
 }
 
 function walkBehaviors(
@@ -325,7 +310,7 @@ export function substituteParameters(
   const resolved = resolveParameters(component.parameters, args, component.name);
 
   return {
-    kind: "component",
+    kind: 'component',
     name: component.name,
     ...(component.parameters !== undefined ? { parameters: component.parameters } : {}),
     ...(component.eventCatalog !== undefined
@@ -355,7 +340,7 @@ export function substituteParameters(
             component.query,
             resolved,
             component.name,
-          ) as ComponentDefinition["query"],
+          ) as ComponentDefinition['query'],
         }
       : {}),
     ...(component.queryMapping !== undefined
@@ -372,7 +357,7 @@ export function substituteParameters(
             component.deprecated,
             resolved,
             component.name,
-          ) as ComponentDefinition["deprecated"],
+          ) as ComponentDefinition['deprecated'],
         }
       : {}),
     ...(component.hateoas !== undefined
@@ -381,11 +366,11 @@ export function substituteParameters(
             component.hateoas,
             resolved,
             component.name,
-          ) as ComponentDefinition["hateoas"],
+          ) as ComponentDefinition['hateoas'],
         }
       : {}),
     ...(component.mask !== undefined
-      ? { mask: walkValue(component.mask, resolved, component.name) as ComponentDefinition["mask"] }
+      ? { mask: walkValue(component.mask, resolved, component.name) as ComponentDefinition['mask'] }
       : {}),
     ...(component.latency !== undefined
       ? {
@@ -393,7 +378,7 @@ export function substituteParameters(
             component.latency,
             resolved,
             component.name,
-          ) as ComponentDefinition["latency"],
+          ) as ComponentDefinition['latency'],
         }
       : {}),
     ...(component.auditFields !== undefined ? { auditFields: component.auditFields } : {}),
@@ -404,7 +389,7 @@ export function substituteParameters(
             component.faults,
             resolved,
             component.name,
-          ) as ComponentDefinition["faults"],
+          ) as ComponentDefinition['faults'],
         }
       : {}),
     ...(component.reactions !== undefined

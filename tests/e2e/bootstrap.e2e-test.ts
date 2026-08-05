@@ -8,10 +8,10 @@
  *    includes a `state` field.
  */
 
-import { startE2eApp } from "./_harness/e2e-test-app";
-import type { E2eApp } from "./_harness/e2e-test-app";
+import { startE2eApp } from './_harness/e2e-test-app';
+import type { E2eApp } from './_harness/e2e-test-app';
 
-describe("Bootstrap: Specmatic + plugin SPI load", () => {
+describe('Bootstrap: Specmatic + plugin SPI load', () => {
   let app: E2eApp;
 
   beforeAll(async () => {
@@ -22,22 +22,22 @@ describe("Bootstrap: Specmatic + plugin SPI load", () => {
     await app.shutdown();
   }, 30_000);
 
-  it("Specmatic stub server is reachable", async () => {
+  it('Specmatic stub server is reachable', async () => {
     const res = await fetch(`${app.stubUrl}/`);
     // Specmatic returns 404 on unknown paths but the server IS up
     expect([200, 400, 404]).toContain(res.status);
   }, 60_000);
 
-  it("plugin control server responds to GET /_potemkin/health", async () => {
+  it('plugin control server responds to GET /_potemkin/health', async () => {
     const res = await fetch(`${app.pluginControlUrl}/_potemkin/health`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
-    expect(typeof body["state"]).toBe("string");
+    expect(typeof body['state']).toBe('string');
   }, 60_000);
 
-  it("plugin control server health state is a known HealthState value", async () => {
+  it('plugin control server health state is a known HealthState value', async () => {
     const res = await fetch(`${app.pluginControlUrl}/_potemkin/health`);
     const body = (await res.json()) as { state: string };
-    expect(["UP", "DEGRADED", "DOWN"]).toContain(body.state);
+    expect(['UP', 'DEGRADED', 'DOWN']).toContain(body.state);
   }, 60_000);
 });

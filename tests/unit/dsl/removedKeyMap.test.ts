@@ -1,5 +1,5 @@
-import { REMOVED_KEY_MAP, validatePotemkinConfig } from "../../../src/dsl/configSchema";
-import { BootError } from "../../../src/errors";
+import { REMOVED_KEY_MAP, validatePotemkinConfig } from '../../../src/dsl/configSchema';
+import { BootError } from '../../../src/errors';
 
 // Every removed snake_case key in REMOVED_KEY_MAP is rejected with
 // BOOT_ERR_REMOVED_SYNTAX, and the error names the camelCase replacement. The
@@ -16,24 +16,24 @@ function catchBoot(fn: () => unknown): BootError {
     if (e instanceof BootError) return e;
     throw e;
   }
-  throw new Error("expected a BootError to be thrown");
+  throw new Error('expected a BootError to be thrown');
 }
 
-describe("REMOVED_KEY_MAP — removed snake_case rejection", () => {
-  it("contains exactly the 10 documented removed keys", () => {
+describe('REMOVED_KEY_MAP — removed snake_case rejection', () => {
+  it('contains exactly the 10 documented removed keys', () => {
     expect(ENTRIES).toHaveLength(10);
     expect(Object.keys(REMOVED_KEY_MAP).sort()).toEqual(
       [
-        "contract_path",
-        "depends_on",
-        "derived_projections",
-        "dispatch_commands",
-        "event_catalog",
-        "out_of_contract",
-        "payload_template",
-        "seed_expectations",
-        "spec_id",
-        "state_schema",
+        'contract_path',
+        'depends_on',
+        'derived_projections',
+        'dispatch_commands',
+        'event_catalog',
+        'out_of_contract',
+        'payload_template',
+        'seed_expectations',
+        'spec_id',
+        'state_schema',
       ].sort(),
     );
   });
@@ -43,12 +43,12 @@ describe("REMOVED_KEY_MAP — removed snake_case rejection", () => {
     (removed, replacement) => {
       const raw = {
         version: 1,
-        specmatic: "specmatic.yaml",
-        modules: ["dsl/*.yaml"],
-        [removed]: "whatever",
+        specmatic: 'specmatic.yaml',
+        modules: ['dsl/*.yaml'],
+        [removed]: 'whatever',
       };
-      const err = catchBoot(() => validatePotemkinConfig(raw, { source: "potemkin.yml" }));
-      expect(err.code).toBe("BOOT_ERR_REMOVED_SYNTAX");
+      const err = catchBoot(() => validatePotemkinConfig(raw, { source: 'potemkin.yml' }));
+      expect(err.code).toBe('BOOT_ERR_REMOVED_SYNTAX');
       expect(err.message).toContain(removed);
       expect(err.message).toContain(replacement);
       expect(err.details).toMatchObject({ removed, replacement });

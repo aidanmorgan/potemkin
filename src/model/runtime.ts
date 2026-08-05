@@ -1,13 +1,38 @@
 import type {
-  Actor,
-  Command,
-  DomainEvent,
-  ExecutionResult,
-  JsonObject,
-  JsonValue,
-} from "../types.js";
-import type { Patch, JournalEntry } from "./patches.js";
-import type { RuntimeDataGenerator } from "./data.js";
+  SimulationEventContext,
+  SimulationFaultContext,
+  SimulationHelpers,
+  SimulationHateoas,
+  SimulationIdentityContext,
+  SimulationLifecycle,
+  SimulationMatchContext,
+  SimulationModelCoverage,
+  SimulationPostCommitContext,
+  SimulationProjectionContext,
+  SimulationQueryContext,
+  SimulationReducerContext,
+  SimulationRequest,
+  SimulationResponseContext,
+  SimulationSagaContext,
+  SimulationSecurityHeaders,
+  SimulationVersioning,
+  SimulationWebhookContext,
+} from '../types.js';
+import type { Command, ExecutionResult } from '../contracts/domain.js';
+import type { Actor, JwtValidationConfig } from '../contracts/identity.js';
+import type { JsonObject, JsonValue, Patch } from '../contracts/value.js';
+import type { RequestControls } from '../contracts/controlHeaders.js';
+import type {
+  RuntimeClock,
+  RuntimeEventStore,
+  RuntimeForwardingPort,
+  RuntimeIdempotencyStore,
+  RuntimeObservability,
+  RuntimeSessionStore,
+  RuntimeStateStore,
+  RuntimeWebhookTransport,
+} from '../contracts/ports.js';
+import type { JournalEntry } from './patches.js';
 
 /**
  * The source-independent execution model.
@@ -26,45 +51,14 @@ export type RuntimePredicate<Input> = (input: Readonly<Input>) => boolean;
  */
 export interface RuntimeHelperDefinition {
   readonly name: string;
-  readonly invoke: (args: readonly JsonValue[]) => JsonValue;
+  readonly phases: readonly string[];
+  readonly maxDurationMs: number;
+  readonly invoke: (args: readonly JsonValue[], phase?: string) => JsonValue;
 }
 
-export interface RuntimeHelpers {
-  readonly now: () => string;
-  readonly uuid: () => string;
-  readonly random: () => number;
-  /** Typed fake-data provider for direct TypeScript authoring. */
-  readonly data: RuntimeDataGenerator;
-  readonly clone: <T>(value: T) => T;
-}
-
-export interface RuntimeRequest {
-  readonly command: Readonly<Command>;
-  readonly headers: Readonly<Record<string, string>>;
-  readonly actor?: Readonly<Actor>;
-  /**
-   * Source-neutral identity provenance. The gateway may request an effective
-   * actor through `actor`; the engine fills this record after authentication so
-   * events and audit consumers can retain both identities.
-   */
-  readonly identity?: Readonly<RuntimeRequestIdentity>;
-  readonly sideEffects?: Readonly<{
-    skipSagas?: boolean;
-    skipWebhooks?: boolean;
-    skipReactions?: boolean;
-    skipProjections?: boolean;
-    skipDispatch?: boolean;
-  }>;
-  /** Position of this command when it was expanded from one transport batch. */
-  readonly batchItem?: Readonly<{ index: number; size: number }>;
-  /** Transport-neutral request controls. HTTP gateways may populate these from headers. */
-  readonly controls?: Readonly<RuntimeControls>;
-}
-
-export interface RuntimeRequestIdentity {
-  readonly original?: Readonly<Actor>;
-  readonly effective?: Readonly<Actor>;
-}
+export type RuntimeHelpers = SimulationHelpers;
+export type RuntimeRequest = SimulationRequest;
+export type RuntimeRequestIdentity = NonNullable<SimulationRequest['identity']>;
 
 export interface RuntimeBatchOptions {
   readonly transactional?: boolean;
@@ -72,56 +66,7 @@ export interface RuntimeBatchOptions {
   readonly requestBody?: JsonValue;
 }
 
-export interface RuntimeControls {
-  readonly dryRun?: boolean;
-  readonly includeEvents?: boolean;
-  readonly echo?: boolean;
-  /** Optional per-request seed for deterministic helper randomness. */
-  readonly seed?: string;
-  readonly clockOffsetMs?: number;
-  readonly skipSagas?: boolean;
-  readonly skipWebhooks?: boolean;
-  readonly skipReactions?: boolean;
-  readonly skipProjections?: boolean;
-  readonly skipDispatch?: boolean;
-  readonly bulkTransactional?: boolean;
-  readonly maxCascadeDepth?: number;
-  readonly causedBy?: string;
-  readonly readAtVersion?: number;
-  readonly replayEvent?: string;
-  readonly responseFormat?: "hal" | "jsonapi" | "plain";
-  readonly paginationStyle?: "envelope" | "raw" | "link-header";
-  readonly maskFields?: readonly string[];
-  readonly skipRequestValidation?: boolean;
-  readonly skipResponseValidation?: boolean;
-  readonly allowAdditionalProperties?: boolean;
-  readonly traceId?: string;
-  readonly spanName?: string;
-  readonly logLevel?: "debug" | "info" | "warn" | "error";
-  readonly metricTag?: Readonly<{ key: string; value: string }>;
-  readonly useFault?: string;
-  /** Generic direct chaos controls exposed by the HTTP gateway. */
-  readonly featureFlag?: string;
-  readonly rateLimit?: boolean;
-  readonly signal?: string;
-  readonly forceResponse?: string;
-  readonly scenario?: string;
-  readonly forceStatus?: number;
-  readonly errorClass?:
-    | "timeout"
-    | "throttle"
-    | "outage"
-    | "bad_gateway"
-    | "conflict"
-    | "auth"
-    | "forbidden";
-  readonly forceLatencyMs?: number;
-  readonly jitterMs?: Readonly<{ min: number; max: number }>;
-  readonly dropConnectionMs?: number;
-  readonly successRate?: number;
-  readonly retryAfterSeconds?: number;
-  readonly bodyTruncateBytes?: number;
-}
+export type RuntimeControls = RequestControls;
 
 /** Maximum delay a request-scoped chaos control may ask the runtime to apply. */
 export const MAX_RUNTIME_DELAY_MS = 30_000;
@@ -175,42 +120,42 @@ export function normalizeRuntimeControls(
 export interface RuntimeControlDefaults {
   readonly transparency?: Pick<
     RuntimeControls,
-    "dryRun" | "includeEvents" | "echo" | "seed" | "clockOffsetMs"
+    'dryRun' | 'includeEvents' | 'echo' | 'seed' | 'clockOffsetMs'
   >;
   readonly sideEffects?: Pick<
     RuntimeControls,
-    | "skipSagas"
-    | "skipWebhooks"
-    | "skipReactions"
-    | "skipProjections"
-    | "skipDispatch"
-    | "maxCascadeDepth"
-    | "bulkTransactional"
+    | 'skipSagas'
+    | 'skipWebhooks'
+    | 'skipReactions'
+    | 'skipProjections'
+    | 'skipDispatch'
+    | 'maxCascadeDepth'
+    | 'bulkTransactional'
   >;
-  readonly identity?: Pick<RuntimeControls, "causedBy">;
-  readonly timeTravel?: Pick<RuntimeControls, "readAtVersion" | "replayEvent">;
-  readonly format?: Pick<RuntimeControls, "responseFormat" | "paginationStyle" | "maskFields">;
-  readonly observability?: Pick<RuntimeControls, "traceId" | "spanName" | "logLevel" | "metricTag">;
+  readonly identity?: Pick<RuntimeControls, 'causedBy'>;
+  readonly timeTravel?: Pick<RuntimeControls, 'readAtVersion' | 'replayEvent'>;
+  readonly format?: Pick<RuntimeControls, 'responseFormat' | 'paginationStyle' | 'maskFields'>;
+  readonly observability?: Pick<RuntimeControls, 'traceId' | 'spanName' | 'logLevel' | 'metricTag'>;
   readonly validation?: Pick<
     RuntimeControls,
-    "skipRequestValidation" | "skipResponseValidation" | "allowAdditionalProperties"
+    'skipRequestValidation' | 'skipResponseValidation' | 'allowAdditionalProperties'
   >;
   readonly chaos?: Pick<
     RuntimeControls,
-    | "featureFlag"
-    | "useFault"
-    | "rateLimit"
-    | "signal"
-    | "forceResponse"
-    | "scenario"
-    | "forceStatus"
-    | "errorClass"
-    | "forceLatencyMs"
-    | "jitterMs"
-    | "dropConnectionMs"
-    | "successRate"
-    | "retryAfterSeconds"
-    | "bodyTruncateBytes"
+    | 'featureFlag'
+    | 'useFault'
+    | 'rateLimit'
+    | 'signal'
+    | 'forceResponse'
+    | 'scenario'
+    | 'forceStatus'
+    | 'errorClass'
+    | 'forceLatencyMs'
+    | 'jitterMs'
+    | 'dropConnectionMs'
+    | 'successRate'
+    | 'retryAfterSeconds'
+    | 'bodyTruncateBytes'
   >;
 }
 
@@ -230,80 +175,22 @@ export function flattenRuntimeControlDefaults(
   };
 }
 
-export interface MatchContext {
-  readonly command: Readonly<Command>;
-  readonly request: Readonly<RuntimeRequest>;
-  readonly state: Readonly<JsonObject> | null;
-  readonly payload: Readonly<JsonObject>;
-  readonly helpers: Readonly<RuntimeHelpers>;
-}
-
-export interface EventContext extends MatchContext {
-  readonly event?: Readonly<DomainEvent>;
-  readonly payload: Readonly<JsonObject>;
-}
-
-export interface IdentityContext extends MatchContext {
-  readonly boundary: string;
-}
-
-export interface RuntimeReducerContext {
-  readonly boundary: string;
-  readonly state: Readonly<JsonObject>;
-  readonly event: Readonly<DomainEvent>;
-  readonly payload: Readonly<JsonObject>;
-  readonly helpers: Readonly<RuntimeHelpers>;
-}
-
-export interface QueryContext {
-  readonly command: Readonly<Command>;
-  readonly request: Readonly<RuntimeRequest>;
-  readonly state: Readonly<JsonObject>;
-  readonly query: Readonly<Record<string, string | readonly string[]>>;
-  /** The query value currently being evaluated by a declarative mapping. */
-  readonly param?: string | readonly string[];
-  readonly helpers: Readonly<RuntimeHelpers>;
-}
-
-export interface ResponseContext extends EventContext {
-  readonly operationId?: string;
-  readonly response: Readonly<{
-    status: number;
-    body: JsonValue | null;
-    headers: Readonly<Record<string, string>>;
-  }>;
-}
-
-export interface PostCommitContext extends EventContext {
-  readonly response?: Readonly<{
-    status: number;
-    body: JsonValue | null;
-    headers: Readonly<Record<string, string>>;
-  }>;
-  readonly committedEvents: readonly DomainEvent[];
-}
-
-export interface FaultContext extends MatchContext {
-  readonly headers: Readonly<Record<string, string>>;
-}
-
-export interface WebhookContext extends PostCommitContext {
-  readonly headers: Readonly<Record<string, string>>;
-}
-
-export interface SagaContext extends PostCommitContext {
-  readonly steps: Readonly<Record<string, Readonly<{ status: number; body: JsonValue | null }>>>;
-  readonly prevStep?: Readonly<{ status: number; body: JsonValue | null }>;
-}
-
-export interface ProjectionContext extends PostCommitContext {
-  readonly projection: string;
-}
+export type MatchContext = SimulationMatchContext;
+export type EventContext = SimulationEventContext;
+export type IdentityContext = SimulationIdentityContext;
+export type RuntimeReducerContext = SimulationReducerContext;
+export type QueryContext = SimulationQueryContext;
+export type ResponseContext = SimulationResponseContext;
+export type PostCommitContext = SimulationPostCommitContext;
+export type FaultContext = SimulationFaultContext;
+export type WebhookContext = SimulationWebhookContext;
+export type SagaContext = SimulationSagaContext;
+export type ProjectionContext = SimulationProjectionContext;
 
 export interface RuntimeIdentity {
   readonly generate?: (input: Readonly<IdentityContext>) => string;
   readonly key?: {
-    readonly from: "path" | "query" | "header" | "payload";
+    readonly from: 'path' | 'query' | 'header' | 'payload';
     readonly name?: string;
     readonly pointer?: string;
   };
@@ -347,7 +234,7 @@ export interface RuntimeEmission {
 
 export interface RuntimeSecondaryCommand {
   readonly boundary: string;
-  readonly intent: Command["intent"];
+  readonly intent: Command['intent'];
   readonly operationId: string;
   readonly targetId?: RuntimeValue<MatchContext, string | null>;
   readonly payload?: Readonly<Record<string, RuntimeValue<MatchContext, JsonValue>>>;
@@ -392,7 +279,7 @@ export interface RuntimeQueryPolicy {
   readonly maxPageSize?: number;
   readonly cursor?: RuntimeValue<QueryContext, string | undefined>;
   readonly expand?: readonly string[];
-  readonly pagination?: "raw" | "envelope";
+  readonly pagination?: 'raw' | 'envelope';
   readonly includeDeleted?: boolean;
   readonly fallback?: (input: Readonly<QueryContext>) => JsonValue | undefined;
 }
@@ -458,7 +345,7 @@ export interface RuntimeFault {
     readonly forceResponse?: string;
     readonly scenario?: string;
     readonly featureFlag?: string;
-    readonly errorClass?: NonNullable<RuntimeControls["errorClass"]>;
+    readonly errorClass?: NonNullable<RuntimeControls['errorClass']>;
   }>;
   readonly response: Readonly<{
     status: number;
@@ -474,7 +361,7 @@ export interface RuntimeReaction {
   readonly when?: RuntimePredicate<PostCommitContext>;
   readonly boundary: string;
   readonly emit: string;
-  readonly intent?: "mutation" | "creation";
+  readonly intent?: 'mutation' | 'creation';
   readonly target?: RuntimeValue<PostCommitContext, string | null>;
   readonly payload?: Readonly<Record<string, RuntimeValue<PostCommitContext, JsonValue>>>;
 }
@@ -489,7 +376,7 @@ export interface RuntimeWebhook {
 }
 
 export interface RuntimeSagaCompensation {
-  readonly intent: Command["intent"];
+  readonly intent: Command['intent'];
   readonly operationId: string;
   readonly targetId?: RuntimeValue<SagaContext, string | null>;
   readonly payload?: Readonly<Record<string, RuntimeValue<SagaContext, JsonValue>>>;
@@ -498,7 +385,7 @@ export interface RuntimeSagaCompensation {
 export interface RuntimeSagaStep {
   readonly name: string;
   readonly boundary: string;
-  readonly intent: Command["intent"];
+  readonly intent: Command['intent'];
   readonly operationId: string;
   readonly targetId?: RuntimeValue<SagaContext, string | null>;
   readonly payload?: Readonly<Record<string, RuntimeValue<SagaContext, JsonValue>>>;
@@ -509,7 +396,7 @@ export interface RuntimeSaga {
   readonly name: string;
   readonly trigger: {
     readonly boundary: string;
-    readonly intent: Command["intent"];
+    readonly intent: Command['intent'];
     readonly condition?: RuntimePredicate<SagaContext>;
   };
   readonly steps: readonly RuntimeSagaStep[];
@@ -530,18 +417,10 @@ export interface RuntimeIdempotency {
 }
 
 export interface RuntimeAuth {
-  readonly mode?: "simple" | "jwt" | "session";
+  readonly mode?: 'simple' | 'jwt' | 'session';
   readonly authenticate?: (input: Readonly<RuntimeRequest>) => Readonly<Actor> | undefined;
   readonly authorize?: (input: Readonly<MatchContext>, scopes: readonly string[]) => boolean;
-  readonly jwt?: Readonly<{
-    secret: string;
-    algorithm?: "HS256";
-    issuer?: string;
-    audience?: string;
-    requiredClaims?: Readonly<Record<string, string>>;
-    subjectClaim?: string;
-    scopesClaim?: string;
-  }>;
+  readonly jwt?: Readonly<JwtValidationConfig>;
   readonly session?: Readonly<{
     cookieName?: string;
     ttlSeconds?: number;
@@ -560,26 +439,10 @@ export interface RuntimeAuthenticationPort {
   ) => Readonly<Actor> | undefined;
 }
 
-export interface RuntimeSecurityHeaders {
-  readonly enabled?: boolean;
-  readonly hsts?: boolean;
-  readonly includeSubDomains?: boolean;
-  readonly nosniff?: boolean;
-  readonly frameDeny?: boolean;
-  readonly referrerPolicy?: string;
-  readonly customHeaders?: Readonly<Record<string, string>>;
-}
+export type RuntimeSecurityHeaders = SimulationSecurityHeaders;
+export type RuntimeHateoas = SimulationHateoas;
 
-export interface RuntimeHateoas {
-  readonly enabled?: boolean;
-  readonly baseUrl?: string;
-  readonly selfLinks?: boolean;
-}
-
-export interface RuntimeVersioning {
-  readonly enabled?: boolean;
-  readonly versions?: readonly Readonly<{ version: string; prefix: string; default?: boolean }>[];
-}
+export type RuntimeVersioning = SimulationVersioning;
 
 export interface RuntimeFallback {
   readonly rules?: readonly Readonly<{
@@ -602,7 +465,7 @@ export interface RuntimeContract {
   /** Resolve the contract's preferred successful status for a runtime intent. */
   readonly responseStatusFor?: (
     operationId: string,
-    intent: Command["intent"],
+    intent: Command['intent'],
   ) => number | undefined;
   /** Resolve an operation's route for a secondary command target. */
   readonly pathForOperation?: (operationId: string, targetId?: string | null) => string | undefined;
@@ -654,28 +517,6 @@ export interface RuntimeContract {
   readonly responseAllowsPaginationEnvelope?: (operationId: string) => boolean;
 }
 
-export interface RuntimeEventStore {
-  readonly append: (events: readonly DomainEvent[]) => void;
-  readonly events: (boundary?: string, aggregateId?: string) => readonly DomainEvent[];
-  readonly currentSequenceVersion: (aggregateId: string) => number;
-  readonly clear: () => void;
-}
-
-export interface RuntimeStateStore {
-  readonly get: (aggregateId: string) => JsonObject | undefined;
-  readonly set: (aggregateId: string, state: JsonObject) => void;
-  readonly delete: (aggregateId: string) => void;
-  readonly entries: () => readonly (readonly [string, JsonObject])[];
-  readonly clear: () => void;
-}
-
-export interface RuntimeIdempotencyStore {
-  /** Read using an optional request-local clock for expiry decisions. */
-  readonly get: (key: string, nowMs?: number) => ExecutionResult | undefined;
-  readonly set: (key: string, result: ExecutionResult, ttlSeconds: number) => void;
-  readonly clear: () => void;
-}
-
 export interface RuntimeFaultEntry {
   readonly id: string;
   readonly rule: RuntimeFault;
@@ -699,133 +540,6 @@ export interface RuntimeFaultStore {
  * routes may advance or reset it, while a request can add its own temporary
  * offset through RuntimeControls.clockOffsetMs.
  */
-export interface RuntimeClock {
-  readonly nowMs: () => number;
-  readonly offsetMs: () => number;
-  readonly advance: (milliseconds: number) => number;
-  readonly reset: () => void;
-}
-
-export interface RuntimeSession {
-  readonly id: string;
-  readonly actor: Readonly<Actor>;
-  readonly csrfToken?: string;
-  readonly expiresAt?: number;
-}
-
-export interface RuntimeSessionStore {
-  readonly create?: (actor: Readonly<Actor>, ttlSeconds: number) => RuntimeSession;
-  /** Read using an optional request-local clock for expiry decisions. */
-  readonly get?: (id: string, nowMs?: number) => RuntimeSession | undefined;
-  readonly destroy?: (id: string) => void;
-  readonly clear?: () => void;
-}
-
-export interface RuntimeWebhookTransport {
-  readonly deliver: (
-    input: Readonly<{
-      url: string;
-      body: string;
-      headers: Readonly<Record<string, string>>;
-      attempts: number;
-    }>,
-  ) => Promise<void>;
-}
-
-export interface RuntimeForwardingPort {
-  readonly forward: (input: Readonly<RuntimeRequest>) => Promise<ExecutionResult>;
-}
-
-/** Correlation carried by one source-independent request/response observation. */
-export interface RuntimeCorrelationContext {
-  readonly traceId?: string;
-  readonly commandId?: string;
-}
-
-/**
- * The completed observation handed to the injected observability port.
- *
- * `request` is the inbound request object supplied to `RuntimeEngine.execute`;
- * `result` is the result after the runtime has completed behavior execution,
- * side effects, response shaping, chaos, masking, and validation.
- */
-export interface RuntimeRequestResponseObservation {
-  readonly request: Readonly<RuntimeRequest>;
-  readonly result: Readonly<RuntimeExecutionResult>;
-  readonly correlation: Readonly<RuntimeCorrelationContext>;
-}
-
-export type RuntimeRequestResponseObserver = (
-  observation: Readonly<RuntimeRequestResponseObservation>,
-) => void | Promise<void>;
-
-export type RuntimeCaptureDirection = "request" | "response";
-
-/**
- * Explicit policy for transport body capture. Without this policy, transport
- * observers receive metadata but no body. A redactor runs before the byte cap.
- */
-export interface RuntimeRequestResponseCapturePolicy {
-  readonly maxBytes: number;
-  readonly redact?: (
-    direction: RuntimeCaptureDirection,
-    body: JsonValue | null,
-  ) => JsonValue | null;
-}
-
-export interface RuntimeCapturedBody {
-  readonly captured: boolean;
-  readonly value?: JsonValue | null;
-  readonly bytes: number;
-  readonly truncated: boolean;
-}
-
-export interface RuntimeTransportRequest {
-  readonly method: string;
-  readonly path: string;
-  readonly query: Readonly<Record<string, string | readonly string[]>>;
-  readonly headers: Readonly<Record<string, string>>;
-  readonly body: RuntimeCapturedBody;
-}
-
-export interface RuntimeTransportResponse {
-  readonly status: number;
-  readonly headers: Readonly<Record<string, string>>;
-  readonly body: RuntimeCapturedBody;
-  readonly connectionClosed?: boolean;
-}
-
-/** Final transport exchange, after the HTTP gateway has serialized the result. */
-export interface RuntimeTransportObservation {
-  readonly request: Readonly<RuntimeTransportRequest>;
-  readonly response: Readonly<RuntimeTransportResponse>;
-  readonly correlation: Readonly<RuntimeCorrelationContext>;
-}
-
-export type RuntimeTransportObserver = (
-  observation: Readonly<RuntimeTransportObservation>,
-) => void | Promise<void>;
-
-export interface RuntimeObservability {
-  readonly log?: (
-    level: "debug" | "info" | "warn" | "error",
-    message: string,
-    fields?: Readonly<Record<string, unknown>>,
-  ) => void;
-  readonly trace?: <T>(name: string, run: () => Promise<T>) => Promise<T>;
-  readonly metric?: (
-    name: string,
-    value?: number,
-    fields?: Readonly<Record<string, string>>,
-  ) => void;
-  /** Observe the original request and the final result as one correlated exchange. */
-  readonly observeRequestResponse?: RuntimeRequestResponseObserver;
-  /** Observe the request and response actually serialized by an HTTP gateway. */
-  readonly observeTransportRequestResponse?: RuntimeTransportObserver;
-  /** Body capture is opt-in and bounded; it is never inferred from debug logging. */
-  readonly requestResponseCapture?: RuntimeRequestResponseCapturePolicy;
-}
-
 export interface RuntimeDependencies {
   readonly contract: RuntimeContract;
   readonly helpers: RuntimeHelpers;
@@ -843,26 +557,10 @@ export interface RuntimeDependencies {
   readonly sleep?: (milliseconds: number) => Promise<void>;
 }
 
-export interface RuntimeLifecycle {
-  readonly boot?: () => void | Promise<void>;
-  readonly validation?: () => void | Promise<void>;
-  readonly initialization?: () => void | Promise<void>;
-  readonly request?: (input: Readonly<MatchContext>) => void | Promise<void>;
-  readonly projection?: (input: Readonly<PostCommitContext>) => void | Promise<void>;
-  readonly commit?: (input: Readonly<PostCommitContext>) => void | Promise<void>;
-  readonly postCommit?: (input: Readonly<PostCommitContext>) => void | Promise<void>;
-  readonly reset?: () => void | Promise<void>;
-  readonly shutdown?: () => void | Promise<void>;
-}
+export type RuntimeLifecycle = SimulationLifecycle;
 
 /** Static-analysis policy for one extracted aggregate machine. */
-export interface RuntimeModelCoverage {
-  readonly strict?: boolean;
-  readonly initialStates?: readonly string[];
-  readonly terminalStates?: readonly string[];
-  readonly operations?: readonly string[];
-  readonly suppressStates?: readonly string[];
-}
+export type RuntimeModelCoverage = SimulationModelCoverage;
 
 export interface RuntimeBoundary {
   readonly boundary: string;

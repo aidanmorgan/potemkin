@@ -4,19 +4,19 @@ fallback_override: false
 
 event_catalog:
   - type: OpportunityWon
-    schema_ref: "#/components/schemas/OpportunityWon"
+    schema_ref: '#/components/schemas/OpportunityWon'
     payload_template:
-      id: "command.targetId"
-      leadId: "state.leadId"
-      agentId: "state.agentId"
-      campaignId: "state.campaignId"
-      value: "state.value"
-      closedAt: "$now()"
+      id: 'command.targetId'
+      leadId: 'state.leadId'
+      agentId: 'state.agentId'
+      campaignId: 'state.campaignId'
+      value: 'state.value'
+      closedAt: '$now()'
 
   - type: OpportunityLost
     payload_template:
       closureReason: "command.payload?.closureReason != null ? command.payload.closureReason : 'No reason given'"
-      closedAt: "$now()"
+      closedAt: '$now()'
 
 behaviors:
   # postcondition on WON
@@ -28,7 +28,7 @@ behaviors:
         - name: must-be-active-stage
           condition: "command.payload.outcome != 'WON' || state.stage == 'NEGOTIATING' || state.stage == 'PROPOSED'"
           error_code: CANNOT_WIN
-          error_message: "Opportunity must be in PROPOSED or NEGOTIATING stage to be won"
+          error_message: 'Opportunity must be in PROPOSED or NEGOTIATING stage to be won'
     emit: OpportunityWon
     postcondition: "state.stage == 'WON' && state.value > 0"
     # conditional dispatch to agent metrics
@@ -36,10 +36,10 @@ behaviors:
       - boundary: Agent
         intent: mutation
         operationId: updateAgentStatus
-        target_id: "state.agentId"
+        target_id: 'state.agentId'
         payload:
-          incrementConversions: "true"
-        condition: "state.agentId != null"
+          incrementConversions: 'true'
+        condition: 'state.agentId != null'
 
   # emit_when with alternative
   - name: closeLost
@@ -60,7 +60,7 @@ reducers:
         value: "${'WON'}"
       - op: replace
         path: /closedAt
-        value: "${event.payload.closedAt}"
+        value: '${event.payload.closedAt}'
 
   - on: OpportunityLost
     patches:
@@ -69,9 +69,9 @@ reducers:
         value: "${'LOST'}"
       - op: replace
         path: /closedAt
-        value: "${event.payload.closedAt}"
+        value: '${event.payload.closedAt}'
       - op: replace
         path: /closureReason
-        value: "${event.payload.closureReason}"
+        value: '${event.payload.closureReason}'
 
 initialization: []

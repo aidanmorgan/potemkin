@@ -1,14 +1,14 @@
 /** Pure YAML authoring e2e path. */
 
-import { createRuntimeGateway } from "../../src/http/runtimeGateway.js";
-import { bootYamlRuntime } from "../../src/parser/runtime.js";
-import { createDefaultRuntimeHost } from "../../src/runtime/host.js";
-import { loadOpenApi } from "../../src/contract/loader.js";
+import { createRuntimeGateway } from '../../src/http/runtimeGateway.js';
+import { bootYamlRuntime } from '../../src/parser/runtime.js';
+import { createDefaultRuntimeHost } from '../../src/runtime/host.js';
+import { loadOpenApi } from '../../src/contract/loader.js';
 import {
   withPersistentServer,
   type PersistentAgent,
   type PersistentServer,
-} from "../_support/persistentAgent.js";
+} from '../_support/persistentAgent.js';
 
 const OPENAPI = `
 openapi: "3.0.3"
@@ -63,7 +63,7 @@ reducers:
       - { op: replace, path: /name, value: "\${event.payload.name}" }
 `;
 
-describe("YAML-only authoring", () => {
+describe('YAML-only authoring', () => {
   let server: PersistentServer;
   let agent: PersistentAgent;
 
@@ -72,7 +72,7 @@ describe("YAML-only authoring", () => {
     const system = await bootYamlRuntime({
       host: createDefaultRuntimeHost(),
       openapi,
-      yamlProgram: { modules: [{ name: "thing.yaml", yaml: DSL }] },
+      yamlProgram: { modules: [{ name: 'thing.yaml', yaml: DSL }] },
     });
     server = await withPersistentServer(createRuntimeGateway(system));
     agent = server.agent;
@@ -80,9 +80,9 @@ describe("YAML-only authoring", () => {
 
   afterAll(async () => server?.close());
 
-  it("serves a request from a YAML-only simulation definition", async () => {
-    const response = await agent.post("/things").send({ name: "Ada" }).expect(201);
-    expect(response.body.name).toBe("Ada");
-    expect(typeof response.body.id).toBe("string");
+  it('serves a request from a YAML-only simulation definition', async () => {
+    const response = await agent.post('/things').send({ name: 'Ada' }).expect(201);
+    expect(response.body.name).toBe('Ada');
+    expect(typeof response.body.id).toBe('string');
   });
 });

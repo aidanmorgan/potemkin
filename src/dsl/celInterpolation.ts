@@ -13,11 +13,11 @@
 // No regex parses structure; the only regex is the lexeme-level identifier
 // classifier inside the CEL lexer.
 
-import { lexTemplate } from "../cel/grammar/templateLexer.js";
-import { lex, type Token } from "../cel/grammar/lexer.js";
+import { lexTemplate } from '../cel/grammar/templateLexer.js';
+import { lex, type Token } from '../cel/grammar/lexer.js';
 
 /** Context-object names whose `name.` reference must be interpolated. */
-const CONTEXT_OBJECTS = new Set(["state", "event", "command"]);
+const CONTEXT_OBJECTS = new Set(['state', 'event', 'command']);
 
 /**
  * Scan one literal-text chunk (outside any `${...}`) for the first bare CEL
@@ -40,13 +40,13 @@ function firstBareRefInText(text: string): string | null {
   }
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i]!;
-    if (t.type === "IDENT") {
+    if (t.type === 'IDENT') {
       const name = String(t.value);
       // `$builtin`: a `$` followed by a letter or underscore (e.g. `$now`).
       // A `$` followed by anything else (e.g. `$5`) is not a builtin token.
       if (/^\$[A-Za-z_]/.test(name)) return name;
       // `state.` / `event.` / `command.` — a context object followed by `.`.
-      if (CONTEXT_OBJECTS.has(name) && tokens[i + 1]?.type === ".") {
+      if (CONTEXT_OBJECTS.has(name) && tokens[i + 1]?.type === '.') {
         return `${name}.`;
       }
     }
@@ -76,7 +76,7 @@ export function firstBareCelReference(value: string): string | null {
   for (const tok of lexTemplate(value)) {
     // Only literal text outside ${...} is scanned. EXPR parts are interpolated
     // (the desired form) and ESCAPED ($${...}) parts are literal output, not CEL.
-    if (tok.type !== "TEXT") continue;
+    if (tok.type !== 'TEXT') continue;
     const ref = firstBareRefInText(tok.text);
     if (ref !== null) return ref;
   }

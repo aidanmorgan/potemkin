@@ -9,24 +9,27 @@
 // tagged by source, and returns the mutated body, the headers to set, and the
 // full patch journal (used for the /_engine/forward `_patches` envelope).
 
-import type { JsonValue, JsonObject } from "../types.js";
-import type { BoundaryConfig, DeprecationConfig as BoundaryDeprecation } from "../dsl/types.js";
-import type { OpenApiDoc, OpenApiOperation } from "../contract/loader.js";
-import { applyPatches, type JournalEntry } from "../model/patches.js";
+import type { JsonValue, JsonObject } from '../contracts/value.js';
+import type {
+  DeprecationConfig as BoundaryDeprecation,
+  ResponseMutationBoundary,
+} from '../contracts/response.js';
+import type { OpenApiDoc, OpenApiOperation } from '../contract/loader.js';
+import { applyPatches, type JournalEntry } from '../model/patches.js';
 import {
   compileResponseHateoas,
   compileResponseMask,
   compileResponseDeprecation,
-} from "../dsl/responseDslCompiler.js";
+} from '../domain/responsePolicies.js';
 import {
   extractDefaultHateoas,
   extractDefaultDeprecation,
   type OperationLookup,
-} from "../dsl/openapiResponseDefaults.js";
+} from '../contract/responseDefaults.js';
 
 export interface ResponseMutationInput {
   readonly body: JsonValue;
-  readonly boundary: BoundaryConfig;
+  readonly boundary: ResponseMutationBoundary;
   readonly operation: OpenApiOperation | undefined;
   readonly statusCode: number;
   readonly operationLookup: OperationLookup;
@@ -44,14 +47,14 @@ export function buildOperationLookup(openapi: OpenApiDoc): OperationLookup {
   for (const [path, item] of Object.entries(openapi.paths)) {
     for (const op of Object.values(item)) {
       const id = (op as OpenApiOperation | undefined)?.operationId;
-      if (typeof id === "string" && !byId.has(id)) byId.set(id, path);
+      if (typeof id === 'string' && !byId.has(id)) byId.set(id, path);
     }
   }
   return { resolveOperationPath: (operationId) => byId.get(operationId) };
 }
 
 function isPlainObject(v: JsonValue): v is JsonObject {
-  return v !== null && typeof v === "object" && !Array.isArray(v);
+  return v !== null && typeof v === 'object' && !Array.isArray(v);
 }
 
 /**
@@ -71,12 +74,12 @@ function mutateEntities(
     if (!isPlainObject(entity)) return entity;
     let next: JsonValue = entity;
     if (hateoasPatches.length > 0) {
-      const r = applyPatches(next, hateoasPatches, "hateoas", { autoVivify: true });
+      const r = applyPatches(next, hateoasPatches, 'hateoas', { autoVivify: true });
       next = r.newState;
       journal.push(...r.journal);
     }
     if (maskPatches.length > 0) {
-      const r = applyPatches(next, maskPatches, "mask", { autoVivify: true });
+      const r = applyPatches(next, maskPatches, 'mask', { autoVivify: true });
       next = r.newState;
       journal.push(...r.journal);
     }
@@ -87,8 +90,8 @@ function mutateEntities(
     return body.map(apply);
   }
   // Pagination envelope { items: [...] } — mutate each item, leave metadata.
-  if (isPlainObject(body) && Array.isArray(body["items"])) {
-    return { ...body, items: (body["items"] as JsonValue[]).map(apply) };
+  if (isPlainObject(body) && Array.isArray(body['items'])) {
+    return { ...body, items: (body['items'] as JsonValue[]).map(apply) };
   }
   return apply(body);
 }
@@ -134,8 +137,8 @@ export function applyResponseMutations(input: ResponseMutationInput): ResponseMu
     (extractDefaultDeprecation(operation) ? {} : undefined);
   const deprecationPatches = compileResponseDeprecation(deprecation);
   if (deprecationPatches.length > 0) {
-    const carrier = applyPatches({ headers: {} }, deprecationPatches, "deprecation");
-    const carrierHeaders = (carrier.newState as JsonObject)["headers"];
+    const carrier = applyPatches({ headers: {} }, deprecationPatches, 'deprecation');
+    const carrierHeaders = (carrier.newState as JsonObject)['headers'];
     if (isPlainObject(carrierHeaders as JsonValue)) {
       for (const [k, v] of Object.entries(carrierHeaders as JsonObject)) {
         headers[k] = String(v);

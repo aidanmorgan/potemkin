@@ -7,26 +7,26 @@
  * annotation are dependency modules and are loaded only when imported.
  */
 
-import { FactoryCollector } from "../authoring/factory.js";
-import type { RegisteredFactory } from "../authoring/factory.js";
+import { FactoryCollector } from '../authoring/factory.js';
+import type { RegisteredFactory } from '../authoring/factory.js';
 import {
   createDefaultTypeScriptDiscoveryDependencies,
   isDecoratedTypeScriptModule,
   resolveTypeScriptScanFiles,
-} from "./typescriptDiscovery.js";
-import type { TypeScriptDiscoveryDependencies } from "./typescriptDiscovery.js";
-import type { OpenApiDoc } from "../contract/loader.js";
-import type { PotemkinConfiguration, ScanConfig } from "../config.js";
-import type { GlobalDefinition, SimulationDefinition } from "../authoring/runtimeModel.js";
-import { mergeRuntimePolicies } from "../core/policyMerge.js";
-import { createTypeScriptSdk, sdk, type TypeScriptSdk } from "../sdk/index.js";
+} from './typescriptDiscovery.js';
+import type { TypeScriptDiscoveryDependencies } from './typescriptDiscovery.js';
+import type { OpenApiDoc } from '../contract/loader.js';
+import type { PotemkinConfiguration, ScanConfig } from '../contracts/config.js';
+import type { GlobalDefinition, SimulationDefinition } from '../authoring/types.js';
+import { mergeRuntimePolicies } from '../core/policyMerge.js';
+import { createTypeScriptSdk, sdk, type TypeScriptSdk } from '../sdk/index.js';
 import {
   errorMessage,
   isTypeScriptAuthoringError,
   TypeScriptAuthoringError,
-} from "../authoring/errors.js";
-import { TypeScriptModuleLoader } from "./typescriptModuleLoader.js";
-import type { TypeScriptModuleLoaderDependencies } from "./typescriptModuleLoader.js";
+} from '../authoring/errors.js';
+import { TypeScriptModuleLoader } from './typescriptModuleLoader.js';
+import type { TypeScriptModuleLoaderDependencies } from './typescriptModuleLoader.js';
 
 export interface TypeScriptLoaderContext {
   readonly openapi: OpenApiDoc;
@@ -84,7 +84,7 @@ export async function loadTypeScriptConfiguration(
     } catch (error) {
       if (isTypeScriptAuthoringError(error)) throw error;
       throw new TypeScriptAuthoringError(
-        "TS_EXECUTION",
+        'TS_EXECUTION',
         `TypeScript factory "${entry.name}" failed: ${errorMessage(error)}`,
         { details: { name: entry.name, source: entry.source }, source: entry.source, cause: error },
       );
@@ -110,33 +110,41 @@ function normalizeFactoryOutput(
   let value = candidate;
   if (
     value !== null &&
-    typeof value === "object" &&
-    "build" in value &&
-    typeof (value as { build?: unknown }).build === "function"
+    typeof value === 'object' &&
+    'build' in value &&
+    typeof (value as { build?: unknown }).build === 'function'
   ) {
     value = (value as { build: () => unknown }).build();
   }
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined;
   const record = value as Record<string, unknown>;
   if (
-    !Array.isArray(record["boundaries"]) &&
-    !Array.isArray(record["resources"]) &&
-    !Array.isArray(record["helpers"]) &&
-    !Array.isArray(record["uses"]) &&
-    record["policies"] === undefined
+    !Array.isArray(record['boundaries']) &&
+    !Array.isArray(record['components']) &&
+    !Array.isArray(record['resources']) &&
+    !Array.isArray(record['helpers']) &&
+    !Array.isArray(record['uses']) &&
+    record['policies'] === undefined
   )
     return undefined;
-  if (record["boundaries"] !== undefined && !Array.isArray(record["boundaries"])) {
+  if (record['boundaries'] !== undefined && !Array.isArray(record['boundaries'])) {
     throw new TypeScriptAuthoringError(
-      "TS_DEFINITION_INVALID",
+      'TS_DEFINITION_INVALID',
       `${source} factory "${factoryName}" has invalid boundaries; expected an array`,
       { details: { source, factoryName }, source },
     );
   }
-  if (record["helpers"] !== undefined && !Array.isArray(record["helpers"])) {
+  if (record['helpers'] !== undefined && !Array.isArray(record['helpers'])) {
     throw new TypeScriptAuthoringError(
-      "TS_DEFINITION_INVALID",
+      'TS_DEFINITION_INVALID',
       `${source} factory "${factoryName}" has invalid helpers; expected an array`,
+      { details: { source, factoryName }, source },
+    );
+  }
+  if (record['components'] !== undefined && !Array.isArray(record['components'])) {
+    throw new TypeScriptAuthoringError(
+      'TS_DEFINITION_INVALID',
+      `${source} factory "${factoryName}" has invalid components; expected an array`,
       { details: { source, factoryName }, source },
     );
   }
@@ -149,6 +157,9 @@ function mergeDefinitions(definitions: readonly SimulationDefinition[]): Simulat
     .filter((value): value is GlobalDefinition => value !== undefined);
   return {
     boundaries: definitions.flatMap((definition) => definition.boundaries),
+    ...(definitions.some((definition) => definition.components !== undefined)
+      ? { components: definitions.flatMap((definition) => definition.components ?? []) }
+      : {}),
     ...(definitions.some((definition) => definition.resources !== undefined)
       ? { resources: definitions.flatMap((definition) => definition.resources ?? []) }
       : {}),

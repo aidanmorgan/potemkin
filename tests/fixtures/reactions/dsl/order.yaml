@@ -14,22 +14,22 @@ fallback_override: false
 
 identity:
   creation:
-    generate: "$uuidv7()"
+    generate: '$uuidv7()'
 
 event_catalog:
   - type: OrderPlaced
     payload_template:
-      id: "command.targetId"
-      customerId: "command.payload.customerId"
-      productId: "command.payload.productId"
-      qty: "command.payload.qty != null ? command.payload.qty : 0"
+      id: 'command.targetId'
+      customerId: 'command.payload.customerId'
+      productId: 'command.payload.productId'
+      qty: 'command.payload.qty != null ? command.payload.qty : 0'
       status: "'PLACED'"
 
 behaviors:
   - name: place-order
     match:
       operationId: createOrder
-      condition: "true"
+      condition: 'true'
     emit: OrderPlaced
 
 reducers:
@@ -37,16 +37,16 @@ reducers:
     patches:
       - op: add
         path: /id
-        value: "${event.payload.id}"
+        value: '${event.payload.id}'
       - op: add
         path: /customerId
-        value: "${event.payload.customerId}"
+        value: '${event.payload.customerId}'
       - op: add
         path: /productId
-        value: "${event.payload.productId}"
+        value: '${event.payload.productId}'
       - op: add
         path: /qty
-        value: "${event.payload.qty}"
+        value: '${event.payload.qty}'
       - op: add
         path: /status
-        value: "${event.payload.status}"
+        value: '${event.payload.status}'

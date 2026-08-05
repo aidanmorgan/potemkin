@@ -1,40 +1,40 @@
-import { bootYamlRuntimeFromConfig } from "../../../src/parser/files.js";
-import { createRuntimeGateway } from "../../../src/http/runtimeGateway.js";
-import { createDeterministicRuntimeHost } from "../../../src/runtime/host.js";
-import { loadPotemkinConfig } from "../../../src/parser/configLoader.js";
-import { buildConfiguredTransitionModel } from "../../../src/parser/transitionModel.js";
-import { createSymbolicDualRunner } from "../../equivalence/dualRunner.js";
-import type { SymbolicSequenceStep } from "../../equivalence/dualRunner.js";
-import { createRealApiEndpoint } from "../../equivalence/realApi.js";
+import { bootYamlRuntimeFromConfig } from '../../../src/parser/files.js';
+import { createRuntimeGateway } from '../../../src/http/runtimeGateway.js';
+import { createDeterministicRuntimeHost } from '../../../src/runtime/host.js';
+import { loadPotemkinConfig } from '../../../src/parser/configLoader.js';
+import { buildConfiguredTransitionModel } from '../../../src/parser/transitionModel.js';
+import { createSymbolicDualRunner } from '../../equivalence/dualRunner.js';
+import type { SymbolicSequenceStep } from '../../equivalence/dualRunner.js';
+import { createRealApiEndpoint } from '../../equivalence/realApi.js';
 import {
   deriveModelMetamorphicRelations,
   runModelMetamorphicRelation,
   type ModelMetamorphicRequestFactory,
-} from "../../equivalence/modelMetamorphic.js";
+} from '../../equivalence/modelMetamorphic.js';
 import {
   generateTransitionModelSequences,
   type ModelDrivenSequence,
-} from "../../equivalence/modelGenerator.js";
+} from '../../equivalence/modelGenerator.js';
 import {
   isFormOperation,
   requestBody,
   routeFor,
   routesFor,
-} from "../../../src/cli/transition-examples.js";
-import { loadEngineFixture, type EngineFixture } from "../../fixtures/index.js";
-import { withPersistentServer, type PersistentServer } from "../../_support/persistentAgent.js";
-import type { JsonObject, JsonValue } from "../../../src/types.js";
-import type { EquivalenceRequest, EquivalenceWriteSet } from "../../equivalence/types.js";
-import type { TransitionMachine } from "../../../src/model/transitionModel.js";
+} from '../../../src/cli/transition-examples.js';
+import { loadEngineFixture, type EngineFixture } from '../../fixtures/index.js';
+import { withPersistentServer, type PersistentServer } from '../../_support/persistentAgent.js';
+import type { JsonObject, JsonValue } from '../../../src/contracts/value.js';
+import type { EquivalenceRequest, EquivalenceWriteSet } from '../../equivalence/types.js';
+import type { TransitionMachine } from '../../../src/model/transitionModel.js';
 
 function baseUrl(server: PersistentServer): string {
   const address = server.server.address();
-  if (address === null || typeof address === "string")
-    throw new Error("Potemkin server has no port");
+  if (address === null || typeof address === 'string')
+    throw new Error('Potemkin server has no port');
   return `http://127.0.0.1:${address.port}`;
 }
 
-describe("EQ2 live Potemkin dual runner", () => {
+describe('EQ2 live Potemkin dual runner', () => {
   let fixture: EngineFixture;
   let first: Awaited<ReturnType<typeof bootYamlRuntimeFromConfig>>;
   let second: Awaited<ReturnType<typeof bootYamlRuntimeFromConfig>>;
@@ -42,11 +42,11 @@ describe("EQ2 live Potemkin dual runner", () => {
   let secondServer: PersistentServer;
 
   beforeAll(async () => {
-    fixture = await loadEngineFixture("crm");
+    fixture = await loadEngineFixture('crm');
     const host = () =>
       createDeterministicRuntimeHost({
         epochMs: 0,
-        randomSeed: "eq2-potemkin-dual",
+        randomSeed: 'eq2-potemkin-dual',
         uuidSeedIndex: 0,
       });
     first = await bootYamlRuntimeFromConfig({ ...fixture, host: host() });
@@ -60,80 +60,80 @@ describe("EQ2 live Potemkin dual runner", () => {
     await Promise.all([first?.dispose(), second?.dispose()]);
   });
 
-  it("runs one symbolic create/read trace through both live Potemkin instances", async () => {
-    const absentId = "00000000-0000-7000-8000-0000deadbeef";
+  it('runs one symbolic create/read trace through both live Potemkin instances', async () => {
+    const absentId = '00000000-0000-7000-8000-0000deadbeef';
     const sequence: readonly SymbolicSequenceStep[] = [
       {
-        operation: "createLead",
+        operation: 'createLead',
         request: {
-          method: "POST",
-          path: "/leads",
+          method: 'POST',
+          path: '/leads',
           body: {
-            companyName: "EQ2 Corp",
-            contactName: "Ada Lovelace",
-            phone: "+61 400 000 001",
-            email: "ada@example.com",
-            source: "WEBSITE",
+            companyName: 'EQ2 Corp',
+            contactName: 'Ada Lovelace',
+            phone: '+61 400 000 001',
+            email: 'ada@example.com',
+            source: 'WEBSITE',
           },
         },
-        captures: [{ symbol: "lead", responsePath: "$.id" }],
+        captures: [{ symbol: 'lead', responsePath: '$.id' }],
         mutating: true,
-        preStateRequest: { method: "GET", path: `/leads/${absentId}` },
+        preStateRequest: { method: 'GET', path: `/leads/${absentId}` },
       },
       {
-        operation: "getLead",
-        request: { method: "GET", path: "/leads/{{lead}}" },
+        operation: 'getLead',
+        request: { method: 'GET', path: '/leads/{{lead}}' },
       },
       {
-        operation: "qualifyLeadWithoutContact",
-        request: { method: "POST", path: "/leads/{{lead}}/qualify" },
+        operation: 'qualifyLeadWithoutContact',
+        request: { method: 'POST', path: '/leads/{{lead}}/qualify' },
         mutating: true,
-        preStateRequest: { method: "GET", path: "/leads/{{lead}}" },
+        preStateRequest: { method: 'GET', path: '/leads/{{lead}}' },
       },
     ];
     const result = await createSymbolicDualRunner({
       modelBaseUrl: baseUrl(firstServer),
       realBaseUrl: baseUrl(secondServer),
       policy: {
-        ignoredHeaders: ["connection", "date", "keep-alive", "transfer-encoding", "content-length"],
+        ignoredHeaders: ['connection', 'date', 'keep-alive', 'transfer-encoding', 'content-length'],
       },
     }).run(sequence);
 
-    expect(result.verdict).toBe("CONFORMS");
+    expect(result.verdict).toBe('CONFORMS');
     expect(result.steps).toHaveLength(3);
     const created = result.steps[0];
-    if (created === undefined) throw new Error("EQ2 create step was not recorded");
+    if (created === undefined) throw new Error('EQ2 create step was not recorded');
     const modelId = (created.model.body as { id: string }).id;
     const realId = (created.real.body as { id: string }).id;
     expect(result.comparison.identifiers.modelToReal[modelId]).toBe(realId);
   });
 
-  it("executes generated positive CRM traces through both live Potemkin instances", async () => {
+  it('executes generated positive CRM traces through both live Potemkin instances', async () => {
     const loaded = await loadPotemkinConfig(fixture.potemkinConfigPath, {
       openapi: fixture.openapi,
     });
     const model = await buildConfiguredTransitionModel(loaded.yamlProgram, fixture.openapi);
-    const machine = model.machines.find((candidate) => candidate.aggregate === "Lead");
-    if (machine === undefined) throw new Error("Generated CRM proof requires the Lead machine");
+    const machine = model.machines.find((candidate) => candidate.aggregate === 'Lead');
+    if (machine === undefined) throw new Error('Generated CRM proof requires the Lead machine');
 
     const generated = generateTransitionModelSequences(model, { maxDepth: 3 })
       .filter(
         (sequence) =>
-          sequence.aggregate === "Lead" &&
+          sequence.aggregate === 'Lead' &&
           sequence.steps.length > 0 &&
           sequence.steps.every((step) => step.negative !== true),
       )
       .slice(0, 17);
     expect(generated.length).toBeGreaterThanOrEqual(3);
-    expect(generated.every((sequence) => sequence.steps[0]?.operation === "createLead")).toBe(true);
+    expect(generated.every((sequence) => sequence.steps[0]?.operation === 'createLead')).toBe(true);
 
     const sequences = generated.map((sequence) => toSymbolicSequence(sequence, machine, fixture));
     const result = await createSymbolicDualRunner({
       modelBaseUrl: baseUrl(firstServer),
       realBaseUrl: baseUrl(secondServer),
       policy: {
-        ignoredHeaders: ["connection", "date", "keep-alive", "transfer-encoding", "content-length"],
-        shapeOnlyPaths: ["$.updatedAt", "$.updatedBy"],
+        ignoredHeaders: ['connection', 'date', 'keep-alive', 'transfer-encoding', 'content-length'],
+        shapeOnlyPaths: ['$.updatedAt', '$.updatedBy'],
       },
     }).runMany(sequences);
 
@@ -147,14 +147,14 @@ describe("EQ2 live Potemkin dual runner", () => {
     ).toEqual(
       Array.from({ length: sequences.length }, (_, index) => ({
         operations: generated[index]?.steps.map((step) => step.operation),
-        verdict: "CONFORMS",
+        verdict: 'CONFORMS',
         divergence: undefined,
       })),
     );
   }, 120_000);
 });
 
-describe("generated Stripe equivalence", () => {
+describe('generated Stripe equivalence', () => {
   let fixture: EngineFixture;
   let first: Awaited<ReturnType<typeof bootYamlRuntimeFromConfig>>;
   let second: Awaited<ReturnType<typeof bootYamlRuntimeFromConfig>>;
@@ -162,11 +162,11 @@ describe("generated Stripe equivalence", () => {
   let secondServer: PersistentServer;
 
   beforeAll(async () => {
-    fixture = await loadEngineFixture("stripe");
+    fixture = await loadEngineFixture('stripe');
     const host = () =>
       createDeterministicRuntimeHost({
         epochMs: 0,
-        randomSeed: "eq3-stripe-dual",
+        randomSeed: 'eq3-stripe-dual',
         uuidSeedIndex: 0,
       });
     first = await bootYamlRuntimeFromConfig({ ...fixture, host: host() });
@@ -180,7 +180,7 @@ describe("generated Stripe equivalence", () => {
     await Promise.all([first?.dispose(), second?.dispose()]);
   });
 
-  it("executes every generated positive Stripe trace through both live runtimes", async () => {
+  it('executes every generated positive Stripe trace through both live runtimes', async () => {
     const loaded = await loadPotemkinConfig(fixture.potemkinConfigPath, {
       openapi: fixture.openapi,
     });
@@ -198,7 +198,7 @@ describe("generated Stripe equivalence", () => {
       if (machine === undefined)
         throw new Error(`Generated Stripe sequence has no machine: ${sequence.aggregate}`);
       const symbolic = toSymbolicSequence(sequence, machine, fixture);
-      return sequence.aggregate === "Refund"
+      return sequence.aggregate === 'Refund'
         ? [...paymentIntentChargePrerequisite(fixture), ...withCharge(symbolic)]
         : symbolic;
     });
@@ -206,36 +206,36 @@ describe("generated Stripe equivalence", () => {
       modelBaseUrl: baseUrl(firstServer),
       realBaseUrl: baseUrl(secondServer),
       policy: {
-        ignoredHeaders: ["connection", "date", "keep-alive", "transfer-encoding", "content-length"],
+        ignoredHeaders: ['connection', 'date', 'keep-alive', 'transfer-encoding', 'content-length'],
       },
     }).runMany(sequences);
 
     expect(result).toHaveLength(sequences.length);
-    expect(result.every((run) => run.verdict === "CONFORMS")).toBe(true);
+    expect(result.every((run) => run.verdict === 'CONFORMS')).toBe(true);
   }, 120_000);
 });
 
-describe("model-derived live metamorphic relations", () => {
-  it("executes a proven cross-aggregate commutativity relation against live Potemkin", async () => {
-    const fixture = await loadEngineFixture("crm");
+describe('model-derived live metamorphic relations', () => {
+  it('executes a proven cross-aggregate commutativity relation against live Potemkin', async () => {
+    const fixture = await loadEngineFixture('crm');
     const loaded = await loadPotemkinConfig(fixture.potemkinConfigPath, {
       openapi: fixture.openapi,
     });
     const model = await buildConfiguredTransitionModel(loaded.yamlProgram, fixture.openapi);
     const requests: ModelMetamorphicRequestFactory = {
       requestFor: (machine, operation) => {
-        if (machine.aggregate === "Agent" && operation === "updateAgentStatus") {
+        if (machine.aggregate === 'Agent' && operation === 'updateAgentStatus') {
           return {
-            method: "POST",
-            path: "/agents/00000000-0000-7000-8000-000000000003/status",
-            body: { currentStatus: "BREAK" },
+            method: 'POST',
+            path: '/agents/00000000-0000-7000-8000-000000000003/status',
+            body: { currentStatus: 'BREAK' },
             operation,
           };
         }
-        if (machine.aggregate === "Campaign" && operation === "getCampaign") {
+        if (machine.aggregate === 'Campaign' && operation === 'getCampaign') {
           return {
-            method: "GET",
-            path: "/campaigns/00000000-0000-7000-8000-000000000001",
+            method: 'GET',
+            path: '/campaigns/00000000-0000-7000-8000-000000000001',
             operation,
           };
         }
@@ -243,10 +243,10 @@ describe("model-derived live metamorphic relations", () => {
       },
     };
     const relation = deriveModelMetamorphicRelations(model, requests).find(
-      (candidate) => candidate.name === "commutes:Agent:updateAgentStatus|Campaign:getCampaign",
+      (candidate) => candidate.name === 'commutes:Agent:updateAgentStatus|Campaign:getCampaign',
     );
     if (relation === undefined)
-      throw new Error("Expected CRM commutativity relation was not derived");
+      throw new Error('Expected CRM commutativity relation was not derived');
 
     let system: Awaited<ReturnType<typeof bootYamlRuntimeFromConfig>> | undefined;
     let server: PersistentServer | undefined;
@@ -259,17 +259,17 @@ describe("model-derived live metamorphic relations", () => {
             ...fixture,
             host: createDeterministicRuntimeHost({
               epochMs: 0,
-              randomSeed: "eq5-live-metamorphic",
+              randomSeed: 'eq5-live-metamorphic',
               uuidSeedIndex: 0,
             }),
           });
           server = await withPersistentServer(createRuntimeGateway(system));
         },
         execute: async (requestsToExecute: readonly EquivalenceRequest[]) => {
-          if (server === undefined) throw new Error("Metamorphic target server is not running");
+          if (server === undefined) throw new Error('Metamorphic target server is not running');
           const address = server.server.address();
-          if (address === null || typeof address === "string")
-            throw new Error("Metamorphic target server has no port");
+          if (address === null || typeof address === 'string')
+            throw new Error('Metamorphic target server has no port');
           const endpoint = createRealApiEndpoint({ baseUrl: `http://127.0.0.1:${address.port}` });
           const responses = [];
           for (const [index, request] of requestsToExecute.entries()) {
@@ -299,7 +299,7 @@ function toSymbolicSequence(
 ): readonly SymbolicSequenceStep[] {
   const routes = routesFor(fixture.openapi);
   const symbols = new Map<string, string>();
-  const absentId = "00000000-0000-7000-8000-0000deadbeef";
+  const absentId = '00000000-0000-7000-8000-0000deadbeef';
   return sequence.steps.map((step) => {
     const route = routeFor(routes, step.operation);
     if (route === undefined)
@@ -310,7 +310,7 @@ function toSymbolicSequence(
       symbol === undefined ? route.path : route.path.replace(/\{[^}]+\}/g, `{{${symbol}}}`);
     const properties =
       route.operation.requestBodySchema?.properties !== null &&
-      typeof route.operation.requestBodySchema?.properties === "object" &&
+      typeof route.operation.requestBodySchema?.properties === 'object' &&
       !Array.isArray(route.operation.requestBodySchema?.properties)
         ? (route.operation.requestBodySchema.properties as JsonObject)
         : undefined;
@@ -318,11 +318,11 @@ function toSymbolicSequence(
       Object.entries(step.input).filter(([name]) => properties?.[name] !== undefined),
     );
     const body = representativeBody(route, { ...requestBody(route, 0), ...input });
-    const mutating = route.method !== "GET";
+    const mutating = route.method !== 'GET';
     const preStatePath = byIdPath(
       routes,
       route.path,
-      route.path.includes("{") && symbol !== undefined ? symbol : absentId,
+      route.path.includes('{') && symbol !== undefined ? symbol : absentId,
     );
     const form = isFormOperation(fixture.openapi, route);
     return {
@@ -330,16 +330,16 @@ function toSymbolicSequence(
       request: {
         method: route.method,
         path,
-        ...(route.method === "GET" ? {} : { body }),
-        ...(form ? { bodyEncoding: "form" as const } : {}),
+        ...(route.method === 'GET' ? {} : { body }),
+        ...(form ? { bodyEncoding: 'form' as const } : {}),
       },
-      ...(target === undefined || symbol === undefined || route.path.includes("{")
+      ...(target === undefined || symbol === undefined || route.path.includes('{')
         ? {}
-        : { captures: [{ symbol, responsePath: "$.id" }] }),
+        : { captures: [{ symbol, responsePath: '$.id' }] }),
       ...(mutating
         ? {
             mutating: true,
-            preStateRequest: { method: "GET", path: preStatePath },
+            preStateRequest: { method: 'GET', path: preStatePath },
           }
         : {}),
       ...(writeSet(machine.writeSets[step.operation])
@@ -354,22 +354,22 @@ function byIdPath(
   operationPath: string,
   symbol: string,
 ): string {
-  const segments = operationPath.split("/").filter(Boolean);
-  const parameterIndex = segments.findIndex((segment) => segment.startsWith("{"));
+  const segments = operationPath.split('/').filter(Boolean);
+  const parameterIndex = segments.findIndex((segment) => segment.startsWith('{'));
   const collectionSegments =
     parameterIndex < 0 ? segments : segments.slice(0, Math.max(1, parameterIndex));
-  const collectionPath = `/${collectionSegments.join("/") || "leads"}`;
+  const collectionPath = `/${collectionSegments.join('/') || 'leads'}`;
   const route = routes.find(
     (candidate) =>
-      candidate.method === "GET" &&
+      candidate.method === 'GET' &&
       candidate.path.startsWith(`${collectionPath}/`) &&
-      candidate.path.includes("{") &&
-      !candidate.path.endsWith("/contact") &&
-      !candidate.path.endsWith("/qualify"),
+      candidate.path.includes('{') &&
+      !candidate.path.endsWith('/contact') &&
+      !candidate.path.endsWith('/qualify'),
   );
   return (route?.path ?? `${collectionPath}/{id}`).replace(
     /\{[^}]+\}/g,
-    symbol.startsWith("{{") ? symbol : `{{${symbol}}}`,
+    symbol.startsWith('{{') ? symbol : `{{${symbol}}}`,
   );
 }
 
@@ -377,24 +377,24 @@ function representativeBody(
   route: ReturnType<typeof routesFor>[number],
   body: JsonObject,
 ): JsonObject {
-  if (route.method !== "POST" || route.path.includes("{")) return body;
+  if (route.method !== 'POST' || route.path.includes('{')) return body;
   const properties = route.operation.requestBodySchema?.properties;
   if (
     properties === undefined ||
     properties === null ||
-    typeof properties !== "object" ||
+    typeof properties !== 'object' ||
     Array.isArray(properties)
   )
     return body;
   const additions: JsonObject = {};
   const defaults: Readonly<Record<string, JsonValue>> = {
-    email: "equivalence@example.com",
-    name: "Equivalence",
+    email: 'equivalence@example.com',
+    name: 'Equivalence',
     amount: 2000,
-    currency: "usd",
-    product: "prod_equivalence",
-    charge: "ch_equivalence",
-    payment_method: "pm_card_visa",
+    currency: 'usd',
+    product: 'prod_equivalence',
+    charge: 'ch_equivalence',
+    payment_method: 'pm_card_visa',
   };
   const objectProperties = properties as JsonObject;
   for (const [name, value] of Object.entries(defaults)) {
@@ -405,25 +405,25 @@ function representativeBody(
 
 function paymentIntentChargePrerequisite(fixture: EngineFixture): readonly SymbolicSequenceStep[] {
   const routes = routesFor(fixture.openapi);
-  const create = routeFor(routes, "PostPaymentIntents");
-  const confirm = routeFor(routes, "PostPaymentIntentsIntentConfirm");
+  const create = routeFor(routes, 'PostPaymentIntents');
+  const confirm = routeFor(routes, 'PostPaymentIntentsIntentConfirm');
   if (create === undefined || confirm === undefined)
-    throw new Error("Stripe refund equivalence requires payment-intent create and confirm routes");
-  const intent = "paymentIntent";
+    throw new Error('Stripe refund equivalence requires payment-intent create and confirm routes');
+  const intent = 'paymentIntent';
   return [
     {
       operation: create.operation.operationId!,
       request: {
         method: create.method,
         path: create.path,
-        body: { amount: 2000, currency: "usd", payment_method: "pm_card_visa" },
-        bodyEncoding: "form",
+        body: { amount: 2000, currency: 'usd', payment_method: 'pm_card_visa' },
+        bodyEncoding: 'form',
       },
-      captures: [{ symbol: intent, responsePath: "$.id" }],
+      captures: [{ symbol: intent, responsePath: '$.id' }],
       mutating: true,
       preStateRequest: {
-        method: "GET",
-        path: byIdPath(routes, create.path, "00000000-0000-7000-8000-0000deadbeef"),
+        method: 'GET',
+        path: byIdPath(routes, create.path, '00000000-0000-7000-8000-0000deadbeef'),
       },
     },
     {
@@ -432,11 +432,11 @@ function paymentIntentChargePrerequisite(fixture: EngineFixture): readonly Symbo
         method: confirm.method,
         path: confirm.path.replace(/\{[^}]+\}/g, `{{${intent}}}`),
         body: {},
-        bodyEncoding: "form",
+        bodyEncoding: 'form',
       },
-      captures: [{ symbol: "charge", responsePath: "$.latest_charge" }],
+      captures: [{ symbol: 'charge', responsePath: '$.latest_charge' }],
       mutating: true,
-      preStateRequest: { method: "GET", path: byIdPath(routes, confirm.path, intent) },
+      preStateRequest: { method: 'GET', path: byIdPath(routes, confirm.path, intent) },
     },
   ];
 }
@@ -444,13 +444,13 @@ function paymentIntentChargePrerequisite(fixture: EngineFixture): readonly Symbo
 function withCharge(sequence: readonly SymbolicSequenceStep[]): readonly SymbolicSequenceStep[] {
   const first = sequence[0];
   if (first === undefined || first.request.body === undefined)
-    throw new Error("Stripe refund equivalence requires a refund request body");
+    throw new Error('Stripe refund equivalence requires a refund request body');
   return [
     {
       ...first,
       request: {
         ...first.request,
-        body: { ...(first.request.body as JsonObject), charge: "{{charge}}" },
+        body: { ...(first.request.body as JsonObject), charge: '{{charge}}' },
       },
     },
     ...sequence.slice(1),

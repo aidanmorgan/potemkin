@@ -8,7 +8,7 @@ info:
     fails). The EntityAbsenceError from step 2 triggers compensation of
     step 1, cancelling the reservation. The full SagaStepFailed →
     SagaCompensated → SagaFailed lifecycle is observable under __saga__.
-  version: "1.0.0"
+  version: '1.0.0'
 paths:
   # Saga step commands are built with path: '' (hardcoded in the orchestrator).
   # The contract validator's matchRoute() needs a path template that matches ''
@@ -16,18 +16,18 @@ paths:
   # path entry provides that match. The operations carry no response schemas so
   # the validator bails early after matching (no schema = no check), allowing
   # SagaStepCompleted to be recorded when the domain logic succeeds.
-  "":
+  '':
     post:
       operationId: sagaStepCreation
       summary: Internal saga step creation (path '' matches orchestrator-built commands)
       responses:
-        "201":
+        '201':
           description: Created (no schema — saga response validation pass-through)
     put:
       operationId: sagaStepMutation
       summary: Internal saga step mutation (path '' matches orchestrator-built commands)
       responses:
-        "200":
+        '200':
           description: OK (no schema — saga response validation pass-through)
   /orders:
     post:
@@ -49,24 +49,24 @@ paths:
                   type: integer
                   minimum: 1
       responses:
-        "201":
+        '201':
           description: Order placed
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Order"
+                $ref: '#/components/schemas/Order'
     get:
       operationId: listOrders
       summary: List all orders
       responses:
-        "200":
+        '200':
           description: List of orders
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Order"
+                  $ref: '#/components/schemas/Order'
   /orders/{id}:
     get:
       operationId: getOrder
@@ -78,18 +78,18 @@ paths:
           schema:
             type: string
       responses:
-        "200":
+        '200':
           description: Order found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Order"
-        "404":
+                $ref: '#/components/schemas/Order'
+        '404':
           description: Not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
     patch:
       operationId: cancelOrder
       summary: Cancel an order (compensating transaction target)
@@ -110,12 +110,12 @@ paths:
                 reason:
                   type: string
       responses:
-        "200":
+        '200':
           description: Order cancelled
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Order"
+                $ref: '#/components/schemas/Order'
 
   /reservations:
     post:
@@ -137,12 +137,12 @@ paths:
                   type: integer
                   minimum: 1
       responses:
-        "201":
+        '201':
           description: Reservation created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Reservation"
+                $ref: '#/components/schemas/Reservation'
   /reservations/{id}:
     get:
       operationId: getReservation
@@ -154,18 +154,18 @@ paths:
           schema:
             type: string
       responses:
-        "200":
+        '200':
           description: Reservation found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Reservation"
-        "404":
+                $ref: '#/components/schemas/Reservation'
+        '404':
           description: Not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
     patch:
       operationId: cancelReservation
       summary: Cancel a reservation (compensating transaction for step 1)
@@ -186,12 +186,12 @@ paths:
                 reason:
                   type: string
       responses:
-        "200":
+        '200':
           description: Reservation cancelled
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Reservation"
+                $ref: '#/components/schemas/Reservation'
 
   /warehouses/{id}/notify:
     post:
@@ -222,18 +222,18 @@ paths:
                 quantity:
                   type: integer
       responses:
-        "200":
+        '200':
           description: Warehouse notified
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Warehouse"
-        "404":
+                $ref: '#/components/schemas/Warehouse'
+        '404':
           description: Warehouse not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
 
 components:
   schemas:
@@ -252,7 +252,7 @@ components:
           type: integer
         status:
           type: string
-          description: "PENDING | CANCELLED"
+          description: 'PENDING | CANCELLED'
         cancelReason:
           type: string
 
@@ -271,7 +271,7 @@ components:
           type: integer
         status:
           type: string
-          description: "RESERVED | CANCELLED"
+          description: 'RESERVED | CANCELLED'
         cancelReason:
           type: string
 

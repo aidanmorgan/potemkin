@@ -15,7 +15,7 @@ fault_rules:
   - name: duplicate-check-slow
     match:
       intent: creation
-      condition: "command.payload.checkDuplicates == true"
+      condition: 'command.payload.checkDuplicates == true'
     response:
       status: 504
       body:
@@ -23,38 +23,38 @@ fault_rules:
         message: External duplicate-check service timed out
       delay_ms: 50
 query_mapping:
-  status: "state.status == param"
-  campaignId: "state.assignedCampaignId == param"
-  agentId: "state.assignedAgentId == param"
+  status: 'state.status == param'
+  campaignId: 'state.assignedCampaignId == param'
+  agentId: 'state.assignedAgentId == param'
 
 event_catalog:
   # schema_ref on LeadCreated event
   - type: LeadCreated
-    schema_ref: "#/components/schemas/LeadCreated"
+    schema_ref: '#/components/schemas/LeadCreated'
     payload_template:
-      id: "command.targetId"
-      companyName: "command.payload.companyName"
-      contactName: "command.payload.contactName"
-      phone: "command.payload.phone"
-      email: "command.payload.email"
-      source: "command.payload.source"
+      id: 'command.targetId'
+      companyName: 'command.payload.companyName'
+      contactName: 'command.payload.contactName'
+      phone: 'command.payload.phone'
+      email: 'command.payload.email'
+      source: 'command.payload.source'
       status: "'NEW'"
       score: "command.payload.source == 'REFERRAL' ? 80 : command.payload.source == 'PARTNER' ? 70 : command.payload.source == 'WEBSITE' ? 50 : command.payload.source == 'COLD_LIST' ? 20 : 30"
-      createdAt: "$now()"
-      callIds: "[]"
-      notes: "[]"
+      createdAt: '$now()'
+      callIds: '[]'
+      notes: '[]'
       # Persist the agent/campaign a lead is created against (when supplied) so
       # the conversion saga can attribute the Opportunity it creates.
-      assignedAgentId: "coalesce(command.payload.assignedAgentId, command.payload.agentId, null)"
-      assignedCampaignId: "coalesce(command.payload.assignedCampaignId, command.payload.campaignId, null)"
+      assignedAgentId: 'coalesce(command.payload.assignedAgentId, command.payload.agentId, null)'
+      assignedCampaignId: 'coalesce(command.payload.assignedCampaignId, command.payload.campaignId, null)'
 
   - type: LeadContacted
     payload_template:
-      lastContactedAt: "$now()"
+      lastContactedAt: '$now()'
 
   - type: LeadQualified
     payload_template:
-      qualifiedAt: "$now()"
+      qualifiedAt: '$now()'
 
   - type: LeadDisqualified
     payload_template:
@@ -62,18 +62,18 @@ event_catalog:
 
   - type: LeadConverted
     payload_template:
-      convertedAt: "$now()"
-      agentId: "state.assignedAgentId"
-      campaignId: "state.assignedCampaignId"
+      convertedAt: '$now()'
+      agentId: 'state.assignedAgentId'
+      campaignId: 'state.assignedCampaignId'
 
   - type: LeadMarkedDNC
     payload_template:
-      dncAt: "$now()"
+      dncAt: '$now()'
       reason: "has(command.payload.reason) ? command.payload.reason : 'No reason given'"
 
   - type: CallIdAppended
     payload_template:
-      callId: "command.payload.callId"
+      callId: 'command.payload.callId'
 
 behaviors:
   # IMPORTANT: appendCallId is FIRST so it matches secondary dispatches from Call logging
@@ -82,24 +82,24 @@ behaviors:
   - name: appendCallId
     match:
       operationId: patchLead
-      condition: "has(command.payload.callId)"
+      condition: 'has(command.payload.callId)'
     emit: CallIdAppended
 
   # Create lead with inline TS scoring
   - name: createLead
     match:
       operationId: createLead
-      condition: "true"
+      condition: 'true'
     emit: LeadCreated
     # dispatch_commands with condition — assign to campaign only if one provided
     dispatch_commands:
       - boundary: Campaign
         intent: mutation
         operationId: getCampaign
-        target_id: "command.payload.assignedCampaignId"
+        target_id: 'command.payload.assignedCampaignId'
         payload:
-          leadSource: "command.payload.source"
-        condition: "command.payload?.assignedCampaignId != null"
+          leadSource: 'command.payload.source'
+        condition: 'command.payload?.assignedCampaignId != null'
 
   # Contact lead — match.requires with error_code/error_message
   # emit_when with 2+ alternatives
@@ -111,11 +111,11 @@ behaviors:
         - name: not-dnc
           condition: "state.status != 'DNC'"
           error_code: LEAD_IS_DNC
-          error_message: "Cannot contact a lead that has been marked Do Not Call"
+          error_message: 'Cannot contact a lead that has been marked Do Not Call'
         - name: not-converted
           condition: "state.status != 'CONVERTED'"
           error_code: LEAD_ALREADY_CONVERTED
-          error_message: "Cannot contact a lead that has already been converted"
+          error_message: 'Cannot contact a lead that has already been converted'
     emit_when:
       - when: "state.status == 'NEW' || state.status == 'CONTACTED'"
         emit: LeadContacted
@@ -131,11 +131,11 @@ behaviors:
         - name: must-be-contacted
           condition: "state.status == 'CONTACTED'"
           error_code: LEAD_NOT_CONTACTED
-          error_message: "Lead must be in CONTACTED status to be qualified"
+          error_message: 'Lead must be in CONTACTED status to be qualified'
         - name: has-calls
-          condition: "state.callIds.exists(c, true)"
+          condition: 'state.callIds.exists(c, true)'
           error_code: NO_CALLS_RECORDED
-          error_message: "Lead must have at least one recorded call to be qualified"
+          error_message: 'Lead must have at least one recorded call to be qualified'
     emit: LeadQualified
 
   # Disqualify lead
@@ -167,43 +167,43 @@ reducers:
     patches:
       - op: replace
         path: /id
-        value: "${event.payload.id}"
+        value: '${event.payload.id}'
       - op: replace
         path: /companyName
-        value: "${event.payload.companyName}"
+        value: '${event.payload.companyName}'
       - op: replace
         path: /contactName
-        value: "${event.payload.contactName}"
+        value: '${event.payload.contactName}'
       - op: replace
         path: /phone
-        value: "${event.payload.phone}"
+        value: '${event.payload.phone}'
       - op: replace
         path: /email
-        value: "${event.payload.email}"
+        value: '${event.payload.email}'
       - op: replace
         path: /source
-        value: "${event.payload.source}"
+        value: '${event.payload.source}'
       - op: replace
         path: /status
         value: "${'NEW'}"
       - op: replace
         path: /score
-        value: "${event.payload.score}"
+        value: '${event.payload.score}'
       - op: replace
         path: /createdAt
-        value: "${event.payload.createdAt}"
+        value: '${event.payload.createdAt}'
       - op: replace
         path: /callIds
-        value: "${[]}"
+        value: '${[]}'
       - op: replace
         path: /notes
-        value: "${[]}"
+        value: '${[]}'
       - op: replace
         path: /assignedAgentId
-        value: "${coalesce(event.payload.assignedAgentId, null)}"
+        value: '${coalesce(event.payload.assignedAgentId, null)}'
       - op: replace
         path: /assignedCampaignId
-        value: "${coalesce(event.payload.assignedCampaignId, null)}"
+        value: '${coalesce(event.payload.assignedCampaignId, null)}'
 
   - on: LeadContacted
     patches:
@@ -212,7 +212,7 @@ reducers:
         value: "${'CONTACTED'}"
       - op: replace
         path: /lastContactedAt
-        value: "${event.payload.lastContactedAt}"
+        value: '${event.payload.lastContactedAt}'
 
   - on: LeadQualified
     patches:
@@ -242,69 +242,69 @@ reducers:
     patches:
       - op: append
         path: /callIds
-        value: "${event.payload.callId}"
+        value: '${event.payload.callId}'
 
 initialization:
-  - id: "00000000-0000-7000-8000-000000000010"
-    companyName: "Apex Solutions Ltd"
-    contactName: "Jordan Walsh"
-    phone: "+61 2 9000 0001"
-    email: "jordan@apexsolutions.com"
-    source: "WEBSITE"
-    status: "NEW"
+  - id: '00000000-0000-7000-8000-000000000010'
+    companyName: 'Apex Solutions Ltd'
+    contactName: 'Jordan Walsh'
+    phone: '+61 2 9000 0001'
+    email: 'jordan@apexsolutions.com'
+    source: 'WEBSITE'
+    status: 'NEW'
     score: 50
-    createdAt: "1970-01-01T00:00:00.000Z"
+    createdAt: '1970-01-01T00:00:00.000Z'
     callIds: []
     notes: []
 
-  - id: "00000000-0000-7000-8000-000000000011"
-    companyName: "BlueSky Tech"
-    contactName: "Sam Chen"
-    phone: "+61 2 9000 0002"
-    email: "sam@bluesky.tech"
-    source: "REFERRAL"
-    status: "CONTACTED"
+  - id: '00000000-0000-7000-8000-000000000011'
+    companyName: 'BlueSky Tech'
+    contactName: 'Sam Chen'
+    phone: '+61 2 9000 0002'
+    email: 'sam@bluesky.tech'
+    source: 'REFERRAL'
+    status: 'CONTACTED'
     score: 80
-    createdAt: "1970-01-01T00:00:00.000Z"
-    lastContactedAt: "1970-01-01T00:00:00.000Z"
+    createdAt: '1970-01-01T00:00:00.000Z'
+    lastContactedAt: '1970-01-01T00:00:00.000Z'
     callIds:
-      - "00000000-0000-7000-8000-000000000030"
+      - '00000000-0000-7000-8000-000000000030'
     notes: []
 
-  - id: "00000000-0000-7000-8000-000000000012"
-    companyName: "Cornerstone Corp"
-    contactName: "Alex Rivera"
-    phone: "+61 2 9000 0003"
-    email: "alex@cornerstone.com"
-    source: "COLD_LIST"
-    status: "QUALIFIED"
+  - id: '00000000-0000-7000-8000-000000000012'
+    companyName: 'Cornerstone Corp'
+    contactName: 'Alex Rivera'
+    phone: '+61 2 9000 0003'
+    email: 'alex@cornerstone.com'
+    source: 'COLD_LIST'
+    status: 'QUALIFIED'
     score: 20
-    createdAt: "1970-01-01T00:00:00.000Z"
-    lastContactedAt: "1970-01-01T00:00:00.000Z"
+    createdAt: '1970-01-01T00:00:00.000Z'
+    lastContactedAt: '1970-01-01T00:00:00.000Z'
     callIds:
-      - "00000000-0000-7000-8000-000000000031"
+      - '00000000-0000-7000-8000-000000000031'
     notes: []
 
-  - id: "00000000-0000-7000-8000-000000000013"
-    companyName: "Delta Dynamics"
-    contactName: "Morgan Lee"
-    phone: "+61 2 9000 0004"
-    email: "morgan@deltadyn.com"
-    source: "PARTNER"
-    status: "DISQUALIFIED"
+  - id: '00000000-0000-7000-8000-000000000013'
+    companyName: 'Delta Dynamics'
+    contactName: 'Morgan Lee'
+    phone: '+61 2 9000 0004'
+    email: 'morgan@deltadyn.com'
+    source: 'PARTNER'
+    status: 'DISQUALIFIED'
     score: 70
-    createdAt: "1970-01-01T00:00:00.000Z"
+    createdAt: '1970-01-01T00:00:00.000Z'
     callIds: []
     notes: []
 
-  - id: "00000000-0000-7000-8000-000000000014"
-    companyName: "Echo Enterprises"
-    contactName: "Taylor Singh"
-    phone: "+61 2 9000 0005"
-    email: "taylor@echo.com.au"
-    source: "WEBSITE"
-    status: "NEW"
+  - id: '00000000-0000-7000-8000-000000000014'
+    companyName: 'Echo Enterprises'
+    contactName: 'Taylor Singh'
+    phone: '+61 2 9000 0005'
+    email: 'taylor@echo.com.au'
+    source: 'WEBSITE'
+    status: 'NEW'
     score: 50
-    createdAt: "1970-01-01T00:00:00.000Z"
+    createdAt: '1970-01-01T00:00:00.000Z'
     callIds: []
     notes: []

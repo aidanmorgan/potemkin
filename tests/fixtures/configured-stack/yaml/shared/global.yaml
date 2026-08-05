@@ -1,4 +1,4 @@
 security_headers:
   enabled: true
   custom_headers:
-    X-Potemkin-Configured: "true"
+    X-Potemkin-Configured: 'true'

@@ -1,14 +1,14 @@
-import { PotemkinConfigure, factoryName, simulation, type FactoryContext } from "potemkin/sdk";
+import { PotemkinConfigure, factoryName, simulation, type FactoryContext } from 'potemkin/sdk';
 import {
   auditBoundary,
   bulkGlobal,
   receiptBoundary,
   recordBatchBoundary,
   recordByIdBoundary,
-} from "../shared/recordDefinitions";
+} from '../shared/recordDefinitions';
 
 export class RecordBatchFactory {
-  @PotemkinConfigure(factoryName("record-batch"))
+  @PotemkinConfigure(factoryName('record-batch'))
   static create(_context: FactoryContext) {
     return simulation()
       .boundary(recordBatchBoundary())

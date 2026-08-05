@@ -32,18 +32,18 @@ sagas:
         boundary: Reservation
         intent: creation
         operationId: createReservation
-        target_id: "$uuidv7()"
+        target_id: '$uuidv7()'
         payload:
-          orderId: "event.aggregateId"
-          itemId: "event.payload.itemId"
-          quantity: "event.payload.quantity"
+          orderId: 'event.aggregateId'
+          itemId: 'event.payload.itemId'
+          quantity: 'event.payload.quantity'
         # Compensation: cancel the reservation when a later step fails.
         # target_id references the id returned in step 1's response body,
         # available via the stepsAccumulator as steps.reserveInventory.body.id.
         compensation:
           intent: mutation
           operationId: cancelReservation
-          target_id: "string(steps.reserveInventory.body.id)"
+          target_id: 'string(steps.reserveInventory.body.id)'
           payload:
             reason: "'saga-compensation: warehouse notification failed'"
 
@@ -57,6 +57,6 @@ sagas:
         # and converts into SagaStepFailed + compensation chain + SagaFailed.
         target_id: "'00000000-0000-7000-8000-dead00000002'"
         payload:
-          orderId: "event.aggregateId"
-          itemId: "event.payload.itemId"
-          quantity: "event.payload.quantity"
+          orderId: 'event.aggregateId'
+          itemId: 'event.payload.itemId'
+          quantity: 'event.payload.quantity'

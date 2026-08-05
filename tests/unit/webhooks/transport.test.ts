@@ -1,10 +1,10 @@
 import {
   createRuntimeWebhookTransport,
   RuntimeWebhookDeliveryError,
-} from "../../../src/webhooks/transport.js";
+} from '../../../src/webhooks/transport.js';
 
-describe("runtime webhook transport", () => {
-  it("uses only the injected fetch and timeout dependencies", async () => {
+describe('runtime webhook transport', () => {
+  it('uses only the injected fetch and timeout dependencies', async () => {
     const signal = new AbortController().signal;
     const fetch = jest.fn().mockResolvedValue({
       ok: true,
@@ -20,22 +20,22 @@ describe("runtime webhook transport", () => {
     });
 
     await transport.deliver({
-      url: "https://receiver.test/events",
+      url: 'https://receiver.test/events',
       body: '{"kind":"created"}',
-      headers: { "content-type": "application/json" },
+      headers: { 'content-type': 'application/json' },
       attempts: 1,
     });
 
     expect(timeoutSignal).toHaveBeenCalledWith(1_250);
-    expect(fetch).toHaveBeenCalledWith("https://receiver.test/events", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
+    expect(fetch).toHaveBeenCalledWith('https://receiver.test/events', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
       body: '{"kind":"created"}',
       signal,
     });
   });
 
-  it("returns a typed error for a non-success response", async () => {
+  it('returns a typed error for a non-success response', async () => {
     const transport = createRuntimeWebhookTransport({
       fetch: jest.fn().mockResolvedValue({
         ok: false,
@@ -46,8 +46,8 @@ describe("runtime webhook transport", () => {
 
     const failure = await transport
       .deliver({
-        url: "https://receiver.test/events",
-        body: "{}",
+        url: 'https://receiver.test/events',
+        body: '{}',
         headers: {},
         attempts: 1,
       })
@@ -55,16 +55,16 @@ describe("runtime webhook transport", () => {
 
     expect(failure).toBeInstanceOf(RuntimeWebhookDeliveryError);
     expect(failure).toMatchObject({
-      code: "WEBHOOK_DELIVERY_FAILED",
+      code: 'WEBHOOK_DELIVERY_FAILED',
       status: 503,
-      url: "https://receiver.test/events",
+      url: 'https://receiver.test/events',
     });
   });
 
-  it("propagates an injected timeout signal to a hung endpoint", async () => {
+  it('propagates an injected timeout signal to a hung endpoint', async () => {
     const fetch = ((_url: string | URL, init?: RequestInit) =>
       new Promise<never>((_resolve, reject) => {
-        init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+        init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
       })) as typeof globalThis.fetch;
     const transport = createRuntimeWebhookTransport({
       fetch,
@@ -74,8 +74,8 @@ describe("runtime webhook transport", () => {
 
     await expect(
       transport.deliver({
-        url: "https://receiver.test/hung",
-        body: "{}",
+        url: 'https://receiver.test/hung',
+        body: '{}',
         headers: {},
         attempts: 1,
       }),

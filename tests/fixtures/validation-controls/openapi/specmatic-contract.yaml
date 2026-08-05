@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Potemkin validation controls Specmatic contract
-  version: "1.0.0"
+  version: '1.0.0'
 paths:
   /profiles:
     post:
@@ -11,32 +11,32 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ProfileInput"
+              $ref: '#/components/schemas/ProfileInput'
       responses:
-        "201":
+        '201':
           description: Created profile
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Profile"
-        "401":
+                $ref: '#/components/schemas/Profile'
+        '401':
           description: Authentication required
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
-        "403":
+                $ref: '#/components/schemas/Error'
+        '403':
           description: Administrator scope required
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
-        "500":
+                $ref: '#/components/schemas/Error'
+        '500':
           description: Response contract failure
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
   /profiles/{id}:
     get:
       operationId: getProfile
@@ -47,18 +47,18 @@ paths:
           schema:
             type: string
       responses:
-        "200":
+        '200':
           description: Profile
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Profile"
-        "404":
+                $ref: '#/components/schemas/Profile'
+        '404':
           description: Missing profile
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
 components:
   schemas:
     ProfileInput:

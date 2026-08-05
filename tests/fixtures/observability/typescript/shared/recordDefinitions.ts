@@ -18,7 +18,7 @@ import {
   sagaStepName,
   webhookName,
   type EventContext,
-} from "potemkin/sdk";
+} from 'potemkin/sdk';
 
 interface RecordState {
   id: string;
@@ -34,39 +34,39 @@ interface RecordCreated {
 
 export function recordBatchBoundary() {
   return boundary(
-    boundaryName("RecordBatch"),
-    contractPath(pathSegment("records"), pathSegment("bulk")),
+    boundaryName('RecordBatch'),
+    contractPath(pathSegment('records'), pathSegment('bulk')),
   )
-    .identity({ generate: ({ command }) => String(command.payload.id ?? "") })
+    .identity({ generate: ({ command }) => String(command.payload.id ?? '') })
     .eventCatalog(
-      event(eventType("RecordCreated"), {
-        id: ({ command }: EventContext) => String(command.payload.id ?? ""),
-        name: ({ command }: EventContext) => String(command.payload.name ?? ""),
-        source: () => "typescript",
+      event(eventType('RecordCreated'), {
+        id: ({ command }: EventContext) => String(command.payload.id ?? ''),
+        name: ({ command }: EventContext) => String(command.payload.name ?? ''),
+        source: () => 'typescript',
       }),
     )
     .behavior(
       defineBehavior({
-        name: behaviorName("createRecordBatch"),
-        operationId: operationId("createRecordBatch"),
+        name: behaviorName('createRecordBatch'),
+        operationId: operationId('createRecordBatch'),
         condition: () => true,
-        emit: eventType("RecordCreated"),
+        emit: eventType('RecordCreated'),
         dispatchCommands: [
           {
-            boundary: boundaryName("BulkReceipt"),
-            intent: "creation",
-            operationId: operationId("createBulkReceipt"),
-            targetId: ({ command }) => `${command.targetId ?? ""}-receipt`,
+            boundary: boundaryName('BulkReceipt'),
+            intent: 'creation',
+            operationId: operationId('createBulkReceipt'),
+            targetId: ({ command }) => `${command.targetId ?? ''}-receipt`,
             payload: {
-              recordId: ({ command }) => command.targetId ?? "",
-              kind: "dispatch",
+              recordId: ({ command }) => command.targetId ?? '',
+              kind: 'dispatch',
             },
           },
         ],
       }),
     )
     .reducer(
-      reducerRule<RecordCreated, RecordState>(eventType("RecordCreated"))
+      reducerRule<RecordCreated, RecordState>(eventType('RecordCreated'))
         .apply(({ state, event: emitted }) => ({
           ...state,
           id: emitted.payload.id,
@@ -80,8 +80,8 @@ export function recordBatchBoundary() {
 
 export function recordByIdBoundary() {
   return boundary(
-    boundaryName("RecordById"),
-    contractPath(pathSegment("records"), pathSegment("bulk"), pathParameter("id")),
+    boundaryName('RecordById'),
+    contractPath(pathSegment('records'), pathSegment('bulk'), pathParameter('id')),
   )
     .fallbackOverride(true)
     .build();
@@ -101,27 +101,27 @@ interface BulkReceiptCreated {
 
 export function receiptBoundary() {
   return boundary(
-    boundaryName("BulkReceipt"),
-    contractPath(pathSegment("bulk-receipts"), pathParameter("id")),
+    boundaryName('BulkReceipt'),
+    contractPath(pathSegment('bulk-receipts'), pathParameter('id')),
   )
-    .identity({ generate: ({ command }) => String(command.targetId ?? "") })
+    .identity({ generate: ({ command }) => String(command.targetId ?? '') })
     .eventCatalog(
-      event(eventType("BulkReceiptCreated"), {
-        id: ({ command }: EventContext) => String(command.targetId ?? ""),
-        recordId: ({ command }: EventContext) => String(command.payload.recordId ?? ""),
-        kind: ({ command }: EventContext) => String(command.payload.kind ?? ""),
+      event(eventType('BulkReceiptCreated'), {
+        id: ({ command }: EventContext) => String(command.targetId ?? ''),
+        recordId: ({ command }: EventContext) => String(command.payload.recordId ?? ''),
+        kind: ({ command }: EventContext) => String(command.payload.kind ?? ''),
       }),
     )
     .behavior(
       defineBehavior({
-        name: behaviorName("createBulkReceipt"),
-        operationId: operationId("createBulkReceipt"),
+        name: behaviorName('createBulkReceipt'),
+        operationId: operationId('createBulkReceipt'),
         condition: () => true,
-        emit: eventType("BulkReceiptCreated"),
+        emit: eventType('BulkReceiptCreated'),
       }),
     )
     .reducer(
-      reducerRule<BulkReceiptCreated, BulkReceiptState>(eventType("BulkReceiptCreated"))
+      reducerRule<BulkReceiptCreated, BulkReceiptState>(eventType('BulkReceiptCreated'))
         .apply(({ state, event: emitted }) => ({
           ...state,
           id: emitted.payload.id,
@@ -147,19 +147,19 @@ interface BulkAuditRecorded {
 
 export function auditBoundary() {
   return boundary(
-    boundaryName("BulkAudit"),
-    contractPath(pathSegment("bulk-audits"), pathParameter("id")),
+    boundaryName('BulkAudit'),
+    contractPath(pathSegment('bulk-audits'), pathParameter('id')),
   )
     .identity({ generate: ({ helpers }) => helpers.uuid() })
     .eventCatalog(
-      event(eventType("BulkAuditRecorded"), {
-        id: ({ command }: EventContext) => String(command.targetId ?? ""),
-        recordId: ({ command }: EventContext) => String(command.payload.recordId ?? ""),
-        action: "created",
+      event(eventType('BulkAuditRecorded'), {
+        id: ({ command }: EventContext) => String(command.targetId ?? ''),
+        recordId: ({ command }: EventContext) => String(command.payload.recordId ?? ''),
+        action: 'created',
       }),
     )
     .reducer(
-      reducerRule<BulkAuditRecorded, BulkAuditState>(eventType("BulkAuditRecorded"))
+      reducerRule<BulkAuditRecorded, BulkAuditState>(eventType('BulkAuditRecorded'))
         .apply(({ state, event: emitted }) => ({
           ...state,
           id: emitted.payload.id,
@@ -175,22 +175,22 @@ export function bulkGlobal() {
   return defineGlobal({
     sagas: [
       {
-        name: sagaName("record-created-saga-receipt"),
+        name: sagaName('record-created-saga-receipt'),
         trigger: {
-          boundary: boundaryName("RecordBatch"),
-          intent: "creation",
+          boundary: boundaryName('RecordBatch'),
+          intent: 'creation',
           condition: () => true,
         },
         steps: [
           {
-            name: sagaStepName("create-saga-receipt"),
-            boundary: boundaryName("BulkReceipt"),
-            intent: "creation",
-            operationId: operationId("createBulkReceipt"),
-            targetId: ({ event }) => `${event?.aggregateId ?? ""}-saga-receipt`,
+            name: sagaStepName('create-saga-receipt'),
+            boundary: boundaryName('BulkReceipt'),
+            intent: 'creation',
+            operationId: operationId('createBulkReceipt'),
+            targetId: ({ event }) => `${event?.aggregateId ?? ''}-saga-receipt`,
             payload: {
-              recordId: ({ event }) => event?.aggregateId ?? "",
-              kind: "saga",
+              recordId: ({ event }) => event?.aggregateId ?? '',
+              kind: 'saga',
             },
           },
         ],
@@ -198,11 +198,11 @@ export function bulkGlobal() {
     ],
     derivedProjections: [
       {
-        name: projectionName("BulkSummary"),
-        key: ({ event }) => event?.aggregateId ?? "",
-        subscribe: [eventReference(boundaryName("RecordBatch"), eventType("RecordCreated"))],
+        name: projectionName('BulkSummary'),
+        key: ({ event }) => event?.aggregateId ?? '',
+        subscribe: [eventReference(boundaryName('RecordBatch'), eventType('RecordCreated'))],
         reduce: [
-          reducerRule(eventType("RecordCreated"))
+          reducerRule(eventType('RecordCreated'))
             .apply(({ state, event }) => ({
               ...state,
               name: String(event.payload.name),
@@ -214,25 +214,25 @@ export function bulkGlobal() {
     ],
     reactions: [
       {
-        name: reactionName("audit-record-creation"),
-        on: eventReference(boundaryName("RecordBatch"), eventType("RecordCreated")),
-        intent: "creation",
-        boundary: boundaryName("BulkAudit"),
-        emit: eventType("BulkAuditRecorded"),
+        name: reactionName('audit-record-creation'),
+        on: eventReference(boundaryName('RecordBatch'), eventType('RecordCreated')),
+        intent: 'creation',
+        boundary: boundaryName('BulkAudit'),
+        emit: eventType('BulkAuditRecorded'),
         payload: {
-          recordId: ({ event }) => event?.aggregateId ?? "",
+          recordId: ({ event }) => event?.aggregateId ?? '',
         },
       },
     ],
     webhooks: [
       {
-        name: webhookName("record-created-hook"),
-        trigger: ({ event }) => event?.type === "RecordCreated",
-        url: "http://127.0.0.1:19879/bulk-hook",
+        name: webhookName('record-created-hook'),
+        trigger: ({ event }) => event?.type === 'RecordCreated',
+        url: 'http://127.0.0.1:19879/bulk-hook',
         payload: {
-          recordId: ({ event }) => event?.aggregateId ?? "",
-          event: ({ event }) => event?.type ?? "",
-          name: ({ payload }) => String(payload["name"]),
+          recordId: ({ event }) => event?.aggregateId ?? '',
+          event: ({ event }) => event?.type ?? '',
+          name: ({ payload }) => String(payload['name']),
         },
         retry: { maxAttempts: 1, delayMs: 1 },
       },

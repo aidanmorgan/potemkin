@@ -1,12 +1,12 @@
-import type { Request } from "express";
+import type { Request } from 'express';
 import {
   flattenRuntimeControlDefaults,
   MAX_RUNTIME_DELAY_MS,
   normalizeRuntimeControls,
   type RuntimeControlDefaults,
   type RuntimeControls,
-} from "../model/runtime.js";
-import { parseControlHeaders } from "./controlHeaders.js";
+} from '../model/runtime.js';
+import { parseControlHeaders } from './controlHeaders.js';
 import {
   POTEMKIN_BODY_TRUNCATE,
   POTEMKIN_DROP_CONNECTION,
@@ -23,7 +23,7 @@ import {
   POTEMKIN_SUCCESS_RATE,
   POTEMKIN_USE_FAULT,
   POTEMKIN_FEATURE_FLAG,
-} from "./potemkinHeaders.js";
+} from './potemkinHeaders.js';
 
 export type RuntimeHeaderValues = Record<string, string | string[] | undefined>;
 
@@ -34,7 +34,7 @@ function headerValue(headers: RuntimeHeaderValues, name: string): string | undef
 }
 
 function boundedNonNegative(value: string | undefined, maximum?: number): number | undefined {
-  if (value === undefined || value.trim() === "") return undefined;
+  if (value === undefined || value.trim() === '') return undefined;
   const number = Number(value);
   return Number.isFinite(number) && number >= 0 && (maximum === undefined || number <= maximum)
     ? number
@@ -44,9 +44,9 @@ function boundedNonNegative(value: string | undefined, maximum?: number): number
 function jitterRange(
   value: string | undefined,
 ): Readonly<{ min: number; max: number }> | undefined {
-  if (value === undefined || value.trim() === "") return undefined;
-  const rawParts = value.split(":");
-  if (rawParts.some((part) => part.trim() === "")) return undefined;
+  if (value === undefined || value.trim() === '') return undefined;
+  const rawParts = value.split(':');
+  if (rawParts.some((part) => part.trim() === '')) return undefined;
   const parts = rawParts.map(Number);
   if (
     (parts.length !== 1 && parts.length !== 2) ||
@@ -124,7 +124,7 @@ export function controlsFromHeaders(
       : { featureFlag: headerValue(headers, POTEMKIN_FEATURE_FLAG) }),
     ...(rateLimit === undefined
       ? {}
-      : { rateLimit: !["false", "0", "off", "no"].includes(rateLimit) }),
+      : { rateLimit: !['false', '0', 'off', 'no'].includes(rateLimit) }),
     ...(signal === undefined ? {} : { signal }),
     ...(headerValue(headers, POTEMKIN_FORCE_RESPONSE) === undefined
       ? {}
@@ -134,10 +134,10 @@ export function controlsFromHeaders(
       : { scenario: headerValue(headers, POTEMKIN_SCENARIO) }),
     ...(forceStatus === undefined ? {} : { forceStatus: Math.floor(forceStatus) }),
     ...(errorClass !== undefined &&
-    ["timeout", "throttle", "outage", "bad_gateway", "conflict", "auth", "forbidden"].includes(
+    ['timeout', 'throttle', 'outage', 'bad_gateway', 'conflict', 'auth', 'forbidden'].includes(
       errorClass,
     )
-      ? { errorClass: errorClass as RuntimeControls["errorClass"] }
+      ? { errorClass: errorClass as RuntimeControls['errorClass'] }
       : {}),
     ...(combinedLatency === undefined ? {} : { forceLatencyMs: combinedLatency }),
     ...(jitter === undefined ? {} : { jitterMs: jitter }),

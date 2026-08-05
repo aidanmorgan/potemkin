@@ -9,7 +9,7 @@ CEL is the expression language embedded throughout the Specmatic Stateful Simula
 condition: "command.payload.amount > 0 && state.status != 'SETTLED'"
 
 # payload template field
-openedAt: "$now()"
+openedAt: '$now()'
 
 # reducer assign
 status: "state.balance - event.payload.amount == 0 ? 'SETTLED' : 'ACTIVE'"
@@ -919,7 +919,7 @@ From `examples/crm/dsl/call.yaml`:
 
 ```yaml
 append:
-  callIds: "event.payload.callId"
+  callIds: 'event.payload.callId'
 ```
 
 The value is a CEL expression constructed from event payload fields. For richer map literals:
@@ -978,13 +978,13 @@ default(command.headers?["x-trace-id"], "unknown")
 ```yaml
 # Correct: capture time in the event payload template (EventHydration phase)
 payload_template:
-  at: "$now()"
+  at: '$now()'
 
 # Correct: read it back in the reducer (Reducer phase)
 reducers:
   - on: LoanDisbursed
     assign:
-      lastDisbursedAt: "event.payload.at" # safe: reading, not generating
+      lastDisbursedAt: 'event.payload.at' # safe: reading, not generating
 ```
 
 ### 12.5 `matches()` Uses a Synchronous Shape-Based ReDoS Guard
@@ -1048,15 +1048,15 @@ better expressed as TypeScript, define it as a typed helper and register it from
 an annotated static configuration factory:
 
 ```typescript
-import { PotemkinConfigure, defineHelper, simulation } from "potemkin/sdk";
+import { PotemkinConfigure, defineHelper, simulation } from 'potemkin/sdk';
 
 const interestRate = defineHelper(
-  "interestRate",
+  'interestRate',
   (principal: number, years: number) => principal * (1 + 0.05 * years),
 );
 
 class LoanConfiguration {
-  @PotemkinConfigure("loans")
+  @PotemkinConfigure('loans')
   static create() {
     return simulation().helper(interestRate).build();
   }
@@ -1070,7 +1070,7 @@ CEL, so YAML can call the same function by its CEL identifier:
 event_catalog:
   - type: LoanRepaid
     payload_template:
-      balance: "interestRate(command.payload.principal, command.payload.years)"
+      balance: 'interestRate(command.payload.principal, command.payload.years)'
 ```
 
 The returned `defineHelper` value is also a normal callable TypeScript function,

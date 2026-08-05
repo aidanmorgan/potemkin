@@ -1,6 +1,6 @@
-import type { JsonValue } from "../../src/types.js";
-import { createRealApiEndpoint, type EquivalenceEndpoint, type HttpFetcher } from "./realApi.js";
-import { compareEquivalenceTrace } from "./comparator.js";
+import type { JsonValue } from '../../src/contracts/value.js';
+import { createRealApiEndpoint, type EquivalenceEndpoint, type HttpFetcher } from './realApi.js';
+import { compareEquivalenceTrace } from './comparator.js';
 import type {
   DivergenceLedgerEntry,
   EquivalenceComparison,
@@ -10,7 +10,7 @@ import type {
   EquivalenceStep,
   EquivalenceWriteSet,
   ProjectionPolicy,
-} from "./types.js";
+} from './types.js';
 
 export interface SymbolicCapture {
   readonly symbol: string;
@@ -56,7 +56,7 @@ export interface DualRunnerOptions {
 }
 
 export interface DualRunResult {
-  readonly verdict: "CONFORMS" | "DIVERGES" | "INCONCLUSIVE";
+  readonly verdict: 'CONFORMS' | 'DIVERGES' | 'INCONCLUSIVE';
   readonly conforms: boolean;
   readonly inconclusive: boolean;
   readonly steps: readonly EquivalenceStep[];
@@ -150,9 +150,9 @@ export class SymbolicDualRunner {
       if (!modelResult.stable || !realResult.stable) {
         inconclusive = true;
         divergences.push({
-          code: "INCONCLUSIVE",
+          code: 'INCONCLUSIVE',
           operation,
-          path: "$.body",
+          path: '$.body',
           message: `Projection for ${operation} did not become stable within the configured polling bound`,
         });
       }
@@ -185,13 +185,13 @@ export class SymbolicDualRunner {
     const comparison = compareEquivalenceTrace(steps, this.options.policy, this.options.ledger);
     const allDivergences = [...comparison.divergences, ...divergences];
     const verdict = inconclusive
-      ? "INCONCLUSIVE"
+      ? 'INCONCLUSIVE'
       : allDivergences.length === 0
-        ? "CONFORMS"
-        : "DIVERGES";
+        ? 'CONFORMS'
+        : 'DIVERGES';
     return {
       verdict,
-      conforms: verdict === "CONFORMS",
+      conforms: verdict === 'CONFORMS',
       inconclusive,
       steps: Object.freeze(steps),
       comparison,
@@ -217,7 +217,7 @@ function endpointFromBaseUrl(
   fetcher: HttpFetcher | undefined,
 ): EquivalenceEndpoint {
   if (baseUrl === undefined)
-    throw new Error("Dual runner requires both endpoint implementations or base URLs");
+    throw new Error('Dual runner requires both endpoint implementations or base URLs');
   return createRealApiEndpoint({ baseUrl, fetch: fetcher });
 }
 
@@ -226,12 +226,12 @@ function resetFromBaseUrl(
   fetcher: HttpFetcher | undefined,
 ): () => Promise<void> {
   if (baseUrl === undefined) {
-    throw new Error("Dual runner requires resetModel or a Potemkin modelBaseUrl");
+    throw new Error('Dual runner requires resetModel or a Potemkin modelBaseUrl');
   }
   const request = fetcher ?? ((url, init) => globalThis.fetch(url, init));
   return async () => {
-    const response = await request(`${baseUrl.replace(/\/$/, "")}/_admin/reset`, {
-      method: "POST",
+    const response = await request(`${baseUrl.replace(/\/$/, '')}/_admin/reset`, {
+      method: 'POST',
     });
     if (response.status < 200 || response.status >= 300) {
       throw new Error(`Potemkin reset failed with status ${response.status}`);
@@ -300,9 +300,9 @@ function resolvePoll(
 }
 
 function resolveValue(value: JsonValue, symbols: MutableSymbols): JsonValue {
-  if (typeof value === "string") return resolveTemplateValue(value, symbols);
+  if (typeof value === 'string') return resolveTemplateValue(value, symbols);
   if (Array.isArray(value)) return value.map((item) => resolveValue(item, symbols));
-  if (value !== null && typeof value === "object") {
+  if (value !== null && typeof value === 'object') {
     return Object.fromEntries(
       Object.entries(value).map(([key, child]) => [key, resolveValue(child, symbols)]),
     );
@@ -312,7 +312,7 @@ function resolveValue(value: JsonValue, symbols: MutableSymbols): JsonValue {
 
 function resolveTemplate(value: string, symbols: MutableSymbols): string {
   const resolved = resolveTemplateValue(value, symbols);
-  if (typeof resolved !== "string")
+  if (typeof resolved !== 'string')
     throw new Error(`Path template ${value} did not resolve to a string`);
   return resolved;
 }
@@ -332,7 +332,7 @@ function captureSymbols(
 ): void {
   for (const capture of captures) {
     const value = readPath(body, capture.responsePath);
-    if (typeof value !== "string" && typeof value !== "number") {
+    if (typeof value !== 'string' && typeof value !== 'number') {
       throw new Error(
         `Symbolic capture ${capture.symbol} was not a scalar at ${capture.responsePath}: ${JSON.stringify(body)}`,
       );
@@ -350,12 +350,12 @@ function captureSymbols(
 
 function readPath(value: JsonValue, path: string): JsonValue | undefined {
   const segments = path
-    .replace(/^\$\.?/, "")
+    .replace(/^\$\.?/, '')
     .split(/[.[\]]+/)
     .filter(Boolean);
   let current: JsonValue | undefined = value;
   for (const segment of segments) {
-    if (current === null || typeof current !== "object") return undefined;
+    if (current === null || typeof current !== 'object') return undefined;
     current = Array.isArray(current)
       ? current[Number(segment)]
       : (current as Readonly<Record<string, JsonValue>>)[segment];

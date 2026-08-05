@@ -15,25 +15,25 @@
  * is e2e-tier and not part of `npm test`.
  */
 
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
-import type * as http from "node:http";
-import { ensureSpecmaticJar, ensurePluginJar } from "./binaries.js";
-import { startSpecmatic, type SpecmaticHandle } from "./specmaticProcess.js";
-import { getFreePort } from "./portAllocator.js";
-import { bootYamlRuntimeFromConfig } from "../parser/files.js";
-import { createYamlRuntimeExtensions } from "../parser/gateway.js";
-import { createRuntimeGateway } from "../http/runtimeGateway.js";
-import type { RuntimeSystem } from "../runtime/system.js";
-import { createDefaultRuntimeHost } from "../runtime/host.js";
-import { createPluginControlClient } from "../lifecycle/pluginControlClient.js";
-import { loadOpenApi } from "../contract/loader.js";
-import { resolveBindHost } from "../http/bindHost.js";
-import { createRuntimeWebhookTransport } from "../webhooks/transport.js";
-import { seedRuntimeFromExportedExamples } from "./exportedCorpus.js";
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import type * as http from 'node:http';
+import { ensureSpecmaticJar, ensurePluginJar } from './binaries.js';
+import { startSpecmatic, type SpecmaticHandle } from './specmaticProcess.js';
+import { getFreePort } from './portAllocator.js';
+import { bootYamlRuntimeFromConfig } from '../parser/files.js';
+import { createYamlRuntimeExtensions } from '../parser/gateway.js';
+import { createRuntimeGateway } from '../http/runtimeGateway.js';
+import type { RuntimeSystem } from '../runtime/system.js';
+import { createDefaultRuntimeHost } from '../runtime/host.js';
+import { createPluginControlClient } from '../lifecycle/pluginControlClient.js';
+import { loadOpenApi } from '../contract/loader.js';
+import { resolveBindHost } from '../http/bindHost.js';
+import { createRuntimeWebhookTransport } from '../webhooks/transport.js';
+import { seedRuntimeFromExportedExamples } from './exportedCorpus.js';
 
-const SPECMATIC_VERSION = "2.46.2";
+const SPECMATIC_VERSION = '2.46.2';
 
 export interface ExampleStack {
   /** http://127.0.0.1:<stub-port> — the consumer hits THIS (Specmatic-validated). */
@@ -63,14 +63,14 @@ export interface ExampleStackOptions {
   readonly seedExamplesDir?: string;
 }
 
-const REPO_ROOT = path.resolve(__dirname, "..", "..");
+const REPO_ROOT = path.resolve(__dirname, '..', '..');
 
 /** Resolve the single OpenAPI contract file in examples/<name>/openapi/. */
 function resolveContractPath(exampleDir: string): string {
-  const openapiDir = path.join(exampleDir, "openapi");
+  const openapiDir = path.join(exampleDir, 'openapi');
   const files = fs
     .readdirSync(openapiDir)
-    .filter((f) => f.endsWith(".yaml") || f.endsWith(".yml") || f.endsWith(".json"));
+    .filter((f) => f.endsWith('.yaml') || f.endsWith('.yml') || f.endsWith('.json'));
   if (files.length === 0) {
     throw new Error(`No OpenAPI contract found in ${openapiDir}`);
   }
@@ -80,11 +80,11 @@ function resolveContractPath(exampleDir: string): string {
 /** Poll the plugin's forwarding-readiness endpoint until routes are discovered. */
 async function awaitForwardingReady(pluginControlUrl: string, timeoutMs = 30_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
-  let last = "no response";
+  let last = 'no response';
   while (Date.now() < deadline) {
     try {
       const res = await fetch(`${pluginControlUrl}/_potemkin/ready`, {
-        method: "GET",
+        method: 'GET',
         signal: AbortSignal.timeout(2_000),
       });
       if (res.ok) {
@@ -114,10 +114,10 @@ function closeServer(srv: http.Server): Promise<void> {
  * engine (POSTs /ready to the plugin control server) → await forwarding-ready.
  */
 export async function startExampleStack(opts: ExampleStackOptions): Promise<ExampleStack> {
-  const exampleDir = path.join(REPO_ROOT, "examples", opts.exampleName);
+  const exampleDir = path.join(REPO_ROOT, 'examples', opts.exampleName);
   const contractPath = resolveContractPath(exampleDir);
   const specmaticContractPath = opts.specmaticContractPath ?? contractPath;
-  const potemkinConfigPath = path.join(exampleDir, "potemkin.yml");
+  const potemkinConfigPath = path.join(exampleDir, 'potemkin.yml');
 
   const stubPort = await getFreePort();
   const enginePort = await getFreePort();
@@ -132,20 +132,20 @@ export async function startExampleStack(opts: ExampleStackOptions): Promise<Exam
   // The plugin reads only the `plugin:` block (engine URL + control port) from
   // POTEMKIN_CONFIG_PATH; the engine boots from the example's real potemkin.yml.
   const tmpPluginConfig = [
-    "version: 1",
-    `specmatic: ${path.join(exampleDir, "specmatic.yaml")}`,
-    "plugin:",
-    "  engine:",
+    'version: 1',
+    `specmatic: ${path.join(exampleDir, 'specmatic.yaml')}`,
+    'plugin:',
+    '  engine:',
     `    url: "http://127.0.0.1:${enginePort}"`,
-    "    timeoutMs: 5000",
+    '    timeoutMs: 5000',
     `  controlPort: ${pluginControlPort}`,
-    "",
-  ].join("\n");
+    '',
+  ].join('\n');
   const tmpConfigPath = path.join(
     os.tmpdir(),
     `potemkin-example-${opts.exampleName}-${enginePort}.yaml`,
   );
-  fs.writeFileSync(tmpConfigPath, tmpPluginConfig, "utf8");
+  fs.writeFileSync(tmpConfigPath, tmpPluginConfig, 'utf8');
 
   let specmatic: SpecmaticHandle | undefined;
   let server: http.Server | undefined;
@@ -180,10 +180,10 @@ export async function startExampleStack(opts: ExampleStackOptions): Promise<Exam
       ),
     });
     const app = createRuntimeGateway(system, createYamlRuntimeExtensions(system));
-    const host = resolveBindHost("dsl");
+    const host = resolveBindHost('dsl');
     server = await new Promise<http.Server>((resolve, reject) => {
       const srv = app.listen(enginePort, host, () => resolve(srv));
-      srv.on("error", reject);
+      srv.on('error', reject);
     });
     if (opts.seedExamplesDir !== undefined)
       seedRuntimeFromExportedExamples(system, opts.seedExamplesDir);
@@ -223,7 +223,7 @@ export async function startExampleStack(opts: ExampleStackOptions): Promise<Exam
 
     async reset(): Promise<void> {
       // Reset THROUGH the stub: the plugin proxies /_admin/* to the engine.
-      const res = await fetch(`${stubUrl}/_admin/reset`, { method: "POST" });
+      const res = await fetch(`${stubUrl}/_admin/reset`, { method: 'POST' });
       if (!res.ok && res.status !== 204) {
         throw new Error(`reset-through-stub failed: HTTP ${res.status}`);
       }

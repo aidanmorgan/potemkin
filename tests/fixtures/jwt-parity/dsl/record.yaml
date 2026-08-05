@@ -14,12 +14,12 @@ behaviors:
   - name: create-jwt-record
     match:
       operationId: createJwtRecord
-      condition: "true"
+      condition: 'true'
       required_scopes: [writer]
     emit: JwtRecordCreated
 reducers:
   - on: JwtRecordCreated
     patches:
-      - { op: replace, path: /id, value: "${event.payload.id}" }
-      - { op: replace, path: /value, value: "${event.payload.value}" }
-      - { op: replace, path: /status, value: "${event.payload.status}" }
+      - { op: replace, path: /id, value: '${event.payload.id}' }
+      - { op: replace, path: /value, value: '${event.payload.value}' }
+      - { op: replace, path: /status, value: '${event.payload.status}' }

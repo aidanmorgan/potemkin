@@ -25,9 +25,9 @@
  * polls /_admin/events until the SagaFailed event appears (or times out).
  */
 
-import { startE2eApp, type E2eApp } from "./_harness/e2e-test-app";
-import { requestThroughSpecmatic, getAllEvents } from "./_harness/crm-e2e-helpers";
-import type { DomainEvent, JsonObject } from "./_harness/crm-e2e-helpers";
+import { startE2eApp, type E2eApp } from './_harness/e2e-test-app';
+import { requestThroughSpecmatic, getAllEvents } from './_harness/crm-e2e-helpers';
+import type { DomainEvent, JsonObject } from './_harness/crm-e2e-helpers';
 
 // ---------------------------------------------------------------------------
 // Polling helper
@@ -55,47 +55,47 @@ async function pollUntil<T>(
 // Suite
 // ---------------------------------------------------------------------------
 
-describe("Saga compensation: forced step failure triggers compensation chain", () => {
+describe('Saga compensation: forced step failure triggers compensation chain', () => {
   let app: E2eApp;
 
   beforeAll(async () => {
-    app = await startE2eApp({ fixtureName: "saga-comp" });
+    app = await startE2eApp({ fixtureName: 'saga-comp' });
   }, 30_000);
 
   afterAll(async () => {
     await app.shutdown();
   }, 15_000);
 
-  it("placeOrder commits OrderPlaced and the primary order state is durable", async () => {
-    const res = await requestThroughSpecmatic(app.stubUrl, "POST", "/orders", {
-      customerId: "cust-001",
-      itemId: "item-SKU-7",
+  it('placeOrder commits OrderPlaced and the primary order state is durable', async () => {
+    const res = await requestThroughSpecmatic(app.stubUrl, 'POST', '/orders', {
+      customerId: 'cust-001',
+      itemId: 'item-SKU-7',
       quantity: 3,
     });
     expect([200, 201]).toContain(res.status);
     const body = res.body as JsonObject;
-    expect(body["status"]).toBe("PENDING");
-    expect(body["itemId"]).toBe("item-SKU-7");
-    expect(body["quantity"]).toBe(3);
+    expect(body['status']).toBe('PENDING');
+    expect(body['itemId']).toBe('item-SKU-7');
+    expect(body['quantity']).toBe(3);
   });
 
-  it("saga lifecycle: SagaStarted → SagaStepCompleted → SagaStepFailed → SagaCompensated → SagaFailed", async () => {
+  it('saga lifecycle: SagaStarted → SagaStepCompleted → SagaStepFailed → SagaCompensated → SagaFailed', async () => {
     // Place a fresh order to trigger the saga.
-    const orderRes = await requestThroughSpecmatic(app.stubUrl, "POST", "/orders", {
-      customerId: "cust-comp-saga",
-      itemId: "item-WIDGET",
+    const orderRes = await requestThroughSpecmatic(app.stubUrl, 'POST', '/orders', {
+      customerId: 'cust-comp-saga',
+      itemId: 'item-WIDGET',
       quantity: 2,
     });
     expect([200, 201]).toContain(orderRes.status);
-    const orderId = (orderRes.body as JsonObject)["id"] as string;
+    const orderId = (orderRes.body as JsonObject)['id'] as string;
     expect(orderId).toBeTruthy();
 
     // Poll until SagaFailed appears under __saga__  sagas run fire-and-forget
     // after the primary UoW response, so we retry until the full chain settles.
     const sagaEvents = await pollUntil(async () => {
       const all = await getAllEvents(app.engineUrl);
-      const saga = all.filter((e: DomainEvent) => e.boundary === "__saga__");
-      const hasFailed = saga.some((e: DomainEvent) => e.type === "SagaFailed");
+      const saga = all.filter((e: DomainEvent) => e.boundary === '__saga__');
+      const hasFailed = saga.some((e: DomainEvent) => e.type === 'SagaFailed');
       return hasFailed ? saga : undefined;
     });
 
@@ -107,7 +107,7 @@ describe("Saga compensation: forced step failure triggers compensation chain", (
     // (the sagaInstanceId). Find the instance that contains SagaFailed.
     const instanceIds = [...new Set(events.map((e) => e.aggregateId))];
     const instanceId = instanceIds.find((id) =>
-      events.some((e) => e.aggregateId === id && e.type === "SagaFailed"),
+      events.some((e) => e.aggregateId === id && e.type === 'SagaFailed'),
     );
     expect(instanceId).toBeTruthy();
 
@@ -118,58 +118,58 @@ describe("Saga compensation: forced step failure triggers compensation chain", (
     const types = instanceEvents.map((e: DomainEvent) => e.type);
 
     // Assert the full compensation lifecycle in order.
-    expect(types).toContain("SagaStarted");
-    expect(types).toContain("SagaStepCompleted");
-    expect(types).toContain("SagaStepFailed");
-    expect(types).toContain("SagaCompensated");
-    expect(types).toContain("SagaFailed");
+    expect(types).toContain('SagaStarted');
+    expect(types).toContain('SagaStepCompleted');
+    expect(types).toContain('SagaStepFailed');
+    expect(types).toContain('SagaCompensated');
+    expect(types).toContain('SagaFailed');
 
     // Ordering: SagaStepCompleted (step 1 ok) must precede SagaStepFailed (step 2 fails).
-    const idxCompleted = types.indexOf("SagaStepCompleted");
-    const idxFailed = types.indexOf("SagaStepFailed");
-    const idxCompensated = types.indexOf("SagaCompensated");
-    const idxSagaFailed = types.indexOf("SagaFailed");
+    const idxCompleted = types.indexOf('SagaStepCompleted');
+    const idxFailed = types.indexOf('SagaStepFailed');
+    const idxCompensated = types.indexOf('SagaCompensated');
+    const idxSagaFailed = types.indexOf('SagaFailed');
     expect(idxCompleted).toBeLessThan(idxFailed);
     expect(idxFailed).toBeLessThan(idxCompensated);
     expect(idxCompensated).toBeLessThan(idxSagaFailed);
 
     // SagaStepFailed payload identifies the failing step (notifyWarehouse, index 1).
-    const stepFailed = instanceEvents.find((e: DomainEvent) => e.type === "SagaStepFailed")!;
-    expect(stepFailed.payload["stepName"]).toBe("notifyWarehouse");
-    expect(stepFailed.payload["stepIndex"]).toBe(1);
-    expect(typeof stepFailed.payload["error"]).toBe("string");
+    const stepFailed = instanceEvents.find((e: DomainEvent) => e.type === 'SagaStepFailed')!;
+    expect(stepFailed.payload['stepName']).toBe('notifyWarehouse');
+    expect(stepFailed.payload['stepIndex']).toBe(1);
+    expect(typeof stepFailed.payload['error']).toBe('string');
 
     // SagaCompensated payload identifies the compensated step (reserveInventory, index 0).
-    const compensated = instanceEvents.find((e: DomainEvent) => e.type === "SagaCompensated")!;
-    expect(compensated.payload["compensatedStepName"]).toBe("reserveInventory");
-    expect(compensated.payload["compensatedStepIndex"]).toBe(0);
+    const compensated = instanceEvents.find((e: DomainEvent) => e.type === 'SagaCompensated')!;
+    expect(compensated.payload['compensatedStepName']).toBe('reserveInventory');
+    expect(compensated.payload['compensatedStepIndex']).toBe(0);
 
     // SagaFailed payload identifies the failing step index.
-    const sagaFailed = instanceEvents.find((e: DomainEvent) => e.type === "SagaFailed")!;
-    expect(sagaFailed.payload["failedAtStep"]).toBe(1);
-    expect(sagaFailed.payload["sagaName"]).toBe("OrderFulfillmentSaga");
+    const sagaFailed = instanceEvents.find((e: DomainEvent) => e.type === 'SagaFailed')!;
+    expect(sagaFailed.payload['failedAtStep']).toBe(1);
+    expect(sagaFailed.payload['sagaName']).toBe('OrderFulfillmentSaga');
 
     // Verify saga is correlated to the order that triggered it.
-    const started = instanceEvents.find((e: DomainEvent) => e.type === "SagaStarted")!;
-    expect(started.payload["sagaName"]).toBe("OrderFulfillmentSaga");
+    const started = instanceEvents.find((e: DomainEvent) => e.type === 'SagaStarted')!;
+    expect(started.payload['sagaName']).toBe('OrderFulfillmentSaga');
 
     // The primary OrderPlaced event remains in the store and is unaffected by compensation.
     const allEvents = await getAllEvents(app.engineUrl);
     const orderPlacedEvent = allEvents.find(
-      (e: DomainEvent) => e.type === "OrderPlaced" && e.aggregateId === orderId,
+      (e: DomainEvent) => e.type === 'OrderPlaced' && e.aggregateId === orderId,
     );
     expect(orderPlacedEvent).toBeDefined();
   });
 
-  it("compensation emits ReservationCancelled on the reservation created in step 1", async () => {
+  it('compensation emits ReservationCancelled on the reservation created in step 1', async () => {
     // Place another order and wait for full saga lifecycle.
-    const orderRes = await requestThroughSpecmatic(app.stubUrl, "POST", "/orders", {
-      customerId: "cust-reservation-check",
-      itemId: "item-BOLT",
+    const orderRes = await requestThroughSpecmatic(app.stubUrl, 'POST', '/orders', {
+      customerId: 'cust-reservation-check',
+      itemId: 'item-BOLT',
       quantity: 5,
     });
     expect([200, 201]).toContain(orderRes.status);
-    const orderId = (orderRes.body as JsonObject)["id"] as string;
+    const orderId = (orderRes.body as JsonObject)['id'] as string;
 
     // First locate the ReservationCreated event for this order, then poll until
     // the corresponding ReservationCancelled event (same aggregateId) appears.
@@ -179,7 +179,7 @@ describe("Saga compensation: forced step failure triggers compensation chain", (
       const all = await getAllEvents(app.engineUrl);
       const created = all.find(
         (e: DomainEvent) =>
-          e.type === "ReservationCreated" && (e.payload["orderId"] as string) === orderId,
+          e.type === 'ReservationCreated' && (e.payload['orderId'] as string) === orderId,
       );
       return created ? (created.aggregateId as string) : undefined;
     });
@@ -189,23 +189,23 @@ describe("Saga compensation: forced step failure triggers compensation chain", (
     const cancelledEvent = await pollUntil(async () => {
       const all = await getAllEvents(app.engineUrl);
       return all.find(
-        (e: DomainEvent) => e.type === "ReservationCancelled" && e.aggregateId === reservationId,
+        (e: DomainEvent) => e.type === 'ReservationCancelled' && e.aggregateId === reservationId,
       );
     });
 
     expect(cancelledEvent).toBeDefined();
-    expect(cancelledEvent!.boundary).toBe("Reservation");
+    expect(cancelledEvent!.boundary).toBe('Reservation');
 
     // The cancelled reservation's cancelReason confirms it was the saga doing
     // compensation, not a client-initiated cancellation.
-    expect(cancelledEvent!.payload["reason"]).toBe(
-      "saga-compensation: warehouse notification failed",
+    expect(cancelledEvent!.payload['reason']).toBe(
+      'saga-compensation: warehouse notification failed',
     );
 
     // Primary OrderPlaced event is durable after compensation.
     const allEvents = await getAllEvents(app.engineUrl);
     const orderPlacedEvent = allEvents.find(
-      (e: DomainEvent) => e.type === "OrderPlaced" && e.aggregateId === orderId,
+      (e: DomainEvent) => e.type === 'OrderPlaced' && e.aggregateId === orderId,
     );
     expect(orderPlacedEvent).toBeDefined();
   });

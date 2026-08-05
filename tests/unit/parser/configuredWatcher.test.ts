@@ -1,15 +1,15 @@
-import { promises as fs } from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
-import { loadConfiguredYamlSources } from "../../../src/parser/configuredYaml.js";
-import { loadConfiguredTypeScriptSources } from "../../../src/parser/configuredTypeScript.js";
+import { promises as fs } from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { loadConfiguredYamlSources } from '../../../src/parser/configuredYaml.js';
+import { loadConfiguredTypeScriptSources } from '../../../src/parser/configuredTypeScript.js';
 import {
   DEFAULT_CONFIG_WATCH_INTERVAL_MS,
   startConfiguredRuntimeWatcher,
   type ConfiguredRuntimeWatcherScheduler,
-} from "../../../src/parser/configuredWatcher.js";
-import type { RuntimeSystem } from "../../../src/runtime/system.js";
-import type { RuntimeModel } from "../../../src/model/index.js";
+} from '../../../src/parser/configuredWatcher.js';
+import type { RuntimeSystem } from '../../../src/runtime/system.js';
+import type { RuntimeModel } from '../../../src/model/index.js';
 
 const OPENAPI = `
 openapi: 3.0.3
@@ -27,19 +27,19 @@ async function waitFor(predicate: () => boolean): Promise<void> {
     if (predicate()) return;
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
-  throw new Error("Timed out waiting for configured watcher reload");
+  throw new Error('Timed out waiting for configured watcher reload');
 }
 
-describe("configured runtime watcher", () => {
-  it("polls every configured interval, ignores excluded files, and reloads YAML/TS/config changes", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "potemkin-watcher-matrix-"));
-    const moduleDir = path.join(root, "modules");
+describe('configured runtime watcher', () => {
+  it('polls every configured interval, ignores excluded files, and reloads YAML/TS/config changes', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'potemkin-watcher-matrix-'));
+    const moduleDir = path.join(root, 'modules');
     await fs.mkdir(moduleDir);
-    const configPath = path.join(root, "potemkin.yml");
-    await fs.writeFile(path.join(root, "openapi.yaml"), OPENAPI);
-    await fs.writeFile(path.join(moduleDir, "global.yaml"), "idempotency: {}\n");
+    const configPath = path.join(root, 'potemkin.yml');
+    await fs.writeFile(path.join(root, 'openapi.yaml'), OPENAPI);
+    await fs.writeFile(path.join(moduleDir, 'global.yaml'), 'idempotency: {}\n');
     await fs.writeFile(
-      path.join(moduleDir, "model.ts"),
+      path.join(moduleDir, 'model.ts'),
       `
 import { PotemkinConfigure, simulation } from "potemkin/sdk";
 import { marker } from "./excluded";
@@ -52,8 +52,8 @@ class Model {
 }
 `,
     );
-    await fs.writeFile(path.join(moduleDir, "excluded.ts"), `export const marker = "excluded";\n`);
-    await fs.writeFile(path.join(moduleDir, "unrelated.ts"), "// undiscovered source\n");
+    await fs.writeFile(path.join(moduleDir, 'excluded.ts'), `export const marker = "excluded";\n`);
+    await fs.writeFile(path.join(moduleDir, 'unrelated.ts'), '// undiscovered source\n');
     await fs.writeFile(
       configPath,
       `
@@ -131,14 +131,14 @@ typescript:
       await new Promise((resolve) => setTimeout(resolve, 30));
       expect(reloads).toBe(0);
 
-      await fs.writeFile(path.join(moduleDir, "unrelated.ts"), "// ignored source changed\n");
+      await fs.writeFile(path.join(moduleDir, 'unrelated.ts'), '// ignored source changed\n');
       const unrelatedPoll = [...scheduled.values()][0];
       unrelatedPoll?.();
       await new Promise((resolve) => setTimeout(resolve, 30));
       expect(reloads).toBe(0);
 
       await fs.writeFile(
-        path.join(moduleDir, "excluded.ts"),
+        path.join(moduleDir, 'excluded.ts'),
         `export const marker = "excluded";\n// imported dependency changed\n`,
       );
       const dependencyPoll = [...scheduled.values()][0];
@@ -146,8 +146,8 @@ typescript:
       await waitFor(() => reloads >= 1);
 
       await fs.writeFile(
-        path.join(moduleDir, "model.ts"),
-        "// selected TypeScript source changed\nchanged\n",
+        path.join(moduleDir, 'model.ts'),
+        '// selected TypeScript source changed\nchanged\n',
       );
       await poll(2);
       expect(reloads).toBe(2);
@@ -156,7 +156,7 @@ typescript:
 
       await fs.writeFile(
         configPath,
-        (await fs.readFile(configPath, "utf8")).replace("version: 1", "version: 2"),
+        (await fs.readFile(configPath, 'utf8')).replace('version: 1', 'version: 2'),
       );
       await poll(3);
       expect(reloads).toBe(3);
@@ -168,20 +168,20 @@ typescript:
     }
   });
 
-  it("coalesces concurrent reload requests and releases the timer after stop", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "potemkin-watcher-coalesce-"));
+  it('coalesces concurrent reload requests and releases the timer after stop', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'potemkin-watcher-coalesce-'));
     try {
-      const modules = path.join(root, "modules");
+      const modules = path.join(root, 'modules');
       await fs.mkdir(modules);
-      const configPath = path.join(root, "potemkin.yml");
-      await fs.writeFile(path.join(modules, "global.yaml"), "idempotency: {}\n");
+      const configPath = path.join(root, 'potemkin.yml');
+      await fs.writeFile(path.join(modules, 'global.yaml'), 'idempotency: {}\n');
       await fs.writeFile(
         configPath,
-        "version: 1\nspecmatic: ./specmatic.yaml\nmodules: [modules/*.yaml]\n",
+        'version: 1\nspecmatic: ./specmatic.yaml\nmodules: [modules/*.yaml]\n',
       );
       const loaded = {
         potemkinConfigPath: configPath,
-        specmaticConfigPath: path.join(root, "specmatic.yaml"),
+        specmaticConfigPath: path.join(root, 'specmatic.yaml'),
         configuration: {} as never,
         yamlProgram: { modules: [] },
         boundaryModulePaths: [],
@@ -191,7 +191,7 @@ typescript:
         useMappingModulePaths: [],
         pluginConfig: undefined,
         typescript: undefined,
-        watchGlobs: [path.join(root, "modules/*.yaml")],
+        watchGlobs: [path.join(root, 'modules/*.yaml')],
         watchIgnores: [],
       };
       const scheduled = new Map<number, () => void>();

@@ -1,7 +1,7 @@
-openapi: "3.0.3"
+openapi: '3.0.3'
 info:
   title: Potemkin JWT authoring parity contract
-  version: "1.0.0"
+  version: '1.0.0'
 paths:
   /jwt-records:
     post:
@@ -11,26 +11,26 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/RecordInput"
+              $ref: '#/components/schemas/RecordInput'
       responses:
-        "201":
+        '201':
           description: JWT-protected record created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Record"
-        "401":
+                $ref: '#/components/schemas/Record'
+        '401':
           description: Invalid or missing JWT
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
-        "403":
+                $ref: '#/components/schemas/Error'
+        '403':
           description: JWT does not contain the required scope
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
 components:
   schemas:
     RecordInput:

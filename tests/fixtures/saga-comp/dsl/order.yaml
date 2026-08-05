@@ -11,29 +11,29 @@ identity:
 event_catalog:
   - type: OrderPlaced
     payload_template:
-      id: "command.targetId"
-      customerId: "command.payload.customerId"
-      itemId: "command.payload.itemId"
-      quantity: "command.payload.quantity"
+      id: 'command.targetId'
+      customerId: 'command.payload.customerId'
+      itemId: 'command.payload.itemId'
+      quantity: 'command.payload.quantity'
       status: "'PENDING'"
-      placedAt: "$now()"
+      placedAt: '$now()'
 
   - type: OrderCancelled
     payload_template:
-      reason: "command.payload.reason"
-      cancelledAt: "$now()"
+      reason: 'command.payload.reason'
+      cancelledAt: '$now()'
 
 behaviors:
   - name: placeOrder
     match:
       operationId: placeOrder
-      condition: "true"
+      condition: 'true'
     emit: OrderPlaced
 
   - name: cancelOrder
     match:
       operationId: cancelOrder
-      condition: "true"
+      condition: 'true'
     emit: OrderCancelled
 
 reducers:
@@ -41,16 +41,16 @@ reducers:
     patches:
       - op: replace
         path: /id
-        value: "${event.payload.id}"
+        value: '${event.payload.id}'
       - op: replace
         path: /customerId
-        value: "${event.payload.customerId}"
+        value: '${event.payload.customerId}'
       - op: replace
         path: /itemId
-        value: "${event.payload.itemId}"
+        value: '${event.payload.itemId}'
       - op: replace
         path: /quantity
-        value: "${event.payload.quantity}"
+        value: '${event.payload.quantity}'
       - op: replace
         path: /status
         value: "${'PENDING'}"
@@ -62,6 +62,6 @@ reducers:
         value: "${'CANCELLED'}"
       - op: replace
         path: /cancelReason
-        value: "${event.payload.reason}"
+        value: '${event.payload.reason}'
 
 initialization: []

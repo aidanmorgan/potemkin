@@ -7,30 +7,30 @@
  * this HTTP server through the plugin.
  */
 
-import type * as http from "node:http";
-import * as path from "node:path";
+import type * as http from 'node:http';
+import * as path from 'node:path';
 
-import { createPluginControlClient } from "../lifecycle/pluginControlClient.js";
-import { createLogger, type Logger } from "../observability/logger.js";
-import { createYamlRuntimeExtensions } from "../parser/gateway.js";
-import { bootYamlRuntimeFromConfig } from "../parser/files.js";
-import { loadConfiguredOpenApi } from "../parser/configuredOpenApi.js";
-import { createRuntimeGateway } from "../http/runtimeGateway.js";
-import { resolveBindHost } from "../http/bindHost.js";
-import { createRuntimeOtelRequestResponseObserver } from "../observability/runtimeExchange.js";
-import { createRuntimeOtelMetricObserver } from "../observability/metrics.js";
+import { createPluginControlClient } from '../lifecycle/pluginControlClient.js';
+import { createLogger, type Logger } from '../observability/logger.js';
+import { createYamlRuntimeExtensions } from '../parser/gateway.js';
+import { bootYamlRuntimeFromConfig } from '../parser/files.js';
+import { loadConfiguredOpenApi } from '../parser/configuredOpenApi.js';
+import { createRuntimeGateway } from '../http/runtimeGateway.js';
+import { resolveBindHost } from '../http/bindHost.js';
+import { createRuntimeOtelRequestResponseObserver } from '../observability/runtimeExchange.js';
+import { createRuntimeOtelMetricObserver } from '../observability/metrics.js';
 import {
   getTracer,
   initTracing,
   type Tracer,
   type TracingOptions,
-} from "../observability/tracing.js";
+} from '../observability/tracing.js';
 import type {
   RuntimeObservability,
   RuntimeRequestResponseCapturePolicy,
-} from "../model/runtime.js";
-import { createRuntimeWebhookTransport } from "../webhooks/transport.js";
-import { createDefaultRuntimeHost } from "../runtime/host.js";
+} from '../contracts/ports.js';
+import { createRuntimeWebhookTransport } from '../webhooks/transport.js';
+import { createDefaultRuntimeHost } from '../runtime/host.js';
 
 export interface ServerOptions {
   readonly configPath?: string;
@@ -53,8 +53,8 @@ export interface ServerOptions {
 export async function startServer(
   options: ServerOptions = {},
 ): Promise<{ readonly close: () => Promise<void>; readonly port: number }> {
-  const log = options.logger ?? createLogger({ name: "potemkin.server", env: process.env });
-  const tracer = options.tracer ?? getTracer("potemkin.server");
+  const log = options.logger ?? createLogger({ name: 'potemkin.server', env: process.env });
+  const tracer = options.tracer ?? getTracer('potemkin.server');
   const request = options.fetch ?? globalThis.fetch;
   const timeoutSignal =
     options.timeoutSignal ?? ((milliseconds) => AbortSignal.timeout(milliseconds));
@@ -66,11 +66,11 @@ export async function startServer(
   });
   try {
     const configPath = path.resolve(
-      options.configPath ?? process.env["POTEMKIN_CONFIG_PATH"] ?? "potemkin.yml",
+      options.configPath ?? process.env['POTEMKIN_CONFIG_PATH'] ?? 'potemkin.yml',
     );
     const authoringObservability = { logger: log, tracer };
     const openapi = await loadConfiguredOpenApi(configPath, undefined, authoringObservability);
-    const pluginControlUrl = process.env["POTEMKIN_PLUGIN_CONTROL_URL"];
+    const pluginControlUrl = process.env['POTEMKIN_PLUGIN_CONTROL_URL'];
     const system = await bootYamlRuntimeFromConfig({
       openapi,
       potemkinConfigPath: configPath,
@@ -98,29 +98,29 @@ export async function startServer(
           ? {}
           : { requestResponseCapture: options.requestResponseCapture }),
       } satisfies RuntimeObservability,
-      version: process.env["npm_package_version"] ?? "0.1.0",
+      version: process.env['npm_package_version'] ?? '0.1.0',
       onConfigurationError: (error) =>
-        log.error({ err: error }, "Configuration reload rejected; previous runtime remains active"),
+        log.error({ err: error }, 'Configuration reload rejected; previous runtime remains active'),
     });
     const app = createRuntimeGateway(system, {
       ...createYamlRuntimeExtensions(system),
-      ...(process.env["ADMIN_TOKEN"] === undefined
+      ...(process.env['ADMIN_TOKEN'] === undefined
         ? {}
-        : { adminToken: process.env["ADMIN_TOKEN"] }),
-      ...(process.env["ENGINE_ROUTES_TTL_SECONDS"] === undefined
+        : { adminToken: process.env['ADMIN_TOKEN'] }),
+      ...(process.env['ENGINE_ROUTES_TTL_SECONDS'] === undefined
         ? {}
-        : { routesTtlSeconds: Number(process.env["ENGINE_ROUTES_TTL_SECONDS"]) }),
-      ...(process.env["ALLOWED_ORIGINS"] === undefined
+        : { routesTtlSeconds: Number(process.env['ENGINE_ROUTES_TTL_SECONDS']) }),
+      ...(process.env['ALLOWED_ORIGINS'] === undefined
         ? {}
         : {
             allowedOrigins:
-              process.env["ALLOWED_ORIGINS"] === "*"
-                ? "*"
-                : process.env["ALLOWED_ORIGINS"].split(",").map((origin) => origin.trim()),
+              process.env['ALLOWED_ORIGINS'] === '*'
+                ? '*'
+                : process.env['ALLOWED_ORIGINS'].split(',').map((origin) => origin.trim()),
           }),
     });
-    const host = options.host ?? resolveBindHost("dsl");
-    const port = options.port ?? Number(process.env["POTEMKIN_ENGINE_PORT"] ?? 3000);
+    const host = options.host ?? resolveBindHost('dsl');
+    const port = options.port ?? Number(process.env['POTEMKIN_ENGINE_PORT'] ?? 3000);
     const server = await listen(app, port, host);
 
     log.info(
@@ -131,7 +131,7 @@ export async function startServer(
         port,
         watching: true,
       },
-      "Potemkin engine ready",
+      'Potemkin engine ready',
     );
 
     return {
@@ -158,7 +158,7 @@ function listen(
 ): Promise<http.Server> {
   return new Promise((resolve, reject) => {
     const server = app.listen(port, host, () => resolve(server));
-    server.on("error", reject);
+    server.on('error', reject);
   });
 }
 
@@ -169,35 +169,25 @@ function closeServer(server: http.Server): Promise<void> {
   });
 }
 
-async function main(): Promise<void> {
-  const running = await startServer(parseServerArgs(process.argv.slice(2)));
+export async function runServer(argv: readonly string[] = process.argv.slice(2)): Promise<void> {
+  const running = await startServer(parseServerArgs(argv));
   const shutdown = (): void => {
     void running.close().then(() => process.exit(0));
   };
-  process.once("SIGINT", shutdown);
-  process.once("SIGTERM", shutdown);
+  process.once('SIGINT', shutdown);
+  process.once('SIGTERM', shutdown);
 }
 
-function parseServerArgs(args: readonly string[]): ServerOptions {
+export function parseServerArgs(args: readonly string[]): ServerOptions {
   const options: { configPath?: string; port?: number; host?: string } = {};
   for (let index = 0; index < args.length; index++) {
     const arg = args[index];
     const value = args[index + 1];
     if (value === undefined) continue;
-    if (arg === "--config" || arg === "--config-path") options.configPath = value;
-    if (arg === "--port") options.port = Number(value);
-    if (arg === "--host") options.host = value;
+    if (arg === '--config' || arg === '--config-path') options.configPath = value;
+    if (arg === '--port') options.port = Number(value);
+    if (arg === '--host') options.host = value;
     index += 1;
   }
   return options;
-}
-
-if (process.argv[1]?.endsWith("server.js") || process.argv[1]?.endsWith("server.ts")) {
-  main().catch((error: unknown) => {
-    createLogger({ name: "potemkin.server", env: process.env }).error(
-      { err: error },
-      "Potemkin server failed to start",
-    );
-    process.exitCode = 1;
-  });
 }

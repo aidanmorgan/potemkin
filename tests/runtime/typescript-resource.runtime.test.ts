@@ -3,22 +3,23 @@ import {
   operationId,
   resourceName,
   schemaReference,
-} from "../../src/authoring/references.js";
+} from '../../src/domain/references.js';
 /** Pure TypeScript resource expansion e2e path. */
 
-import { loadOpenApi } from "../../src/contract/loader.js";
-import { bootRuntime } from "../../src/runtime/system.js";
-import { createDefaultRuntimeHost } from "../../src/runtime/host.js";
-import { createRuntimeGateway } from "../../src/http/runtimeGateway.js";
-import { compileProgram, defineSimulation, expression } from "../../src/authoring/runtimeModel.js";
-import { reducerRule } from "../../src/authoring/nativeReducer.js";
-import { defineResource } from "../../src/authoring/resourceModel.js";
-import type { EventContext, IdentityContext } from "../../src/model/runtime.js";
+import { loadOpenApi } from '../../src/contract/loader.js';
+import { bootRuntime } from '../../src/runtime/system.js';
+import { createDefaultRuntimeHost } from '../../src/runtime/host.js';
+import { createRuntimeGateway } from '../../src/http/runtimeGateway.js';
+import { compileProgram } from '../../src/authoring/compiler.js';
+import { defineSimulation, expression } from '../../src/authoring/builders.js';
+import { reducerRule } from '../../src/authoring/nativeReducer.js';
+import { defineResource } from '../../src/authoring/resourceModel.js';
+import type { EventContext, IdentityContext } from '../../src/model/runtime.js';
 import {
   withPersistentServer,
   type PersistentAgent,
   type PersistentServer,
-} from "../_support/persistentAgent.js";
+} from '../_support/persistentAgent.js';
 
 const OPENAPI = `
 openapi: "3.0.3"
@@ -66,41 +67,41 @@ function definition(_openapi: Awaited<ReturnType<typeof loadOpenApi>>) {
     boundaries: [],
     resources: [
       defineResource({
-        resource: resourceName("Invoice"),
-        schema: schemaReference("Invoice"),
+        resource: resourceName('Invoice'),
+        schema: schemaReference('Invoice'),
         identity: {
-          generate: expression("identity", ({ helpers }: IdentityContext) => helpers.uuid()),
+          generate: expression('identity', ({ helpers }: IdentityContext) => helpers.uuid()),
         },
         eventCatalog: [
           {
-            type: eventType("InvoiceCreated"),
+            type: eventType('InvoiceCreated'),
             payload: {
-              id: expression("event", ({ command }: EventContext) => String(command.targetId)),
-              amount: expression("event", ({ command }: EventContext) =>
-                Number(command.payload["amount"]),
+              id: expression('event', ({ command }: EventContext) => String(command.targetId)),
+              amount: expression('event', ({ command }: EventContext) =>
+                Number(command.payload['amount']),
               ),
             },
           },
         ],
         reducers: [
-          reducerRule(eventType("InvoiceCreated"))
+          reducerRule(eventType('InvoiceCreated'))
             .apply(({ state, event }) => ({
               ...state,
-              id: String(event.payload["id"]),
-              amount: Number(event.payload["amount"]),
+              id: String(event.payload['id']),
+              amount: Number(event.payload['amount']),
             }))
             .build(),
         ],
         operations: [
-          { operationId: operationId("createInvoice"), emit: eventType("InvoiceCreated") },
-          { operationId: operationId("getInvoice"), query: true },
+          { operationId: operationId('createInvoice'), emit: eventType('InvoiceCreated') },
+          { operationId: operationId('getInvoice'), query: true },
         ],
       }),
     ],
   });
 }
 
-describe("TypeScript-only resource authoring", () => {
+describe('TypeScript-only resource authoring', () => {
   let server: PersistentServer;
   let agent: PersistentAgent;
 
@@ -118,9 +119,9 @@ describe("TypeScript-only resource authoring", () => {
 
   afterAll(async () => server?.close());
 
-  it("expands operation IDs into a working collection resource", async () => {
-    const response = await agent.post("/invoices").send({ amount: 125.5 }).expect(201);
+  it('expands operation IDs into a working collection resource', async () => {
+    const response = await agent.post('/invoices').send({ amount: 125.5 }).expect(201);
     expect(response.body.amount).toBe(125.5);
-    expect(typeof response.body.id).toBe("string");
+    expect(typeof response.body.id).toBe('string');
   });
 });

@@ -1,6 +1,6 @@
-import type { OpenApiDoc } from "../contract/loader.js";
-import type { SimulationDefinition } from "../authoring/runtimeModel.js";
-import type { LoadedConfig } from "./configLoader.js";
+import type { OpenApiDoc } from '../contract/loader.js';
+import type { SimulationDefinition } from '../authoring/types.js';
+import type { LoadedConfig } from './configLoader.js';
 
 export interface ConfiguredRuntimeSources {
   readonly loaded: LoadedConfig;

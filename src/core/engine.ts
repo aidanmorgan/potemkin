@@ -1,21 +1,16 @@
-import { createHmac } from "node:crypto";
-import { deterministicUuidv7 } from "../ids/uuidv7.js";
-import { createSeededRandom } from "../model/data.js";
-import type {
-  Actor,
-  Command,
-  DomainEvent,
-  ExecutionResult,
-  JsonObject,
-  JsonValue,
-} from "../types.js";
-import { applyPatches } from "../model/patches.js";
+import { createHmac } from 'node:crypto';
+import { deterministicUuidv7 } from '../ids/uuidv7.js';
+import { createSeededRandom } from '../model/data.js';
+import type { Command, DomainEvent, ExecutionResult } from '../contracts/domain.js';
+import type { Actor } from '../contracts/identity.js';
+import type { JsonObject, JsonValue } from '../contracts/value.js';
+import { applyPatches } from '../model/patches.js';
 import {
   cloneValue as clone,
   createMemoryEventStore,
   createMemoryIdempotencyStore,
   createMemoryStateStore,
-} from "./storage.js";
+} from './storage.js';
 import {
   addSecurityHeaders,
   applyDebugEnvelope,
@@ -25,7 +20,7 @@ import {
   maskBody,
   maskValues,
   truncateSerializedBody,
-} from "./responsePolicies.js";
+} from './responsePolicies.js';
 import type {
   EventContext,
   FaultContext,
@@ -46,7 +41,6 @@ import type {
   RuntimeControls,
   RuntimeResponse,
   RuntimeSeed,
-  RuntimeSession,
   RuntimeSaga,
   RuntimeSagaStep,
   RuntimeValue,
@@ -54,13 +48,20 @@ import type {
   SagaContext,
   WebhookContext,
   RuntimeFaultStore,
+} from '../model/runtime.js';
+import type {
   RuntimeEventStore,
-  RuntimeStateStore,
   RuntimeIdempotencyStore,
-} from "../model/runtime.js";
-import { normalizeRuntimeControls } from "../model/runtime.js";
-import { createRuntimeFaultStore } from "./faults.js";
-import { RuntimeExecutionError } from "./errors.js";
+  RuntimeSession,
+  RuntimeStateStore,
+} from '../contracts/ports.js';
+import { normalizeRuntimeControls } from '../model/runtime.js';
+import { eventsThroughVersion, nextSequenceVersion } from '../domain/eventSourcing.js';
+import { resolveAggregateId } from '../domain/identity.js';
+import { matchesHeaders, selectBehavior } from '../domain/dispatch.js';
+import { authorize, hasRequiredScopes } from '../domain/authorization.js';
+import { createRuntimeFaultStore } from './faults.js';
+import { RuntimeExecutionError } from './errors.js';
 import {
   compareQueryValues,
   decodeCursor,
@@ -70,70 +71,33 @@ import {
   queryValue,
   readPath,
   selectFields,
-} from "./queryPolicies.js";
+} from '../domain/query.js';
 
 const MAX_DEPTH = 5;
 const MAX_REACTION_EVENTS = 1_000;
-const GLOBAL_BOUNDARY = "__global__";
-type RuntimeLogLevel = NonNullable<RuntimeControls["logLevel"]>;
+const GLOBAL_BOUNDARY = '__global__';
+type RuntimeLogLevel = NonNullable<RuntimeControls['logLevel']>;
 
 function resolveValue<Input, Output>(value: RuntimeValue<Input, Output>, input: Input): Output {
-  return typeof value === "function" ? (value as (value: Input) => Output)(input) : value;
+  return typeof value === 'function' ? (value as (value: Input) => Output)(input) : value;
 }
 
 function asObject(value: JsonValue | object | null | undefined): JsonObject {
-  if (value !== null && value !== undefined && typeof value === "object" && !Array.isArray(value)) {
+  if (value !== null && value !== undefined && typeof value === 'object' && !Array.isArray(value)) {
     return clone(value as JsonObject);
   }
   return {};
 }
 
-function isJsonObject(value: JsonValue | null | undefined): value is JsonObject {
+function isJsonObject(value: unknown): value is JsonObject {
   return (
-    value !== null && value !== undefined && typeof value === "object" && !Array.isArray(value)
+    value !== null && value !== undefined && typeof value === 'object' && !Array.isArray(value)
   );
 }
 
 function headerValue(headers: Readonly<Record<string, string>>, name: string): string | undefined {
   const wanted = name.toLowerCase();
   return Object.entries(headers).find(([key]) => key.toLowerCase() === wanted)?.[1];
-}
-
-function hasScopes(actor: Actor | undefined, scopes: readonly string[]): boolean {
-  if (scopes.length === 0) return true;
-  const actual = new Set(actor?.scopes ?? []);
-  return scopes.every((scope) => actual.has(scope));
-}
-
-function pointerRead(
-  value: JsonValue | null | undefined,
-  pointer: string | undefined,
-): JsonValue | undefined {
-  if (pointer === undefined || pointer === "") return value ?? undefined;
-  const segments = pointer.startsWith("/")
-    ? pointer
-        .slice(1)
-        .split("/")
-        .map((item) => item.replace(/~1/g, "/").replace(/~0/g, "~"))
-    : pointer.split(".");
-  let current: JsonValue | undefined = value ?? undefined;
-  for (const segment of segments) {
-    if (current === null || current === undefined || typeof current !== "object") return undefined;
-    current = Array.isArray(current) ? current[Number(segment)] : (current as JsonObject)[segment];
-  }
-  return current;
-}
-
-function pathParameter(
-  path: string,
-  template: string,
-  name: string | undefined,
-): string | undefined {
-  if (name === undefined) return path.split("/").filter(Boolean).at(-1);
-  const actual = path.split("/").filter(Boolean);
-  const expected = template.split("/").filter(Boolean);
-  const index = expected.findIndex((segment) => segment === `{${name}}` || segment === `:${name}`);
-  return index >= 0 ? actual[index] : undefined;
 }
 
 function eventKey(event: DomainEvent): string {
@@ -148,18 +112,8 @@ function serialise(value: unknown): string {
   return JSON.stringify(value, Object.keys((value ?? {}) as object).sort());
 }
 
-function matchesHeaders(
-  actual: Readonly<Record<string, string>>,
-  expected: Readonly<Record<string, string>>,
-): boolean {
-  return Object.entries(expected).every(([name, wanted]) => {
-    const value = headerValue(actual, name);
-    return wanted === "present" || wanted === "*" ? value !== undefined : value === wanted;
-  });
-}
-
 function matchesFaultSelectors(
-  selectors: NonNullable<RuntimeFault["selectors"]> | undefined,
+  selectors: NonNullable<RuntimeFault['selectors']> | undefined,
   controls: RuntimeControls | undefined,
 ): boolean {
   if (selectors === undefined) return true;
@@ -195,8 +149,8 @@ function routeFallback(
     rule?.respond ??
     fallback?.default ??
     (inContract
-      ? { status: 501, body: { message: "Operation is not implemented" } }
-      : { status: 404, body: { error: "NO_ROUTE", code: "NO_ROUTE", message: "Not found" } });
+      ? { status: 501, body: { message: 'Operation is not implemented' } }
+      : { status: 404, body: { error: 'NO_ROUTE', code: 'NO_ROUTE', message: 'Not found' } });
   return {
     status: response.status,
     body: response.body ?? null,
@@ -208,9 +162,9 @@ function routeFallback(
 
 function globMatch(pattern: string, value: string): boolean {
   const escaped = pattern
-    .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
-    .replace(/\*\*/g, ".*")
-    .replace(/\*/g, "[^/]*");
+    .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*\*/g, '.*')
+    .replace(/\*/g, '[^/]*');
   return new RegExp(`^${escaped}$`).test(value);
 }
 
@@ -255,10 +209,9 @@ interface ActiveBatch {
 }
 
 function isRuntimeSeed(value: JsonObject | RuntimeSeed): value is RuntimeSeed {
-  const candidate = value as unknown as JsonObject;
-  if (!isJsonObject(candidate) || !isJsonObject(candidate.state)) return false;
-  return Object.keys(candidate).every(
-    (key) => key === "state" || key === "id" || key === "eventType" || key === "timestamp",
+  if (!isJsonObject(value) || !isJsonObject(value.state)) return false;
+  return Object.keys(value).every(
+    (key) => key === 'state' || key === 'id' || key === 'eventType' || key === 'timestamp',
   );
 }
 
@@ -268,7 +221,7 @@ function seedState(value: JsonObject | RuntimeSeed): JsonObject {
 
 function seedId(value: JsonObject | RuntimeSeed, boundary: string, index: number): string {
   if (isRuntimeSeed(value) && value.id !== undefined) return value.id;
-  if (!isRuntimeSeed(value) && typeof value.id === "string") return value.id;
+  if (!isRuntimeSeed(value) && typeof value.id === 'string') return value.id;
   return `baseline-${boundary}-${index}`;
 }
 
@@ -349,7 +302,7 @@ export class RuntimeEngine {
     // normal request must not interleave with a transactional bulk checkpoint.
     // Secondary saga/compensation commands use executeUnlocked below while the
     // owning top-level request holds this barrier.
-    const release = await this.acquire("__runtime_batch__");
+    const release = await this.acquire('__runtime_batch__');
     try {
       return await this.executeUnlocked(request);
     } finally {
@@ -365,23 +318,23 @@ export class RuntimeEngine {
         request.command.path,
         request.command.httpMethod,
       ) ??
-      "unknown";
+      'unknown';
     try {
       const result =
         trace === undefined
           ? await this.executeInternal(request)
-          : await trace("runtime.execute", () => this.executeInternal(request));
+          : await trace('runtime.execute', () => this.executeInternal(request));
       const metricFields = {
         operation,
         method: request.command.httpMethod,
         status: String(result.status),
-        outcome: result.status >= 400 ? "faulted" : result.committed ? "committed" : "completed",
+        outcome: result.status >= 400 ? 'faulted' : result.committed ? 'committed' : 'completed',
       } satisfies Readonly<Record<string, string>>;
-      this.writeMetric(request, "runtime.requests.completed", 1, metricFields);
+      this.writeMetric(request, 'runtime.requests.completed', 1, metricFields);
       if (result.status >= 400)
-        this.writeMetric(request, "runtime.requests.failed", 1, metricFields);
+        this.writeMetric(request, 'runtime.requests.failed', 1, metricFields);
       if (result.events.length > 0)
-        this.writeMetric(request, "runtime.events.appended", result.events.length, metricFields);
+        this.writeMetric(request, 'runtime.events.appended', result.events.length, metricFields);
       await this.observeOrDeferRequestResponse(request, result);
       return result;
     } catch (error) {
@@ -393,10 +346,10 @@ export class RuntimeEngine {
         operation,
         method: request.command.httpMethod,
         status: String(result.status),
-        outcome: "error",
+        outcome: 'error',
       } satisfies Readonly<Record<string, string>>;
-      this.writeMetric(request, "runtime.requests.completed", 1, metricFields);
-      this.writeMetric(request, "runtime.requests.failed", 1, metricFields);
+      this.writeMetric(request, 'runtime.requests.completed', 1, metricFields);
+      this.writeMetric(request, 'runtime.requests.failed', 1, metricFields);
       await this.observeOrDeferRequestResponse(request, result);
       throw error;
     }
@@ -413,8 +366,8 @@ export class RuntimeEngine {
     requests: readonly RuntimeRequest[],
     options: RuntimeBatchOptions = {},
   ): Promise<readonly RuntimeExecutionResult[]> {
-    if (this.activeBatch !== undefined) throw new Error("Nested runtime batches are not supported");
-    const release = await this.acquire("__runtime_batch__");
+    if (this.activeBatch !== undefined) throw new Error('Nested runtime batches are not supported');
+    const release = await this.acquire('__runtime_batch__');
     const checkpoint = options.transactional === true ? this.snapshot() : undefined;
     const batch: ActiveBatch | undefined =
       options.transactional === true
@@ -494,7 +447,7 @@ export class RuntimeEngine {
       // Telemetry must not change the behavior of the simulated system. A
       // failed exporter is still visible to the ordinary observability log
       // port when one is configured.
-      this.writeLog(request, "error", "Runtime request/response observation failed", {
+      this.writeLog(request, 'error', 'Runtime request/response observation failed', {
         error: String(error),
       });
     }
@@ -553,31 +506,31 @@ export class RuntimeEngine {
               readonly body?: unknown;
               readonly headers?: unknown;
             };
-            const status = typeof candidate.status === "number" ? candidate.status : 500;
+            const status = typeof candidate.status === 'number' ? candidate.status : 500;
             const message =
               candidate.message === undefined ? String(error) : String(candidate.message);
             const detailObject =
               candidate.details !== null &&
-              typeof candidate.details === "object" &&
+              typeof candidate.details === 'object' &&
               !Array.isArray(candidate.details)
                 ? (candidate.details as JsonObject)
                 : undefined;
             const body =
               candidate.body !== undefined &&
               candidate.body !== null &&
-              typeof candidate.body === "object"
+              typeof candidate.body === 'object'
                 ? (candidate.body as JsonValue)
                 : ({
                     code:
-                      typeof candidate.code === "string"
+                      typeof candidate.code === 'string'
                         ? candidate.code
-                        : "RUNTIME_EXECUTION_FAILED",
+                        : 'RUNTIME_EXECUTION_FAILED',
                     message,
                     ...(detailObject === undefined ? {} : { details: detailObject }),
                   } as JsonObject);
             const headers =
               candidate.headers !== null &&
-              typeof candidate.headers === "object" &&
+              typeof candidate.headers === 'object' &&
               !Array.isArray(candidate.headers)
                 ? (candidate.headers as Readonly<Record<string, string>>)
                 : {};
@@ -653,7 +606,7 @@ export class RuntimeEngine {
     // effect from ever running).
     if (
       command.operationId !== undefined &&
-      command.origin === "inbound" &&
+      command.origin === 'inbound' &&
       controls?.skipRequestValidation !== true
     ) {
       this.program.dependencies.contract.validateRequest?.(
@@ -663,12 +616,12 @@ export class RuntimeEngine {
       );
     }
     const context = this.context(boundary, normalizedRequest, this.readState(command.targetId));
-    this.writeLog(normalizedRequest, "debug", "Runtime request matched boundary", {
+    this.writeLog(normalizedRequest, 'debug', 'Runtime request matched boundary', {
       boundary: boundary.boundary,
       operationId: command.operationId,
       commandId: command.commandId,
     });
-    await this.runLifecycle("request", context);
+    await this.runLifecycle('request', context);
 
     // Authorization for an already authenticated actor is a security gate, not
     // transport chaos. Resolve the selected behavior's authorization
@@ -693,12 +646,12 @@ export class RuntimeEngine {
             ...(normalizedRequest.controls?.retryAfterSeconds === undefined
               ? {}
               : {
-                  "Retry-After": String(Math.floor(normalizedRequest.controls.retryAfterSeconds)),
+                  'Retry-After': String(Math.floor(normalizedRequest.controls.retryAfterSeconds)),
                 }),
           },
           events: [],
           committed: false,
-          ...(fault.name === "drop-connection" ? { connectionClosed: true } : {}),
+          ...(fault.name === 'drop-connection' ? { connectionClosed: true } : {}),
         },
         normalizedRequest,
         this.program.policies.securityHeaders,
@@ -714,12 +667,12 @@ export class RuntimeEngine {
         return {
           ...cached,
           committed: false,
-          headers: { ...cached.headers, "X-Potemkin-Idempotency-Replay": "true" },
+          headers: { ...cached.headers, 'X-Potemkin-Idempotency-Replay': 'true' },
         };
       }
     }
 
-    if (command.intent === "query") {
+    if (command.intent === 'query') {
       const replayed = await this.replayEvent(boundary, normalizedRequest);
       if (replayed !== undefined) {
         if (
@@ -748,7 +701,7 @@ export class RuntimeEngine {
     // Secondary commands execute inside the owning mutation's cascade lock.
     // Re-acquiring that non-reentrant lock would deadlock sagas and dispatch
     // chains precisely when internal commands are allowed to run.
-    if (this.canCascade() && request.command.origin !== "secondary") lockKeys.push("__cascade__");
+    if (this.canCascade() && request.command.origin !== 'secondary') lockKeys.push('__cascade__');
     const lock = await this.acquireMany(lockKeys);
     try {
       if (idempotencyKey !== undefined) {
@@ -759,12 +712,12 @@ export class RuntimeEngine {
           return {
             ...cached,
             committed: false,
-            headers: { ...cached.headers, "X-Potemkin-Idempotency-Replay": "true" },
+            headers: { ...cached.headers, 'X-Potemkin-Idempotency-Replay': 'true' },
           };
         }
       }
       const result = await this.executeMutation(boundary, withTarget, targetId);
-      this.writeMetric(request, "runtime.commands.committed", 1, {
+      this.writeMetric(request, 'runtime.commands.committed', 1, {
         boundary: boundary.boundary,
       });
       if (
@@ -788,9 +741,9 @@ export class RuntimeEngine {
   /** Run boot, validation, and initialization hooks for explicit startup management. */
   async start(): Promise<void> {
     await this.initializationPromise;
-    await this.runLifecycle("boot", undefined);
-    await this.runLifecycle("validation", undefined);
-    await this.runLifecycle("initialization", undefined);
+    await this.runLifecycle('boot', undefined);
+    await this.runLifecycle('validation', undefined);
+    await this.runLifecycle('initialization', undefined);
   }
 
   async reset(): Promise<void> {
@@ -806,7 +759,7 @@ export class RuntimeEngine {
     this.aggregateBoundaries.clear();
     for (const projection of this.program.policies.derivedProjections ?? [])
       await projection.reset?.();
-    await this.runLifecycle("reset", undefined);
+    await this.runLifecycle('reset', undefined);
     this.initialized = false;
     this.initializationPromise = this.initialize();
     await this.initializationPromise;
@@ -824,7 +777,7 @@ export class RuntimeEngine {
     options: Readonly<{ preserveEvents?: boolean }> = {},
   ): Promise<void> {
     await this.initializationPromise;
-    const release = await this.acquire("__runtime_batch__");
+    const release = await this.acquire('__runtime_batch__');
     const previous = this.program;
     if (options.preserveEvents === false) {
       try {
@@ -840,7 +793,7 @@ export class RuntimeEngine {
         this.projections.clear();
         this.aggregateBoundaries.clear();
         this.resetGeneration += 1;
-        await this.runLifecycle("reset", undefined);
+        await this.runLifecycle('reset', undefined);
         this.initialized = false;
         this.initializationPromise = this.initialize();
         await this.initializationPromise;
@@ -853,7 +806,7 @@ export class RuntimeEngine {
     const previousHelpers = this.helpers;
     try {
       for (const event of checkpoint.events) {
-        if (event.boundary !== "__saga__" && !next.byBoundaryName.has(event.boundary)) {
+        if (event.boundary !== '__saga__' && !next.byBoundaryName.has(event.boundary)) {
           throw new Error(
             `Cannot reload runtime: event ${event.eventId} refers to unknown boundary "${event.boundary}"`,
           );
@@ -873,19 +826,19 @@ export class RuntimeEngine {
         reactionEvents: 0,
       };
       for (const event of checkpoint.events) {
-        if (event.boundary === "__saga__") continue;
+        if (event.boundary === '__saga__') continue;
         const boundary = next.byBoundaryName.get(event.boundary);
         if (boundary === undefined) continue;
         const command: Command = {
           commandId: event.causedBy ?? event.eventId,
           boundary: event.boundary,
-          intent: event.intent ?? "mutation",
+          intent: event.intent ?? 'mutation',
           targetId: event.aggregateId,
           payload: event.payload,
           queryParams: event.request?.query ?? {},
-          httpMethod: event.request?.method ?? "POST",
+          httpMethod: event.request?.method ?? 'POST',
           path: event.request?.path ?? boundary.contractPath,
-          origin: "secondary",
+          origin: 'secondary',
           depth: 0,
           ...(event.request?.actorId === undefined
             ? {}
@@ -903,22 +856,22 @@ export class RuntimeEngine {
       for (const [id, state] of transaction.states) this.state.set(id, state);
 
       const sourceEvent = checkpoint.events.find(
-        (event) => event.boundary !== "__saga__" && next.byBoundaryName.has(event.boundary),
+        (event) => event.boundary !== '__saga__' && next.byBoundaryName.has(event.boundary),
       );
       if (sourceEvent !== undefined && next.policies.derivedProjections !== undefined) {
         const boundary = next.byBoundaryName.get(sourceEvent.boundary);
         if (boundary !== undefined) {
           const source: PostCommitContext = {
             command: {
-              commandId: "runtime-reload",
+              commandId: 'runtime-reload',
               boundary: boundary.boundary,
-              intent: "mutation",
+              intent: 'mutation',
               targetId: null,
               payload: {},
               queryParams: {},
-              httpMethod: "POST",
+              httpMethod: 'POST',
               path: boundary.contractPath,
-              origin: "secondary",
+              origin: 'secondary',
               depth: 0,
             },
             request: { command: {} as Command, headers: {} },
@@ -928,12 +881,12 @@ export class RuntimeEngine {
             committedEvents: checkpoint.events,
           };
           await this.runProjections(
-            checkpoint.events.filter((event) => event.boundary !== "__saga__"),
+            checkpoint.events.filter((event) => event.boundary !== '__saga__'),
             source,
           );
         }
       }
-      await this.runLifecycle("validation", undefined);
+      await this.runLifecycle('validation', undefined);
       this.initialized = true;
       this.initializationPromise = Promise.resolve();
     } catch (error) {
@@ -947,7 +900,7 @@ export class RuntimeEngine {
   }
 
   async shutdown(): Promise<void> {
-    await this.runLifecycle("shutdown", undefined);
+    await this.runLifecycle('shutdown', undefined);
   }
 
   snapshot(): Readonly<{
@@ -1002,14 +955,14 @@ export class RuntimeEngine {
             type:
               isRuntimeSeed(seed) && seed.eventType !== undefined
                 ? seed.eventType
-                : "BaselineEntityCreatedEvent",
+                : 'BaselineEntityCreatedEvent',
             boundary: boundary.boundary,
             aggregateId: id,
             payload: state,
             timestamp:
               isRuntimeSeed(seed) && seed.timestamp !== undefined
                 ? seed.timestamp
-                : "1970-01-01T00:00:00.000Z",
+                : '1970-01-01T00:00:00.000Z',
             sequenceVersion: 1,
             causedBy: null,
           });
@@ -1043,20 +996,20 @@ export class RuntimeEngine {
       const boundary = this.program.byBoundaryName.get(
         history.find((event) => this.program.byBoundaryName.has(event.boundary))?.boundary ??
           this.program.boundaries[0]?.boundary ??
-          "",
+          '',
       );
       if (boundary !== undefined) {
         const source: PostCommitContext = {
           command: {
-            commandId: "baseline",
+            commandId: 'baseline',
             boundary: boundary.boundary,
-            intent: "creation",
+            intent: 'creation',
             targetId: null,
             payload: {},
             queryParams: {},
-            httpMethod: "POST",
+            httpMethod: 'POST',
             path: boundary.contractPath,
-            origin: "inbound",
+            origin: 'inbound',
             depth: 0,
           },
           request: { command: {} as Command, headers: {} },
@@ -1066,7 +1019,7 @@ export class RuntimeEngine {
           committedEvents: history,
         };
         await this.runProjections(
-          history.filter((event) => event.boundary !== "__saga__"),
+          history.filter((event) => event.boundary !== '__saga__'),
           source,
         );
       }
@@ -1076,9 +1029,9 @@ export class RuntimeEngine {
 
   private authenticate(request: RuntimeRequest): Actor | undefined {
     const auth = this.program.policies.auth;
-    if (auth?.mode === "session") {
-      const cookieName = auth.session?.cookieName ?? "sid";
-      const sessionId = this.cookieValue(headerValue(request.headers, "cookie"), cookieName);
+    if (auth?.mode === 'session') {
+      const cookieName = auth.session?.cookieName ?? 'sid';
+      const sessionId = this.cookieValue(headerValue(request.headers, 'cookie'), cookieName);
       if (sessionId !== undefined) {
         const session = this.program.dependencies.sessions?.get?.(
           sessionId,
@@ -1086,7 +1039,7 @@ export class RuntimeEngine {
         );
         if (session !== undefined) {
           const csrfHeader = auth.session?.csrfHeader;
-          const changing = new Set(["POST", "PUT", "PATCH", "DELETE"]).has(
+          const changing = new Set(['POST', 'PUT', 'PATCH', 'DELETE']).has(
             request.command.httpMethod.toUpperCase(),
           );
           if (
@@ -1095,9 +1048,9 @@ export class RuntimeEngine {
             changing &&
             headerValue(request.headers, csrfHeader) !== session.csrfToken
           ) {
-            throw new RuntimeExecutionError(403, "CSRF token missing or invalid", {
-              code: "CSRF_TOKEN_INVALID",
-              message: "CSRF token missing or invalid",
+            throw new RuntimeExecutionError(403, 'CSRF token missing or invalid', {
+              code: 'CSRF_TOKEN_INVALID',
+              message: 'CSRF token missing or invalid',
             });
           }
           return session.actor;
@@ -1111,16 +1064,16 @@ export class RuntimeEngine {
       const candidate = error as { readonly code?: unknown; readonly message?: unknown };
       throw new RuntimeExecutionError(
         401,
-        candidate.message === undefined ? "Authentication failed" : String(candidate.message),
+        candidate.message === undefined ? 'Authentication failed' : String(candidate.message),
         {
-          code: typeof candidate.code === "string" ? candidate.code : "AUTHENTICATION_FAILED",
+          code: typeof candidate.code === 'string' ? candidate.code : 'AUTHENTICATION_FAILED',
           message:
-            candidate.message === undefined ? "Authentication failed" : String(candidate.message),
+            candidate.message === undefined ? 'Authentication failed' : String(candidate.message),
           details: {
-            code: typeof candidate.code === "string" ? candidate.code : "AUTHENTICATION_FAILED",
+            code: typeof candidate.code === 'string' ? candidate.code : 'AUTHENTICATION_FAILED',
           },
         },
-        { "WWW-Authenticate": "Bearer" },
+        { 'WWW-Authenticate': 'Bearer' },
       );
     }
   }
@@ -1128,7 +1081,7 @@ export class RuntimeEngine {
   private cookieValue(header: string | undefined, name: string): string | undefined {
     if (header === undefined) return undefined;
     const entry = header
-      .split(";")
+      .split(';')
       .map((part) => part.trim())
       .find((part) => part.startsWith(`${name}=`));
     if (entry === undefined) return undefined;
@@ -1138,36 +1091,36 @@ export class RuntimeEngine {
   private handleSessionEndpoint(request: RuntimeRequest): RuntimeExecutionResult | undefined {
     const auth = this.program.policies.auth;
     const sessions = this.program.dependencies.sessions;
-    if (auth?.mode !== "session" || sessions?.create === undefined) return undefined;
+    if (auth?.mode !== 'session' || sessions?.create === undefined) return undefined;
     const session = auth.session;
-    const loginPath = session?.loginPath ?? "/sessions";
-    const logoutPath = session?.logoutPath ?? "/sessions/current";
-    if (request.command.httpMethod.toUpperCase() === "POST" && request.command.path === loginPath) {
+    const loginPath = session?.loginPath ?? '/sessions';
+    const logoutPath = session?.logoutPath ?? '/sessions/current';
+    if (request.command.httpMethod.toUpperCase() === 'POST' && request.command.path === loginPath) {
       const actorId = request.command.payload.actorId;
-      if (typeof actorId !== "string" || actorId.length === 0)
-        throw new RuntimeExecutionError(400, "actorId is required", {
-          code: "CONTRACT_VIOLATION",
-          message: "actorId is required",
+      if (typeof actorId !== 'string' || actorId.length === 0)
+        throw new RuntimeExecutionError(400, 'actorId is required', {
+          code: 'CONTRACT_VIOLATION',
+          message: 'actorId is required',
         });
       const scopes = Array.isArray(request.command.payload.scopes)
         ? request.command.payload.scopes.filter(
-            (value): value is string => typeof value === "string",
+            (value): value is string => typeof value === 'string',
           )
         : [];
       const created = sessions.create({ id: actorId, scopes }, session?.ttlSeconds ?? 3_600);
-      return this.sessionResult(created, session?.cookieName ?? "sid");
+      return this.sessionResult(created, session?.cookieName ?? 'sid');
     }
     if (
-      request.command.httpMethod.toUpperCase() === "DELETE" &&
+      request.command.httpMethod.toUpperCase() === 'DELETE' &&
       request.command.path === logoutPath
     ) {
-      const cookieName = session?.cookieName ?? "sid";
-      const sessionId = this.cookieValue(headerValue(request.headers, "cookie"), cookieName);
+      const cookieName = session?.cookieName ?? 'sid';
+      const sessionId = this.cookieValue(headerValue(request.headers, 'cookie'), cookieName);
       if (sessionId !== undefined) sessions.destroy?.(sessionId);
       return {
         status: 204,
         body: null,
-        headers: { "Set-Cookie": `${cookieName}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0` },
+        headers: { 'Set-Cookie': `${cookieName}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0` },
         events: [],
         committed: false,
       };
@@ -1187,7 +1140,7 @@ export class RuntimeEngine {
           : {}),
       },
       headers: {
-        "Set-Cookie": `${cookieName}=${encodeURIComponent(session.id)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${this.program.policies.auth?.session?.ttlSeconds ?? 3_600}`,
+        'Set-Cookie': `${cookieName}=${encodeURIComponent(session.id)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${this.program.policies.auth?.session?.ttlSeconds ?? 3_600}`,
       },
       events: [],
       committed: false,
@@ -1224,7 +1177,7 @@ export class RuntimeEngine {
       return decorateStandaloneResponse(
         {
           status: 404,
-          body: { code: "EVENT_NOT_FOUND", message: `Event '${eventId}' was not found` },
+          body: { code: 'EVENT_NOT_FOUND', message: `Event '${eventId}' was not found` },
           headers: {},
           events: [],
           committed: false,
@@ -1239,7 +1192,7 @@ export class RuntimeEngine {
         {
           status: 422,
           body: {
-            code: "EVENT_REPLAY_UNSUPPORTED",
+            code: 'EVENT_REPLAY_UNSUPPORTED',
             message: `Event '${eventId}' cannot be replayed`,
           },
           headers: {},
@@ -1255,11 +1208,11 @@ export class RuntimeEngine {
       ...request.command,
       boundary: eventBoundary.boundary,
       targetId: event.aggregateId,
-      intent: "mutation",
-      httpMethod: "PUT",
+      intent: 'mutation',
+      httpMethod: 'PUT',
       path: eventBoundary.contractPath,
       operationId: request.command.operationId,
-      origin: "inbound",
+      origin: 'inbound',
     };
     const replayRequest: RuntimeRequest = { ...request, command: replayCommand };
     const transaction: Transaction = {
@@ -1274,7 +1227,7 @@ export class RuntimeEngine {
       timestamp: this.helpersFor(replayRequest).now(),
       sequenceVersion: this.nextSequence(event.aggregateId, transaction),
       causedBy: replayRequest.controls?.causedBy ?? replayCommand.commandId,
-      intent: "mutation",
+      intent: 'mutation',
       request: {
         method: replayCommand.httpMethod,
         path: replayCommand.path,
@@ -1300,7 +1253,7 @@ export class RuntimeEngine {
       {
         status: 200,
         body: projectedState,
-        headers: { "X-Potemkin-Replayed-Event": eventId },
+        headers: { 'X-Potemkin-Replayed-Event': eventId },
       },
       undefined,
       [replayedEvent],
@@ -1320,7 +1273,7 @@ export class RuntimeEngine {
         headers: response.headers ?? {},
       },
     };
-    await this.runLifecycle("commit", commitContext);
+    await this.runLifecycle('commit', commitContext);
     const committedEvent: DomainEvent = {
       ...replayedEvent,
       response: {
@@ -1392,13 +1345,13 @@ export class RuntimeEngine {
           command: {
             commandId: event.causedBy ?? event.eventId,
             boundary: event.boundary,
-            intent: "mutation",
+            intent: 'mutation',
             targetId: event.aggregateId,
             payload: event.payload,
             queryParams: {},
-            httpMethod: "PUT",
-            path: "",
-            origin: "secondary",
+            httpMethod: 'PUT',
+            path: '',
+            origin: 'secondary',
             depth: 0,
           },
           request: { command: {} as Command, headers: {} },
@@ -1418,39 +1371,29 @@ export class RuntimeEngine {
       .events(undefined, aggregateId)
       .filter((event) => this.program.byBoundaryName.has(event.boundary));
     const scoped = owned.length === 0 ? this.events.events(boundary.boundary, aggregateId) : owned;
-    return scoped
-      .filter((event) => event.sequenceVersion <= version)
-      .sort((left, right) => left.sequenceVersion - right.sequenceVersion);
+    return eventsThroughVersion(scoped, aggregateId, version);
   }
 
   private resolveIdentity(boundary: RuntimeBoundary, request: RuntimeRequest): string {
-    if (request.command.targetId !== null) return request.command.targetId;
     const identity = boundary.identity;
-    if (identity?.generate !== undefined)
-      return identity.generate({
-        ...this.context(boundary, request, null),
-        boundary: boundary.boundary,
-      });
-    const key = identity?.key;
-    if (key !== undefined) {
-      const source =
-        key.from === "payload"
-          ? request.command.payload
-          : key.from === "query"
-            ? request.command.queryParams
-            : key.from === "header"
-              ? request.headers
-              : request.command.path;
-      const value =
-        key.from === "path"
-          ? pathParameter(request.command.path, boundary.contractPath, key.name)
-          : key.from === "header"
-            ? headerValue(request.headers, key.name ?? key.pointer ?? "")
-            : pointerRead(source as JsonValue, key.pointer ?? key.name);
-      if (typeof value === "string" && value.length > 0) return value;
-      if (typeof value === "number") return String(value);
-    }
-    return this.helpersFor(request).uuid();
+    return resolveAggregateId({
+      targetId: request.command.targetId,
+      key: identity?.key,
+      generated:
+        identity?.generate === undefined
+          ? undefined
+          : () =>
+              identity.generate!({
+                ...this.context(boundary, request, null),
+                boundary: boundary.boundary,
+              }),
+      path: request.command.path,
+      contractPath: boundary.contractPath,
+      query: request.command.queryParams,
+      headers: request.headers,
+      payload: request.command.payload,
+      fallback: () => this.helpersFor(request).uuid(),
+    });
   }
 
   private findFault(
@@ -1477,7 +1420,7 @@ export class RuntimeEngine {
       if (!matchesFaultSelectors(fault.selectors, controls)) return false;
       if (fault.headers !== undefined && !matchesHeaders(request.headers, fault.headers))
         return false;
-      if (!hasScopes(request.actor, fault.requiredScopes ?? [])) return false;
+      if (!hasRequiredScopes(request.actor?.scopes, fault.requiredScopes ?? [])) return false;
       if (fault.requires?.some((guard) => !guard.check(faultContext))) return false;
       if (fault.probability !== undefined && this.helpersFor(request).random() >= fault.probability)
         return false;
@@ -1495,35 +1438,35 @@ export class RuntimeEngine {
       controls.forceStatus <= 599
     ) {
       return {
-        name: "force-status",
+        name: 'force-status',
         matches: () => true,
         response: {
           status: controls.forceStatus,
-          body: { error: "FORCED_STATUS", status: controls.forceStatus },
+          body: { error: 'FORCED_STATUS', status: controls.forceStatus },
           ...(controls.retryAfterSeconds === undefined
             ? {}
-            : { headers: { "Retry-After": String(Math.floor(controls.retryAfterSeconds)) } }),
+            : { headers: { 'Retry-After': String(Math.floor(controls.retryAfterSeconds)) } }),
         },
       };
     }
     if (controls?.errorClass !== undefined) {
       const defaults: Readonly<
         Record<
-          NonNullable<RuntimeControls["errorClass"]>,
+          NonNullable<RuntimeControls['errorClass']>,
           { status: number; error: string; message: string }
         >
       > = {
-        timeout: { status: 504, error: "GATEWAY_TIMEOUT", message: "Upstream timed out (chaos)" },
-        throttle: { status: 429, error: "TOO_MANY_REQUESTS", message: "Throttled (chaos)" },
-        outage: { status: 503, error: "SERVICE_UNAVAILABLE", message: "Service outage (chaos)" },
-        bad_gateway: { status: 502, error: "BAD_GATEWAY", message: "Upstream bad gateway (chaos)" },
-        conflict: { status: 409, error: "CONFLICT", message: "Conflict (chaos)" },
-        auth: { status: 401, error: "UNAUTHENTICATED", message: "Authentication required (chaos)" },
-        forbidden: { status: 403, error: "FORBIDDEN", message: "Forbidden (chaos)" },
+        timeout: { status: 504, error: 'GATEWAY_TIMEOUT', message: 'Upstream timed out (chaos)' },
+        throttle: { status: 429, error: 'TOO_MANY_REQUESTS', message: 'Throttled (chaos)' },
+        outage: { status: 503, error: 'SERVICE_UNAVAILABLE', message: 'Service outage (chaos)' },
+        bad_gateway: { status: 502, error: 'BAD_GATEWAY', message: 'Upstream bad gateway (chaos)' },
+        conflict: { status: 409, error: 'CONFLICT', message: 'Conflict (chaos)' },
+        auth: { status: 401, error: 'UNAUTHENTICATED', message: 'Authentication required (chaos)' },
+        forbidden: { status: 403, error: 'FORBIDDEN', message: 'Forbidden (chaos)' },
       };
       const selected = defaults[controls.errorClass];
       return {
-        name: "error-class",
+        name: 'error-class',
         matches: () => true,
         response: {
           status: selected.status,
@@ -1534,7 +1477,7 @@ export class RuntimeEngine {
           },
           ...(controls.retryAfterSeconds === undefined
             ? {}
-            : { headers: { "Retry-After": String(Math.floor(controls.retryAfterSeconds)) } }),
+            : { headers: { 'Retry-After': String(Math.floor(controls.retryAfterSeconds)) } }),
         },
       };
     }
@@ -1544,22 +1487,22 @@ export class RuntimeEngine {
       controls.dropConnectionMs >= 0
     ) {
       return {
-        name: "drop-connection",
+        name: 'drop-connection',
         matches: () => true,
-        response: { status: 504, body: null, headers: { "x-potemkin-dropped": "true" } },
+        response: { status: 504, body: null, headers: { 'x-potemkin-dropped': 'true' } },
         delayMs: controls.dropConnectionMs,
       };
     }
-    if (controls?.rateLimit === true || controls?.signal === "rate_limit") {
+    if (controls?.rateLimit === true || controls?.signal === 'rate_limit') {
       return {
-        name: "rate-limit",
+        name: 'rate-limit',
         matches: () => true,
         response: {
           status: 429,
-          body: { error: "TOO_MANY_REQUESTS", message: "Rate limit exceeded (chaos)" },
+          body: { error: 'TOO_MANY_REQUESTS', message: 'Rate limit exceeded (chaos)' },
           ...(controls.retryAfterSeconds === undefined
             ? {}
-            : { headers: { "Retry-After": String(Math.floor(controls.retryAfterSeconds)) } }),
+            : { headers: { 'Retry-After': String(Math.floor(controls.retryAfterSeconds)) } }),
         },
       };
     }
@@ -1568,17 +1511,17 @@ export class RuntimeEngine {
       this.helpersFor(request).random() >= controls.successRate
     ) {
       return {
-        name: "success-rate",
+        name: 'success-rate',
         matches: () => true,
         response: {
           status: 503,
-          body: { error: "SUCCESS_RATE_GATE", message: "Probabilistic chaos gate failed" },
+          body: { error: 'SUCCESS_RATE_GATE', message: 'Probabilistic chaos gate failed' },
         },
       };
     }
     return faults.find((fault) => {
       if (!matchesFaultSelectors(fault.selectors, controls)) return false;
-      if (!hasScopes(request.actor, fault.requiredScopes ?? [])) return false;
+      if (!hasRequiredScopes(request.actor?.scopes, fault.requiredScopes ?? [])) return false;
       if (fault.headers !== undefined && !matchesHeaders(request.headers, fault.headers))
         return false;
       if (fault.requires?.some((guard) => !guard.check(faultContext))) return false;
@@ -1606,7 +1549,7 @@ export class RuntimeEngine {
         422,
         `Operation ${request.command.operationId ?? request.command.path} is not valid for the current entity state`,
         {
-          code: "INVALID_STATE_TRANSITION",
+          code: 'INVALID_STATE_TRANSITION',
           message: `Operation ${request.command.operationId ?? request.command.path} is not valid for the current entity state`,
         },
       );
@@ -1628,7 +1571,7 @@ export class RuntimeEngine {
         {
           status: historical === null ? 404 : 200,
           body: historical ?? {
-            code: "ENTITY_ABSENCE",
+            code: 'ENTITY_ABSENCE',
             message: `Entity '${request.command.targetId}' not found`,
           },
           headers: {},
@@ -1644,7 +1587,7 @@ export class RuntimeEngine {
           body: response.body ?? null,
           headers: {
             ...response.headers,
-            "X-Potemkin-Read-At-Version": String(request.controls.readAtVersion),
+            'X-Potemkin-Read-At-Version': String(request.controls.readAtVersion),
           },
           events: [],
           committed: false,
@@ -1663,7 +1606,7 @@ export class RuntimeEngine {
       helpers: this.helpersFor(request),
     });
     const allowsGraphFallback =
-      boundary.fallbackOverride === true && boundary.contractPath.includes("{");
+      boundary.fallbackOverride === true && boundary.contractPath.includes('{');
     let entries = [...this.state.entries()].filter(
       ([id]) =>
         (request.command.targetId === null || id === request.command.targetId) &&
@@ -1699,9 +1642,9 @@ export class RuntimeEngine {
     }
     const includeDeleted =
       policy?.includeDeleted === true ||
-      queryValue(request.command.queryParams.includeDeleted) === "true";
+      queryValue(request.command.queryParams.includeDeleted) === 'true';
     if (!includeDeleted) {
-      rows = rows.filter((row) => row["_deleted"] !== true);
+      rows = rows.filter((row) => row['_deleted'] !== true);
       entries = entries.filter(([, value]) => rows.includes(value));
     }
     for (const [name, raw] of Object.entries(request.command.queryParams)) {
@@ -1718,7 +1661,7 @@ export class RuntimeEngine {
     if (q !== undefined)
       rows = rows.filter((row) =>
         Object.values(row).some(
-          (value) => typeof value === "string" && value.toLowerCase().includes(q),
+          (value) => typeof value === 'string' && value.toLowerCase().includes(q),
         ),
       );
     entries = entries.filter(([, value]) => rows.includes(value));
@@ -1727,15 +1670,15 @@ export class RuntimeEngine {
     const sort = queryValue(request.command.queryParams.sort);
     if (sort !== undefined) {
       const sortItems = sort
-        .split(",")
+        .split(',')
         .map((item) => item.trim())
         .filter(Boolean);
       const keys = sortItems.map((item) => ({
-        field: item.startsWith("-") ? item.slice(1) : item,
-        direction: item.startsWith("-")
+        field: item.startsWith('-') ? item.slice(1) : item,
+        direction: item.startsWith('-')
           ? -1
           : sortItems.length === 1 &&
-              queryValue(request.command.queryParams.order)?.toLowerCase() === "desc"
+              queryValue(request.command.queryParams.order)?.toLowerCase() === 'desc'
             ? -1
             : 1,
       }));
@@ -1775,21 +1718,21 @@ export class RuntimeEngine {
             0,
             rows.findIndex(
               (row) =>
-                (typeof row.id === "string"
+                (typeof row.id === 'string'
                   ? row.id
                   : entries.find(([, value]) => value === row)?.[0]) === cursorId,
             ) + 1,
           );
     const totalCount = rows.length;
     const selected = rows.slice(start, start + pageSize);
-    const fields = (queryValue(request.command.queryParams.fields) ?? "")
-      .split(",")
+    const fields = (queryValue(request.command.queryParams.fields) ?? '')
+      .split(',')
       .map((item) => item.trim())
       .filter(Boolean);
     const includes = [
       ...(policy?.expand ?? []),
-      ...(queryValue(request.command.queryParams.include) ?? "")
-        .split(",")
+      ...(queryValue(request.command.queryParams.include) ?? '')
+        .split(',')
         .map((item) => item.trim())
         .filter(Boolean),
     ];
@@ -1800,7 +1743,7 @@ export class RuntimeEngine {
     const fallback = output.length === 0 ? policy?.fallback?.(queryContext({})) : undefined;
     const shouldEnvelope =
       request.command.targetId === null &&
-      (policy?.pagination === "envelope" || request.command.queryParams.limit !== undefined);
+      (policy?.pagination === 'envelope' || request.command.queryParams.limit !== undefined);
     const missingTarget =
       request.command.targetId !== null && output.length === 0 && fallback === undefined;
     const body =
@@ -1816,7 +1759,7 @@ export class RuntimeEngine {
               ...(!malformedCursor && start + output.length < totalCount && output.length > 0
                 ? {
                     nextCursor: encodeCursor(
-                      String(output.at(-1)?.id ?? entries[start + output.length - 1]?.[0] ?? ""),
+                      String(output.at(-1)?.id ?? entries[start + output.length - 1]?.[0] ?? ''),
                     ),
                   }
                 : {}),
@@ -1829,7 +1772,7 @@ export class RuntimeEngine {
       {
         status: missingTarget ? 404 : 200,
         body: missingTarget
-          ? { code: "ENTITY_ABSENCE", message: `Entity '${request.command.targetId}' not found` }
+          ? { code: 'ENTITY_ABSENCE', message: `Entity '${request.command.targetId}' not found` }
           : body,
         headers: {},
       },
@@ -1858,22 +1801,22 @@ export class RuntimeEngine {
   ): Promise<RuntimeExecutionResult> {
     const generation = this.resetGeneration;
     const existing = this.state.get(targetId);
-    if (request.command.intent === "mutation" && existing === undefined) {
+    if (request.command.intent === 'mutation' && existing === undefined) {
       throw new RuntimeExecutionError(
         404,
         `Entity '${targetId}' not found in boundary '${boundary.boundary}'`,
         {
-          code: "ENTITY_ABSENCE",
+          code: 'ENTITY_ABSENCE',
           message: `Entity '${targetId}' not found in boundary '${boundary.boundary}'`,
         },
       );
     }
-    if (request.command.intent === "creation" && existing !== undefined) {
+    if (request.command.intent === 'creation' && existing !== undefined) {
       throw new RuntimeExecutionError(
         409,
         `Entity '${targetId}' already exists in boundary '${boundary.boundary}'`,
         {
-          code: "ENTITY_CONFLICT",
+          code: 'ENTITY_CONFLICT',
           message: `Entity '${targetId}' already exists in boundary '${boundary.boundary}'`,
         },
       );
@@ -1884,17 +1827,17 @@ export class RuntimeEngine {
       this.program.dependencies.contract.requiresPrecondition?.(request.command.operationId) ===
         true;
     if (required && request.command.sequenceVersion === undefined)
-      throw new RuntimeExecutionError(428, "If-Match is required");
+      throw new RuntimeExecutionError(428, 'If-Match is required');
     if (
       request.command.sequenceVersion !== undefined &&
       request.command.sequenceVersion !== sequence
     ) {
       throw new RuntimeExecutionError(
         412,
-        "Sequence version does not match the current aggregate",
+        'Sequence version does not match the current aggregate',
         {
-          code: "CONCURRENCY_CONFLICT",
-          message: "Sequence version does not match the current aggregate",
+          code: 'CONCURRENCY_CONFLICT',
+          message: 'Sequence version does not match the current aggregate',
         },
       );
     }
@@ -1908,7 +1851,7 @@ export class RuntimeEngine {
     const command = request.command;
     const response = await this.runCommands([{ command, request }], boundary, tx, 0);
     if (response === undefined)
-      throw new RuntimeExecutionError(404, "No behavior matched the command");
+      throw new RuntimeExecutionError(404, 'No behavior matched the command');
     const commitContext: PostCommitContext = {
       command: request.command,
       request,
@@ -1919,7 +1862,7 @@ export class RuntimeEngine {
       committedEvents: tx.events,
       response: { status: response.status, body: response.body, headers: response.headers ?? {} },
     };
-    await this.runLifecycle("commit", commitContext);
+    await this.runLifecycle('commit', commitContext);
     const committedEvents = tx.events.map((event) => ({
       ...event,
       response: { status: response.status, body: response.body, headers: response.headers ?? {} },
@@ -1962,18 +1905,18 @@ export class RuntimeEngine {
   ): Promise<RuntimeExecutionResult | undefined> {
     const maxDepth = pending[0]?.request.controls?.maxCascadeDepth ?? MAX_DEPTH;
     if (depth > maxDepth)
-      throw new RuntimeExecutionError(508, "Cascade depth exceeded", {
-        code: "INFINITE_LOOP",
-        message: "Cascade depth exceeded",
+      throw new RuntimeExecutionError(508, 'Cascade depth exceeded', {
+        code: 'INFINITE_LOOP',
+        message: 'Cascade depth exceeded',
       });
     let firstResponse: RuntimeExecutionResult | undefined;
     const queue = [...pending];
     while (queue.length > 0) {
       const item = queue.shift()!;
       if (item.command.depth > maxDepth) {
-        throw new RuntimeExecutionError(508, "Cascade depth exceeded", {
-          code: "INFINITE_LOOP",
-          message: "Cascade depth exceeded",
+        throw new RuntimeExecutionError(508, 'Cascade depth exceeded', {
+          code: 'INFINITE_LOOP',
+          message: 'Cascade depth exceeded',
         });
       }
       const boundary = this.program.byBoundaryName.get(item.command.boundary);
@@ -1989,19 +1932,19 @@ export class RuntimeEngine {
         helpers: this.helpersFor(item.request),
       };
       if (item.command.targetId !== null) {
-        if (item.command.intent === "mutation" && currentState === null) {
+        if (item.command.intent === 'mutation' && currentState === null) {
           throw new RuntimeExecutionError(
             404,
             `Entity '${item.command.targetId}' not found in boundary '${boundary.boundary}'`,
-            { code: "ENTITY_ABSENCE", message: `Entity '${item.command.targetId}' not found` },
+            { code: 'ENTITY_ABSENCE', message: `Entity '${item.command.targetId}' not found` },
           );
         }
-        if (item.command.intent === "creation" && currentState !== null) {
+        if (item.command.intent === 'creation' && currentState !== null) {
           throw new RuntimeExecutionError(
             409,
             `Entity '${item.command.targetId}' already exists in boundary '${boundary.boundary}'`,
             {
-              code: "ENTITY_CONFLICT",
+              code: 'ENTITY_CONFLICT',
               message: `Entity '${item.command.targetId}' already exists`,
             },
           );
@@ -2011,9 +1954,9 @@ export class RuntimeEngine {
       if (behavior === undefined) {
         if (boundary.fallbackOverride === true) {
           const fallbackBehavior: RuntimeBehavior = {
-            name: "fallback",
-            operationId: item.command.operationId ?? "fallback",
-            emit: "System.GenericUpdateEvent",
+            name: 'fallback',
+            operationId: item.command.operationId ?? 'fallback',
+            emit: 'System.GenericUpdateEvent',
           };
           const event = this.createEvent(boundary, fallbackBehavior.emit!, context, tx);
           this.applyEvent(boundary, event, item, tx);
@@ -2029,7 +1972,7 @@ export class RuntimeEngine {
             };
           continue;
         }
-        if (item.command.origin === "inbound") {
+        if (item.command.origin === 'inbound') {
           // A routed boundary with declared behavior is implemented, even if
           // this particular operation has no matching behavior (for example a
           // WidgetById boundary that only implements PATCH while the contract
@@ -2042,7 +1985,7 @@ export class RuntimeEngine {
               ? `Operation ${item.command.operationId ?? item.command.path} is not valid for the current entity state`
               : `No behavior matched ${item.command.operationId ?? item.command.path}`,
             {
-              code: operationDeclared ? "INVALID_STATE_TRANSITION" : "NO_BEHAVIOR",
+              code: operationDeclared ? 'INVALID_STATE_TRANSITION' : 'NO_BEHAVIOR',
               message: operationDeclared
                 ? `Operation ${item.command.operationId ?? item.command.path} is not valid for the current entity state`
                 : `No behavior matched ${item.command.operationId ?? item.command.path}`,
@@ -2096,10 +2039,10 @@ export class RuntimeEngine {
                 operationId: secondary.operationId,
                 targetId,
                 payload: asObject(payload),
-                origin: "secondary",
+                origin: 'secondary',
                 depth: item.command.depth + 1,
                 path: secondaryPath,
-                httpMethod: secondary.intent === "creation" ? "POST" : "PUT",
+                httpMethod: secondary.intent === 'creation' ? 'POST' : 'PUT',
               }),
             },
             command: commandWith(item.command, {
@@ -2108,10 +2051,10 @@ export class RuntimeEngine {
               operationId: secondary.operationId,
               targetId,
               payload: asObject(payload),
-              origin: "secondary",
+              origin: 'secondary',
               depth: item.command.depth + 1,
               path: secondaryPath,
-              httpMethod: secondary.intent === "creation" ? "POST" : "PUT",
+              httpMethod: secondary.intent === 'creation' ? 'POST' : 'PUT',
             }),
           });
         }
@@ -2127,7 +2070,7 @@ export class RuntimeEngine {
               item.command.operationId ?? behavior.operationId,
               item.command.intent,
             ) ??
-            (item.command.intent === "creation" ? 201 : 200),
+            (item.command.intent === 'creation' ? 201 : 200),
           body: state ?? (emitted.length > 0 ? (tx.events.at(-1)?.payload ?? null) : null),
           headers: {},
         },
@@ -2147,7 +2090,7 @@ export class RuntimeEngine {
         payload: item.command.payload,
       };
       if (behavior.postcondition !== undefined && !behavior.postcondition(postContext))
-        throw new RuntimeExecutionError(422, "Behavior postcondition failed");
+        throw new RuntimeExecutionError(422, 'Behavior postcondition failed');
       if (firstResponse === undefined)
         firstResponse = {
           status: result.status ?? 200,
@@ -2166,32 +2109,12 @@ export class RuntimeEngine {
     request: RuntimeRequest,
     context: MatchContext,
   ): RuntimeBehavior | undefined {
-    return boundary.behaviors.find((behavior) => {
-      if (behavior.operationId !== request.command.operationId) return false;
-      if (
-        request.command.origin === "inbound" &&
-        behavior.method !== undefined &&
-        behavior.method.toUpperCase() !== request.command.httpMethod.toUpperCase()
-      )
-        return false;
-      if (behavior.headers !== undefined && !matchesHeaders(request.headers, behavior.headers))
-        return false;
-      try {
-        if (!(behavior.condition?.(context) ?? true)) return false;
-        // Prefer a branch that can emit, but retain a behavior whose guard is
-        // already failing so the caller receives the authored guard error
-        // instead of a generic invalid-transition response. This also lets a
-        // more specific sibling handle internal messages whose emit_when
-        // branches intentionally do not match.
-        if (
-          behavior.emitWhen === undefined ||
-          behavior.emitWhen.some((entry) => entry.when(context))
-        )
-          return true;
-        return behavior.requires?.some((guard) => !guard.check(context)) ?? false;
-      } catch {
-        return false;
-      }
+    return selectBehavior(boundary.behaviors, {
+      operationId: request.command.operationId,
+      method: request.command.httpMethod,
+      inbound: request.command.origin === 'inbound',
+      headers: request.headers,
+      context,
     });
   }
 
@@ -2200,25 +2123,30 @@ export class RuntimeEngine {
     behavior: RuntimeBehavior,
     context: MatchContext,
   ): void {
-    const authorized = this.program.policies.auth?.authorize?.(
+    const policyDecision = this.program.policies.auth?.authorize?.(
       context,
       behavior.requiredScopes ?? [],
     );
-    if ((behavior.requiredScopes?.length ?? 0) > 0 && request.actor === undefined) {
+    const decision = authorize(
+      request.actor?.scopes,
+      behavior.requiredScopes ?? [],
+      policyDecision,
+    );
+    if (!decision.allowed && decision.reason === 'authentication-required') {
       throw new RuntimeExecutionError(
         401,
-        "Authentication is required for this operation",
+        'Authentication is required for this operation',
         {
-          code: "AUTHENTICATION_REQUIRED",
-          message: "Authentication is required for this operation",
+          code: 'AUTHENTICATION_REQUIRED',
+          message: 'Authentication is required for this operation',
         },
-        { "WWW-Authenticate": "Bearer" },
+        { 'WWW-Authenticate': 'Bearer' },
       );
     }
-    if (!hasScopes(request.actor, behavior.requiredScopes ?? []) || authorized === false) {
-      throw new RuntimeExecutionError(403, "The actor is not authorized for this operation", {
-        code: "AUTHORIZATION_DENIED",
-        message: "The actor is not authorized for this operation",
+    if (!decision.allowed) {
+      throw new RuntimeExecutionError(403, 'The actor is not authorized for this operation', {
+        code: 'AUTHORIZATION_DENIED',
+        message: 'The actor is not authorized for this operation',
       });
     }
   }
@@ -2242,7 +2170,7 @@ export class RuntimeEngine {
     sourceEvent?: DomainEvent,
   ): DomainEvent {
     const catalog = boundary.eventCatalog.find((event) => event.type === type);
-    if (catalog === undefined && type !== "System.GenericUpdateEvent")
+    if (catalog === undefined && type !== 'System.GenericUpdateEvent')
       throw new RuntimeExecutionError(500, `Event ${type} is not declared by ${boundary.boundary}`);
     const aggregateId = context.command.targetId ?? context.helpers.uuid();
     const provisional: DomainEvent = {
@@ -2300,13 +2228,13 @@ export class RuntimeEngine {
     const reducers = boundary.reducers.filter((candidate) => candidate.on === event.type);
     const existing = tx.states.get(event.aggregateId) ?? {};
     let next =
-      event.type === "BaselineEntityCreatedEvent"
+      event.type === 'BaselineEntityCreatedEvent'
         ? clone(event.payload)
         : reducers.some((reducer) => reducer.replaceState === true)
           ? clone(event.payload)
           : existing;
-    if (event.type === "System.GenericUpdateEvent") next = { ...existing, ...clone(event.payload) };
-    if (event.type !== "BaselineEntityCreatedEvent") {
+    if (event.type === 'System.GenericUpdateEvent') next = { ...existing, ...clone(event.payload) };
+    if (event.type !== 'BaselineEntityCreatedEvent') {
       for (const reducer of reducers) {
         const reducerContext: RuntimeReducerContext = {
           boundary: boundary.boundary,
@@ -2319,7 +2247,7 @@ export class RuntimeEngine {
           next = asObject(clone(reducer.reduce(reducerContext)));
         } else if (reducer.apply !== undefined) {
           next = asObject(
-            applyPatches(next, reducer.apply(reducerContext), "reducer", { autoVivify: true })
+            applyPatches(next, reducer.apply(reducerContext), 'reducer', { autoVivify: true })
               .newState,
           );
         }
@@ -2336,7 +2264,7 @@ export class RuntimeEngine {
       });
       next[field.name] = value;
     }
-    if (boundary.auditFields === true && event.type !== "BaselineEntityCreatedEvent") {
+    if (boundary.auditFields === true && event.type !== 'BaselineEntityCreatedEvent') {
       next.updatedAt = event.timestamp;
       next.updatedBy = event.request?.actorId ?? null;
     }
@@ -2363,7 +2291,7 @@ export class RuntimeEngine {
       .sort((left, right) => left.boundary.localeCompare(right.boundary));
     for (const reaction of matching) {
       if (tx.reactionEvents >= MAX_REACTION_EVENTS)
-        throw new RuntimeExecutionError(508, "Reaction event budget exceeded");
+        throw new RuntimeExecutionError(508, 'Reaction event budget exceeded');
       const postContext: PostCommitContext = {
         command: source.command,
         request: source.request,
@@ -2377,10 +2305,10 @@ export class RuntimeEngine {
       const reactingBoundary = this.program.byBoundaryName.get(reaction.boundary);
       if (reactingBoundary === undefined)
         throw new RuntimeExecutionError(500, `Unknown reaction boundary ${reaction.boundary}`);
-      const intent = reaction.intent ?? "mutation";
+      const intent = reaction.intent ?? 'mutation';
       const target =
         reaction.target === undefined
-          ? intent === "creation"
+          ? intent === 'creation'
             ? (reactingBoundary.identity?.generate?.({
                 ...postContext,
                 boundary: reactingBoundary.boundary,
@@ -2392,24 +2320,24 @@ export class RuntimeEngine {
                 );
               })()
           : resolveValue(reaction.target, postContext);
-      if (target === null || target === "")
+      if (target === null || target === '')
         throw new RuntimeExecutionError(
           500,
           `Reaction ${reaction.name ?? reaction.on} did not resolve a target`,
         );
       const targetState = tx.states.get(target);
-      if (intent === "mutation" && targetState === undefined) {
+      if (intent === 'mutation' && targetState === undefined) {
         throw new RuntimeExecutionError(
           404,
           `Reaction ${reaction.name ?? reaction.on} target '${target}' does not exist`,
-          { code: "ENTITY_ABSENCE", message: `Reaction target '${target}' does not exist` },
+          { code: 'ENTITY_ABSENCE', message: `Reaction target '${target}' does not exist` },
         );
       }
-      if (intent === "creation" && targetState !== undefined) {
+      if (intent === 'creation' && targetState !== undefined) {
         throw new RuntimeExecutionError(
           409,
           `Reaction ${reaction.name ?? reaction.on} target '${target}' already exists`,
-          { code: "ENTITY_CONFLICT", message: `Reaction target '${target}' already exists` },
+          { code: 'ENTITY_CONFLICT', message: `Reaction target '${target}' already exists` },
         );
       }
       const key = `${reactingBoundary.boundary}:${reaction.on}:${reaction.emit}:${target}`;
@@ -2429,10 +2357,10 @@ export class RuntimeEngine {
         targetId: target,
         payload: asObject(payload),
         queryParams: {},
-        httpMethod: intent === "creation" ? "POST" : "PUT",
-        path: "",
+        httpMethod: intent === 'creation' ? 'POST' : 'PUT',
+        path: '',
         operationId: reaction.emit,
-        origin: "secondary",
+        origin: 'secondary',
         depth: source.command.depth,
         actor: source.request.actor,
       };
@@ -2440,7 +2368,7 @@ export class RuntimeEngine {
       const reactionContext: MatchContext = {
         command,
         request: reactionPending.request,
-        state: tx.states.get(target ?? "") ?? null,
+        state: tx.states.get(target ?? '') ?? null,
         payload: asObject(payload),
         helpers: postContext.helpers,
       };
@@ -2481,7 +2409,7 @@ export class RuntimeEngine {
       response: { status: response.status, body: response.body, headers: response.headers ?? {} },
       committedEvents: events,
     };
-    await this.runLifecycle("postCommit", context);
+    await this.runLifecycle('postCommit', context);
     if (request.sideEffects?.skipProjections !== true) await this.runProjections(events, context);
     if (request.sideEffects?.skipWebhooks !== true) await this.runWebhooks(events, context);
     if (request.sideEffects?.skipSagas !== true && this.program.policies.sagas !== undefined)
@@ -2514,7 +2442,7 @@ export class RuntimeEngine {
                 }),
               ) ?? null,
           };
-          await this.runLifecycle("projection", context);
+          await this.runLifecycle('projection', context);
           const key = resolveValue(projection.key, context);
           const current = stateMap.get(key) ?? {};
           const reducers = projection.reduce.filter(
@@ -2535,28 +2463,28 @@ export class RuntimeEngine {
               next = asObject(clone(reducer.reduce(reducerContext)));
             } else if (reducer.apply !== undefined) {
               next = asObject(
-                applyPatches(next, reducer.apply(reducerContext), "projection", {
+                applyPatches(next, reducer.apply(reducerContext), 'projection', {
                   autoVivify: true,
                 }).newState,
               );
             }
           }
           stateMap.set(key, next);
-          this.writeLog(source.request, "debug", "Runtime derived projection applied", {
+          this.writeLog(source.request, 'debug', 'Runtime derived projection applied', {
             projection: projection.name,
             eventType: event.type,
             key,
           });
-          this.writeMetric(source.request, "runtime.projections.applied", 1, {
+          this.writeMetric(source.request, 'runtime.projections.applied', 1, {
             projection: projection.name,
           });
         } catch (error) {
-          this.writeLog(source.request, "warn", "Runtime derived projection failed", {
+          this.writeLog(source.request, 'warn', 'Runtime derived projection failed', {
             projection: projection.name,
             eventType: event.type,
             error: String(error),
           });
-          this.writeMetric(source.request, "runtime.projections.failed", 1, {
+          this.writeMetric(source.request, 'runtime.projections.failed', 1, {
             projection: projection.name,
           });
         }
@@ -2587,10 +2515,10 @@ export class RuntimeEngine {
           ]),
         );
         const body = JSON.stringify(payload);
-        const headers: Record<string, string> = { "content-type": "application/json" };
+        const headers: Record<string, string> = { 'content-type': 'application/json' };
         if (webhook.secret !== undefined)
-          headers["x-potemkin-signature"] =
-            `sha256=${createHmac("sha256", webhook.secret).update(body).digest("hex")}`;
+          headers['x-potemkin-signature'] =
+            `sha256=${createHmac('sha256', webhook.secret).update(body).digest('hex')}`;
         const attempts = Math.max(1, webhook.retry?.maxAttempts ?? 3);
         let delivered = false;
         let lastError: unknown;
@@ -2606,16 +2534,16 @@ export class RuntimeEngine {
           }
         }
         if (!delivered) {
-          this.writeLog(source.request, "warn", `Webhook ${webhook.name} delivery failed`, {
+          this.writeLog(source.request, 'warn', `Webhook ${webhook.name} delivery failed`, {
             error: String(lastError),
             eventId: event.eventId,
             attempts,
           });
-          this.writeMetric(source.request, "runtime.webhooks.failed", 1, {
+          this.writeMetric(source.request, 'runtime.webhooks.failed', 1, {
             webhook: webhook.name,
           });
         } else {
-          this.writeMetric(source.request, "runtime.webhooks.delivered", 1, {
+          this.writeMetric(source.request, 'runtime.webhooks.delivered', 1, {
             webhook: webhook.name,
           });
         }
@@ -2634,7 +2562,7 @@ export class RuntimeEngine {
         (event) =>
           event.boundary === saga.trigger.boundary &&
           (event.intent ??
-            (event.boundary === request.command.boundary ? request.command.intent : "mutation")) ===
+            (event.boundary === request.command.boundary ? request.command.intent : 'mutation')) ===
             saga.trigger.intent,
       );
       if (trigger === undefined) continue;
@@ -2658,7 +2586,7 @@ export class RuntimeEngine {
       if (saga.trigger.condition !== undefined && !saga.trigger.condition(sagaContext())) continue;
       this.appendSagaEvent(
         sagaInstanceId,
-        "SagaStarted",
+        'SagaStarted',
         { saga: saga.name, sagaName: saga.name, triggerEventId: trigger.eventId },
         source.helpers,
       );
@@ -2688,10 +2616,10 @@ export class RuntimeEngine {
             operationId: step.operationId,
             targetId: target,
             payload: asObject(payload),
-            origin: "secondary",
+            origin: 'secondary',
             depth: request.command.depth + 1,
             path: stepPath,
-            httpMethod: step.intent === "creation" ? "POST" : "PUT",
+            httpMethod: step.intent === 'creation' ? 'POST' : 'PUT',
           };
           const result = await this.executeUnlocked({
             ...request,
@@ -2703,7 +2631,7 @@ export class RuntimeEngine {
           completed.push({ step, index: stepIndex, target });
           this.appendSagaEvent(
             sagaInstanceId,
-            "SagaStepCompleted",
+            'SagaStepCompleted',
             {
               saga: saga.name,
               step: step.name,
@@ -2716,17 +2644,17 @@ export class RuntimeEngine {
         }
         this.appendSagaEvent(
           sagaInstanceId,
-          "SagaCompleted",
+          'SagaCompleted',
           { saga: saga.name, steps: Object.keys(steps) },
           source.helpers,
         );
       } catch (error) {
         this.appendSagaEvent(
           sagaInstanceId,
-          "SagaStepFailed",
+          'SagaStepFailed',
           {
             saga: saga.name,
-            stepName: saga.steps[activeStepIndex]?.name ?? "",
+            stepName: saga.steps[activeStepIndex]?.name ?? '',
             stepIndex: activeStepIndex,
             completed: completed.map((entry) => entry.step.name),
             error: String(error),
@@ -2762,10 +2690,10 @@ export class RuntimeEngine {
             operationId: compensation.operationId,
             targetId: target,
             payload: asObject(payload),
-            origin: "secondary",
+            origin: 'secondary',
             depth: request.command.depth + 1,
             path: compensationPath,
-            httpMethod: compensation.intent === "creation" ? "POST" : "PUT",
+            httpMethod: compensation.intent === 'creation' ? 'POST' : 'PUT',
           };
           try {
             await this.executeUnlocked({
@@ -2775,7 +2703,7 @@ export class RuntimeEngine {
             });
             this.appendSagaEvent(
               sagaInstanceId,
-              "SagaCompensated",
+              'SagaCompensated',
               {
                 saga: saga.name,
                 step: step.name,
@@ -2787,7 +2715,7 @@ export class RuntimeEngine {
           } catch (compensationError) {
             this.appendSagaEvent(
               sagaInstanceId,
-              "SagaCompensationFailed",
+              'SagaCompensationFailed',
               { saga: saga.name, step: step.name, error: String(compensationError) },
               source.helpers,
             );
@@ -2795,7 +2723,7 @@ export class RuntimeEngine {
         }
         this.appendSagaEvent(
           sagaInstanceId,
-          "SagaFailed",
+          'SagaFailed',
           {
             saga: saga.name,
             sagaName: saga.name,
@@ -2804,7 +2732,7 @@ export class RuntimeEngine {
           },
           source.helpers,
         );
-        this.writeLog(request, "error", `Saga ${saga.name} failed`, {
+        this.writeLog(request, 'error', `Saga ${saga.name} failed`, {
           error: String(error),
         });
       }
@@ -2820,14 +2748,14 @@ export class RuntimeEngine {
     this.events.append([
       {
         eventId: helpers.uuid(),
-        boundary: "__saga__",
+        boundary: '__saga__',
         aggregateId,
         type,
         payload,
         timestamp: helpers.now(),
         sequenceVersion: this.events.currentSequenceVersion(aggregateId) + 1,
         causedBy: null,
-        intent: "mutation",
+        intent: 'mutation',
       },
     ]);
   }
@@ -2843,21 +2771,21 @@ export class RuntimeEngine {
       !policy?.enabled ||
       request.command.queryParams.fields !== undefined ||
       body === null ||
-      typeof body !== "object"
+      typeof body !== 'object'
     )
       return body;
 
-    const entityPathTemplate = boundary.contractPath.includes("{id}")
+    const entityPathTemplate = boundary.contractPath.includes('{id}')
       ? boundary.contractPath
       : this.program.boundaries.find(
           (candidate) => candidate.contractPath === `${boundary.contractPath}/{id}`,
         )?.contractPath;
     const baseUrl =
-      policy.baseUrl?.endsWith("/") === true ? policy.baseUrl.slice(0, -1) : (policy.baseUrl ?? "");
+      policy.baseUrl?.endsWith('/') === true ? policy.baseUrl.slice(0, -1) : (policy.baseUrl ?? '');
     const attach = (value: JsonValue): JsonValue => {
-      if (value === null || typeof value !== "object" || Array.isArray(value)) return value;
+      if (value === null || typeof value !== 'object' || Array.isArray(value)) return value;
       const entity = value as JsonObject;
-      const id = typeof entity.id === "string" && entity.id.length > 0 ? entity.id : undefined;
+      const id = typeof entity.id === 'string' && entity.id.length > 0 ? entity.id : undefined;
       if (id === undefined || entityPathTemplate === undefined) return value;
       const expand = (path: string): string =>
         `${baseUrl}${path.replace(/\{id\}/g, encodeURIComponent(id))}`;
@@ -2865,9 +2793,9 @@ export class RuntimeEngine {
         policy.selfLinks === false
           ? {}
           : {
-              self: { href: expand(entityPathTemplate), method: "GET" },
+              self: { href: expand(entityPathTemplate), method: 'GET' },
             };
-      const prefix = entityPathTemplate.endsWith("/")
+      const prefix = entityPathTemplate.endsWith('/')
         ? entityPathTemplate
         : `${entityPathTemplate}/`;
       for (const candidate of this.program.boundaries) {
@@ -2885,7 +2813,7 @@ export class RuntimeEngine {
           }
           links[behavior.linkName] = {
             href: expand(candidate.contractPath),
-            method: behavior.method ?? "GET",
+            method: behavior.method ?? 'GET',
           };
           break;
         }
@@ -2974,7 +2902,7 @@ export class RuntimeEngine {
         headers: {
           ...current.headers,
           Deprecation:
-            deprecationDate === undefined || isEpochSentinel ? "true" : httpDate(deprecationDate),
+            deprecationDate === undefined || isEpochSentinel ? 'true' : httpDate(deprecationDate),
           ...(deprecation.sunset ? { Sunset: httpDate(deprecation.sunset) } : {}),
           ...(deprecation.replacement
             ? { Link: `<${deprecation.replacement}>; rel="successor-version"` }
@@ -3000,16 +2928,16 @@ export class RuntimeEngine {
             ETag: `"${sequence}"`,
             ...(lastEvent?.timestamp === undefined
               ? {}
-              : { "Last-Modified": new Date(lastEvent.timestamp).toUTCString() }),
+              : { 'Last-Modified': new Date(lastEvent.timestamp).toUTCString() }),
           },
         };
-        if (request.command.intent === "query") {
-          const ifNoneMatch = headerValue(request.headers, "if-none-match");
-          const ifModifiedSince = headerValue(request.headers, "if-modified-since");
+        if (request.command.intent === 'query') {
+          const ifNoneMatch = headerValue(request.headers, 'if-none-match');
+          const ifModifiedSince = headerValue(request.headers, 'if-modified-since');
           const notModifiedByTag =
-            ifNoneMatch === "*" ||
-            ifNoneMatch?.split(",").some((candidate) => {
-              const normalized = candidate.trim().replace(/^W\//, "");
+            ifNoneMatch === '*' ||
+            ifNoneMatch?.split(',').some((candidate) => {
+              const normalized = candidate.trim().replace(/^W\//, '');
               return normalized === `"${sequence}"` || normalized === String(sequence);
             }) === true;
           const notModifiedByDate =
@@ -3035,7 +2963,7 @@ export class RuntimeEngine {
       if (shaped !== undefined) current = { ...current, body: shaped };
     }
     const sparseFieldset =
-      request.command.intent === "query" && request.command.queryParams.fields !== undefined;
+      request.command.intent === 'query' && request.command.queryParams.fields !== undefined;
     if (
       request.command.operationId !== undefined &&
       current.body !== null &&
@@ -3069,7 +2997,7 @@ export class RuntimeEngine {
       supportsHateoas &&
       policy?.hateoas !== undefined &&
       current.body !== null &&
-      typeof current.body === "object" &&
+      typeof current.body === 'object' &&
       !Array.isArray(current.body)
     ) {
       const links = Object.fromEntries(
@@ -3084,7 +3012,7 @@ export class RuntimeEngine {
       behavior?.linkName !== undefined &&
       (behavior.linkCondition?.(context) ?? true) &&
       current.body !== null &&
-      typeof current.body === "object" &&
+      typeof current.body === 'object' &&
       !Array.isArray(current.body)
     ) {
       const existing = (current.body as JsonObject)._links;
@@ -3093,7 +3021,7 @@ export class RuntimeEngine {
         body: {
           ...(current.body as JsonObject),
           _links: {
-            ...(existing && typeof existing === "object" && !Array.isArray(existing)
+            ...(existing && typeof existing === 'object' && !Array.isArray(existing)
               ? existing
               : {}),
             [behavior.linkName]: {
@@ -3104,7 +3032,7 @@ export class RuntimeEngine {
         },
       };
     }
-    if (supportsHateoas && request.command.intent === "query") {
+    if (supportsHateoas && request.command.intent === 'query') {
       current = { ...current, body: this.applyGlobalHateoas(current.body, boundary, request) };
     }
     await this.delayForResponse(boundary, request);
@@ -3135,7 +3063,7 @@ export class RuntimeEngine {
           ),
           headers: {
             ...current.headers,
-            "X-Potemkin-Response-Format": request.controls.responseFormat,
+            'X-Potemkin-Response-Format': request.controls.responseFormat,
           },
         };
       }
@@ -3151,11 +3079,11 @@ export class RuntimeEngine {
   ): RuntimeExecutionResult {
     const carrier = { headers: { ...result.headers } };
     addSecurityHeaders(carrier, this.program.policies.securityHeaders);
-    if (request.controls?.dryRun === true) carrier.headers["X-Potemkin-Dry-Run"] = "true";
+    if (request.controls?.dryRun === true) carrier.headers['X-Potemkin-Dry-Run'] = 'true';
     if (request.controls?.traceId !== undefined)
-      carrier.headers["X-Potemkin-Trace-Id"] = request.controls.traceId;
+      carrier.headers['X-Potemkin-Trace-Id'] = request.controls.traceId;
     if (request.controls?.spanName !== undefined)
-      carrier.headers["X-Potemkin-Span-Name"] = request.controls.spanName;
+      carrier.headers['X-Potemkin-Span-Name'] = request.controls.spanName;
     let body =
       result.status >= 200 && result.status < 300
         ? applyDebugEnvelope(result.body, request, boundary, events)
@@ -3216,24 +3144,24 @@ export class RuntimeEngine {
   }
 
   private nextSequence(aggregateId: string, tx: Transaction): number {
-    return (
-      this.events.currentSequenceVersion(aggregateId) +
-      tx.events.filter((event) => event.aggregateId === aggregateId).length +
-      1
+    return nextSequenceVersion(
+      this.events.currentSequenceVersion(aggregateId),
+      tx.events,
+      aggregateId,
     );
   }
 
   private idempotencyKey(request: RuntimeRequest): string | undefined {
     if (this.program.policies.idempotency?.enabled !== true) return undefined;
-    if (request.command.intent === "query" && request.controls?.replayEvent === undefined)
+    if (request.command.intent === 'query' && request.controls?.replayEvent === undefined)
       return undefined;
-    const key = headerValue(request.headers, "idempotency-key");
+    const key = headerValue(request.headers, 'idempotency-key');
     if (key === undefined) return undefined;
-    return `${request.actor?.id ?? "anonymous"}:${request.command.boundary}:${request.command.operationId ?? request.command.path}:${key}`;
+    return `${request.actor?.id ?? 'anonymous'}:${request.command.boundary}:${request.command.operationId ?? request.command.path}:${key}`;
   }
 
   private idempotencyFingerprint(request: RuntimeRequest): string {
-    return `${request.command.httpMethod.toUpperCase()}:${request.command.path}:${request.controls?.replayEvent ?? ""}:${serialise(request.command.payload)}`;
+    return `${request.command.httpMethod.toUpperCase()}:${request.command.path}:${request.controls?.replayEvent ?? ''}:${serialise(request.command.payload)}`;
   }
 
   private cachedIdempotency(key: string, request?: RuntimeRequest): ExecutionResult | undefined {
@@ -3277,10 +3205,10 @@ export class RuntimeEngine {
     if (previous !== this.idempotencyFingerprint(request)) {
       throw new RuntimeExecutionError(
         409,
-        "The idempotency key was reused with a different request",
+        'The idempotency key was reused with a different request',
         {
-          code: "IDEMPOTENCY_KEY_CONFLICT",
-          message: "The idempotency key was reused with a different request",
+          code: 'IDEMPOTENCY_KEY_CONFLICT',
+          message: 'The idempotency key was reused with a different request',
         },
       );
     }

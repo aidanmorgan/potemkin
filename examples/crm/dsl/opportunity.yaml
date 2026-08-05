@@ -7,114 +7,114 @@ export:
       steps:
         - operationId: createOpportunity
           body:
-            leadId: "00000000-0000-7000-8000-000000000010"
-            agentId: "00000000-0000-7000-8000-000000000003"
-            campaignId: "00000000-0000-7000-8000-000000000001"
+            leadId: '00000000-0000-7000-8000-000000000010'
+            agentId: '00000000-0000-7000-8000-000000000003'
+            campaignId: '00000000-0000-7000-8000-000000000001'
             value: 25000
             probability: 80
-            expectedCloseDate: "2030-12-31"
+            expectedCloseDate: '2030-12-31'
         - operationId: advanceOpportunity
           body:
             probability: 90
         - operationId: closeOpportunity
           body:
             outcome: WON
-            closureReason: "Customer accepted the proposal"
+            closureReason: 'Customer accepted the proposal'
     - name: LOST
       steps:
         - operationId: createOpportunity
           body:
-            leadId: "00000000-0000-7000-8000-000000000011"
-            agentId: "00000000-0000-7000-8000-000000000004"
-            campaignId: "00000000-0000-7000-8000-000000000002"
+            leadId: '00000000-0000-7000-8000-000000000011'
+            agentId: '00000000-0000-7000-8000-000000000004'
+            campaignId: '00000000-0000-7000-8000-000000000002'
             value: 12000
             probability: 35
-            expectedCloseDate: "2030-11-30"
+            expectedCloseDate: '2030-11-30'
         - operationId: closeOpportunity
           body:
             outcome: LOST
-            closureReason: "Budget was not approved"
+            closureReason: 'Budget was not approved'
     - name: LeadConversionSaga
       saga: LeadConversionSaga
       steps:
         - operationId: createLead
           body:
-            companyName: "Export Saga Company"
-            contactName: "Export Contact"
-            phone: "+61 400 000 010"
-            email: "export-saga@example.com"
+            companyName: 'Export Saga Company'
+            contactName: 'Export Contact'
+            phone: '+61 400 000 010'
+            email: 'export-saga@example.com'
             source: WEBSITE
-            assignedAgentId: "00000000-0000-7000-8000-000000000003"
-            assignedCampaignId: "00000000-0000-7000-8000-000000000001"
+            assignedAgentId: '00000000-0000-7000-8000-000000000003'
+            assignedCampaignId: '00000000-0000-7000-8000-000000000001'
         - operationId: logCall
           body:
-            leadId: "$targetId"
-            agentId: "00000000-0000-7000-8000-000000000003"
-            campaignId: "00000000-0000-7000-8000-000000000001"
+            leadId: '$targetId'
+            agentId: '00000000-0000-7000-8000-000000000003'
+            campaignId: '00000000-0000-7000-8000-000000000001'
             outcome: INTERESTED
             durationSeconds: 120
         - operationId: contactLead
           body:
-            notes: "Exported saga contact"
+            notes: 'Exported saga contact'
         - operationId: qualifyLead
           body: {}
         - operationId: convertLead
           body:
             value: 30000
             probability: 75
-            expectedCloseDate: "2031-01-15"
+            expectedCloseDate: '2031-01-15'
 identity:
   creation:
     generate: $uuidv7()
 query_mapping:
-  stage: "state.stage == param"
-  agentId: "state.agentId == param"
-  campaignId: "state.campaignId == param"
+  stage: 'state.stage == param'
+  agentId: 'state.agentId == param'
+  campaignId: 'state.campaignId == param'
 
 event_catalog:
   - type: OpportunityCreated
     payload_template:
-      id: "command.targetId"
-      leadId: "command.payload.leadId"
-      agentId: "coalesce(command.payload.agentId, null)"
-      campaignId: "coalesce(command.payload.campaignId, null)"
-      value: "command.payload.value"
-      probability: "coalesce(command.payload.probability, 50)"
-      expectedCloseDate: "coalesce(command.payload.expectedCloseDate, null)"
+      id: 'command.targetId'
+      leadId: 'command.payload.leadId'
+      agentId: 'coalesce(command.payload.agentId, null)'
+      campaignId: 'coalesce(command.payload.campaignId, null)'
+      value: 'command.payload.value'
+      probability: 'coalesce(command.payload.probability, 50)'
+      expectedCloseDate: 'coalesce(command.payload.expectedCloseDate, null)'
 
   - type: OpportunityAdvanced
     payload_template:
       newStage: "state.stage == 'PROPOSED' ? 'NEGOTIATING' : 'NEGOTIATING'"
-      probability: "command.payload.probability"
-      advancedAt: "$now()"
+      probability: 'command.payload.probability'
+      advancedAt: '$now()'
 
   # schema_ref on OpportunityWon event
   - type: OpportunityWon
-    schema_ref: "#/components/schemas/OpportunityWon"
+    schema_ref: '#/components/schemas/OpportunityWon'
     payload_template:
-      id: "command.targetId"
-      leadId: "state.leadId"
-      agentId: "state.agentId"
-      campaignId: "state.campaignId"
-      value: "state.value"
-      closedAt: "$now()"
+      id: 'command.targetId'
+      leadId: 'state.leadId'
+      agentId: 'state.agentId'
+      campaignId: 'state.campaignId'
+      value: 'state.value'
+      closedAt: '$now()'
 
   - type: OpportunityLost
     payload_template:
-      closureReason: "command.payload.closureReason"
-      closedAt: "$now()"
+      closureReason: 'command.payload.closureReason'
+      closedAt: '$now()'
 
 behaviors:
   # Create opportunity (called via saga from lead conversion)
   - name: createOpportunity
     match:
       operationId: createOpportunity
-      condition: "true"
+      condition: 'true'
       requires:
         - name: positive-value
-          condition: "command.payload.value > 0"
+          condition: 'command.payload.value > 0'
           error_code: INVALID_OPPORTUNITY_VALUE
-          error_message: "Opportunity value must be greater than zero"
+          error_message: 'Opportunity value must be greater than zero'
     emit: OpportunityCreated
 
   # Advance opportunity — requires not in terminal state
@@ -126,11 +126,11 @@ behaviors:
         - name: not-closed
           condition: "state.stage != 'WON' && state.stage != 'LOST'"
           error_code: OPPORTUNITY_CLOSED
-          error_message: "Cannot advance a closed opportunity"
+          error_message: 'Cannot advance a closed opportunity'
         - name: not-negotiating
           condition: "state.stage != 'NEGOTIATING'"
           error_code: ALREADY_NEGOTIATING
-          error_message: "Opportunity is already at NEGOTIATING stage"
+          error_message: 'Opportunity is already at NEGOTIATING stage'
     emit: OpportunityAdvanced
 
   # Close as WON — postcondition ensures value > 0 after winning
@@ -142,7 +142,7 @@ behaviors:
         - name: must-be-negotiating
           condition: "state.stage == 'NEGOTIATING' || state.stage == 'PROPOSED'"
           error_code: CANNOT_WIN
-          error_message: "Opportunity must be in PROPOSED or NEGOTIATING stage to be won"
+          error_message: 'Opportunity must be in PROPOSED or NEGOTIATING stage to be won'
     emit: OpportunityWon
     postcondition: "state.stage == 'WON' && state.value > 0"
     # conditional dispatch to agent metrics
@@ -150,10 +150,10 @@ behaviors:
       - boundary: Agent
         intent: mutation
         operationId: updateAgentStatus
-        target_id: "state.agentId"
+        target_id: 'state.agentId'
         payload:
-          incrementConversions: "true"
-        condition: "state.agentId != null"
+          incrementConversions: 'true'
+        condition: 'state.agentId != null'
 
   # Close as LOST — emit_when with alternative
   - name: closeLost
@@ -171,31 +171,31 @@ reducers:
     patches:
       - op: replace
         path: /id
-        value: "${event.payload.id}"
+        value: '${event.payload.id}'
       - op: replace
         path: /leadId
-        value: "${event.payload.leadId}"
+        value: '${event.payload.leadId}'
       - op: replace
         path: /agentId
-        value: "${coalesce(event.payload.agentId, null)}"
+        value: '${coalesce(event.payload.agentId, null)}'
       - op: replace
         path: /campaignId
-        value: "${coalesce(event.payload.campaignId, null)}"
+        value: '${coalesce(event.payload.campaignId, null)}'
       - op: replace
         path: /stage
         value: "${'PROPOSED'}"
       - op: replace
         path: /value
-        value: "${event.payload.value}"
+        value: '${event.payload.value}'
       - op: replace
         path: /probability
-        value: "${has(event.payload.probability) ? event.payload.probability : 50}"
+        value: '${has(event.payload.probability) ? event.payload.probability : 50}'
       - op: replace
         path: /expectedCloseDate
-        value: "${coalesce(event.payload.expectedCloseDate, null)}"
+        value: '${coalesce(event.payload.expectedCloseDate, null)}'
       - op: replace
         path: /lineItems
-        value: "${[]}"
+        value: '${[]}'
 
   - on: OpportunityAdvanced
     patches:
@@ -204,7 +204,7 @@ reducers:
         value: "${'NEGOTIATING'}"
       - op: replace
         path: /probability
-        value: "${event.payload.probability != null ? event.payload.probability : state.probability}"
+        value: '${event.payload.probability != null ? event.payload.probability : state.probability}'
 
   - on: OpportunityWon
     patches:
@@ -213,7 +213,7 @@ reducers:
         value: "${'WON'}"
       - op: replace
         path: /closedAt
-        value: "${event.payload.closedAt}"
+        value: '${event.payload.closedAt}'
 
   - on: OpportunityLost
     patches:
@@ -222,9 +222,9 @@ reducers:
         value: "${'LOST'}"
       - op: replace
         path: /closedAt
-        value: "${event.payload.closedAt}"
+        value: '${event.payload.closedAt}'
       - op: replace
         path: /closureReason
-        value: "${event.payload.closureReason}"
+        value: '${event.payload.closureReason}'
 
 initialization: []

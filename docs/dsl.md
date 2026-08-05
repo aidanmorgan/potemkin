@@ -97,7 +97,7 @@ The CEL expression evaluated to produce the new aggregate ID during a creation i
 ```yaml
 identity:
   creation:
-    generate: "$uuidv7()"
+    generate: '$uuidv7()'
 ```
 
 ### `identity.key`
@@ -154,8 +154,8 @@ Maps URL query parameter keys to CEL boolean expressions used to filter the stat
 
 ```yaml
 query_mapping:
-  status: "state.status == query.status"
-  campaignId: "state.assignedCampaignId == query.campaignId"
+  status: 'state.status == query.status'
+  campaignId: 'state.assignedCampaignId == query.campaignId'
 ```
 
 A `GET /leads?status=NEW` request returns only entities where `state.status == "NEW"`.
@@ -170,14 +170,14 @@ runtime does not know whether the policy came from YAML or TypeScript.
 ```yaml
 query:
   fields:
-    threshold: "state.score >= int(query.threshold)"
-  filter: "state.active == true"
+    threshold: 'state.score >= int(query.threshold)'
+  filter: 'state.active == true'
   sort:
     - field: score
       direction: desc
   page_size: 25
   max_page_size: 100
-  cursor: "query.cursor"
+  cursor: 'query.cursor'
   expand: [customer]
   pagination: envelope
   include_deleted: false
@@ -204,14 +204,14 @@ Supported fields are:
 The equivalent TypeScript declaration uses typed callbacks rather than CEL:
 
 ```ts
-import { boundary, boundaryName, contractPath, pathSegment } from "potemkin/sdk";
+import { boundary, boundaryName, contractPath, pathSegment } from 'potemkin/sdk';
 
-boundary(boundaryName("Order"), contractPath(pathSegment("orders"))).query({
+boundary(boundaryName('Order'), contractPath(pathSegment('orders'))).query({
   filter: ({ state }) => state.active === true,
   sort: (left, right) => Number(right.score) - Number(left.score),
   pageSize: () => 25,
   maxPageSize: 100,
-  pagination: "envelope",
+  pagination: 'envelope',
 });
 ```
 
@@ -225,15 +225,15 @@ The `event_catalog` block declares the named event types that behaviors may emit
 event_catalog:
   - type: LeadCreated
     payload_template:
-      id: "command.targetId"
-      companyName: "command.payload.companyName"
-      contactName: "command.payload.contactName"
-      score: "CEL score expression"
-      createdAt: "$now()"
+      id: 'command.targetId'
+      companyName: 'command.payload.companyName'
+      contactName: 'command.payload.contactName'
+      score: 'CEL score expression'
+      createdAt: '$now()'
   - type: LeadConverted
-    schema_ref: "#/components/schemas/LeadCreated"
+    schema_ref: '#/components/schemas/LeadCreated'
     payload_template:
-      convertedAt: "$now()"
+      convertedAt: '$now()'
 ```
 
 | Field              | Type               | Required                | Description                                                                                                   |
@@ -271,16 +271,16 @@ behaviors:
   - name: createLead
     match:
       operationId: createLead
-      condition: "true"
+      condition: 'true'
     emit: LeadCreated
     dispatch_commands:
       - boundary: Campaign
         intent: mutation
         operationId: getCampaign
-        target_id: "command.payload.assignedCampaignId"
+        target_id: 'command.payload.assignedCampaignId'
         payload:
-          leadSource: "command.payload.source"
-        condition: "command.payload?.assignedCampaignId != null"
+          leadSource: 'command.payload.source'
+        condition: 'command.payload?.assignedCampaignId != null'
 ```
 
 ### `match.operationId`
@@ -310,11 +310,11 @@ match:
     - name: not-dnc
       condition: "state.status != 'DNC'"
       error_code: LEAD_IS_DNC
-      error_message: "Cannot contact a lead that has been marked Do Not Call"
+      error_message: 'Cannot contact a lead that has been marked Do Not Call'
     - name: not-converted
       condition: "state.status != 'CONVERTED'"
       error_code: LEAD_ALREADY_CONVERTED
-      error_message: "Cannot contact a lead that has already been converted"
+      error_message: 'Cannot contact a lead that has already been converted'
   condition: "$concat('/leads/', command.targetId, '/contact') == command.path"
 ```
 
@@ -336,8 +336,8 @@ match:
   operationId: createLead
   required_scopes:
     - admin
-    - "lead:write"
-  condition: "true"
+    - 'lead:write'
+  condition: 'true'
 ```
 
 ### `emit`
@@ -354,9 +354,9 @@ Replaces the top-level `emit` string when conditional multi-event emission is ne
 
 ```yaml
 emit_when:
-  - when: "command.payload.amount < state.balance"
+  - when: 'command.payload.amount < state.balance'
     emit: LoanRepaid
-  - when: "command.payload.amount == state.balance"
+  - when: 'command.payload.amount == state.balance'
     emit: LoanSettled
 ```
 
@@ -378,7 +378,7 @@ equivalent of a TypeScript behavior built with `.dispatch(...)` and no
 A CEL invariant evaluated against the shadow graph **after** the behavior's events have been projected but **before** the Unit of Work commits. If it evaluates to `false`, the UoW is aborted and all staged events are discarded.
 
 ```yaml
-postcondition: "state.balance >= 0"
+postcondition: 'state.balance >= 0'
 ```
 
 A violated postcondition returns HTTP 500 with code `POSTCONDITION_VIOLATED`.
@@ -392,10 +392,10 @@ dispatch_commands:
   - boundary: Lead
     intent: mutation
     operationId: patchLead
-    target_id: "command.payload.leadId"
+    target_id: 'command.payload.leadId'
     payload:
-      opportunityId: "command.targetId"
-    condition: "command.payload.leadId != null"
+      opportunityId: 'command.targetId'
+    condition: 'command.payload.leadId != null'
 ```
 
 | Field         | Type               | Required | Description                                                       |
@@ -434,16 +434,16 @@ reducers:
     patches:
       - op: add
         path: /id
-        value: "${event.payload.id}"
+        value: '${event.payload.id}'
       - op: add
         path: /companyName
-        value: "${event.payload.companyName}"
+        value: '${event.payload.companyName}'
       - op: add
         path: /status
         value: "${'NEW'}"
       - op: add
         path: /callIds
-        value: "${[]}"
+        value: '${[]}'
   - on: LeadContacted
     patches:
       - op: replace
@@ -451,7 +451,7 @@ reducers:
         value: "${'CONTACTED'}"
       - op: append # push onto the array at /callIds
         path: /callIds
-        value: "${event.payload.callId}"
+        value: '${event.payload.callId}'
 ```
 
 | Field     | Type      | Required | Description                                          |
@@ -494,6 +494,13 @@ TypeScript reducers are native immutable callbacks and do not use CEL patch
 sentinels. Their complete next state is validated at runtime in the same way as
 state projected from YAML patches.
 
+The historical `typescript.scan` reducer decorator/scanner contract is removed.
+Scanned files are now entry points only when they contain a
+`@PotemkinConfigure` factory; a stale `PotemkinReducer` decorator fails with
+`TS_LEGACY_REDUCER_SCANNER` and points to `reducerRule(...).build()`. This keeps
+one reducer registration path and avoids silently selecting a reducer by
+boundary/event name outside the canonical factory model.
+
 This restriction preserves event-sourcing determinism: replaying the event log from epoch must always produce identical state.
 
 ### JSON Pointer paths
@@ -504,10 +511,10 @@ Patch `path` values are JSON Pointers (`/segment/segment`) and can address neste
 patches:
   - op: replace
     path: /address/city
-    value: "${event.payload.city}"
+    value: '${event.payload.city}'
   - op: replace
     path: /transactions/0/amount
-    value: "${event.payload.amount}"
+    value: '${event.payload.amount}'
 ```
 
 The canonical runtime engine (`src/core/engine.ts`) auto-vivifies missing intermediate objects/arrays.
@@ -533,13 +540,13 @@ sagas:
       - name: createOpportunity
         boundary: Opportunity
         intent: creation
-        target_id: "$uuidv7()"
+        target_id: '$uuidv7()'
         payload:
-          leadId: "command.targetId"
-          value: "command.payload.value"
+          leadId: 'command.targetId'
+          value: 'command.payload.value'
         compensation:
           intent: mutation
-          target_id: "command.payload.opportunityId"
+          target_id: 'command.payload.opportunityId'
           payload:
             stage: "'withdrawn'"
       - name: notifySalesTeam
@@ -547,7 +554,7 @@ sagas:
         intent: creation
         payload:
           subject: "'New opportunity created'"
-          leadId: "command.targetId"
+          leadId: 'command.targetId'
 ```
 
 ### DSL schema
@@ -686,27 +693,27 @@ Each `reduce` rule uses the same `patches:` vocabulary as boundary reducers (§5
 ```yaml
 derived_projections:
   - name: LeadSummary
-    key: "event.aggregateId"
+    key: 'event.aggregateId'
     subscribe:
-      - "Lead:LeadCreated"
-      - "Opportunity:OpportunityCreated"
+      - 'Lead:LeadCreated'
+      - 'Opportunity:OpportunityCreated'
     reduce:
-      - on: "Lead:LeadCreated"
+      - on: 'Lead:LeadCreated'
         patches:
           - op: add
             path: /lead_id
-            value: "${event.aggregateId}"
+            value: '${event.aggregateId}'
           - op: add
             path: /companyName
-            value: "${event.payload.companyName}"
+            value: '${event.payload.companyName}'
           - op: add
             path: /total_opportunities
-            value: "${0}"
-      - on: "Opportunity:OpportunityCreated"
+            value: '${0}'
+      - on: 'Opportunity:OpportunityCreated'
         patches:
           - op: replace
             path: /total_opportunities
-            value: "${coalesce(state.total_opportunities, 0) + 1}"
+            value: '${coalesce(state.total_opportunities, 0) + 1}'
 ```
 
 | Field              | Required | Description                                                                                  |
@@ -753,11 +760,11 @@ text search and it does not treat arbitrary exports as configuration.
 typescript:
   scan:
     - include:
-        - "scenarios/**/*.ts"
-        - "shared/**/*.ts"
+        - 'scenarios/**/*.ts'
+        - 'shared/**/*.ts'
       exclude:
-        - "**/*.test.ts"
-        - "**/*.d.ts"
+        - '**/*.test.ts'
+        - '**/*.d.ts'
 ```
 
 The include/exclude globs select entry modules for discovery. A discovered entry
@@ -778,29 +785,29 @@ import {
   pathSegment,
   reducerRule,
   simulation,
-} from "potemkin/sdk";
+} from 'potemkin/sdk';
 
-const sourceLabel = defineHelper("sourceLabel", (source: string) => source);
+const sourceLabel = defineHelper('sourceLabel', (source: string) => source);
 
 class WidgetConfiguration {
-  @PotemkinConfigure("widgets")
+  @PotemkinConfigure('widgets')
   static create() {
     return simulation()
       .helper(sourceLabel)
       .boundary(
-        boundary(boundaryName("Widget"), contractPath(pathSegment("widgets")))
+        boundary(boundaryName('Widget'), contractPath(pathSegment('widgets')))
           .eventCatalog(
-            event(eventType("WidgetCreated"), {
-              source: ({ command }) => sourceLabel(String(command.payload.source ?? "")),
+            event(eventType('WidgetCreated'), {
+              source: ({ command }) => sourceLabel(String(command.payload.source ?? '')),
             }),
           )
           .behavior({
-            name: "createWidget",
-            operationId: operationId("createWidget"),
-            emit: eventType("WidgetCreated"),
+            name: 'createWidget',
+            operationId: operationId('createWidget'),
+            emit: eventType('WidgetCreated'),
           })
           .reducer(
-            reducerRule(eventType("WidgetCreated"))
+            reducerRule(eventType('WidgetCreated'))
               .apply(({ state, event }) => ({ ...state, source: event.payload.source }))
               .build(),
           )
@@ -812,14 +819,14 @@ class WidgetConfiguration {
 ```
 
 `defineHelper` returns a callable TypeScript function and a model definition.
-Register it with `.helper()` or `.helpers()` on the simulation. The same
+Register it with `.helper()` on the simulation. The same
 registered function can then be called by YAML CEL, for example:
 
 ```yaml
 event_catalog:
   - type: ThingCreated
     payload_template:
-      source: "sourceLabel(command.payload.source)"
+      source: 'sourceLabel(command.payload.source)'
 ```
 
 Helpers are pure JSON-in/JSON-out functions. Names must be valid CEL
@@ -840,15 +847,15 @@ The `initialization` array seeds baseline state at boot. Each entry is an arbitr
 
 ```yaml
 initialization:
-  - id: "00000000-0000-7000-8000-000000000010"
-    companyName: "Apex Solutions Ltd"
-    contactName: "Jordan Walsh"
-    phone: "+61 2 9000 0001"
-    email: "jordan@apexsolutions.com"
-    source: "WEBSITE"
-    status: "NEW"
+  - id: '00000000-0000-7000-8000-000000000010'
+    companyName: 'Apex Solutions Ltd'
+    contactName: 'Jordan Walsh'
+    phone: '+61 2 9000 0001'
+    email: 'jordan@apexsolutions.com'
+    source: 'WEBSITE'
+    status: 'NEW'
     score: 50
-    createdAt: "1970-01-01T00:00:00.000Z"
+    createdAt: '1970-01-01T00:00:00.000Z'
     callIds: []
 ```
 
@@ -942,23 +949,23 @@ Payload: `{ "outcome": "LOST", "closureReason": "Budget constraints" }`
 The runtime API has one engine boot and one HTTP gateway. YAML is parsed at the boundary and both YAML and TypeScript definitions are installed as `RuntimeProgram` values:
 
 ```typescript
-import request from "supertest";
-import { readFileSync } from "node:fs";
-import { loadOpenApi } from "../src/contract/loader.js";
-import { bootYamlRuntime } from "../src/parser/runtime.js";
-import { createRuntimeGateway } from "../src/http/runtimeGateway.js";
+import request from 'supertest';
+import { readFileSync } from 'node:fs';
+import { loadOpenApi } from '../src/contract/loader.js';
+import { bootYamlRuntime } from '../src/parser/runtime.js';
+import { createRuntimeGateway } from '../src/http/runtimeGateway.js';
 
-describe("Lead boundary", () => {
-  let app: import("express").Express;
+describe('Lead boundary', () => {
+  let app: import('express').Express;
   let sys: Awaited<ReturnType<typeof bootYamlRuntime>>;
 
   beforeEach(async () => {
-    const modules = ["lead", "opportunity"].map((n) => ({
+    const modules = ['lead', 'opportunity'].map((n) => ({
       name: `${n}.yaml`,
-      yaml: readFileSync(`docs/_examples/dsl/${n}.yaml`, "utf8"),
+      yaml: readFileSync(`docs/_examples/dsl/${n}.yaml`, 'utf8'),
     }));
-    const globalYaml = readFileSync("docs/_examples/dsl/global.yaml", "utf8");
-    const openapi = await loadOpenApi("docs/_examples/openapi.yaml");
+    const globalYaml = readFileSync('docs/_examples/dsl/global.yaml', 'utf8');
+    const openapi = await loadOpenApi('docs/_examples/openapi.yaml');
 
     sys = await bootYamlRuntime({ openapi, yamlProgram: { modules, globalYaml } });
     app = createRuntimeGateway(sys);
@@ -966,31 +973,31 @@ describe("Lead boundary", () => {
 
   afterEach(() => sys.engine.reset());
 
-  it("creates a lead and scores it by source", async () => {
+  it('creates a lead and scores it by source', async () => {
     const res = await request(app)
-      .post("/leads")
+      .post('/leads')
       .send({
-        companyName: "Apex Solutions",
-        contactName: "Jordan",
-        phone: "+61 2 9000 0001",
-        email: "jordan@apex.com",
-        source: "REFERRAL",
+        companyName: 'Apex Solutions',
+        contactName: 'Jordan',
+        phone: '+61 2 9000 0001',
+        email: 'jordan@apex.com',
+        source: 'REFERRAL',
       })
       .expect(201);
 
     expect(res.body.score).toBe(80); // REFERRAL score
-    expect(res.body.status).toBe("NEW");
+    expect(res.body.status).toBe('NEW');
   });
 
-  it("converts a qualified lead to an opportunity", async () => {
+  it('converts a qualified lead to an opportunity', async () => {
     const leadRes = await request(app)
-      .post("/leads")
+      .post('/leads')
       .send({
-        companyName: "Beta Corp",
-        contactName: "Alex",
-        phone: "+61 2 9000 0002",
-        email: "alex@beta.com",
-        source: "WEBSITE",
+        companyName: 'Beta Corp',
+        contactName: 'Alex',
+        phone: '+61 2 9000 0002',
+        email: 'alex@beta.com',
+        source: 'WEBSITE',
       })
       .expect(201);
 
@@ -1005,7 +1012,7 @@ describe("Lead boundary", () => {
       .send({ value: 5000 })
       .expect(200);
 
-    expect(oppRes.body.status).toBe("CONVERTED");
+    expect(oppRes.body.status).toBe('CONVERTED');
   });
 });
 ```
@@ -1035,13 +1042,13 @@ sagas:
       - name: createOpportunity
         boundary: Opportunity
         intent: creation
-        target_id: "$uuidv7()"
+        target_id: '$uuidv7()'
         payload:
-          leadId: "command.targetId"
-          value: "command.payload.value"
+          leadId: 'command.targetId'
+          value: 'command.payload.value'
         compensation:
           intent: mutation
-          target_id: "command.payload.opportunityId"
+          target_id: 'command.payload.opportunityId'
           payload:
             stage: "'withdrawn'"
 ```
@@ -1050,9 +1057,9 @@ sagas:
 
 ```yaml
 query_mapping:
-  stage: "state.stage == query.stage"
-  campaignId: "state.campaignId == query.campaignId"
-  minValue: "state.value >= double(query.minValue)"
+  stage: 'state.stage == query.stage'
+  campaignId: 'state.campaignId == query.campaignId'
+  minValue: 'state.value >= double(query.minValue)'
 ```
 
 Multiple filter parameters compose as AND: `GET /opportunities?stage=negotiating&minValue=5000` returns only negotiating opportunities with value ≥ 5 000. Type-coercion functions from CEL (`int()`, `double()`) are useful here since query parameters arrive as strings.
@@ -1064,35 +1071,34 @@ Cross-boundary metrics that would otherwise require joining two state graphs in 
 ```yaml
 derived_projections:
   - name: LeadSummary
-    key: "event.aggregateId"
+    key: 'event.aggregateId'
     subscribe:
-      - "Lead:LeadCreated"
-      - "Opportunity:OpportunityCreated"
+      - 'Lead:LeadCreated'
+      - 'Opportunity:OpportunityCreated'
     reduce:
-      - on: "Lead:LeadCreated"
+      - on: 'Lead:LeadCreated'
         patches:
           - op: add
             path: /companyName
-            value: "${event.payload.companyName}"
+            value: '${event.payload.companyName}'
           - op: add
             path: /total_opportunities
-            value: "${0}"
-      - on: "Opportunity:OpportunityCreated"
+            value: '${0}'
+      - on: 'Opportunity:OpportunityCreated'
         patches:
           - op: replace
             path: /total_opportunities
-            value: "${coalesce(state.total_opportunities, 0) + 1}"
+            value: '${coalesce(state.total_opportunities, 0) + 1}'
 ```
 
 Poll `GET /_admin/derived/LeadSummary` to retrieve the aggregated map.
 
-### Long-running factory and helper code (caution)
+### Bounded factory and helper code
 
-`@PotemkinConfigure` classes run as trusted host code without an enforced time limit. Factory or helper code that iterates large arrays or performs complex numeric derivations can slow down the request cycle. If a computation is too slow:
-
-1. Pre-compute and store partial results in aggregate state via reducers.
-2. Simplify the logic in CEL (which is typically faster for straightforward expressions).
-3. Consider whether the computation belongs in application code rather than the simulation layer.
+`@PotemkinConfigure` factories are host-owned, while named helpers are restricted to JSON values,
+explicitly allowed phases, and a synchronous execution budget (50 ms by default, 1,000 ms maximum).
+Reducer execution is not an allowed helper phase. Keep helpers deterministic and register them through
+the simulation definition so reloads replace the complete helper set atomically.
 
 ### Avoiding common pitfalls
 
@@ -1372,15 +1378,15 @@ Emits HTTP `Deprecation`, `Sunset`, and `Link` headers on every successful 2xx r
 ```yaml
 # examples/crm/dsl/lead-add-note.yaml
 deprecated:
-  date: "2025-01-01"
-  sunset: "2025-06-01"
-  replacement: "/v2/leads/{id}/notes"
+  date: '2025-01-01'
+  sunset: '2025-06-01'
+  replacement: '/v2/leads/{id}/notes'
 ```
 
 ```yaml
 # tests/fixtures/governance/dsl/document-by-id.yaml
 deprecated:
-  sunset: "2027-01-01T00:00:00Z"
+  sunset: '2027-01-01T00:00:00Z'
   replacement: /v2/documents
 ```
 
@@ -1449,9 +1455,9 @@ security_headers:
   hsts: true
   nosniff: true
   frame_deny: true
-  referrer_policy: "strict-origin-when-cross-origin"
+  referrer_policy: 'strict-origin-when-cross-origin'
   custom_headers:
-    X-Custom-Sim-Header: "potemkin-sim"
+    X-Custom-Sim-Header: 'potemkin-sim'
 ```
 
 | Field             | Type                  | Default | Emitted header                                                                   |
@@ -1483,16 +1489,16 @@ Within each scope, rules are evaluated in document order; the **first match wins
 fault_rules:
   - name: rate-limit-via-header
     match:
-      condition: "true"
+      condition: 'true'
       potemkin:
-        rate_limit: "*"
+        rate_limit: '*'
     response:
       status: 429
       body:
         error: RATE_LIMITED
         message: Simulated rate limit (header-triggered)
       headers:
-        Retry-After: "30"
+        Retry-After: '30'
 
   - name: dnc-registry-slow
     match:
@@ -1524,7 +1530,7 @@ fault_rules:
   - name: duplicate-check-slow
     match:
       intent: creation
-      condition: "command.payload.checkDuplicates == true"
+      condition: 'command.payload.checkDuplicates == true'
     response:
       status: 504
       body:
@@ -1632,10 +1638,10 @@ Strips a URL version prefix from every inbound request path before contract rout
 versioning:
   enabled: true
   versions:
-    - version: "v1"
-      prefix: "/v1"
-    - version: "v2"
-      prefix: "/v2"
+    - version: 'v1'
+      prefix: '/v1'
+    - version: 'v2'
+      prefix: '/v2'
       default: true
 ```
 
@@ -1666,11 +1672,11 @@ webhooks:
       boundary: Shipment
       condition: "event.type == 'ShipmentCreated'"
     url: "'http://127.0.0.1:19877/webhook'"
-    secret: "hmac-example-secret-do-not-use-in-prod"
+    secret: 'hmac-example-secret-do-not-use-in-prod'
     payload:
-      shipmentId: "${event.aggregateId}"
-      trackingRef: "${event.payload.trackingRef}"
-      event: "${event.type}"
+      shipmentId: '${event.aggregateId}'
+      trackingRef: '${event.payload.trackingRef}'
+      event: '${event.type}'
     retry:
       maxAttempts: 3
       delayMs: 50
@@ -1800,9 +1806,9 @@ over-limit delay values are ignored.
 fault_rules:
   - name: rate-limit-via-header
     match:
-      condition: "true"
+      condition: 'true'
       potemkin:
-        rate_limit: "*"
+        rate_limit: '*'
     response:
       status: 429
 ```
@@ -1830,14 +1836,14 @@ This is the write-side analogue of `derived_projections` (§9): where derived pr
 ```yaml
 reactions:
   - name: record-conversion-on-campaign
-    on: "Lead:LeadConverted"
-    when: "event.payload.campaignId != null"
+    on: 'Lead:LeadConverted'
+    when: 'event.payload.campaignId != null'
     boundary: Campaign
     emit: CampaignConversionRecorded
     intent: mutation
-    target: "event.payload.campaignId"
+    target: 'event.payload.campaignId'
     payload:
-      leadId: "event.aggregateId"
+      leadId: 'event.aggregateId'
 ```
 
 | Field      | Required       | Meaning                                                                                                                                                                           |
@@ -1909,7 +1915,7 @@ The following files show a single `POST /orders` request atomically updating thr
 # inventory.yaml
 reactions:
   - name: reserve-inventory-on-order-placed
-    on: "Order:OrderPlaced"
+    on: 'Order:OrderPlaced'
     intent: creation
     emit: InventoryReserved
 ```
@@ -1918,7 +1924,7 @@ reactions:
 # notification.yaml
 reactions:
   - name: queue-notification-on-order-placed
-    on: "Order:OrderPlaced"
+    on: 'Order:OrderPlaced'
     intent: creation
     emit: NotificationQueued
 ```
@@ -1927,7 +1933,7 @@ reactions:
 # audit.yaml
 reactions:
   - name: record-audit-on-order-placed
-    on: "Order:OrderPlaced"
+    on: 'Order:OrderPlaced'
     intent: creation
     emit: AuditRecorded
 ```
@@ -1964,20 +1970,20 @@ parameters:
 
 identity:
   creation:
-    generate: "$uuidv7()"
+    generate: '$uuidv7()'
 
 event_catalog:
   - type: DocumentCreated
     payload_template:
-      id: "command.targetId"
+      id: 'command.targetId'
       status: "'{{initialStatus}}'"
-      title: "command.payload.title"
+      title: 'command.payload.title'
 
 behaviors:
   - name: create-document
     match:
-      operationId: "{{createOp}}"
-      condition: "true"
+      operationId: '{{createOp}}'
+      condition: 'true'
     emit: DocumentCreated
 
 reducers:
@@ -1985,7 +1991,7 @@ reducers:
     patches:
       - op: add
         path: /status
-        value: "${event.payload.status}"
+        value: '${event.payload.status}'
 ```
 
 Top-level keys allowed on a component:
@@ -2050,7 +2056,7 @@ use:
     as: Document
     contract_path: /documents
     with:
-      initialStatus: "DRAFT"
+      initialStatus: 'DRAFT'
       createOp: createDocument
     bind:
       Notifier: Notification
@@ -2059,7 +2065,7 @@ use:
     as: Draft
     contract_path: /drafts
     with:
-      initialStatus: "PENDING"
+      initialStatus: 'PENDING'
       createOp: createDraft
     bind:
       Notifier: Notification
@@ -2094,12 +2100,12 @@ contract_path: /documents
 include:
   - component: AuditMixin
     with:
-      actorField: "lastActor"
+      actorField: 'lastActor'
 
 event_catalog:
   - type: DocumentCreated
     payload_template:
-      id: "command.targetId"
+      id: 'command.targetId'
 ```
 
 `include:` on a component is evaluated after `use:` linking, so component-carried `include:` entries propagate to every concrete boundary the component is instantiated into.
@@ -2143,7 +2149,7 @@ Example from the composition fixture:
 ```yaml
 reactions:
   - name: notify-on-document-created
-    on: "DocumentEntity:DocumentCreated"
+    on: 'DocumentEntity:DocumentCreated'
     boundary: Notifier
     intent: creation
     emit: NotificationCreated

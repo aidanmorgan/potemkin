@@ -14,20 +14,20 @@ fallback_override: false
 
 identity:
   creation:
-    generate: "$uuidv7()"
+    generate: '$uuidv7()'
 
 event_catalog:
   - type: ShipmentCreated
     payload_template:
-      id: "command.targetId"
-      trackingRef: "command.payload.trackingRef"
-      destination: "command.payload.destination"
+      id: 'command.targetId'
+      trackingRef: 'command.payload.trackingRef'
+      destination: 'command.payload.destination'
 
 behaviors:
   - name: createShipment
     match:
       operationId: createShipment
-      condition: "true"
+      condition: 'true'
     emit: ShipmentCreated
 
 reducers:
@@ -35,13 +35,13 @@ reducers:
     patches:
       - op: replace
         path: /id
-        value: "${event.payload.id}"
+        value: '${event.payload.id}'
       - op: replace
         path: /trackingRef
-        value: "${event.payload.trackingRef}"
+        value: '${event.payload.trackingRef}'
       - op: replace
         path: /destination
-        value: "${event.payload.destination}"
+        value: '${event.payload.destination}'
       - op: replace
         path: /status
         value: "${'CREATED'}"

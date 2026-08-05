@@ -1,15 +1,15 @@
 import {
   boundary,
   behavior,
-  compileProgram,
   event,
   expression,
   simulation,
-} from "../../../src/authoring/runtimeModel.js";
-import { reducerRule } from "../../../src/authoring/nativeReducer.js";
-import { createRuntimeDataGenerator } from "../../../src/model/data.js";
-import type { EventContext } from "../../../src/model/runtime.js";
-import { TypeScriptAuthoringError } from "../../../src/authoring/errors.js";
+} from '../../../src/authoring/builders.js';
+import { compileProgram } from '../../../src/authoring/compiler.js';
+import { reducerRule } from '../../../src/authoring/nativeReducer.js';
+import { createRuntimeDataGenerator } from '../../../src/model/data.js';
+import type { EventContext } from '../../../src/model/runtime.js';
+import { TypeScriptAuthoringError } from '../../../src/authoring/errors.js';
 import {
   boundaryName,
   behaviorName,
@@ -17,7 +17,7 @@ import {
   eventType,
   operationId,
   pathSegment,
-} from "../../../src/authoring/references.js";
+} from '../../../src/domain/references.js';
 
 const dependencies = {
   contract: { operationIdFor: () => undefined },
@@ -28,37 +28,37 @@ const dependencies = {
     reset: () => undefined,
   },
   helpers: {
-    now: () => "2026-01-01T00:00:00.000Z",
-    uuid: () => "00000000-0000-7000-8000-000000000001",
+    now: () => '2026-01-01T00:00:00.000Z',
+    uuid: () => '00000000-0000-7000-8000-000000000001',
     random: () => 0,
     data: createRuntimeDataGenerator(() => 0),
     clone: <T>(value: T) => structuredClone(value),
   },
 };
 
-describe("canonical authored model", () => {
-  it("accepts typed direct declarations through the same runtime model as YAML", () => {
+describe('canonical authored model', () => {
+  it('accepts typed direct declarations through the same runtime model as YAML', () => {
     const definition = simulation()
       .boundary(
-        boundary(boundaryName("Ledger"), contractPath(pathSegment("ledger")))
+        boundary(boundaryName('Ledger'), contractPath(pathSegment('ledger')))
           .eventCatalog(
-            event(eventType("LedgerCreated"), {
+            event(eventType('LedgerCreated'), {
               id: expression(
-                "event",
-                ({ command }: EventContext) => command.targetId ?? "generated",
+                'event',
+                ({ command }: EventContext) => command.targetId ?? 'generated',
               ),
             }),
           )
           .behavior(
             behavior({
-              name: behaviorName("createLedger"),
-              operationId: operationId("createLedger"),
+              name: behaviorName('createLedger'),
+              operationId: operationId('createLedger'),
               condition: () => true,
-              emit: eventType("LedgerCreated"),
+              emit: eventType('LedgerCreated'),
             }),
           )
           .reducer(
-            reducerRule(eventType("LedgerCreated"))
+            reducerRule(eventType('LedgerCreated'))
               .apply(({ state, event: emitted }) => ({ ...state, id: emitted.payload.id }))
               .build(),
           )
@@ -70,24 +70,24 @@ describe("canonical authored model", () => {
     const compiledBoundary = compiled.boundaries[0]!;
 
     expect(compiled.boundaries).toHaveLength(1);
-    expect(typeof compiledBoundary.behaviors[0]?.condition).toBe("function");
-    expect(typeof compiledBoundary.eventCatalog[0]?.payload.id).toBe("function");
-    expect(compiledBoundary.eventCatalog[0]?.payload.id).toHaveProperty("phase", "event");
+    expect(typeof compiledBoundary.behaviors[0]?.condition).toBe('function');
+    expect(typeof compiledBoundary.eventCatalog[0]?.payload.id).toBe('function');
+    expect(compiledBoundary.eventCatalog[0]?.payload.id).toHaveProperty('phase', 'event');
   });
 
-  it("rejects malformed latency at the TypeScript authoring boundary", () => {
+  it('rejects malformed latency at the TypeScript authoring boundary', () => {
     expect(() =>
-      boundary(boundaryName("Broken"), contractPath(pathSegment("broken"))).latency({
+      boundary(boundaryName('Broken'), contractPath(pathSegment('broken'))).latency({
         fixedMs: -1,
       }),
     ).toThrow(
       expect.objectContaining({
-        name: "TypeScriptAuthoringError",
-        code: "TS_CONFIGURATION_INVALID",
+        name: 'TypeScriptAuthoringError',
+        code: 'TS_CONFIGURATION_INVALID',
       }),
     );
     expect(() =>
-      boundary(boundaryName("Broken"), contractPath(pathSegment("broken"))).latency({
+      boundary(boundaryName('Broken'), contractPath(pathSegment('broken'))).latency({
         minMs: 20,
         maxMs: 10,
       }),

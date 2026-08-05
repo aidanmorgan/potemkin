@@ -10,43 +10,29 @@
  * not require the Specmatic JVM.
  */
 
-import * as fs from "node:fs";
-import type { Server } from "node:http";
-import * as os from "node:os";
-import * as path from "node:path";
-import { createHash } from "node:crypto";
-import request from "supertest";
-import { loadOpenApi, type OpenApiDoc } from "../contract/loader.js";
-import { matchRoute } from "../contract/router.js";
-import { bootYamlRuntimeFromConfig } from "../parser/files.js";
-import type { RuntimeSystem } from "../runtime/system.js";
-import { createDeterministicRuntimeHost } from "../runtime/host.js";
-import { deriveRuntimeFixtures } from "../http/runtimeFixtures.js";
-import { createRuntimeGateway } from "../http/runtimeGateway.js";
-import type { FixtureStub } from "../http/specmaticTransport.js";
-import { ExportError } from "../errors.js";
-import type { JsonValue } from "../types.js";
-import { collectDeclaredErrorExamples } from "./declared-error-examples.js";
+import * as fs from 'node:fs';
+import type { Server } from 'node:http';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { createHash } from 'node:crypto';
+import request from 'supertest';
+import { loadOpenApi, type OpenApiDoc } from '../contract/loader.js';
+import { matchRoute } from '../contract/router.js';
+import { bootYamlRuntimeFromConfig } from '../parser/files.js';
+import type { RuntimeSystem } from '../runtime/system.js';
+import { createDeterministicRuntimeHost } from '../runtime/host.js';
+import { deriveRuntimeFixtures } from '../http/runtimeFixtures.js';
+import { createRuntimeGateway } from '../http/runtimeGateway.js';
+import type { FixtureStub } from '../http/specmaticTransport.js';
+import { ExportError } from '../errors.js';
+import type { JsonValue } from '../contracts/value.js';
+import { collectDeclaredErrorExamples } from './declared-error-examples.js';
+import type { ExportExample } from './exportContracts.js';
 import {
   collectDeclaredExportExamples,
   collectTransitionExamples,
   type ExportRequestTarget,
-} from "./transition-examples.js";
-
-export interface ExportExample {
-  readonly name: string;
-  readonly httpRequest: {
-    readonly method: string;
-    readonly path: string;
-    readonly headers?: Record<string, string>;
-    readonly body?: JsonValue;
-  };
-  readonly httpResponse: {
-    readonly status: number;
-    readonly headers: Record<string, string>;
-    readonly body: JsonValue;
-  };
-}
+} from './transition-examples.js';
 
 export interface ExportExamplesInput {
   readonly potemkinConfigPath: string;
@@ -63,7 +49,7 @@ export interface ExportExamplesResult {
 }
 
 function isContractFile(file: string): boolean {
-  return file.endsWith(".yaml") || file.endsWith(".yml") || file.endsWith(".json");
+  return file.endsWith('.yaml') || file.endsWith('.yml') || file.endsWith('.json');
 }
 
 export function resolveExamplePaths(arg: string): {
@@ -74,11 +60,11 @@ export function resolveExamplePaths(arg: string): {
   const abs = path.resolve(arg);
   const stat = fs.existsSync(abs) ? fs.statSync(abs) : undefined;
   const dir = stat?.isDirectory() ? abs : path.dirname(abs);
-  const potemkinConfigPath = stat?.isFile() ? abs : path.join(dir, "potemkin.yml");
+  const potemkinConfigPath = stat?.isFile() ? abs : path.join(dir, 'potemkin.yml');
   if (!fs.existsSync(potemkinConfigPath)) {
     throw new Error(`No potemkin.yml found at ${potemkinConfigPath}`);
   }
-  const openapiDir = path.join(dir, "openapi");
+  const openapiDir = path.join(dir, 'openapi');
   const specs = fs.existsSync(openapiDir)
     ? fs.readdirSync(openapiDir).filter(isContractFile).sort()
     : [];
@@ -93,7 +79,7 @@ export function resolveExamplePaths(arg: string): {
 }
 
 function safeName(value: string): string {
-  return value.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "example";
+  return value.replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^_+|_+$/g, '') || 'example';
 }
 
 function fixtureExample(fixture: FixtureStub): ExportExample {
@@ -150,13 +136,13 @@ function stableResponseHeaders(
   allowedHeaders: ReadonlySet<string>,
 ): Record<string, string> {
   const volatile = new Set([
-    "connection",
-    "content-length",
-    "date",
-    "etag",
-    "keep-alive",
-    "transfer-encoding",
-    "x-powered-by",
+    'connection',
+    'content-length',
+    'date',
+    'etag',
+    'keep-alive',
+    'transfer-encoding',
+    'x-powered-by',
   ]);
   return Object.fromEntries(
     Object.entries(headers)
@@ -164,7 +150,7 @@ function stableResponseHeaders(
       .filter(([name]) => allowedHeaders.has(name.toLowerCase()))
       .map(
         ([name, value]) =>
-          [name.toLowerCase(), Array.isArray(value) ? value.join(", ") : (value ?? "")] as const,
+          [name.toLowerCase(), Array.isArray(value) ? value.join(', ') : (value ?? '')] as const,
       )
       .sort(([left], [right]) => left.localeCompare(right)),
   ) as Record<string, string>;
@@ -185,7 +171,7 @@ function declaredResponseHeaders(
   // accepted by Specmatic even when the OpenAPI response omits an explicit
   // header declaration. Every other header must be declared by the contract;
   // otherwise a plain Specmatic mock rejects the externalized example at load.
-  return new Set(["content-type", ...declared]);
+  return new Set(['content-type', ...declared]);
 }
 
 function contractShapeExampleHeaders(system: RuntimeSystem, example: ExportExample): ExportExample {
@@ -219,14 +205,14 @@ async function collectionExample(
   // A collection snapshot is a bare collection route. GET-by-id examples are
   // already emitted from the baseline fixture projection and must not also be labelled as a
   // collection with an unbound `{id}` path.
-  if (contractPath.includes("{")) return undefined;
+  if (contractPath.includes('{')) return undefined;
   if (!hasGetOperation(sys.openapi, contractPath)) return undefined;
   if (!sys.program.byBoundaryName.has(boundaryName)) return undefined;
   const response = await request(target).get(contractPath);
   const body = (response.body === undefined ? null : response.body) as JsonValue;
   return {
     name: `${safeName(boundaryName)}__collection`,
-    httpRequest: { method: "GET", path: contractPath },
+    httpRequest: { method: 'GET', path: contractPath },
     httpResponse: {
       status: response.status,
       headers: response.headers,
@@ -236,10 +222,10 @@ async function collectionExample(
 }
 
 async function startExportTarget(system: RuntimeSystem): Promise<Server> {
-  const server = createRuntimeGateway(system).listen(0, "127.0.0.1");
+  const server = createRuntimeGateway(system).listen(0, '127.0.0.1');
   await new Promise<void>((resolve, reject) => {
-    server.once("listening", resolve);
-    server.once("error", reject);
+    server.once('listening', resolve);
+    server.once('error', reject);
   });
   return server;
 }
@@ -283,14 +269,14 @@ export async function collectExportExamples(sys: RuntimeSystem): Promise<readonl
     const declaredExamples = await collectDeclaredExportExamples(sys, target);
     for (const example of declaredExamples) {
       const contractExample = contractShapeExampleHeaders(sys, example);
-      validateExample(sys, contractExample, "declared export");
+      validateExample(sys, contractExample, 'declared export');
       examples.set(contractExample.name, contractExample);
     }
 
     const transitionExamples = await collectTransitionExamples(sys, target);
     for (const example of transitionExamples) {
       const contractExample = contractShapeExampleHeaders(sys, example);
-      validateExample(sys, contractExample, "transition export");
+      validateExample(sys, contractExample, 'transition export');
       examples.set(contractExample.name, contractExample);
     }
 
@@ -300,7 +286,7 @@ export async function collectExportExamples(sys: RuntimeSystem): Promise<readonl
       target,
     )) {
       const contractExample = contractShapeExampleHeaders(sys, example);
-      validateExample(sys, contractExample, "declared error export");
+      validateExample(sys, contractExample, 'declared error export');
       examples.set(contractExample.name, contractExample);
     }
 
@@ -313,8 +299,8 @@ export async function collectExportExamples(sys: RuntimeSystem): Promise<readonl
 function serialise(example: ExportExample): string {
   return `${JSON.stringify(
     {
-      "http-request": example.httpRequest,
-      "http-response": example.httpResponse,
+      'http-request': example.httpRequest,
+      'http-response': example.httpResponse,
     },
     null,
     2,
@@ -326,13 +312,13 @@ function fileMap(dir: string): Map<string, string> {
   if (!fs.existsSync(dir)) return result;
   for (const file of fs
     .readdirSync(dir)
-    .filter((item) => item.endsWith(".json"))
+    .filter((item) => item.endsWith('.json'))
     .sort()) {
     result.set(
       file,
-      createHash("sha256")
+      createHash('sha256')
         .update(fs.readFileSync(path.join(dir, file)))
-        .digest("hex"),
+        .digest('hex'),
     );
   }
   return result;
@@ -344,11 +330,11 @@ function writeExamples(dir: string, examples: readonly ExportExample[]): readonl
   for (const example of examples) {
     const file = `${safeName(example.name)}.json`;
     wanted.add(file);
-    fs.writeFileSync(path.join(dir, file), serialise(example), "utf8");
+    fs.writeFileSync(path.join(dir, file), serialise(example), 'utf8');
   }
   // Only remove generated JSON files. Non-JSON files (README, manifests) are
   // user-owned and remain untouched.
-  for (const file of fs.readdirSync(dir).filter((item) => item.endsWith(".json"))) {
+  for (const file of fs.readdirSync(dir).filter((item) => item.endsWith('.json'))) {
     if (!wanted.has(file)) fs.rmSync(path.join(dir, file), { force: true });
   }
   return [...wanted].sort();
@@ -369,7 +355,7 @@ async function bootForExport(input: ExportExamplesInput): Promise<RuntimeSystem>
     potemkinConfigPath: input.potemkinConfigPath,
     host: createDeterministicRuntimeHost({
       epochMs: 0,
-      randomSeed: "potemkin-export",
+      randomSeed: 'potemkin-export',
       uuidSeedIndex: 0,
     }),
     // Exporting examples is a pure snapshot operation. Keep the runtime's
@@ -390,7 +376,7 @@ export async function exportExamples(input: ExportExamplesInput): Promise<Export
       return { outputDir: input.outputDir, files, changed: [] };
     }
 
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "potemkin-examples-"));
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'potemkin-examples-'));
     try {
       writeExamples(tempDir, examples);
       const changed = compareDirectories(fileMap(input.outputDir), fileMap(tempDir));
@@ -407,12 +393,13 @@ export async function exportExamples(input: ExportExamplesInput): Promise<Export
   }
 }
 
-async function main(): Promise<void> {
-  const args = process.argv.slice(2);
-  const arg = args.find((item) => !item.startsWith("--"));
+export async function runExportExamples(
+  args: readonly string[] = process.argv.slice(2),
+): Promise<void> {
+  const arg = args.find((item) => !item.startsWith('--'));
   if (!arg) {
     process.stderr.write(
-      "usage: potemkin export-examples <example-dir | potemkin.yml> [--check]\n",
+      'usage: potemkin export-examples <example-dir | potemkin.yml> [--check]\n',
     );
     process.exitCode = 2;
     return;
@@ -421,25 +408,16 @@ async function main(): Promise<void> {
   const result = await exportExamples({
     ...paths,
     outputDir: paths.defaultOutputDir,
-    ...(args.includes("--check") ? { check: true } : {}),
+    ...(args.includes('--check') ? { check: true } : {}),
   });
   if (result.changed.length > 0) {
     process.stderr.write(
-      `✗ examples are stale (${result.changed.length} file(s)): ${result.changed.join(", ")}\n`,
+      `✗ examples are stale (${result.changed.length} file(s)): ${result.changed.join(', ')}\n`,
     );
     process.exitCode = 1;
     return;
   }
   process.stdout.write(
-    `${args.includes("--check") ? "✓ examples are current" : "✓ examples exported"} (${result.files.length} file(s))\n`,
+    `${args.includes('--check') ? '✓ examples are current' : '✓ examples exported'} (${result.files.length} file(s))\n`,
   );
-}
-
-if (typeof require !== "undefined" && require.main === module) {
-  void main().catch((error: unknown) => {
-    process.stderr.write(
-      `${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
-    );
-    process.exitCode = 1;
-  });
 }

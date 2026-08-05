@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Cross-File Composition Example
-  version: "1.0.0"
+  version: '1.0.0'
 
 # Canonical example: a single component definition (DocumentEntity) is
 # instantiated twice — as Document (/documents) and as Draft (/drafts).
@@ -19,14 +19,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Document"
+              $ref: '#/components/schemas/Document'
       responses:
-        "201":
+        '201':
           description: Document created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Document"
+                $ref: '#/components/schemas/Document'
 
   /documents/{id}:
     get:
@@ -38,12 +38,12 @@ paths:
           schema:
             type: string
       responses:
-        "200":
+        '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Document"
+                $ref: '#/components/schemas/Document'
     patch:
       operationId: updateDocument
       parameters:
@@ -57,14 +57,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Document"
+              $ref: '#/components/schemas/Document'
       responses:
-        "200":
+        '200':
           description: Updated
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Document"
+                $ref: '#/components/schemas/Document'
 
   /documents/{id}/audit:
     post:
@@ -80,14 +80,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Document"
+              $ref: '#/components/schemas/Document'
       responses:
-        "200":
+        '200':
           description: Audited
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Document"
+                $ref: '#/components/schemas/Document'
 
   /drafts:
     post:
@@ -97,14 +97,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Draft"
+              $ref: '#/components/schemas/Draft'
       responses:
-        "201":
+        '201':
           description: Draft created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Draft"
+                $ref: '#/components/schemas/Draft'
 
   /drafts/{id}:
     get:
@@ -116,12 +116,12 @@ paths:
           schema:
             type: string
       responses:
-        "200":
+        '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Draft"
+                $ref: '#/components/schemas/Draft'
     patch:
       operationId: updateDraft
       parameters:
@@ -135,14 +135,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Draft"
+              $ref: '#/components/schemas/Draft'
       responses:
-        "200":
+        '200':
           description: Updated
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Draft"
+                $ref: '#/components/schemas/Draft'
 
   /drafts/{id}/audit:
     post:
@@ -158,27 +158,27 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Draft"
+              $ref: '#/components/schemas/Draft'
       responses:
-        "200":
+        '200':
           description: Audited
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Draft"
+                $ref: '#/components/schemas/Draft'
 
   /notifications:
     get:
       operationId: listNotifications
       responses:
-        "200":
+        '200':
           description: OK
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Notification"
+                  $ref: '#/components/schemas/Notification'
 
   /notifications/{id}:
     get:
@@ -190,12 +190,12 @@ paths:
           schema:
             type: string
       responses:
-        "200":
+        '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Notification"
+                $ref: '#/components/schemas/Notification'
 
 components:
   schemas:

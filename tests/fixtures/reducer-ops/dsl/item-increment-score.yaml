@@ -13,7 +13,7 @@ behaviors:
   - name: incrementScore
     match:
       operationId: incrementScore
-      condition: "true"
+      condition: 'true'
     emit: ItemScoreIncremented
 
 reducers:

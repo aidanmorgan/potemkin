@@ -118,7 +118,7 @@ The plugin reads the `plugin:` block:
 # potemkin.yml
 plugin:
   engine:
-    url: "${POTEMKIN_ENGINE_URL:http://localhost:3000}" # Node engine base URL
+    url: '${POTEMKIN_ENGINE_URL:http://localhost:3000}' # Node engine base URL
     timeoutMs: 30000 # per-forward HTTP timeout (ms)
   controlPort: 0 # plugin control server port (0 = ephemeral)
   # Optional resilience / health tuning:

@@ -13,10 +13,10 @@
  * CRM fixtures (examples/crm/dsl/opportunity-add-line-item.yaml).
  */
 
-import { startE2eApp } from "./_harness/e2e-test-app";
-import type { E2eApp } from "./_harness/e2e-test-app";
+import { startE2eApp } from './_harness/e2e-test-app';
+import type { E2eApp } from './_harness/e2e-test-app';
 
-const SEEDED_LEAD = "00000000-0000-7000-8000-000000000010";
+const SEEDED_LEAD = '00000000-0000-7000-8000-000000000010';
 
 interface OpportunityState {
   id: string;
@@ -34,8 +34,8 @@ function target(app: E2eApp): string {
 
 async function createOpportunityViaStub(stubUrl: string): Promise<string> {
   const res = await fetch(`${stubUrl}/opportunities`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ leadId: SEEDED_LEAD, value: 1000, probability: 50 }),
   });
   expect([200, 201]).toContain(res.status);
@@ -50,8 +50,8 @@ async function addLineItemViaStub(
   item: { description: string; quantity: number; unitPrice: number },
 ): Promise<OpportunityState> {
   const res = await fetch(`${stubUrl}/opportunities/${oppId}/line-items`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(item),
   });
   expect([200, 201]).toContain(res.status);
@@ -60,14 +60,14 @@ async function addLineItemViaStub(
 
 async function getOpportunityViaStub(stubUrl: string, oppId: string): Promise<OpportunityState> {
   const res = await fetch(`${stubUrl}/opportunities/${oppId}`, {
-    method: "GET",
-    headers: { Accept: "application/json" },
+    method: 'GET',
+    headers: { Accept: 'application/json' },
   });
   expect(res.status).toBe(200);
   return (await res.json()) as OpportunityState;
 }
 
-describe("Opportunity computed totalValue + itemCount via Specmatic", () => {
+describe('Opportunity computed totalValue + itemCount via Specmatic', () => {
   let app: E2eApp;
 
   beforeAll(async () => {
@@ -79,12 +79,12 @@ describe("Opportunity computed totalValue + itemCount via Specmatic", () => {
     if (app) await app.shutdown();
   }, 30_000);
 
-  it("totalValue + itemCount recompute through the stub across a 3-line-item sequence", async () => {
+  it('totalValue + itemCount recompute through the stub across a 3-line-item sequence', async () => {
     const oppId = await createOpportunityViaStub(target(app));
 
     // Line item 1: 2 × 100 = 200
     const after1 = await addLineItemViaStub(target(app), oppId, {
-      description: "Widget A",
+      description: 'Widget A',
       quantity: 2,
       unitPrice: 100,
     });
@@ -93,7 +93,7 @@ describe("Opportunity computed totalValue + itemCount via Specmatic", () => {
 
     // Line item 2: 3 × 50 = 150 → running total 350
     const after2 = await addLineItemViaStub(target(app), oppId, {
-      description: "Widget B",
+      description: 'Widget B',
       quantity: 3,
       unitPrice: 50,
     });
@@ -102,7 +102,7 @@ describe("Opportunity computed totalValue + itemCount via Specmatic", () => {
 
     // Line item 3: 5 × 20 = 100 → running total 450
     const after3 = await addLineItemViaStub(target(app), oppId, {
-      description: "Widget C",
+      description: 'Widget C',
       quantity: 5,
       unitPrice: 20,
     });
@@ -118,11 +118,11 @@ describe("Opportunity computed totalValue + itemCount via Specmatic", () => {
     expect(fetched.totalValue).toBe(sum);
   }, 60_000);
 
-  it("GET /_engine/state/Opportunity/{id} reports the same totals and carries _meta.computedFields", async () => {
+  it('GET /_engine/state/Opportunity/{id} reports the same totals and carries _meta.computedFields', async () => {
     const oppId = await createOpportunityViaStub(target(app));
-    await addLineItemViaStub(target(app), oppId, { description: "X", quantity: 4, unitPrice: 25 });
-    await addLineItemViaStub(target(app), oppId, { description: "Y", quantity: 1, unitPrice: 100 });
-    await addLineItemViaStub(target(app), oppId, { description: "Z", quantity: 2, unitPrice: 10 });
+    await addLineItemViaStub(target(app), oppId, { description: 'X', quantity: 4, unitPrice: 25 });
+    await addLineItemViaStub(target(app), oppId, { description: 'Y', quantity: 1, unitPrice: 100 });
+    await addLineItemViaStub(target(app), oppId, { description: 'Z', quantity: 2, unitPrice: 10 });
 
     const res = await fetch(`${app.engineUrl}/_engine/state/Opportunity/${oppId}`);
     expect(res.status).toBe(200);
@@ -139,6 +139,6 @@ describe("Opportunity computed totalValue + itemCount via Specmatic", () => {
     // The computed-field surface is present (array of declared computed names
     // for the boundary, in topological order).
     expect(Array.isArray(body._meta.computedFields)).toBe(true);
-    expect(typeof body._meta.version).toBe("number");
+    expect(typeof body._meta.version).toBe('number');
   }, 60_000);
 });

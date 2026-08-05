@@ -1,7 +1,7 @@
 /* eslint-disable no-console */
 
-import * as path from "node:path";
-import { startSpecmaticTest, SpecmaticVerifierError } from "../_harness/specmatic-test";
+import * as path from 'node:path';
+import { startSpecmaticTest, SpecmaticVerifierError } from '../_harness/specmatic-test';
 
 /**
  * Hand-runnable CRM verifier. It intentionally has no direct engine request:
@@ -9,9 +9,9 @@ import { startSpecmaticTest, SpecmaticVerifierError } from "../_harness/specmati
  */
 export async function verifyCrm(): Promise<void> {
   const result = await startSpecmaticTest({
-    exampleName: "crm",
-    examplesDir: path.resolve("examples/crm/openapi/nuisance-bureau_examples"),
-    testMode: "positiveOnly",
+    exampleName: 'crm',
+    examplesDir: path.resolve('examples/crm/openapi/nuisance-bureau_examples'),
+    testMode: 'positiveOnly',
     // The CRM contract has a large generated surface. A method filter keeps
     // this hand-run smoke verifier bounded while still exercising the real
     // Specmatic test JVM and the live Potemkin forwarding path.
@@ -19,7 +19,7 @@ export async function verifyCrm(): Promise<void> {
     // Keep the verifier bounded when it is run by hand on a developer laptop.
     // This is passed to the real Specmatic JVM, not applied only in TypeScript.
     maxTestRequestCombinations: 10,
-    configPath: path.resolve("tests/conformance/specmatic-verifier.yaml"),
+    configPath: path.resolve('tests/conformance/specmatic-verifier.yaml'),
   });
 
   const report = result.report;
@@ -32,13 +32,13 @@ export async function verifyCrm(): Promise<void> {
   ) {
     throw new SpecmaticVerifierError(
       [
-        `Specmatic CRM verification failed (exit=${result.process.exitCode ?? "unknown"}).`,
+        `Specmatic CRM verification failed (exit=${result.process.exitCode ?? 'unknown'}).`,
         `JUnit totals: tests=${report.tests}, failures=${report.failures}, errors=${report.errors}, skipped=${report.skipped}.`,
         result.process.stderr.trim(),
         result.process.stdout.trim(),
       ]
         .filter(Boolean)
-        .join("\n"),
+        .join('\n'),
     );
   }
 
@@ -48,10 +48,10 @@ export async function verifyCrm(): Promise<void> {
     report.testCases?.some(
       (testCase) =>
         !testCase.passed ||
-        testCase.method === "UNKNOWN" ||
-        testCase.path === "UNKNOWN" ||
-        testCase.expectedStatus === "UNKNOWN" ||
-        testCase.actualStatus === "UNKNOWN",
+        testCase.method === 'UNKNOWN' ||
+        testCase.path === 'UNKNOWN' ||
+        testCase.expectedStatus === 'UNKNOWN' ||
+        testCase.actualStatus === 'UNKNOWN',
     )
   ) {
     throw new SpecmaticVerifierError(

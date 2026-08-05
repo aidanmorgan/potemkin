@@ -6,9 +6,9 @@ audit_fields: true
 # Deprecation: this boundary is scheduled for retirement.
 # Drives the Deprecation / Sunset / Link response headers.
 deprecated:
-  date: "2025-01-01"
-  sunset: "2025-06-01"
-  replacement: "/v2/leads/{id}/notes"
+  date: '2025-01-01'
+  sunset: '2025-06-01'
+  replacement: '/v2/leads/{id}/notes'
 
 # Latency: simulate a slow downstream so client retry/timeout logic can
 # exercise the boundary without needing chaos injection.
@@ -18,21 +18,21 @@ latency:
 event_catalog:
   - type: NoteAppended
     payload_template:
-      id: "$uuidv7()"
-      text: "command.payload.text"
-      author: "command.payload.author"
-      createdAt: "$now()"
+      id: '$uuidv7()'
+      text: 'command.payload.text'
+      author: 'command.payload.author'
+      createdAt: '$now()'
 
 behaviors:
   - name: addNote
     match:
       operationId: addNote
-      condition: "true"
+      condition: 'true'
       requires:
         - name: has-text
           condition: "command.payload.text != null && command.payload.text != ''"
           error_code: NOTE_TEXT_REQUIRED
-          error_message: "Note text is required"
+          error_message: 'Note text is required'
     emit: NoteAppended
 
 reducers:
@@ -44,6 +44,6 @@ reducers:
       # interpolated (non-string patch values pass through unchanged).
       - op: append
         path: /notes
-        value: "${event.payload}"
+        value: '${event.payload}'
 
 initialization: []

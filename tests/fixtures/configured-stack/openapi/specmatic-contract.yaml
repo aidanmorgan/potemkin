@@ -16,7 +16,7 @@ paths:
               properties:
                 name: { type: string }
       responses:
-        "201":
+        '201':
           description: Thing created
           content:
             application/json:
@@ -36,7 +36,7 @@ paths:
           required: true
           schema: { type: string }
       responses:
-        "200":
+        '200':
           description: Thing found
           content:
             application/json:
@@ -60,7 +60,7 @@ paths:
               properties:
                 name: { type: string }
       responses:
-        "201":
+        '201':
           description: Widget created
           content:
             application/json:
@@ -80,7 +80,7 @@ paths:
           required: true
           schema: { type: string }
       responses:
-        "200":
+        '200':
           description: Widget found
           content:
             application/json:
@@ -95,7 +95,7 @@ paths:
     get:
       operationId: getUnimplementedWidget
       responses:
-        "501":
+        '501':
           description: Runtime boundary is not configured
           content:
             application/json:

@@ -14,14 +14,14 @@ behaviors:
   - name: create-profile
     match:
       operationId: createProfile
-      condition: "true"
+      condition: 'true'
     emit: ProfileCreated
 reducers:
   - on: ProfileCreated
     patches:
       - op: replace
         path: /id
-        value: "${event.payload.id}"
+        value: '${event.payload.id}'
       - op: replace
         path: /displayName
-        value: "${event.payload.displayName}"
+        value: '${event.payload.displayName}'

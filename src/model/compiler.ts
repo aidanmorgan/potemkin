@@ -1,15 +1,17 @@
-import type { RuntimeBoundary, RuntimeDependencies } from "./runtime.js";
-import type { RuntimeDefinition, RuntimeModel } from "./index.js";
-import { RuntimeModelError } from "../model/errors.js";
-import { runtimeLatencyProblem } from "../model/latency.js";
-
-export interface RuntimeCompilerOptions {
-  /** Allow references which will be resolved by a later source composition. */
-  readonly allowExternalReferences?: boolean;
-}
+import type { RuntimeBoundary, RuntimeDependencies } from './runtime.js';
+import type { RuntimeDefinition, RuntimeModel } from './index.js';
+import { RuntimeModelError } from '../model/errors.js';
+import { runtimeLatencyProblem } from '../model/latency.js';
+import {
+  behaviorName,
+  boundaryName,
+  eventType,
+  operationId,
+  parseContractPath,
+} from '../domain/references.js';
 
 function freeze<T>(value: T): T {
-  if (value === null || typeof value !== "object" || Object.isFrozen(value)) return value;
+  if (value === null || typeof value !== 'object' || Object.isFrozen(value)) return value;
   for (const child of Object.values(value as Record<string, unknown>)) freeze(child);
   return Object.freeze(value);
 }
@@ -38,9 +40,9 @@ function readonlyMap<Key, Value>(source: Map<Key, Value>): ReadonlyMap<Key, Valu
 }
 
 function compilePolicies(
-  policies: RuntimeDefinition["policies"],
+  policies: RuntimeDefinition['policies'],
   dependencies: RuntimeDependencies,
-): RuntimeDefinition["policies"] {
+): RuntimeDefinition['policies'] {
   const auth = policies?.auth;
   if (auth === undefined || auth.authenticate !== undefined) return policies;
   const authentication = dependencies.authentication;
@@ -65,22 +67,50 @@ function compilePolicies(
 export function compileRuntime(
   definition: RuntimeDefinition,
   dependencies: RuntimeDependencies,
-  options: RuntimeCompilerOptions = {},
 ): RuntimeModel {
   const boundaries = definition.boundaries.map((boundary) => freeze(boundary));
   const byBoundaryName = new Map<string, RuntimeBoundary>();
   const byContractPath = new Map<string, RuntimeBoundary>();
 
+  const validateBoundaryReferences = (boundary: RuntimeBoundary): void => {
+    boundaryName(boundary.boundary);
+    parseContractPath(boundary.contractPath);
+    for (const event of boundary.eventCatalog) eventType(event.type);
+    for (const behavior of boundary.behaviors) {
+      behaviorName(behavior.name);
+      operationId(behavior.operationId);
+      for (const dispatch of behavior.dispatchCommands ?? []) {
+        boundaryName(dispatch.boundary);
+        operationId(dispatch.operationId);
+      }
+    }
+    for (const reducer of boundary.reducers) {
+      if (!reducer.on.startsWith('System.') && reducer.on !== 'BaselineEntityCreatedEvent') {
+        eventType(reducer.on);
+      }
+    }
+  };
+
   for (const boundary of boundaries) {
+    try {
+      validateBoundaryReferences(boundary);
+    } catch (error) {
+      throw new RuntimeModelError(
+        'RUNTIME_BUILDER_INVALID',
+        `Invalid runtime reference in boundary "${boundary.boundary}": ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
     if (byBoundaryName.has(boundary.boundary)) {
       throw new RuntimeModelError(
-        "RUNTIME_BOUNDARY_CONFLICT",
+        'RUNTIME_BOUNDARY_CONFLICT',
         `Duplicate runtime boundary "${boundary.boundary}"`,
       );
     }
     if (byContractPath.has(boundary.contractPath)) {
       throw new RuntimeModelError(
-        "RUNTIME_BOUNDARY_CONFLICT",
+        'RUNTIME_BOUNDARY_CONFLICT',
         `Duplicate runtime contract path "${boundary.contractPath}"`,
       );
     }
@@ -94,7 +124,7 @@ export function compileRuntime(
     const boundaryLatencyProblem = runtimeLatencyProblem(boundary.latency);
     if (boundaryLatencyProblem !== undefined)
       throw new RuntimeModelError(
-        "RUNTIME_LATENCY_INVALID",
+        'RUNTIME_LATENCY_INVALID',
         `Runtime boundary "${boundary.boundary}" has invalid latency: ${boundaryLatencyProblem.message}`,
         {
           boundary: boundary.boundary,
@@ -106,7 +136,7 @@ export function compileRuntime(
     const responseLatencyProblem = runtimeLatencyProblem(boundary.response?.latency);
     if (responseLatencyProblem !== undefined)
       throw new RuntimeModelError(
-        "RUNTIME_LATENCY_INVALID",
+        'RUNTIME_LATENCY_INVALID',
         `Runtime boundary "${boundary.boundary}" has invalid response latency: ${responseLatencyProblem.message}`,
         {
           boundary: boundary.boundary,
@@ -121,35 +151,34 @@ export function compileRuntime(
         behavior.emit,
         ...(behavior.emitWhen?.map((entry) => entry.event) ?? []),
       ].filter((value): value is string => value !== undefined)) {
-        if (event !== "System.GenericUpdateEvent" && !events.has(event))
+        if (event !== 'System.GenericUpdateEvent' && !events.has(event))
           throw new RuntimeModelError(
-            "RUNTIME_EVENT_REFERENCE_INVALID",
+            'RUNTIME_EVENT_REFERENCE_INVALID',
             `Runtime behavior "${boundary.boundary}.${behavior.name}" emits undeclared event "${event}"`,
           );
       }
       for (const dispatch of behavior.dispatchCommands ?? []) {
         const target = byBoundaryName.get(dispatch.boundary);
-        if (target === undefined && options.allowExternalReferences === true) continue;
         if (target === undefined)
           throw new RuntimeModelError(
-            "RUNTIME_DISPATCH_REFERENCE_INVALID",
+            'RUNTIME_DISPATCH_REFERENCE_INVALID',
             `Runtime behavior "${boundary.boundary}.${behavior.name}" dispatches to unknown boundary "${dispatch.boundary}"`,
           );
         if (!target.behaviors.some((candidate) => candidate.operationId === dispatch.operationId))
           throw new RuntimeModelError(
-            "RUNTIME_DISPATCH_REFERENCE_INVALID",
+            'RUNTIME_DISPATCH_REFERENCE_INVALID',
             `Runtime behavior "${boundary.boundary}.${behavior.name}" dispatches unknown operation "${dispatch.operationId}" on "${dispatch.boundary}"`,
           );
       }
     }
     for (const reducer of boundary.reducers) {
       if (
-        reducer.on !== "BaselineEntityCreatedEvent" &&
-        reducer.on !== "System.GenericUpdateEvent" &&
+        reducer.on !== 'BaselineEntityCreatedEvent' &&
+        reducer.on !== 'System.GenericUpdateEvent' &&
         !events.has(reducer.on)
       )
         throw new RuntimeModelError(
-          "RUNTIME_EVENT_REFERENCE_INVALID",
+          'RUNTIME_EVENT_REFERENCE_INVALID',
           `Runtime reducer on "${boundary.boundary}" references undeclared event "${reducer.on}"`,
         );
     }
@@ -157,49 +186,46 @@ export function compileRuntime(
       const target = byBoundaryName.get(reaction.boundary);
       if (target === undefined)
         throw new RuntimeModelError(
-          "RUNTIME_REACTION_REFERENCE_INVALID",
+          'RUNTIME_REACTION_REFERENCE_INVALID',
           `Runtime reaction targets unknown boundary "${reaction.boundary}"`,
         );
       if (!eventTypes(target).has(reaction.emit))
         throw new RuntimeModelError(
-          "RUNTIME_REACTION_REFERENCE_INVALID",
+          'RUNTIME_REACTION_REFERENCE_INVALID',
           `Runtime reaction emits undeclared event "${reaction.emit}" on "${reaction.boundary}"`,
         );
     }
   }
   for (const reaction of definition.policies?.reactions ?? []) {
     const target = byBoundaryName.get(reaction.boundary);
-    if (target === undefined && options.allowExternalReferences === true) continue;
     if (target === undefined)
       throw new RuntimeModelError(
-        "RUNTIME_REACTION_REFERENCE_INVALID",
+        'RUNTIME_REACTION_REFERENCE_INVALID',
         `Runtime reaction targets unknown boundary "${reaction.boundary}"`,
       );
     if (!eventTypes(target).has(reaction.emit))
       throw new RuntimeModelError(
-        "RUNTIME_REACTION_REFERENCE_INVALID",
+        'RUNTIME_REACTION_REFERENCE_INVALID',
         `Runtime reaction emits undeclared event "${reaction.emit}" on "${reaction.boundary}"`,
       );
   }
   for (const saga of definition.policies?.sagas ?? []) {
     if (!byBoundaryName.has(saga.trigger.boundary)) {
-      if (options.allowExternalReferences === true) continue;
       throw new RuntimeModelError(
-        "RUNTIME_SAGA_REFERENCE_INVALID",
+        'RUNTIME_SAGA_REFERENCE_INVALID',
         `Runtime saga "${saga.name}" has an unknown trigger boundary "${saga.trigger.boundary}"`,
       );
     }
     for (const step of saga.steps) {
       const target = byBoundaryName.get(step.boundary);
-      if (target === undefined && options.allowExternalReferences === true) continue;
       if (target === undefined)
         throw new RuntimeModelError(
-          "RUNTIME_SAGA_REFERENCE_INVALID",
+          'RUNTIME_SAGA_REFERENCE_INVALID',
           `Runtime saga "${saga.name}" references unknown step boundary "${step.boundary}"`,
         );
       if (!target.behaviors.some((candidate) => candidate.operationId === step.operationId))
         throw new RuntimeModelError(
-          "RUNTIME_SAGA_REFERENCE_INVALID",
+          'RUNTIME_SAGA_REFERENCE_INVALID',
           `Runtime saga "${saga.name}" references unknown step operation "${step.operationId}"`,
         );
       if (
@@ -209,7 +235,7 @@ export function compileRuntime(
         )
       )
         throw new RuntimeModelError(
-          "RUNTIME_SAGA_REFERENCE_INVALID",
+          'RUNTIME_SAGA_REFERENCE_INVALID',
           `Runtime saga "${saga.name}" references unknown compensation operation "${step.compensation.operationId}"`,
         );
     }
@@ -220,7 +246,7 @@ export function compileRuntime(
   for (const helper of helpers) {
     if (helperNames.has(helper.name)) {
       throw new RuntimeModelError(
-        "RUNTIME_HELPER_CONFLICT",
+        'RUNTIME_HELPER_CONFLICT',
         `Duplicate runtime helper "${helper.name}"`,
       );
     }

@@ -13,4 +13,4 @@ typescript:
         - typescript/shared/**/*.ts
         - typescript/mixed/**/*.ts
       exclude:
-        - "**/*.d.ts"
+        - '**/*.d.ts'

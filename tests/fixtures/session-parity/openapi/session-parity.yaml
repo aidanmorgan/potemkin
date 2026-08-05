@@ -1,7 +1,7 @@
-openapi: "3.0.3"
+openapi: '3.0.3'
 info:
   title: Potemkin session authoring parity contract
-  version: "1.0.0"
+  version: '1.0.0'
 paths:
   /sessions:
     post:
@@ -11,44 +11,44 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/SessionInput"
+              $ref: '#/components/schemas/SessionInput'
       responses:
-        "200":
+        '200':
           description: Session created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Session"
-        "400":
+                $ref: '#/components/schemas/Session'
+        '400':
           description: Invalid session request
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
   /sessions/current:
     delete:
       operationId: destroyCurrentSession
       responses:
-        "204":
+        '204':
           description: Session destroyed
-        "400":
+        '400':
           description: Invalid session request
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
   /records:
     get:
       operationId: listRecords
       responses:
-        "200":
+        '200':
           description: Records
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Record"
+                  $ref: '#/components/schemas/Record'
     post:
       operationId: createRecord
       requestBody:
@@ -56,26 +56,26 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/RecordInput"
+              $ref: '#/components/schemas/RecordInput'
       responses:
-        "201":
+        '201':
           description: Record created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Record"
-        "401":
+                $ref: '#/components/schemas/Record'
+        '401':
           description: Authentication required
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
-        "403":
+                $ref: '#/components/schemas/Error'
+        '403':
           description: CSRF or scope failure
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
   /records/{id}:
     get:
       operationId: getRecord
@@ -86,18 +86,18 @@ paths:
           schema:
             type: string
       responses:
-        "200":
+        '200':
           description: Record
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Record"
-        "404":
+                $ref: '#/components/schemas/Record'
+        '404':
           description: Record not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
 components:
   schemas:
     SessionInput:

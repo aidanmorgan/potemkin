@@ -13,11 +13,11 @@ behaviors:
   - name: createBulkReceipt
     match:
       operationId: createBulkReceipt
-      condition: "true"
+      condition: 'true'
     emit: BulkReceiptCreated
 reducers:
   - on: BulkReceiptCreated
     patches:
-      - { op: replace, path: /id, value: "${event.payload.id}" }
-      - { op: replace, path: /recordId, value: "${event.payload.recordId}" }
-      - { op: replace, path: /kind, value: "${event.payload.kind}" }
+      - { op: replace, path: /id, value: '${event.payload.id}' }
+      - { op: replace, path: /recordId, value: '${event.payload.recordId}' }
+      - { op: replace, path: /kind, value: '${event.payload.kind}' }

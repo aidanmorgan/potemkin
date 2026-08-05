@@ -11,11 +11,11 @@
  *   lead.yaml (5 seeded leads with score, status, source, companyName)
  */
 
-import { startE2eApp } from "./_harness/e2e-test-app";
-import type { E2eApp } from "./_harness/e2e-test-app";
-import { requestThroughSpecmatic } from "./_harness/crm-e2e-helpers";
-import type { JsonObject } from "./_harness/crm-e2e-helpers";
-describe("Query Edge Cases (full Specmatic stack)", () => {
+import { startE2eApp } from './_harness/e2e-test-app';
+import type { E2eApp } from './_harness/e2e-test-app';
+import { requestThroughSpecmatic } from './_harness/crm-e2e-helpers';
+import type { JsonObject } from './_harness/crm-e2e-helpers';
+describe('Query Edge Cases (full Specmatic stack)', () => {
   let app: E2eApp;
 
   beforeAll(async () => {
@@ -29,84 +29,84 @@ describe("Query Edge Cases (full Specmatic stack)", () => {
   // Pagination edge cases
   // ═══════════════════════════════════════════════════════════════════════════
 
-  describe("Pagination edge cases", () => {
-    it("offset beyond total returns empty array", async () => {
+  describe('Pagination edge cases', () => {
+    it('offset beyond total returns empty array', async () => {
       const res = await requestThroughSpecmatic(
         app.stubUrl,
-        "GET",
-        "/leads",
+        'GET',
+        '/leads',
         null,
         {},
-        { offset: "100" },
+        { offset: '100' },
       );
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body)).toBe(true);
       expect((res.body as JsonObject[]).length).toBe(0);
     }, 60_000);
 
-    it("negative offset is rejected by contract validation", async () => {
+    it('negative offset is rejected by contract validation', async () => {
       const baseline = await requestThroughSpecmatic(
         app.stubUrl,
-        "GET",
-        "/leads",
+        'GET',
+        '/leads',
         null,
         {},
-        { offset: "0" },
+        { offset: '0' },
       );
       const negativeOffset = await requestThroughSpecmatic(
         app.stubUrl,
-        "GET",
-        "/leads",
+        'GET',
+        '/leads',
         null,
         {},
-        { offset: "-5" },
+        { offset: '-5' },
       );
 
       expect(baseline.status).toBe(200);
       expect(negativeOffset.status).toBe(400);
-      expect((negativeOffset.body as JsonObject)["error"]).toBe("CONTRACT_VIOLATION");
+      expect((negativeOffset.body as JsonObject)['error']).toBe('CONTRACT_VIOLATION');
     }, 60_000);
 
-    it("limit=0 is rejected by contract validation", async () => {
+    it('limit=0 is rejected by contract validation', async () => {
       const res = await requestThroughSpecmatic(
         app.stubUrl,
-        "GET",
-        "/leads",
+        'GET',
+        '/leads',
         null,
         {},
-        { limit: "0" },
+        { limit: '0' },
       );
       expect(res.status).toBe(400);
-      expect((res.body as JsonObject)["error"]).toBe("CONTRACT_VIOLATION");
+      expect((res.body as JsonObject)['error']).toBe('CONTRACT_VIOLATION');
     }, 60_000);
 
-    it("very large limit returns all entities without error", async () => {
+    it('very large limit returns all entities without error', async () => {
       const res = await requestThroughSpecmatic(
         app.stubUrl,
-        "GET",
-        "/leads",
+        'GET',
+        '/leads',
         null,
         {},
-        { limit: "99999" },
+        { limit: '99999' },
       );
       expect(res.status).toBe(200);
       const env = res.body as JsonObject;
-      expect((env["items"] as JsonObject[]).length).toBe(5);
+      expect((env['items'] as JsonObject[]).length).toBe(5);
     }, 60_000);
 
-    it("offset + limit exceeding total returns only remaining items", async () => {
+    it('offset + limit exceeding total returns only remaining items', async () => {
       const res = await requestThroughSpecmatic(
         app.stubUrl,
-        "GET",
-        "/leads",
+        'GET',
+        '/leads',
         null,
         {},
-        { offset: "3", limit: "10" },
+        { offset: '3', limit: '10' },
       );
       expect(res.status).toBe(200);
       const env = res.body as JsonObject;
       // 5 total - 3 offset = 2 remaining
-      expect((env["items"] as JsonObject[]).length).toBe(2);
+      expect((env['items'] as JsonObject[]).length).toBe(2);
     }, 60_000);
   });
 
@@ -114,15 +114,15 @@ describe("Query Edge Cases (full Specmatic stack)", () => {
   // Filter edge cases
   // ═══════════════════════════════════════════════════════════════════════════
 
-  describe("Filter edge cases", () => {
-    it("entities must have the filtered field present to match a comparison operator", async () => {
+  describe('Filter edge cases', () => {
+    it('entities must have the filtered field present to match a comparison operator', async () => {
       const res = await requestThroughSpecmatic(
         app.stubUrl,
-        "GET",
-        "/leads",
+        'GET',
+        '/leads',
         null,
         {},
-        { "nonExistentField:gt": "5" },
+        { 'nonExistentField:gt': '5' },
       );
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body)).toBe(true);
@@ -130,14 +130,14 @@ describe("Query Edge Cases (full Specmatic stack)", () => {
       expect((res.body as JsonObject[]).length).toBe(0);
     }, 60_000);
 
-    it("empty filter value is treated as a valid comparison target", async () => {
+    it('empty filter value is treated as a valid comparison target', async () => {
       const res = await requestThroughSpecmatic(
         app.stubUrl,
-        "GET",
-        "/leads",
+        'GET',
+        '/leads',
         null,
         {},
-        { "score:gte": "" },
+        { 'score:gte': '' },
       );
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body)).toBe(true);
@@ -145,17 +145,17 @@ describe("Query Edge Cases (full Specmatic stack)", () => {
       expect((res.body as JsonObject[]).length).toBe(5);
     }, 60_000);
 
-    it("multiple operator filters combine with AND semantics", async () => {
+    it('multiple operator filters combine with AND semantics', async () => {
       // score >= 50 AND status in [NEW]
       const res = await requestThroughSpecmatic(
         app.stubUrl,
-        "GET",
-        "/leads",
+        'GET',
+        '/leads',
         null,
         {},
         {
-          "score:gte": "50",
-          "status:in": "NEW",
+          'score:gte': '50',
+          'status:in': 'NEW',
         },
       );
       expect(res.status).toBe(200);
@@ -164,22 +164,22 @@ describe("Query Edge Cases (full Specmatic stack)", () => {
       // Apex (score=50, NEW) and Echo (score=50, NEW) match
       expect(leads.length).toBe(2);
       for (const lead of leads) {
-        expect(lead["status"]).toBe("NEW");
-        expect((lead["score"] as number) >= 50).toBe(true);
+        expect(lead['status']).toBe('NEW');
+        expect((lead['score'] as number) >= 50).toBe(true);
       }
     }, 60_000);
 
-    it("queryMapping filter + operator filter combine correctly", async () => {
+    it('queryMapping filter + operator filter combine correctly', async () => {
       // status=NEW (queryMapping) + score:gt=40 (operator)
       const res = await requestThroughSpecmatic(
         app.stubUrl,
-        "GET",
-        "/leads",
+        'GET',
+        '/leads',
         null,
         {},
         {
-          status: "NEW",
-          "score:gt": "40",
+          status: 'NEW',
+          'score:gt': '40',
         },
       );
       expect(res.status).toBe(200);
@@ -188,8 +188,8 @@ describe("Query Edge Cases (full Specmatic stack)", () => {
       // NEW leads: Apex (score=50) and Echo (score=50), both have score > 40
       expect(leads.length).toBe(2);
       for (const lead of leads) {
-        expect(lead["status"]).toBe("NEW");
-        expect((lead["score"] as number) > 40).toBe(true);
+        expect(lead['status']).toBe('NEW');
+        expect((lead['score'] as number) > 40).toBe(true);
       }
     }, 60_000);
   });
@@ -198,51 +198,51 @@ describe("Query Edge Cases (full Specmatic stack)", () => {
   // Search edge cases
   // ═══════════════════════════════════════════════════════════════════════════
 
-  describe("Search edge cases", () => {
-    it("full-text search with no results returns empty array", async () => {
+  describe('Search edge cases', () => {
+    it('full-text search with no results returns empty array', async () => {
       const res = await requestThroughSpecmatic(
         app.stubUrl,
-        "GET",
-        "/leads",
+        'GET',
+        '/leads',
         null,
         {},
-        { q: "NonExistentXYZ123" },
+        { q: 'NonExistentXYZ123' },
       );
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body)).toBe(true);
       expect((res.body as JsonObject[]).length).toBe(0);
     }, 60_000);
 
-    it("full-text search matches partial company name", async () => {
+    it('full-text search matches partial company name', async () => {
       const res = await requestThroughSpecmatic(
         app.stubUrl,
-        "GET",
-        "/leads",
+        'GET',
+        '/leads',
         null,
         {},
-        { q: "Solutions Ltd" },
+        { q: 'Solutions Ltd' },
       );
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body)).toBe(true);
       const leads = res.body as JsonObject[];
       expect(leads.length).toBeGreaterThanOrEqual(1);
-      expect(leads.some((l) => l["companyName"] === "Apex Solutions Ltd")).toBe(true);
+      expect(leads.some((l) => l['companyName'] === 'Apex Solutions Ltd')).toBe(true);
     }, 60_000);
 
-    it("full-text search is case-insensitive", async () => {
+    it('full-text search is case-insensitive', async () => {
       const res = await requestThroughSpecmatic(
         app.stubUrl,
-        "GET",
-        "/leads",
+        'GET',
+        '/leads',
         null,
         {},
-        { q: "apex" },
+        { q: 'apex' },
       );
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body)).toBe(true);
       const leads = res.body as JsonObject[];
       expect(leads.length).toBeGreaterThanOrEqual(1);
-      expect(leads.some((l) => l["companyName"] === "Apex Solutions Ltd")).toBe(true);
+      expect(leads.some((l) => l['companyName'] === 'Apex Solutions Ltd')).toBe(true);
     }, 60_000);
   });
 
@@ -250,15 +250,15 @@ describe("Query Edge Cases (full Specmatic stack)", () => {
   // Sort edge cases
   // ═══════════════════════════════════════════════════════════════════════════
 
-  describe("Sort edge cases", () => {
-    it("sort by nonexistent field returns all entities in stable order", async () => {
+  describe('Sort edge cases', () => {
+    it('sort by nonexistent field returns all entities in stable order', async () => {
       const res = await requestThroughSpecmatic(
         app.stubUrl,
-        "GET",
-        "/leads",
+        'GET',
+        '/leads',
         null,
         {},
-        { sort: "nonExistentField" },
+        { sort: 'nonExistentField' },
       );
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body)).toBe(true);
@@ -266,50 +266,50 @@ describe("Query Edge Cases (full Specmatic stack)", () => {
       expect((res.body as JsonObject[]).length).toBe(5);
     }, 60_000);
 
-    it("sort with no order param defaults to ascending", async () => {
+    it('sort with no order param defaults to ascending', async () => {
       const res = await requestThroughSpecmatic(
         app.stubUrl,
-        "GET",
-        "/leads",
+        'GET',
+        '/leads',
         null,
         {},
-        { sort: "score" },
+        { sort: 'score' },
       );
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body)).toBe(true);
-      const scores = (res.body as JsonObject[]).map((l) => l["score"] as number);
+      const scores = (res.body as JsonObject[]).map((l) => l['score'] as number);
       // Verify ascending order: each score <= the next
       for (let i = 0; i < scores.length - 1; i++) {
         expect(scores[i] <= scores[i + 1]).toBe(true);
       }
     }, 60_000);
 
-    it("sort + filter + pagination combined", async () => {
+    it('sort + filter + pagination combined', async () => {
       // status in [NEW, CONTACTED], sort by score desc, limit 2
       const res = await requestThroughSpecmatic(
         app.stubUrl,
-        "GET",
-        "/leads",
+        'GET',
+        '/leads',
         null,
         {},
         {
-          "status:in": "NEW,CONTACTED",
-          sort: "score",
-          order: "desc",
-          limit: "2",
+          'status:in': 'NEW,CONTACTED',
+          sort: 'score',
+          order: 'desc',
+          limit: '2',
         },
       );
       expect(res.status).toBe(200);
       // ?limit triggers the envelope shape.
       const env = res.body as JsonObject;
-      const leads = env["items"] as JsonObject[];
+      const leads = env['items'] as JsonObject[];
       expect(leads.length).toBe(2);
 
       // NEW leads: Apex (50), Echo (50). CONTACTED: BlueSky (80).
       // Sorted desc by score: BlueSky (80) first, then one of Apex/Echo (50).
-      expect(leads[0]["score"]).toBe(80);
-      expect(leads[0]["companyName"]).toBe("BlueSky Tech");
-      expect(leads[1]["score"]).toBe(50);
+      expect(leads[0]['score']).toBe(80);
+      expect(leads[0]['companyName']).toBe('BlueSky Tech');
+      expect(leads[1]['score']).toBe(50);
     }, 60_000);
   });
 
@@ -317,16 +317,16 @@ describe("Query Edge Cases (full Specmatic stack)", () => {
   // Empty collection scenarios
   // ═══════════════════════════════════════════════════════════════════════════
 
-  describe("Empty collection scenarios", () => {
-    it("query with filter matching no entities returns empty array", async () => {
+  describe('Empty collection scenarios', () => {
+    it('query with filter matching no entities returns empty array', async () => {
       // No leads have status=CONVERTED in the seed data
       const res = await requestThroughSpecmatic(
         app.stubUrl,
-        "GET",
-        "/leads",
+        'GET',
+        '/leads',
         null,
         {},
-        { status: "CONVERTED" },
+        { status: 'CONVERTED' },
       );
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body)).toBe(true);

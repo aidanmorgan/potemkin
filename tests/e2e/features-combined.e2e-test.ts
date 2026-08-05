@@ -12,8 +12,8 @@
  *   lead.yaml (first-match behavior ordering)
  */
 
-import { startE2eApp } from "./_harness/e2e-test-app";
-import type { E2eApp } from "./_harness/e2e-test-app";
+import { startE2eApp } from './_harness/e2e-test-app';
+import type { E2eApp } from './_harness/e2e-test-app';
 import {
   requestThroughSpecmatic,
   getGraphNode,
@@ -23,18 +23,18 @@ import {
   getAllEvents,
   getAllEntities,
   adminReset,
-} from "./_harness/crm-e2e-helpers";
-import type { JsonObject } from "./_harness/crm-e2e-helpers";
+} from './_harness/crm-e2e-helpers';
+import type { JsonObject } from './_harness/crm-e2e-helpers';
 
-const CAMPAIGN_ACTIVE_ID = "00000000-0000-7000-8000-000000000001";
-const CAMPAIGN_DRAFT_ID = "00000000-0000-7000-8000-000000000002";
-const AGENT_ALICE_ID = "00000000-0000-7000-8000-000000000003";
-const AGENT_BOB_ID = "00000000-0000-7000-8000-000000000004";
-const APEX_LEAD_ID = "00000000-0000-7000-8000-000000000010";
+const CAMPAIGN_ACTIVE_ID = '00000000-0000-7000-8000-000000000001';
+const CAMPAIGN_DRAFT_ID = '00000000-0000-7000-8000-000000000002';
+const AGENT_ALICE_ID = '00000000-0000-7000-8000-000000000003';
+const AGENT_BOB_ID = '00000000-0000-7000-8000-000000000004';
+const APEX_LEAD_ID = '00000000-0000-7000-8000-000000000010';
 
 // ---- Section 1: query_mapping ----
 
-describe("DSL query_mapping (full Specmatic stack)", () => {
+describe('DSL query_mapping (full Specmatic stack)', () => {
   let app: E2eApp;
 
   beforeAll(async () => {
@@ -44,175 +44,175 @@ describe("DSL query_mapping (full Specmatic stack)", () => {
     await app.shutdown();
   }, 30_000);
 
-  it("GET /leads?status=NEW returns only graph nodes where status==NEW", async () => {
+  it('GET /leads?status=NEW returns only graph nodes where status==NEW', async () => {
     const res = await requestThroughSpecmatic(
       app.stubUrl,
-      "GET",
-      "/leads",
+      'GET',
+      '/leads',
       null,
       {},
-      { status: "NEW" },
+      { status: 'NEW' },
     );
     expect(res.status).toBe(200);
     expect((res.body as JsonObject[]).length).toBe(2); // Apex + Echo
     for (const lead of res.body as JsonObject[]) {
-      const node = await getGraphNode(app.engineUrl, lead["id"] as string);
-      expect(node!["status"]).toBe("NEW");
+      const node = await getGraphNode(app.engineUrl, lead['id'] as string);
+      expect(node!['status']).toBe('NEW');
     }
   }, 60_000);
 
-  it("filter updates when graph node state changes via mutation", async () => {
-    const createRes = await requestThroughSpecmatic(app.stubUrl, "POST", "/leads", {
-      companyName: "Filter Mut Corp",
-      contactName: "FM",
-      phone: "+61 2 0000 0001",
-      email: "fm@test.com",
-      source: "WEBSITE",
+  it('filter updates when graph node state changes via mutation', async () => {
+    const createRes = await requestThroughSpecmatic(app.stubUrl, 'POST', '/leads', {
+      companyName: 'Filter Mut Corp',
+      contactName: 'FM',
+      phone: '+61 2 0000 0001',
+      email: 'fm@test.com',
+      source: 'WEBSITE',
     });
     expect([200, 201]).toContain(createRes.status);
-    const id = (createRes.body as JsonObject)["id"] as string;
+    const id = (createRes.body as JsonObject)['id'] as string;
 
     // Graph node starts as NEW
     const nodeBefore = await getGraphNode(app.engineUrl, id);
-    expect(nodeBefore!["status"]).toBe("NEW");
+    expect(nodeBefore!['status']).toBe('NEW');
 
     const newBefore = await requestThroughSpecmatic(
       app.stubUrl,
-      "GET",
-      "/leads",
+      'GET',
+      '/leads',
       null,
       {},
-      { status: "NEW" },
+      { status: 'NEW' },
     );
-    expect((newBefore.body as JsonObject[]).some((l) => l["id"] === id)).toBe(true);
+    expect((newBefore.body as JsonObject[]).some((l) => l['id'] === id)).toBe(true);
 
     // Contact -> status='CONTACTED'
-    await requestThroughSpecmatic(app.stubUrl, "POST", `/leads/${id}/contact`, {});
+    await requestThroughSpecmatic(app.stubUrl, 'POST', `/leads/${id}/contact`, {});
     const nodeAfter = await getGraphNode(app.engineUrl, id);
-    expect(nodeAfter!["status"]).toBe("CONTACTED");
+    expect(nodeAfter!['status']).toBe('CONTACTED');
 
     // No longer in NEW filter, now in CONTACTED
     const newAfter = await requestThroughSpecmatic(
       app.stubUrl,
-      "GET",
-      "/leads",
+      'GET',
+      '/leads',
       null,
       {},
-      { status: "NEW" },
+      { status: 'NEW' },
     );
-    expect((newAfter.body as JsonObject[]).some((l) => l["id"] === id)).toBe(false);
+    expect((newAfter.body as JsonObject[]).some((l) => l['id'] === id)).toBe(false);
     const contacted = await requestThroughSpecmatic(
       app.stubUrl,
-      "GET",
-      "/leads",
+      'GET',
+      '/leads',
       null,
       {},
-      { status: "CONTACTED" },
+      { status: 'CONTACTED' },
     );
-    expect((contacted.body as JsonObject[]).some((l) => l["id"] === id)).toBe(true);
+    expect((contacted.body as JsonObject[]).some((l) => l['id'] === id)).toBe(true);
   }, 60_000);
 
-  it("campaign query_mapping filters by graph node status", async () => {
+  it('campaign query_mapping filters by graph node status', async () => {
     const active = await requestThroughSpecmatic(
       app.stubUrl,
-      "GET",
-      "/campaigns",
+      'GET',
+      '/campaigns',
       null,
       {},
-      { status: "ACTIVE" },
+      { status: 'ACTIVE' },
     );
     expect(active.status).toBe(200);
     expect((active.body as JsonObject[]).length).toBe(1);
 
     const draft = await requestThroughSpecmatic(
       app.stubUrl,
-      "GET",
-      "/campaigns",
+      'GET',
+      '/campaigns',
       null,
       {},
-      { status: "DRAFT" },
+      { status: 'DRAFT' },
     );
     expect(draft.status).toBe(200);
     expect((draft.body as JsonObject[]).length).toBe(1);
   }, 60_000);
 
-  it("agent query_mapping filters by graph node currentStatus", async () => {
+  it('agent query_mapping filters by graph node currentStatus', async () => {
     const avail = await requestThroughSpecmatic(
       app.stubUrl,
-      "GET",
-      "/agents",
+      'GET',
+      '/agents',
       null,
       {},
-      { currentStatus: "AVAILABLE" },
+      { currentStatus: 'AVAILABLE' },
     );
     expect(avail.status).toBe(200);
     expect((avail.body as JsonObject[]).length).toBe(2); // Alice + Bob
     for (const a of avail.body as JsonObject[]) {
-      const node = await getGraphNode(app.engineUrl, a["id"] as string);
-      expect(node!["currentStatus"]).toBe("AVAILABLE");
+      const node = await getGraphNode(app.engineUrl, a['id'] as string);
+      expect(node!['currentStatus']).toBe('AVAILABLE');
     }
 
     const offline = await requestThroughSpecmatic(
       app.stubUrl,
-      "GET",
-      "/agents",
+      'GET',
+      '/agents',
       null,
       {},
-      { currentStatus: "OFFLINE" },
+      { currentStatus: 'OFFLINE' },
     );
     expect(offline.status).toBe(200);
     expect((offline.body as JsonObject[]).length).toBe(1); // Carla
   }, 60_000);
 
-  it("query with no matches returns empty array", async () => {
+  it('query with no matches returns empty array', async () => {
     const res = await requestThroughSpecmatic(
       app.stubUrl,
-      "GET",
-      "/leads",
+      'GET',
+      '/leads',
       null,
       {},
-      { status: "DNC" },
+      { status: 'DNC' },
     );
     expect(res.status).toBe(200);
     expect(res.body).toEqual([]);
   }, 60_000);
 
-  it("call query_mapping filters by graph node leadId", async () => {
-    const leadRes = await requestThroughSpecmatic(app.stubUrl, "POST", "/leads", {
-      companyName: "Call QM Corp",
-      contactName: "CQ",
-      phone: "+61 2 0000 0010",
-      email: "cq@test.com",
-      source: "PARTNER",
+  it('call query_mapping filters by graph node leadId', async () => {
+    const leadRes = await requestThroughSpecmatic(app.stubUrl, 'POST', '/leads', {
+      companyName: 'Call QM Corp',
+      contactName: 'CQ',
+      phone: '+61 2 0000 0010',
+      email: 'cq@test.com',
+      source: 'PARTNER',
     });
     expect([200, 201]).toContain(leadRes.status);
-    const leadId = (leadRes.body as JsonObject)["id"] as string;
+    const leadId = (leadRes.body as JsonObject)['id'] as string;
 
-    await requestThroughSpecmatic(app.stubUrl, "POST", "/calls", {
+    await requestThroughSpecmatic(app.stubUrl, 'POST', '/calls', {
       leadId,
       agentId: AGENT_ALICE_ID,
       campaignId: CAMPAIGN_ACTIVE_ID,
-      outcome: "INTERESTED",
+      outcome: 'INTERESTED',
     });
-    await requestThroughSpecmatic(app.stubUrl, "POST", "/calls", {
+    await requestThroughSpecmatic(app.stubUrl, 'POST', '/calls', {
       leadId,
       agentId: AGENT_BOB_ID,
       campaignId: CAMPAIGN_ACTIVE_ID,
-      outcome: "NO_ANSWER",
+      outcome: 'NO_ANSWER',
     });
 
-    const res = await requestThroughSpecmatic(app.stubUrl, "GET", "/calls", null, {}, { leadId });
+    const res = await requestThroughSpecmatic(app.stubUrl, 'GET', '/calls', null, {}, { leadId });
     expect(res.status).toBe(200);
     expect((res.body as JsonObject[]).length).toBe(2);
     for (const call of res.body as JsonObject[]) {
-      expect(call["leadId"]).toBe(leadId);
+      expect(call['leadId']).toBe(leadId);
     }
   }, 60_000);
 });
 
 // ---- Section 2: emit_when branching + postcondition ----
 
-describe("DSL emit_when branching + postcondition (full Specmatic stack)", () => {
+describe('DSL emit_when branching + postcondition (full Specmatic stack)', () => {
   let app: E2eApp;
 
   beforeAll(async () => {
@@ -222,260 +222,260 @@ describe("DSL emit_when branching + postcondition (full Specmatic stack)", () =>
     await app.shutdown();
   }, 30_000);
 
-  describe("campaign pause emit_when branches on actualCalls", () => {
-    it("branch: actualCalls == 0 -- pause a fresh campaign", async () => {
+  describe('campaign pause emit_when branches on actualCalls', () => {
+    it('branch: actualCalls == 0 -- pause a fresh campaign', async () => {
       await requestThroughSpecmatic(
         app.stubUrl,
-        "PATCH",
+        'PATCH',
         `/campaigns/${CAMPAIGN_DRAFT_ID}/activate`,
         {},
       );
       const nodeAfterActivate = await getGraphNode(app.engineUrl, CAMPAIGN_DRAFT_ID);
-      expect(nodeAfterActivate!["actualCalls"]).toBe(0);
+      expect(nodeAfterActivate!['actualCalls']).toBe(0);
 
       await requestThroughSpecmatic(
         app.stubUrl,
-        "PATCH",
+        'PATCH',
         `/campaigns/${CAMPAIGN_DRAFT_ID}/pause`,
         {},
       );
       const node = await getGraphNode(app.engineUrl, CAMPAIGN_DRAFT_ID);
-      expect(node!["status"]).toBe("PAUSED");
+      expect(node!['status']).toBe('PAUSED');
 
       const events = await getEventsByAggregate(app.engineUrl, CAMPAIGN_DRAFT_ID);
-      expect(events.some((e) => e.type === "CampaignPaused")).toBe(true);
+      expect(events.some((e) => e.type === 'CampaignPaused')).toBe(true);
     }, 60_000);
 
-    it("branch: actualCalls > 0 -- pause a campaign that received leads", async () => {
-      const campRes = await requestThroughSpecmatic(app.stubUrl, "POST", "/campaigns", {
-        name: "EmitWhen Test",
-        targetSource: "WEBSITE",
-        script: "test",
-        startedAt: "2025-01-01T00:00:00.000Z",
-        endedAt: "2025-12-31T23:59:59.000Z",
+    it('branch: actualCalls > 0 -- pause a campaign that received leads', async () => {
+      const campRes = await requestThroughSpecmatic(app.stubUrl, 'POST', '/campaigns', {
+        name: 'EmitWhen Test',
+        targetSource: 'WEBSITE',
+        script: 'test',
+        startedAt: '2025-01-01T00:00:00.000Z',
+        endedAt: '2025-12-31T23:59:59.000Z',
         targetCalls: 50,
         targetConversions: 5,
       });
       expect([200, 201]).toContain(campRes.status);
-      const campId = (campRes.body as JsonObject)["id"] as string;
-      await requestThroughSpecmatic(app.stubUrl, "PATCH", `/campaigns/${campId}/activate`, {});
+      const campId = (campRes.body as JsonObject)['id'] as string;
+      await requestThroughSpecmatic(app.stubUrl, 'PATCH', `/campaigns/${campId}/activate`, {});
 
       // Dispatch leads to increment actualCalls via forward
-      await requestThroughSpecmatic(app.stubUrl, "POST", "/leads", {
-        companyName: "EW1",
-        contactName: "EW",
-        phone: "+61 0",
-        email: "ew@test.com",
-        source: "WEBSITE",
+      await requestThroughSpecmatic(app.stubUrl, 'POST', '/leads', {
+        companyName: 'EW1',
+        contactName: 'EW',
+        phone: '+61 0',
+        email: 'ew@test.com',
+        source: 'WEBSITE',
         assignedCampaignId: campId,
       });
 
       const campNode = await getGraphNode(app.engineUrl, campId);
-      expect(campNode!["actualCalls"] as number).toBeGreaterThan(0);
+      expect(campNode!['actualCalls'] as number).toBeGreaterThan(0);
 
-      await requestThroughSpecmatic(app.stubUrl, "PATCH", `/campaigns/${campId}/pause`, {});
+      await requestThroughSpecmatic(app.stubUrl, 'PATCH', `/campaigns/${campId}/pause`, {});
       const paused = await getGraphNode(app.engineUrl, campId);
-      expect(paused!["status"]).toBe("PAUSED");
+      expect(paused!['status']).toBe('PAUSED');
     }, 60_000);
   });
 
-  describe("lead contact emit_when branches on status", () => {
-    it("contact from NEW (first branch) sets graph status=CONTACTED", async () => {
-      const res = await requestThroughSpecmatic(app.stubUrl, "POST", "/leads", {
-        companyName: "EW New",
-        contactName: "N",
-        phone: "+61 0",
-        email: "ewnew@t.com",
-        source: "WEBSITE",
+  describe('lead contact emit_when branches on status', () => {
+    it('contact from NEW (first branch) sets graph status=CONTACTED', async () => {
+      const res = await requestThroughSpecmatic(app.stubUrl, 'POST', '/leads', {
+        companyName: 'EW New',
+        contactName: 'N',
+        phone: '+61 0',
+        email: 'ewnew@t.com',
+        source: 'WEBSITE',
       });
       expect([200, 201]).toContain(res.status);
-      const id = (res.body as JsonObject)["id"] as string;
+      const id = (res.body as JsonObject)['id'] as string;
 
       const nodeBefore = await getGraphNode(app.engineUrl, id);
-      expect(nodeBefore!["status"]).toBe("NEW");
+      expect(nodeBefore!['status']).toBe('NEW');
 
-      await requestThroughSpecmatic(app.stubUrl, "POST", `/leads/${id}/contact`, {});
+      await requestThroughSpecmatic(app.stubUrl, 'POST', `/leads/${id}/contact`, {});
       const node = await getGraphNode(app.engineUrl, id);
-      expect(node!["status"]).toBe("CONTACTED");
-      expect(node!["lastContactedAt"]).toBeDefined();
+      expect(node!['status']).toBe('CONTACTED');
+      expect(node!['lastContactedAt']).toBeDefined();
     }, 60_000);
 
-    it("contact from QUALIFIED (second branch) demotes to CONTACTED", async () => {
-      const res = await requestThroughSpecmatic(app.stubUrl, "POST", "/leads", {
-        companyName: "EW Qual",
-        contactName: "Q",
-        phone: "+61 0",
-        email: "ewqual@t.com",
-        source: "REFERRAL",
+    it('contact from QUALIFIED (second branch) demotes to CONTACTED', async () => {
+      const res = await requestThroughSpecmatic(app.stubUrl, 'POST', '/leads', {
+        companyName: 'EW Qual',
+        contactName: 'Q',
+        phone: '+61 0',
+        email: 'ewqual@t.com',
+        source: 'REFERRAL',
       });
       expect([200, 201]).toContain(res.status);
-      const id = (res.body as JsonObject)["id"] as string;
-      await requestThroughSpecmatic(app.stubUrl, "POST", "/calls", {
+      const id = (res.body as JsonObject)['id'] as string;
+      await requestThroughSpecmatic(app.stubUrl, 'POST', '/calls', {
         leadId: id,
         agentId: AGENT_ALICE_ID,
         campaignId: CAMPAIGN_ACTIVE_ID,
-        outcome: "INTERESTED",
+        outcome: 'INTERESTED',
       });
-      await requestThroughSpecmatic(app.stubUrl, "POST", `/leads/${id}/contact`, {});
-      await requestThroughSpecmatic(app.stubUrl, "POST", `/leads/${id}/qualify`, {});
+      await requestThroughSpecmatic(app.stubUrl, 'POST', `/leads/${id}/contact`, {});
+      await requestThroughSpecmatic(app.stubUrl, 'POST', `/leads/${id}/qualify`, {});
 
       const qualNode = await getGraphNode(app.engineUrl, id);
-      expect(qualNode!["status"]).toBe("QUALIFIED");
+      expect(qualNode!['status']).toBe('QUALIFIED');
 
-      await requestThroughSpecmatic(app.stubUrl, "POST", `/leads/${id}/contact`, {});
+      await requestThroughSpecmatic(app.stubUrl, 'POST', `/leads/${id}/contact`, {});
       const node = await getGraphNode(app.engineUrl, id);
-      expect(node!["status"]).toBe("CONTACTED");
+      expect(node!['status']).toBe('CONTACTED');
     }, 60_000);
   });
 
-  describe("opportunity close LOST emit_when branches on stage", () => {
+  describe('opportunity close LOST emit_when branches on stage', () => {
     async function makeOpp(company: string, value: number): Promise<string> {
-      const lr = await requestThroughSpecmatic(app.stubUrl, "POST", "/leads", {
+      const lr = await requestThroughSpecmatic(app.stubUrl, 'POST', '/leads', {
         companyName: company,
-        contactName: "O",
-        phone: "+61 0",
-        email: `${company.toLowerCase().replace(/\s/g, "")}@t.com`,
-        source: "REFERRAL",
+        contactName: 'O',
+        phone: '+61 0',
+        email: `${company.toLowerCase().replace(/\s/g, '')}@t.com`,
+        source: 'REFERRAL',
       });
-      const lid = (lr.body as JsonObject)["id"] as string;
-      await requestThroughSpecmatic(app.stubUrl, "POST", "/calls", {
+      const lid = (lr.body as JsonObject)['id'] as string;
+      await requestThroughSpecmatic(app.stubUrl, 'POST', '/calls', {
         leadId: lid,
         agentId: AGENT_ALICE_ID,
         campaignId: CAMPAIGN_ACTIVE_ID,
-        outcome: "INTERESTED",
+        outcome: 'INTERESTED',
       });
-      await requestThroughSpecmatic(app.stubUrl, "POST", `/leads/${lid}/contact`, {});
-      await requestThroughSpecmatic(app.stubUrl, "POST", `/leads/${lid}/qualify`, {});
-      await requestThroughSpecmatic(app.stubUrl, "POST", `/leads/${lid}/convert`, {
+      await requestThroughSpecmatic(app.stubUrl, 'POST', `/leads/${lid}/contact`, {});
+      await requestThroughSpecmatic(app.stubUrl, 'POST', `/leads/${lid}/qualify`, {});
+      await requestThroughSpecmatic(app.stubUrl, 'POST', `/leads/${lid}/convert`, {
         value,
         probability: 50,
       });
-      const opps = await requestThroughSpecmatic(app.stubUrl, "GET", "/opportunities");
-      return (opps.body as JsonObject[]).find((o) => o["leadId"] === lid)!["id"] as string;
+      const opps = await requestThroughSpecmatic(app.stubUrl, 'GET', '/opportunities');
+      return (opps.body as JsonObject[]).find((o) => o['leadId'] === lid)!['id'] as string;
     }
 
-    it("LOST from PROPOSED (second branch)", async () => {
-      const oppId = await makeOpp("Lost Proposed Corp", 40000);
+    it('LOST from PROPOSED (second branch)', async () => {
+      const oppId = await makeOpp('Lost Proposed Corp', 40000);
       const nodeBefore = await getGraphNode(app.engineUrl, oppId);
-      expect(nodeBefore!["stage"]).toBe("PROPOSED");
+      expect(nodeBefore!['stage']).toBe('PROPOSED');
 
-      await requestThroughSpecmatic(app.stubUrl, "PATCH", `/opportunities/${oppId}/close`, {
-        outcome: "LOST",
-        closureReason: "No budget",
+      await requestThroughSpecmatic(app.stubUrl, 'PATCH', `/opportunities/${oppId}/close`, {
+        outcome: 'LOST',
+        closureReason: 'No budget',
       });
       const node = await getGraphNode(app.engineUrl, oppId);
-      expect(node!["stage"]).toBe("LOST");
-      expect(node!["closureReason"]).toBe("No budget");
+      expect(node!['stage']).toBe('LOST');
+      expect(node!['closureReason']).toBe('No budget');
     }, 60_000);
 
-    it("LOST from NEGOTIATING (first branch)", async () => {
-      const oppId = await makeOpp("Lost Neg Corp", 55000);
-      await requestThroughSpecmatic(app.stubUrl, "PATCH", `/opportunities/${oppId}/advance`, {});
+    it('LOST from NEGOTIATING (first branch)', async () => {
+      const oppId = await makeOpp('Lost Neg Corp', 55000);
+      await requestThroughSpecmatic(app.stubUrl, 'PATCH', `/opportunities/${oppId}/advance`, {});
       const advNode = await getGraphNode(app.engineUrl, oppId);
-      expect(advNode!["stage"]).toBe("NEGOTIATING");
+      expect(advNode!['stage']).toBe('NEGOTIATING');
 
-      await requestThroughSpecmatic(app.stubUrl, "PATCH", `/opportunities/${oppId}/close`, {
-        outcome: "LOST",
-        closureReason: "Competitor",
+      await requestThroughSpecmatic(app.stubUrl, 'PATCH', `/opportunities/${oppId}/close`, {
+        outcome: 'LOST',
+        closureReason: 'Competitor',
       });
       const node = await getGraphNode(app.engineUrl, oppId);
-      expect(node!["stage"]).toBe("LOST");
+      expect(node!['stage']).toBe('LOST');
     }, 60_000);
 
-    it("LOST without reason uses DSL default from payload_template", async () => {
-      const oppId = await makeOpp("Lost Default Corp", 30000);
-      await requestThroughSpecmatic(app.stubUrl, "PATCH", `/opportunities/${oppId}/close`, {
-        outcome: "LOST",
+    it('LOST without reason uses DSL default from payload_template', async () => {
+      const oppId = await makeOpp('Lost Default Corp', 30000);
+      await requestThroughSpecmatic(app.stubUrl, 'PATCH', `/opportunities/${oppId}/close`, {
+        outcome: 'LOST',
       });
       const node = await getGraphNode(app.engineUrl, oppId);
-      expect(node!["closureReason"]).toBe("No reason given");
+      expect(node!['closureReason']).toBe('No reason given');
     }, 60_000);
   });
 
-  describe("postcondition enforcement", () => {
-    it("convert postcondition passes -- graph node status == CONVERTED", async () => {
-      const res = await requestThroughSpecmatic(app.stubUrl, "POST", "/leads", {
-        companyName: "PC Corp",
-        contactName: "PC",
-        phone: "+61 0",
-        email: "pc@t.com",
-        source: "REFERRAL",
+  describe('postcondition enforcement', () => {
+    it('convert postcondition passes -- graph node status == CONVERTED', async () => {
+      const res = await requestThroughSpecmatic(app.stubUrl, 'POST', '/leads', {
+        companyName: 'PC Corp',
+        contactName: 'PC',
+        phone: '+61 0',
+        email: 'pc@t.com',
+        source: 'REFERRAL',
       });
       expect([200, 201]).toContain(res.status);
-      const id = (res.body as JsonObject)["id"] as string;
-      await requestThroughSpecmatic(app.stubUrl, "POST", "/calls", {
+      const id = (res.body as JsonObject)['id'] as string;
+      await requestThroughSpecmatic(app.stubUrl, 'POST', '/calls', {
         leadId: id,
         agentId: AGENT_ALICE_ID,
         campaignId: CAMPAIGN_ACTIVE_ID,
-        outcome: "INTERESTED",
+        outcome: 'INTERESTED',
       });
-      await requestThroughSpecmatic(app.stubUrl, "POST", `/leads/${id}/contact`, {});
-      await requestThroughSpecmatic(app.stubUrl, "POST", `/leads/${id}/qualify`, {});
+      await requestThroughSpecmatic(app.stubUrl, 'POST', `/leads/${id}/contact`, {});
+      await requestThroughSpecmatic(app.stubUrl, 'POST', `/leads/${id}/qualify`, {});
 
       // If postcondition failed, this would return 500 not 200
       const convertRes = await requestThroughSpecmatic(
         app.stubUrl,
-        "POST",
+        'POST',
         `/leads/${id}/convert`,
         { value: 50000 },
       );
       expect(convertRes.status).toBe(200);
       const node = await getGraphNode(app.engineUrl, id);
-      expect(node!["status"]).toBe("CONVERTED");
+      expect(node!['status']).toBe('CONVERTED');
     }, 60_000);
   });
 
-  describe("opportunity advance probability override", () => {
+  describe('opportunity advance probability override', () => {
     async function makeOpp(company: string, value: number, prob: number): Promise<string> {
-      const lr = await requestThroughSpecmatic(app.stubUrl, "POST", "/leads", {
+      const lr = await requestThroughSpecmatic(app.stubUrl, 'POST', '/leads', {
         companyName: company,
-        contactName: "P",
-        phone: "+61 0",
-        email: `${company.toLowerCase().replace(/\s/g, "")}@t.com`,
-        source: "REFERRAL",
+        contactName: 'P',
+        phone: '+61 0',
+        email: `${company.toLowerCase().replace(/\s/g, '')}@t.com`,
+        source: 'REFERRAL',
       });
-      const lid = (lr.body as JsonObject)["id"] as string;
-      await requestThroughSpecmatic(app.stubUrl, "POST", "/calls", {
+      const lid = (lr.body as JsonObject)['id'] as string;
+      await requestThroughSpecmatic(app.stubUrl, 'POST', '/calls', {
         leadId: lid,
         agentId: AGENT_ALICE_ID,
         campaignId: CAMPAIGN_ACTIVE_ID,
-        outcome: "INTERESTED",
+        outcome: 'INTERESTED',
       });
-      await requestThroughSpecmatic(app.stubUrl, "POST", `/leads/${lid}/contact`, {});
-      await requestThroughSpecmatic(app.stubUrl, "POST", `/leads/${lid}/qualify`, {});
-      await requestThroughSpecmatic(app.stubUrl, "POST", `/leads/${lid}/convert`, {
+      await requestThroughSpecmatic(app.stubUrl, 'POST', `/leads/${lid}/contact`, {});
+      await requestThroughSpecmatic(app.stubUrl, 'POST', `/leads/${lid}/qualify`, {});
+      await requestThroughSpecmatic(app.stubUrl, 'POST', `/leads/${lid}/convert`, {
         value,
         probability: prob,
       });
-      const opps = await requestThroughSpecmatic(app.stubUrl, "GET", "/opportunities");
-      return (opps.body as JsonObject[]).find((o) => o["leadId"] === lid)!["id"] as string;
+      const opps = await requestThroughSpecmatic(app.stubUrl, 'GET', '/opportunities');
+      return (opps.body as JsonObject[]).find((o) => o['leadId'] === lid)!['id'] as string;
     }
 
-    it("advance with explicit probability updates graph node", async () => {
-      const oppId = await makeOpp("Prob Corp", 60000, 50);
+    it('advance with explicit probability updates graph node', async () => {
+      const oppId = await makeOpp('Prob Corp', 60000, 50);
       const nodeBefore = await getGraphNode(app.engineUrl, oppId);
-      expect(nodeBefore!["probability"]).toBe(50);
+      expect(nodeBefore!['probability']).toBe(50);
 
-      await requestThroughSpecmatic(app.stubUrl, "PATCH", `/opportunities/${oppId}/advance`, {
+      await requestThroughSpecmatic(app.stubUrl, 'PATCH', `/opportunities/${oppId}/advance`, {
         probability: 90,
       });
       const nodeAfter = await getGraphNode(app.engineUrl, oppId);
-      expect(nodeAfter!["probability"]).toBe(90);
+      expect(nodeAfter!['probability']).toBe(90);
     }, 60_000);
 
-    it("advance without probability keeps existing value in graph", async () => {
-      const oppId = await makeOpp("ProbKeep Corp", 45000, 50);
+    it('advance without probability keeps existing value in graph', async () => {
+      const oppId = await makeOpp('ProbKeep Corp', 45000, 50);
 
-      await requestThroughSpecmatic(app.stubUrl, "PATCH", `/opportunities/${oppId}/advance`, {});
+      await requestThroughSpecmatic(app.stubUrl, 'PATCH', `/opportunities/${oppId}/advance`, {});
       const node = await getGraphNode(app.engineUrl, oppId);
-      expect(node!["probability"]).toBe(50);
+      expect(node!['probability']).toBe(50);
     }, 60_000);
   });
 });
 
 // ---- Section 3: Idempotency + first-match semantics ----
 
-describe("DSL idempotency + first-match semantics (full Specmatic stack)", () => {
+describe('DSL idempotency + first-match semantics (full Specmatic stack)', () => {
   let app: E2eApp;
 
   beforeAll(async () => {
@@ -485,184 +485,184 @@ describe("DSL idempotency + first-match semantics (full Specmatic stack)", () =>
     await app.shutdown();
   }, 30_000);
 
-  describe("idempotency via forward endpoint", () => {
-    it("same key + same body -> replay, graph has only 1 entity", async () => {
+  describe('idempotency via forward endpoint', () => {
+    it('same key + same body -> replay, graph has only 1 entity', async () => {
       const key = `idem-same-${Date.now()}`;
       const body = {
-        companyName: "Idem Corp",
-        contactName: "I",
-        phone: "+61 0",
-        email: "idem@t.com",
-        source: "WEBSITE",
+        companyName: 'Idem Corp',
+        contactName: 'I',
+        phone: '+61 0',
+        email: 'idem@t.com',
+        source: 'WEBSITE',
       };
 
-      const first = await requestThroughSpecmatic(app.stubUrl, "POST", "/leads", body, {
-        "idempotency-key": key,
+      const first = await requestThroughSpecmatic(app.stubUrl, 'POST', '/leads', body, {
+        'idempotency-key': key,
       });
       expect([200, 201]).toContain(first.status);
-      const id = (first.body as JsonObject)["id"] as string;
+      const id = (first.body as JsonObject)['id'] as string;
       expect(await getGraphNode(app.engineUrl, id)).not.toBeNull();
 
-      const second = await requestThroughSpecmatic(app.stubUrl, "POST", "/leads", body, {
-        "idempotency-key": key,
+      const second = await requestThroughSpecmatic(app.stubUrl, 'POST', '/leads', body, {
+        'idempotency-key': key,
       });
-      expect((second.body as JsonObject)["id"]).toBe(id);
-      expect(second.headers["x-idempotency-replay"]).toBe("true");
+      expect((second.body as JsonObject)['id']).toBe(id);
+      expect(second.headers['x-idempotency-replay']).toBe('true');
 
       // Only 1 LeadCreated event for this aggregate
       const events = await getEventsByAggregate(app.engineUrl, id);
-      expect(events.filter((e) => e.type === "LeadCreated").length).toBe(1);
+      expect(events.filter((e) => e.type === 'LeadCreated').length).toBe(1);
     }, 60_000);
 
-    it("same key + different body -> conflict, graph unchanged", async () => {
+    it('same key + different body -> conflict, graph unchanged', async () => {
       const key = `idem-diff-${Date.now()}`;
       const body1 = {
-        companyName: "Idem A",
-        contactName: "A",
-        phone: "+61 0",
-        email: "a@t.com",
-        source: "WEBSITE",
+        companyName: 'Idem A',
+        contactName: 'A',
+        phone: '+61 0',
+        email: 'a@t.com',
+        source: 'WEBSITE',
       };
       const body2 = {
-        companyName: "Idem B",
-        contactName: "B",
-        phone: "+61 0",
-        email: "b@t.com",
-        source: "REFERRAL",
+        companyName: 'Idem B',
+        contactName: 'B',
+        phone: '+61 0',
+        email: 'b@t.com',
+        source: 'REFERRAL',
       };
 
-      const first = await requestThroughSpecmatic(app.stubUrl, "POST", "/leads", body1, {
-        "idempotency-key": key,
+      const first = await requestThroughSpecmatic(app.stubUrl, 'POST', '/leads', body1, {
+        'idempotency-key': key,
       });
       expect([200, 201]).toContain(first.status);
 
-      const second = await requestThroughSpecmatic(app.stubUrl, "POST", "/leads", body2, {
-        "idempotency-key": key,
+      const second = await requestThroughSpecmatic(app.stubUrl, 'POST', '/leads', body2, {
+        'idempotency-key': key,
       });
       expect(second.status).toBe(409);
     }, 60_000);
 
-    it("different idempotency keys produce separate graph nodes", async () => {
+    it('different idempotency keys produce separate graph nodes', async () => {
       const key1 = `idem-k1-${Date.now()}`;
       const key2 = `idem-k2-${Date.now()}`;
       const body = {
-        companyName: "Idem Multi",
-        contactName: "IM",
-        phone: "+61 0",
-        email: "im@t.com",
-        source: "WEBSITE",
+        companyName: 'Idem Multi',
+        contactName: 'IM',
+        phone: '+61 0',
+        email: 'im@t.com',
+        source: 'WEBSITE',
       };
 
-      const r1 = await requestThroughSpecmatic(app.stubUrl, "POST", "/leads", body, {
-        "idempotency-key": key1,
+      const r1 = await requestThroughSpecmatic(app.stubUrl, 'POST', '/leads', body, {
+        'idempotency-key': key1,
       });
-      const r2 = await requestThroughSpecmatic(app.stubUrl, "POST", "/leads", body, {
-        "idempotency-key": key2,
+      const r2 = await requestThroughSpecmatic(app.stubUrl, 'POST', '/leads', body, {
+        'idempotency-key': key2,
       });
 
-      const id1 = (r1.body as JsonObject)["id"] as string;
-      const id2 = (r2.body as JsonObject)["id"] as string;
+      const id1 = (r1.body as JsonObject)['id'] as string;
+      const id2 = (r2.body as JsonObject)['id'] as string;
       expect(id1).not.toBe(id2);
       expect(await getGraphNode(app.engineUrl, id1)).not.toBeNull();
       expect(await getGraphNode(app.engineUrl, id2)).not.toBeNull();
     }, 60_000);
   });
 
-  describe("RBAC: required_scopes in DSL controls access", () => {
+  describe('RBAC: required_scopes in DSL controls access', () => {
     let dncLeadId: string;
 
     beforeAll(async () => {
-      const res = await requestThroughSpecmatic(app.stubUrl, "POST", "/leads", {
-        companyName: "RBAC Corp",
-        contactName: "R",
-        phone: "+61 0",
-        email: "rbac@t.com",
-        source: "WEBSITE",
+      const res = await requestThroughSpecmatic(app.stubUrl, 'POST', '/leads', {
+        companyName: 'RBAC Corp',
+        contactName: 'R',
+        phone: '+61 0',
+        email: 'rbac@t.com',
+        source: 'WEBSITE',
       });
-      dncLeadId = (res.body as JsonObject)["id"] as string;
+      dncLeadId = (res.body as JsonObject)['id'] as string;
     });
 
-    it("POST /leads/:id/dnc without Authorization -> 401, graph unchanged", async () => {
+    it('POST /leads/:id/dnc without Authorization -> 401, graph unchanged', async () => {
       const nodeBefore = await getGraphNode(app.engineUrl, dncLeadId);
-      expect(nodeBefore!["status"]).toBe("NEW");
+      expect(nodeBefore!['status']).toBe('NEW');
 
-      const res = await requestThroughSpecmatic(app.stubUrl, "POST", `/leads/${dncLeadId}/dnc`, {
-        reason: "test",
+      const res = await requestThroughSpecmatic(app.stubUrl, 'POST', `/leads/${dncLeadId}/dnc`, {
+        reason: 'test',
       });
       expect(res.status).toBe(401);
 
       const nodeAfter = await getGraphNode(app.engineUrl, dncLeadId);
-      expect(nodeAfter!["status"]).toBe("NEW");
+      expect(nodeAfter!['status']).toBe('NEW');
     }, 60_000);
 
-    it("POST /leads/:id/dnc with non-manager scope -> 403, graph unchanged", async () => {
+    it('POST /leads/:id/dnc with non-manager scope -> 403, graph unchanged', async () => {
       const res = await requestThroughSpecmatic(
         app.stubUrl,
-        "POST",
+        'POST',
         `/leads/${dncLeadId}/dnc`,
-        { reason: "test" },
-        { Authorization: "Bearer agent1:agent,viewer" },
+        { reason: 'test' },
+        { Authorization: 'Bearer agent1:agent,viewer' },
       );
       expect(res.status).toBe(403);
 
       const nodeAfter = await getGraphNode(app.engineUrl, dncLeadId);
-      expect(nodeAfter!["status"]).toBe("NEW");
+      expect(nodeAfter!['status']).toBe('NEW');
     }, 60_000);
 
-    it("POST /leads/:id/dnc with manager scope -> 200, graph updated to DNC", async () => {
+    it('POST /leads/:id/dnc with manager scope -> 200, graph updated to DNC', async () => {
       const res = await requestThroughSpecmatic(
         app.stubUrl,
-        "POST",
+        'POST',
         `/leads/${dncLeadId}/dnc`,
-        { reason: "Customer requested" },
-        { Authorization: "Bearer mgr1:manager" },
+        { reason: 'Customer requested' },
+        { Authorization: 'Bearer mgr1:manager' },
       );
       expect(res.status).toBe(200);
 
       const nodeAfter = await getGraphNode(app.engineUrl, dncLeadId);
-      expect(nodeAfter!["status"]).toBe("DNC");
+      expect(nodeAfter!['status']).toBe('DNC');
 
       const events = await getEventsByAggregate(app.engineUrl, dncLeadId);
-      expect(events.some((e) => e.type === "LeadMarkedDNC")).toBe(true);
+      expect(events.some((e) => e.type === 'LeadMarkedDNC')).toBe(true);
     }, 60_000);
   });
 
-  describe("first-match: appendCallId fires before contact guards", () => {
-    it("secondary dispatch appends callId without changing graph status", async () => {
-      const res = await requestThroughSpecmatic(app.stubUrl, "POST", "/leads", {
-        companyName: "FM Corp",
-        contactName: "FM",
-        phone: "+61 0",
-        email: "fme2e@t.com",
-        source: "WEBSITE",
+  describe('first-match: appendCallId fires before contact guards', () => {
+    it('secondary dispatch appends callId without changing graph status', async () => {
+      const res = await requestThroughSpecmatic(app.stubUrl, 'POST', '/leads', {
+        companyName: 'FM Corp',
+        contactName: 'FM',
+        phone: '+61 0',
+        email: 'fme2e@t.com',
+        source: 'WEBSITE',
       });
       expect([200, 201]).toContain(res.status);
-      const id = (res.body as JsonObject)["id"] as string;
+      const id = (res.body as JsonObject)['id'] as string;
 
       const nodeBefore = await getGraphNode(app.engineUrl, id);
-      expect(nodeBefore!["status"]).toBe("NEW");
+      expect(nodeBefore!['status']).toBe('NEW');
 
-      await requestThroughSpecmatic(app.stubUrl, "POST", "/calls", {
+      await requestThroughSpecmatic(app.stubUrl, 'POST', '/calls', {
         leadId: id,
         agentId: AGENT_ALICE_ID,
         campaignId: CAMPAIGN_ACTIVE_ID,
-        outcome: "NO_ANSWER",
+        outcome: 'NO_ANSWER',
       });
 
       const node = await getGraphNode(app.engineUrl, id);
-      expect(node!["status"]).toBe("NEW");
-      expect((node!["callIds"] as string[]).length).toBe(1);
+      expect(node!['status']).toBe('NEW');
+      expect((node!['callIds'] as string[]).length).toBe(1);
 
       const events = await getEventsByAggregate(app.engineUrl, id);
-      expect(events.map((e) => e.type)).toContain("CallIdAppended");
-      expect(events.map((e) => e.type)).not.toContain("LeadContacted");
+      expect(events.map((e) => e.type)).toContain('CallIdAppended');
+      expect(events.map((e) => e.type)).not.toContain('LeadContacted');
     }, 60_000);
   });
 });
 
 // ---- Section 4: Engine discovery endpoints ----
 
-describe("DSL engine endpoints (full Specmatic stack)", () => {
+describe('DSL engine endpoints (full Specmatic stack)', () => {
   let app: E2eApp;
 
   beforeAll(async () => {
@@ -672,45 +672,45 @@ describe("DSL engine endpoints (full Specmatic stack)", () => {
     await app.shutdown();
   }, 30_000);
 
-  describe("GET /_engine/routes reflects DSL contract_path declarations", () => {
-    it("returns paths array containing all DSL-declared contract_paths", async () => {
+  describe('GET /_engine/routes reflects DSL contract_path declarations', () => {
+    it('returns paths array containing all DSL-declared contract_paths', async () => {
       const res = await fetch(`${app.engineUrl}/_engine/routes`);
       expect(res.status).toBe(200);
       const body = (await res.json()) as { paths: string[]; engine: string; checksum: string };
 
       expect(Array.isArray(body.paths)).toBe(true);
-      expect(body.paths).toContain("/leads");
-      expect(body.paths).toContain("/campaigns");
-      expect(body.paths).toContain("/agents");
-      expect(body.paths).toContain("/calls");
-      expect(body.paths).toContain("/opportunities");
+      expect(body.paths).toContain('/leads');
+      expect(body.paths).toContain('/campaigns');
+      expect(body.paths).toContain('/agents');
+      expect(body.paths).toContain('/calls');
+      expect(body.paths).toContain('/opportunities');
     }, 60_000);
 
-    it("includes sub-path action boundaries from DSL", async () => {
+    it('includes sub-path action boundaries from DSL', async () => {
       const res = await fetch(`${app.engineUrl}/_engine/routes`);
       const body = (await res.json()) as { paths: string[] };
 
-      expect(body.paths).toContain("/leads/{id}/contact");
-      expect(body.paths).toContain("/leads/{id}/qualify");
-      expect(body.paths).toContain("/leads/{id}/convert");
-      expect(body.paths).toContain("/leads/{id}/dnc");
-      expect(body.paths).toContain("/campaigns/{id}/activate");
-      expect(body.paths).toContain("/opportunities/{id}/advance");
-      expect(body.paths).toContain("/opportunities/{id}/close");
+      expect(body.paths).toContain('/leads/{id}/contact');
+      expect(body.paths).toContain('/leads/{id}/qualify');
+      expect(body.paths).toContain('/leads/{id}/convert');
+      expect(body.paths).toContain('/leads/{id}/dnc');
+      expect(body.paths).toContain('/campaigns/{id}/activate');
+      expect(body.paths).toContain('/opportunities/{id}/advance');
+      expect(body.paths).toContain('/opportunities/{id}/close');
     }, 60_000);
 
-    it("reports engine identity and includes checksum", async () => {
+    it('reports engine identity and includes checksum', async () => {
       const res = await fetch(`${app.engineUrl}/_engine/routes`);
       const body = (await res.json()) as { engine: string; checksum: string };
 
-      expect(body.engine).toBe("potemkin-stateful");
-      expect(typeof body.checksum).toBe("string");
-      expect(res.headers.get("etag")).toBeTruthy();
+      expect(body.engine).toBe('potemkin-stateful');
+      expect(typeof body.checksum).toBe('string');
+      expect(res.headers.get('etag')).toBeTruthy();
     }, 60_000);
   });
 
-  describe("GET /_engine/fixtures reflects DSL initialization seed data", () => {
-    it("returns fixture list with entries for seeded entities", async () => {
+  describe('GET /_engine/fixtures reflects DSL initialization seed data', () => {
+    it('returns fixture list with entries for seeded entities', async () => {
       const res = await fetch(`${app.engineUrl}/_engine/fixtures`);
       expect(res.status).toBe(200);
       const body = (await res.json()) as {
@@ -724,7 +724,7 @@ describe("DSL engine endpoints (full Specmatic stack)", () => {
       expect(body.fixtures.length).toBeGreaterThan(0);
     }, 60_000);
 
-    it("Apex Solutions fixture matches DSL initialization values", async () => {
+    it('Apex Solutions fixture matches DSL initialization values', async () => {
       const res = await fetch(`${app.engineUrl}/_engine/fixtures`);
       const body = (await res.json()) as {
         fixtures: Array<{
@@ -737,49 +737,49 @@ describe("DSL engine endpoints (full Specmatic stack)", () => {
         (f) => f.httpRequest.path === `/leads/${APEX_LEAD_ID}`,
       );
       expect(apexFixture).toBeDefined();
-      expect(apexFixture!.httpResponse.body["companyName"]).toBe("Apex Solutions Ltd");
-      expect(apexFixture!.httpResponse.body["status"]).toBe("NEW");
+      expect(apexFixture!.httpResponse.body['companyName']).toBe('Apex Solutions Ltd');
+      expect(apexFixture!.httpResponse.body['status']).toBe('NEW');
     }, 60_000);
   });
 
-  describe("Specmatic-backed requests process commands through the DSL pipeline", () => {
-    it("POST /leads via forward creates an entity in the graph", async () => {
-      const res = await requestThroughSpecmatic(app.stubUrl, "POST", "/leads", {
-        companyName: "Forwarded Corp",
-        contactName: "F",
-        phone: "+61 0",
-        email: "forwarded@t.com",
-        source: "WEBSITE",
+  describe('Specmatic-backed requests process commands through the DSL pipeline', () => {
+    it('POST /leads via forward creates an entity in the graph', async () => {
+      const res = await requestThroughSpecmatic(app.stubUrl, 'POST', '/leads', {
+        companyName: 'Forwarded Corp',
+        contactName: 'F',
+        phone: '+61 0',
+        email: 'forwarded@t.com',
+        source: 'WEBSITE',
       });
       expect([200, 201]).toContain(res.status);
-      const id = (res.body as JsonObject)["id"] as string;
+      const id = (res.body as JsonObject)['id'] as string;
       const node = await getGraphNode(app.engineUrl, id);
       expect(node).not.toBeNull();
-      expect(node!["companyName"]).toBe("Forwarded Corp");
+      expect(node!['companyName']).toBe('Forwarded Corp');
     }, 60_000);
 
-    it("GET via forward returns entity from graph", async () => {
-      const res = await requestThroughSpecmatic(app.stubUrl, "GET", `/leads/${APEX_LEAD_ID}`);
+    it('GET via forward returns entity from graph', async () => {
+      const res = await requestThroughSpecmatic(app.stubUrl, 'GET', `/leads/${APEX_LEAD_ID}`);
       expect(res.status).toBe(200);
-      expect((res.body as JsonObject)["companyName"]).toBe("Apex Solutions Ltd");
+      expect((res.body as JsonObject)['companyName']).toBe('Apex Solutions Ltd');
     }, 60_000);
   });
 
-  describe("/_engine/health reports engine status", () => {
-    it("returns UP with version", async () => {
+  describe('/_engine/health reports engine status', () => {
+    it('returns UP with version', async () => {
       const res = await fetch(`${app.engineUrl}/_engine/health`);
       expect(res.status).toBe(200);
       const body = (await res.json()) as { status: string; engine: string; version: string };
-      expect(body.status).toBe("UP");
-      expect(body.engine).toBe("potemkin-stateful");
-      expect(typeof body.version).toBe("string");
+      expect(body.status).toBe('UP');
+      expect(body.engine).toBe('potemkin-stateful');
+      expect(typeof body.version).toBe('string');
     }, 60_000);
   });
 });
 
 // ---- Section 5: Admin endpoints ----
 
-describe("DSL admin endpoints (full Specmatic stack)", () => {
+describe('DSL admin endpoints (full Specmatic stack)', () => {
   let app: E2eApp;
 
   beforeAll(async () => {
@@ -789,21 +789,21 @@ describe("DSL admin endpoints (full Specmatic stack)", () => {
     await app.shutdown();
   }, 30_000);
 
-  it("GET /_admin/state dumps the full object graph seeded by DSL initialization", async () => {
+  it('GET /_admin/state dumps the full object graph seeded by DSL initialization', async () => {
     const entities = await getAllEntities(app.engineUrl);
     const count = await getEntityCount(app.engineUrl);
 
     expect(Object.keys(entities).length).toBe(count);
     expect(entities[APEX_LEAD_ID]).toBeDefined();
-    expect((entities[APEX_LEAD_ID] as JsonObject)["companyName"]).toBe("Apex Solutions Ltd");
+    expect((entities[APEX_LEAD_ID] as JsonObject)['companyName']).toBe('Apex Solutions Ltd');
   }, 60_000);
 
-  it("GET /_admin/events returns baseline events", async () => {
+  it('GET /_admin/events returns baseline events', async () => {
     const events = await getAllEvents(app.engineUrl);
     expect(events.length).toBeGreaterThan(0);
   }, 60_000);
 
-  it("GET /_admin/events?aggregateId filters to one aggregate", async () => {
+  it('GET /_admin/events?aggregateId filters to one aggregate', async () => {
     const events = await getEventsByAggregate(app.engineUrl, APEX_LEAD_ID);
     expect(events.length).toBeGreaterThanOrEqual(1);
     for (const evt of events) {
@@ -811,24 +811,24 @@ describe("DSL admin endpoints (full Specmatic stack)", () => {
     }
   }, 60_000);
 
-  it("mutations produce ordered events with increasing sequenceVersion", async () => {
-    const createRes = await requestThroughSpecmatic(app.stubUrl, "POST", "/leads", {
-      companyName: "Evt Corp",
-      contactName: "E",
-      phone: "+61 0",
-      email: "evt@t.com",
-      source: "REFERRAL",
+  it('mutations produce ordered events with increasing sequenceVersion', async () => {
+    const createRes = await requestThroughSpecmatic(app.stubUrl, 'POST', '/leads', {
+      companyName: 'Evt Corp',
+      contactName: 'E',
+      phone: '+61 0',
+      email: 'evt@t.com',
+      source: 'REFERRAL',
     });
     expect([200, 201]).toContain(createRes.status);
-    const id = (createRes.body as JsonObject)["id"] as string;
+    const id = (createRes.body as JsonObject)['id'] as string;
 
-    await requestThroughSpecmatic(app.stubUrl, "POST", "/calls", {
+    await requestThroughSpecmatic(app.stubUrl, 'POST', '/calls', {
       leadId: id,
       agentId: AGENT_ALICE_ID,
       campaignId: CAMPAIGN_ACTIVE_ID,
-      outcome: "INTERESTED",
+      outcome: 'INTERESTED',
     });
-    await requestThroughSpecmatic(app.stubUrl, "POST", `/leads/${id}/contact`, {});
+    await requestThroughSpecmatic(app.stubUrl, 'POST', `/leads/${id}/contact`, {});
 
     const events = await getEventsByAggregate(app.engineUrl, id);
     for (let i = 1; i < events.length; i++) {
@@ -836,29 +836,29 @@ describe("DSL admin endpoints (full Specmatic stack)", () => {
     }
   }, 60_000);
 
-  it("POST /_admin/reset restores graph to DSL initialization baseline", async () => {
+  it('POST /_admin/reset restores graph to DSL initialization baseline', async () => {
     // Mutate a seeded entity
-    await requestThroughSpecmatic(app.stubUrl, "POST", `/leads/${APEX_LEAD_ID}/contact`, {});
+    await requestThroughSpecmatic(app.stubUrl, 'POST', `/leads/${APEX_LEAD_ID}/contact`, {});
     const contactedNode = await getGraphNode(app.engineUrl, APEX_LEAD_ID);
-    expect(contactedNode!["status"]).toBe("CONTACTED");
+    expect(contactedNode!['status']).toBe('CONTACTED');
 
     // Create a new entity
-    const newRes = await requestThroughSpecmatic(app.stubUrl, "POST", "/leads", {
-      companyName: "Reset Corp",
-      contactName: "R",
-      phone: "+61 0",
-      email: "reset@t.com",
-      source: "COLD_LIST",
+    const newRes = await requestThroughSpecmatic(app.stubUrl, 'POST', '/leads', {
+      companyName: 'Reset Corp',
+      contactName: 'R',
+      phone: '+61 0',
+      email: 'reset@t.com',
+      source: 'COLD_LIST',
     });
     expect([200, 201]).toContain(newRes.status);
-    const newId = (newRes.body as JsonObject)["id"] as string;
+    const newId = (newRes.body as JsonObject)['id'] as string;
     expect(await getGraphNode(app.engineUrl, newId)).not.toBeNull();
 
     await adminReset(app.engineUrl);
 
     // Seeded entity restored to initialization state
     const restoredNode = await getGraphNode(app.engineUrl, APEX_LEAD_ID);
-    expect(restoredNode!["status"]).toBe("NEW");
+    expect(restoredNode!['status']).toBe('NEW');
 
     // New entity gone
     expect(await getGraphNode(app.engineUrl, newId)).toBeNull();
@@ -868,7 +868,7 @@ describe("DSL admin endpoints (full Specmatic stack)", () => {
     expect(count).toBe(10);
   }, 60_000);
 
-  it("GET /_admin/health reports entity and event counts from graph", async () => {
+  it('GET /_admin/health reports entity and event counts from graph', async () => {
     const entityCount = await getEntityCount(app.engineUrl);
     const eventCount = await getEventCount(app.engineUrl);
 
@@ -879,7 +879,7 @@ describe("DSL admin endpoints (full Specmatic stack)", () => {
 
 // ---- Section 6: Entity absence + ETag versioning ----
 
-describe("DSL entity absence + ETag versioning (full Specmatic stack)", () => {
+describe('DSL entity absence + ETag versioning (full Specmatic stack)', () => {
   let app: E2eApp;
 
   beforeAll(async () => {
@@ -889,33 +889,33 @@ describe("DSL entity absence + ETag versioning (full Specmatic stack)", () => {
     await app.shutdown();
   }, 30_000);
 
-  it("GET for non-existent entity returns 404, graph has no node", async () => {
-    const fakeId = "00000000-0000-0000-0000-ffffffffffff";
+  it('GET for non-existent entity returns 404, graph has no node', async () => {
+    const fakeId = '00000000-0000-0000-0000-ffffffffffff';
     expect(await getGraphNode(app.engineUrl, fakeId)).toBeNull();
-    const res = await requestThroughSpecmatic(app.stubUrl, "GET", `/leads/${fakeId}`);
+    const res = await requestThroughSpecmatic(app.stubUrl, 'GET', `/leads/${fakeId}`);
     expect(res.status).toBe(404);
   }, 60_000);
 
-  it("mutation on non-existent entity returns 404, graph unchanged", async () => {
-    const fakeId = "00000000-0000-0000-0000-ffffffffffff";
+  it('mutation on non-existent entity returns 404, graph unchanged', async () => {
+    const fakeId = '00000000-0000-0000-0000-ffffffffffff';
     const countBefore = await getEntityCount(app.engineUrl);
-    const res = await requestThroughSpecmatic(app.stubUrl, "POST", `/leads/${fakeId}/contact`, {});
+    const res = await requestThroughSpecmatic(app.stubUrl, 'POST', `/leads/${fakeId}/contact`, {});
     expect(res.status).toBe(404);
     const countAfter = await getEntityCount(app.engineUrl);
     expect(countAfter).toBe(countBefore);
   }, 60_000);
 
-  it("creation returns response with id", async () => {
-    const res = await requestThroughSpecmatic(app.stubUrl, "POST", "/leads", {
-      companyName: "ETag Corp",
-      contactName: "ET",
-      phone: "+61 0",
-      email: "et@t.com",
-      source: "WEBSITE",
+  it('creation returns response with id', async () => {
+    const res = await requestThroughSpecmatic(app.stubUrl, 'POST', '/leads', {
+      companyName: 'ETag Corp',
+      contactName: 'ET',
+      phone: '+61 0',
+      email: 'et@t.com',
+      source: 'WEBSITE',
     });
     expect([200, 201]).toContain(res.status);
-    const id = (res.body as JsonObject)["id"] as string;
-    expect(typeof id).toBe("string");
+    const id = (res.body as JsonObject)['id'] as string;
+    expect(typeof id).toBe('string');
     expect(id.length).toBeGreaterThan(0);
   }, 60_000);
 });

@@ -9,14 +9,14 @@ fallback_override: false
 event_catalog:
   - type: ItemMemberUpserted
     payload_template:
-      memberId: "command.payload.memberId"
-      role: "command.payload.role"
+      memberId: 'command.payload.memberId'
+      role: 'command.payload.role'
 
 behaviors:
   - name: upsertMember
     match:
       operationId: upsertMember
-      condition: "true"
+      condition: 'true'
     emit: ItemMemberUpserted
 
 reducers:

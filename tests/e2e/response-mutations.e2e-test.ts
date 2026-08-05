@@ -11,8 +11,8 @@
  *     deprecated getDocument response.
  */
 
-import { startE2eApp } from "./_harness/e2e-test-app";
-import type { E2eApp } from "./_harness/e2e-test-app";
+import { startE2eApp } from './_harness/e2e-test-app';
+import type { E2eApp } from './_harness/e2e-test-app';
 
 interface DocLinks {
   self?: { href: string };
@@ -34,9 +34,9 @@ function target(app: E2eApp): string {
 
 async function createDocViaStub(base: string, title: string): Promise<string> {
   const res = await fetch(`${base}/documents`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ title, internalNotes: "classified" }),
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, internalNotes: 'classified' }),
   });
   expect([200, 201]).toContain(res.status);
   const body = (await res.json()) as DocumentState;
@@ -44,11 +44,11 @@ async function createDocViaStub(base: string, title: string): Promise<string> {
   return body.id;
 }
 
-describe("response mutations via Specmatic", () => {
+describe('response mutations via Specmatic', () => {
   let app: E2eApp;
 
   beforeAll(async () => {
-    app = await startE2eApp({ fixtureName: "governance" });
+    app = await startE2eApp({ fixtureName: 'governance' });
     // Fail fast: this suite proves stub→plugin→engine forwarding.
     expect(app.stubForwardingHealthy).toBe(true);
   }, 120_000);
@@ -56,29 +56,29 @@ describe("response mutations via Specmatic", () => {
     if (app) await app.shutdown();
   }, 30_000);
 
-  describe("Specmatic-served response carries the mutations", () => {
-    it("POST /documents: _links.self is injected and internalNotes is masked away", async () => {
+  describe('Specmatic-served response carries the mutations', () => {
+    it('POST /documents: _links.self is injected and internalNotes is masked away', async () => {
       const res = await fetch(`${target(app)}/documents`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "Quarterly Report", internalNotes: "eyes only" }),
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'Quarterly Report', internalNotes: 'eyes only' }),
       });
       expect([200, 201]).toContain(res.status);
       const body = (await res.json()) as DocumentState;
 
       // HATEOAS self link present in the served body.
-      expect(body._links?.self?.href).toBe("/documents");
+      expect(body._links?.self?.href).toBe('/documents');
       // The masked field has been REMOVED from the served body.
       expect(body.internalNotes).toBeUndefined();
-      expect(body.title).toBe("Quarterly Report");
+      expect(body.title).toBe('Quarterly Report');
     }, 60_000);
 
-    it("GET /documents/{id}: mask + HATEOAS apply and Deprecation/Sunset/Link headers are set", async () => {
-      const id = await createDocViaStub(target(app), "Doc With Headers");
+    it('GET /documents/{id}: mask + HATEOAS apply and Deprecation/Sunset/Link headers are set', async () => {
+      const id = await createDocViaStub(target(app), 'Doc With Headers');
 
       const res = await fetch(`${target(app)}/documents/${id}`, {
-        method: "GET",
-        headers: { Accept: "application/json" },
+        method: 'GET',
+        headers: { Accept: 'application/json' },
       });
       expect(res.status).toBe(200);
 
@@ -87,16 +87,16 @@ describe("response mutations via Specmatic", () => {
       // re-serialised to an RFC 8594 HTTP-date ("Fri, 01 Jan 2027 00:00:00 GMT"),
       // whereas the raw engine path emits the ISO config value  both denote the
       // same moment.
-      expect(res.headers.get("deprecation")).toBe("true");
-      const sunset = res.headers.get("sunset");
+      expect(res.headers.get('deprecation')).toBe('true');
+      const sunset = res.headers.get('sunset');
       expect(sunset).toBeTruthy();
-      expect(new Date(sunset as string).toISOString()).toBe("2027-01-01T00:00:00.000Z");
-      const link = res.headers.get("link");
-      expect(link).toContain("/v2/documents");
+      expect(new Date(sunset as string).toISOString()).toBe('2027-01-01T00:00:00.000Z');
+      const link = res.headers.get('link');
+      expect(link).toContain('/v2/documents');
       expect(link).toContain('rel="successor-version"');
 
       const body = (await res.json()) as DocumentState;
-      expect(body._links?.self?.href).toBe("/documents");
+      expect(body._links?.self?.href).toBe('/documents');
       expect(body.internalNotes).toBeUndefined();
     }, 60_000);
   });

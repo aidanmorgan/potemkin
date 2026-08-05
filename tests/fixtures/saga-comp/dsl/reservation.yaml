@@ -11,30 +11,30 @@ identity:
 event_catalog:
   - type: ReservationCreated
     payload_template:
-      id: "command.targetId"
-      orderId: "command.payload.orderId"
-      itemId: "command.payload.itemId"
-      quantity: "command.payload.quantity"
+      id: 'command.targetId'
+      orderId: 'command.payload.orderId'
+      itemId: 'command.payload.itemId'
+      quantity: 'command.payload.quantity'
       status: "'RESERVED'"
-      reservedAt: "$now()"
+      reservedAt: '$now()'
 
   - type: ReservationCancelled
     payload_template:
-      reason: "command.payload.reason"
-      cancelledAt: "$now()"
+      reason: 'command.payload.reason'
+      cancelledAt: '$now()'
 
 behaviors:
   - name: createReservation
     match:
       operationId: createReservation
-      condition: "true"
+      condition: 'true'
     emit: ReservationCreated
 
   # Compensation target: called by OrderFulfillmentSaga when step 2 fails.
   - name: cancelReservation
     match:
       operationId: cancelReservation
-      condition: "true"
+      condition: 'true'
     emit: ReservationCancelled
 
 reducers:
@@ -42,16 +42,16 @@ reducers:
     patches:
       - op: replace
         path: /id
-        value: "${event.payload.id}"
+        value: '${event.payload.id}'
       - op: replace
         path: /orderId
-        value: "${event.payload.orderId}"
+        value: '${event.payload.orderId}'
       - op: replace
         path: /itemId
-        value: "${event.payload.itemId}"
+        value: '${event.payload.itemId}'
       - op: replace
         path: /quantity
-        value: "${event.payload.quantity}"
+        value: '${event.payload.quantity}'
       - op: replace
         path: /status
         value: "${'RESERVED'}"
@@ -63,6 +63,6 @@ reducers:
         value: "${'CANCELLED'}"
       - op: replace
         path: /cancelReason
-        value: "${event.payload.reason}"
+        value: '${event.payload.reason}'
 
 initialization: []

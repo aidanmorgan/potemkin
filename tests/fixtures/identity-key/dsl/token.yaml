@@ -23,21 +23,21 @@ identity:
     name: x-token-id
   # Fallback when X-Token-Id is absent: auto-generate a UUIDv7.
   creation:
-    generate: "$uuidv7()"
+    generate: '$uuidv7()'
 
 event_catalog:
   - type: TokenIssued
     payload_template:
-      id: "command.targetId"
-      owner: "command.payload.owner"
-      scope: "command.payload.scope"
+      id: 'command.targetId'
+      owner: 'command.payload.owner'
+      scope: 'command.payload.scope'
       status: "'ACTIVE'"
 
 behaviors:
   - name: issueToken
     match:
       operationId: issueToken
-      condition: "true"
+      condition: 'true'
     emit: TokenIssued
 
 reducers:
@@ -45,15 +45,15 @@ reducers:
     patches:
       - op: replace
         path: /id
-        value: "${event.payload.id}"
+        value: '${event.payload.id}'
       - op: replace
         path: /owner
-        value: "${event.payload.owner}"
+        value: '${event.payload.owner}'
       - op: replace
         path: /scope
-        value: "${event.payload.scope}"
+        value: '${event.payload.scope}'
       - op: replace
         path: /status
-        value: "${event.payload.status}"
+        value: '${event.payload.status}'
 
 initialization: []

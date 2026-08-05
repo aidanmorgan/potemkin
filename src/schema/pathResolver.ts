@@ -1,4 +1,4 @@
-import type { ObjectGraphSchema, ObjectGraphSchemaRegistry } from "./types.js";
+import type { ObjectGraphSchema, ObjectGraphSchemaRegistry } from './types.js';
 
 /**
  * Tokenise a dot-path like `a.b.c[0].d` into segments.
@@ -6,8 +6,8 @@ import type { ObjectGraphSchema, ObjectGraphSchemaRegistry } from "./types.js";
  */
 function tokenise(dotPath: string): string[] {
   // replace [n] or [] with .[]
-  const normalised = dotPath.replace(/\[(\d+|)\]/g, ".[]");
-  return normalised.split(".").filter((s) => s.length > 0);
+  const normalised = dotPath.replace(/\[(\d+|)\]/g, '.[]');
+  return normalised.split('.').filter((s) => s.length > 0);
 }
 
 /**
@@ -19,17 +19,17 @@ function tokenise(dotPath: string): string[] {
  *  - `a[0].b` / `a[].b` — array index resolves to `items`
  */
 export function resolvePath(schema: ObjectGraphSchema, dotPath: string): ObjectGraphSchema | null {
-  if (!dotPath || dotPath === "") return schema;
+  if (!dotPath || dotPath === '') return schema;
 
   const tokens = tokenise(dotPath);
   let current: ObjectGraphSchema = schema;
 
   for (const token of tokens) {
-    if (token === "[]") {
+    if (token === '[]') {
       // Descend into array items
-      if (current.kind !== "array" || !current.items) return null;
+      if (current.kind !== 'array' || !current.items) return null;
       current = current.items;
-    } else if (current.kind === "object") {
+    } else if (current.kind === 'object') {
       const child =
         current.properties != null &&
         Object.prototype.hasOwnProperty.call(current.properties, token)
@@ -37,18 +37,18 @@ export function resolvePath(schema: ObjectGraphSchema, dotPath: string): ObjectG
           : undefined;
       if (!child) {
         // If additionalProperties is a schema, any key is valid but returns that schema
-        if (typeof current.additionalProperties === "object") {
+        if (typeof current.additionalProperties === 'object') {
           current = current.additionalProperties as ObjectGraphSchema;
         } else if (current.additionalProperties === true) {
           // Wildcard — return an 'any' schema
-          return { name: token, kind: "any" };
+          return { name: token, kind: 'any' };
         } else {
           return null;
         }
       } else {
         current = child;
       }
-    } else if (current.kind === "union" && current.union) {
+    } else if (current.kind === 'union' && current.union) {
       // Try to resolve in any union member
       let resolved: ObjectGraphSchema | null = null;
       for (const member of current.union) {
@@ -60,8 +60,8 @@ export function resolvePath(schema: ObjectGraphSchema, dotPath: string): ObjectG
       }
       if (!resolved) return null;
       current = resolved;
-    } else if (current.kind === "any") {
-      return { name: token, kind: "any" };
+    } else if (current.kind === 'any') {
+      return { name: token, kind: 'any' };
     } else {
       return null;
     }

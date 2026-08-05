@@ -2,7 +2,7 @@ boundary: BulkAudit
 contract_path: /bulk-audits/{id}
 identity:
   creation:
-    generate: "$uuidv7()"
+    generate: '$uuidv7()'
 event_catalog:
   - type: BulkAuditRecorded
     payload_template:
@@ -13,6 +13,6 @@ behaviors: []
 reducers:
   - on: BulkAuditRecorded
     patches:
-      - { op: replace, path: /id, value: "${event.payload.id}" }
-      - { op: replace, path: /recordId, value: "${event.payload.recordId}" }
-      - { op: replace, path: /action, value: "${event.payload.action}" }
+      - { op: replace, path: /id, value: '${event.payload.id}' }
+      - { op: replace, path: /recordId, value: '${event.payload.recordId}' }
+      - { op: replace, path: /action, value: '${event.payload.action}' }

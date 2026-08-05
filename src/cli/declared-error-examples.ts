@@ -1,8 +1,8 @@
-import request from "supertest";
-import { matchRoute } from "../contract/router.js";
-import type { RuntimeBoundary } from "../model/runtime.js";
-import type { RuntimeSystem } from "../runtime/system.js";
-import type { JsonObject, JsonValue } from "../types.js";
+import request from 'supertest';
+import { matchRoute } from '../contract/router.js';
+import type { RuntimeBoundary } from '../model/runtime.js';
+import type { RuntimeSystem } from '../runtime/system.js';
+import type { JsonObject, JsonValue } from '../contracts/value.js';
 import {
   isFormOperation,
   operationRequest,
@@ -10,8 +10,8 @@ import {
   routesFor,
   type OperationRoute,
   type ExportRequestTarget,
-} from "./transition-examples.js";
-import type { ExportExample } from "./export-examples.js";
+} from './transition-examples.js';
+import type { ExportExample } from './exportContracts.js';
 
 interface SeedExample {
   readonly example: ExportExample;
@@ -21,17 +21,17 @@ interface SeedExample {
 }
 
 const VOLATILE_HEADERS = new Set([
-  "connection",
-  "content-length",
-  "date",
-  "etag",
-  "keep-alive",
-  "transfer-encoding",
-  "x-powered-by",
+  'connection',
+  'content-length',
+  'date',
+  'etag',
+  'keep-alive',
+  'transfer-encoding',
+  'x-powered-by',
 ]);
 
 function isObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function jsonObject(value: unknown): JsonObject | undefined {
@@ -39,7 +39,7 @@ function jsonObject(value: unknown): JsonObject | undefined {
 }
 
 function safeName(value: string): string {
-  return value.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "example";
+  return value.replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^_+|_+$/g, '') || 'example';
 }
 
 function responseHeaders(
@@ -50,7 +50,7 @@ function responseHeaders(
       .filter(([name]) => !VOLATILE_HEADERS.has(name.toLowerCase()))
       .map(
         ([name, value]) =>
-          [name.toLowerCase(), Array.isArray(value) ? value.join(", ") : (value ?? "")] as const,
+          [name.toLowerCase(), Array.isArray(value) ? value.join(', ') : (value ?? '')] as const,
       )
       .sort(([left], [right]) => left.localeCompare(right)),
   ) as Record<string, string>;
@@ -93,7 +93,7 @@ function collectionBoundaryForRoute(
   return [...system.program.boundaries]
     .filter(
       (candidate) =>
-        !candidate.contractPath.includes("{") &&
+        !candidate.contractPath.includes('{') &&
         contractPath.startsWith(`${candidate.contractPath}/`),
     )
     .sort((left, right) => right.contractPath.length - left.contractPath.length)[0];
@@ -105,17 +105,17 @@ function pathParameterNames(pathTemplate: string): readonly string[] {
 
 function parameterSchema(route: OperationRoute, name: string): JsonObject | undefined {
   return route.operation.parameters?.find(
-    (parameter) => parameter.in === "path" && parameter.name === name,
+    (parameter) => parameter.in === 'path' && parameter.name === name,
   )?.schema;
 }
 
 function sentinelFor(route: OperationRoute, name: string): string {
   const schema = parameterSchema(route, name);
-  if (schema?.format === "uuid") return "00000000-0000-7000-8000-000000000404";
-  if (schema?.type === "integer" || schema?.type === "number") return "404404";
+  if (schema?.format === 'uuid') return '00000000-0000-7000-8000-000000000404';
+  if (schema?.type === 'integer' || schema?.type === 'number') return '404404';
   const pattern = schema?.pattern;
-  const prefix = typeof pattern === "string" ? /^\^([A-Za-z]+_)/.exec(pattern)?.[1] : undefined;
-  return `${prefix ?? "potemkin-"}not-found-404`;
+  const prefix = typeof pattern === 'string' ? /^\^([A-Za-z]+_)/.exec(pattern)?.[1] : undefined;
+  return `${prefix ?? 'potemkin-'}not-found-404`;
 }
 
 function concretePath(route: OperationRoute, valueFor: (name: string) => string): string {
@@ -151,7 +151,7 @@ function restoreSeed(system: RuntimeSystem, seed: SeedExample, route: OperationR
   const baseline = system.engine.snapshot();
   const seedEvent = {
     eventId: `tier3-seed-${route.operation.operationId ?? route.path}-${seed.id}`,
-    type: "BaselineEntityCreatedEvent",
+    type: 'BaselineEntityCreatedEvent',
     boundary: seed.boundary.boundary,
     aggregateId: seed.id,
     payload: seed.state,
@@ -169,16 +169,16 @@ function restoreSeed(system: RuntimeSystem, seed: SeedExample, route: OperationR
 function headersFor(route: OperationRoute): Readonly<Record<string, string>> | undefined {
   const requiresIfMatch = route.operation.parameters?.some(
     (parameter) =>
-      parameter.in === "header" &&
-      parameter.name.toLowerCase() === "if-match" &&
+      parameter.in === 'header' &&
+      parameter.name.toLowerCase() === 'if-match' &&
       parameter.required === true,
   );
-  return requiresIfMatch ? { "If-Match": "1" } : undefined;
+  return requiresIfMatch ? { 'If-Match': '1' } : undefined;
 }
 
 function requestHeadersFor(route: OperationRoute): Readonly<Record<string, string>> {
   const headers: Record<string, string> = {
-    "content-type": route.form === true ? "application/x-www-form-urlencoded" : "application/json",
+    'content-type': route.form === true ? 'application/x-www-form-urlencoded' : 'application/json',
   };
   const authoredHeaders = headersFor(route);
   if (authoredHeaders !== undefined) Object.assign(headers, authoredHeaders);
@@ -203,14 +203,14 @@ async function collect404Examples(
 ): Promise<readonly ExportExample[]> {
   const result: ExportExample[] = [];
   for (const route of routes) {
-    if (route.operation.responseSchemas?.["404"] === undefined) continue;
+    if (route.operation.responseSchemas?.['404'] === undefined) continue;
     const names = pathParameterNames(route.path);
     if (names.length === 0) continue;
     const path = concretePath(route, (name) => sentinelFor(route, name));
     const requestRoute = { ...route, path, headers: requestHeadersFor(route) };
     const hasRequestBody = route.operation.requestBodySchema !== undefined;
     const response =
-      route.method === "GET"
+      route.method === 'GET'
         ? await request(app).get(path)
         : await operationRequest(app, requestRoute, hasRequestBody ? requestBody(route, 0) : {});
     if (response.status !== 404) {
@@ -225,7 +225,7 @@ async function collect404Examples(
         route.method,
         path,
         response,
-        route.method === "GET"
+        route.method === 'GET'
           ? undefined
           : requestExample(route, hasRequestBody ? requestBody(route, 0) : undefined),
       ),
@@ -242,7 +242,7 @@ async function collect422Examples(
 ): Promise<readonly ExportExample[]> {
   const result: ExportExample[] = [];
   for (const route of routes) {
-    if (route.method === "GET" || route.operation.responseSchemas?.["422"] === undefined) continue;
+    if (route.method === 'GET' || route.operation.responseSchemas?.['422'] === undefined) continue;
     if (pathParameterNames(route.path).length === 0) {
       console.warn(
         `Declared-error export coverage: ${route.operation.operationId ?? route.path} has no target parameter for a state-dependent 422; skipped`,

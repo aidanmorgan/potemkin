@@ -1,8 +1,8 @@
-import { readdir, readFile } from "node:fs/promises";
-import path from "node:path";
+import { readdir, readFile } from 'node:fs/promises';
+import path from 'node:path';
 
-const root = path.resolve("tests");
-const sourceExtensions = new Set([".cjs", ".js", ".mjs", ".ts", ".tsx"]);
+const root = path.resolve('tests');
+const sourceExtensions = new Set(['.cjs', '.js', '.mjs', '.ts', '.tsx']);
 const forbidden =
   /\b(?:describe|it|test)\.(?:skip|only|todo)\b|\b(?:xit|xdescribe|xtest|fit|fdescribe|ftest)\s*\(/;
 
@@ -19,15 +19,15 @@ async function filesUnder(directory) {
 
 const violations = [];
 for (const file of await filesUnder(root)) {
-  const source = await readFile(file, "utf8");
+  const source = await readFile(file, 'utf8');
   if (!forbidden.test(source)) continue;
   violations.push(path.relative(process.cwd(), file));
 }
 
 if (violations.length > 0) {
-  console.error("Executable skipped, focused, or todo test registrations are forbidden:");
+  console.error('Executable skipped, focused, or todo test registrations are forbidden:');
   for (const file of violations) console.error(`- ${file}`);
   process.exitCode = 1;
 } else {
-  console.log("No skipped, focused, or todo test registrations found.");
+  console.log('No skipped, focused, or todo test registrations found.');
 }

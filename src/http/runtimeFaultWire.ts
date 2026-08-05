@@ -1,6 +1,6 @@
-import { RuntimeExecutionError } from "../core/errors.js";
-import type { RuntimeFault } from "../model/runtime.js";
-import type { JsonValue } from "../types.js";
+import { RuntimeExecutionError } from '../core/errors.js';
+import type { RuntimeFault } from '../model/runtime.js';
+import type { JsonValue } from '../contracts/value.js';
 
 export interface RuntimeFaultWireRegistration {
   readonly rule: RuntimeFault;
@@ -8,15 +8,15 @@ export interface RuntimeFaultWireRegistration {
 }
 
 function recordValue(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function jsonValue(value: unknown): value is JsonValue {
   if (
     value === null ||
-    typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean"
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean'
   )
     return true;
   if (Array.isArray(value)) return value.every(jsonValue);
@@ -25,9 +25,9 @@ function jsonValue(value: unknown): value is JsonValue {
 
 function stringMap(value: unknown, field: string): Readonly<Record<string, string>> | undefined {
   if (value === undefined) return undefined;
-  if (!recordValue(value) || Object.entries(value).some(([, entry]) => typeof entry !== "string")) {
+  if (!recordValue(value) || Object.entries(value).some(([, entry]) => typeof entry !== 'string')) {
     throw new RuntimeExecutionError(400, `Invalid ${field}`, {
-      code: "INVALID_FAULT_RULE",
+      code: 'INVALID_FAULT_RULE',
       message: `${field} must be an object of strings`,
     });
   }
@@ -36,9 +36,9 @@ function stringMap(value: unknown, field: string): Readonly<Record<string, strin
 
 function optionalNonNegativeNumber(value: unknown, field: string): number | undefined {
   if (value === undefined) return undefined;
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
     throw new RuntimeExecutionError(400, `Invalid ${field}`, {
-      code: "INVALID_FAULT_RULE",
+      code: 'INVALID_FAULT_RULE',
       message: `${field} must be a non-negative finite number`,
     });
   }
@@ -47,23 +47,23 @@ function optionalNonNegativeNumber(value: unknown, field: string): number | unde
 
 function ttlMilliseconds(value: Record<string, unknown>, nowMs: number): number | undefined {
   if (value.ttlMs !== undefined) {
-    if (typeof value.ttlMs !== "number" || !Number.isFinite(value.ttlMs) || value.ttlMs <= 0) {
-      throw new RuntimeExecutionError(400, "Invalid fault TTL", {
-        code: "INVALID_FAULT_RULE",
-        message: "ttlMs must be a positive finite number",
+    if (typeof value.ttlMs !== 'number' || !Number.isFinite(value.ttlMs) || value.ttlMs <= 0) {
+      throw new RuntimeExecutionError(400, 'Invalid fault TTL', {
+        code: 'INVALID_FAULT_RULE',
+        message: 'ttlMs must be a positive finite number',
       });
     }
     return value.ttlMs;
   }
   if (value.expiresAt !== undefined) {
     if (
-      typeof value.expiresAt !== "number" ||
+      typeof value.expiresAt !== 'number' ||
       !Number.isFinite(value.expiresAt) ||
       value.expiresAt <= nowMs
     ) {
-      throw new RuntimeExecutionError(400, "Invalid fault expiry", {
-        code: "INVALID_FAULT_RULE",
-        message: "expiresAt must be a finite timestamp in the future",
+      throw new RuntimeExecutionError(400, 'Invalid fault expiry', {
+        code: 'INVALID_FAULT_RULE',
+        message: 'expiresAt must be a finite timestamp in the future',
       });
     }
     return value.expiresAt - nowMs;
@@ -74,80 +74,80 @@ function ttlMilliseconds(value: Record<string, unknown>, nowMs: number): number 
 /** Parse the source-neutral JSON fault form accepted by the generic gateway. */
 export function parseRuntimeFaultWire(value: unknown, nowMs: number): RuntimeFaultWireRegistration {
   if (!recordValue(value)) {
-    throw new RuntimeExecutionError(400, "Invalid fault rule", {
-      code: "INVALID_FAULT_RULE",
-      message: "A fault rule must be an object",
+    throw new RuntimeExecutionError(400, 'Invalid fault rule', {
+      code: 'INVALID_FAULT_RULE',
+      message: 'A fault rule must be an object',
     });
   }
   const match = value.match === undefined ? {} : value.match;
   const response = value.response;
   if (!recordValue(match) || !recordValue(response)) {
-    throw new RuntimeExecutionError(400, "Invalid fault rule", {
-      code: "INVALID_FAULT_RULE",
-      message: "A fault rule requires `match` and `response` objects",
+    throw new RuntimeExecutionError(400, 'Invalid fault rule', {
+      code: 'INVALID_FAULT_RULE',
+      message: 'A fault rule requires `match` and `response` objects',
     });
   }
   const status = response.status;
-  if (typeof status !== "number" || !Number.isInteger(status) || status < 100 || status > 599) {
-    throw new RuntimeExecutionError(400, "Invalid fault response status", {
-      code: "INVALID_FAULT_RULE",
-      message: "Fault response status must be an integer between 100 and 599",
+  if (typeof status !== 'number' || !Number.isInteger(status) || status < 100 || status > 599) {
+    throw new RuntimeExecutionError(400, 'Invalid fault response status', {
+      code: 'INVALID_FAULT_RULE',
+      message: 'Fault response status must be an integer between 100 and 599',
     });
   }
   const body = response.body;
   if (body !== undefined && !jsonValue(body)) {
-    throw new RuntimeExecutionError(400, "Invalid fault response body", {
-      code: "INVALID_FAULT_RULE",
-      message: "Fault response body must be JSON",
+    throw new RuntimeExecutionError(400, 'Invalid fault response body', {
+      code: 'INVALID_FAULT_RULE',
+      message: 'Fault response body must be JSON',
     });
   }
-  const responseHeaders = stringMap(response.headers, "response.headers");
-  const headers = stringMap(match.headers ?? value.headers, "match.headers");
+  const responseHeaders = stringMap(response.headers, 'response.headers');
+  const headers = stringMap(match.headers ?? value.headers, 'match.headers');
   const name =
-    typeof value.name === "string" && value.name.trim() !== "" ? value.name : "dynamic-fault";
+    typeof value.name === 'string' && value.name.trim() !== '' ? value.name : 'dynamic-fault';
   const condition = match.condition;
-  if (condition !== undefined && condition !== true && condition !== "true") {
-    throw new RuntimeExecutionError(400, "Unsupported direct fault condition", {
-      code: "INVALID_FAULT_RULE",
+  if (condition !== undefined && condition !== true && condition !== 'true') {
+    throw new RuntimeExecutionError(400, 'Unsupported direct fault condition', {
+      code: 'INVALID_FAULT_RULE',
       message:
-        "The generic TypeScript runtime accepts typed predicates; CEL conditions are compiled by the YAML parser",
+        'The generic TypeScript runtime accepts typed predicates; CEL conditions are compiled by the YAML parser',
     });
   }
-  const expectedBoundary = typeof match.boundary === "string" ? match.boundary : undefined;
+  const expectedBoundary = typeof match.boundary === 'string' ? match.boundary : undefined;
   const expectedIntent =
-    match.intent === "creation" || match.intent === "mutation" || match.intent === "query"
+    match.intent === 'creation' || match.intent === 'mutation' || match.intent === 'query'
       ? match.intent
       : undefined;
   if (match.intent !== undefined && expectedIntent === undefined) {
-    throw new RuntimeExecutionError(400, "Invalid fault intent", {
-      code: "INVALID_FAULT_RULE",
-      message: "match.intent must be creation, mutation, or query",
+    throw new RuntimeExecutionError(400, 'Invalid fault intent', {
+      code: 'INVALID_FAULT_RULE',
+      message: 'match.intent must be creation, mutation, or query',
     });
   }
   const expectedOperation =
-    typeof match.operationId === "string"
+    typeof match.operationId === 'string'
       ? match.operationId
-      : typeof match.operation_id === "string"
+      : typeof match.operation_id === 'string'
         ? match.operation_id
         : undefined;
-  const expectedMethod = typeof match.method === "string" ? match.method.toUpperCase() : undefined;
+  const expectedMethod = typeof match.method === 'string' ? match.method.toUpperCase() : undefined;
   const selectors = {
-    ...(typeof match.signal === "string" ? { signal: match.signal } : {}),
-    ...(typeof match.force_response === "string"
+    ...(typeof match.signal === 'string' ? { signal: match.signal } : {}),
+    ...(typeof match.force_response === 'string'
       ? { forceResponse: match.force_response }
-      : typeof match.forceResponse === "string"
+      : typeof match.forceResponse === 'string'
         ? { forceResponse: match.forceResponse }
         : {}),
-    ...(typeof match.scenario === "string" ? { scenario: match.scenario } : {}),
-    ...(typeof match.feature_flag === "string"
+    ...(typeof match.scenario === 'string' ? { scenario: match.scenario } : {}),
+    ...(typeof match.feature_flag === 'string'
       ? { featureFlag: match.feature_flag }
-      : typeof match.featureFlag === "string"
+      : typeof match.featureFlag === 'string'
         ? { featureFlag: match.featureFlag }
         : {}),
-    ...(typeof match.error_class === "string"
-      ? { errorClass: match.error_class as NonNullable<RuntimeFault["selectors"]>["errorClass"] }
-      : typeof match.errorClass === "string"
-        ? { errorClass: match.errorClass as NonNullable<RuntimeFault["selectors"]>["errorClass"] }
+    ...(typeof match.error_class === 'string'
+      ? { errorClass: match.error_class as NonNullable<RuntimeFault['selectors']>['errorClass'] }
+      : typeof match.errorClass === 'string'
+        ? { errorClass: match.errorClass as NonNullable<RuntimeFault['selectors']>['errorClass'] }
         : {}),
   };
   const requiredScopesValue = match.required_scopes ?? value.requiredScopes;
@@ -155,28 +155,28 @@ export function parseRuntimeFaultWire(value: unknown, nowMs: number): RuntimeFau
     requiredScopesValue === undefined
       ? undefined
       : Array.isArray(requiredScopesValue) &&
-          requiredScopesValue.every((entry) => typeof entry === "string")
+          requiredScopesValue.every((entry) => typeof entry === 'string')
         ? (requiredScopesValue as string[])
         : (() => {
-            throw new RuntimeExecutionError(400, "Invalid fault scopes", {
-              code: "INVALID_FAULT_RULE",
-              message: "required_scopes must be an array of strings",
+            throw new RuntimeExecutionError(400, 'Invalid fault scopes', {
+              code: 'INVALID_FAULT_RULE',
+              message: 'required_scopes must be an array of strings',
             });
           })();
   const probability = value.probability;
   if (
     probability !== undefined &&
-    (typeof probability !== "number" ||
+    (typeof probability !== 'number' ||
       !Number.isFinite(probability) ||
       probability < 0 ||
       probability > 1)
   ) {
-    throw new RuntimeExecutionError(400, "Invalid fault probability", {
-      code: "INVALID_FAULT_RULE",
-      message: "probability must be a number between 0 and 1",
+    throw new RuntimeExecutionError(400, 'Invalid fault probability', {
+      code: 'INVALID_FAULT_RULE',
+      message: 'probability must be a number between 0 and 1',
     });
   }
-  const delayMs = optionalNonNegativeNumber(value.delay_ms ?? response.delay_ms, "delay_ms");
+  const delayMs = optionalNonNegativeNumber(value.delay_ms ?? response.delay_ms, 'delay_ms');
   const ttlMs = ttlMilliseconds(value, nowMs);
   const rule: RuntimeFault = {
     name,

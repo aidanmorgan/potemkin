@@ -1,4 +1,4 @@
-import type { RuntimeFaultEntry, RuntimeFaultStore } from "../model/runtime.js";
+import type { RuntimeFaultEntry, RuntimeFaultStore } from '../model/runtime.js';
 
 /** Per-runtime dynamic fault storage; no process-global state is shared. */
 export function createRuntimeFaultStore(

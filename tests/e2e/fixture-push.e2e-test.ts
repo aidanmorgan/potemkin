@@ -11,12 +11,12 @@
  *   00000000-0000-7000-8000-000000000011 (BlueSky Tech)
  */
 
-import { startE2eApp } from "./_harness/e2e-test-app";
-import type { E2eApp } from "./_harness/e2e-test-app";
+import { startE2eApp } from './_harness/e2e-test-app';
+import type { E2eApp } from './_harness/e2e-test-app';
 
-const APEX_LEAD_ID = "00000000-0000-7000-8000-000000000010";
+const APEX_LEAD_ID = '00000000-0000-7000-8000-000000000010';
 
-describe("Fixture push: seeded entities registered with Specmatic", () => {
+describe('Fixture push: seeded entities registered with Specmatic', () => {
   let app: E2eApp;
 
   beforeAll(async () => {
@@ -29,7 +29,7 @@ describe("Fixture push: seeded entities registered with Specmatic", () => {
     await app.shutdown();
   }, 30_000);
 
-  it("engine /_engine/fixtures returns 200 with fixture list", async () => {
+  it('engine /_engine/fixtures returns 200 with fixture list', async () => {
     const res = await fetch(`${app.engineUrl}/_engine/fixtures`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { fixtures: unknown[] };
@@ -37,7 +37,7 @@ describe("Fixture push: seeded entities registered with Specmatic", () => {
     expect(body.fixtures.length).toBeGreaterThan(0);
   }, 60_000);
 
-  it("engine fixture for Apex Solutions lead includes correct companyName", async () => {
+  it('engine fixture for Apex Solutions lead includes correct companyName', async () => {
     const res = await fetch(`${app.engineUrl}/_engine/fixtures`);
     const body = (await res.json()) as {
       fixtures: Array<{
@@ -47,16 +47,16 @@ describe("Fixture push: seeded entities registered with Specmatic", () => {
     };
     const leadFixture = body.fixtures.find((f) => f.httpRequest.path === `/leads/${APEX_LEAD_ID}`);
     expect(leadFixture).toBeDefined();
-    expect(leadFixture!.httpResponse.body["companyName"]).toBe("Apex Solutions Ltd");
+    expect(leadFixture!.httpResponse.body['companyName']).toBe('Apex Solutions Ltd');
   }, 60_000);
 
-  it("engine returns ETag header on /_engine/fixtures", async () => {
+  it('engine returns ETag header on /_engine/fixtures', async () => {
     const res = await fetch(`${app.engineUrl}/_engine/fixtures`);
-    const etag = res.headers.get("etag");
+    const etag = res.headers.get('etag');
     expect(etag).toBeTruthy();
   }, 60_000);
 
-  it("Specmatic stub responds to GET /leads/{seeded-id} (fixture served via Specmatic)", async () => {
+  it('Specmatic stub responds to GET /leads/{seeded-id} (fixture served via Specmatic)', async () => {
     // The plugin registers each seeded lead as a Specmatic expectation.
     // The stub should be able to serve GET /leads/<id> from those expectations.
     const res = await fetch(`${app.stubUrl}/leads/${APEX_LEAD_ID}`);

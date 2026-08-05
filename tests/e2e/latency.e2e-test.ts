@@ -16,11 +16,11 @@
  *   JobStacked boundary (/jobs/stacked)  latency: { fixed_ms: 20, min_ms: 30, max_ms: 60 }
  */
 
-import * as path from "node:path";
+import * as path from 'node:path';
 
-import { startE2eApp, type E2eApp } from "./_harness/e2e-test-app";
-import { requestThroughSpecmatic } from "./_harness/crm-e2e-helpers";
-import type { JsonObject } from "./_harness/crm-e2e-helpers";
+import { startE2eApp, type E2eApp } from './_harness/e2e-test-app';
+import { requestThroughSpecmatic } from './_harness/crm-e2e-helpers';
+import type { JsonObject } from './_harness/crm-e2e-helpers';
 
 const CONFIGURED_LATENCY_MS = 60;
 const FAULT_DELAY_MS = 25;
@@ -53,19 +53,19 @@ const STACK_CEILING_MS = STACK_FIXED_MS + STACK_MAX_MS + 2_000; // 80ms + CI hea
 // Number of requests to sample for range assertions.
 const RANGE_SAMPLE_COUNT = 7;
 
-const FIXTURE = path.resolve(process.cwd(), "tests/fixtures/latency");
+const FIXTURE = path.resolve(process.cwd(), 'tests/fixtures/latency');
 const MODES = [
-  { name: "YAML", config: "potemkin.yml" },
-  { name: "TypeScript", config: "potemkin-typescript.yml" },
-  { name: "mixed YAML and TypeScript", config: "potemkin-mixed.yml" },
+  { name: 'YAML', config: 'potemkin.yml' },
+  { name: 'TypeScript', config: 'potemkin-typescript.yml' },
+  { name: 'mixed YAML and TypeScript', config: 'potemkin-mixed.yml' },
 ] as const;
 
-describe.each(MODES)("Per-boundary latency injection through Specmatic — $name", (mode) => {
+describe.each(MODES)('Per-boundary latency injection through Specmatic — $name', (mode) => {
   let app: E2eApp;
 
   beforeAll(async () => {
     app = await startE2eApp({
-      fixtureName: "latency",
+      fixtureName: 'latency',
       potemkinConfigPath: path.join(FIXTURE, mode.config),
     });
   }, 120_000);
@@ -74,11 +74,11 @@ describe.each(MODES)("Per-boundary latency injection through Specmatic — $name
     await app?.shutdown();
   }, 30_000);
 
-  describe("Job boundary (latency: { fixed_ms: 60 })", () => {
-    it("POST /jobs response is delayed by at least the configured fixed_ms floor", async () => {
+  describe('Job boundary (latency: { fixed_ms: 60 })', () => {
+    it('POST /jobs response is delayed by at least the configured fixed_ms floor', async () => {
       const start = Date.now();
-      const res = await requestThroughSpecmatic(app.stubUrl, "POST", "/jobs", {
-        name: "latency-probe",
+      const res = await requestThroughSpecmatic(app.stubUrl, 'POST', '/jobs', {
+        name: 'latency-probe',
       });
       const elapsed = Date.now() - start;
 
@@ -87,74 +87,74 @@ describe.each(MODES)("Per-boundary latency injection through Specmatic — $name
       expect(elapsed).toBeLessThan(LATENCY_CEILING_MS);
     }, 30_000);
 
-    it("submitted job id is present in the response body", async () => {
-      const res = await requestThroughSpecmatic(app.stubUrl, "POST", "/jobs", { name: "id-check" });
+    it('submitted job id is present in the response body', async () => {
+      const res = await requestThroughSpecmatic(app.stubUrl, 'POST', '/jobs', { name: 'id-check' });
       expect(res.status).toBe(201);
       const body = res.body as JsonObject;
-      expect(typeof body["id"]).toBe("string");
-      expect((body["id"] as string).length).toBeGreaterThan(0);
-      expect(body["name"]).toBe("id-check");
+      expect(typeof body['id']).toBe('string');
+      expect((body['id'] as string).length).toBeGreaterThan(0);
+      expect(body['name']).toBe('id-check');
     }, 30_000);
 
-    it("keeps seeded identity generation deterministic across YAML and TypeScript loading", async () => {
-      const firstReset = await fetch(`${app.engineUrl}/_admin/reset`, { method: "POST" });
+    it('keeps seeded identity generation deterministic across YAML and TypeScript loading', async () => {
+      const firstReset = await fetch(`${app.engineUrl}/_admin/reset`, { method: 'POST' });
       expect(firstReset.status).toBe(204);
       const first = await requestThroughSpecmatic(
         app.stubUrl,
-        "POST",
-        "/jobs",
-        { name: "seeded-identity" },
-        { "x-potemkin-seed": "latency-seed" },
+        'POST',
+        '/jobs',
+        { name: 'seeded-identity' },
+        { 'x-potemkin-seed': 'latency-seed' },
       );
 
-      const secondReset = await fetch(`${app.engineUrl}/_admin/reset`, { method: "POST" });
+      const secondReset = await fetch(`${app.engineUrl}/_admin/reset`, { method: 'POST' });
       expect(secondReset.status).toBe(204);
       const second = await requestThroughSpecmatic(
         app.stubUrl,
-        "POST",
-        "/jobs",
-        { name: "seeded-identity" },
-        { "x-potemkin-seed": "latency-seed" },
+        'POST',
+        '/jobs',
+        { name: 'seeded-identity' },
+        { 'x-potemkin-seed': 'latency-seed' },
       );
 
       expect(first.status).toBe(201);
       expect(second.status).toBe(201);
-      expect((first.body as JsonObject)["id"]).toBe((second.body as JsonObject)["id"]);
+      expect((first.body as JsonObject)['id']).toBe((second.body as JsonObject)['id']);
 
       const differentSeed = await requestThroughSpecmatic(
         app.stubUrl,
-        "POST",
-        "/jobs",
-        { name: "different-seed" },
-        { "x-potemkin-seed": "other-latency-seed" },
+        'POST',
+        '/jobs',
+        { name: 'different-seed' },
+        { 'x-potemkin-seed': 'other-latency-seed' },
       );
       expect(differentSeed.status).toBe(201);
-      expect((differentSeed.body as JsonObject)["id"]).not.toBe((second.body as JsonObject)["id"]);
+      expect((differentSeed.body as JsonObject)['id']).not.toBe((second.body as JsonObject)['id']);
     }, 30_000);
 
-    it("isolates concurrent forwarded clock offsets and seeds", async () => {
-      const reset = await fetch(`${app.engineUrl}/_admin/reset`, { method: "POST" });
+    it('isolates concurrent forwarded clock offsets and seeds', async () => {
+      const reset = await fetch(`${app.engineUrl}/_admin/reset`, { method: 'POST' });
       expect(reset.status).toBe(204);
       const startedAt = Date.now();
       const [ahead, behind] = await Promise.all([
         requestThroughSpecmatic(
           app.stubUrl,
-          "POST",
-          "/jobs",
-          { name: "concurrent-ahead" },
+          'POST',
+          '/jobs',
+          { name: 'concurrent-ahead' },
           {
-            "x-potemkin-clock-offset": "3600000",
-            "x-potemkin-seed": `${mode.name}-concurrent-ahead`,
+            'x-potemkin-clock-offset': '3600000',
+            'x-potemkin-seed': `${mode.name}-concurrent-ahead`,
           },
         ),
         requestThroughSpecmatic(
           app.stubUrl,
-          "POST",
-          "/jobs",
-          { name: "concurrent-behind" },
+          'POST',
+          '/jobs',
+          { name: 'concurrent-behind' },
           {
-            "x-potemkin-clock-offset": "-3600000",
-            "x-potemkin-seed": `${mode.name}-concurrent-behind`,
+            'x-potemkin-clock-offset': '-3600000',
+            'x-potemkin-seed': `${mode.name}-concurrent-behind`,
           },
         ),
       ]);
@@ -162,8 +162,8 @@ describe.each(MODES)("Per-boundary latency injection through Specmatic — $name
 
       expect(ahead.status).toBe(201);
       expect(behind.status).toBe(201);
-      const aheadId = String((ahead.body as JsonObject)["id"]);
-      const behindId = String((behind.body as JsonObject)["id"]);
+      const aheadId = String((ahead.body as JsonObject)['id']);
+      const behindId = String((behind.body as JsonObject)['id']);
       expect(aheadId).not.toBe(behindId);
 
       const [aheadEvents, behindEvents] = await Promise.all(
@@ -181,24 +181,24 @@ describe.each(MODES)("Per-boundary latency injection through Specmatic — $name
       expect(Date.parse(behindEvents[0]!.timestamp)).toBeLessThan(completedAt - 3_500_000);
     }, 60_000);
 
-    it("stacks the typed fault delay with boundary latency without committing state", async () => {
-      const reset = await fetch(`${app.engineUrl}/_admin/reset`, { method: "POST" });
+    it('stacks the typed fault delay with boundary latency without committing state', async () => {
+      const reset = await fetch(`${app.engineUrl}/_admin/reset`, { method: 'POST' });
       expect(reset.status).toBe(204);
       const start = Date.now();
       const res = await requestThroughSpecmatic(
         app.stubUrl,
-        "POST",
-        "/jobs",
-        { name: "fault-probe" },
-        { "x-latency-fault": "on" },
+        'POST',
+        '/jobs',
+        { name: 'fault-probe' },
+        { 'x-latency-fault': 'on' },
       );
       const elapsed = Date.now() - start;
 
       expect(res.status).toBe(503);
       expect(res.body).toEqual(
         expect.objectContaining({
-          error: "DELAYED_JOB_FAULT",
-          message: "simulated delayed job failure",
+          error: 'DELAYED_JOB_FAULT',
+          message: 'simulated delayed job failure',
         }),
       );
       expect(elapsed).toBeGreaterThanOrEqual(CONFIGURED_LATENCY_MS + FAULT_DELAY_MS - 10);
@@ -209,30 +209,30 @@ describe.each(MODES)("Per-boundary latency injection through Specmatic — $name
       expect(events.events).toHaveLength(0);
     }, 30_000);
 
-    it("keeps a typed fault ahead of idempotency replay without poisoning the cached success", async () => {
-      const reset = await fetch(`${app.engineUrl}/_admin/reset`, { method: "POST" });
+    it('keeps a typed fault ahead of idempotency replay without poisoning the cached success', async () => {
+      const reset = await fetch(`${app.engineUrl}/_admin/reset`, { method: 'POST' });
       expect(reset.status).toBe(204);
       const key = `latency-fault-replay-${mode.name}`;
-      const body = { name: "fault-replay-latency" };
+      const body = { name: 'fault-replay-latency' };
 
-      const created = await requestThroughSpecmatic(app.stubUrl, "POST", "/jobs", body, {
-        "idempotency-key": key,
+      const created = await requestThroughSpecmatic(app.stubUrl, 'POST', '/jobs', body, {
+        'idempotency-key': key,
       });
       expect(created.status).toBe(201);
 
-      const faultedReplay = await requestThroughSpecmatic(app.stubUrl, "POST", "/jobs", body, {
-        "idempotency-key": key,
-        "x-latency-fault": "on",
+      const faultedReplay = await requestThroughSpecmatic(app.stubUrl, 'POST', '/jobs', body, {
+        'idempotency-key': key,
+        'x-latency-fault': 'on',
       });
       expect(faultedReplay.status).toBe(503);
-      expect(faultedReplay.body).toEqual(expect.objectContaining({ error: "DELAYED_JOB_FAULT" }));
-      expect(faultedReplay.headers["x-idempotency-replay"]).toBeUndefined();
+      expect(faultedReplay.body).toEqual(expect.objectContaining({ error: 'DELAYED_JOB_FAULT' }));
+      expect(faultedReplay.headers['x-idempotency-replay']).toBeUndefined();
 
-      const replayAfterFault = await requestThroughSpecmatic(app.stubUrl, "POST", "/jobs", body, {
-        "idempotency-key": key,
+      const replayAfterFault = await requestThroughSpecmatic(app.stubUrl, 'POST', '/jobs', body, {
+        'idempotency-key': key,
       });
       expect(replayAfterFault.status).toBe(201);
-      expect(replayAfterFault.headers["x-idempotency-replay"]).toBe("true");
+      expect(replayAfterFault.headers['x-idempotency-replay']).toBe('true');
       expect(replayAfterFault.body).toEqual(created.body);
 
       const events = (await fetch(`${app.engineUrl}/_admin/events`).then((response) =>
@@ -241,48 +241,48 @@ describe.each(MODES)("Per-boundary latency injection through Specmatic — $name
       expect(events.events).toHaveLength(1);
     }, 60_000);
 
-    it("applies boundary latency to idempotency replays as well as fresh responses", async () => {
-      const reset = await fetch(`${app.engineUrl}/_admin/reset`, { method: "POST" });
+    it('applies boundary latency to idempotency replays as well as fresh responses', async () => {
+      const reset = await fetch(`${app.engineUrl}/_admin/reset`, { method: 'POST' });
       expect(reset.status).toBe(204);
       const key = `latency-replay-${mode.name}`;
-      const body = { name: "replay-latency" };
-      const first = await requestThroughSpecmatic(app.stubUrl, "POST", "/jobs", body, {
-        "idempotency-key": key,
+      const body = { name: 'replay-latency' };
+      const first = await requestThroughSpecmatic(app.stubUrl, 'POST', '/jobs', body, {
+        'idempotency-key': key,
       });
       const start = Date.now();
-      const replay = await requestThroughSpecmatic(app.stubUrl, "POST", "/jobs", body, {
-        "idempotency-key": key,
+      const replay = await requestThroughSpecmatic(app.stubUrl, 'POST', '/jobs', body, {
+        'idempotency-key': key,
       });
       const elapsed = Date.now() - start;
 
       expect(first.status).toBe(201);
       expect(replay.status).toBe(201);
-      expect(replay.headers["x-idempotency-replay"]).toBe("true");
+      expect(replay.headers['x-idempotency-replay']).toBe('true');
       expect(replay.body).toEqual(first.body);
       expect(elapsed).toBeGreaterThanOrEqual(LATENCY_FLOOR_MS);
       expect(elapsed).toBeLessThan(LATENCY_CEILING_MS);
     }, 30_000);
 
-    it("stacks chaos latency controls with boundary latency on a forced error", async () => {
-      const reset = await fetch(`${app.engineUrl}/_admin/reset`, { method: "POST" });
+    it('stacks chaos latency controls with boundary latency on a forced error', async () => {
+      const reset = await fetch(`${app.engineUrl}/_admin/reset`, { method: 'POST' });
       expect(reset.status).toBe(204);
       const start = Date.now();
       const response = await requestThroughSpecmatic(
         app.stubUrl,
-        "POST",
-        "/jobs",
-        { name: "chaos-latency" },
+        'POST',
+        '/jobs',
+        { name: 'chaos-latency' },
         {
-          "x-potemkin-force-status": "418",
-          "x-potemkin-force-latency": "15",
-          "x-potemkin-slow-response": "5",
-          "x-potemkin-jitter": "3:4",
+          'x-potemkin-force-status': '418',
+          'x-potemkin-force-latency': '15',
+          'x-potemkin-slow-response': '5',
+          'x-potemkin-jitter': '3:4',
         },
       );
       const elapsed = Date.now() - start;
 
       expect(response.status).toBe(418);
-      expect(response.body).toEqual(expect.objectContaining({ error: "FORCED_STATUS" }));
+      expect(response.body).toEqual(expect.objectContaining({ error: 'FORCED_STATUS' }));
       expect(elapsed).toBeGreaterThanOrEqual(CONFIGURED_LATENCY_MS + 15 + 5 + 3 - 10);
       expect(elapsed).toBeLessThan(CONFIGURED_LATENCY_MS + 15 + 5 + 4 + 2_000);
       const events = (await fetch(`${app.engineUrl}/_admin/events`).then((result) =>
@@ -292,17 +292,17 @@ describe.each(MODES)("Per-boundary latency injection through Specmatic — $name
     }, 30_000);
   });
 
-  describe("JobById boundary (no latency config)", () => {
-    it("GET /jobs/{id} responds well under the latency floor (contrast)", async () => {
+  describe('JobById boundary (no latency config)', () => {
+    it('GET /jobs/{id} responds well under the latency floor (contrast)', async () => {
       // Create a job first so there is a real entity to fetch.
-      const createRes = await requestThroughSpecmatic(app.stubUrl, "POST", "/jobs", {
-        name: "contrast-probe",
+      const createRes = await requestThroughSpecmatic(app.stubUrl, 'POST', '/jobs', {
+        name: 'contrast-probe',
       });
       expect(createRes.status).toBe(201);
-      const jobId = (createRes.body as JsonObject)["id"] as string;
+      const jobId = (createRes.body as JsonObject)['id'] as string;
 
       const start = Date.now();
-      const res = await requestThroughSpecmatic(app.stubUrl, "GET", `/jobs/${jobId}`);
+      const res = await requestThroughSpecmatic(app.stubUrl, 'GET', `/jobs/${jobId}`);
       const elapsed = Date.now() - start;
 
       expect(res.status).toBe(200);
@@ -313,13 +313,13 @@ describe.each(MODES)("Per-boundary latency injection through Specmatic — $name
     }, 30_000);
   });
 
-  describe("JobRanged boundary (latency: { min_ms: 40, max_ms: 80 })", () => {
-    it("every POST /jobs/ranged response is delayed within the declared uniform-random range", async () => {
+  describe('JobRanged boundary (latency: { min_ms: 40, max_ms: 80 })', () => {
+    it('every POST /jobs/ranged response is delayed within the declared uniform-random range', async () => {
       const delays: number[] = [];
 
       for (let i = 0; i < RANGE_SAMPLE_COUNT; i++) {
         const start = Date.now();
-        const res = await requestThroughSpecmatic(app.stubUrl, "POST", "/jobs/ranged", {
+        const res = await requestThroughSpecmatic(app.stubUrl, 'POST', '/jobs/ranged', {
           name: `range-probe-${i}`,
         });
         const elapsed = Date.now() - start;
@@ -336,25 +336,25 @@ describe.each(MODES)("Per-boundary latency injection through Specmatic — $name
       }
     }, 60_000);
 
-    it("POST /jobs/ranged response body contains the submitted job id and name", async () => {
-      const res = await requestThroughSpecmatic(app.stubUrl, "POST", "/jobs/ranged", {
-        name: "range-body-check",
+    it('POST /jobs/ranged response body contains the submitted job id and name', async () => {
+      const res = await requestThroughSpecmatic(app.stubUrl, 'POST', '/jobs/ranged', {
+        name: 'range-body-check',
       });
       expect(res.status).toBe(201);
       const body = res.body as JsonObject;
-      expect(typeof body["id"]).toBe("string");
-      expect((body["id"] as string).length).toBeGreaterThan(0);
-      expect(body["name"]).toBe("range-body-check");
+      expect(typeof body['id']).toBe('string');
+      expect((body['id'] as string).length).toBeGreaterThan(0);
+      expect(body['name']).toBe('range-body-check');
     }, 30_000);
   });
 
-  describe("JobStacked boundary (latency: { fixed_ms: 20, min_ms: 30, max_ms: 60 })", () => {
-    it("every POST /jobs/stacked response is delayed at least fixed_ms + min_ms", async () => {
+  describe('JobStacked boundary (latency: { fixed_ms: 20, min_ms: 30, max_ms: 60 })', () => {
+    it('every POST /jobs/stacked response is delayed at least fixed_ms + min_ms', async () => {
       const delays: number[] = [];
 
       for (let i = 0; i < RANGE_SAMPLE_COUNT; i++) {
         const start = Date.now();
-        const res = await requestThroughSpecmatic(app.stubUrl, "POST", "/jobs/stacked", {
+        const res = await requestThroughSpecmatic(app.stubUrl, 'POST', '/jobs/stacked', {
           name: `stack-probe-${i}`,
         });
         const elapsed = Date.now() - start;

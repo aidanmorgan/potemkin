@@ -5,18 +5,18 @@
  * suite (serialised via maxWorkers: 1).
  */
 
-import type * as http from "node:http";
-import type { RuntimeSystem } from "../../../src/runtime/system";
-import type { RuntimeObservability } from "../../../src/model/runtime";
-import type { OpenApiDoc } from "../../../src/contract/loader";
-import { bootYamlRuntimeFromConfig } from "../../../src/parser/files";
-import { createDefaultRuntimeHost } from "../../../src/runtime/host";
-import { createRuntimeWebhookTransport } from "../../../src/webhooks/transport";
-import { createYamlRuntimeExtensions } from "../../../src/parser/gateway";
-import { createRuntimeGateway } from "../../../src/http/runtimeGateway";
-import { createPluginControlClient } from "../../../src/lifecycle/pluginControlClient";
-import { loadEngineFixture } from "../../fixtures/index";
-import { getFreePort } from "../../../src/conformance/portAllocator.js";
+import type * as http from 'node:http';
+import type { RuntimeSystem } from '../../../src/runtime/system';
+import type { RuntimeObservability } from '../../../src/contracts/ports';
+import type { OpenApiDoc } from '../../../src/contract/loader';
+import { bootYamlRuntimeFromConfig } from '../../../src/parser/files';
+import { createDefaultRuntimeHost } from '../../../src/runtime/host';
+import { createRuntimeWebhookTransport } from '../../../src/webhooks/transport';
+import { createYamlRuntimeExtensions } from '../../../src/parser/gateway';
+import { createRuntimeGateway } from '../../../src/http/runtimeGateway';
+import { createPluginControlClient } from '../../../src/lifecycle/pluginControlClient';
+import { loadEngineFixture } from '../../fixtures/index';
+import { getFreePort } from '../../../src/conformance/portAllocator.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -56,7 +56,7 @@ interface EngineDriverOpts {
 
 export async function startEngine(opts: EngineDriverOpts = {}): Promise<EngineHandle> {
   const port = opts.port ?? (await getFreePort());
-  const fixtureName = opts.fixtureName ?? "crm";
+  const fixtureName = opts.fixtureName ?? 'crm';
   let sys = await _boot(
     opts.pluginControlUrl,
     fixtureName,
@@ -108,7 +108,7 @@ export async function startEngine(opts: EngineDriverOpts = {}): Promise<EngineHa
 
 async function _boot(
   pluginControlUrl?: string,
-  fixtureName = "crm",
+  fixtureName = 'crm',
   potemkinConfigPath?: string,
   openapi?: OpenApiDoc,
   onConfigurationError?: (error: unknown) => void,
@@ -116,7 +116,7 @@ async function _boot(
 ): Promise<RuntimeSystem> {
   if (potemkinConfigPath !== undefined) {
     if (openapi === undefined)
-      throw new Error("openapi is required when potemkinConfigPath is supplied");
+      throw new Error('openapi is required when potemkinConfigPath is supplied');
     return bootYamlRuntimeFromConfig({
       openapi,
       potemkinConfigPath,
@@ -173,12 +173,12 @@ async function _boot(
 async function _serve(sys: RuntimeSystem, port: number): Promise<http.Server> {
   const app = createRuntimeGateway(sys, createYamlRuntimeExtensions(sys));
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { resolveBindHost } = require("../../../src/http/bindHost.js");
-  const host: string = resolveBindHost("dsl");
+  const { resolveBindHost } = require('../../../src/http/bindHost.js');
+  const host: string = resolveBindHost('dsl');
   return new Promise<http.Server>((resolve, reject) => {
     const srv = app.listen(port, host, () => resolve(srv));
     srv.unref();
-    srv.on("error", reject);
+    srv.on('error', reject);
   });
 }
 

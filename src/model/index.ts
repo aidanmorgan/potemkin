@@ -10,8 +10,8 @@ import type {
   RuntimeHelperDefinition,
   RuntimePolicies,
   RuntimeProgram,
-} from "./runtime.js";
-import type { RuntimeDependencies } from "./runtime.js";
+} from './runtime.js';
+import type { RuntimeDependencies } from './runtime.js';
 
 export type RuntimeModel = RuntimeProgram;
 
@@ -22,9 +22,5 @@ export interface RuntimeDefinition {
 }
 
 export interface RuntimeModelCompiler {
-  compile(
-    definition: RuntimeDefinition,
-    dependencies: RuntimeDependencies,
-    options?: Readonly<{ allowExternalReferences?: boolean }>,
-  ): RuntimeModel;
+  compile(definition: RuntimeDefinition, dependencies: RuntimeDependencies): RuntimeModel;
 }

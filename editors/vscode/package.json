@@ -1,0 +1,39 @@
+{
+  "name": "potemkin-language-support",
+  "displayName": "Potemkin Language Support",
+  "version": "0.1.0",
+  "description": "Unified YAML and TypeScript authoring support for Potemkin simulations",
+  "categories": [
+    "Programming Languages"
+  ],
+  "license": "MIT",
+  "publisher": "potemkin",
+  "main": "./extension.js",
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "contributes": {
+    "configuration": {
+      "title": "Potemkin",
+      "properties": {
+        "potemkin.languageServer.command": {
+          "type": "string",
+          "default": "",
+          "description": "Optional Potemkin language-server executable. Empty uses the workspace installation."
+        },
+        "potemkin.configPath": {
+          "type": "string",
+          "default": "potemkin.yml",
+          "description": "Potemkin project configuration relative to the workspace root."
+        }
+      }
+    }
+  },
+  "activationEvents": [
+    "onLanguage:typescript",
+    "onLanguage:yaml"
+  ],
+  "engines": {
+    "vscode": "^1.85.0"
+  }
+}

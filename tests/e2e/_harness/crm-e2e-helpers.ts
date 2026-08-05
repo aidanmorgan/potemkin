@@ -73,15 +73,15 @@ export async function requestThroughSpecmatic(
   headers: Record<string, string> = {},
   query: Record<string, string> = {},
 ): Promise<PublicResponse> {
-  const target = new URL(path, `${stubUrl.replace(/\/$/, "")}/`);
+  const target = new URL(path, `${stubUrl.replace(/\/$/, '')}/`);
   for (const [key, value] of Object.entries(query)) target.searchParams.set(key, value);
 
   // Specmatic may close its pooled keep-alive socket while the plugin is
   // replacing dynamic expectations during a configuration reload. Explicitly
   // close each E2E request so a subsequent request cannot reuse a socket that
   // the JVM has already retired at that lifecycle boundary.
-  const requestHeaders: Record<string, string> = { connection: "close", ...headers };
-  if (body !== null && body !== undefined) requestHeaders["content-type"] ??= "application/json";
+  const requestHeaders: Record<string, string> = { connection: 'close', ...headers };
+  if (body !== null && body !== undefined) requestHeaders['content-type'] ??= 'application/json';
 
   // Public request path: Specmatic validates the request, the plugin decides
   // whether the route is stateful, and only then does it call Potemkin.
@@ -107,5 +107,5 @@ export async function requestThroughSpecmatic(
 }
 
 export async function adminReset(engineUrl: string): Promise<void> {
-  await fetch(`${engineUrl}/_admin/reset`, { method: "POST" });
+  await fetch(`${engineUrl}/_admin/reset`, { method: 'POST' });
 }

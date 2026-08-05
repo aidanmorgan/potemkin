@@ -1,40 +1,40 @@
-import { promises as fs, readFileSync } from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
+import { promises as fs, readFileSync } from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 
-import { scanTypeScriptFactories } from "../../../src/parser/typescriptFactoryScanner";
-import { createDefaultTypeScriptModuleLoaderDependencies } from "../../../src/parser/typescriptModuleLoader";
-import type { TypeScriptDiscoveryDependencies } from "../../../src/parser/typescriptDiscovery";
-import { loadTypeScriptConfiguration } from "../../../src/parser/typescriptLoader";
-import { PotemkinConfigure } from "../../../src/authoring/factory";
-import { factoryName } from "../../../src/authoring/references";
-import { TypeScriptAuthoringError } from "../../../src/authoring/errors";
+import { scanTypeScriptFactories } from '../../../src/parser/typescriptFactoryScanner';
+import { createDefaultTypeScriptModuleLoaderDependencies } from '../../../src/parser/typescriptModuleLoader';
+import type { TypeScriptDiscoveryDependencies } from '../../../src/parser/typescriptDiscovery';
+import { loadTypeScriptConfiguration } from '../../../src/parser/typescriptLoader';
+import { PotemkinConfigure } from '../../../src/authoring/factory';
+import { factoryName } from '../../../src/domain/references';
+import { TypeScriptAuthoringError } from '../../../src/authoring/errors';
 
 const openapi = { raw: {}, paths: {} } as never;
 const configuration = {
   version: 1,
-  specmatic: "specmatic.yaml",
-  modules: ["yaml/**/*.yaml"],
+  specmatic: 'specmatic.yaml',
+  modules: ['yaml/**/*.yaml'],
 } as never;
 
-describe("TypeScript static engine factories", () => {
+describe('TypeScript static engine factories', () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await fs.mkdtemp(path.join(os.tmpdir(), "potemkin-ts-factory-"));
+    root = await fs.mkdtemp(path.join(os.tmpdir(), 'potemkin-ts-factory-'));
   });
 
   afterEach(async () => {
     await fs.rm(root, { recursive: true, force: true });
   });
 
-  it("discovers a decorated static method and loads its selected dependency", async () => {
+  it('discovers a decorated static method and loads its selected dependency', async () => {
     await fs.writeFile(
-      path.join(root, "shared.ts"),
+      path.join(root, 'shared.ts'),
       `export function boundaryName(): string { return "Widget"; }`,
     );
     await fs.writeFile(
-      path.join(root, "scenario.ts"),
+      path.join(root, 'scenario.ts'),
       `
         import { boundary, simulation } from "potemkin/sdk";
         import {
@@ -55,19 +55,19 @@ describe("TypeScript static engine factories", () => {
       `,
     );
 
-    const result = await loadTypeScriptConfiguration({ scan: [{ include: ["*.ts"] }] }, root, {
+    const result = await loadTypeScriptConfiguration({ scan: [{ include: ['*.ts'] }] }, root, {
       openapi,
       configuration,
       sourceFiles: [],
     });
 
-    expect(result.files).toEqual([path.join(root, "scenario.ts"), path.join(root, "shared.ts")]);
-    expect(result.definition?.boundaries.map((item) => item.boundary)).toEqual(["Widget"]);
+    expect(result.files).toEqual([path.join(root, 'scenario.ts'), path.join(root, 'shared.ts')]);
+    expect(result.definition?.boundaries.map((item) => item.boundary)).toEqual(['Widget']);
   });
 
-  it("returns factory registrations from the canonical TypeScript scanner", async () => {
+  it('returns factory registrations from the canonical TypeScript scanner', async () => {
     await fs.writeFile(
-      path.join(root, "scenario.ts"),
+      path.join(root, 'scenario.ts'),
       `
         import { PotemkinConfigure } from "potemkin/sdk";
         class Scenario {
@@ -77,14 +77,29 @@ describe("TypeScript static engine factories", () => {
       `,
     );
 
-    const result = await scanTypeScriptFactories({ scan: [{ include: ["*.ts"] }] }, root);
+    const result = await scanTypeScriptFactories({ scan: [{ include: ['*.ts'] }] }, root);
 
-    expect(result.factories.map((entry) => entry.name)).toEqual(["scenario"]);
+    expect(result.factories.map((entry) => entry.name)).toEqual(['scenario']);
   });
 
-  it("retains a factory that contributes only global policies or composition uses", async () => {
+  it('rejects the removed independently-scanned reducer decorator with a canonical migration diagnostic', async () => {
     await fs.writeFile(
-      path.join(root, "global.ts"),
+      path.join(root, 'legacy-reducer.ts'),
+      `import { PotemkinReducer } from "potemkin/sdk";
+       class Legacy { @PotemkinReducer("Lead", "LeadQualified") static reduce() { return {}; } }`,
+    );
+
+    await expect(
+      scanTypeScriptFactories({ scan: [{ include: ['*.ts'] }] }, root),
+    ).rejects.toMatchObject({
+      code: 'TS_LEGACY_REDUCER_SCANNER',
+      message: expect.stringContaining('reducerRule'),
+    });
+  });
+
+  it('retains a factory that contributes only global policies or composition uses', async () => {
+    await fs.writeFile(
+      path.join(root, 'global.ts'),
       `
         import { PotemkinConfigure, simulation } from "potemkin/sdk";
         class GlobalConfiguration {
@@ -98,7 +113,7 @@ describe("TypeScript static engine factories", () => {
       `,
     );
 
-    const result = await loadTypeScriptConfiguration({ scan: [{ include: ["*.ts"] }] }, root, {
+    const result = await loadTypeScriptConfiguration({ scan: [{ include: ['*.ts'] }] }, root, {
       openapi,
       configuration,
       sourceFiles: [],
@@ -110,8 +125,8 @@ describe("TypeScript static engine factories", () => {
     });
   });
 
-  it("uses injected discovery and module-loader ports at the composition boundary", async () => {
-    const scenario = path.join(root, "scenario.ts");
+  it('uses injected discovery and module-loader ports at the composition boundary', async () => {
+    const scenario = path.join(root, 'scenario.ts');
     await fs.writeFile(
       scenario,
       `
@@ -134,7 +149,7 @@ describe("TypeScript static engine factories", () => {
     const defaults = createDefaultTypeScriptModuleLoaderDependencies();
 
     const result = await scanTypeScriptFactories(
-      { scan: [{ include: ["ignored-by-injected-port/**/*.ts"] }] },
+      { scan: [{ include: ['ignored-by-injected-port/**/*.ts'] }] },
       root,
       {
         discovery,
@@ -148,19 +163,19 @@ describe("TypeScript static engine factories", () => {
       },
     );
 
-    expect(result.factories.map((entry) => entry.name)).toEqual(["injected"]);
+    expect(result.factories.map((entry) => entry.name)).toEqual(['injected']);
     expect(discovered).toEqual([`${scenario}:utf8`]);
     expect(loaded).toEqual([`${scenario}:utf8`]);
   });
 
-  it("loads an imported dependency even when discovery excludes that file", async () => {
-    await fs.mkdir(path.join(root, "shared"));
+  it('loads an imported dependency even when discovery excludes that file', async () => {
+    await fs.mkdir(path.join(root, 'shared'));
     await fs.writeFile(
-      path.join(root, "shared", "names.ts"),
+      path.join(root, 'shared', 'names.ts'),
       `export const boundaryName = "ImportedBoundary";`,
     );
     await fs.writeFile(
-      path.join(root, "scenario.ts"),
+      path.join(root, 'scenario.ts'),
       `
         import { boundary, simulation } from "potemkin/sdk";
         import { PotemkinConfigure } from "potemkin/sdk";
@@ -176,37 +191,37 @@ describe("TypeScript static engine factories", () => {
 
     const result = await scanTypeScriptFactories(
       {
-        scan: [{ include: ["**/*.ts"], exclude: ["shared/**/*.ts"] }],
+        scan: [{ include: ['**/*.ts'], exclude: ['shared/**/*.ts'] }],
       },
       root,
     );
 
-    expect(result.files).toEqual([path.join(root, "scenario.ts")]);
+    expect(result.files).toEqual([path.join(root, 'scenario.ts')]);
     expect(result.loadedFiles).toEqual([
-      path.join(root, "scenario.ts"),
-      path.join(root, "shared", "names.ts"),
+      path.join(root, 'scenario.ts'),
+      path.join(root, 'shared', 'names.ts'),
     ]);
-    expect(result.factories.map((entry) => entry.name)).toEqual(["scenario"]);
+    expect(result.factories.map((entry) => entry.name)).toEqual(['scenario']);
   });
 
-  it("rejects instance methods so only static configuration factories are registered", () => {
+  it('rejects instance methods so only static configuration factories are registered', () => {
     class Scenario {
       create(): never {
-        throw new Error("not called");
+        throw new Error('not called');
       }
     }
 
     expect(() =>
-      PotemkinConfigure(factoryName("invalid"))(
+      PotemkinConfigure(factoryName('invalid'))(
         Scenario.prototype,
-        "create",
-        Object.getOwnPropertyDescriptor(Scenario.prototype, "create")!,
+        'create',
+        Object.getOwnPropertyDescriptor(Scenario.prototype, 'create')!,
       ),
     ).toThrow(/static method/);
   });
 
-  it("isolates factory discovery across concurrent scans", async () => {
-    const otherRoot = await fs.mkdtemp(path.join(os.tmpdir(), "potemkin-ts-factory-other-"));
+  it('isolates factory discovery across concurrent scans', async () => {
+    const otherRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'potemkin-ts-factory-other-'));
     const source = `
       import { PotemkinConfigure } from "potemkin/sdk";
       class Scenario {
@@ -216,21 +231,21 @@ describe("TypeScript static engine factories", () => {
     `;
     try {
       await Promise.all([
-        fs.writeFile(path.join(root, "scenario.ts"), source),
-        fs.writeFile(path.join(otherRoot, "scenario.ts"), source),
+        fs.writeFile(path.join(root, 'scenario.ts'), source),
+        fs.writeFile(path.join(otherRoot, 'scenario.ts'), source),
       ]);
       const [left, right] = await Promise.all([
-        scanTypeScriptFactories({ scan: [{ include: ["*.ts"] }] }, root),
-        scanTypeScriptFactories({ scan: [{ include: ["*.ts"] }] }, otherRoot),
+        scanTypeScriptFactories({ scan: [{ include: ['*.ts'] }] }, root),
+        scanTypeScriptFactories({ scan: [{ include: ['*.ts'] }] }, otherRoot),
       ]);
-      expect(left.factories.map((entry) => entry.name)).toEqual(["scenario"]);
-      expect(right.factories.map((entry) => entry.name)).toEqual(["scenario"]);
+      expect(left.factories.map((entry) => entry.name)).toEqual(['scenario']);
+      expect(right.factories.map((entry) => entry.name)).toEqual(['scenario']);
     } finally {
       await fs.rm(otherRoot, { recursive: true, force: true });
     }
   });
 
-  it("reports duplicate factory names through the typed diagnostic contract", async () => {
+  it('reports duplicate factory names through the typed diagnostic contract', async () => {
     const source = (className: string) => `
       import { PotemkinConfigure } from "potemkin/sdk";
       class ${className} {
@@ -238,20 +253,20 @@ describe("TypeScript static engine factories", () => {
         static create() { return { boundaries: [] }; }
       }
     `;
-    await fs.writeFile(path.join(root, "first.ts"), source("First"));
-    await fs.writeFile(path.join(root, "second.ts"), source("Second"));
+    await fs.writeFile(path.join(root, 'first.ts'), source('First'));
+    await fs.writeFile(path.join(root, 'second.ts'), source('Second'));
 
-    const failure = scanTypeScriptFactories({ scan: [{ include: ["*.ts"] }] }, root);
+    const failure = scanTypeScriptFactories({ scan: [{ include: ['*.ts'] }] }, root);
     await expect(failure).rejects.toMatchObject({
-      code: "TS_FACTORY_CONFLICT",
-      location: { source: "class:Second.create" },
+      code: 'TS_FACTORY_CONFLICT',
+      location: { source: 'class:Second.create' },
     });
     await expect(failure).rejects.toBeInstanceOf(TypeScriptAuthoringError);
   });
 
-  it("wraps factory execution failures with a stable typed diagnostic", async () => {
+  it('wraps factory execution failures with a stable typed diagnostic', async () => {
     await fs.writeFile(
-      path.join(root, "scenario.ts"),
+      path.join(root, 'scenario.ts'),
       `
         import { PotemkinConfigure } from "potemkin/sdk";
         class Scenario {
@@ -261,21 +276,21 @@ describe("TypeScript static engine factories", () => {
       `,
     );
 
-    const failure = loadTypeScriptConfiguration({ scan: [{ include: ["*.ts"] }] }, root, {
+    const failure = loadTypeScriptConfiguration({ scan: [{ include: ['*.ts'] }] }, root, {
       openapi,
       configuration,
       sourceFiles: [],
     });
     await expect(failure).rejects.toMatchObject({
-      code: "TS_EXECUTION",
-      details: { name: "broken" },
-      location: { source: "class:Scenario.create" },
+      code: 'TS_EXECUTION',
+      details: { name: 'broken' },
+      location: { source: 'class:Scenario.create' },
     });
   });
 
-  it("preserves unknown nested factory failures behind the typed boundary", async () => {
+  it('preserves unknown nested factory failures behind the typed boundary', async () => {
     await fs.writeFile(
-      path.join(root, "unknown-failure.ts"),
+      path.join(root, 'unknown-failure.ts'),
       `
         import { PotemkinConfigure } from "potemkin/sdk";
         class Scenario {
@@ -285,22 +300,22 @@ describe("TypeScript static engine factories", () => {
       `,
     );
 
-    const failure = loadTypeScriptConfiguration({ scan: [{ include: ["*.ts"] }] }, root, {
+    const failure = loadTypeScriptConfiguration({ scan: [{ include: ['*.ts'] }] }, root, {
       openapi,
       configuration,
       sourceFiles: [],
     });
     await expect(failure).rejects.toMatchObject({
-      code: "TS_EXECUTION",
-      details: { name: "unknown-failure" },
-      location: { source: "class:Scenario.create" },
-      cause: { nested: { reason: "not an Error instance" } },
+      code: 'TS_EXECUTION',
+      details: { name: 'unknown-failure' },
+      location: { source: 'class:Scenario.create' },
+      cause: { nested: { reason: 'not an Error instance' } },
     });
   });
 
-  it("reports forbidden imports through the typed loader contract", async () => {
+  it('reports forbidden imports through the typed loader contract', async () => {
     await fs.writeFile(
-      path.join(root, "scenario.ts"),
+      path.join(root, 'scenario.ts'),
       `
         import { PotemkinConfigure } from "potemkin/sdk";
         import { readFileSync } from "node:fs";
@@ -311,10 +326,10 @@ describe("TypeScript static engine factories", () => {
       `,
     );
 
-    const failure = scanTypeScriptFactories({ scan: [{ include: ["*.ts"] }] }, root);
+    const failure = scanTypeScriptFactories({ scan: [{ include: ['*.ts'] }] }, root);
     await expect(failure).rejects.toMatchObject({
-      code: "TS_IMPORT_FORBIDDEN",
-      location: { source: path.join(root, "scenario.ts") },
+      code: 'TS_IMPORT_FORBIDDEN',
+      location: { source: path.join(root, 'scenario.ts') },
     });
   });
 });

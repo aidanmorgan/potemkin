@@ -1,62 +1,14 @@
-import type { Logger } from "../observability/logger.js";
-import type { Command, DomainEvent, JsonObject, JsonValue } from "../types.js";
-import type { RuntimeDataGenerator } from "../model/data.js";
-
-export type LifecyclePhase =
-  | "boot"
-  | "validation"
-  | "initialization"
-  | "request"
-  | "projection"
-  | "commit"
-  | "post-commit"
-  | "reset"
-  | "shutdown"
-  | "watch"
-  | "reload";
-
-export interface LifecycleContext {
-  readonly phase: LifecyclePhase;
-  readonly boundary?: string;
-  readonly command?: Readonly<Command>;
-  readonly event?: Readonly<DomainEvent>;
-  readonly state?: Readonly<JsonObject> | null;
-  /** Response visible to post-commit hooks after contract validation. */
-  readonly response?: Readonly<{
-    readonly status: number;
-    readonly body: JsonValue | null;
-    readonly headers?: Readonly<Record<string, string>>;
-  }>;
-  /** Manual or signal reason supplied to reset/shutdown hooks. */
-  readonly reason?: string;
-  /** Candidate files supplied to watch/reload hooks. */
-  readonly reload?: Readonly<{
-    readonly files: readonly string[];
-  }>;
-  readonly helpers: Readonly<LifecycleHelpers>;
-}
-
-export interface LifecycleHelpers {
-  readonly uuid: () => string;
-  readonly now: () => string;
-  readonly data?: RuntimeDataGenerator;
-  readonly deepClone: <T>(value: T) => T;
-  readonly deepMerge: (left: JsonObject, right: JsonObject) => JsonObject;
-}
-
-export type LifecycleHook =
-  | {
-      readonly name: string;
-      readonly phase: LifecyclePhase;
-      readonly run: (context: Readonly<LifecycleContext>) => unknown | Promise<unknown>;
-    }
-  | ((context: Readonly<LifecycleContext>) => unknown | Promise<unknown>);
-
-export interface LifecycleDefinition {
-  readonly hooks: readonly LifecycleHook[];
-}
-
-export type LifecycleFailurePolicy = "abort" | "continue";
+import type { Logger } from '../observability/logger.js';
+import type {
+  LifecycleContext,
+  LifecycleDefinition,
+  LifecycleFailurePolicy,
+  LifecycleHelpers,
+  LifecycleHook,
+  LifecyclePhase,
+  LifecycleDependencies,
+} from '../contracts/lifecycle.js';
+import type { JsonObject } from '../contracts/value.js';
 
 export interface LifecycleRunOptions {
   /** Runtime clock used for hook duration diagnostics. */
@@ -78,17 +30,12 @@ export interface LifecycleRunOptions {
 export interface LifecycleDiagnostic {
   readonly phase: LifecyclePhase;
   readonly hookName: string;
-  readonly outcome: "completed" | "failed";
+  readonly outcome: 'completed' | 'failed';
   readonly durationMs: number;
   readonly error?: string;
 }
 
 /** Services supplied by the owning runtime to lifecycle helpers. */
-export interface LifecycleDependencies {
-  readonly uuid: () => string;
-  readonly now: () => string;
-}
-
 export function defineLifecycle(definition: LifecycleDefinition): LifecycleDefinition {
   return Object.freeze({ ...definition, hooks: Object.freeze([...definition.hooks]) });
 }
@@ -106,7 +53,7 @@ export function hooksForPhase(
   phase: LifecyclePhase,
 ): readonly LifecycleHook[] {
   return (definition?.hooks ?? []).filter((hook) =>
-    typeof hook === "function" ? true : hook.phase === phase,
+    typeof hook === 'function' ? true : hook.phase === phase,
   );
 }
 
@@ -127,12 +74,12 @@ export function createLifecycleHelpers(dependencies: LifecycleDependencies): Lif
 }
 
 function freezeSnapshot<T>(value: T): T {
-  if (value === null || value === undefined || typeof value !== "object") return value;
+  if (value === null || value === undefined || typeof value !== 'object') return value;
 
   const cloned = structuredClone(value);
   const seen = new WeakSet<object>();
   const freeze = (entry: unknown): void => {
-    if (entry === null || typeof entry !== "object" || seen.has(entry)) return;
+    if (entry === null || typeof entry !== 'object' || seen.has(entry)) return;
     seen.add(entry);
     for (const child of Object.values(entry as Record<string, unknown>)) freeze(child);
     Object.freeze(entry);
@@ -142,7 +89,7 @@ function freezeSnapshot<T>(value: T): T {
 }
 
 function hookName(hook: LifecycleHook, phase: LifecyclePhase): string {
-  return typeof hook === "function" ? hook.name || `${phase}-hook` : hook.name;
+  return typeof hook === 'function' ? hook.name || `${phase}-hook` : hook.name;
 }
 
 /**
@@ -157,14 +104,14 @@ function hookName(hook: LifecycleHook, phase: LifecyclePhase): string {
 export async function runLifecyclePhase(
   definition: LifecycleDefinition | undefined,
   phase: LifecyclePhase,
-  context: Omit<LifecycleContext, "phase">,
+  context: Omit<LifecycleContext, 'phase'>,
   options: LifecycleRunOptions,
 ): Promise<void> {
-  const failure = options.failure ?? "abort";
+  const failure = options.failure ?? 'abort';
   for (const hook of hooksForPhase(definition, phase)) {
     const name = hookName(hook, phase);
     const startedAt = options.nowMs();
-    const hookContext = {
+    const hookContext: LifecycleContext = {
       ...context,
       ...(context.command !== undefined ? { command: freezeSnapshot(context.command) } : {}),
       ...(context.event !== undefined ? { event: freezeSnapshot(context.event) } : {}),
@@ -172,30 +119,30 @@ export async function runLifecyclePhase(
       ...(context.response !== undefined ? { response: freezeSnapshot(context.response) } : {}),
       ...(context.reload !== undefined ? { reload: freezeSnapshot(context.reload) } : {}),
       phase,
-    } as unknown as LifecycleContext;
+    };
 
     try {
-      await (typeof hook === "function" ? hook : hook.run)(hookContext);
+      await (typeof hook === 'function' ? hook : hook.run)(hookContext);
       const diagnostic: LifecycleDiagnostic = {
         phase,
         hookName: name,
-        outcome: "completed",
+        outcome: 'completed',
         durationMs: options.nowMs() - startedAt,
       };
       options.onDiagnostic?.(diagnostic);
-      options.logger?.debug({ ...diagnostic }, "lifecycle hook completed");
+      options.logger?.debug({ ...diagnostic }, 'lifecycle hook completed');
     } catch (error) {
       options.onError?.(error, name, phase);
       const diagnostic: LifecycleDiagnostic = {
         phase,
         hookName: name,
-        outcome: "failed",
+        outcome: 'failed',
         durationMs: options.nowMs() - startedAt,
         error: error instanceof Error ? error.message : String(error),
       };
       options.onDiagnostic?.(diagnostic);
-      options.logger?.warn({ ...diagnostic }, "lifecycle hook failed");
-      if (failure === "abort") throw error;
+      options.logger?.warn({ ...diagnostic }, 'lifecycle hook failed');
+      if (failure === 'abort') throw error;
     }
   }
 }

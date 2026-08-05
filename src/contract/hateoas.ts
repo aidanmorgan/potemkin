@@ -1,5 +1,5 @@
-import type { JsonObject, JsonValue } from "../types.js";
-import type { OpenApiOperation } from "./loader.js";
+import type { JsonObject, JsonValue } from '../contracts/value.js';
+import type { OpenApiOperation } from './loader.js';
 
 /**
  * Return true when a schema can accept the object-valued `_links` property
@@ -13,42 +13,42 @@ import type { OpenApiOperation } from "./loader.js";
  * the final object.
  */
 function schemaAcceptsHateoasProperty(schema: JsonObject): boolean {
-  const allOf = schema["allOf"];
+  const allOf = schema['allOf'];
   if (Array.isArray(allOf)) {
     return allOf.every((branch) => isJsonObject(branch) && schemaAcceptsHateoasProperty(branch));
   }
 
-  const anyOf = schema["anyOf"];
+  const anyOf = schema['anyOf'];
   if (Array.isArray(anyOf)) {
     return anyOf.some((branch) => isJsonObject(branch) && schemaAcceptsHateoasProperty(branch));
   }
-  const oneOf = schema["oneOf"];
+  const oneOf = schema['oneOf'];
   if (Array.isArray(oneOf)) {
     return oneOf.some((branch) => isJsonObject(branch) && schemaAcceptsHateoasProperty(branch));
   }
 
-  const type = schema["type"];
+  const type = schema['type'];
   if (
-    (typeof type === "string" && type !== "object") ||
-    (Array.isArray(type) && !type.includes("object"))
+    (typeof type === 'string' && type !== 'object') ||
+    (Array.isArray(type) && !type.includes('object'))
   )
     return false;
 
-  const properties = schema["properties"];
-  if (isJsonObject(properties) && Object.prototype.hasOwnProperty.call(properties, "_links")) {
+  const properties = schema['properties'];
+  if (isJsonObject(properties) && Object.prototype.hasOwnProperty.call(properties, '_links')) {
     // `_links` is expected to be an object. The declared property schema is
     // otherwise left to the contract validator, which remains authoritative.
     return true;
   }
 
-  const additionalProperties = schema["additionalProperties"];
+  const additionalProperties = schema['additionalProperties'];
   if (additionalProperties === false) return false;
   if (isJsonObject(additionalProperties)) {
-    const additionalType = additionalProperties["type"];
+    const additionalType = additionalProperties['type'];
     return (
       additionalType === undefined ||
-      additionalType === "object" ||
-      (Array.isArray(additionalType) && additionalType.includes("object"))
+      additionalType === 'object' ||
+      (Array.isArray(additionalType) && additionalType.includes('object'))
     );
   }
 
@@ -59,12 +59,12 @@ function schemaAcceptsHateoasProperty(schema: JsonObject): boolean {
 
 /** Narrow object guard for schema fragments and response bodies. */
 function isJsonObject(value: unknown): value is JsonObject {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 /** Return an array item's schema, if the response schema describes an array. */
 function arrayItemSchema(schema: JsonObject): JsonObject | undefined {
-  const items = schema["items"];
+  const items = schema['items'];
   return isJsonObject(items) ? items : undefined;
 }
 
@@ -91,14 +91,14 @@ export function responseSupportsHateoas(
     );
   }
 
-  if (isJsonObject(body) && Array.isArray(body["items"])) {
-    const properties = schema["properties"];
-    const itemsProperty = isJsonObject(properties) ? properties["items"] : undefined;
+  if (isJsonObject(body) && Array.isArray(body['items'])) {
+    const properties = schema['properties'];
+    const itemsProperty = isJsonObject(properties) ? properties['items'] : undefined;
     if (isJsonObject(itemsProperty)) {
       const itemSchema = arrayItemSchema(itemsProperty);
       return (
         itemSchema === undefined ||
-        (body["items"] as JsonValue[]).every(
+        (body['items'] as JsonValue[]).every(
           (item) => !isJsonObject(item) || schemaAcceptsHateoasProperty(itemSchema),
         )
       );

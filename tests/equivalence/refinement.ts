@@ -1,12 +1,12 @@
-import type { Transition, TransitionMachine } from "../../src/model/transitionModel.js";
+import type { Transition, TransitionMachine } from '../../src/model/transitionModel.js';
 
 /** Input role used in a simulation result. */
-export type RefinementSide = "specification" | "implementation";
+export type RefinementSide = 'specification' | 'implementation';
 
 export type RefinementErrorCode =
-  | "REFINEMENT_MODEL_INVALID"
-  | "REFINEMENT_UNKNOWN_TRANSITION"
-  | "REFINEMENT_NONDETERMINISTIC";
+  | 'REFINEMENT_MODEL_INVALID'
+  | 'REFINEMENT_UNKNOWN_TRANSITION'
+  | 'REFINEMENT_NONDETERMINISTIC';
 
 export interface RefinementErrorDetails {
   readonly side: RefinementSide;
@@ -30,7 +30,7 @@ export class RefinementAnalysisError extends Error {
 
   public constructor(code: RefinementErrorCode, message: string, details: RefinementErrorDetails) {
     super(message);
-    this.name = "RefinementAnalysisError";
+    this.name = 'RefinementAnalysisError';
     this.code = code;
     this.details = details;
     Object.setPrototypeOf(this, new.target.prototype);
@@ -38,9 +38,9 @@ export class RefinementAnalysisError extends Error {
 }
 
 export type RefinementFailureReason =
-  | "INITIAL_STATE_UNRELATED"
-  | "NO_MATCHING_OPERATION"
-  | "TARGET_NOT_RELATED";
+  | 'INITIAL_STATE_UNRELATED'
+  | 'NO_MATCHING_OPERATION'
+  | 'TARGET_NOT_RELATED';
 
 export interface RefinementFailure {
   readonly implementationState: string;
@@ -94,8 +94,8 @@ export function checkFiniteStateRefinement(
   specification: TransitionMachine,
   implementation: TransitionMachine,
 ): RefinementResult {
-  const normalizedSpecification = normalizeMachine(specification, "specification");
-  const normalizedImplementation = normalizeMachine(implementation, "implementation");
+  const normalizedSpecification = normalizeMachine(specification, 'specification');
+  const normalizedImplementation = normalizeMachine(implementation, 'implementation');
 
   let relation = allPairs(normalizedImplementation.states, normalizedSpecification.states);
   let changed = true;
@@ -140,8 +140,8 @@ export function checkFiniteStateRefinement(
     if (normalizedSpecification.initialStates.length === 0) {
       failures.push({
         implementationState,
-        specificationState: "<none>",
-        reason: "INITIAL_STATE_UNRELATED",
+        specificationState: '<none>',
+        reason: 'INITIAL_STATE_UNRELATED',
       });
       continue;
     }
@@ -149,13 +149,13 @@ export function checkFiniteStateRefinement(
       !failures.some(
         (failure) =>
           failure.implementationState === implementationState &&
-          failure.reason !== "INITIAL_STATE_UNRELATED",
+          failure.reason !== 'INITIAL_STATE_UNRELATED',
       )
     ) {
       failures.push({
         implementationState,
         specificationState: normalizedSpecification.initialStates[0]!,
-        reason: "INITIAL_STATE_UNRELATED",
+        reason: 'INITIAL_STATE_UNRELATED',
       });
     }
   }
@@ -179,7 +179,7 @@ function normalizeMachine(machine: TransitionMachine, side: RefinementSide): Nor
   const states = [...new Set(machine.states)];
   if (states.length === 0) {
     throw analysisError(
-      "REFINEMENT_MODEL_INVALID",
+      'REFINEMENT_MODEL_INVALID',
       `${side} machine "${machine.aggregate}" has no states`,
       { side, aggregate: machine.aggregate },
     );
@@ -187,32 +187,32 @@ function normalizeMachine(machine: TransitionMachine, side: RefinementSide): Nor
 
   const stateSet = new Set(states);
   const transitions = machine.transitions.flatMap((transition) => {
-    if (!transition.nextStateKnown || transition.to === "UNKNOWN") {
+    if (!transition.nextStateKnown || transition.to === 'UNKNOWN') {
       throw analysisError(
-        "REFINEMENT_UNKNOWN_TRANSITION",
+        'REFINEMENT_UNKNOWN_TRANSITION',
         `${side} machine "${machine.aggregate}" contains an UNKNOWN transition for ${transition.op}`,
         { side, aggregate: machine.aggregate, transition },
       );
     }
-    if (transition.op.trim() === "") {
+    if (transition.op.trim() === '') {
       throw analysisError(
-        "REFINEMENT_MODEL_INVALID",
+        'REFINEMENT_MODEL_INVALID',
         `${side} machine "${machine.aggregate}" contains a transition with an empty operation`,
         { side, aggregate: machine.aggregate, transition },
       );
     }
-    if (transition.to === "UNKNOWN" || !stateSet.has(transition.to)) {
+    if (transition.to === 'UNKNOWN' || !stateSet.has(transition.to)) {
       throw analysisError(
-        "REFINEMENT_MODEL_INVALID",
+        'REFINEMENT_MODEL_INVALID',
         `${side} machine "${machine.aggregate}" targets undeclared state "${transition.to}"`,
         { side, aggregate: machine.aggregate, transition },
       );
     }
-    const sources = transition.from === "*" ? states : [transition.from];
+    const sources = transition.from === '*' ? states : [transition.from];
     for (const source of sources) {
       if (!stateSet.has(source)) {
         throw analysisError(
-          "REFINEMENT_MODEL_INVALID",
+          'REFINEMENT_MODEL_INVALID',
           `${side} machine "${machine.aggregate}" starts a transition in undeclared state "${source}"`,
           { side, aggregate: machine.aggregate, transition, state: source },
         );
@@ -242,7 +242,7 @@ function resolveInitialStates(
   for (const state of configured) {
     if (!states.includes(state)) {
       throw analysisError(
-        "REFINEMENT_MODEL_INVALID",
+        'REFINEMENT_MODEL_INVALID',
         `${side} machine "${machine.aggregate}" declares undeclared initial state "${state}"`,
         { side, aggregate: machine.aggregate, state },
       );
@@ -277,7 +277,7 @@ function assertDeterministic(
     );
     if (pairwiseDisjoint) continue;
     throw analysisError(
-      "REFINEMENT_NONDETERMINISTIC",
+      'REFINEMENT_NONDETERMINISTIC',
       `${side} machine "${machine.aggregate}" has unproved nondeterminism for ${candidates[0]!.from}/${candidates[0]!.op}`,
       {
         side,
@@ -307,7 +307,7 @@ function transitionFailuresForPair(
         specificationState: pair.specificationState,
         operation: transition.op,
         implementationTarget: transition.to,
-        reason: "NO_MATCHING_OPERATION",
+        reason: 'NO_MATCHING_OPERATION',
       });
       continue;
     }
@@ -326,7 +326,7 @@ function transitionFailuresForPair(
         specificationState: pair.specificationState,
         operation: transition.op,
         implementationTarget: transition.to,
-        reason: "TARGET_NOT_RELATED",
+        reason: 'TARGET_NOT_RELATED',
       });
     }
   }
@@ -387,7 +387,7 @@ function pairKey(pair: RelationKey): string {
 }
 
 function parsePairKey(value: string): RelationKey {
-  const separator = value.indexOf("\u0000");
+  const separator = value.indexOf('\u0000');
   return {
     implementationState: JSON.parse(value.slice(0, separator)) as string,
     specificationState: JSON.parse(value.slice(separator + 1)) as string,
@@ -446,13 +446,13 @@ function parseConjunctiveGuard(expression: string): readonly GuardAtom[] | undef
   for (const rawPart of expression.split(/\s*&&\s*/)) {
     let part = stripOuterParentheses(rawPart.trim());
     let negated = false;
-    if (part.startsWith("!")) {
+    if (part.startsWith('!')) {
       negated = true;
       part = stripOuterParentheses(part.slice(1).trim());
     }
     const match = part.match(/^state\.([A-Za-z_][A-Za-z0-9_.-]*)\s*(==|!=)\s*(['"])(.*?)\3$/);
     if (match === null) return undefined;
-    const operatorNegated = match[2] === "!=";
+    const operatorNegated = match[2] === '!=';
     atoms.push({ field: match[1]!, value: match[4]!, negated: negated !== operatorNegated });
   }
   return atoms.length === 0 ? undefined : atoms;
@@ -460,7 +460,7 @@ function parseConjunctiveGuard(expression: string): readonly GuardAtom[] | undef
 
 function stripOuterParentheses(value: string): string {
   let result = value;
-  while (result.startsWith("(") && result.endsWith(")") && balancedOuterPair(result)) {
+  while (result.startsWith('(') && result.endsWith(')') && balancedOuterPair(result)) {
     result = result.slice(1, -1).trim();
   }
   return result;
@@ -470,8 +470,8 @@ function balancedOuterPair(value: string): boolean {
   let depth = 0;
   for (let index = 0; index < value.length; index += 1) {
     const character = value[index];
-    if (character === "(") depth += 1;
-    if (character === ")") depth -= 1;
+    if (character === '(') depth += 1;
+    if (character === ')') depth -= 1;
     if (depth === 0 && index < value.length - 1) return false;
   }
   return depth === 0;

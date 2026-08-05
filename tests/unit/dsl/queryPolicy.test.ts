@@ -1,15 +1,16 @@
-import { validateBoundaryConfig } from "../../../src/dsl/schema.js";
-import { BootError } from "../../../src/errors.js";
-import { compileYaml } from "../../../src/parser/yamlParser.js";
-import { compileYamlModel } from "../../../src/parser/yamlCompiler.js";
-import { createRuntimeDataGenerator } from "../../../src/model/data.js";
-import { createRuntimeEngine } from "../../../src/core/engine.js";
-import type { RuntimeClock, RuntimeHelpers, RuntimeProgram } from "../../../src/model/runtime.js";
-import type { Command } from "../../../src/types.js";
+import { validateBoundaryConfig } from '../../../src/dsl/schema.js';
+import { BootError } from '../../../src/errors.js';
+import { compileYaml } from '../../../src/parser/yamlParser.js';
+import { compileYamlModel } from '../../../src/parser/yamlCompiler.js';
+import { createRuntimeDataGenerator } from '../../../src/model/data.js';
+import { createRuntimeEngine } from '../../../src/core/engine.js';
+import type { RuntimeHelpers, RuntimeProgram } from '../../../src/model/runtime.js';
+import type { RuntimeClock } from '../../../src/contracts/ports.js';
+import type { Command } from '../../../src/contracts/domain.js';
 
 const helpers: RuntimeHelpers = {
-  now: () => "2026-01-01T00:00:00.000Z",
-  uuid: () => "generated-id",
+  now: () => '2026-01-01T00:00:00.000Z',
+  uuid: () => 'generated-id',
   random: () => 0,
   data: createRuntimeDataGenerator(() => 0),
   clone: <T>(value: T) => structuredClone(value),
@@ -22,51 +23,51 @@ const clock: RuntimeClock = {
   reset: () => undefined,
 };
 
-function dependencies(): RuntimeProgram["dependencies"] {
+function dependencies(): RuntimeProgram['dependencies'] {
   return {
     helpers,
     clock,
     contract: {
-      operationIdFor: () => "listOrders",
+      operationIdFor: () => 'listOrders',
     },
   };
 }
 
 function queryCommand(
   targetId: string | null = null,
-  queryParams: Command["queryParams"] = {},
+  queryParams: Command['queryParams'] = {},
 ): Command {
   return {
-    commandId: "query-1",
-    boundary: "Order",
-    intent: "query",
+    commandId: 'query-1',
+    boundary: 'Order',
+    intent: 'query',
     targetId,
     payload: {},
     queryParams,
-    httpMethod: "GET",
-    path: targetId === null ? "/orders" : `/orders/${targetId}`,
-    origin: "inbound",
+    httpMethod: 'GET',
+    path: targetId === null ? '/orders' : `/orders/${targetId}`,
+    origin: 'inbound',
     depth: 0,
-    operationId: "listOrders",
+    operationId: 'listOrders',
   };
 }
 
 const policy = {
-  fields: { threshold: "state.score >= 2" },
-  filter: "state.active == true",
-  sort: [{ field: "score", direction: "desc" }],
+  fields: { threshold: 'state.score >= 2' },
+  filter: 'state.active == true',
+  sort: [{ field: 'score', direction: 'desc' }],
   page_size: 2,
   max_page_size: 2,
-  cursor: "query.cursor",
-  pagination: "envelope",
-  fallback: { code: "ORDER_NOT_FOUND" },
+  cursor: 'query.cursor',
+  pagination: 'envelope',
+  fallback: { code: 'ORDER_NOT_FOUND' },
 };
 
-describe("YAML query policy", () => {
-  it("validates and normalises the complete declarative query policy", () => {
+describe('YAML query policy', () => {
+  it('validates and normalises the complete declarative query policy', () => {
     const config = validateBoundaryConfig({
-      boundary: "Order",
-      contract_path: "/orders",
+      boundary: 'Order',
+      contract_path: '/orders',
       query: policy,
       behaviors: [],
       reducers: [],
@@ -86,17 +87,17 @@ describe("YAML query policy", () => {
   });
 
   it.each([
-    ["filter", { filter: "state." }],
-    ["sort", { sort: [{ field: "score", direction: "sideways" }] }],
-    ["page_size", { page_size: -1 }],
-    ["max_page_size", { max_page_size: 1.5 }],
-    ["pagination", { pagination: "links" }],
-    ["include_deleted", { include_deleted: "yes" }],
-  ])("rejects invalid query.%s configuration", (_field, override) => {
+    ['filter', { filter: 'state.' }],
+    ['sort', { sort: [{ field: 'score', direction: 'sideways' }] }],
+    ['page_size', { page_size: -1 }],
+    ['max_page_size', { max_page_size: 1.5 }],
+    ['pagination', { pagination: 'links' }],
+    ['include_deleted', { include_deleted: 'yes' }],
+  ])('rejects invalid query.%s configuration', (_field, override) => {
     expect(() =>
       validateBoundaryConfig({
-        boundary: "Order",
-        contract_path: "/orders",
+        boundary: 'Order',
+        contract_path: '/orders',
         query: { ...policy, ...override },
         behaviors: [],
         reducers: [],
@@ -105,10 +106,10 @@ describe("YAML query policy", () => {
     ).toThrow(BootError);
   });
 
-  it("compiles filtering, fields, ordering, pagination, and targeted fallback into the runtime", async () => {
+  it('compiles filtering, fields, ordering, pagination, and targeted fallback into the runtime', async () => {
     const dsl = await compileYaml([
       {
-        name: "orders.yaml",
+        name: 'orders.yaml',
         yaml: `
 boundary: Order
 contract_path: /orders
@@ -149,15 +150,15 @@ event_catalog: []
     const runtime = createRuntimeEngine(program);
 
     const collection = await runtime.execute({
-      command: queryCommand(null, { threshold: "on" }),
+      command: queryCommand(null, { threshold: 'on' }),
       headers: {},
     });
     expect(collection).toMatchObject({
       status: 200,
       body: {
         items: [
-          { id: "order-2", score: 3 },
-          { id: "order-3", score: 2 },
+          { id: 'order-2', score: 3 },
+          { id: 'order-3', score: 2 },
         ],
         totalCount: 2,
         limit: 2,
@@ -166,9 +167,9 @@ event_catalog: []
     });
 
     const missing = await runtime.execute({
-      command: queryCommand("missing"),
+      command: queryCommand('missing'),
       headers: {},
     });
-    expect(missing).toMatchObject({ status: 200, body: { code: "ORDER_NOT_FOUND" } });
+    expect(missing).toMatchObject({ status: 200, body: { code: 'ORDER_NOT_FOUND' } });
   });
 });

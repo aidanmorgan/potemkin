@@ -2,16 +2,16 @@ import type {
   Transition,
   TransitionMachine,
   TransitionModel,
-} from "../../src/model/transitionModel.js";
-import { checkMetamorphicRelation } from "./metamorphic.js";
+} from '../../src/model/transitionModel.js';
+import { checkMetamorphicRelation } from './metamorphic.js';
 import type {
   EquivalenceDivergence,
   EquivalenceRequest,
   EquivalenceResponse,
   MetamorphicRelation,
-} from "./types.js";
+} from './types.js';
 
-export type ModelMetamorphicRelationKind = "idempotency" | "commutativity";
+export type ModelMetamorphicRelationKind = 'idempotency' | 'commutativity';
 
 export interface ModelMetamorphicRelation {
   readonly name: string;
@@ -58,7 +58,7 @@ export function deriveModelMetamorphicRelations(
       if (request === undefined) continue;
       relations.push({
         name: `idempotent:${machine.aggregate}:${operation}`,
-        kind: "idempotency",
+        kind: 'idempotency',
         aggregates: [machine.aggregate],
         operations: [operation],
         requests: [request],
@@ -90,7 +90,7 @@ export function deriveModelMetamorphicRelations(
       const name = `commutes:${left.machine.aggregate}:${left.operation}|${right.machine.aggregate}:${right.operation}`;
       relations.push({
         name,
-        kind: "commutativity",
+        kind: 'commutativity',
         aggregates: [left.machine.aggregate, right.machine.aggregate],
         operations: [left.operation, right.operation],
         requests: [leftRequest, rightRequest],
@@ -201,10 +201,10 @@ function compareResponseAt(
   if (expected === undefined || actual === undefined)
     return [
       {
-        code: "BODY_MISMATCH",
+        code: 'BODY_MISMATCH',
         operation,
-        path: "$",
-        message: "Metamorphic relation produced a different number of observations",
+        path: '$',
+        message: 'Metamorphic relation produced a different number of observations',
       },
     ];
   if (
@@ -214,12 +214,12 @@ function compareResponseAt(
     return [];
   return [
     {
-      code: "BODY_MISMATCH",
+      code: 'BODY_MISMATCH',
       operation,
-      path: "$",
+      path: '$',
       expected: expected.body ?? null,
       actual: actual.body ?? null,
-      message: "Model-derived metamorphic relation changed the observable response",
+      message: 'Model-derived metamorphic relation changed the observable response',
     },
   ];
 }

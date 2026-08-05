@@ -1,7 +1,7 @@
-openapi: "3.0.3"
+openapi: '3.0.3'
 info:
   title: Potemkin authoring parity contract
-  version: "1.0.0"
+  version: '1.0.0'
 paths:
   /orders:
     post:
@@ -11,66 +11,66 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/OrderInput"
+              $ref: '#/components/schemas/OrderInput'
       responses:
-        "201":
+        '201':
           description: Created
           content:
             application/json:
               schema:
                 oneOf:
-                  - $ref: "#/components/schemas/Order"
-                  - $ref: "#/components/schemas/JsonApiOrder"
-        "202":
+                  - $ref: '#/components/schemas/Order'
+                  - $ref: '#/components/schemas/JsonApiOrder'
+        '202':
           description: Accepted branch
           content:
             application/json:
               schema:
                 oneOf:
-                  - $ref: "#/components/schemas/Order"
-                  - $ref: "#/components/schemas/JsonApiOrder"
-        "409":
+                  - $ref: '#/components/schemas/Order'
+                  - $ref: '#/components/schemas/JsonApiOrder'
+        '409':
           description: Idempotency conflict
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
-        "429":
+                $ref: '#/components/schemas/Error'
+        '429':
           description: Rate limited
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
-        "418":
+                $ref: '#/components/schemas/Error'
+        '418':
           description: Forced chaos response
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
-        "503":
+                $ref: '#/components/schemas/Error'
+        '503':
           description: Injected fault
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
-        "502":
+                $ref: '#/components/schemas/Error'
+        '502':
           description: Selected response fault
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
-        "504":
+                $ref: '#/components/schemas/Error'
+        '504':
           description: Scenario fault
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
-        "508":
+                $ref: '#/components/schemas/Error'
+        '508':
           description: Cascade depth exceeded
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
   /orders/{id}:
     get:
       operationId: getOrder
@@ -80,18 +80,18 @@ paths:
           required: true
           schema: { type: string }
       responses:
-        "200":
+        '200':
           description: Order
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Order"
-        "404":
+                $ref: '#/components/schemas/Order'
+        '404':
           description: Missing order
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
     patch:
       operationId: renameOrder
       parameters:
@@ -108,26 +108,26 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/RenameOrder"
+              $ref: '#/components/schemas/RenameOrder'
       responses:
-        "200":
+        '200':
           description: Renamed order
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Order"
-        "404":
+                $ref: '#/components/schemas/Order'
+        '404':
           description: Missing order
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
-        "412":
+                $ref: '#/components/schemas/Error'
+        '412':
           description: Stale entity version
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
   /receipts:
     post:
       operationId: createReceipt
@@ -136,14 +136,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ReceiptInput"
+              $ref: '#/components/schemas/ReceiptInput'
       responses:
-        "201":
+        '201':
           description: Receipt created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Receipt"
+                $ref: '#/components/schemas/Receipt'
   /receipts/{id}:
     get:
       operationId: getReceipt
@@ -153,12 +153,12 @@ paths:
           required: true
           schema: { type: string }
       responses:
-        "200":
+        '200':
           description: Receipt
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Receipt"
+                $ref: '#/components/schemas/Receipt'
   /audits/{id}:
     get:
       operationId: getAudit
@@ -168,17 +168,17 @@ paths:
           required: true
           schema: { type: string }
       responses:
-        "200":
+        '200':
           description: Audit record
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Audit"
+                $ref: '#/components/schemas/Audit'
   /orders/summary:
     get:
       operationId: getOrderSummary
       responses:
-        "200":
+        '200':
           description: Projection endpoint is intentionally not stateful
           content:
             application/json:

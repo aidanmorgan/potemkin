@@ -18,9 +18,9 @@
  *   the same virtual clock used by CEL (admin clock advance affects TTL).
  */
 
-import type { Actor } from "../types.js";
-import { SessionLimitError } from "../errors.js";
-import type { RuntimeTimerScheduler } from "../runtime/ports.js";
+import type { Actor } from '../contracts/identity.js';
+import { SessionLimitError } from '../errors.js';
+import type { RuntimeTimerScheduler } from '../runtime/ports.js';
 
 export interface Session {
   /** Session id — UUIDv7 string, used as the cookie value. */

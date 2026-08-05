@@ -3,7 +3,7 @@ contract_path: /receipts/{id}
 fallback_override: false
 identity:
   creation:
-    generate: "command.targetId"
+    generate: 'command.targetId'
 event_catalog:
   - type: ReceiptCreated
     payload_template:
@@ -14,17 +14,17 @@ behaviors:
   - name: create-receipt
     match:
       operationId: createReceipt
-      condition: "true"
+      condition: 'true'
     emit: ReceiptCreated
 reducers:
   - on: ReceiptCreated
     patches:
       - op: replace
         path: /id
-        value: "${event.payload.id}"
+        value: '${event.payload.id}'
       - op: replace
         path: /orderId
-        value: "${event.payload.orderId}"
+        value: '${event.payload.orderId}'
       - op: replace
         path: /amount
-        value: "${event.payload.amount}"
+        value: '${event.payload.amount}'

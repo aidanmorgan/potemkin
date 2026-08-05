@@ -23,30 +23,26 @@
  * first (it understands the collection envelope), then response-format.
  */
 
-import type { JsonValue, JsonObject } from "../types.js";
-import type { ResponseFormat, PaginationStyle } from "./controlHeaders.js";
+import type { JsonValue, JsonObject } from '../contracts/value.js';
+import type { ResponseFormat, PaginationStyle } from '../contracts/controlHeaders.js';
 
 /** The pagination envelope shape produced by engine/query.ts for collections. */
 interface PaginationEnvelope {
-  readonly items: JsonValue[];
+  readonly items: readonly JsonValue[];
   readonly totalCount: number;
   readonly offset: number;
   readonly limit: number;
   readonly hasMore: boolean;
 }
 
-function isEnvelope(body: JsonValue | null | undefined): body is JsonObject & PaginationEnvelope {
-  return (
-    body !== null &&
-    typeof body === "object" &&
-    !Array.isArray(body) &&
-    Array.isArray((body as JsonObject)["items"]) &&
-    typeof (body as JsonObject)["totalCount"] === "number"
-  );
+function isPlainObject(body: JsonValue | null | undefined): body is JsonObject {
+  return body !== null && typeof body === 'object' && !Array.isArray(body);
 }
 
-function isPlainObject(body: JsonValue | null | undefined): body is JsonObject {
-  return body !== null && typeof body === "object" && !Array.isArray(body);
+function isEnvelope(body: JsonValue | null | undefined): body is JsonObject & PaginationEnvelope {
+  return (
+    isPlainObject(body) && Array.isArray(body['items']) && typeof body['totalCount'] === 'number'
+  );
 }
 
 /** Read a single string query value (first entry when repeated). */
@@ -67,14 +63,14 @@ function buildQueryString(
 ): string {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {
-    if (key === "offset" || key === "limit" || key === "cursor") continue;
+    if (key === 'offset' || key === 'limit' || key === 'cursor') continue;
     const values = Array.isArray(value) ? value : [value];
     for (const v of values) {
       params.append(key, v);
     }
   }
-  params.append("offset", String(offset));
-  params.append("limit", String(limit));
+  params.append('offset', String(offset));
+  params.append('limit', String(limit));
   return params.toString();
 }
 
@@ -107,10 +103,10 @@ export function applyPaginationStyle(
     offset = body.offset;
     limit = body.limit;
   } else if (Array.isArray(body)) {
-    items = [...(body as JsonValue[])];
+    items = [...body];
     totalCount = items.length;
     offset = 0;
-    const limitQ = firstQuery(query["limit"]);
+    const limitQ = firstQuery(query['limit']);
     limit = limitQ !== undefined ? Math.max(0, parseInt(limitQ, 10) || 0) : items.length;
   } else {
     // Not a collection — nothing to do.
@@ -119,16 +115,16 @@ export function applyPaginationStyle(
 
   const hasMore = offset + items.length < totalCount;
 
-  if (style === "envelope") {
+  if (style === 'envelope') {
     return {
-      body: { items, totalCount, offset, limit, hasMore } as unknown as JsonValue,
+      body: { items, totalCount, offset, limit, hasMore },
       headers,
     };
   }
 
   // Both 'raw' and 'link-header' return a bare array body.
-  if (style === "link-header") {
-    const basePath = requestPath.split("?")[0]!;
+  if (style === 'link-header') {
+    const basePath = requestPath.split('?', 1)[0] ?? requestPath;
     const links: string[] = [];
     if (limit > 0) {
       if (hasMore) {
@@ -140,17 +136,17 @@ export function applyPaginationStyle(
         links.push(`<${basePath}?${buildQueryString(query, prevOffset, limit)}>; rel="prev"`);
       }
     }
-    if (links.length > 0) headers["Link"] = links.join(", ");
-    headers["X-Total-Count"] = String(totalCount);
+    if (links.length > 0) headers['Link'] = links.join(', ');
+    headers['X-Total-Count'] = String(totalCount);
   }
 
-  return { body: items as unknown as JsonValue, headers };
+  return { body: items, headers };
 }
 
 /** Best-effort extraction of an entity id for JSON:API / HAL self links. */
 function entityId(obj: JsonObject): string | undefined {
-  const id = obj["id"];
-  return typeof id === "string" || typeof id === "number" ? String(id) : undefined;
+  const id = obj['id'];
+  return typeof id === 'string' || typeof id === 'number' ? String(id) : undefined;
 }
 
 /**
@@ -164,16 +160,16 @@ export function applyResponseFormat(
   requestPath: string,
 ): JsonValue {
   if (body === null || body === undefined) return body ?? null;
-  if (format === "plain") return body;
+  if (format === 'plain') return body;
 
-  const selfPath = requestPath.split("?")[0]!;
+  const selfPath = requestPath.split('?', 1)[0] ?? requestPath;
 
-  if (format === "hal") {
+  if (format === 'hal') {
     if (Array.isArray(body)) {
       return {
         _embedded: { items: body as JsonValue[] },
         _links: { self: { href: selfPath } },
-      } as unknown as JsonValue;
+      };
     }
     if (isEnvelope(body)) {
       return {
@@ -183,33 +179,34 @@ export function applyResponseFormat(
         offset: body.offset,
         limit: body.limit,
         hasMore: body.hasMore,
-      } as unknown as JsonValue;
+      };
     }
     if (isPlainObject(body)) {
       // Merge a self link without clobbering any existing _links from HATEOAS.
-      const existingLinks = isPlainObject(body["_links"]) ? (body["_links"] as JsonObject) : {};
+      const existingLinks = isPlainObject(body['_links']) ? body['_links'] : {};
       return {
         ...body,
         _links: { self: { href: selfPath }, ...existingLinks },
-      } as unknown as JsonValue;
+      };
     }
     return body;
   }
 
   // format === 'jsonapi'
-  const toResource = (obj: JsonValue): JsonValue => {
-    if (!isPlainObject(obj)) return { type: resourceType, attributes: obj } as unknown as JsonValue;
-    const { id: _ignored, ...attributes } = obj as JsonObject & { id?: unknown };
+  const toResource = (obj: JsonValue): JsonObject => {
+    if (!isPlainObject(obj)) return { type: resourceType, attributes: obj };
+    const attributes = { ...obj };
+    delete attributes['id'];
     const id = entityId(obj);
     return {
       type: resourceType,
       ...(id !== undefined ? { id } : {}),
-      attributes: attributes as JsonValue,
-    } as unknown as JsonValue;
+      attributes,
+    };
   };
 
   if (Array.isArray(body)) {
-    return { data: (body as JsonValue[]).map(toResource) } as unknown as JsonValue;
+    return { data: body.map(toResource) };
   }
   if (isEnvelope(body)) {
     return {
@@ -220,7 +217,7 @@ export function applyResponseFormat(
         limit: body.limit,
         hasMore: body.hasMore,
       },
-    } as unknown as JsonValue;
+    };
   }
-  return { data: toResource(body) } as unknown as JsonValue;
+  return { data: toResource(body) };
 }

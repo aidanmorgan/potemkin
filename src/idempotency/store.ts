@@ -20,10 +20,10 @@
  * are unblocked.
  */
 
-import { createHash } from "node:crypto";
-import type { JsonValue } from "../types.js";
-import type { JournalEntry } from "../model/patches.js";
-import { IdempotencyConflictError } from "../errors.js";
+import { createHash } from 'node:crypto';
+import type { JsonValue } from '../contracts/value.js';
+import type { JournalEntry } from '../model/patches.js';
+import { IdempotencyConflictError } from '../errors.js';
 
 export interface IdempotencyEntry {
   readonly keyHash: string; // full dedup hash (includes body when configured)
@@ -49,9 +49,9 @@ export interface CachedResponse {
 /** Outcome of a check: a cached hit, a fresh miss (caller reserved the slot), or
  *  a wait on an in-flight request that holds the reservation. */
 export type CheckResult =
-  | { readonly kind: "hit"; readonly response: CachedResponse }
-  | { readonly kind: "miss" }
-  | { readonly kind: "wait"; readonly wait: Promise<CachedResponse | null> };
+  | { readonly kind: 'hit'; readonly response: CachedResponse }
+  | { readonly kind: 'miss' }
+  | { readonly kind: 'wait'; readonly wait: Promise<CachedResponse | null> };
 
 export interface IdempotencyStore {
   /**
@@ -130,9 +130,9 @@ export function createIdempotencyStore(opts: IdempotencyStoreOptions): Idempoten
     path: string,
     idempotencyKey: string,
   ): string {
-    return createHash("sha256")
-      .update([actorId, method.toUpperCase(), path, idempotencyKey].join("\n"))
-      .digest("hex");
+    return createHash('sha256')
+      .update([actorId, method.toUpperCase(), path, idempotencyKey].join('\n'))
+      .digest('hex');
   }
 
   function computeKeyHash(
@@ -147,11 +147,11 @@ export function createIdempotencyStore(opts: IdempotencyStoreOptions): Idempoten
     if (hashIncludesBody) {
       parts.push(JSON.stringify(body));
     }
-    return createHash("sha256").update(parts.join("\n")).digest("hex");
+    return createHash('sha256').update(parts.join('\n')).digest('hex');
   }
 
   function computeBodyHash(body: JsonValue): string {
-    return createHash("sha256").update(JSON.stringify(body)).digest("hex");
+    return createHash('sha256').update(JSON.stringify(body)).digest('hex');
   }
 
   function cleanup(): void {
@@ -189,7 +189,7 @@ export function createIdempotencyStore(opts: IdempotencyStoreOptions): Idempoten
       const existing = _store.get(mapKey);
       if (existing && existing.expiresAt > now()) {
         if (existing.keyHash === keyHash) {
-          return { kind: "hit", response: existing.response };
+          return { kind: 'hit', response: existing.response };
         }
         // Same (actor, key) but different content → conflict.
         conflict(idempotencyKey, method, path, existing.bodyHash === bodyHash);
@@ -202,7 +202,7 @@ export function createIdempotencyStore(opts: IdempotencyStoreOptions): Idempoten
         if (pending.keyHash !== keyHash) {
           conflict(idempotencyKey, method, path, pending.bodyHash === bodyHash);
         }
-        return { kind: "wait", wait: pending.promise };
+        return { kind: 'wait', wait: pending.promise };
       }
 
       // Fresh request — reserve the slot so a concurrent second check waits.
@@ -211,7 +211,7 @@ export function createIdempotencyStore(opts: IdempotencyStoreOptions): Idempoten
         resolveFn = resolve;
       });
       _pending.set(mapKey, { keyHash, bodyHash, promise, resolve: resolveFn });
-      return { kind: "miss" };
+      return { kind: 'miss' };
     },
 
     record({ actorId, method, path, idempotencyKey, body, hashIncludesBody, response, ttlMs }) {

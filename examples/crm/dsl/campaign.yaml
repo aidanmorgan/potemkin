@@ -7,11 +7,11 @@ export:
       steps:
         - operationId: createCampaign
           body:
-            name: "Export Active Campaign"
+            name: 'Export Active Campaign'
             targetSource: WEBSITE
-            script: "Export campaign script"
-            startedAt: "2030-01-01T00:00:00.000Z"
-            endedAt: "2030-12-31T23:59:59.000Z"
+            script: 'Export campaign script'
+            startedAt: '2030-01-01T00:00:00.000Z'
+            endedAt: '2030-12-31T23:59:59.000Z'
             targetCalls: 500
             targetConversions: 50
         - operationId: activateCampaign
@@ -20,11 +20,11 @@ export:
       steps:
         - operationId: createCampaign
           body:
-            name: "Export Paused Campaign"
+            name: 'Export Paused Campaign'
             targetSource: PARTNER
-            script: "Export campaign script"
-            startedAt: "2030-02-01T00:00:00.000Z"
-            endedAt: "2030-11-30T23:59:59.000Z"
+            script: 'Export campaign script'
+            startedAt: '2030-02-01T00:00:00.000Z'
+            endedAt: '2030-11-30T23:59:59.000Z'
             targetCalls: 200
             targetConversions: 20
         - operationId: activateCampaign
@@ -35,11 +35,11 @@ export:
       steps:
         - operationId: createCampaign
           body:
-            name: "Export Completed Campaign"
+            name: 'Export Completed Campaign'
             targetSource: REFERRAL
-            script: "Export campaign script"
-            startedAt: "2030-03-01T00:00:00.000Z"
-            endedAt: "2030-10-31T23:59:59.000Z"
+            script: 'Export campaign script'
+            startedAt: '2030-03-01T00:00:00.000Z'
+            endedAt: '2030-10-31T23:59:59.000Z'
             targetCalls: 100
             targetConversions: 10
         - operationId: activateCampaign
@@ -50,47 +50,47 @@ identity:
   creation:
     generate: $uuidv7()
 query_mapping:
-  status: "state.status == param"
+  status: 'state.status == param'
 
 event_catalog:
   - type: CampaignCreated
     payload_template:
-      id: "command.targetId"
-      name: "command.payload.name"
-      targetSource: "command.payload.targetSource"
-      script: "command.payload.script"
-      startedAt: "command.payload.startedAt"
-      endedAt: "command.payload.endedAt"
-      targetCalls: "command.payload.targetCalls"
-      targetConversions: "command.payload.targetConversions"
+      id: 'command.targetId'
+      name: 'command.payload.name'
+      targetSource: 'command.payload.targetSource'
+      script: 'command.payload.script'
+      startedAt: 'command.payload.startedAt'
+      endedAt: 'command.payload.endedAt'
+      targetCalls: 'command.payload.targetCalls'
+      targetConversions: 'command.payload.targetConversions'
 
   - type: CampaignActivated
     payload_template:
-      activatedAt: "$now()"
+      activatedAt: '$now()'
 
   - type: CampaignPaused
     payload_template:
-      pausedAt: "$now()"
+      pausedAt: '$now()'
 
   - type: CampaignCompleted
     payload_template:
-      completedAt: "$now()"
+      completedAt: '$now()'
 
   - type: CampaignLeadSourceUpdated
     payload_template:
-      leadSource: "command.payload.leadSource"
+      leadSource: 'command.payload.leadSource'
 
 behaviors:
   # Create campaign — match.requires to enforce startedAt < endedAt
   - name: createCampaign
     match:
       operationId: createCampaign
-      condition: "true"
+      condition: 'true'
       requires:
         - name: valid-date-range
-          condition: "command.payload.startedAt < command.payload.endedAt"
+          condition: 'command.payload.startedAt < command.payload.endedAt'
           error_code: INVALID_DATE_RANGE
-          error_message: "Campaign startedAt must be before endedAt"
+          error_message: 'Campaign startedAt must be before endedAt'
     emit: CampaignCreated
 
   # Activate campaign — requires DRAFT/PAUSED status (path-guarded)
@@ -102,7 +102,7 @@ behaviors:
         - name: must-be-draft-or-paused
           condition: "$concat('/campaigns/', command.targetId, '/activate') != command.path || state.status == 'DRAFT' || state.status == 'PAUSED'"
           error_code: CAMPAIGN_NOT_ACTIVATABLE
-          error_message: "Campaign must be in DRAFT or PAUSED status to activate"
+          error_message: 'Campaign must be in DRAFT or PAUSED status to activate'
     emit: CampaignActivated
 
   # Pause campaign — emit_when with multiple branches
@@ -111,9 +111,9 @@ behaviors:
       operationId: pauseCampaign
       condition: "$concat('/campaigns/', command.targetId, '/pause') == command.path && state.status == 'ACTIVE'"
     emit_when:
-      - when: "state.actualCalls != null && state.actualCalls > 0"
+      - when: 'state.actualCalls != null && state.actualCalls > 0'
         emit: CampaignPaused
-      - when: "state.actualCalls == null || state.actualCalls == 0"
+      - when: 'state.actualCalls == null || state.actualCalls == 0'
         emit: CampaignPaused
 
   # Complete campaign
@@ -127,7 +127,7 @@ behaviors:
   - name: updateLeadSource
     match:
       operationId: getCampaign
-      condition: "has(command.payload.leadSource) && command.payload.leadSource != null"
+      condition: 'has(command.payload.leadSource) && command.payload.leadSource != null'
     emit: CampaignLeadSourceUpdated
 
 reducers:
@@ -135,40 +135,40 @@ reducers:
     patches:
       - op: replace
         path: /id
-        value: "${event.payload.id}"
+        value: '${event.payload.id}'
       - op: replace
         path: /name
-        value: "${event.payload.name}"
+        value: '${event.payload.name}'
       - op: replace
         path: /status
         value: "${'DRAFT'}"
       - op: replace
         path: /targetSource
-        value: "${event.payload.targetSource}"
+        value: '${event.payload.targetSource}'
       - op: replace
         path: /script
-        value: "${event.payload.script}"
+        value: '${event.payload.script}'
       - op: replace
         path: /startedAt
-        value: "${event.payload.startedAt}"
+        value: '${event.payload.startedAt}'
       - op: replace
         path: /endedAt
-        value: "${event.payload.endedAt}"
+        value: '${event.payload.endedAt}'
       - op: replace
         path: /targetCalls
-        value: "${event.payload.targetCalls}"
+        value: '${event.payload.targetCalls}'
       - op: replace
         path: /targetConversions
-        value: "${event.payload.targetConversions}"
+        value: '${event.payload.targetConversions}'
       - op: replace
         path: /actualCalls
-        value: "${0}"
+        value: '${0}'
       - op: replace
         path: /actualConversions
-        value: "${0}"
+        value: '${0}'
       - op: replace
         path: /assignedAgentIds
-        value: "${[]}"
+        value: '${[]}'
 
   - on: CampaignActivated
     patches:
@@ -192,29 +192,29 @@ reducers:
     patches:
       - op: replace
         path: /actualCalls
-        value: "${state.actualCalls != null ? state.actualCalls + 1 : 1}"
+        value: '${state.actualCalls != null ? state.actualCalls + 1 : 1}'
 
 initialization:
-  - id: "00000000-0000-7000-8000-000000000001"
-    name: "Q1 Website Leads"
-    status: "ACTIVE"
-    targetSource: "WEBSITE"
+  - id: '00000000-0000-7000-8000-000000000001'
+    name: 'Q1 Website Leads'
+    status: 'ACTIVE'
+    targetSource: 'WEBSITE'
     script: "Hello, I'm calling from The Nuisance Bureau regarding your recent inquiry..."
-    startedAt: "1970-01-01T00:00:00.000Z"
-    endedAt: "1970-12-31T23:59:59.000Z"
+    startedAt: '1970-01-01T00:00:00.000Z'
+    endedAt: '1970-12-31T23:59:59.000Z'
     targetCalls: 500
     targetConversions: 50
     actualCalls: 0
     actualConversions: 0
     assignedAgentIds: []
 
-  - id: "00000000-0000-7000-8000-000000000002"
-    name: "Partner Referral Drive"
-    status: "DRAFT"
-    targetSource: "PARTNER"
+  - id: '00000000-0000-7000-8000-000000000002'
+    name: 'Partner Referral Drive'
+    status: 'DRAFT'
+    targetSource: 'PARTNER'
     script: "Hi, I'm reaching out on behalf of our mutual partner..."
-    startedAt: "1970-06-01T00:00:00.000Z"
-    endedAt: "1970-09-30T23:59:59.000Z"
+    startedAt: '1970-06-01T00:00:00.000Z'
+    endedAt: '1970-09-30T23:59:59.000Z'
     targetCalls: 200
     targetConversions: 30
     actualCalls: 0

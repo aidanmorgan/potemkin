@@ -2,7 +2,7 @@ boundary: Thing
 contract_path: /things
 identity:
   creation:
-    generate: "$uuidv7()"
+    generate: '$uuidv7()'
 event_catalog:
   - type: ThingCreated
     payload_template:
@@ -13,7 +13,7 @@ behaviors:
   - name: createThing
     match:
       operationId: createThing
-      condition: "true"
+      condition: 'true'
     emit: ThingCreated
     dispatch_commands:
       - boundary: Widget
@@ -25,6 +25,6 @@ behaviors:
 reducers:
   - on: ThingCreated
     patches:
-      - { op: replace, path: /id, value: "${event.payload.id}" }
-      - { op: replace, path: /name, value: "${event.payload.name}" }
-      - { op: replace, path: /source, value: "${event.payload.source}" }
+      - { op: replace, path: /id, value: '${event.payload.id}' }
+      - { op: replace, path: /name, value: '${event.payload.name}' }
+      - { op: replace, path: /source, value: '${event.payload.source}' }

@@ -3,17 +3,17 @@
 // until types stabilise (cap: 4). Reducer patches may not write to a declared
 // computed-field path or any prefix-extension of one.
 
-import { BootError } from "../errors.js";
-import type { Patch } from "../model/patches.js";
-import { parsePointer } from "../model/patches.js";
-import type { BoundaryConfig } from "./types.js";
+import { BootError } from '../errors.js';
+import type { Patch } from '../contracts/value.js';
+import { parsePointer } from '../model/patches.js';
+import type { BoundaryConfig, ReducerPatchOp } from './types.js';
 import type {
   Confidence,
   DeclaredComputedField,
   DeclaredState,
   FieldKind,
   FieldType,
-} from "./schemaTypes.js";
+} from './schemaTypes.js';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -39,7 +39,7 @@ export interface EventDecl {
 export interface ReducerDecl {
   /** Event name (bare; cross-boundary handled by the caller). */
   readonly on: string;
-  readonly patches?: readonly Patch[];
+  readonly patches?: readonly ReducerPatchOp[];
 }
 
 export interface BoundaryInferenceInput {
@@ -64,35 +64,35 @@ export interface BoundaryInferenceResult {
 // Field-type helpers
 // ---------------------------------------------------------------------------
 
-export const ftUnknown = (): FieldType => ({ kind: "unknown", confidence: "unknown" });
-export const ftKnown = (kind: Exclude<FieldKind, "unknown">): FieldType => ({
+export const ftUnknown = (): FieldType => ({ kind: 'unknown', confidence: 'unknown' });
+export const ftKnown = (kind: Exclude<FieldKind, 'unknown'>): FieldType => ({
   kind,
-  confidence: "known",
+  confidence: 'known',
 });
-export const ftNarrowed = (kind: FieldKind): FieldType => ({ kind, confidence: "narrowed" });
-export const ftArray = (element: FieldType, confidence: Confidence = "known"): FieldType => ({
-  kind: "array",
+export const ftNarrowed = (kind: FieldKind): FieldType => ({ kind, confidence: 'narrowed' });
+export const ftArray = (element: FieldType, confidence: Confidence = 'known'): FieldType => ({
+  kind: 'array',
   confidence,
   element,
 });
 export const ftObject = (
   fields: Record<string, FieldType>,
-  confidence: Confidence = "known",
-): FieldType => ({ kind: "object", confidence, fields });
+  confidence: Confidence = 'known',
+): FieldType => ({ kind: 'object', confidence, fields });
 
 /**
  * Least-Upper-Bound for two field types. Used when multiple writes to the
  * same state path produce different inferred types.
  */
 export function lub(a: FieldType, b: FieldType): FieldType {
-  if (a.kind === "unknown" || b.kind === "unknown") return ftUnknown();
+  if (a.kind === 'unknown' || b.kind === 'unknown') return ftUnknown();
   if (a.kind === b.kind) {
-    if (a.kind === "array") {
+    if (a.kind === 'array') {
       const el = a.element && b.element ? lub(a.element, b.element) : ftUnknown();
       const confidence = mergeConfidence(a.confidence, b.confidence);
-      return { kind: "array", confidence, element: el };
+      return { kind: 'array', confidence, element: el };
     }
-    if (a.kind === "object") {
+    if (a.kind === 'object') {
       const out: Record<string, FieldType> = {};
       const af = a.fields ?? {};
       const bf = b.fields ?? {};
@@ -102,26 +102,26 @@ export function lub(a: FieldType, b: FieldType): FieldType {
         else out[k] = af[k] ?? bf[k] ?? ftUnknown();
       }
       const confidence = mergeConfidence(a.confidence, b.confidence);
-      return { kind: "object", confidence, fields: out };
+      return { kind: 'object', confidence, fields: out };
     }
     // string|integer|number|boolean|null match exactly
     return { kind: a.kind, confidence: mergeConfidence(a.confidence, b.confidence) };
   }
   // integer + number → number (narrowed)
   if (
-    (a.kind === "integer" && b.kind === "number") ||
-    (a.kind === "number" && b.kind === "integer")
+    (a.kind === 'integer' && b.kind === 'number') ||
+    (a.kind === 'number' && b.kind === 'integer')
   ) {
-    return ftNarrowed("number");
+    return ftNarrowed('number');
   }
   // Anything else differing → unknown
   return ftUnknown();
 }
 
 function mergeConfidence(a: Confidence, b: Confidence): Confidence {
-  if (a === "unknown" || b === "unknown") return "unknown";
-  if (a === "narrowed" || b === "narrowed") return "narrowed";
-  return "known";
+  if (a === 'unknown' || b === 'unknown') return 'unknown';
+  if (a === 'narrowed' || b === 'narrowed') return 'narrowed';
+  return 'known';
 }
 
 // ---------------------------------------------------------------------------
@@ -144,20 +144,20 @@ export function inferTypeFromCel(
   stateSchema: ReadonlyMap<string, InferredField>,
 ): FieldType {
   const trimmed = expr.trim();
-  if (RE_STRING.test(trimmed)) return ftKnown("string");
-  if (RE_NUMBER_INT.test(trimmed)) return ftKnown("integer");
-  if (RE_NUMBER_DEC.test(trimmed)) return ftKnown("number");
-  if (RE_BOOL.test(trimmed)) return ftKnown("boolean");
-  if (RE_NULL.test(trimmed)) return ftKnown("null");
-  if (RE_LENGTH_SIZE.test(trimmed)) return ftKnown("integer");
-  if (RE_SUM.test(trimmed)) return ftKnown("number");
+  if (RE_STRING.test(trimmed)) return ftKnown('string');
+  if (RE_NUMBER_INT.test(trimmed)) return ftKnown('integer');
+  if (RE_NUMBER_DEC.test(trimmed)) return ftKnown('number');
+  if (RE_BOOL.test(trimmed)) return ftKnown('boolean');
+  if (RE_NULL.test(trimmed)) return ftKnown('null');
+  if (RE_LENGTH_SIZE.test(trimmed)) return ftKnown('integer');
+  if (RE_SUM.test(trimmed)) return ftKnown('number');
 
   const evMatch = trimmed.match(/^event\.payload((?:\.[A-Za-z_$][\w$]*)+)\s*$/);
   if (evMatch && eventSchema) {
-    const path = evMatch[1].slice(1).split(".");
+    const path = evMatch[1].slice(1).split('.');
     let cur: FieldType | undefined = ftObject(eventSchema);
     for (const seg of path) {
-      if (!cur || cur.kind !== "object" || !cur.fields) return ftUnknown();
+      if (!cur || cur.kind !== 'object' || !cur.fields) return ftUnknown();
       cur = cur.fields[seg];
     }
     return cur ?? ftUnknown();
@@ -165,17 +165,17 @@ export function inferTypeFromCel(
 
   const stMatch = trimmed.match(/^state((?:\.[A-Za-z_$][\w$]*)+)\s*$/);
   if (stMatch) {
-    const path = stMatch[1].slice(1).split(".");
-    const pointer = "/" + path.join("/");
+    const path = stMatch[1].slice(1).split('.');
+    const pointer = '/' + path.join('/');
     const direct = stateSchema.get(pointer);
     if (direct) return direct.type;
     // Try prefixes — maybe foo.bar but only /foo is known
-    const head = "/" + path[0];
+    const head = '/' + path[0];
     const headField = stateSchema.get(head);
-    if (headField && headField.type.kind === "object" && headField.type.fields) {
+    if (headField && headField.type.kind === 'object' && headField.type.fields) {
       let cur: FieldType | undefined = headField.type;
       for (let i = 1; i < path.length; i++) {
-        if (!cur || cur.kind !== "object" || !cur.fields) return ftUnknown();
+        if (!cur || cur.kind !== 'object' || !cur.fields) return ftUnknown();
         cur = cur.fields[path[i]];
       }
       return cur ?? ftUnknown();
@@ -192,31 +192,31 @@ export function inferTypeFromCel(
   }
 
   // a + b: numeric if both numeric; string-concat if either side is a string.
-  if (trimmed.includes("+") && !trimmed.startsWith("-")) {
-    const parts = splitTopLevel(trimmed, "+");
+  if (trimmed.includes('+') && !trimmed.startsWith('-')) {
+    const parts = splitTopLevel(trimmed, '+');
     if (parts && parts.length === 2) {
       const lhs = inferTypeFromCel(parts[0], eventSchema, stateSchema);
       const rhs = inferTypeFromCel(parts[1], eventSchema, stateSchema);
-      if (lhs.kind === "string" || rhs.kind === "string") return ftKnown("string");
+      if (lhs.kind === 'string' || rhs.kind === 'string') return ftKnown('string');
       if (
-        (lhs.kind === "integer" || lhs.kind === "number") &&
-        (rhs.kind === "integer" || rhs.kind === "number")
+        (lhs.kind === 'integer' || lhs.kind === 'number') &&
+        (rhs.kind === 'integer' || rhs.kind === 'number')
       ) {
-        if (lhs.kind === "integer" && rhs.kind === "integer") return ftKnown("integer");
-        return ftNarrowed("number");
+        if (lhs.kind === 'integer' && rhs.kind === 'integer') return ftKnown('integer');
+        return ftNarrowed('number');
       }
       return ftUnknown();
     }
   }
 
-  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
     const inner = trimmed.slice(1, -1).trim();
-    if (inner === "") return ftObject({}, "known");
-    return ftObject({}, "narrowed"); // shallow: full literal-object inference deferred
+    if (inner === '') return ftObject({}, 'known');
+    return ftObject({}, 'narrowed'); // shallow: full literal-object inference deferred
   }
 
-  if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
-    return ftArray(ftUnknown(), "narrowed");
+  if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+    return ftArray(ftUnknown(), 'narrowed');
   }
 
   return ftUnknown();
@@ -235,7 +235,7 @@ function splitTopLevel(expr: string, sep: string): string[] | null {
   for (let i = 0; i < expr.length; i++) {
     const ch = expr[i];
     if (stringCh) {
-      if (ch === "\\") {
+      if (ch === '\\') {
         i++;
         continue;
       }
@@ -246,8 +246,8 @@ function splitTopLevel(expr: string, sep: string): string[] | null {
       stringCh = ch;
       continue;
     }
-    if (ch === "(" || ch === "[" || ch === "{") depth++;
-    else if (ch === ")" || ch === "]" || ch === "}") depth--;
+    if (ch === '(' || ch === '[' || ch === '{') depth++;
+    else if (ch === ')' || ch === ']' || ch === '}') depth--;
     else if (ch === sep && depth === 0) {
       out.push(expr.slice(start, i));
       start = i + 1;
@@ -293,7 +293,7 @@ function inferEventPayloadSchema(ev: EventDecl): Record<string, FieldType> {
   }
   if (ev.patches) {
     for (const p of ev.patches) {
-      if (p.op === "remove" || p.op === "move" || p.op === "copy") continue;
+      if (p.op === 'remove' || p.op === 'move' || p.op === 'copy') continue;
       const segs = parsePointer(p.path);
       if (segs.length !== 1) continue; // only top-level keys map directly
       const key = segs[0];
@@ -305,17 +305,17 @@ function inferEventPayloadSchema(ev: EventDecl): Record<string, FieldType> {
 }
 
 function inferValueLiteral(v: unknown): FieldType {
-  if (v === null) return ftKnown("null");
+  if (v === null) return ftKnown('null');
   switch (typeof v) {
-    case "string":
+    case 'string':
       return inferTypeFromCel(v, undefined, new Map());
-    case "number":
-      return Number.isInteger(v) ? ftKnown("integer") : ftKnown("number");
-    case "boolean":
-      return ftKnown("boolean");
-    case "object":
-      if (Array.isArray(v)) return ftArray(ftUnknown(), "narrowed");
-      return ftObject({}, "narrowed");
+    case 'number':
+      return Number.isInteger(v) ? ftKnown('integer') : ftKnown('number');
+    case 'boolean':
+      return ftKnown('boolean');
+    case 'object':
+      if (Array.isArray(v)) return ftArray(ftUnknown(), 'narrowed');
+      return ftObject({}, 'narrowed');
     default:
       return ftUnknown();
   }
@@ -339,39 +339,39 @@ function walkReducerPatches(
     const eventSchema = eventSchemas.get(r.on);
     for (const p of r.patches) {
       const sourceTag = `reducer:${r.on}`;
-      const path = (p as { path?: string }).path;
+      const path = p.path;
       if (!path) continue;
       const segs = parsePointer(path);
       if (segs.length === 0) continue;
-      const pointer = "/" + segs.join("/");
-      const valueLike = (p as { value?: unknown; by?: unknown }).value;
+      const pointer = '/' + segs.join('/');
+      const valueLike = p.value;
 
       switch (p.op) {
-        case "add":
-        case "replace":
-        case "append":
-        case "prepend": {
+        case 'add':
+        case 'replace':
+        case 'append':
+        case 'prepend': {
           const t =
-            typeof valueLike === "string"
+            typeof valueLike === 'string'
               ? inferTypeFromCel(valueLike, eventSchema, stateSchema)
               : inferValueLiteral(valueLike);
-          if (p.op === "append" || p.op === "prepend") {
-            setOrMerge(out, pointer, ftArray(t, "narrowed"), sourceTag);
+          if (p.op === 'append' || p.op === 'prepend') {
+            setOrMerge(out, pointer, ftArray(t, 'narrowed'), sourceTag);
           } else {
             setOrMerge(out, pointer, t, sourceTag);
           }
           break;
         }
-        case "increment":
-          setOrMerge(out, pointer, ftKnown("number"), sourceTag);
+        case 'increment':
+          setOrMerge(out, pointer, ftKnown('number'), sourceTag);
           break;
-        case "merge":
-        case "upsert":
-          setOrMerge(out, pointer, ftObject({}, "narrowed"), sourceTag);
+        case 'merge':
+        case 'upsert':
+          setOrMerge(out, pointer, ftObject({}, 'narrowed'), sourceTag);
           break;
-        case "remove":
-        case "move":
-        case "copy":
+        case 'remove':
+        case 'move':
+        case 'copy':
           break;
       }
     }
@@ -395,7 +395,7 @@ function iterateInference(opts: IterateOptions): {
   divergedFields: string[];
 } {
   const cur: MutableSchema = { fields: new Map() };
-  let prevHash = "";
+  let prevHash = '';
   let iterations = 0;
   for (let i = 0; i < MAX_INFERENCE_ITERATIONS; i++) {
     iterations = i + 1;
@@ -436,7 +436,7 @@ function freeze(s: MutableSchema): Map<string, InferredField> {
 
 function hashSchema(s: MutableSchema): string {
   const keys = [...s.fields.keys()].sort();
-  return keys.map((k) => `${k}=${JSON.stringify(s.fields.get(k))}`).join("|");
+  return keys.map((k) => `${k}=${JSON.stringify(s.fields.get(k))}`).join('|');
 }
 
 // ---------------------------------------------------------------------------
@@ -470,21 +470,21 @@ function topoSortComputed(fields: readonly DeclaredComputedField[]): TopoResult 
   const byName = new Map<string, DeclaredComputedField>(fields.map((f) => [f.name, f]));
   const computedSet = new Set(byName.keys());
 
-  const color = new Map<string, "white" | "gray" | "black">();
-  for (const f of fields) color.set(f.name, "white");
+  const color = new Map<string, 'white' | 'gray' | 'black'>();
+  for (const f of fields) color.set(f.name, 'white');
 
   const order: string[] = [];
   const stack: string[] = [];
 
   function visit(name: string): string[] | null {
     const c = color.get(name);
-    if (c === "black") return null;
-    if (c === "gray") {
+    if (c === 'black') return null;
+    if (c === 'gray') {
       // cycle — collect from first occurrence on stack
       const idx = stack.indexOf(name);
       return stack.slice(idx).concat(name);
     }
-    color.set(name, "gray");
+    color.set(name, 'gray');
     stack.push(name);
     const f = byName.get(name);
     if (f) {
@@ -495,7 +495,7 @@ function topoSortComputed(fields: readonly DeclaredComputedField[]): TopoResult 
       }
     }
     stack.pop();
-    color.set(name, "black");
+    color.set(name, 'black');
     order.push(name);
     return null;
   }
@@ -525,8 +525,8 @@ export function buildInferredSchema(input: BoundaryInferenceInput): BoundaryInfe
 
   if (divergedFields.length > 0) {
     throw new BootError(
-      "BOOT_ERR_SCHEMA_INFERENCE_DIVERGENT",
-      `Schema inference did not converge in ${iterations} iterations; fields: ${divergedFields.join(", ")}`,
+      'BOOT_ERR_SCHEMA_INFERENCE_DIVERGENT',
+      `Schema inference did not converge in ${iterations} iterations; fields: ${divergedFields.join(', ')}`,
       { boundary: input.boundary, fields: divergedFields, iterations },
     );
   }
@@ -541,7 +541,7 @@ export function buildInferredSchema(input: BoundaryInferenceInput): BoundaryInfe
     if (ev.template) for (const k of Object.keys(ev.template)) eventDerivedNames.add(k);
     if (ev.patches) {
       for (const p of ev.patches) {
-        if (p.op === "remove" || p.op === "move" || p.op === "copy") continue;
+        if (p.op === 'remove' || p.op === 'move' || p.op === 'copy') continue;
         const segs = parsePointer((p as { path: string }).path);
         if (segs.length === 1) eventDerivedNames.add(segs[0]);
       }
@@ -550,14 +550,14 @@ export function buildInferredSchema(input: BoundaryInferenceInput): BoundaryInfe
   for (const cf of declaredComputed) {
     if (eventDerivedNames.has(cf.name)) {
       throw new BootError(
-        "BOOT_ERR_COMPUTED_FIELD_SHADOWS_INFERRED",
+        'BOOT_ERR_COMPUTED_FIELD_SHADOWS_INFERRED',
         `Computed field "${cf.name}" shadows an event-derived state field`,
         { boundary: input.boundary, field: cf.name },
       );
     }
   }
 
-  const computedPaths = new Set<string>(declaredComputed.map((c) => "/" + c.name));
+  const computedPaths = new Set<string>(declaredComputed.map((c) => '/' + c.name));
   for (const r of input.reducers) {
     if (!r.patches) continue;
     for (const p of r.patches) {
@@ -565,7 +565,7 @@ export function buildInferredSchema(input: BoundaryInferenceInput): BoundaryInfe
       if (!path) continue;
       if (targetsComputed(path, computedPaths)) {
         throw new BootError(
-          "BOOT_ERR_COMPUTED_FIELD_WRITE",
+          'BOOT_ERR_COMPUTED_FIELD_WRITE',
           `Reducer on "${r.on}" writes to computed-field path ${path}`,
           { boundary: input.boundary, event: r.on, op: p.op, path },
         );
@@ -576,18 +576,18 @@ export function buildInferredSchema(input: BoundaryInferenceInput): BoundaryInfe
   // Declared internal types take precedence over inferred types for the same name.
   const finalSchema = new Map<string, InferredField>(inferred);
   for (const inf of declaredInternal) {
-    finalSchema.set("/" + inf.name, { type: inf.type, sources: ["declared:internal"] });
+    finalSchema.set('/' + inf.name, { type: inf.type, sources: ['declared:internal'] });
   }
   for (const cf of declaredComputed) {
     const ft = inferTypeFromCel(cf.formula, undefined, finalSchema);
-    finalSchema.set("/" + cf.name, { type: ft, sources: ["declared:computed"] });
+    finalSchema.set('/' + cf.name, { type: ft, sources: ['declared:computed'] });
   }
 
   const topo = topoSortComputed(declaredComputed);
   if (topo.cycle) {
     throw new BootError(
-      "BOOT_ERR_COMPUTED_FIELD_CYCLE",
-      `Computed-field dependency cycle: ${topo.cycle.join(" → ")}`,
+      'BOOT_ERR_COMPUTED_FIELD_CYCLE',
+      `Computed-field dependency cycle: ${topo.cycle.join(' → ')}`,
       { boundary: input.boundary, cycle: topo.cycle },
     );
   }
@@ -599,9 +599,9 @@ export function buildInferredSchema(input: BoundaryInferenceInput): BoundaryInfe
     const declaredDeps = new Set(cf.dependsOn);
     const missing = refs.filter((r) => !declaredDeps.has(r));
     if (missing.length > 0) {
-      const message = `Computed field "${cf.name}" formula references state.${missing.join(", state.")} but dependsOn is [${cf.dependsOn.join(", ")}]`;
+      const message = `Computed field "${cf.name}" formula references state.${missing.join(', state.')} but dependsOn is [${cf.dependsOn.join(', ')}]`;
       if (strict) {
-        throw new BootError("BOOT_ERR_COMPUTED_FIELD_INCOMPLETE_DEPS", message, {
+        throw new BootError('BOOT_ERR_COMPUTED_FIELD_INCOMPLETE_DEPS', message, {
           boundary: input.boundary,
           field: cf.name,
           missing,
@@ -624,7 +624,7 @@ export function buildInferredSchema(input: BoundaryInferenceInput): BoundaryInfe
 function targetsComputed(path: string, computedPaths: ReadonlySet<string>): boolean {
   for (const cp of computedPaths) {
     if (path === cp) return true;
-    if (path.startsWith(cp + "/")) return true;
+    if (path.startsWith(cp + '/')) return true;
   }
   return false;
 }
@@ -645,7 +645,7 @@ export function boundaryConfigToInferenceInput(boundary: BoundaryConfig): Bounda
   }));
   const reducers: ReducerDecl[] = boundary.reducers.map((r) => ({
     on: r.on,
-    ...(r.patches ? { patches: r.patches as unknown as readonly Patch[] } : {}),
+    ...(r.patches ? { patches: r.patches } : {}),
   }));
   return {
     boundary: boundary.boundary,

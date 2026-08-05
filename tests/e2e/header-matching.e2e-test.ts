@@ -14,15 +14,15 @@
  * configured responses come back  the YAML is the system under test.
  */
 
-import { startE2eApp } from "./_harness/e2e-test-app";
-import type { E2eApp } from "./_harness/e2e-test-app";
-import { requestThroughSpecmatic, getEventCount } from "./_harness/crm-e2e-helpers";
-import type { JsonObject } from "./_harness/crm-e2e-helpers";
-const APEX_LEAD_ID = "00000000-0000-7000-8000-000000000010";
-const AGENT_ID = "00000000-0000-7000-8000-000000000003";
-const CAMPAIGN_ID = "00000000-0000-7000-8000-000000000001";
+import { startE2eApp } from './_harness/e2e-test-app';
+import type { E2eApp } from './_harness/e2e-test-app';
+import { requestThroughSpecmatic, getEventCount } from './_harness/crm-e2e-helpers';
+import type { JsonObject } from './_harness/crm-e2e-helpers';
+const APEX_LEAD_ID = '00000000-0000-7000-8000-000000000010';
+const AGENT_ID = '00000000-0000-7000-8000-000000000003';
+const CAMPAIGN_ID = '00000000-0000-7000-8000-000000000001';
 
-describe("Header Matching in DSL (full Specmatic stack)", () => {
+describe('Header Matching in DSL (full Specmatic stack)', () => {
   let app: E2eApp;
 
   beforeAll(async () => {
@@ -34,38 +34,38 @@ describe("Header Matching in DSL (full Specmatic stack)", () => {
 
   // ── Convenience form: `potemkin.rate_limit` (presence wildcard) ────────────
 
-  describe("Convenience form: potemkin.rate_limit → X-Potemkin-Rate-Limit", () => {
-    it("GET with X-Potemkin-Rate-Limit header returns 429 from YAML config", async () => {
-      const res = await requestThroughSpecmatic(app.stubUrl, "GET", "/leads", null, {
-        "x-potemkin-rate-limit": "true",
+  describe('Convenience form: potemkin.rate_limit → X-Potemkin-Rate-Limit', () => {
+    it('GET with X-Potemkin-Rate-Limit header returns 429 from YAML config', async () => {
+      const res = await requestThroughSpecmatic(app.stubUrl, 'GET', '/leads', null, {
+        'x-potemkin-rate-limit': 'true',
       });
       expect(res.status).toBe(429);
-      expect((res.body as JsonObject)["error"]).toBe("RATE_LIMITED");
-      expect((res.body as JsonObject)["retryAfter"]).toBe(30);
+      expect((res.body as JsonObject)['error']).toBe('RATE_LIMITED');
+      expect((res.body as JsonObject)['retryAfter']).toBe(30);
     }, 60_000);
 
-    it("429 response includes the headers configured in YAML", async () => {
-      const res = await requestThroughSpecmatic(app.stubUrl, "GET", "/leads", null, {
-        "x-potemkin-rate-limit": "anything",
+    it('429 response includes the headers configured in YAML', async () => {
+      const res = await requestThroughSpecmatic(app.stubUrl, 'GET', '/leads', null, {
+        'x-potemkin-rate-limit': 'anything',
       });
       expect(res.status).toBe(429);
-      expect(res.headers["retry-after"]).toBe("30");
-      expect(res.headers["x-ratelimit-limit"]).toBe("100");
-      expect(res.headers["x-ratelimit-remaining"]).toBe("0");
+      expect(res.headers['retry-after']).toBe('30');
+      expect(res.headers['x-ratelimit-limit']).toBe('100');
+      expect(res.headers['x-ratelimit-remaining']).toBe('0');
     }, 60_000);
 
     it('any non-empty value triggers the rule (presence wildcard "*")', async () => {
       // Different header values all match because YAML uses rate_limit: "*"
-      for (const val of ["true", "simulate", "1", "exceed"]) {
-        const res = await requestThroughSpecmatic(app.stubUrl, "GET", "/leads", null, {
-          "x-potemkin-rate-limit": val,
+      for (const val of ['true', 'simulate', '1', 'exceed']) {
+        const res = await requestThroughSpecmatic(app.stubUrl, 'GET', '/leads', null, {
+          'x-potemkin-rate-limit': val,
         });
         expect(res.status).toBe(429);
       }
     }, 60_000);
 
-    it("without the header, requests proceed normally to 200", async () => {
-      const res = await requestThroughSpecmatic(app.stubUrl, "GET", "/leads");
+    it('without the header, requests proceed normally to 200', async () => {
+      const res = await requestThroughSpecmatic(app.stubUrl, 'GET', '/leads');
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body)).toBe(true);
     }, 60_000);
@@ -73,68 +73,68 @@ describe("Header Matching in DSL (full Specmatic stack)", () => {
 
   // ── Convenience form: `potemkin.force_response` (exact value) ──────────────
 
-  describe("Convenience form: potemkin.force_response → X-Potemkin-Force-Response (exact)", () => {
+  describe('Convenience form: potemkin.force_response → X-Potemkin-Force-Response (exact)', () => {
     it('exact value "maintenance" returns the configured 503', async () => {
-      const res = await requestThroughSpecmatic(app.stubUrl, "GET", "/leads", null, {
-        "x-potemkin-force-response": "maintenance",
+      const res = await requestThroughSpecmatic(app.stubUrl, 'GET', '/leads', null, {
+        'x-potemkin-force-response': 'maintenance',
       });
       expect(res.status).toBe(503);
-      expect((res.body as JsonObject)["error"]).toBe("SERVICE_UNAVAILABLE");
+      expect((res.body as JsonObject)['error']).toBe('SERVICE_UNAVAILABLE');
     }, 60_000);
 
-    it("different value does NOT match the rule", async () => {
-      const res = await requestThroughSpecmatic(app.stubUrl, "GET", "/leads", null, {
-        "x-potemkin-force-response": "something-else",
+    it('different value does NOT match the rule', async () => {
+      const res = await requestThroughSpecmatic(app.stubUrl, 'GET', '/leads', null, {
+        'x-potemkin-force-response': 'something-else',
       });
       expect(res.status).toBe(200);
     }, 60_000);
 
-    it("header absent does NOT match", async () => {
-      const res = await requestThroughSpecmatic(app.stubUrl, "GET", "/leads");
+    it('header absent does NOT match', async () => {
+      const res = await requestThroughSpecmatic(app.stubUrl, 'GET', '/leads');
       expect(res.status).toBe(200);
     }, 60_000);
   });
 
   // ── Convenience form: scoped to boundary + intent ─────────────────────────
 
-  describe("Boundary+intent scoping with potemkin.feature_flag", () => {
-    it("feature flag header on Lead query returns the configured 418", async () => {
+  describe('Boundary+intent scoping with potemkin.feature_flag', () => {
+    it('feature flag header on Lead query returns the configured 418', async () => {
       const res = await requestThroughSpecmatic(
         app.stubUrl,
-        "GET",
+        'GET',
         `/leads/${APEX_LEAD_ID}`,
         null,
-        { "x-potemkin-feature-flag": "v2-experimental" },
+        { 'x-potemkin-feature-flag': 'v2-experimental' },
       );
       expect(res.status).toBe(418);
-      expect((res.body as JsonObject)["error"]).toBe("TEAPOT");
+      expect((res.body as JsonObject)['error']).toBe('TEAPOT');
     }, 60_000);
 
-    it("feature flag header on Lead creation does NOT match (intent: query only)", async () => {
+    it('feature flag header on Lead creation does NOT match (intent: query only)', async () => {
       const res = await requestThroughSpecmatic(
         app.stubUrl,
-        "POST",
-        "/leads",
+        'POST',
+        '/leads',
         {
-          companyName: "Feature Flag Corp",
-          contactName: "FF",
-          phone: "+61 0",
-          email: "ff@t.com",
-          source: "WEBSITE",
+          companyName: 'Feature Flag Corp',
+          contactName: 'FF',
+          phone: '+61 0',
+          email: 'ff@t.com',
+          source: 'WEBSITE',
         },
-        { "x-potemkin-feature-flag": "v2-experimental" },
+        { 'x-potemkin-feature-flag': 'v2-experimental' },
       );
       // Creation succeeds normally (the rule is scoped to intent: query)
       expect([200, 201]).toContain(res.status);
     }, 60_000);
 
-    it("different feature flag value does NOT match", async () => {
+    it('different feature flag value does NOT match', async () => {
       const res = await requestThroughSpecmatic(
         app.stubUrl,
-        "GET",
+        'GET',
         `/leads/${APEX_LEAD_ID}`,
         null,
-        { "x-potemkin-feature-flag": "v1-retired" },
+        { 'x-potemkin-feature-flag': 'v1-retired' },
       );
       expect(res.status).toBe(200);
     }, 60_000);
@@ -142,46 +142,46 @@ describe("Header Matching in DSL (full Specmatic stack)", () => {
 
   // ── Raw `headers:` form (no alias) ────────────────────────────────────────
 
-  describe("Raw headers form: arbitrary X-Potemkin-Scenario header", () => {
-    it("Call creation with x-potemkin-scenario: slow_db returns 504", async () => {
+  describe('Raw headers form: arbitrary X-Potemkin-Scenario header', () => {
+    it('Call creation with x-potemkin-scenario: slow_db returns 504', async () => {
       const res = await requestThroughSpecmatic(
         app.stubUrl,
-        "POST",
-        "/calls",
+        'POST',
+        '/calls',
         {
           leadId: APEX_LEAD_ID,
           agentId: AGENT_ID,
           campaignId: CAMPAIGN_ID,
-          outcome: "INTERESTED",
+          outcome: 'INTERESTED',
           durationSeconds: 60,
         },
-        { "x-potemkin-scenario": "slow_db" },
+        { 'x-potemkin-scenario': 'slow_db' },
       );
       expect(res.status).toBe(504);
-      expect((res.body as JsonObject)["error"]).toBe("GATEWAY_TIMEOUT");
-      expect(res.headers["retry-after"]).toBe("5");
+      expect((res.body as JsonObject)['error']).toBe('GATEWAY_TIMEOUT');
+      expect(res.headers['retry-after']).toBe('5');
     }, 60_000);
 
-    it("different scenario value does NOT match", async () => {
+    it('different scenario value does NOT match', async () => {
       const res = await requestThroughSpecmatic(
         app.stubUrl,
-        "POST",
-        "/calls",
+        'POST',
+        '/calls',
         {
           leadId: APEX_LEAD_ID,
           agentId: AGENT_ID,
           campaignId: CAMPAIGN_ID,
-          outcome: "INTERESTED",
+          outcome: 'INTERESTED',
           durationSeconds: 60,
         },
-        { "x-potemkin-scenario": "normal" },
+        { 'x-potemkin-scenario': 'normal' },
       );
       expect([200, 201]).toContain(res.status);
     }, 60_000);
 
-    it("scenario header on Lead GET does NOT match (rule scoped to Call/creation)", async () => {
-      const res = await requestThroughSpecmatic(app.stubUrl, "GET", "/leads", null, {
-        "x-potemkin-scenario": "slow_db",
+    it('scenario header on Lead GET does NOT match (rule scoped to Call/creation)', async () => {
+      const res = await requestThroughSpecmatic(app.stubUrl, 'GET', '/leads', null, {
+        'x-potemkin-scenario': 'slow_db',
       });
       expect(res.status).toBe(200);
     }, 60_000);
@@ -189,40 +189,40 @@ describe("Header Matching in DSL (full Specmatic stack)", () => {
 
   // ── Header matching produces zero events (responses bypass state) ─────────
 
-  describe("Header-matched fault responses emit zero events", () => {
-    it("rate-limit response does not mutate state", async () => {
+  describe('Header-matched fault responses emit zero events', () => {
+    it('rate-limit response does not mutate state', async () => {
       const before = await getEventCount(app.engineUrl);
       await requestThroughSpecmatic(
         app.stubUrl,
-        "POST",
-        "/leads",
+        'POST',
+        '/leads',
         {
-          companyName: "Should Not Exist Corp",
-          contactName: "SNE",
-          phone: "+61 0",
-          email: "sne@t.com",
-          source: "WEBSITE",
+          companyName: 'Should Not Exist Corp',
+          contactName: 'SNE',
+          phone: '+61 0',
+          email: 'sne@t.com',
+          source: 'WEBSITE',
         },
-        { "x-potemkin-rate-limit": "true" },
+        { 'x-potemkin-rate-limit': 'true' },
       );
       const after = await getEventCount(app.engineUrl);
       expect(after).toBe(before);
     }, 60_000);
 
-    it("maintenance-mode response does not mutate state", async () => {
+    it('maintenance-mode response does not mutate state', async () => {
       const before = await getEventCount(app.engineUrl);
       await requestThroughSpecmatic(
         app.stubUrl,
-        "POST",
-        "/leads",
+        'POST',
+        '/leads',
         {
-          companyName: "Maintenance Test Corp",
-          contactName: "MT",
-          phone: "+61 0",
-          email: "mt@t.com",
-          source: "WEBSITE",
+          companyName: 'Maintenance Test Corp',
+          contactName: 'MT',
+          phone: '+61 0',
+          email: 'mt@t.com',
+          source: 'WEBSITE',
         },
-        { "x-potemkin-force-response": "maintenance" },
+        { 'x-potemkin-force-response': 'maintenance' },
       );
       const after = await getEventCount(app.engineUrl);
       expect(after).toBe(before);
@@ -231,16 +231,16 @@ describe("Header Matching in DSL (full Specmatic stack)", () => {
 
   // ── Header matching is case-insensitive ────────────────────────────────────
 
-  describe("Header matching is case-insensitive on header name", () => {
-    it("X-Potemkin-Rate-Limit (mixed case) still triggers the rule", async () => {
+  describe('Header matching is case-insensitive on header name', () => {
+    it('X-Potemkin-Rate-Limit (mixed case) still triggers the rule', async () => {
       const res = await requestThroughSpecmatic(
         app.stubUrl,
-        "GET",
-        "/leads",
+        'GET',
+        '/leads',
         null,
         // Express/Node lowercases incoming header names before they reach the engine,
         // so the rule (which stores keys lowercased) will still match.
-        { "X-Potemkin-Rate-Limit": "true" },
+        { 'X-Potemkin-Rate-Limit': 'true' },
       );
       expect(res.status).toBe(429);
     }, 60_000);

@@ -1,8 +1,8 @@
-import * as path from "node:path";
+import * as path from 'node:path';
 
 export interface CliOptions {
   readonly exampleName: string;
-  readonly layer: "negative" | "positive";
+  readonly layer: 'negative' | 'positive';
   readonly specmaticContractPath?: string;
   readonly allowlistPath?: string;
   readonly allowlistName?: string;
@@ -12,16 +12,16 @@ export interface CliOptions {
 
 export interface SpecmaticLayerOptions {
   readonly filter?: string;
-  readonly testMode: "all" | "positiveOnly" | "none";
+  readonly testMode: 'all' | 'positiveOnly' | 'none';
 }
 
 export const conformanceUsage =
-  "Usage: pnpm run test:conformance [--example crm] [--layer negative|positive] [--specmatic-contract path] [--allowlist path] [--allowlist-name name] [--filter expression] [--max-combinations N]";
+  'Usage: pnpm run test:conformance [--example crm] [--layer negative|positive] [--specmatic-contract path] [--allowlist path] [--allowlist-name name] [--filter expression] [--max-combinations N]';
 
 export class ConformanceHelpRequested extends Error {
   constructor() {
     super(conformanceUsage);
-    this.name = "ConformanceHelpRequested";
+    this.name = 'ConformanceHelpRequested';
   }
 }
 
@@ -33,21 +33,21 @@ export class ConformanceHelpRequested extends Error {
  */
 export const NEGATIVE_LAYER_FILTER = "STATUS='400'";
 
-function layerFilter(layer: CliOptions["layer"], requestedFilter?: string): string | undefined {
+function layerFilter(layer: CliOptions['layer'], requestedFilter?: string): string | undefined {
   const filter = requestedFilter?.trim();
-  if (layer === "positive") return filter;
+  if (layer === 'positive') return filter;
   return filter ? `(${NEGATIVE_LAYER_FILTER}) && (${filter})` : NEGATIVE_LAYER_FILTER;
 }
 
 export function specmaticOptionsForLayer(
-  layer: CliOptions["layer"],
+  layer: CliOptions['layer'],
   requestedFilter?: string,
 ): SpecmaticLayerOptions {
-  return layer === "positive"
-    ? { filter: layerFilter(layer, requestedFilter), testMode: "positiveOnly" }
+  return layer === 'positive'
+    ? { filter: layerFilter(layer, requestedFilter), testMode: 'positiveOnly' }
     : {
         filter: layerFilter(layer, requestedFilter),
-        testMode: "all",
+        testMode: 'all',
       };
 }
 
@@ -65,8 +65,8 @@ function parseMaxCombinations(value: string): number {
 }
 
 export function parseArgs(argv: readonly string[]): CliOptions {
-  let exampleName = "crm";
-  let layer: CliOptions["layer"] = "negative";
+  let exampleName = 'crm';
+  let layer: CliOptions['layer'] = 'negative';
   let specmaticContractPath: string | undefined;
   let allowlistPath: string | undefined;
   let allowlistName: string | undefined;
@@ -75,31 +75,31 @@ export function parseArgs(argv: readonly string[]): CliOptions {
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     const next = argv[index + 1];
-    if (arg === "--") continue;
-    if (arg === "--example" && next) {
+    if (arg === '--') continue;
+    if (arg === '--example' && next) {
       exampleName = next;
       index += 1;
-    } else if (arg === "--layer" && (next === "negative" || next === "positive")) {
+    } else if (arg === '--layer' && (next === 'negative' || next === 'positive')) {
       layer = next;
       index += 1;
-    } else if (arg === "--specmatic-contract" && next) {
+    } else if (arg === '--specmatic-contract' && next) {
       specmaticContractPath = path.resolve(next);
       index += 1;
-    } else if (arg === "--allowlist" && next) {
+    } else if (arg === '--allowlist' && next) {
       allowlistPath = path.resolve(next);
       index += 1;
-    } else if (arg === "--allowlist-name" && next) {
+    } else if (arg === '--allowlist-name' && next) {
       allowlistName = next;
       index += 1;
-    } else if (arg === "--filter") {
-      if (next === undefined || next.trim() === "")
+    } else if (arg === '--filter') {
+      if (next === undefined || next.trim() === '')
         throw new Error("Conformance option '--filter' requires a non-empty expression");
       filter = next;
       index += 1;
-    } else if (arg === "--max-combinations" && next !== undefined) {
+    } else if (arg === '--max-combinations' && next !== undefined) {
       maxCombinations = parseMaxCombinations(next);
       index += 1;
-    } else if (arg === "--help" || arg === "-h") {
+    } else if (arg === '--help' || arg === '-h') {
       throw new ConformanceHelpRequested();
     } else {
       throw new Error(`Unknown or incomplete conformance option '${arg}'`);

@@ -1,4 +1,4 @@
-import type { JsonValue } from "../types.js";
+import type { JsonValue } from '../contracts/value.js';
 
 /** A typed execution failure shared by the core and its transport/parser edges. */
 export class RuntimeExecutionError extends Error {
@@ -13,7 +13,7 @@ export class RuntimeExecutionError extends Error {
     headers: Readonly<Record<string, string>> = {},
   ) {
     super(message);
-    this.name = "RuntimeExecutionError";
+    this.name = 'RuntimeExecutionError';
     this.status = status;
     this.headers = headers;
     this.body = body;

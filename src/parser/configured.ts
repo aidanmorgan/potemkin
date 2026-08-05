@@ -7,31 +7,27 @@
  * gateway remain independent of the authoring source.
  */
 
-import type { OpenApiDoc } from "../contract/loader.js";
-import type { RuntimeModel } from "../model/index.js";
+import type { OpenApiDoc } from '../contract/loader.js';
+import type { RuntimeModel } from '../model/index.js';
 import type {
   RuntimeCompilationContext,
   RuntimeSystem,
   RuntimeBootInput,
-} from "../runtime/system.js";
-import { bootRuntime } from "../runtime/system.js";
-import { compileMixedProgram } from "./mixed.js";
-import { compileYamlProgram } from "./public.js";
-import type { YamlCompilerOptions } from "./public.js";
+} from '../runtime/system.js';
+import { bootRuntime } from '../runtime/system.js';
+import { compileProject, loadProjectSources } from '../project/compiler.js';
 import {
   startConfiguredRuntimeWatcher,
   type ConfiguredRuntimeWatcher,
-} from "./configuredWatcher.js";
-import { loadConfiguredTypeScriptSources } from "./configuredTypeScript.js";
-import { loadConfiguredYamlSources } from "./configuredYaml.js";
-import type { ConfiguredRuntimeSources } from "./configuredTypes.js";
-import type { OpenApiLoadObservability } from "../contract/loader.js";
-import type { YamlCompilationObservability } from "./yamlParser.js";
-import { buildConfiguredTransitionModel } from "./transitionModel.js";
+} from './configuredWatcher.js';
+import type { ConfiguredRuntimeSources } from './configuredTypes.js';
+import type { OpenApiLoadObservability } from '../contract/loader.js';
+import type { YamlCompilationObservability } from './yamlParser.js';
+import { buildConfiguredTransitionModel } from './transitionModel.js';
 
 export interface ConfiguredRuntimeBootInput extends Omit<
   RuntimeBootInput,
-  "program" | "programFactory"
+  'program' | 'programFactory'
 > {
   readonly potemkinConfigPath: string;
   readonly onConfigurationError?: (error: unknown) => void;
@@ -44,9 +40,7 @@ export async function loadConfiguredRuntimeSources(
   openapi: OpenApiDoc,
   authoringObservability: OpenApiLoadObservability & YamlCompilationObservability = {},
 ): Promise<ConfiguredRuntimeSources> {
-  const yaml = await loadConfiguredYamlSources(potemkinConfigPath, openapi, authoringObservability);
-  const typescript = await loadConfiguredTypeScriptSources(yaml.loaded, yaml.openapi);
-  return { ...yaml, ...typescript };
+  return loadProjectSources(potemkinConfigPath, openapi, authoringObservability);
 }
 
 export async function compileConfiguredProgram(
@@ -54,17 +48,7 @@ export async function compileConfiguredProgram(
   context: RuntimeCompilationContext,
   authoringObservability: YamlCompilationObservability = {},
 ): Promise<RuntimeModel> {
-  const yaml = sources.loaded.yamlProgram;
-  if (sources.authoring !== undefined) {
-    return compileMixedProgram(
-      { yaml, direct: sources.authoring },
-      { ...context, openapi: context.openapi },
-    );
-  }
-  return compileYamlProgram(yaml, {
-    dependencies: context.dependencies,
-    observability: authoringObservability,
-  } satisfies YamlCompilerOptions);
+  return compileProject(sources, context, authoringObservability);
 }
 
 export async function bootConfiguredRuntimeFromConfig(

@@ -12,7 +12,7 @@ behaviors:
   - name: removeField
     match:
       operationId: removeField
-      condition: "true"
+      condition: 'true'
     emit: ItemFieldRemoved
 
 reducers:

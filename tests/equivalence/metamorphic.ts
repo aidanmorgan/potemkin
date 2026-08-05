@@ -3,7 +3,7 @@ import type {
   EquivalenceRequest,
   EquivalenceResponse,
   MetamorphicRelation,
-} from "./types.js";
+} from './types.js';
 
 /** A relation whose output must not change when the same request is repeated. */
 export function idempotentRelation(name: string, request: EquivalenceRequest): MetamorphicRelation {
@@ -50,10 +50,10 @@ function compareResponses(
   if (expected === undefined || actual === undefined) {
     return [
       {
-        code: "BODY_MISMATCH",
+        code: 'BODY_MISMATCH',
         operation,
-        path: "$",
-        message: "Metamorphic relation produced a different number of observations",
+        path: '$',
+        message: 'Metamorphic relation produced a different number of observations',
       },
     ];
   }
@@ -63,12 +63,12 @@ function compareResponses(
   ) {
     return [
       {
-        code: "BODY_MISMATCH",
+        code: 'BODY_MISMATCH',
         operation,
-        path: "$",
+        path: '$',
         expected: expected.body ?? null,
         actual: actual.body ?? null,
-        message: "Metamorphic relation changed the observable response",
+        message: 'Metamorphic relation changed the observable response',
       },
     ];
   }

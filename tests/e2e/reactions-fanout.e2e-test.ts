@@ -48,20 +48,20 @@
  *   - dsl/warehouse.yaml      when:/target:/payload:/intent:mutation grammar example
  */
 
-import { startE2eApp, type E2eApp } from "./_harness/e2e-test-app";
+import { startE2eApp, type E2eApp } from './_harness/e2e-test-app';
 import {
   requestThroughSpecmatic,
   getAllEvents,
   getAllEntities,
   getGraphNode,
-} from "./_harness/crm-e2e-helpers";
-import type { JsonObject, DomainEvent } from "./_harness/crm-e2e-helpers";
+} from './_harness/crm-e2e-helpers';
+import type { JsonObject, DomainEvent } from './_harness/crm-e2e-helpers';
 
-describe("Multi-boundary reactions: fan-out to >=3 boundaries, depth >5 (Specmatic-backed)", () => {
+describe('Multi-boundary reactions: fan-out to >=3 boundaries, depth >5 (Specmatic-backed)', () => {
   let app: E2eApp;
 
   beforeAll(async () => {
-    app = await startE2eApp({ fixtureName: "reactions" });
+    app = await startE2eApp({ fixtureName: 'reactions' });
   }, 120_000);
 
   afterAll(async () => {
@@ -78,14 +78,14 @@ describe("Multi-boundary reactions: fan-out to >=3 boundaries, depth >5 (Specmat
   // the Order boundary emits exactly one event (OrderPlaced) and knows nothing
   // about the 8 downstream boundaries.
 
-  describe("zero-source-coupling: order boundary emits one event, reactions are in subscriber files", () => {
-    it("a single POST /orders call commits 9 events across 9 distinct boundaries", async () => {
-      const res = await requestThroughSpecmatic(app.stubUrl, "POST", "/orders", {
-        customerId: "cust-001",
-        productId: "prod-xyz",
+  describe('zero-source-coupling: order boundary emits one event, reactions are in subscriber files', () => {
+    it('a single POST /orders call commits 9 events across 9 distinct boundaries', async () => {
+      const res = await requestThroughSpecmatic(app.stubUrl, 'POST', '/orders', {
+        customerId: 'cust-001',
+        productId: 'prod-xyz',
       });
       expect([200, 201]).toContain(res.status);
-      const orderId = (res.body as JsonObject)["id"] as string;
+      const orderId = (res.body as JsonObject)['id'] as string;
       expect(orderId).toBeTruthy();
 
       const events = await getAllEvents(app.engineUrl);
@@ -97,33 +97,33 @@ describe("Multi-boundary reactions: fan-out to >=3 boundaries, depth >5 (Specmat
       expect(cycle.length).toBe(9);
     }, 60_000);
 
-    it("the Order boundary emits exactly one event (OrderPlaced) and no reactions", async () => {
-      const res = await requestThroughSpecmatic(app.stubUrl, "POST", "/orders", {
-        customerId: "cust-002",
-        productId: "prod-abc",
+    it('the Order boundary emits exactly one event (OrderPlaced) and no reactions', async () => {
+      const res = await requestThroughSpecmatic(app.stubUrl, 'POST', '/orders', {
+        customerId: 'cust-002',
+        productId: 'prod-abc',
       });
       expect([200, 201]).toContain(res.status);
-      const orderId = (res.body as JsonObject)["id"] as string;
+      const orderId = (res.body as JsonObject)['id'] as string;
 
       const events = await getAllEvents(app.engineUrl);
-      const orderEvents = events.filter((e) => e.boundary === "Order" && e.aggregateId === orderId);
+      const orderEvents = events.filter((e) => e.boundary === 'Order' && e.aggregateId === orderId);
 
       // Zero-source-coupling: the source boundary contributed exactly one event.
       expect(orderEvents).toHaveLength(1);
-      expect(orderEvents[0]!.type).toBe("OrderPlaced");
+      expect(orderEvents[0]!.type).toBe('OrderPlaced');
     }, 60_000);
   });
 
   // ── Fan-out assertion (>=3 distinct boundaries in one cycle) ─────────────────
 
-  describe("fan-out: >=3 distinct boundaries are mutated in the same request cycle", () => {
-    it("Inventory, Notification, and Audit all receive events from OrderPlaced", async () => {
-      const res = await requestThroughSpecmatic(app.stubUrl, "POST", "/orders", {
-        customerId: "cust-003",
-        productId: "prod-fanout",
+  describe('fan-out: >=3 distinct boundaries are mutated in the same request cycle', () => {
+    it('Inventory, Notification, and Audit all receive events from OrderPlaced', async () => {
+      const res = await requestThroughSpecmatic(app.stubUrl, 'POST', '/orders', {
+        customerId: 'cust-003',
+        productId: 'prod-fanout',
       });
       expect([200, 201]).toContain(res.status);
-      const orderId = (res.body as JsonObject)["id"] as string;
+      const orderId = (res.body as JsonObject)['id'] as string;
 
       const events = await getAllEvents(app.engineUrl);
       const cycle = getUowCycle(events, orderId);
@@ -131,92 +131,92 @@ describe("Multi-boundary reactions: fan-out to >=3 boundaries, depth >5 (Specmat
       const boundaries = new Set(cycle.map((e) => e.boundary));
 
       // Fan-out legs: at minimum Order + Inventory + Notification + Audit
-      expect(boundaries.has("Order")).toBe(true);
-      expect(boundaries.has("Inventory")).toBe(true);
-      expect(boundaries.has("Notification")).toBe(true);
-      expect(boundaries.has("Audit")).toBe(true);
+      expect(boundaries.has('Order')).toBe(true);
+      expect(boundaries.has('Inventory')).toBe(true);
+      expect(boundaries.has('Notification')).toBe(true);
+      expect(boundaries.has('Audit')).toBe(true);
 
       // Total distinct boundaries >= 4 (source + 3 reacting)
       expect(boundaries.size).toBeGreaterThanOrEqual(4);
     }, 60_000);
 
-    it("all 9 boundaries across the chain are represented in the event log", async () => {
-      const res = await requestThroughSpecmatic(app.stubUrl, "POST", "/orders", {
-        customerId: "cust-004",
-        productId: "prod-all",
+    it('all 9 boundaries across the chain are represented in the event log', async () => {
+      const res = await requestThroughSpecmatic(app.stubUrl, 'POST', '/orders', {
+        customerId: 'cust-004',
+        productId: 'prod-all',
       });
       expect([200, 201]).toContain(res.status);
-      const orderId = (res.body as JsonObject)["id"] as string;
+      const orderId = (res.body as JsonObject)['id'] as string;
 
       const events = await getAllEvents(app.engineUrl);
       const cycle = getUowCycle(events, orderId);
 
       const boundaries = new Set(cycle.map((e) => e.boundary));
-      expect(boundaries.has("Order")).toBe(true);
-      expect(boundaries.has("Inventory")).toBe(true);
-      expect(boundaries.has("Notification")).toBe(true);
-      expect(boundaries.has("Audit")).toBe(true);
-      expect(boundaries.has("Fulfillment")).toBe(true);
-      expect(boundaries.has("Shipping")).toBe(true);
-      expect(boundaries.has("Tracking")).toBe(true);
-      expect(boundaries.has("Dispatch")).toBe(true);
-      expect(boundaries.has("Analytics")).toBe(true);
+      expect(boundaries.has('Order')).toBe(true);
+      expect(boundaries.has('Inventory')).toBe(true);
+      expect(boundaries.has('Notification')).toBe(true);
+      expect(boundaries.has('Audit')).toBe(true);
+      expect(boundaries.has('Fulfillment')).toBe(true);
+      expect(boundaries.has('Shipping')).toBe(true);
+      expect(boundaries.has('Tracking')).toBe(true);
+      expect(boundaries.has('Dispatch')).toBe(true);
+      expect(boundaries.has('Analytics')).toBe(true);
     }, 60_000);
   });
 
   // ── Depth >5 assertion ───────────────────────────────────────────────────────
 
-  describe("depth >5: chain reaches Analytics at hop 6 without error or truncation", () => {
-    it("AnalyticsRecorded (hop 6) is committed in the same UoW as OrderPlaced", async () => {
-      const res = await requestThroughSpecmatic(app.stubUrl, "POST", "/orders", {
-        customerId: "cust-005",
-        productId: "prod-depth",
+  describe('depth >5: chain reaches Analytics at hop 6 without error or truncation', () => {
+    it('AnalyticsRecorded (hop 6) is committed in the same UoW as OrderPlaced', async () => {
+      const res = await requestThroughSpecmatic(app.stubUrl, 'POST', '/orders', {
+        customerId: 'cust-005',
+        productId: 'prod-depth',
       });
       expect([200, 201]).toContain(res.status);
-      const orderId = (res.body as JsonObject)["id"] as string;
+      const orderId = (res.body as JsonObject)['id'] as string;
 
       const events = await getAllEvents(app.engineUrl);
       const cycle = getUowCycle(events, orderId);
 
       // Analytics at hop 6 must be present  depth-5 cap (dispatch_commands) does not apply.
-      const analyticsEvent = cycle.find((e) => e.type === "AnalyticsRecorded");
+      const analyticsEvent = cycle.find((e) => e.type === 'AnalyticsRecorded');
       expect(analyticsEvent).toBeDefined();
-      expect(analyticsEvent!.boundary).toBe("Analytics");
+      expect(analyticsEvent!.boundary).toBe('Analytics');
     }, 60_000);
 
-    it("the chain contains the full sequence: OrderPlaced → … → DispatchConfirmed → AnalyticsRecorded", async () => {
-      const res = await requestThroughSpecmatic(app.stubUrl, "POST", "/orders", {
-        customerId: "cust-006",
-        productId: "prod-chain",
+    it('the chain contains the full sequence: OrderPlaced → … → DispatchConfirmed → AnalyticsRecorded', async () => {
+      const res = await requestThroughSpecmatic(app.stubUrl, 'POST', '/orders', {
+        customerId: 'cust-006',
+        productId: 'prod-chain',
       });
       expect([200, 201]).toContain(res.status);
-      const orderId = (res.body as JsonObject)["id"] as string;
+      const orderId = (res.body as JsonObject)['id'] as string;
 
       const events = await getAllEvents(app.engineUrl);
       const cycle = getUowCycle(events, orderId);
       const types = cycle.map((e) => e.type);
 
       // Each link in the chain must appear exactly once.
-      expect(types.filter((t) => t === "OrderPlaced")).toHaveLength(1);
-      expect(types.filter((t) => t === "InventoryReserved")).toHaveLength(1);
-      expect(types.filter((t) => t === "FulfillmentScheduled")).toHaveLength(1);
-      expect(types.filter((t) => t === "ShippingLabelCreated")).toHaveLength(1);
-      expect(types.filter((t) => t === "TrackingStarted")).toHaveLength(1);
-      expect(types.filter((t) => t === "DispatchConfirmed")).toHaveLength(1);
-      expect(types.filter((t) => t === "AnalyticsRecorded")).toHaveLength(1);
+      expect(types.filter((t) => t === 'OrderPlaced')).toHaveLength(1);
+      expect(types.filter((t) => t === 'InventoryReserved')).toHaveLength(1);
+      expect(types.filter((t) => t === 'FulfillmentScheduled')).toHaveLength(1);
+      expect(types.filter((t) => t === 'ShippingLabelCreated')).toHaveLength(1);
+      expect(types.filter((t) => t === 'TrackingStarted')).toHaveLength(1);
+      expect(types.filter((t) => t === 'DispatchConfirmed')).toHaveLength(1);
+      expect(types.filter((t) => t === 'AnalyticsRecorded')).toHaveLength(1);
     }, 60_000);
   });
 
   // ── Atomicity: all 9 aggregates visible in the same response cycle ────────────
 
-  describe("atomicity: all reaction-created aggregates are visible after a single POST", () => {
-    it("the state graph reflects 9 new aggregates after one POST /orders", async () => {
+  describe('atomicity: all reaction-created aggregates are visible after a single POST', () => {
+    it('the state graph reflects 9 new aggregates after one POST /orders', async () => {
       const entitiesBefore = await getAllEntities(app.engineUrl);
       const countBefore = Object.keys(entitiesBefore).length;
 
-      const res = await requestThroughSpecmatic(app.stubUrl, "POST", "/orders", {
-        customerId: "cust-007",
-        productId: "prod-atomic",
+      const res = await requestThroughSpecmatic(app.stubUrl, 'POST', '/orders', {
+        customerId: 'cust-007',
+        productId: 'prod-atomic',
       });
       expect([200, 201]).toContain(res.status);
 
@@ -243,92 +243,92 @@ describe("Multi-boundary reactions: fan-out to >=3 boundaries, depth >5 (Specmat
   // target. When the gate is false (qty absent or <= 0) the warehouse is unchanged.
   // When the gate is true (qty > 0) the warehouse state reflects the override values.
 
-  describe("gated mutation reaction: when:/target:/payload:/intent:mutation", () => {
-    const WAREHOUSE_ID = "warehouse-main";
+  describe('gated mutation reaction: when:/target:/payload:/intent:mutation', () => {
+    const WAREHOUSE_ID = 'warehouse-main';
 
     beforeAll(async () => {
       // Seed the warehouse aggregate so the mutation reaction has an existing target.
-      const res = await requestThroughSpecmatic(app.stubUrl, "POST", "/warehouses", {
+      const res = await requestThroughSpecmatic(app.stubUrl, 'POST', '/warehouses', {
         id: WAREHOUSE_ID,
-        location: "Sydney",
+        location: 'Sydney',
         totalStock: 1000,
       });
       expect([200, 201]).toContain(res.status);
     }, 30_000);
 
-    it("when gate is FALSE (no qty): warehouse aggregate is unchanged after the order", async () => {
+    it('when gate is FALSE (no qty): warehouse aggregate is unchanged after the order', async () => {
       const warehouseBefore = await getGraphNode(app.engineUrl, WAREHOUSE_ID);
       expect(warehouseBefore).toBeTruthy();
-      const allocatedBefore = warehouseBefore!["allocatedQty"];
-      const lastOrderBefore = warehouseBefore!["lastOrderId"];
+      const allocatedBefore = warehouseBefore!['allocatedQty'];
+      const lastOrderBefore = warehouseBefore!['lastOrderId'];
 
-      const res = await requestThroughSpecmatic(app.stubUrl, "POST", "/orders", {
-        customerId: "cust-gate-false",
-        productId: "prod-no-qty",
+      const res = await requestThroughSpecmatic(app.stubUrl, 'POST', '/orders', {
+        customerId: 'cust-gate-false',
+        productId: 'prod-no-qty',
         // qty intentionally absent  event.payload.qty is null → gate is false
       });
       expect([200, 201]).toContain(res.status);
 
       const warehouseAfter = await getGraphNode(app.engineUrl, WAREHOUSE_ID);
       // Gate false: warehouse must be IDENTICAL  allocatedQty and lastOrderId are unchanged.
-      expect(warehouseAfter!["allocatedQty"]).toBe(allocatedBefore);
-      expect(warehouseAfter!["lastOrderId"]).toBe(lastOrderBefore);
+      expect(warehouseAfter!['allocatedQty']).toBe(allocatedBefore);
+      expect(warehouseAfter!['lastOrderId']).toBe(lastOrderBefore);
     }, 60_000);
 
-    it("when gate is FALSE (qty = 0): warehouse aggregate is unchanged after the order", async () => {
+    it('when gate is FALSE (qty = 0): warehouse aggregate is unchanged after the order', async () => {
       const warehouseBefore = await getGraphNode(app.engineUrl, WAREHOUSE_ID);
-      const allocatedBefore = warehouseBefore!["allocatedQty"];
+      const allocatedBefore = warehouseBefore!['allocatedQty'];
 
-      const res = await requestThroughSpecmatic(app.stubUrl, "POST", "/orders", {
-        customerId: "cust-gate-zero",
-        productId: "prod-zero-qty",
+      const res = await requestThroughSpecmatic(app.stubUrl, 'POST', '/orders', {
+        customerId: 'cust-gate-zero',
+        productId: 'prod-zero-qty',
         qty: 0,
       });
       expect([200, 201]).toContain(res.status);
 
       const warehouseAfter = await getGraphNode(app.engineUrl, WAREHOUSE_ID);
       // qty = 0 → gate false → warehouse unchanged.
-      expect(warehouseAfter!["allocatedQty"]).toBe(allocatedBefore);
+      expect(warehouseAfter!['allocatedQty']).toBe(allocatedBefore);
     }, 60_000);
 
-    it("when gate is TRUE (qty > 0): StockAllocated is committed on the warehouse aggregate", async () => {
-      const res = await requestThroughSpecmatic(app.stubUrl, "POST", "/orders", {
-        customerId: "cust-gate-true",
-        productId: "prod-with-qty",
+    it('when gate is TRUE (qty > 0): StockAllocated is committed on the warehouse aggregate', async () => {
+      const res = await requestThroughSpecmatic(app.stubUrl, 'POST', '/orders', {
+        customerId: 'cust-gate-true',
+        productId: 'prod-with-qty',
         qty: 5,
       });
       expect([200, 201]).toContain(res.status);
-      const orderId = (res.body as JsonObject)["id"] as string;
+      const orderId = (res.body as JsonObject)['id'] as string;
 
       const events = await getAllEvents(app.engineUrl);
       const warehouseEvents = events.filter(
-        (e) => e.boundary === "Warehouse" && e.aggregateId === WAREHOUSE_ID,
+        (e) => e.boundary === 'Warehouse' && e.aggregateId === WAREHOUSE_ID,
       );
 
       // StockAllocated must have been emitted on the warehouse aggregate.
-      const allocated = warehouseEvents.filter((e) => e.type === "StockAllocated");
+      const allocated = warehouseEvents.filter((e) => e.type === 'StockAllocated');
       expect(allocated.length).toBeGreaterThanOrEqual(1);
 
       // The most recent StockAllocated must carry the payload overrides from the reaction.
       const last = allocated[allocated.length - 1]!;
-      expect(last.payload["orderId"]).toBe(orderId);
-      expect(last.payload["allocatedQty"]).toBe(5);
+      expect(last.payload['orderId']).toBe(orderId);
+      expect(last.payload['allocatedQty']).toBe(5);
     }, 60_000);
 
-    it("when gate is TRUE (qty > 0): warehouse state reflects the payload: override values", async () => {
-      const res = await requestThroughSpecmatic(app.stubUrl, "POST", "/orders", {
-        customerId: "cust-state-check",
-        productId: "prod-state-qty",
+    it('when gate is TRUE (qty > 0): warehouse state reflects the payload: override values', async () => {
+      const res = await requestThroughSpecmatic(app.stubUrl, 'POST', '/orders', {
+        customerId: 'cust-state-check',
+        productId: 'prod-state-qty',
         qty: 7,
       });
       expect([200, 201]).toContain(res.status);
-      const orderId = (res.body as JsonObject)["id"] as string;
+      const orderId = (res.body as JsonObject)['id'] as string;
 
       const warehouse = await getGraphNode(app.engineUrl, WAREHOUSE_ID);
       // Reducer applied the payload: overrides: lastOrderId is the triggering order id
       // and allocatedQty is the qty from the payload override map.
-      expect(warehouse!["lastOrderId"]).toBe(orderId);
-      expect(warehouse!["allocatedQty"]).toBe(7);
+      expect(warehouse!['lastOrderId']).toBe(orderId);
+      expect(warehouse!['allocatedQty']).toBe(7);
     }, 60_000);
   });
 });
@@ -354,7 +354,7 @@ function lastIndexOf(events: DomainEvent[], pred: (e: DomainEvent) => boolean): 
 }
 
 function getUowCycle(events: DomainEvent[], orderId: string): DomainEvent[] {
-  const orderIdx = lastIndexOf(events, (e) => e.boundary === "Order" && e.aggregateId === orderId);
+  const orderIdx = lastIndexOf(events, (e) => e.boundary === 'Order' && e.aggregateId === orderId);
   if (orderIdx === -1) return [];
   // A UoW cycle produces exactly 9 events for this fixture.
   return events.slice(orderIdx, orderIdx + 9);
@@ -367,7 +367,7 @@ function getUowCycle(events: DomainEvent[], orderId: string): DomainEvent[] {
 function isReactionFrom(events: DomainEvent[], e: DomainEvent, orderId: string): boolean {
   const orderIdx = lastIndexOf(
     events,
-    (ev) => ev.boundary === "Order" && ev.aggregateId === orderId,
+    (ev) => ev.boundary === 'Order' && ev.aggregateId === orderId,
   );
   if (orderIdx === -1) return false;
   const cycleEnd = orderIdx + 9;

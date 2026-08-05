@@ -1,4 +1,4 @@
-import type { JsonValue } from "../../src/types.js";
+import type { JsonValue } from '../../src/contracts/value.js';
 import type {
   ContractFieldPolicy,
   DivergenceLedgerEntry,
@@ -8,7 +8,7 @@ import type {
   EquivalenceWriteSet,
   IdentifierBijectionSnapshot,
   ProjectionPolicy,
-} from "./types.js";
+} from './types.js';
 
 interface MutableBijection {
   readonly modelToReal: Map<string, string>;
@@ -55,7 +55,7 @@ export function compareEquivalenceTrace(
       !active.some((divergence) => ledgerMatches(entry, divergence))
     ) {
       divergences.push({
-        code: "LEDGER_STALE",
+        code: 'LEDGER_STALE',
         operation: entry.operation,
         path: entry.path,
         message: `Divergence ledger entry ${entry.operation}:${entry.path} is stale`,
@@ -84,13 +84,13 @@ export function validateProjectionPolicy(
           (entry) =>
             entry.operation === operation &&
             entry.path === responsePath &&
-            (entry.code === undefined || entry.code === "ENUMERABLE_NARROWING"),
+            (entry.code === undefined || entry.code === 'ENUMERABLE_NARROWING'),
         )
       ) {
         continue;
       }
       divergences.push({
-        code: "ENUMERABLE_NARROWING",
+        code: 'ENUMERABLE_NARROWING',
         operation,
         path: responsePath,
         message: `Enumerable narrowing at ${responsePath} requires a cited divergence ledger entry`,
@@ -129,9 +129,9 @@ function compareResponse(
 ): void {
   if (step.model.status !== step.real.status) {
     divergences.push({
-      code: "STATUS_MISMATCH",
+      code: 'STATUS_MISMATCH',
       operation: step.operation,
-      path: "$.status",
+      path: '$.status',
       expected: step.model.status,
       actual: step.real.status,
       message: `Expected status ${step.model.status}, received ${step.real.status}`,
@@ -149,7 +149,7 @@ function compareResponse(
     projectedWriteSet,
     step.model.body ?? null,
     step.real.body ?? null,
-    "$.body",
+    '$.body',
     divergences,
   );
 }
@@ -171,7 +171,7 @@ function compareHeaders(
     const right = actual[key] ?? actual[key.toLowerCase()];
     if (left !== right) {
       divergences.push({
-        code: "HEADER_MISMATCH",
+        code: 'HEADER_MISMATCH',
         operation: step.operation,
         path: `$.headers.${key}`,
         expected: left,
@@ -194,7 +194,7 @@ function compareValue(
   path: string,
   divergences: EquivalenceDivergence[],
 ): void {
-  const pathKey = path.replace(/^\$\.body/, "$");
+  const pathKey = path.replace(/^\$\.body/, '$');
   const shapeOnly =
     matches(pathKey, policy.shapeOnlyPaths) ||
     (writeSet !== undefined && matchesAnyField(pathKey, writeSet.volatile)) ||
@@ -202,7 +202,7 @@ function compareValue(
   if (shapeOnly) {
     if (!shapeCompatible(expected, actual))
       divergences.push({
-        code: "SHAPE_MISMATCH",
+        code: 'SHAPE_MISMATCH',
         operation: step.operation,
         path,
         expected: shapeOf(expected),
@@ -221,7 +221,7 @@ function compareValue(
       (!deepEqual(expected, beforeExpected) || !deepEqual(actual, beforeActual))
     ) {
       divergences.push({
-        code: "FRAME_VIOLATION",
+        code: 'FRAME_VIOLATION',
         operation: step.operation,
         path,
         message: `Frame path ${path} changed`,
@@ -230,13 +230,13 @@ function compareValue(
     }
   }
   if (
-    typeof expected === "string" &&
-    typeof actual === "string" &&
+    typeof expected === 'string' &&
+    typeof actual === 'string' &&
     (isIdentifierPath(path) || hasEmbeddedIdentifier(expected, actual))
   ) {
     if (!compareIdentifierStrings(expected, actual, mapping)) {
       divergences.push({
-        code: "IDENTIFIER_CONTRADICTION",
+        code: 'IDENTIFIER_CONTRADICTION',
         operation: step.operation,
         path,
         expected,
@@ -253,7 +253,7 @@ function compareValue(
     // shorter actual array remains a divergence.
     if (actual.length < expected.length) {
       divergences.push({
-        code: "BODY_MISMATCH",
+        code: 'BODY_MISMATCH',
         operation: step.operation,
         path,
         expected: expected.length,
@@ -297,7 +297,7 @@ function compareValue(
   if (!Object.is(expected, actual)) {
     if (narrowingAllows(policy, step.operation, pathKey, actual)) {
       divergences.push({
-        code: "ENUMERABLE_NARROWING",
+        code: 'ENUMERABLE_NARROWING',
         operation: step.operation,
         path,
         expected,
@@ -307,7 +307,7 @@ function compareValue(
       return;
     }
     divergences.push({
-      code: "BODY_MISMATCH",
+      code: 'BODY_MISMATCH',
       operation: step.operation,
       path,
       expected,
@@ -337,9 +337,9 @@ function snapshot(mapping: MutableBijection): IdentifierBijectionSnapshot {
 function isIdentifierPath(path: string): boolean {
   const key =
     path
-      .split(".")
+      .split('.')
       .pop()
-      ?.replace(/\[\d+\]$/, "") ?? "";
+      ?.replace(/\[\d+\]$/, '') ?? '';
   return IDENTIFIER_KEY.test(key);
 }
 
@@ -349,7 +349,7 @@ function isFramePath(
   writeSet: EquivalenceWriteSet | undefined,
 ): boolean {
   if (matches(path, policy.framePaths)) return true;
-  if (writeSet === undefined || path === "$") return false;
+  if (writeSet === undefined || path === '$') return false;
   return (
     !writeSet.replaceState &&
     !matchesAnyField(path, [...writeSet.fields, ...writeSet.derivedClosure])
@@ -440,20 +440,20 @@ function isContractVolatile(
   const format = field?.format
     ?.trim()
     .toLowerCase()
-    .replace(/[_\s]+/g, "-");
+    .replace(/[_\s]+/g, '-');
   if (format === undefined || format.length === 0) return false;
   return (
-    format === "unix-time" ||
-    format === "timestamp" ||
-    format === "date-time" ||
-    format === "datetime" ||
-    format === "uuid" ||
-    format.startsWith("uuid-")
+    format === 'unix-time' ||
+    format === 'timestamp' ||
+    format === 'date-time' ||
+    format === 'datetime' ||
+    format === 'uuid' ||
+    format.startsWith('uuid-')
   );
 }
 
 function toResponsePath(path: string): string {
-  return path === "$" ? "$.body" : `$.body${path.slice(1)}`;
+  return path === '$' ? '$.body' : `$.body${path.slice(1)}`;
 }
 
 function matches(path: string, patterns: readonly string[] | undefined): boolean {
@@ -466,12 +466,12 @@ function matches(path: string, patterns: readonly string[] | undefined): boolean
 function getPath(value: JsonValue | undefined, path: string): JsonValue | undefined {
   if (value === undefined) return undefined;
   const segments = path
-    .replace(/^\$\.?/, "")
+    .replace(/^\$\.?/, '')
     .split(/[.[\]]+/)
     .filter(Boolean);
   let current: unknown = value;
   for (const segment of segments) {
-    if (current === null || typeof current !== "object") return undefined;
+    if (current === null || typeof current !== 'object') return undefined;
     current = (current as Record<string, unknown>)[segment];
   }
   return current as JsonValue | undefined;
@@ -484,8 +484,8 @@ function shapeCompatible(left: unknown, right: unknown): boolean {
     if (left.length === 0) return true;
     return right.length > 0 && left.every((value) => shapeCompatible(value, right[0]));
   }
-  if (typeof left === "object" || typeof right === "object") {
-    if (typeof left !== "object" || typeof right !== "object") return false;
+  if (typeof left === 'object' || typeof right === 'object') {
+    if (typeof left !== 'object' || typeof right !== 'object') return false;
     const leftKeys = Object.keys(left as object).sort();
     return leftKeys.every((key) =>
       shapeCompatible(
@@ -500,7 +500,7 @@ function shapeCompatible(left: unknown, right: unknown): boolean {
 function shapeOf(value: unknown): JsonValue {
   if (value === null) return null;
   if (Array.isArray(value)) return value.length > 0 ? [shapeOf(value[0])] : [];
-  if (typeof value === "object")
+  if (typeof value === 'object')
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>).map(([key, child]) => [key, shapeOf(child)]),
     );
@@ -508,7 +508,7 @@ function shapeOf(value: unknown): JsonValue {
 }
 
 function isRecord(value: unknown): value is Record<string, JsonValue> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function deepEqual(left: unknown, right: unknown): boolean {

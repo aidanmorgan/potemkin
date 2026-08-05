@@ -1,102 +1,149 @@
-export type JsonScalar = string | number | boolean | null;
-export type JsonArray = readonly JsonValue[];
-export interface JsonObject {
-  [k: string]: JsonValue;
-}
-export type JsonValue = JsonScalar | JsonArray | JsonObject;
+import type { RequestControls } from './contracts/controlHeaders.js';
+import type { DataGenerator } from './contracts/data.js';
+import type { JsonObject, JsonValue } from './contracts/value.js';
+import type { Command, DomainEvent } from './contracts/domain.js';
+import type { Actor } from './contracts/identity.js';
 
-/**
- * Recursively readonly view of a JSON-domain value.
- *
- * This is intentionally separate from `Readonly<T>`: reducer inputs may
- * contain arrays and arbitrarily nested objects, and none of those nested
- * containers may be mutated while a state projection is being calculated.
- */
-export type DeepReadonly<T> = T extends readonly (infer Item)[]
-  ? readonly DeepReadonly<Item>[]
-  : T extends object
-    ? string extends keyof T
-      ? Readonly<T>
-      : { readonly [Key in keyof T]: DeepReadonly<T[Key]> }
-    : T;
-
-export type Intent = "creation" | "mutation" | "query";
-export type Origin = "inbound" | "secondary";
-
-/** Actor identity extracted from Authorization header */
-export interface Actor {
-  readonly id: string;
-  readonly scopes: readonly string[];
+/** Common callback context primitives shared by authoring and execution. */
+export interface SimulationHelpers {
+  readonly now: () => string;
+  readonly uuid: () => string;
+  readonly random: () => number;
+  readonly data: DataGenerator;
+  readonly clone: <T>(value: T) => T;
 }
 
-export interface Command {
-  readonly commandId: string; // UUIDv7
-  readonly boundary: string; // logical namespace (e.g. "Opportunity")
-  readonly intent: Intent;
-  readonly targetId: string | null; // null for collection queries
-  readonly payload: JsonObject;
-  readonly queryParams: Record<string, string | string[]>;
-  readonly httpMethod: string;
-  readonly path: string;
-  /**
-   * Pre-resolved OpenAPI operationId for this command. Secondary (cascade) commands
-   * carry an explicit operationId (their path is synthetic); inbound commands may leave
-   * it undefined and let the pattern matcher resolve it from (path, method).
-   */
-  readonly operationId?: string;
-  readonly sequenceVersion?: number; // optimistic-concurrency from request
-  readonly origin: Origin;
-  readonly depth: number; // 0 for inbound, +1 per secondary cascade
-  /** Optional actor identity from Authorization Bearer token */
-  readonly actor?: Actor;
-  /** Request headers (lowercased keys) — available for header matching and snapshots. */
-  readonly headers?: Record<string, string>;
+export interface SimulationRequest {
+  readonly command: Readonly<Command>;
+  readonly headers: Readonly<Record<string, string>>;
+  readonly actor?: Readonly<Actor>;
+  readonly identity?: Readonly<{
+    readonly original?: Readonly<Actor>;
+    readonly effective?: Readonly<Actor>;
+  }>;
+  readonly sideEffects?: Readonly<{
+    readonly skipSagas?: boolean;
+    readonly skipWebhooks?: boolean;
+    readonly skipReactions?: boolean;
+    readonly skipProjections?: boolean;
+    readonly skipDispatch?: boolean;
+  }>;
+  readonly batchItem?: Readonly<{ index: number; size: number }>;
+  readonly controls?: Readonly<RequestControls>;
 }
 
-/** Snapshot of the inbound request that produced an event, captured for reducer chaining. */
-export interface EventRequestSnapshot {
-  readonly method: string;
-  readonly path: string;
-  readonly query?: Record<string, string | string[]>;
-  readonly headers: Record<string, string>;
-  readonly payload: JsonObject;
-  /** Effective actor id at the time of the request (when authenticated). */
-  readonly actorId?: string;
-  /** Effective actor scopes at the time of the request. */
-  readonly actorScopes?: readonly string[];
-  /** Original authenticated actor id before an admin-gated override. */
-  readonly originalActorId?: string;
-  /** Original authenticated actor scopes before an admin-gated override. */
-  readonly originalActorScopes?: readonly string[];
+export interface SimulationMatchContext {
+  readonly command: Readonly<Command>;
+  readonly request: Readonly<SimulationRequest>;
+  readonly state: Readonly<JsonObject> | null;
+  readonly payload: Readonly<JsonObject>;
+  readonly helpers: Readonly<SimulationHelpers>;
 }
 
-/** Snapshot of the response emitted alongside the event. */
-export interface EventResponseSnapshot {
-  readonly status: number;
-  readonly body?: JsonValue;
-  readonly headers?: Record<string, string>;
+export interface SimulationEventContext extends SimulationMatchContext {
+  readonly event?: Readonly<DomainEvent>;
+  readonly payload: Readonly<JsonObject>;
 }
 
-export interface DomainEvent {
-  readonly eventId: string; // UUIDv7 — real-time, except baseline anchored to epoch
+export interface SimulationIdentityContext extends SimulationMatchContext {
   readonly boundary: string;
-  readonly aggregateId: string; // targetId of affected entity
-  readonly type: string; // event-catalog key, or 'System.GenericUpdateEvent', or 'BaselineEntityCreatedEvent'
-  readonly payload: JsonObject;
-  readonly timestamp: string; // ISO-8601 UTC
-  readonly sequenceVersion: number; // monotonic per aggregate, starts at 1
-  readonly causedBy: string | null; // originating commandId; null for baseline
-  /** Intent of the command that produced this event, when known. */
-  readonly intent?: Intent;
-  /** Request snapshot — captured at event emission time for reducer chaining. */
-  readonly request?: EventRequestSnapshot;
-  /** Response snapshot — attached post-commit by the UoW. */
-  readonly response?: EventResponseSnapshot;
 }
 
-export interface ExecutionResult {
-  readonly status: number; // HTTP status
-  readonly body: JsonValue;
-  readonly headers?: Record<string, string>;
-  readonly events: readonly DomainEvent[]; // committed events from this UoW
+export interface SimulationReducerContext {
+  readonly boundary: string;
+  readonly state: Readonly<JsonObject>;
+  readonly event: Readonly<DomainEvent>;
+  readonly payload: Readonly<JsonObject>;
+  readonly helpers: Readonly<SimulationHelpers>;
+}
+
+export interface SimulationQueryContext {
+  readonly command: Readonly<Command>;
+  readonly request: Readonly<SimulationRequest>;
+  readonly state: Readonly<JsonObject>;
+  readonly query: Readonly<Record<string, string | readonly string[]>>;
+  readonly param?: string | readonly string[];
+  readonly helpers: Readonly<SimulationHelpers>;
+}
+
+export interface SimulationResponseContext extends SimulationEventContext {
+  readonly operationId?: string;
+  readonly response: Readonly<{
+    readonly status: number;
+    readonly body: JsonValue | null;
+    readonly headers: Readonly<Record<string, string>>;
+  }>;
+}
+
+export interface SimulationPostCommitContext extends SimulationEventContext {
+  readonly response?: Readonly<{
+    readonly status: number;
+    readonly body: JsonValue | null;
+    readonly headers: Readonly<Record<string, string>>;
+  }>;
+  readonly committedEvents: readonly DomainEvent[];
+}
+
+export interface SimulationFaultContext extends SimulationMatchContext {
+  readonly headers: Readonly<Record<string, string>>;
+}
+
+export interface SimulationWebhookContext extends SimulationPostCommitContext {
+  readonly headers: Readonly<Record<string, string>>;
+}
+
+export interface SimulationSagaContext extends SimulationPostCommitContext {
+  readonly steps: Readonly<Record<string, Readonly<{ status: number; body: JsonValue | null }>>>;
+  readonly prevStep?: Readonly<{ status: number; body: JsonValue | null }>;
+}
+
+export interface SimulationProjectionContext extends SimulationPostCommitContext {
+  readonly projection: string;
+}
+
+export interface SimulationSecurityHeaders {
+  readonly enabled?: boolean;
+  readonly hsts?: boolean;
+  readonly includeSubDomains?: boolean;
+  readonly nosniff?: boolean;
+  readonly frameDeny?: boolean;
+  readonly referrerPolicy?: string;
+  readonly customHeaders?: Readonly<Record<string, string>>;
+}
+
+export interface SimulationHateoas {
+  readonly enabled?: boolean;
+  readonly baseUrl?: string;
+  readonly selfLinks?: boolean;
+}
+
+export interface SimulationVersion {
+  readonly version: string;
+  readonly prefix: string;
+  readonly default?: boolean;
+}
+
+export interface SimulationVersioning {
+  readonly enabled?: boolean;
+  readonly versions?: readonly SimulationVersion[];
+}
+
+export interface SimulationLifecycle {
+  readonly boot?: () => void | Promise<void>;
+  readonly validation?: () => void | Promise<void>;
+  readonly initialization?: () => void | Promise<void>;
+  readonly request?: (input: Readonly<SimulationMatchContext>) => void | Promise<void>;
+  readonly projection?: (input: Readonly<SimulationPostCommitContext>) => void | Promise<void>;
+  readonly commit?: (input: Readonly<SimulationPostCommitContext>) => void | Promise<void>;
+  readonly postCommit?: (input: Readonly<SimulationPostCommitContext>) => void | Promise<void>;
+  readonly reset?: () => void | Promise<void>;
+  readonly shutdown?: () => void | Promise<void>;
+}
+
+export interface SimulationModelCoverage {
+  readonly strict?: boolean;
+  readonly initialStates?: readonly string[];
+  readonly terminalStates?: readonly string[];
+  readonly operations?: readonly string[];
+  readonly suppressStates?: readonly string[];
 }

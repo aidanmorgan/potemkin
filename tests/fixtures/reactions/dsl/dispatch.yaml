@@ -8,14 +8,14 @@ fallback_override: false
 
 identity:
   creation:
-    generate: "$uuidv7()"
+    generate: '$uuidv7()'
 
 event_catalog:
   - type: DispatchConfirmed
     payload_template:
-      id: "$uuidv7()"
-      trackingId: "event.aggregateId"
-      confirmed: "true"
+      id: '$uuidv7()'
+      trackingId: 'event.aggregateId'
+      confirmed: 'true'
 
 behaviors: []
 
@@ -24,16 +24,16 @@ reducers:
     patches:
       - op: add
         path: /id
-        value: "${event.payload.id}"
+        value: '${event.payload.id}'
       - op: add
         path: /trackingId
-        value: "${event.payload.trackingId}"
+        value: '${event.payload.trackingId}'
       - op: add
         path: /confirmed
-        value: "${event.payload.confirmed}"
+        value: '${event.payload.confirmed}'
 
 reactions:
   - name: confirm-dispatch-on-tracking-started
-    on: "Tracking:TrackingStarted"
+    on: 'Tracking:TrackingStarted'
     intent: creation
     emit: DispatchConfirmed

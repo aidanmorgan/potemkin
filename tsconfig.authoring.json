@@ -4,5 +4,9 @@
     "noEmit": true
   },
   "include": ["tests/fixtures/**/*.ts", "examples/**/*.ts"],
-  "exclude": ["tests/fixtures/configured-stack/typescript/excluded/**/*.ts"]
+  "exclude": [
+    "tests/fixtures/configured-stack/typescript/excluded/**/*.ts",
+    "**/gen-src/**",
+    "**/.potemkin/**"
+  ]
 }

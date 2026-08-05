@@ -9,8 +9,8 @@
 auth:
   mode: session
   session:
-    cookie_name: "potemkin_sid"
+    cookie_name: 'potemkin_sid'
     ttl_seconds: 3600
-    login_path: "/sessions"
-    logout_path: "/sessions/current"
-    csrf_header: "x-csrf-token"
+    login_path: '/sessions'
+    logout_path: '/sessions/current'
+    csrf_header: 'x-csrf-token'

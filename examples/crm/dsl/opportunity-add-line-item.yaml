@@ -8,39 +8,39 @@ fallback_override: false
 state:
   computed:
     - name: totalValue
-      formula: "sum(state.lineItems.map(i, i.lineTotal))"
+      formula: 'sum(state.lineItems.map(i, i.lineTotal))'
       depends_on:
         - lineItems
     - name: itemCount
-      formula: "length(state.lineItems)"
+      formula: 'length(state.lineItems)'
       depends_on:
         - lineItems
 
 event_catalog:
   - type: LineItemAdded
     payload_template:
-      id: "$uuidv7()"
-      description: "command.payload.description"
-      quantity: "command.payload.quantity"
-      unitPrice: "command.payload.unitPrice"
-      lineTotal: "command.payload.quantity * command.payload.unitPrice"
-      total: "command.payload.quantity * command.payload.unitPrice"
-      addedAt: "$now()"
+      id: '$uuidv7()'
+      description: 'command.payload.description'
+      quantity: 'command.payload.quantity'
+      unitPrice: 'command.payload.unitPrice'
+      lineTotal: 'command.payload.quantity * command.payload.unitPrice'
+      total: 'command.payload.quantity * command.payload.unitPrice'
+      addedAt: '$now()'
 
 behaviors:
   - name: addLineItem
     match:
       operationId: addLineItem
-      condition: "true"
+      condition: 'true'
       requires:
         - name: valid-quantity
-          condition: "command.payload.quantity != null && command.payload.quantity > 0"
+          condition: 'command.payload.quantity != null && command.payload.quantity > 0'
           error_code: INVALID_QUANTITY
-          error_message: "Line item quantity must be greater than zero"
+          error_message: 'Line item quantity must be greater than zero'
         - name: not-closed
           condition: "state.stage != 'WON' && state.stage != 'LOST'"
           error_code: OPPORTUNITY_CLOSED
-          error_message: "Cannot add line items to a closed opportunity"
+          error_message: 'Cannot add line items to a closed opportunity'
     emit: LineItemAdded
 
 reducers:
@@ -50,6 +50,6 @@ reducers:
       # ({ id, description, quantity, unitPrice, lineTotal, addedAt }).
       - op: append
         path: /lineItems
-        value: "${event.payload}"
+        value: '${event.payload}'
 
 initialization: []

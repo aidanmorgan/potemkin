@@ -3,40 +3,40 @@ contract_path: /opportunities
 fallback_override: false
 identity:
   creation:
-    generate: "$uuidv7()"
+    generate: '$uuidv7()'
 event_catalog:
   - type: OpportunityCreated
     payload_template:
-      id: "command.targetId"
-      leadId: "command.payload.leadId"
-      value: "command.payload.value"
+      id: 'command.targetId'
+      leadId: 'command.payload.leadId'
+      value: 'command.payload.value'
       stage: "'proposed'"
-      createdAt: "$now()"
+      createdAt: '$now()'
   - type: OpportunityProgressed
     payload_template:
-      progressedAt: "$now()"
-      stage: "command.payload.stage"
+      progressedAt: '$now()'
+      stage: 'command.payload.stage'
   - type: OpportunityWon
     payload_template:
-      wonAt: "$now()"
+      wonAt: '$now()'
   - type: OpportunityLost
     payload_template:
-      reason: "command.payload.reason"
-      lostAt: "$now()"
+      reason: 'command.payload.reason'
+      lostAt: '$now()'
 behaviors:
   - name: createOpportunity
     match:
       operationId: createOpportunity
-      condition: "command.payload.leadId != null && command.payload.value > 0"
+      condition: 'command.payload.leadId != null && command.payload.value > 0'
     emit: OpportunityCreated
     dispatch_commands:
       - boundary: Lead
         intent: mutation
         operationId: patchLead
-        target_id: "command.payload.leadId"
+        target_id: 'command.payload.leadId'
         payload:
-          opportunityId: "command.targetId"
-        condition: "command.payload.leadId != null"
+          opportunityId: 'command.targetId'
+        condition: 'command.payload.leadId != null'
   - name: progressStage
     match:
       operationId: progressOpportunity
@@ -69,24 +69,24 @@ reducers:
     patches:
       - op: replace
         path: /id
-        value: "${event.payload.id}"
+        value: '${event.payload.id}'
       - op: replace
         path: /leadId
-        value: "${event.payload.leadId}"
+        value: '${event.payload.leadId}'
       - op: replace
         path: /value
-        value: "${event.payload.value}"
+        value: '${event.payload.value}'
       - op: replace
         path: /stage
-        value: "${event.payload.stage}"
+        value: '${event.payload.stage}'
       - op: replace
         path: /createdAt
-        value: "${event.payload.createdAt}"
+        value: '${event.payload.createdAt}'
   - on: OpportunityProgressed
     patches:
       - op: replace
         path: /stage
-        value: "${event.payload.stage}"
+        value: '${event.payload.stage}'
   - on: OpportunityWon
     patches:
       - op: replace
@@ -99,5 +99,5 @@ reducers:
         value: "${'lost'}"
       - op: replace
         path: /lostReason
-        value: "${event.payload.reason}"
+        value: '${event.payload.reason}'
 initialization: []

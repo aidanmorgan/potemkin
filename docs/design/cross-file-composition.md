@@ -1,6 +1,6 @@
 # Design spec: cross-file boundary composition
 
-Status: C1–C8 shipped; C9 (regression/migration) in progress.
+Status: C1–C9 shipped and verified.
 Related: [`multi-boundary-reactions.md`](multi-boundary-reactions.md) (reactions are one of the
 reference kinds the linker rewrites).
 
@@ -16,8 +16,9 @@ test from reusable building blocks.
 ## Goal
 
 Let a developer define an entity (events, reducers, behaviours) once in a component file and map it
-into a simulation from a different file, any number of times, with named parameters. Backward
-valid: boundary files with `contract_path` remain valid definitions by default.
+into a simulation from a different file, any number of times, with named parameters. Boundary
+files with `contract_path` are the canonical concrete-boundary input; reusable component
+definitions use the explicit component/use linking form.
 
 Design decisions (confirmed): inert components activated by an explicit `use:`; both whole-boundary
 instantiation and fragment/mixin inclusion; named parameters with types/defaults; beads interleaved
@@ -43,16 +44,16 @@ parameters:
     required: true
   statusField:
     type: string
-    default: "status"
+    default: 'status'
 event_catalog:
   - type: DocumentArchived
     payload_template:
-      archivedAt: "$now()"
+      archivedAt: '$now()'
 reducers:
   - on: DocumentArchived
     patches:
       - op: replace
-        path: "/{{statusField}}" # parameter substitution (link-time)
+        path: '/{{statusField}}' # parameter substitution (link-time)
         value: "${'ARCHIVED'}" # CEL, untouched by the linker
 ```
 
@@ -66,12 +67,12 @@ use:
     as: Document
     contract_path: /documents
     with:
-      initialStatus: "DRAFT"
+      initialStatus: 'DRAFT'
   - component: DocumentEntity
     as: ArchivedDocument
     contract_path: /archived-documents
     with:
-      initialStatus: "ARCHIVED"
+      initialStatus: 'ARCHIVED'
     bind: {} # map component-local sibling refs -> concrete names
 ```
 
@@ -90,7 +91,7 @@ contract_path: /documents
 include:
   - component: AuditMixin
     with:
-      actorField: "modifiedBy"
+      actorField: 'modifiedBy'
 event_catalog:
   # ...local entries...
 reducers:

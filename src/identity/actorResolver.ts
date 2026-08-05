@@ -7,10 +7,10 @@
 //  - auth.mode === 'simple' | 'session' | undefined → the simple
 //    `Bearer <id>:<scopes>` simulation shortcut is parsed by extractActor.
 
-import type { Actor } from "../types.js";
-import { extractActor } from "./actorExtractor.js";
-import { validateJwt, JwtValidationError } from "./jwtValidator.js";
-import type { RuntimeAuth, RuntimeAuthenticationPort, RuntimeRequest } from "../model/runtime.js";
+import type { Actor } from '../contracts/identity.js';
+import { extractActor } from './actorExtractor.js';
+import { validateJwt, JwtValidationError } from './jwtValidator.js';
+import type { RuntimeAuth, RuntimeAuthenticationPort, RuntimeRequest } from '../model/runtime.js';
 
 export { JwtValidationError };
 
@@ -30,13 +30,13 @@ function extractBearerToken(header: string | undefined): string | null {
  */
 export function resolveActor(
   authHeader: string | undefined,
-  auth: Readonly<Pick<RuntimeAuth, "mode" | "jwt">> | undefined,
+  auth: Readonly<Pick<RuntimeAuth, 'mode' | 'jwt'>> | undefined,
 ): Actor | null {
-  if (auth?.mode === "jwt") {
+  if (auth?.mode === 'jwt') {
     if (!auth.jwt) {
       throw new JwtValidationError(
         'auth.mode is "jwt" but no auth.jwt configuration is present',
-        "JWT_MALFORMED",
+        'JWT_MALFORMED',
       );
     }
     const token = extractBearerToken(authHeader);
@@ -55,8 +55,8 @@ export function createRuntimeAuthenticationPort(): RuntimeAuthenticationPort {
         request.headers.authorization ?? request.headers.Authorization,
         policy,
       );
-      if (actor === null && policy.mode === "jwt") {
-        throw new JwtValidationError("Authorization header is required in JWT mode", "JWT_MISSING");
+      if (actor === null && policy.mode === 'jwt') {
+        throw new JwtValidationError('Authorization header is required in JWT mode', 'JWT_MISSING');
       }
       return actor ?? undefined;
     },

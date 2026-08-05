@@ -1,7 +1,10 @@
 node_modules
 node_modules/
 dist/
+gen-src/
+.potemkin/
 coverage/
+.artifacts/
 .env
 *.log
 .DS_Store

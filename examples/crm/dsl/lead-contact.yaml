@@ -6,7 +6,7 @@ audit_fields: true
 event_catalog:
   - type: LeadContacted
     payload_template:
-      lastContactedAt: "$now()"
+      lastContactedAt: '$now()'
 
 behaviors:
   # match.requires with error_code/error_message
@@ -20,16 +20,16 @@ behaviors:
     match:
       operationId: contactLead
       method: POST
-      condition: "true"
+      condition: 'true'
       requires:
         - name: not-dnc
           condition: "state.status != 'DNC'"
           error_code: LEAD_IS_DNC
-          error_message: "Cannot contact a lead that has been marked Do Not Call"
+          error_message: 'Cannot contact a lead that has been marked Do Not Call'
         - name: not-converted
           condition: "state.status != 'CONVERTED'"
           error_code: LEAD_ALREADY_CONVERTED
-          error_message: "Cannot contact a lead that has already been converted"
+          error_message: 'Cannot contact a lead that has already been converted'
     emit_when:
       - when: "state.status == 'NEW' || state.status == 'CONTACTED'"
         emit: LeadContacted
@@ -44,6 +44,6 @@ reducers:
         value: "${'CONTACTED'}"
       - op: replace
         path: /lastContactedAt
-        value: "${event.payload.lastContactedAt}"
+        value: '${event.payload.lastContactedAt}'
 
 initialization: []

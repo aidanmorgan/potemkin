@@ -1,11 +1,14 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
-import { glob } from "tinyglobby";
+import { glob } from 'tinyglobby';
 
-import type { ScanEntry } from "../config.js";
-import { errorMessage, TypeScriptAuthoringError } from "../authoring/errors.js";
-import { hasPotemkinConfigureDecorator } from "./typescriptFactorySyntax.js";
+import type { ScanEntry } from '../contracts/config.js';
+import { errorMessage, TypeScriptAuthoringError } from '../authoring/errors.js';
+import {
+  hasPotemkinConfigureDecorator,
+  hasRemovedReducerScannerSyntax,
+} from './typescriptFactorySyntax.js';
 
 /** Filesystem/glob effects used by TypeScript discovery. */
 export interface TypeScriptDiscoveryDependencies {
@@ -14,7 +17,7 @@ export interface TypeScriptDiscoveryDependencies {
     cwd: string,
     ignore: readonly string[] | undefined,
   ) => Promise<readonly string[]>;
-  readonly readFile: (file: string, encoding: "utf8") => string;
+  readonly readFile: (file: string, encoding: 'utf8') => string;
 }
 
 /** Default production discovery ports; tests and hosts may inject all effects. */
@@ -44,7 +47,7 @@ export async function resolveTypeScriptScanFiles(
       matches = [...(await dependencies.resolveGlob(entry.include, cwd, entry.exclude))];
     } catch (error) {
       throw new TypeScriptAuthoringError(
-        "TS_CONFIGURATION_INVALID",
+        'TS_CONFIGURATION_INVALID',
         `Cannot resolve TypeScript discovery globs from ${cwd}: ${errorMessage(error)}`,
         {
           details: {
@@ -68,10 +71,24 @@ export function isDecoratedTypeScriptModule(
   dependencies: TypeScriptDiscoveryDependencies = createDefaultTypeScriptDiscoveryDependencies(),
 ): boolean {
   try {
-    return hasPotemkinConfigureDecorator(dependencies.readFile(file, "utf8"), file);
+    const source = dependencies.readFile(file, 'utf8');
+    if (hasRemovedReducerScannerSyntax(source, file)) {
+      throw new TypeScriptAuthoringError(
+        'TS_LEGACY_REDUCER_SCANNER',
+        `Independent TypeScript reducer scanning was removed from ${file}; declare the reducer with reducerRule(...).build() and attach it to a canonical boundary/resource factory.`,
+        {
+          source: file,
+          details: {
+            replacement: 'reducerRule(eventType(...)).apply(...).build()',
+          },
+        },
+      );
+    }
+    return hasPotemkinConfigureDecorator(source, file);
   } catch (error) {
+    if (error instanceof TypeScriptAuthoringError) throw error;
     throw new TypeScriptAuthoringError(
-      "TS_SOURCE_READ",
+      'TS_SOURCE_READ',
       `Cannot inspect TypeScript authoring file ${file}: ${errorMessage(error)}`,
       { details: { path: file }, source: file, cause: error },
     );

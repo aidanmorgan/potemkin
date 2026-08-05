@@ -5,15 +5,15 @@ fallback_override: false
 event_catalog:
   - type: AgentStatusChanged
     payload_template:
-      newStatus: "command.payload.currentStatus"
-      changedAt: "$now()"
+      newStatus: 'command.payload.currentStatus'
+      changedAt: '$now()'
 
 behaviors:
   # emit_when with 2 branches based on new status
   - name: updateAgentStatus
     match:
       operationId: updateAgentStatus
-      condition: "true"
+      condition: 'true'
     emit_when:
       - when: "command.payload.currentStatus == 'AVAILABLE' || command.payload.currentStatus == 'BREAK' || command.payload.currentStatus == 'OFFLINE'"
         emit: AgentStatusChanged
@@ -25,9 +25,9 @@ reducers:
     patches:
       - op: replace
         path: /currentStatus
-        value: "${event.payload.newStatus}"
+        value: '${event.payload.newStatus}'
       - op: replace
         path: /lastActiveAt
-        value: "${event.payload.changedAt}"
+        value: '${event.payload.changedAt}'
 
 initialization: []

@@ -39,47 +39,47 @@ parameters:
 
 identity:
   creation:
-    generate: "$uuidv7()"
+    generate: '$uuidv7()'
 
 include:
   - component: AuditMixin
     with:
-      actorField: "lastActor"
+      actorField: 'lastActor'
 
 event_catalog:
   - type: DocumentCreated
     payload_template:
-      id: "command.targetId"
+      id: 'command.targetId'
       status: "'{{initialStatus}}'"
-      title: "command.payload.title"
+      title: 'command.payload.title'
 
   - type: DocumentUpdated
     payload_template:
-      id: "command.targetId"
+      id: 'command.targetId'
       status: "'UPDATED'"
-      title: "command.payload.title"
+      title: 'command.payload.title'
 
   - type: AuditLogged
     payload_template:
-      actor: "command.payload.actor"
+      actor: 'command.payload.actor'
 
 behaviors:
   - name: create-document
     match:
-      operationId: "{{createOp}}"
-      condition: "true"
+      operationId: '{{createOp}}'
+      condition: 'true'
     emit: DocumentCreated
 
   - name: update-document
     match:
-      operationId: "{{updateOp}}"
-      condition: "true"
+      operationId: '{{updateOp}}'
+      condition: 'true'
     emit: DocumentUpdated
 
   - name: log-audit
     match:
-      operationId: "{{auditOp}}"
-      condition: "true"
+      operationId: '{{auditOp}}'
+      condition: 'true'
     emit: AuditLogged
 
 reducers:
@@ -87,22 +87,22 @@ reducers:
     patches:
       - op: add
         path: /id
-        value: "${event.payload.id}"
+        value: '${event.payload.id}'
       - op: add
         path: /status
-        value: "${event.payload.status}"
+        value: '${event.payload.status}'
       - op: add
         path: /title
-        value: "${event.payload.title}"
+        value: '${event.payload.title}'
 
   - on: DocumentUpdated
     patches:
       - op: replace
         path: /status
-        value: "${event.payload.status}"
+        value: '${event.payload.status}'
       - op: replace
         path: /title
-        value: "${event.payload.title}"
+        value: '${event.payload.title}'
 
 # Cross-instance reaction (C5 define-once / map-many property):
 #   "DocumentEntity:DocumentCreated" is a self-trigger: the "DocumentEntity"
@@ -113,7 +113,7 @@ reducers:
 
 reactions:
   - name: notify-on-document-created
-    on: "DocumentEntity:DocumentCreated"
+    on: 'DocumentEntity:DocumentCreated'
     boundary: Notifier
     intent: creation
     emit: NotificationCreated

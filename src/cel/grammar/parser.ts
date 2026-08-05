@@ -9,14 +9,14 @@
  * Parse errors carry 1-based line/column positions (see {@link ParseError}).
  */
 
-import { lex, LexError, type Token, type Position } from "./lexer.js";
-import { TABLES } from "./tables.generated.js";
+import { lex, LexError, type Token, type Position } from './lexer.js';
+import { TABLES } from './tables.generated.js';
 import {
   RECEIVER_METHODS,
   COMPREHENSION_METHODS,
   type Expr,
   type ComprehensionKind,
-} from "./ast.js";
+} from './ast.js';
 
 /** Parse error carrying a source position (1-based line/col). */
 export class ParseError extends Error {
@@ -25,7 +25,7 @@ export class ParseError extends Error {
     readonly pos: Position,
   ) {
     super(message);
-    this.name = "ParseError";
+    this.name = 'ParseError';
   }
 }
 
@@ -64,45 +64,45 @@ const ACTIONS: Record<number, Action> = {
   1: (r) => r[0]!,
   // 2: Cond → Or ? Expr : Expr
   // oxlint-disable-next-line unicorn/no-thenable -- CEL AST preserves the grammar's `then` field name.
-  2: (r) => ({ kind: "ternary", cond: r[0] as Expr, ["then"]: r[2] as Expr, else: r[4] as Expr }),
+  2: (r) => ({ kind: 'ternary', cond: r[0] as Expr, ['then']: r[2] as Expr, else: r[4] as Expr }),
 
   // 3: Or → Or || Or
-  3: (r) => ({ kind: "binary", op: "||", left: r[0] as Expr, right: r[2] as Expr }),
+  3: (r) => ({ kind: 'binary', op: '||', left: r[0] as Expr, right: r[2] as Expr }),
   // 4: Or → And
   4: (r) => r[0]!,
   // 5: And → And && And
-  5: (r) => ({ kind: "binary", op: "&&", left: r[0] as Expr, right: r[2] as Expr }),
+  5: (r) => ({ kind: 'binary', op: '&&', left: r[0] as Expr, right: r[2] as Expr }),
   // 6: And → Rel
   6: (r) => r[0]!,
 
   // 7..13: Rel → Rel <op> Rel
-  7: (r) => ({ kind: "binary", op: "==", left: r[0] as Expr, right: r[2] as Expr }),
-  8: (r) => ({ kind: "binary", op: "!=", left: r[0] as Expr, right: r[2] as Expr }),
-  9: (r) => ({ kind: "binary", op: "<", left: r[0] as Expr, right: r[2] as Expr }),
-  10: (r) => ({ kind: "binary", op: "<=", left: r[0] as Expr, right: r[2] as Expr }),
-  11: (r) => ({ kind: "binary", op: ">", left: r[0] as Expr, right: r[2] as Expr }),
-  12: (r) => ({ kind: "binary", op: ">=", left: r[0] as Expr, right: r[2] as Expr }),
-  13: (r) => ({ kind: "binary", op: "in", left: r[0] as Expr, right: r[2] as Expr }),
+  7: (r) => ({ kind: 'binary', op: '==', left: r[0] as Expr, right: r[2] as Expr }),
+  8: (r) => ({ kind: 'binary', op: '!=', left: r[0] as Expr, right: r[2] as Expr }),
+  9: (r) => ({ kind: 'binary', op: '<', left: r[0] as Expr, right: r[2] as Expr }),
+  10: (r) => ({ kind: 'binary', op: '<=', left: r[0] as Expr, right: r[2] as Expr }),
+  11: (r) => ({ kind: 'binary', op: '>', left: r[0] as Expr, right: r[2] as Expr }),
+  12: (r) => ({ kind: 'binary', op: '>=', left: r[0] as Expr, right: r[2] as Expr }),
+  13: (r) => ({ kind: 'binary', op: 'in', left: r[0] as Expr, right: r[2] as Expr }),
   // 14: Rel → Add
   14: (r) => r[0]!,
 
   // 15,16: Add → Add +|- Add
-  15: (r) => ({ kind: "binary", op: "+", left: r[0] as Expr, right: r[2] as Expr }),
-  16: (r) => ({ kind: "binary", op: "-", left: r[0] as Expr, right: r[2] as Expr }),
+  15: (r) => ({ kind: 'binary', op: '+', left: r[0] as Expr, right: r[2] as Expr }),
+  16: (r) => ({ kind: 'binary', op: '-', left: r[0] as Expr, right: r[2] as Expr }),
   // 17: Add → Mul
   17: (r) => r[0]!,
 
   // 18,19,20: Mul → Mul *|/|% Mul
-  18: (r) => ({ kind: "binary", op: "*", left: r[0] as Expr, right: r[2] as Expr }),
-  19: (r) => ({ kind: "binary", op: "/", left: r[0] as Expr, right: r[2] as Expr }),
-  20: (r) => ({ kind: "binary", op: "%", left: r[0] as Expr, right: r[2] as Expr }),
+  18: (r) => ({ kind: 'binary', op: '*', left: r[0] as Expr, right: r[2] as Expr }),
+  19: (r) => ({ kind: 'binary', op: '/', left: r[0] as Expr, right: r[2] as Expr }),
+  20: (r) => ({ kind: 'binary', op: '%', left: r[0] as Expr, right: r[2] as Expr }),
   // 21: Mul → Unary
   21: (r) => r[0]!,
 
   // 22: Unary → ! Unary
-  22: (r) => ({ kind: "unary", op: "!", operand: r[1] as Expr }),
+  22: (r) => ({ kind: 'unary', op: '!', operand: r[1] as Expr }),
   // 23: Unary → - Unary
-  23: (r) => ({ kind: "unary", op: "-", operand: r[1] as Expr }),
+  23: (r) => ({ kind: 'unary', op: '-', operand: r[1] as Expr }),
   // 24: Unary → Postfix
   24: (r) => r[0]!,
 
@@ -110,42 +110,42 @@ const ACTIONS: Record<number, Action> = {
   25: (r) => r[0]!,
   // 26: Postfix → Postfix . IDENT          (member)
   26: (r) => ({
-    kind: "member",
+    kind: 'member',
     obj: r[0] as Expr,
-    key: { kind: "literal", value: String(tokVal(r[2]!)) },
+    key: { kind: 'literal', value: String(tokVal(r[2]!)) },
   }),
   // 27: Postfix → Postfix . IDENT ( Args )  (method / comprehension)
   27: (r) =>
     buildCall(r[0] as Expr, String(tokVal(r[2]!)), r[4] as ExprList, false, (r[2] as Token).pos),
   // 28: Postfix → Postfix ?. IDENT          (null-safe member)
   28: (r) => ({
-    kind: "nullSafeMember",
+    kind: 'nullSafeMember',
     obj: r[0] as Expr,
-    key: { kind: "literal", value: String(tokVal(r[2]!)) },
+    key: { kind: 'literal', value: String(tokVal(r[2]!)) },
   }),
   // 29: Postfix → Postfix ?. IDENT ( Args )  (null-safe method/comprehension)
   29: (r) =>
     buildCall(r[0] as Expr, String(tokVal(r[2]!)), r[4] as ExprList, true, (r[2] as Token).pos),
   // 30: Postfix → Postfix [ Expr ]          (index)
-  30: (r) => ({ kind: "member", obj: r[0] as Expr, key: r[2] as Expr }),
+  30: (r) => ({ kind: 'member', obj: r[0] as Expr, key: r[2] as Expr }),
   // 31: Postfix → Postfix ?[ Expr ]         (null-safe index)
-  31: (r) => ({ kind: "nullSafeMember", obj: r[0] as Expr, key: r[2] as Expr }),
+  31: (r) => ({ kind: 'nullSafeMember', obj: r[0] as Expr, key: r[2] as Expr }),
 
   // 32..35: literals
-  32: (r) => ({ kind: "literal", value: tokVal(r[0]!) as number }),
-  33: (r) => ({ kind: "literal", value: tokVal(r[0]!) as string }),
-  34: (r) => ({ kind: "literal", value: tokVal(r[0]!) as boolean }),
-  35: () => ({ kind: "literal", value: null }),
+  32: (r) => ({ kind: 'literal', value: tokVal(r[0]!) as number }),
+  33: (r) => ({ kind: 'literal', value: tokVal(r[0]!) as string }),
+  34: (r) => ({ kind: 'literal', value: tokVal(r[0]!) as boolean }),
+  35: () => ({ kind: 'literal', value: null }),
   // 36: Primary → IDENT
-  36: (r) => ({ kind: "ident", name: String(tokVal(r[0]!)) }),
+  36: (r) => ({ kind: 'ident', name: String(tokVal(r[0]!)) }),
   // 37: Primary → IDENT ( Args )            (function call)
-  37: (r) => ({ kind: "call", fn: String(tokVal(r[0]!)), args: r[2] as ExprList }),
+  37: (r) => ({ kind: 'call', fn: String(tokVal(r[0]!)), args: r[2] as ExprList }),
   // 38: Primary → ( Expr )
   38: (r) => r[1]!,
   // 39: Primary → [ Elems ]
-  39: (r) => ({ kind: "array", elements: r[1] as ExprList }),
+  39: (r) => ({ kind: 'array', elements: r[1] as ExprList }),
   // 40: Primary → { Entries }
-  40: (r) => ({ kind: "object", entries: r[1] as EntryList }),
+  40: (r) => ({ kind: 'object', entries: r[1] as EntryList }),
 
   // 41,42,43: Args
   41: () => [],
@@ -192,11 +192,11 @@ function buildCall(
       throw new ParseError(`CEL_PARSE: comprehension expects identifier as first argument`, pos);
     }
     const varExpr = args[0]!;
-    if (varExpr.kind !== "ident") {
+    if (varExpr.kind !== 'ident') {
       throw new ParseError(`CEL_PARSE: comprehension expects identifier as first argument`, pos);
     }
     return {
-      kind: "comprehension",
+      kind: 'comprehension',
       kind2: name as ComprehensionKind,
       receiver,
       varName: varExpr.name,
@@ -206,8 +206,8 @@ function buildCall(
   }
   if (RECEIVER_METHODS.has(name)) {
     return nullSafe
-      ? { kind: "nullSafeMethod", receiver, method: name, args }
-      : { kind: "method", receiver, method: name, args };
+      ? { kind: 'nullSafeMethod', receiver, method: name, args }
+      : { kind: 'method', receiver, method: name, args };
   }
   throw new ParseError(`CEL_PARSE: unknown method '${name}' in call`, pos);
 }
@@ -238,20 +238,20 @@ export function parse(src: string): Expr {
     if (!act) {
       throw new ParseError(
         `CEL_PARSE: unexpected token '${tok.type}'` +
-          (tok.type === "$end" ? " (end of input)" : "") +
+          (tok.type === '$end' ? ' (end of input)' : '') +
           ` at line ${tok.pos.line}, column ${tok.pos.col}`,
         tok.pos,
       );
     }
 
-    if (act.type === "shift") {
+    if (act.type === 'shift') {
       stateStack.push(act.state);
       valueStack.push(tok);
       tp++;
       continue;
     }
 
-    if (act.type === "reduce") {
+    if (act.type === 'reduce') {
       const prod = TABLES.productions[act.production]!;
       const n = prod.length;
       const rhs = n > 0 ? valueStack.splice(valueStack.length - n, n) : [];

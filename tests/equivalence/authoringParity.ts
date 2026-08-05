@@ -1,4 +1,4 @@
-import type { JsonValue } from "../../src/types.js";
+import type { JsonValue } from '../../src/contracts/value.js';
 
 /** A request in a deterministic runtime equivalence trace. */
 export interface AuthoringParityRequest {
@@ -84,18 +84,18 @@ function stableJson(value: unknown): string {
 
 function sortValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sortValue);
-  if (value === null || typeof value !== "object") return value;
+  if (value === null || typeof value !== 'object') return value;
   const record = value as Record<string, unknown>;
   const sorted: Record<string, unknown> = {};
   for (const key of Object.keys(record).sort()) {
     const child = record[key];
-    if (child === undefined || typeof child === "function") continue;
+    if (child === undefined || typeof child === 'function') continue;
     sorted[key] = sortValue(child);
   }
   return sorted;
 }
 
-function differencePaths(left: unknown, right: unknown, path = "$"): string[] {
+function differencePaths(left: unknown, right: unknown, path = '$'): string[] {
   if (Object.is(left, right)) return [];
   if (Array.isArray(left) && Array.isArray(right)) {
     const differences: string[] = [];
@@ -104,7 +104,7 @@ function differencePaths(left: unknown, right: unknown, path = "$"): string[] {
     }
     return differences.length > 0 ? differences : [path];
   }
-  if (left !== null && right !== null && typeof left === "object" && typeof right === "object") {
+  if (left !== null && right !== null && typeof left === 'object' && typeof right === 'object') {
     const keys = new Set([
       ...Object.keys(left as Record<string, unknown>),
       ...Object.keys(right as Record<string, unknown>),

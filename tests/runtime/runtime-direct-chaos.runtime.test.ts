@@ -7,24 +7,20 @@ import {
   operationId,
   pathSegment,
   projectionName,
-} from "../../src/authoring/references.js";
-import http from "node:http";
-import request from "supertest";
-import { loadOpenApi } from "../../src/contract/loader.js";
-import { createRuntimeGateway } from "../../src/http/runtimeGateway.js";
-import { MAX_RUNTIME_DELAY_MS } from "../../src/model/runtime.js";
-import { bootRuntime, type RuntimeSystem } from "../../src/runtime/system.js";
-import { createDefaultRuntimeHost } from "../../src/runtime/host.js";
-import { bootYamlRuntime } from "../../src/parser/runtime.js";
-import {
-  boundary,
-  compileProgram,
-  defineGlobal,
-  event,
-  simulation,
-} from "../../src/authoring/runtimeModel.js";
-import { reducerRule } from "../../src/authoring/nativeReducer.js";
-import type { EventContext, RuntimeTransportObservation } from "../../src/model/runtime.js";
+} from '../../src/domain/references.js';
+import http from 'node:http';
+import request from 'supertest';
+import { loadOpenApi } from '../../src/contract/loader.js';
+import { createRuntimeGateway } from '../../src/http/runtimeGateway.js';
+import { MAX_RUNTIME_DELAY_MS } from '../../src/model/runtime.js';
+import { bootRuntime, type RuntimeSystem } from '../../src/runtime/system.js';
+import { createDefaultRuntimeHost } from '../../src/runtime/host.js';
+import { bootYamlRuntime } from '../../src/parser/runtime.js';
+import { boundary, defineGlobal, event, simulation } from '../../src/authoring/builders.js';
+import { compileProgram } from '../../src/authoring/compiler.js';
+import { reducerRule } from '../../src/authoring/nativeReducer.js';
+import type { EventContext } from '../../src/model/runtime.js';
+import type { RuntimeTransportObservation } from '../../src/contracts/ports.js';
 
 const OPENAPI = `
 openapi: "3.0.3"
@@ -92,21 +88,21 @@ derived_projections:
 function directDefinition() {
   return simulation()
     .boundary(
-      boundary(boundaryName("Item"), contractPath(pathSegment("items")))
+      boundary(boundaryName('Item'), contractPath(pathSegment('items')))
         .identity({ generate: ({ command }) => String(command.payload.id) })
         .eventCatalog(
-          event(eventType("ItemCreated"), {
+          event(eventType('ItemCreated'), {
             id: ({ payload }: EventContext) => String(payload.id),
           }),
         )
         .behavior({
-          name: behaviorName("create-item"),
-          operationId: operationId("createItem"),
+          name: behaviorName('create-item'),
+          operationId: operationId('createItem'),
           condition: () => true,
-          emit: eventType("ItemCreated"),
+          emit: eventType('ItemCreated'),
         })
         .reducer(
-          reducerRule(eventType("ItemCreated"))
+          reducerRule(eventType('ItemCreated'))
             .apply(({ state, event: emitted }) => ({ ...state, id: emitted.payload.id }))
             .build(),
         )
@@ -117,11 +113,11 @@ function directDefinition() {
         idempotency: { enabled: true, ttlSeconds: 60, hashIncludesBody: true },
         derivedProjections: [
           {
-            name: projectionName("ItemSummary"),
-            key: ({ event: emitted }) => emitted?.aggregateId ?? "",
-            subscribe: [eventReference(boundaryName("Item"), eventType("ItemCreated"))],
+            name: projectionName('ItemSummary'),
+            key: ({ event: emitted }) => emitted?.aggregateId ?? '',
+            subscribe: [eventReference(boundaryName('Item'), eventType('ItemCreated'))],
             reduce: [
-              reducerRule(eventType("ItemCreated"))
+              reducerRule(eventType('ItemCreated'))
                 .apply(({ state, event: emitted }) => ({
                   ...state,
                   id: String(emitted.payload.id),
@@ -156,7 +152,7 @@ async function bootPair(): Promise<[RuntimeSystem, RuntimeSystem]> {
       host: createDefaultRuntimeHost(),
       openapi,
       yamlProgram: {
-        modules: [{ name: "item.yaml", yaml: YAML }],
+        modules: [{ name: 'item.yaml', yaml: YAML }],
         globalYaml: YAML_GLOBAL,
       },
       observability: {
@@ -186,8 +182,8 @@ async function bootPair(): Promise<[RuntimeSystem, RuntimeSystem]> {
 async function listen(app: ReturnType<typeof createRuntimeGateway>): Promise<http.Server> {
   const server = http.createServer(app);
   await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => resolve());
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => resolve());
   });
   server.unref();
   return server;
@@ -210,35 +206,35 @@ async function requestWithDroppedConnection(
   options: Readonly<{ id?: string; headers?: Readonly<Record<string, string>> }> = {},
 ): Promise<NodeJS.ErrnoException | undefined> {
   const address = server.address();
-  if (address === null || typeof address === "string")
-    throw new Error("Expected a TCP listener address");
-  const body = JSON.stringify({ id: options.id ?? "dropped" });
+  if (address === null || typeof address === 'string')
+    throw new Error('Expected a TCP listener address');
+  const body = JSON.stringify({ id: options.id ?? 'dropped' });
   return new Promise((resolve, reject) => {
     const client = http.request(
       {
-        hostname: "127.0.0.1",
+        hostname: '127.0.0.1',
         port: address.port,
-        path: "/items",
-        method: "POST",
+        path: '/items',
+        method: 'POST',
         headers: {
-          "content-type": "application/json",
-          "content-length": Buffer.byteLength(body),
-          "x-potemkin-drop-connection": String(delayMs),
-          "x-potemkin-trace-id": traceId,
+          'content-type': 'application/json',
+          'content-length': Buffer.byteLength(body),
+          'x-potemkin-drop-connection': String(delayMs),
+          'x-potemkin-trace-id': traceId,
           ...options.headers,
         },
       },
       (response) => {
         response.resume();
-        response.once("end", () =>
+        response.once('end', () =>
           reject(
             new Error(`Expected a dropped connection, received HTTP ${response.statusCode ?? 0}`),
           ),
         );
       },
     );
-    client.once("error", (error: NodeJS.ErrnoException) => resolve(error));
-    client.once("timeout", () => reject(new Error("Timed out waiting for dropped connection")));
+    client.once('error', (error: NodeJS.ErrnoException) => resolve(error));
+    client.once('timeout', () => reject(new Error('Timed out waiting for dropped connection')));
     client.end(body);
   });
 }
@@ -256,7 +252,7 @@ async function waitForObservation(
   throw new Error(`Expected transport observation, received ${values.length}`);
 }
 
-describe("direct TCP chaos parity", () => {
+describe('direct TCP chaos parity', () => {
   let systems: [RuntimeSystem, RuntimeSystem];
 
   beforeEach(async () => {
@@ -269,10 +265,10 @@ describe("direct TCP chaos parity", () => {
   });
 
   it.each([
-    ["YAML", 0],
-    ["TypeScript", 1],
+    ['YAML', 0],
+    ['TypeScript', 1],
   ] as const)(
-    "%s drops the real HTTP connection without committing state",
+    '%s drops the real HTTP connection without committing state',
     async (_name, index) => {
       const system = systems[index]!;
       const server = await listen(createRuntimeGateway(system));
@@ -285,15 +281,15 @@ describe("direct TCP chaos parity", () => {
           (candidate) => candidate.correlation.traceId === traceId,
         );
         expect(observation).toMatchObject({
-          request: { method: "POST", path: "/items" },
+          request: { method: 'POST', path: '/items' },
           response: { connectionClosed: true },
           correlation: { traceId },
         });
         expect(system.engine.snapshot().events).toHaveLength(0);
         await request(createRuntimeGateway(system))
-          .post("/items")
-          .send({ id: "healthy" })
-          .expect(201, { id: "healthy" });
+          .post('/items')
+          .send({ id: 'healthy' })
+          .expect(201, { id: 'healthy' });
         expect(system.engine.snapshot().events).toHaveLength(1);
       } finally {
         await closeServer(server);
@@ -302,10 +298,10 @@ describe("direct TCP chaos parity", () => {
   );
 
   it.each([
-    ["YAML", 0],
-    ["TypeScript", 1],
+    ['YAML', 0],
+    ['TypeScript', 1],
   ] as const)(
-    "%s does not persist idempotency or projection state for a direct connection drop",
+    '%s does not persist idempotency or projection state for a direct connection drop',
     async (_name, index) => {
       const system = systems[index]!;
       const server = await listen(createRuntimeGateway(system));
@@ -314,25 +310,25 @@ describe("direct TCP chaos parity", () => {
         const droppedId = `dropped-${_name}`;
         const error = await requestWithDroppedConnection(server, `direct-drop-state-${_name}`, 0, {
           id: droppedId,
-          headers: { "idempotency-key": key },
+          headers: { 'idempotency-key': key },
         });
         expect(error?.code).toMatch(/ECONNRESET|EPIPE|ERR_HTTP2_STREAM_CANCEL/);
         expect(system.engine.snapshot().events).toHaveLength(0);
         expect(system.engine.snapshot().projections.ItemSummary).toBeUndefined();
 
         const committed = await request(createRuntimeGateway(system))
-          .post("/items")
-          .set("idempotency-key", key)
+          .post('/items')
+          .set('idempotency-key', key)
           .send({ id: droppedId })
           .expect(201, { id: droppedId });
-        expect(committed.headers["x-idempotency-replay"]).toBeUndefined();
+        expect(committed.headers['x-idempotency-replay']).toBeUndefined();
 
         const replay = await request(createRuntimeGateway(system))
-          .post("/items")
-          .set("idempotency-key", key)
+          .post('/items')
+          .set('idempotency-key', key)
           .send({ id: droppedId })
           .expect(201, { id: droppedId });
-        expect(replay.headers["x-idempotency-replay"]).toBe("true");
+        expect(replay.headers['x-idempotency-replay']).toBe('true');
         expect(system.engine.snapshot().events).toHaveLength(1);
         expect(system.engine.snapshot().projections.ItemSummary).toEqual([
           [droppedId, { id: droppedId, committed: true }],
@@ -344,10 +340,10 @@ describe("direct TCP chaos parity", () => {
   );
 
   it.each([
-    ["YAML", 0],
-    ["TypeScript", 1],
+    ['YAML', 0],
+    ['TypeScript', 1],
   ] as const)(
-    "%s waits for a positive drop delay, then closes without committing state",
+    '%s waits for a positive drop delay, then closes without committing state',
     async (_name, index) => {
       const system = systems[index]!;
       const server = await listen(createRuntimeGateway(system));
@@ -370,10 +366,10 @@ describe("direct TCP chaos parity", () => {
   );
 
   it.each([
-    ["YAML", 0],
-    ["TypeScript", 1],
+    ['YAML', 0],
+    ['TypeScript', 1],
   ] as const)(
-    "%s accepts the maximum bounded drop delay without committing state",
+    '%s accepts the maximum bounded drop delay without committing state',
     async (_name, index) => {
       const system = systems[index]!;
       const server = await listen(createRuntimeGateway(system));

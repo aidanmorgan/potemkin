@@ -1,7 +1,7 @@
-import { context, ROOT_CONTEXT } from "@opentelemetry/api";
-import type { Attributes, Span, Tracer } from "@opentelemetry/api";
-import type { RuntimeTransportObservation } from "../../../src/model/runtime.js";
-import { createRuntimeOtelRequestResponseObserver } from "../../../src/observability/runtimeExchange.js";
+import { context, ROOT_CONTEXT } from '@opentelemetry/api';
+import type { Attributes, Span, Tracer } from '@opentelemetry/api';
+import type { RuntimeTransportObservation } from '../../../src/contracts/ports.js';
+import { createRuntimeOtelRequestResponseObserver } from '../../../src/observability/runtimeExchange.js';
 
 interface ExportedSpan {
   readonly name: string;
@@ -54,25 +54,25 @@ function observeWithNoActiveSpan(
   context.with(ROOT_CONTEXT, () => observer(observation));
 }
 
-describe("createRuntimeOtelRequestResponseObserver", () => {
-  it("exports the original request and final successful response with bounded redacted bodies", () => {
+describe('createRuntimeOtelRequestResponseObserver', () => {
+  it('exports the original request and final successful response with bounded redacted bodies', () => {
     const exporter = new MockSpanExporter();
     const observer = createRuntimeOtelRequestResponseObserver({
       tracer: createMockTracer(exporter),
-      spanName: "potemkin.test.exchange",
+      spanName: 'potemkin.test.exchange',
     });
     const observation: RuntimeTransportObservation = {
       request: {
-        method: "POST",
-        path: "/orders",
-        query: { tenant: "acme", tag: ["priority", "new"] },
+        method: 'POST',
+        path: '/orders',
+        query: { tenant: 'acme', tag: ['priority', 'new'] },
         headers: {
-          "content-type": "application/json",
-          authorization: "Bearer [REDACTED]",
+          'content-type': 'application/json',
+          authorization: 'Bearer [REDACTED]',
         },
         body: {
           captured: true,
-          value: { customer: "alice", cardNumber: "[REDACTED]" },
+          value: { customer: 'alice', cardNumber: '[REDACTED]' },
           bytes: 52,
           truncated: false,
         },
@@ -80,7 +80,7 @@ describe("createRuntimeOtelRequestResponseObserver", () => {
       response: {
         status: 201,
         headers: {
-          "content-type": "application/json",
+          'content-type': 'application/json',
           etag: '"order-1"',
         },
         body: {
@@ -93,8 +93,8 @@ describe("createRuntimeOtelRequestResponseObserver", () => {
         },
       },
       correlation: {
-        traceId: "trace-success-01",
-        commandId: "command-order-01",
+        traceId: 'trace-success-01',
+        commandId: 'command-order-01',
       },
     };
 
@@ -102,44 +102,44 @@ describe("createRuntimeOtelRequestResponseObserver", () => {
 
     expect(exporter.spans).toHaveLength(1);
     const span = exporter.spans[0]!;
-    expect(span.name).toBe("potemkin.test.exchange");
+    expect(span.name).toBe('potemkin.test.exchange');
     expect(span.attributes).toEqual(
       expect.objectContaining({
-        "potemkin.request.method": "POST",
-        "potemkin.request.path": "/orders",
-        "potemkin.request.query": JSON.stringify(observation.request.query),
-        "potemkin.request.headers": JSON.stringify(observation.request.headers),
-        "potemkin.request.body.captured": true,
-        "potemkin.request.body.bytes": 52,
-        "potemkin.request.body.truncated": false,
-        "potemkin.request.body": JSON.stringify(observation.request.body.value),
-        "potemkin.response.status": 201,
-        "potemkin.response.headers": JSON.stringify(observation.response.headers),
-        "potemkin.response.body.captured": true,
-        "potemkin.response.body.bytes": 58,
-        "potemkin.response.body.truncated": true,
-        "potemkin.response.body": JSON.stringify(observation.response.body.value),
-        "potemkin.trace_id": "trace-success-01",
-        "potemkin.command_id": "command-order-01",
+        'potemkin.request.method': 'POST',
+        'potemkin.request.path': '/orders',
+        'potemkin.request.query': JSON.stringify(observation.request.query),
+        'potemkin.request.headers': JSON.stringify(observation.request.headers),
+        'potemkin.request.body.captured': true,
+        'potemkin.request.body.bytes': 52,
+        'potemkin.request.body.truncated': false,
+        'potemkin.request.body': JSON.stringify(observation.request.body.value),
+        'potemkin.response.status': 201,
+        'potemkin.response.headers': JSON.stringify(observation.response.headers),
+        'potemkin.response.body.captured': true,
+        'potemkin.response.body.bytes': 58,
+        'potemkin.response.body.truncated': true,
+        'potemkin.response.body': JSON.stringify(observation.response.body.value),
+        'potemkin.trace_id': 'trace-success-01',
+        'potemkin.command_id': 'command-order-01',
       }),
     );
-    expect(JSON.stringify(span.attributes)).not.toContain("4111 1111 1111 1111");
+    expect(JSON.stringify(span.attributes)).not.toContain('4111 1111 1111 1111');
   });
 
-  it("exports the final validation failure rather than an intermediate engine result", () => {
+  it('exports the final validation failure rather than an intermediate engine result', () => {
     const exporter = new MockSpanExporter();
     const observer = createRuntimeOtelRequestResponseObserver({
       tracer: createMockTracer(exporter),
     });
     const observation: RuntimeTransportObservation = {
       request: {
-        method: "PATCH",
-        path: "/orders/order-2",
+        method: 'PATCH',
+        path: '/orders/order-2',
         query: {},
-        headers: { "x-request-id": "request-failure-02" },
+        headers: { 'x-request-id': 'request-failure-02' },
         body: {
           captured: true,
-          value: { status: "invalid", secret: "[REDACTED]" },
+          value: { status: 'invalid', secret: '[REDACTED]' },
           bytes: 44,
           truncated: false,
         },
@@ -147,22 +147,22 @@ describe("createRuntimeOtelRequestResponseObserver", () => {
       response: {
         status: 422,
         headers: {
-          "content-type": "application/problem+json",
-          "x-potemkin-error": "validation",
+          'content-type': 'application/problem+json',
+          'x-potemkin-error': 'validation',
         },
         body: {
           captured: true,
           value: {
-            code: "VALIDATION_ERROR",
-            message: "status must be one of pending, accepted, or rejected",
+            code: 'VALIDATION_ERROR',
+            message: 'status must be one of pending, accepted, or rejected',
           },
           bytes: 92,
           truncated: false,
         },
       },
       correlation: {
-        traceId: "trace-failure-02",
-        commandId: "command-order-02",
+        traceId: 'trace-failure-02',
+        commandId: 'command-order-02',
       },
     };
 
@@ -170,30 +170,30 @@ describe("createRuntimeOtelRequestResponseObserver", () => {
 
     expect(exporter.spans).toHaveLength(1);
     const attributes = exporter.spans[0]!.attributes;
-    expect(attributes["potemkin.response.status"]).toBe(422);
-    expect(attributes["potemkin.response.headers"]).toBe(
+    expect(attributes['potemkin.response.status']).toBe(422);
+    expect(attributes['potemkin.response.headers']).toBe(
       JSON.stringify(observation.response.headers),
     );
-    expect(attributes["potemkin.response.body"]).toBe(
+    expect(attributes['potemkin.response.body']).toBe(
       JSON.stringify(observation.response.body.value),
     );
-    expect(attributes["potemkin.response.body.bytes"]).toBe(92);
-    expect(attributes["potemkin.response.body.truncated"]).toBe(false);
-    expect(attributes["potemkin.trace_id"]).toBe("trace-failure-02");
-    expect(attributes["potemkin.command_id"]).toBe("command-order-02");
+    expect(attributes['potemkin.response.body.bytes']).toBe(92);
+    expect(attributes['potemkin.response.body.truncated']).toBe(false);
+    expect(attributes['potemkin.trace_id']).toBe('trace-failure-02');
+    expect(attributes['potemkin.command_id']).toBe('command-order-02');
   });
 
-  it("exports a closed transport with an explicit omitted-body state and correlation", () => {
+  it('exports a closed transport with an explicit omitted-body state and correlation', () => {
     const exporter = new MockSpanExporter();
     const observer = createRuntimeOtelRequestResponseObserver({
       tracer: createMockTracer(exporter),
     });
     const observation: RuntimeTransportObservation = {
       request: {
-        method: "POST",
-        path: "/orders",
+        method: 'POST',
+        path: '/orders',
         query: {},
-        headers: { "x-potemkin-drop-connection": "25" },
+        headers: { 'x-potemkin-drop-connection': '25' },
         body: { captured: false, bytes: 0, truncated: false },
       },
       response: {
@@ -205,8 +205,8 @@ describe("createRuntimeOtelRequestResponseObserver", () => {
         connectionClosed: true,
       },
       correlation: {
-        traceId: "trace-closed-03",
-        commandId: "command-order-03",
+        traceId: 'trace-closed-03',
+        commandId: 'command-order-03',
       },
     };
 
@@ -216,16 +216,16 @@ describe("createRuntimeOtelRequestResponseObserver", () => {
     const attributes = exporter.spans[0]!.attributes;
     expect(attributes).toEqual(
       expect.objectContaining({
-        "potemkin.request.body.captured": false,
-        "potemkin.response.body.captured": false,
-        "potemkin.response.body.bytes": 0,
-        "potemkin.response.body.truncated": false,
-        "potemkin.response.connection_closed": true,
-        "potemkin.trace_id": "trace-closed-03",
-        "potemkin.command_id": "command-order-03",
+        'potemkin.request.body.captured': false,
+        'potemkin.response.body.captured': false,
+        'potemkin.response.body.bytes': 0,
+        'potemkin.response.body.truncated': false,
+        'potemkin.response.connection_closed': true,
+        'potemkin.trace_id': 'trace-closed-03',
+        'potemkin.command_id': 'command-order-03',
       }),
     );
-    expect(attributes).not.toHaveProperty("potemkin.request.body");
-    expect(attributes).not.toHaveProperty("potemkin.response.body");
+    expect(attributes).not.toHaveProperty('potemkin.request.body');
+    expect(attributes).not.toHaveProperty('potemkin.response.body');
   });
 });

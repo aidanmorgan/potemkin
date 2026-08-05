@@ -1,9 +1,10 @@
-import type { DomainEvent, ExecutionResult, JsonObject } from "../types.js";
+import type { DomainEvent, ExecutionResult } from '../contracts/domain.js';
+import type { JsonObject } from '../contracts/value.js';
 import type {
   RuntimeEventStore,
   RuntimeIdempotencyStore,
   RuntimeStateStore,
-} from "../model/runtime.js";
+} from '../contracts/ports.js';
 
 /** Clone at the storage boundary so callers cannot mutate committed state. */
 export function cloneValue<T>(value: T): T {

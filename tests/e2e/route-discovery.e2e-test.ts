@@ -9,13 +9,13 @@
  *    plugin forwarding requests in later tests).
  */
 
-import { startE2eApp } from "./_harness/e2e-test-app";
-import type { E2eApp } from "./_harness/e2e-test-app";
+import { startE2eApp } from './_harness/e2e-test-app';
+import type { E2eApp } from './_harness/e2e-test-app';
 
-const EXPECTED_LEAD_PATH = "/leads";
-const EXPECTED_PATHS = ["/agents", "/calls", "/campaigns", "/leads", "/opportunities"];
+const EXPECTED_LEAD_PATH = '/leads';
+const EXPECTED_PATHS = ['/agents', '/calls', '/campaigns', '/leads', '/opportunities'];
 
-describe("Route discovery: plugin GETs /_engine/routes", () => {
+describe('Route discovery: plugin GETs /_engine/routes', () => {
   let app: E2eApp;
 
   beforeAll(async () => {
@@ -26,12 +26,12 @@ describe("Route discovery: plugin GETs /_engine/routes", () => {
     await app.shutdown();
   }, 30_000);
 
-  it("Node engine /_engine/routes returns 200", async () => {
+  it('Node engine /_engine/routes returns 200', async () => {
     const res = await fetch(`${app.engineUrl}/_engine/routes`);
     expect(res.status).toBe(200);
   }, 60_000);
 
-  it("/_engine/routes response contains CRM base paths", async () => {
+  it('/_engine/routes response contains CRM base paths', async () => {
     const res = await fetch(`${app.engineUrl}/_engine/routes`);
     const body = (await res.json()) as { paths: string[] };
     expect(Array.isArray(body.paths)).toBe(true);
@@ -40,22 +40,22 @@ describe("Route discovery: plugin GETs /_engine/routes", () => {
     }
   }, 60_000);
 
-  it("/_engine/routes response includes /leads path (stateful CRM path)", async () => {
+  it('/_engine/routes response includes /leads path (stateful CRM path)', async () => {
     const res = await fetch(`${app.engineUrl}/_engine/routes`);
     const body = (await res.json()) as { paths: string[] };
     expect(body.paths).toContain(EXPECTED_LEAD_PATH);
   }, 60_000);
 
-  it("/_engine/routes ETag header is non-empty", async () => {
+  it('/_engine/routes ETag header is non-empty', async () => {
     const res = await fetch(`${app.engineUrl}/_engine/routes`);
-    const etag = res.headers.get("etag");
+    const etag = res.headers.get('etag');
     expect(etag).toBeTruthy();
-    expect(typeof etag).toBe("string");
+    expect(typeof etag).toBe('string');
   }, 60_000);
 
-  it("engine reports itself as potemkin-stateful in routes response", async () => {
+  it('engine reports itself as potemkin-stateful in routes response', async () => {
     const res = await fetch(`${app.engineUrl}/_engine/routes`);
     const body = (await res.json()) as { engine: string };
-    expect(body.engine).toBe("potemkin-stateful");
+    expect(body.engine).toBe('potemkin-stateful');
   }, 60_000);
 });

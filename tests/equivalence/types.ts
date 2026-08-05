@@ -1,4 +1,4 @@
-import type { JsonValue } from "../../src/types.js";
+import type { JsonValue } from '../../src/contracts/value.js';
 
 export interface EquivalenceResponse {
   readonly status: number;
@@ -11,7 +11,7 @@ export interface EquivalenceRequest {
   readonly path: string;
   readonly body?: JsonValue;
   /** Select the wire encoding for request bodies that are not JSON. */
-  readonly bodyEncoding?: "json" | "form";
+  readonly bodyEncoding?: 'json' | 'form';
   readonly headers?: Readonly<Record<string, string>>;
   /** Optional stable label used in reports; the request path remains the wire value. */
   readonly operation?: string;
@@ -77,17 +77,17 @@ export interface IdentifierBijectionSnapshot {
 
 export interface EquivalenceDivergence {
   readonly code:
-    | "STATUS_MISMATCH"
-    | "HEADER_MISMATCH"
-    | "BODY_MISMATCH"
-    | "FRAME_VIOLATION"
-    | "SHAPE_MISMATCH"
-    | "IDENTIFIER_CONTRADICTION"
-    | "EVENT_MISMATCH"
-    | "ENDPOINT_FAILURE"
-    | "INCONCLUSIVE"
-    | "LEDGER_STALE"
-    | "ENUMERABLE_NARROWING";
+    | 'STATUS_MISMATCH'
+    | 'HEADER_MISMATCH'
+    | 'BODY_MISMATCH'
+    | 'FRAME_VIOLATION'
+    | 'SHAPE_MISMATCH'
+    | 'IDENTIFIER_CONTRADICTION'
+    | 'EVENT_MISMATCH'
+    | 'ENDPOINT_FAILURE'
+    | 'INCONCLUSIVE'
+    | 'LEDGER_STALE'
+    | 'ENUMERABLE_NARROWING';
   readonly operation: string;
   readonly path: string;
   readonly expected?: JsonValue | string | number;
@@ -104,7 +104,7 @@ export interface EquivalenceComparison {
 export interface DivergenceLedgerEntry {
   readonly operation: string;
   readonly path: string;
-  readonly code?: EquivalenceDivergence["code"];
+  readonly code?: EquivalenceDivergence['code'];
   readonly justification: string;
   readonly citation: string;
   /** Pinned minimal reproducer retained with the field-level ledger entry. */

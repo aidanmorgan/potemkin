@@ -1,12 +1,12 @@
-import type { OpenApiDoc } from "../contract/loader.js";
-import type { PotemkinConfiguration } from "../config.js";
-import type { SimulationBuilder, SimulationDefinition } from "./runtimeModel.js";
-import { TypeScriptAuthoringError } from "./errors.js";
-import { factoryName, type FactoryName } from "./references.js";
+import type { PotemkinConfiguration } from '../contracts/config.js';
+import type { OpenApiDocumentDescriptor } from '../contracts/openapi.js';
+import type { SimulationBuilder, SimulationDefinition } from './types.js';
+import { TypeScriptAuthoringError } from './errors.js';
+import { factoryName, type FactoryName } from '../domain/references.js';
 
 /** Context supplied to a discovered TypeScript engine factory. */
 export interface FactoryContext {
-  readonly openapi: OpenApiDoc;
+  readonly openapi: OpenApiDocumentDescriptor;
   readonly configuration: PotemkinConfiguration;
   /** Every TypeScript file selected by the active scan globs. */
   readonly sourceFiles: readonly string[];
@@ -39,7 +39,7 @@ export class FactoryCollector implements FactoryRegistrar {
     if (this.entries.has(entry.name)) {
       const existing = this.entries.get(entry.name)!;
       throw new TypeScriptAuthoringError(
-        "TS_FACTORY_CONFLICT",
+        'TS_FACTORY_CONFLICT',
         `Factory "${entry.name}" is already registered from ${existing.source}`,
         {
           details: { name: entry.name, existingSource: existing.source, source: entry.source },
@@ -58,9 +58,9 @@ function registerFactory(
   registrar: FactoryRegistrar | undefined,
 ): TypeScriptFactory {
   validateFactoryName(name);
-  if (typeof implementation !== "function") {
+  if (typeof implementation !== 'function') {
     throw new TypeScriptAuthoringError(
-      "TS_FACTORY_INVALID",
+      'TS_FACTORY_INVALID',
       `TypeScript factory "${name}" must be a function`,
       { details: { name }, source },
     );
@@ -74,22 +74,22 @@ function configure(
   registrar: FactoryRegistrar | undefined,
 ): MethodDecorator {
   return (target, propertyKey, descriptor) => {
-    if (typeof target !== "function") {
+    if (typeof target !== 'function') {
       throw new TypeScriptAuthoringError(
-        "TS_DECORATOR_INVALID",
+        'TS_DECORATOR_INVALID',
         `@PotemkinConfigure must decorate a static method; "${String(propertyKey)}" is an instance method`,
         { details: { property: String(propertyKey) } },
       );
     }
     const implementation = descriptor?.value;
-    if (typeof implementation !== "function") {
+    if (typeof implementation !== 'function') {
       throw new TypeScriptAuthoringError(
-        "TS_DECORATOR_INVALID",
+        'TS_DECORATOR_INVALID',
         `@PotemkinConfigure must decorate a callable method: "${String(propertyKey)}"`,
         { details: { property: String(propertyKey) } },
       );
     }
-    const className = target.name || "AnonymousFactory";
+    const className = target.name || 'AnonymousFactory';
     const nameValue = name ?? factoryName(`${className}.${String(propertyKey)}`);
     registerFactory(
       nameValue,
@@ -121,10 +121,10 @@ export function PotemkinConfigure(name?: FactoryName): MethodDecorator {
 }
 
 function validateFactoryName(name: string): void {
-  if (typeof name !== "string" || name.trim() === "") {
+  if (typeof name !== 'string' || name.trim() === '') {
     throw new TypeScriptAuthoringError(
-      "TS_FACTORY_INVALID",
-      "A TypeScript factory requires a non-empty name",
+      'TS_FACTORY_INVALID',
+      'A TypeScript factory requires a non-empty name',
     );
   }
 }

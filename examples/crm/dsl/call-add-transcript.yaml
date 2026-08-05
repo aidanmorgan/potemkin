@@ -12,25 +12,25 @@ fallback_override: false
 event_catalog:
   - type: TranscriptEntryAppended
     payload_template:
-      speaker: "command.payload.speaker"
-      text: "command.payload.text"
-      timestamp: "$now()"
-      sequenceNum: "length(state.transcript) + 1"
+      speaker: 'command.payload.speaker'
+      text: 'command.payload.text'
+      timestamp: '$now()'
+      sequenceNum: 'length(state.transcript) + 1'
 
 behaviors:
   - name: addTranscriptEntry
     match:
       operationId: addTranscriptEntry
-      condition: "true"
+      condition: 'true'
       requires:
         - name: has-speaker
           condition: "command.payload.speaker != null && command.payload.speaker != ''"
           error_code: SPEAKER_REQUIRED
-          error_message: "Transcript entry must have a speaker"
+          error_message: 'Transcript entry must have a speaker'
         - name: has-text
           condition: "command.payload.text != null && command.payload.text != ''"
           error_code: TRANSCRIPT_TEXT_REQUIRED
-          error_message: "Transcript entry must have text"
+          error_message: 'Transcript entry must have text'
     emit: TranscriptEntryAppended
 
 reducers:
@@ -43,6 +43,6 @@ reducers:
       # unchanged).
       - op: append
         path: /transcript
-        value: "${event.payload}"
+        value: '${event.payload}'
 
 initialization: []

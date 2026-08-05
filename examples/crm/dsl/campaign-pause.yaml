@@ -5,7 +5,7 @@ fallback_override: false
 event_catalog:
   - type: CampaignPaused
     payload_template:
-      pausedAt: "$now()"
+      pausedAt: '$now()'
 
 behaviors:
   # emit_when with multiple branches
@@ -14,9 +14,9 @@ behaviors:
       operationId: pauseCampaign
       condition: "state.status == 'ACTIVE'"
     emit_when:
-      - when: "state.actualCalls != null && state.actualCalls > 0"
+      - when: 'state.actualCalls != null && state.actualCalls > 0'
         emit: CampaignPaused
-      - when: "state.actualCalls == null || state.actualCalls == 0"
+      - when: 'state.actualCalls == null || state.actualCalls == 0'
         emit: CampaignPaused
 
 reducers:

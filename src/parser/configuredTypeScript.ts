@@ -1,11 +1,11 @@
-import * as path from "node:path";
+import * as path from 'node:path';
 
-import type { OpenApiDoc } from "../contract/loader.js";
-import type { SimulationDefinition } from "../authoring/runtimeModel.js";
-import { scanTypeScriptFactories } from "./typescriptFactoryScanner.js";
-import { sdk } from "../sdk/index.js";
-import type { LoadedConfig } from "./configLoader.js";
-import { loadTypeScriptConfiguration } from "./typescriptLoader.js";
+import type { OpenApiDoc } from '../contract/loader.js';
+import type { SimulationDefinition } from '../authoring/types.js';
+import { scanTypeScriptFactories } from './typescriptFactoryScanner.js';
+import { sdk } from '../sdk/index.js';
+import type { LoadedConfig } from './configLoader.js';
+import { loadTypeScriptConfiguration } from './typescriptLoader.js';
 
 export interface ConfiguredTypeScriptSources {
   readonly files: readonly string[] | undefined;

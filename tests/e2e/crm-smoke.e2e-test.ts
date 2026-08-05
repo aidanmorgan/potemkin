@@ -7,15 +7,15 @@
  * via admin endpoints.
  */
 
-import { startE2eApp } from "./_harness/e2e-test-app";
-import type { E2eApp } from "./_harness/e2e-test-app";
-import { requestThroughSpecmatic, getGraphNode, getEntityCount } from "./_harness/crm-e2e-helpers";
+import { startE2eApp } from './_harness/e2e-test-app';
+import type { E2eApp } from './_harness/e2e-test-app';
+import { requestThroughSpecmatic, getGraphNode, getEntityCount } from './_harness/crm-e2e-helpers';
 
-const SEEDED_LEAD_NEW = "00000000-0000-7000-8000-000000000010";
-const SEEDED_CAMPAIGN_ACTIVE = "00000000-0000-7000-8000-000000000001";
-const SEEDED_AGENT = "00000000-0000-7000-8000-000000000003";
+const SEEDED_LEAD_NEW = '00000000-0000-7000-8000-000000000010';
+const SEEDED_CAMPAIGN_ACTIVE = '00000000-0000-7000-8000-000000000001';
+const SEEDED_AGENT = '00000000-0000-7000-8000-000000000003';
 
-describe("CRM Smoke (full Specmatic stack)", () => {
+describe('CRM Smoke (full Specmatic stack)', () => {
   let app: E2eApp;
 
   beforeAll(async () => {
@@ -25,76 +25,76 @@ describe("CRM Smoke (full Specmatic stack)", () => {
     await app.shutdown();
   }, 30_000);
 
-  it("POST /leads creates a lead visible in graph", async () => {
-    const res = await requestThroughSpecmatic(app.stubUrl, "POST", "/leads", {
-      companyName: "E2E Smoke Corp",
-      contactName: "Smoke User",
-      phone: "+61 2 9999 0001",
-      email: "smoke@e2e.test",
-      source: "WEBSITE",
+  it('POST /leads creates a lead visible in graph', async () => {
+    const res = await requestThroughSpecmatic(app.stubUrl, 'POST', '/leads', {
+      companyName: 'E2E Smoke Corp',
+      contactName: 'Smoke User',
+      phone: '+61 2 9999 0001',
+      email: 'smoke@e2e.test',
+      source: 'WEBSITE',
     });
     expect([200, 201]).toContain(res.status);
-    const id = (res.body as Record<string, unknown>)["id"] as string;
+    const id = (res.body as Record<string, unknown>)['id'] as string;
 
     const node = await getGraphNode(app.engineUrl, id);
     expect(node).not.toBeNull();
-    expect(node!["companyName"]).toBe("E2E Smoke Corp");
-    expect(node!["status"]).toBe("NEW");
+    expect(node!['companyName']).toBe('E2E Smoke Corp');
+    expect(node!['status']).toBe('NEW');
   }, 60_000);
 
-  it("GET /leads/{seeded-id} returns seeded lead from YAML initialization", async () => {
-    const res = await requestThroughSpecmatic(app.stubUrl, "GET", `/leads/${SEEDED_LEAD_NEW}`);
+  it('GET /leads/{seeded-id} returns seeded lead from YAML initialization', async () => {
+    const res = await requestThroughSpecmatic(app.stubUrl, 'GET', `/leads/${SEEDED_LEAD_NEW}`);
     expect(res.status).toBe(200);
-    expect((res.body as Record<string, unknown>)["companyName"]).toBe("Apex Solutions Ltd");
+    expect((res.body as Record<string, unknown>)['companyName']).toBe('Apex Solutions Ltd');
 
     const node = await getGraphNode(app.engineUrl, SEEDED_LEAD_NEW);
-    expect(node!["source"]).toBe("WEBSITE");
+    expect(node!['source']).toBe('WEBSITE');
   }, 60_000);
 
-  it("GET /leads returns all seeded leads", async () => {
-    const res = await requestThroughSpecmatic(app.stubUrl, "GET", "/leads");
+  it('GET /leads returns all seeded leads', async () => {
+    const res = await requestThroughSpecmatic(app.stubUrl, 'GET', '/leads');
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
     expect((res.body as unknown[]).length).toBeGreaterThanOrEqual(5);
   }, 60_000);
 
-  it("POST /calls creates a call and cascades to lead callIds", async () => {
-    const callRes = await requestThroughSpecmatic(app.stubUrl, "POST", "/calls", {
+  it('POST /calls creates a call and cascades to lead callIds', async () => {
+    const callRes = await requestThroughSpecmatic(app.stubUrl, 'POST', '/calls', {
       leadId: SEEDED_LEAD_NEW,
       agentId: SEEDED_AGENT,
       campaignId: SEEDED_CAMPAIGN_ACTIVE,
-      outcome: "INTERESTED",
+      outcome: 'INTERESTED',
     });
     expect([200, 201]).toContain(callRes.status);
-    const callId = (callRes.body as Record<string, unknown>)["id"] as string;
+    const callId = (callRes.body as Record<string, unknown>)['id'] as string;
 
     const lead = await getGraphNode(app.engineUrl, SEEDED_LEAD_NEW);
-    expect(lead!["callIds"] as string[]).toContain(callId);
+    expect(lead!['callIds'] as string[]).toContain(callId);
   }, 60_000);
 
-  it("GET /campaigns/{seeded-id} returns seeded campaign", async () => {
+  it('GET /campaigns/{seeded-id} returns seeded campaign', async () => {
     const res = await requestThroughSpecmatic(
       app.stubUrl,
-      "GET",
+      'GET',
       `/campaigns/${SEEDED_CAMPAIGN_ACTIVE}`,
     );
     expect(res.status).toBe(200);
-    expect((res.body as Record<string, unknown>)["name"]).toBe("Q1 Website Leads");
+    expect((res.body as Record<string, unknown>)['name']).toBe('Q1 Website Leads');
   }, 60_000);
 
-  it("GET /agents/{seeded-id} returns seeded agent", async () => {
-    const res = await requestThroughSpecmatic(app.stubUrl, "GET", `/agents/${SEEDED_AGENT}`);
+  it('GET /agents/{seeded-id} returns seeded agent', async () => {
+    const res = await requestThroughSpecmatic(app.stubUrl, 'GET', `/agents/${SEEDED_AGENT}`);
     expect(res.status).toBe(200);
-    expect((res.body as Record<string, unknown>)["name"]).toBe("Alice Thompson");
+    expect((res.body as Record<string, unknown>)['name']).toBe('Alice Thompson');
   }, 60_000);
 
-  it("POST /leads/{id}/contact transitions lead to CONTACTED", async () => {
-    await requestThroughSpecmatic(app.stubUrl, "POST", `/leads/${SEEDED_LEAD_NEW}/contact`, {});
+  it('POST /leads/{id}/contact transitions lead to CONTACTED', async () => {
+    await requestThroughSpecmatic(app.stubUrl, 'POST', `/leads/${SEEDED_LEAD_NEW}/contact`, {});
     const node = await getGraphNode(app.engineUrl, SEEDED_LEAD_NEW);
-    expect(node!["status"]).toBe("CONTACTED");
+    expect(node!['status']).toBe('CONTACTED');
   }, 60_000);
 
-  it("graph has expected entity count from YAML initialization", async () => {
+  it('graph has expected entity count from YAML initialization', async () => {
     const count = await getEntityCount(app.engineUrl);
     expect(count).toBeGreaterThanOrEqual(10); // 5 leads + 2 campaigns + 3 agents
   }, 60_000);

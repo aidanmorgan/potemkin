@@ -6,20 +6,21 @@ import {
   scopeName,
   operationId,
   pathSegment,
-} from "../../src/authoring/references.js";
-import type { Response } from "supertest";
-import { loadOpenApi } from "../../src/contract/loader.js";
-import { bootRuntime } from "../../src/runtime/system.js";
-import { createDefaultRuntimeHost } from "../../src/runtime/host.js";
-import type { RuntimeSystem } from "../../src/runtime/system.js";
-import { bootYamlRuntime } from "../../src/parser/runtime.js";
-import { createRuntimeGateway } from "../../src/http/runtimeGateway.js";
-import { createYamlRuntimeExtensions } from "../../src/parser/gateway.js";
-import { boundary, compileProgram, event, simulation } from "../../src/authoring/runtimeModel.js";
-import { reducerRule } from "../../src/authoring/nativeReducer.js";
-import type { EventContext, IdentityContext } from "../../src/model/runtime.js";
-import { withPersistentServer } from "../_support/persistentAgent.js";
-import type { PersistentAgent, PersistentServer } from "../_support/persistentAgent.js";
+} from '../../src/domain/references.js';
+import type { Response } from 'supertest';
+import { loadOpenApi } from '../../src/contract/loader.js';
+import { bootRuntime } from '../../src/runtime/system.js';
+import { createDefaultRuntimeHost } from '../../src/runtime/host.js';
+import type { RuntimeSystem } from '../../src/runtime/system.js';
+import { bootYamlRuntime } from '../../src/parser/runtime.js';
+import { createRuntimeGateway } from '../../src/http/runtimeGateway.js';
+import { createYamlRuntimeExtensions } from '../../src/parser/gateway.js';
+import { compileProgram } from '../../src/authoring/compiler.js';
+import { boundary, event, simulation } from '../../src/authoring/builders.js';
+import { reducerRule } from '../../src/authoring/nativeReducer.js';
+import type { EventContext, IdentityContext } from '../../src/model/runtime.js';
+import { withPersistentServer } from '../_support/persistentAgent.js';
+import type { PersistentAgent, PersistentServer } from '../_support/persistentAgent.js';
 
 const OPENAPI = `
 openapi: "3.0.3"
@@ -104,11 +105,11 @@ auth:
 `;
 
 function directDefinition() {
-  const created = event(eventType("ResourceCreated"), {
+  const created = event(eventType('ResourceCreated'), {
     id: ({ command }: EventContext) => command.payload.id,
     value: ({ command }: EventContext) => command.payload.value,
   });
-  const reducer = reducerRule(eventType("ResourceCreated"))
+  const reducer = reducerRule(eventType('ResourceCreated'))
     .apply(({ state, event: emitted }) => ({
       ...state,
       id: emitted.payload.id,
@@ -117,14 +118,14 @@ function directDefinition() {
     .build();
   return simulation()
     .boundary(
-      boundary(boundaryName("Resource"), contractPath(pathSegment("resources")))
+      boundary(boundaryName('Resource'), contractPath(pathSegment('resources')))
         .identity({ generate: ({ payload }: IdentityContext) => String(payload.id) })
         .eventCatalog(created)
         .behavior({
-          name: behaviorName("create-resource"),
-          operationId: operationId("createResource"),
-          requiredScopes: [scopeName("resource:write")],
-          emit: eventType("ResourceCreated"),
+          name: behaviorName('create-resource'),
+          operationId: operationId('createResource'),
+          requiredScopes: [scopeName('resource:write')],
+          emit: eventType('ResourceCreated'),
         })
         .reducer(reducer)
         .build(),
@@ -132,8 +133,8 @@ function directDefinition() {
     .global({
       idempotency: { enabled: true, ttlSeconds: 1, hashIncludesBody: true },
       auth: {
-        mode: "session",
-        session: { cookieName: "potemkin_sid", ttlSeconds: 1, csrfHeader: "x-csrf-token" },
+        mode: 'session',
+        session: { cookieName: 'potemkin_sid', ttlSeconds: 1, csrfHeader: 'x-csrf-token' },
       },
     })
     .build();
@@ -146,7 +147,7 @@ async function bootPair(): Promise<[RuntimeSystem, RuntimeSystem]> {
       host: createDefaultRuntimeHost(),
       openapi,
       yamlProgram: {
-        modules: [{ name: "resource.yaml", yaml: YAML_BOUNDARY }],
+        modules: [{ name: 'resource.yaml', yaml: YAML_BOUNDARY }],
         globalYaml: YAML_GLOBAL,
       },
     }),
@@ -160,21 +161,21 @@ async function bootPair(): Promise<[RuntimeSystem, RuntimeSystem]> {
 }
 
 function sessionCookie(response: Response): string {
-  const cookie = response.headers["set-cookie"]?.[0];
-  if (cookie === undefined) throw new Error("Session login did not return a cookie");
-  return cookie.split(";", 1)[0]!;
+  const cookie = response.headers['set-cookie']?.[0];
+  if (cookie === undefined) throw new Error('Session login did not return a cookie');
+  return cookie.split(';', 1)[0]!;
 }
 
 async function login(app: PersistentAgent): Promise<{ cookie: string; csrf: string }> {
   const response = await app
-    .post("/sessions")
-    .send({ actorId: "ttl-user", scopes: ["resource:write"] })
+    .post('/sessions')
+    .send({ actorId: 'ttl-user', scopes: ['resource:write'] })
     .expect(200);
-  expect(typeof response.body.csrfToken).toBe("string");
+  expect(typeof response.body.csrfToken).toBe('string');
   return { cookie: sessionCookie(response), csrf: response.body.csrfToken as string };
 }
 
-describe("source-independent idempotency and session TTL behaviour", () => {
+describe('source-independent idempotency and session TTL behaviour', () => {
   let systems: [RuntimeSystem, RuntimeSystem];
   let servers: [PersistentServer, PersistentServer];
 
@@ -192,88 +193,88 @@ describe("source-independent idempotency and session TTL behaviour", () => {
   });
 
   it.each([
-    ["YAML", 0],
-    ["TypeScript", 1],
-  ] as const)("%s expires idempotency entries using the runtime clock", async (_name, index) => {
+    ['YAML', 0],
+    ['TypeScript', 1],
+  ] as const)('%s expires idempotency entries using the runtime clock', async (_name, index) => {
     const system = systems[index];
     const app = servers[index].agent;
     const credentials = await login(app);
     const key = `ttl-${_name}`;
     const first = await app
-      .post("/resources")
-      .set("Cookie", credentials.cookie)
-      .set("X-CSRF-Token", credentials.csrf)
-      .set("Idempotency-Key", key)
-      .send({ id: `${_name.toLowerCase()}-one`, value: "first" })
+      .post('/resources')
+      .set('Cookie', credentials.cookie)
+      .set('X-CSRF-Token', credentials.csrf)
+      .set('Idempotency-Key', key)
+      .send({ id: `${_name.toLowerCase()}-one`, value: 'first' })
       .expect(201);
     const replay = await app
-      .post("/resources")
-      .set("Cookie", credentials.cookie)
-      .set("X-CSRF-Token", credentials.csrf)
-      .set("Idempotency-Key", key)
-      .send({ id: `${_name.toLowerCase()}-one`, value: "first" })
+      .post('/resources')
+      .set('Cookie', credentials.cookie)
+      .set('X-CSRF-Token', credentials.csrf)
+      .set('Idempotency-Key', key)
+      .send({ id: `${_name.toLowerCase()}-one`, value: 'first' })
       .expect(201);
-    expect(replay.headers["x-idempotency-replay"]).toBe("true");
+    expect(replay.headers['x-idempotency-replay']).toBe('true');
     expect(replay.body).toEqual(first.body);
 
-    await app.post("/_admin/clock/advance").send({ ms: 1_001 }).expect(200);
+    await app.post('/_admin/clock/advance').send({ ms: 1_001 }).expect(200);
     const renewedCredentials = await login(app);
     const fresh = await app
-      .post("/resources")
-      .set("Cookie", renewedCredentials.cookie)
-      .set("X-CSRF-Token", renewedCredentials.csrf)
-      .set("Idempotency-Key", key)
-      .send({ id: `${_name.toLowerCase()}-two`, value: "second" })
+      .post('/resources')
+      .set('Cookie', renewedCredentials.cookie)
+      .set('X-CSRF-Token', renewedCredentials.csrf)
+      .set('Idempotency-Key', key)
+      .send({ id: `${_name.toLowerCase()}-two`, value: 'second' })
       .expect(201);
     expect(fresh.body.id).toBe(`${_name.toLowerCase()}-two`);
     expect(system.engine.snapshot().events).toHaveLength(2);
   });
 
   it.each([
-    ["YAML", 0],
-    ["TypeScript", 1],
+    ['YAML', 0],
+    ['TypeScript', 1],
   ] as const)(
-    "%s expires sessions and enforces CSRF while the session is live",
+    '%s expires sessions and enforces CSRF while the session is live',
     async (_name, index) => {
       const app = servers[index].agent;
       const credentials = await login(app);
-      const body = { id: `${_name.toLowerCase()}-session`, value: "created" };
+      const body = { id: `${_name.toLowerCase()}-session`, value: 'created' };
 
       await app
-        .post("/resources")
-        .set("Cookie", credentials.cookie)
+        .post('/resources')
+        .set('Cookie', credentials.cookie)
         .send(body)
         .expect(403, {
-          code: "CSRF_TOKEN_INVALID",
-          message: "CSRF token missing or invalid",
-          details: { code: "CSRF_TOKEN_INVALID" },
+          code: 'CSRF_TOKEN_INVALID',
+          message: 'CSRF token missing or invalid',
+          details: { code: 'CSRF_TOKEN_INVALID' },
         });
       await app
-        .post("/resources")
-        .set("Cookie", credentials.cookie)
-        .set("X-CSRF-Token", credentials.csrf)
+        .post('/resources')
+        .set('Cookie', credentials.cookie)
+        .set('X-CSRF-Token', credentials.csrf)
         .send(body)
         .expect(201);
 
-      await app.post("/_admin/clock/advance").send({ ms: 1_001 }).expect(200);
+      await app.post('/_admin/clock/advance').send({ ms: 1_001 }).expect(200);
       await app
-        .post("/resources")
-        .set("Cookie", credentials.cookie)
-        .set("X-CSRF-Token", credentials.csrf)
-        .send({ id: `${_name.toLowerCase()}-expired`, value: "expired" })
+        .post('/resources')
+        .set('Cookie', credentials.cookie)
+        .set('X-CSRF-Token', credentials.csrf)
+        .send({ id: `${_name.toLowerCase()}-expired`, value: 'expired' })
         .expect(401, {
-          code: "AUTHENTICATION_REQUIRED",
-          message: "Authentication is required for this operation",
-          details: { code: "AUTHENTICATION_REQUIRED" },
+          code: 'AUTHENTICATION_REQUIRED',
+          message: 'Authentication is required for this operation',
+          details: { code: 'AUTHENTICATION_REQUIRED' },
         });
     },
   );
 
   it.each([
-    ["YAML", 0],
-    ["TypeScript", 1],
+    ['YAML', 0],
+    ['TypeScript', 1],
   ] as const)(
-    "%s applies a request-local clock offset to TTL checks without changing shared time",
+    '%s applies a request-local clock offset to TTL checks without changing shared time',
     async (_name, index) => {
       const system = systems[index];
       const app = servers[index].agent;
@@ -281,110 +282,110 @@ describe("source-independent idempotency and session TTL behaviour", () => {
       const id = `${_name.toLowerCase()}-request-clock`;
 
       await app
-        .post("/resources")
-        .set("Cookie", credentials.cookie)
-        .set("X-CSRF-Token", credentials.csrf)
-        .set("X-Potemkin-Clock-Offset", "1001")
-        .send({ id, value: "future-view" })
+        .post('/resources')
+        .set('Cookie', credentials.cookie)
+        .set('X-CSRF-Token', credentials.csrf)
+        .set('X-Potemkin-Clock-Offset', '1001')
+        .send({ id, value: 'future-view' })
         .expect(401, {
-          code: "AUTHENTICATION_REQUIRED",
-          message: "Authentication is required for this operation",
-          details: { code: "AUTHENTICATION_REQUIRED" },
+          code: 'AUTHENTICATION_REQUIRED',
+          message: 'Authentication is required for this operation',
+          details: { code: 'AUTHENTICATION_REQUIRED' },
         });
 
       expect(system.clock.offsetMs()).toBe(0);
       await app
-        .post("/resources")
-        .set("Cookie", credentials.cookie)
-        .set("X-CSRF-Token", credentials.csrf)
-        .send({ id, value: "shared-clock" })
+        .post('/resources')
+        .set('Cookie', credentials.cookie)
+        .set('X-CSRF-Token', credentials.csrf)
+        .send({ id, value: 'shared-clock' })
         .expect(201);
     },
   );
 
   it.each([
-    ["YAML", 0],
-    ["TypeScript", 1],
+    ['YAML', 0],
+    ['TypeScript', 1],
   ] as const)(
-    "%s compiles an administrative fault wire rule at the parser boundary",
+    '%s compiles an administrative fault wire rule at the parser boundary',
     async (_name, index) => {
       const system = systems[index];
       const app = servers[index].agent;
       const registration = await app
-        .post("/_admin/faults")
+        .post('/_admin/faults')
         .send({
           name: `${_name.toLowerCase()}-temporary`,
-          match: { condition: "true" },
-          response: { status: 503, body: { code: "TEMPORARY" } },
+          match: { condition: 'true' },
+          response: { status: 503, body: { code: 'TEMPORARY' } },
           ttlMs: 1_000,
         })
         .expect(201);
       expect(registration.body.name).toBe(`${_name.toLowerCase()}-temporary`);
 
       await app
-        .post("/resources")
-        .send({ id: `${_name.toLowerCase()}-fault`, value: "blocked" })
-        .expect(503, { code: "TEMPORARY" });
+        .post('/resources')
+        .send({ id: `${_name.toLowerCase()}-fault`, value: 'blocked' })
+        .expect(503, { code: 'TEMPORARY' });
       expect(system.engine.snapshot().events).toHaveLength(0);
-      await app.post("/_admin/clock/advance").send({ ms: 1_001 }).expect(200);
+      await app.post('/_admin/clock/advance').send({ ms: 1_001 }).expect(200);
       await app
-        .post("/resources")
-        .send({ id: `${_name.toLowerCase()}-fault`, value: "unblocked" })
+        .post('/resources')
+        .send({ id: `${_name.toLowerCase()}-fault`, value: 'unblocked' })
         .expect(401, {
-          code: "AUTHENTICATION_REQUIRED",
-          message: "Authentication is required for this operation",
-          details: { code: "AUTHENTICATION_REQUIRED" },
+          code: 'AUTHENTICATION_REQUIRED',
+          message: 'Authentication is required for this operation',
+          details: { code: 'AUTHENTICATION_REQUIRED' },
         });
     },
   );
 
   it.each([
-    ["YAML", 0],
-    ["TypeScript", 1],
-  ] as const)("%s reset clears volatile runtime stores as one operation", async (_name, index) => {
+    ['YAML', 0],
+    ['TypeScript', 1],
+  ] as const)('%s reset clears volatile runtime stores as one operation', async (_name, index) => {
     const system = systems[index];
     const app = servers[index].agent;
     const credentials = await login(app);
     await app
-      .post("/resources")
-      .set("Cookie", credentials.cookie)
-      .set("X-CSRF-Token", credentials.csrf)
-      .set("Idempotency-Key", `reset-${_name}`)
-      .send({ id: `${_name.toLowerCase()}-before-reset`, value: "before" })
+      .post('/resources')
+      .set('Cookie', credentials.cookie)
+      .set('X-CSRF-Token', credentials.csrf)
+      .set('Idempotency-Key', `reset-${_name}`)
+      .send({ id: `${_name.toLowerCase()}-before-reset`, value: 'before' })
       .expect(201);
     system.faults.add({
-      name: "reset-fault",
+      name: 'reset-fault',
       matches: () => true,
-      response: { status: 503, body: { code: "RESET_FAULT" } },
+      response: { status: 503, body: { code: 'RESET_FAULT' } },
     });
-    await app.post("/_admin/clock/advance").send({ ms: 250 }).expect(200);
+    await app.post('/_admin/clock/advance').send({ ms: 250 }).expect(200);
 
-    await app.post("/_admin/reset").expect(204);
+    await app.post('/_admin/reset').expect(204);
     expect(system.engine.snapshot().events).toHaveLength(0);
     expect(system.engine.snapshot().state).toHaveLength(0);
     expect(system.faults.list()).toHaveLength(0);
     expect(system.clock.offsetMs()).toBe(0);
-    await app.get("/_admin/events?count=true").expect(200, { count: 0 });
-    await app.get("/_admin/state").expect(200, { entities: {} });
-    await app.get("/_admin/faults").expect(200, []);
+    await app.get('/_admin/events?count=true').expect(200, { count: 0 });
+    await app.get('/_admin/state').expect(200, { entities: {} });
+    await app.get('/_admin/faults').expect(200, []);
 
     await app
-      .post("/resources")
-      .set("Cookie", credentials.cookie)
-      .set("X-CSRF-Token", credentials.csrf)
-      .send({ id: `${_name.toLowerCase()}-stale-session`, value: "not-authorized" })
+      .post('/resources')
+      .set('Cookie', credentials.cookie)
+      .set('X-CSRF-Token', credentials.csrf)
+      .send({ id: `${_name.toLowerCase()}-stale-session`, value: 'not-authorized' })
       .expect(401, {
-        code: "AUTHENTICATION_REQUIRED",
-        message: "Authentication is required for this operation",
-        details: { code: "AUTHENTICATION_REQUIRED" },
+        code: 'AUTHENTICATION_REQUIRED',
+        message: 'Authentication is required for this operation',
+        details: { code: 'AUTHENTICATION_REQUIRED' },
       });
     const renewedCredentials = await login(app);
     await app
-      .post("/resources")
-      .set("Cookie", renewedCredentials.cookie)
-      .set("X-CSRF-Token", renewedCredentials.csrf)
-      .set("Idempotency-Key", `reset-${_name}`)
-      .send({ id: `${_name.toLowerCase()}-after-reset`, value: "after" })
+      .post('/resources')
+      .set('Cookie', renewedCredentials.cookie)
+      .set('X-CSRF-Token', renewedCredentials.csrf)
+      .set('Idempotency-Key', `reset-${_name}`)
+      .send({ id: `${_name.toLowerCase()}-after-reset`, value: 'after' })
       .expect(201);
   });
 });

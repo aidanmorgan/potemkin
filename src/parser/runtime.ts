@@ -1,10 +1,10 @@
-import { bootRuntime, type RuntimeBootInput, type RuntimeSystem } from "../runtime/system.js";
-import { compileYamlProgram, type YamlProgramInput } from "./public.js";
+import { bootRuntime, type RuntimeBootInput, type RuntimeSystem } from '../runtime/system.js';
+import { compileYamlProgram, type YamlProgramInput } from './public.js';
 
 /** Runtime boot input for a YAML-authored program. */
 export interface YamlRuntimeBootInput extends Omit<
   RuntimeBootInput,
-  "program" | "definition" | "programFactory"
+  'program' | 'definition' | 'programFactory'
 > {
   readonly yamlProgram: YamlProgramInput;
 }

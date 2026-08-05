@@ -1,16 +1,16 @@
-import * as fs from "node:fs/promises";
-import * as path from "node:path";
-import type { ConformanceFailure, ConformanceReport, ConformanceTestCase } from "./types.js";
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
+import type { ConformanceFailure, ConformanceReport, ConformanceTestCase } from './types.js';
 
 function decodeXml(value: string): string {
   return value
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
     .replace(/&#(x[\da-f]+|\d+);/gi, (_match, code: string) => {
-      const number = code.toLowerCase().startsWith("x")
+      const number = code.toLowerCase().startsWith('x')
         ? Number.parseInt(code.slice(1), 16)
         : Number.parseInt(code, 10);
       return Number.isFinite(number) ? String.fromCodePoint(number) : _match;
@@ -21,7 +21,7 @@ function attributes(source: string): Record<string, string> {
   const result: Record<string, string> = {};
   const pattern = /([A-Za-z_:][\w:.-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
   for (const match of source.matchAll(pattern)) {
-    result[match[1]] = decodeXml(match[2] ?? match[3] ?? "");
+    result[match[1]] = decodeXml(match[2] ?? match[3] ?? '');
   }
   return result;
 }
@@ -29,8 +29,8 @@ function attributes(source: string): Record<string, string> {
 function textContent(source: string): string {
   return decodeXml(
     source
-      .replace(/<[^>]+>/g, " ")
-      .replace(/\s+/g, " ")
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
       .trim(),
   );
 }
@@ -38,16 +38,16 @@ function textContent(source: string): string {
 function field(details: string, names: readonly string[], fallback: string): string {
   for (const name of names) {
     const match = details.match(
-      new RegExp(`(?:^|[\\s,;])${name}\\s*[:=]\\s*(?:"([^"]*)"|'([^']*)'|([^\\s,;]+))`, "i"),
+      new RegExp(`(?:^|[\\s,;])${name}\\s*[:=]\\s*(?:"([^"]*)"|'([^']*)'|([^\\s,;]+))`, 'i'),
     );
     if (match) return match[1] ?? match[2] ?? match[3];
   }
   return fallback;
 }
 
-function diagnosticStatus(details: string, kind: "expected" | "actual"): string | undefined {
+function diagnosticStatus(details: string, kind: 'expected' | 'actual'): string | undefined {
   const pattern =
-    kind === "expected"
+    kind === 'expected'
       ? /specification\s+expected\s+status\s+([\w-]+)/i
       : /response\s+contained\s+status\s+([\w-]+)/i;
   return details.match(pattern)?.[1];
@@ -60,7 +60,7 @@ function diagnosticApi(details: string): { method: string; path: string } | unde
     method: match[1].toUpperCase(),
     // Specmatic writes path parameters as `(id:uuid)` in JUnit diagnostics;
     // normalize that notation to the OpenAPI template used by allowlists.
-    path: match[2].replace(/\(([^/:()]+):[^()]+\)/g, "{$1}"),
+    path: match[2].replace(/\(([^/:()]+):[^()]+\)/g, '{$1}'),
   };
 }
 
@@ -71,7 +71,7 @@ function testcaseApi(
   if (!match) return undefined;
   return {
     method: match[1].toUpperCase(),
-    path: match[2].replace(/\(([^/:()]+):[^()]+\)/g, "{$1}"),
+    path: match[2].replace(/\(([^/:()]+):[^()]+\)/g, '{$1}'),
     status: match[3],
   };
 }
@@ -85,7 +85,7 @@ function diagnosticScenario(details: string): string | undefined {
 }
 
 interface ParsedTestCase extends ConformanceTestCase {
-  readonly failureKind?: "failure" | "error";
+  readonly failureKind?: 'failure' | 'error';
 }
 
 function parseTestCase(source: string): ParsedTestCase | undefined {
@@ -95,48 +95,48 @@ function parseTestCase(source: string): ParsedTestCase | undefined {
   if (!testMatch) return undefined;
 
   const attrs = attributes(testMatch[1]);
-  const body = testMatch[2] ?? "";
+  const body = testMatch[2] ?? '';
   const failureMatch =
     body.match(/<(failure|error)\b([^>]*)>([\s\S]*?)<\/\1\s*>/i) ??
     body.match(/<(failure|error)\b([^>]*)\s*\/\s*>/i);
   const skipped = /<skipped\b(?:[^>]*)\/?>(?:[\s\S]*?<\/skipped\s*>)?/i.test(body);
   const failureAttrs = failureMatch ? attributes(failureMatch[2]) : {};
-  const details = failureMatch ? textContent(failureMatch[3] ?? "") : "";
+  const details = failureMatch ? textContent(failureMatch[3] ?? '') : '';
   // Specmatic places the human-readable API/status diagnostic in the
   // failure's `message` attribute, while the element body is often only a
   // stack trace. Parse both so JUnit identities do not degrade to UNKNOWN.
-  const testName = attrs.name ?? "unnamed Specmatic test";
+  const testName = attrs.name ?? 'unnamed Specmatic test';
   const testcaseIdentity = testcaseApi(testName);
-  const diagnosticText = [failureAttrs.message, details].filter(Boolean).join("\n");
+  const diagnosticText = [failureAttrs.message, details].filter(Boolean).join('\n');
   const message = failureMatch
-    ? failureAttrs.message || failureAttrs.type || details || "Specmatic test failed"
-    : "";
+    ? failureAttrs.message || failureAttrs.type || details || 'Specmatic test failed'
+    : '';
   const api = diagnosticApi(diagnosticText);
   const scenario =
-    field(diagnosticText, ["scenario", "example", "example-name"], "") ||
+    field(diagnosticText, ['scenario', 'example', 'example-name'], '') ||
     diagnosticScenario(diagnosticText) ||
     testcaseScenario(testName) ||
     testName;
   const method = (
-    field(diagnosticText, ["method", "http-method"], "") ||
+    field(diagnosticText, ['method', 'http-method'], '') ||
     api?.method ||
     testcaseIdentity?.method ||
-    "UNKNOWN"
+    'UNKNOWN'
   ).toUpperCase();
   const requestPath =
-    field(diagnosticText, ["path", "request-path", "url"], "") ||
+    field(diagnosticText, ['path', 'request-path', 'url'], '') ||
     api?.path ||
     testcaseIdentity?.path ||
-    "UNKNOWN";
+    'UNKNOWN';
   const expectedFromDiagnostics =
-    diagnosticStatus(diagnosticText, "expected") ??
-    field(diagnosticText, ["expected", "expected-status", "expected-status-code"], "");
+    diagnosticStatus(diagnosticText, 'expected') ??
+    field(diagnosticText, ['expected', 'expected-status', 'expected-status-code'], '');
   const actualFromDiagnostics =
-    diagnosticStatus(diagnosticText, "actual") ??
-    field(diagnosticText, ["actual", "actual-status", "actual-status-code"], "");
-  const expectedStatus = expectedFromDiagnostics || testcaseIdentity?.status || "UNKNOWN";
-  const actualStatus = actualFromDiagnostics || testcaseIdentity?.status || "UNKNOWN";
-  const ruleId = field(details, ["rule-id", "rule"], "") || undefined;
+    diagnosticStatus(diagnosticText, 'actual') ??
+    field(diagnosticText, ['actual', 'actual-status', 'actual-status-code'], '');
+  const expectedStatus = expectedFromDiagnostics || testcaseIdentity?.status || 'UNKNOWN';
+  const actualStatus = actualFromDiagnostics || testcaseIdentity?.status || 'UNKNOWN';
+  const ruleId = field(details, ['rule-id', 'rule'], '') || undefined;
 
   return {
     testName,
@@ -151,11 +151,11 @@ function parseTestCase(source: string): ParsedTestCase | undefined {
     passed: failureMatch === null && !skipped,
     skipped,
     ...(ruleId ? { ruleId } : {}),
-    ...(failureMatch ? { failureKind: failureMatch[1].toLowerCase() as "failure" | "error" } : {}),
+    ...(failureMatch ? { failureKind: failureMatch[1].toLowerCase() as 'failure' | 'error' } : {}),
   };
 }
 
-export function parseJunitXml(xml: string, sourceFile = "<memory>"): ConformanceReport {
+export function parseJunitXml(xml: string, sourceFile = '<memory>'): ConformanceReport {
   const rootMatch = xml.match(/<testsuites\b([^>]*)>/i);
   const suiteAttrs = [...xml.matchAll(/<testsuite\b([^>]*)>/gi)].map((match) =>
     attributes(match[1]),
@@ -183,10 +183,10 @@ export function parseJunitXml(xml: string, sourceFile = "<memory>"): Conformance
     return fallback;
   };
   return {
-    tests: count("tests", cases.length),
-    failures: count("failures", cases.length),
-    errors: count("errors", 0),
-    skipped: count("skipped", 0),
+    tests: count('tests', cases.length),
+    failures: count('failures', cases.length),
+    errors: count('errors', 0),
+    skipped: count('skipped', 0),
     cases,
     testCases: testCases.map(({ failureKind: _failureKind, ...value }) => value),
     sourceFiles: [sourceFile],
@@ -236,7 +236,7 @@ export async function parseJunitDirectory(reportDir: string): Promise<Conformanc
     throw new Error(`Specmatic completed without any JUnit XML reports in ${reportDir}`);
   }
   const reports = await Promise.all(
-    sourceFiles.map(async (file) => parseJunitXml(await fs.readFile(file, "utf8"), file)),
+    sourceFiles.map(async (file) => parseJunitXml(await fs.readFile(file, 'utf8'), file)),
   );
   return {
     tests: reports.reduce((total, report) => total + report.tests, 0),

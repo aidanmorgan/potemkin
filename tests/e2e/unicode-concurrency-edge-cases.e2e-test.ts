@@ -10,16 +10,16 @@
  * requests and verifies responses + graph state via admin endpoints.
  */
 
-import { startE2eApp } from "./_harness/e2e-test-app";
-import type { E2eApp } from "./_harness/e2e-test-app";
+import { startE2eApp } from './_harness/e2e-test-app';
+import type { E2eApp } from './_harness/e2e-test-app';
 import {
   requestThroughSpecmatic,
   getGraphNode,
   getEventCount,
   getEventsByAggregate,
-} from "./_harness/crm-e2e-helpers";
-import type { JsonObject } from "./_harness/crm-e2e-helpers";
-describe("Unicode, Concurrency & Edge Cases (full Specmatic stack)", () => {
+} from './_harness/crm-e2e-helpers';
+import type { JsonObject } from './_harness/crm-e2e-helpers';
+describe('Unicode, Concurrency & Edge Cases (full Specmatic stack)', () => {
   let app: E2eApp;
   beforeAll(async () => {
     app = await startE2eApp();
@@ -32,94 +32,94 @@ describe("Unicode, Concurrency & Edge Cases (full Specmatic stack)", () => {
   // Section 1: Unicode & i18n Handling
   // ──────────────────────────────────────────────────────────────────────────
 
-  describe("Unicode & i18n handling", () => {
+  describe('Unicode & i18n handling', () => {
     let cjkLeadId: string;
 
-    it("CJK characters in entity fields round-trip correctly", async () => {
-      const res = await requestThroughSpecmatic(app.stubUrl, "POST", "/leads", {
-        companyName: "日本語テスト株式会社",
-        contactName: "田中太郎",
-        phone: "+61 2 9000 0000",
-        email: "cjk@example.com",
-        source: "WEBSITE",
+    it('CJK characters in entity fields round-trip correctly', async () => {
+      const res = await requestThroughSpecmatic(app.stubUrl, 'POST', '/leads', {
+        companyName: '日本語テスト株式会社',
+        contactName: '田中太郎',
+        phone: '+61 2 9000 0000',
+        email: 'cjk@example.com',
+        source: 'WEBSITE',
       });
       expect([200, 201]).toContain(res.status);
-      cjkLeadId = (res.body as JsonObject)["id"] as string;
+      cjkLeadId = (res.body as JsonObject)['id'] as string;
 
       const node = await getGraphNode(app.engineUrl, cjkLeadId);
       expect(node).not.toBeNull();
-      expect(node!["companyName"]).toBe("日本語テスト株式会社");
-      expect(node!["contactName"]).toBe("田中太郎");
+      expect(node!['companyName']).toBe('日本語テスト株式会社');
+      expect(node!['contactName']).toBe('田中太郎');
     }, 60_000);
 
-    it("emoji in entity fields round-trip correctly", async () => {
-      const res = await requestThroughSpecmatic(app.stubUrl, "POST", "/leads", {
-        companyName: "Rocket Corp 🚀",
-        contactName: "Star ⭐ User",
-        phone: "+61 2 9000 0001",
-        email: "emoji@example.com",
-        source: "REFERRAL",
+    it('emoji in entity fields round-trip correctly', async () => {
+      const res = await requestThroughSpecmatic(app.stubUrl, 'POST', '/leads', {
+        companyName: 'Rocket Corp 🚀',
+        contactName: 'Star ⭐ User',
+        phone: '+61 2 9000 0001',
+        email: 'emoji@example.com',
+        source: 'REFERRAL',
       });
       expect([200, 201]).toContain(res.status);
-      const id = (res.body as JsonObject)["id"] as string;
+      const id = (res.body as JsonObject)['id'] as string;
 
       const node = await getGraphNode(app.engineUrl, id);
       expect(node).not.toBeNull();
-      expect(node!["companyName"]).toBe("Rocket Corp 🚀");
-      expect(node!["contactName"]).toBe("Star ⭐ User");
+      expect(node!['companyName']).toBe('Rocket Corp 🚀');
+      expect(node!['contactName']).toBe('Star ⭐ User');
     }, 60_000);
 
-    it("mixed scripts with diacritics round-trip correctly", async () => {
-      const res = await requestThroughSpecmatic(app.stubUrl, "POST", "/leads", {
-        companyName: "Ölüm Şirketi GmbH",
-        contactName: "Müller Straße",
-        phone: "+61 2 9000 0002",
-        email: "diacritics@example.com",
-        source: "PARTNER",
+    it('mixed scripts with diacritics round-trip correctly', async () => {
+      const res = await requestThroughSpecmatic(app.stubUrl, 'POST', '/leads', {
+        companyName: 'Ölüm Şirketi GmbH',
+        contactName: 'Müller Straße',
+        phone: '+61 2 9000 0002',
+        email: 'diacritics@example.com',
+        source: 'PARTNER',
       });
       expect([200, 201]).toContain(res.status);
-      const id = (res.body as JsonObject)["id"] as string;
+      const id = (res.body as JsonObject)['id'] as string;
 
       const node = await getGraphNode(app.engineUrl, id);
       expect(node).not.toBeNull();
-      expect(node!["companyName"]).toBe("Ölüm Şirketi GmbH");
-      expect(node!["contactName"]).toBe("Müller Straße");
+      expect(node!['companyName']).toBe('Ölüm Şirketi GmbH');
+      expect(node!['contactName']).toBe('Müller Straße');
     }, 60_000);
 
-    it("Arabic/RTL text round-trips correctly", async () => {
-      const res = await requestThroughSpecmatic(app.stubUrl, "POST", "/leads", {
-        companyName: "شركة الاختبار",
-        contactName: "محمد علي",
-        phone: "+61 2 9000 0003",
-        email: "arabic@example.com",
-        source: "COLD_LIST",
+    it('Arabic/RTL text round-trips correctly', async () => {
+      const res = await requestThroughSpecmatic(app.stubUrl, 'POST', '/leads', {
+        companyName: 'شركة الاختبار',
+        contactName: 'محمد علي',
+        phone: '+61 2 9000 0003',
+        email: 'arabic@example.com',
+        source: 'COLD_LIST',
       });
       expect([200, 201]).toContain(res.status);
-      const id = (res.body as JsonObject)["id"] as string;
+      const id = (res.body as JsonObject)['id'] as string;
 
       const node = await getGraphNode(app.engineUrl, id);
       expect(node).not.toBeNull();
-      expect(node!["companyName"]).toBe("شركة الاختبار");
-      expect(node!["contactName"]).toBe("محمد علي");
+      expect(node!['companyName']).toBe('شركة الاختبار');
+      expect(node!['contactName']).toBe('محمد علي');
     }, 60_000);
 
-    it("full-text search finds Unicode entities via ?q= parameter", async () => {
+    it('full-text search finds Unicode entities via ?q= parameter', async () => {
       // The CJK lead was created earlier in this describe block
       const res = await requestThroughSpecmatic(
         app.stubUrl,
-        "GET",
-        "/leads",
+        'GET',
+        '/leads',
         null,
         {},
-        { q: "日本語" },
+        { q: '日本語' },
       );
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body)).toBe(true);
       const matches = res.body as JsonObject[];
       expect(matches.length).toBeGreaterThanOrEqual(1);
-      const found = matches.find((l) => l["id"] === cjkLeadId);
+      const found = matches.find((l) => l['id'] === cjkLeadId);
       expect(found).toBeDefined();
-      expect(found!["companyName"]).toBe("日本語テスト株式会社");
+      expect(found!['companyName']).toBe('日本語テスト株式会社');
     }, 60_000);
   });
 
@@ -127,22 +127,22 @@ describe("Unicode, Concurrency & Edge Cases (full Specmatic stack)", () => {
   // Section 2: Concurrent Request Safety
   // ──────────────────────────────────────────────────────────────────────────
 
-  describe("Concurrent request safety", () => {
-    it("concurrent mutations to same entity: only valid transitions succeed", async () => {
+  describe('Concurrent request safety', () => {
+    it('concurrent mutations to same entity: only valid transitions succeed', async () => {
       // Create a fresh lead (status: NEW)
-      const createRes = await requestThroughSpecmatic(app.stubUrl, "POST", "/leads", {
-        companyName: "Concurrency Test Corp",
-        contactName: "CT User",
-        phone: "+61 2 9000 1000",
-        email: "concurrent-same@example.com",
-        source: "WEBSITE",
+      const createRes = await requestThroughSpecmatic(app.stubUrl, 'POST', '/leads', {
+        companyName: 'Concurrency Test Corp',
+        contactName: 'CT User',
+        phone: '+61 2 9000 1000',
+        email: 'concurrent-same@example.com',
+        source: 'WEBSITE',
       });
       expect([200, 201]).toContain(createRes.status);
-      const leadId = (createRes.body as JsonObject)["id"] as string;
+      const leadId = (createRes.body as JsonObject)['id'] as string;
 
       const eventsBefore = await getEventCount(app.engineUrl);
       const leadEventsBefore = (await getEventsByAggregate(app.engineUrl, leadId)).filter(
-        (e) => e.type === "LeadContacted",
+        (e) => e.type === 'LeadContacted',
       ).length;
 
       // Fire 5 concurrent contact requests against the same lead.
@@ -150,7 +150,7 @@ describe("Unicode, Concurrency & Edge Cases (full Specmatic stack)", () => {
       // CONTACTED -> CONTACTED (idempotent re-contact, per temporal-data-quality).
       // Every call is therefore a valid transition that emits a LeadContacted event.
       const promises = Array.from({ length: 5 }, () =>
-        requestThroughSpecmatic(app.stubUrl, "POST", `/leads/${leadId}/contact`, {}),
+        requestThroughSpecmatic(app.stubUrl, 'POST', `/leads/${leadId}/contact`, {}),
       );
       const results = await Promise.all(promises);
 
@@ -166,26 +166,26 @@ describe("Unicode, Concurrency & Edge Cases (full Specmatic stack)", () => {
 
       // The lead ends up in CONTACTED status (not corrupted).
       const node = await getGraphNode(app.engineUrl, leadId);
-      expect(node!["status"]).toBe("CONTACTED");
+      expect(node!['status']).toBe('CONTACTED');
 
       // Event log integrity: one LeadContacted event per successful call,
       // none lost or duplicated under concurrency.
       const eventsAfter = await getEventCount(app.engineUrl);
       const leadEventsAfter = (await getEventsByAggregate(app.engineUrl, leadId)).filter(
-        (e) => e.type === "LeadContacted",
+        (e) => e.type === 'LeadContacted',
       ).length;
       expect(leadEventsAfter - leadEventsBefore).toBe(5);
       expect(eventsAfter - eventsBefore).toBe(5);
     }, 60_000);
 
-    it("concurrent creates are independent: all succeed with unique IDs", async () => {
+    it('concurrent creates are independent: all succeed with unique IDs', async () => {
       const promises = Array.from({ length: 5 }, (_, i) =>
-        requestThroughSpecmatic(app.stubUrl, "POST", "/leads", {
+        requestThroughSpecmatic(app.stubUrl, 'POST', '/leads', {
           companyName: `Parallel Create ${i}`,
           contactName: `PC${i}`,
           phone: `+61 2 9000 200${i}`,
           email: `parallel-create-${i}@example.com`,
-          source: "WEBSITE",
+          source: 'WEBSITE',
         }),
       );
       const results = await Promise.all(promises);
@@ -196,7 +196,7 @@ describe("Unicode, Concurrency & Edge Cases (full Specmatic stack)", () => {
       }
 
       // All 5 should have unique IDs
-      const ids = results.map((r) => (r.body as JsonObject)["id"] as string);
+      const ids = results.map((r) => (r.body as JsonObject)['id'] as string);
       const uniqueIds = new Set(ids);
       expect(uniqueIds.size).toBe(5);
 
@@ -204,28 +204,28 @@ describe("Unicode, Concurrency & Edge Cases (full Specmatic stack)", () => {
       for (let i = 0; i < 5; i++) {
         const node = await getGraphNode(app.engineUrl, ids[i]);
         expect(node).not.toBeNull();
-        expect(node!["companyName"]).toBe(`Parallel Create ${i}`);
+        expect(node!['companyName']).toBe(`Parallel Create ${i}`);
       }
     }, 60_000);
 
-    it("concurrent requests to different entities succeed independently", async () => {
+    it('concurrent requests to different entities succeed independently', async () => {
       // Create 3 separate leads
       const leadIds: string[] = [];
       for (let i = 0; i < 3; i++) {
-        const res = await requestThroughSpecmatic(app.stubUrl, "POST", "/leads", {
+        const res = await requestThroughSpecmatic(app.stubUrl, 'POST', '/leads', {
           companyName: `Independent ${i}`,
           contactName: `Ind${i}`,
           phone: `+61 2 9000 300${i}`,
           email: `independent-${i}@example.com`,
-          source: "REFERRAL",
+          source: 'REFERRAL',
         });
         expect([200, 201]).toContain(res.status);
-        leadIds.push((res.body as JsonObject)["id"] as string);
+        leadIds.push((res.body as JsonObject)['id'] as string);
       }
 
       // Fire concurrent contact requests to all 3 simultaneously
       const promises = leadIds.map((id) =>
-        requestThroughSpecmatic(app.stubUrl, "POST", `/leads/${id}/contact`, {}),
+        requestThroughSpecmatic(app.stubUrl, 'POST', `/leads/${id}/contact`, {}),
       );
       const results = await Promise.all(promises);
 
@@ -237,7 +237,7 @@ describe("Unicode, Concurrency & Edge Cases (full Specmatic stack)", () => {
       // All 3 should be in CONTACTED status
       for (const id of leadIds) {
         const node = await getGraphNode(app.engineUrl, id);
-        expect(node!["status"]).toBe("CONTACTED");
+        expect(node!['status']).toBe('CONTACTED');
       }
     }, 60_000);
   });
@@ -246,64 +246,64 @@ describe("Unicode, Concurrency & Edge Cases (full Specmatic stack)", () => {
   // Section 3: Payload Size & Abuse Protection
   // ──────────────────────────────────────────────────────────────────────────
 
-  describe("Payload size & abuse protection", () => {
-    it("very long string value (5000 chars) round-trips correctly", async () => {
-      const longName = "A".repeat(5000);
-      const res = await requestThroughSpecmatic(app.stubUrl, "POST", "/leads", {
+  describe('Payload size & abuse protection', () => {
+    it('very long string value (5000 chars) round-trips correctly', async () => {
+      const longName = 'A'.repeat(5000);
+      const res = await requestThroughSpecmatic(app.stubUrl, 'POST', '/leads', {
         companyName: longName,
-        contactName: "Long String User",
-        phone: "+61 2 9000 4000",
-        email: "longstring@example.com",
-        source: "WEBSITE",
+        contactName: 'Long String User',
+        phone: '+61 2 9000 4000',
+        email: 'longstring@example.com',
+        source: 'WEBSITE',
       });
       expect([200, 201]).toContain(res.status);
-      const id = (res.body as JsonObject)["id"] as string;
+      const id = (res.body as JsonObject)['id'] as string;
 
       const node = await getGraphNode(app.engineUrl, id);
       expect(node).not.toBeNull();
-      expect(node!["companyName"]).toBe(longName);
-      expect((node!["companyName"] as string).length).toBe(5000);
+      expect(node!['companyName']).toBe(longName);
+      expect((node!['companyName'] as string).length).toBe(5000);
     }, 60_000);
 
-    it("large number of entities created sequentially are all queryable", async () => {
+    it('large number of entities created sequentially are all queryable', async () => {
       // Capture current lead count before creating more
-      const beforeRes = await requestThroughSpecmatic(app.stubUrl, "GET", "/leads");
+      const beforeRes = await requestThroughSpecmatic(app.stubUrl, 'GET', '/leads');
       const countBefore = (beforeRes.body as JsonObject[]).length;
 
       // Create 20 leads sequentially
       const createdIds: string[] = [];
       for (let i = 0; i < 20; i++) {
-        const res = await requestThroughSpecmatic(app.stubUrl, "POST", "/leads", {
+        const res = await requestThroughSpecmatic(app.stubUrl, 'POST', '/leads', {
           companyName: `Scale Test ${i}`,
           contactName: `ST${i}`,
-          phone: `+61 2 8000 ${String(i).padStart(4, "0")}`,
+          phone: `+61 2 8000 ${String(i).padStart(4, '0')}`,
           email: `scale-test-${i}@example.com`,
-          source: "COLD_LIST",
+          source: 'COLD_LIST',
         });
         expect([200, 201]).toContain(res.status);
-        createdIds.push((res.body as JsonObject)["id"] as string);
+        createdIds.push((res.body as JsonObject)['id'] as string);
       }
 
       // GET /leads should return all existing + the 20 new leads
-      const afterRes = await requestThroughSpecmatic(app.stubUrl, "GET", "/leads");
+      const afterRes = await requestThroughSpecmatic(app.stubUrl, 'GET', '/leads');
       expect(afterRes.status).toBe(200);
       const allLeads = afterRes.body as JsonObject[];
       expect(allLeads.length).toBe(countBefore + 20);
 
       // Every created ID should be present in the collection
-      const allIds = allLeads.map((l) => l["id"] as string);
+      const allIds = allLeads.map((l) => l['id'] as string);
       for (const id of createdIds) {
         expect(allIds).toContain(id);
       }
     }, 60_000);
 
-    it("extra fields in POST /leads body are rejected (additionalProperties: false)", async () => {
-      const res = await requestThroughSpecmatic(app.stubUrl, "POST", "/leads", {
-        companyName: "Extra Fields Corp",
-        contactName: "EF User",
-        phone: "+61 2 9000 5000",
-        email: "extra-fields@example.com",
-        source: "WEBSITE",
+    it('extra fields in POST /leads body are rejected (additionalProperties: false)', async () => {
+      const res = await requestThroughSpecmatic(app.stubUrl, 'POST', '/leads', {
+        companyName: 'Extra Fields Corp',
+        contactName: 'EF User',
+        phone: '+61 2 9000 5000',
+        email: 'extra-fields@example.com',
+        source: 'WEBSITE',
         nested: {
           level1: {
             level2: {
@@ -314,7 +314,7 @@ describe("Unicode, Concurrency & Edge Cases (full Specmatic stack)", () => {
                       level7: {
                         level8: {
                           level9: {
-                            level10: "deep value",
+                            level10: 'deep value',
                           },
                         },
                       },
@@ -325,7 +325,7 @@ describe("Unicode, Concurrency & Edge Cases (full Specmatic stack)", () => {
             },
           },
         },
-        extraField: "should not be accepted",
+        extraField: 'should not be accepted',
       });
 
       // Specmatic enforces additionalProperties: false at the contract level,

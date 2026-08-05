@@ -1,7 +1,7 @@
-import type { OpenApiDoc, OpenApiLoadObservability } from "../contract/loader.js";
-import type { LoadedConfig } from "./configLoader.js";
-import { loadPotemkinConfig } from "./configLoader.js";
-import { loadConfiguredOpenApi } from "./configuredOpenApi.js";
+import type { OpenApiDoc, OpenApiLoadObservability } from '../contract/loader.js';
+import type { LoadedConfig } from './configLoader.js';
+import { loadPotemkinConfig } from './configLoader.js';
+import { loadConfiguredOpenApi } from './configuredOpenApi.js';
 
 /** YAML-side sources selected by the single potemkin configuration file. */
 export interface ConfiguredYamlSources {

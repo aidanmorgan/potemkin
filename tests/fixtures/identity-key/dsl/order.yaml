@@ -24,21 +24,21 @@ identity:
   # Fallback when the path param is absent (not possible for a required path param,
   # but declared here for completeness — mirrors the header/query pattern).
   creation:
-    generate: "$uuidv7()"
+    generate: '$uuidv7()'
 
 event_catalog:
   - type: OrderPlaced
     payload_template:
-      id: "command.targetId"
-      product: "command.payload.product"
-      quantity: "command.payload.quantity"
+      id: 'command.targetId'
+      product: 'command.payload.product'
+      quantity: 'command.payload.quantity'
       status: "'PLACED'"
 
 behaviors:
   - name: placeOrder
     match:
       operationId: placeOrderByRef
-      condition: "true"
+      condition: 'true'
     emit: OrderPlaced
 
 reducers:
@@ -46,15 +46,15 @@ reducers:
     patches:
       - op: replace
         path: /id
-        value: "${event.payload.id}"
+        value: '${event.payload.id}'
       - op: replace
         path: /product
-        value: "${event.payload.product}"
+        value: '${event.payload.product}'
       - op: replace
         path: /quantity
-        value: "${event.payload.quantity}"
+        value: '${event.payload.quantity}'
       - op: replace
         path: /status
-        value: "${event.payload.status}"
+        value: '${event.payload.status}'
 
 initialization: []

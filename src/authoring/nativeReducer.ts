@@ -1,27 +1,17 @@
-import type { RuntimeReducerContext } from "../model/runtime.js";
-import type { DeepReadonly, JsonObject } from "../types.js";
-import type { EventType } from "./references.js";
+import type { JsonObject } from '../contracts/value.js';
+import type { EventType } from '../domain/references.js';
+import type { ReducerDefinition, TypedReducerContext } from './types.js';
 
 /** TypeScript state transition context with the application shapes retained. */
-export type NativeReducerContext<EventPayload extends object, State extends object> = Omit<
-  RuntimeReducerContext,
-  "event" | "payload" | "state"
-> & {
-  readonly state: DeepReadonly<State>;
-  readonly payload: DeepReadonly<EventPayload>;
-  readonly event: Omit<RuntimeReducerContext["event"], "payload"> & {
-    readonly payload: DeepReadonly<EventPayload>;
-  };
-};
+export type NativeReducerContext<
+  EventPayload extends object,
+  State extends object,
+> = TypedReducerContext<EventPayload, State>;
 
 export type NativeReducer<
   EventPayload extends object = JsonObject,
   State extends object = JsonObject,
-> = {
-  readonly on: EventType;
-  /** Return the resultant state; the input projection is deeply readonly. */
-  reduce(input: Readonly<NativeReducerContext<EventPayload, State>>): State;
-};
+> = ReducerDefinition<EventPayload, State>;
 
 export interface NativeReducerBuilder<
   EventPayload extends object = JsonObject,
@@ -55,12 +45,12 @@ export function reducerRule<
   State extends object = JsonObject,
 >(on: EventType): NativeReducerBuilder<EventPayload, State> {
   const build = (
-    value: Partial<NativeReducer<EventPayload, State>> & Pick<NativeReducer, "on">,
+    value: Partial<NativeReducer<EventPayload, State>> & Pick<NativeReducer, 'on'>,
   ): NativeReducerBuilder<EventPayload, State> => ({
     apply: (transition) =>
       build({
         ...value,
-        reduce: transition as unknown as NativeReducer<EventPayload, State>["reduce"],
+        reduce: transition,
       }),
     build: () => Object.freeze({ ...value }) as NativeReducer<EventPayload, State>,
   });

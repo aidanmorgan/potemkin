@@ -30,14 +30,14 @@ Each entry:
 ```yaml
 reactions:
   - name: record-conversion-on-campaign # optional, for trace logs
-    on: "Lead:LeadConverted" # "<Boundary>:<EventType>" or bare "<EventType>"
-    when: "event.payload.campaignId != null" # optional CEL gate (default: true)
+    on: 'Lead:LeadConverted' # "<Boundary>:<EventType>" or bare "<EventType>"
+    when: 'event.payload.campaignId != null' # optional CEL gate (default: true)
     boundary: Campaign # reacting boundary; defaults to the file's boundary
     emit: CampaignConversionRecorded # event type in the reacting boundary's event_catalog
     intent: mutation # mutation (default) | creation
-    target: "event.payload.campaignId" # CEL -> aggregate id to mutate/create
+    target: 'event.payload.campaignId' # CEL -> aggregate id to mutate/create
     payload: # optional CEL overrides merged over the event template
-      leadId: "${event.aggregateId}"
+      leadId: '${event.aggregateId}'
 ```
 
 | Field      | Required       | Meaning                                                                                                                                                             |

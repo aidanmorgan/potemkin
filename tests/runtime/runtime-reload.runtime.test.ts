@@ -6,22 +6,17 @@ import {
   operationId,
   pathParameter,
   pathSegment,
-} from "../../src/authoring/references.js";
-import request from "supertest";
-import { loadOpenApi } from "../../src/contract/loader.js";
-import { bootRuntime } from "../../src/runtime/system.js";
-import { createDefaultRuntimeHost } from "../../src/runtime/host.js";
-import { createRuntimeGateway } from "../../src/http/runtimeGateway.js";
-import { compileYamlProgram } from "../../src/parser/public.js";
-import {
-  boundary,
-  compileProgram,
-  event,
-  expression,
-  simulation,
-} from "../../src/authoring/runtimeModel.js";
-import { reducerRule } from "../../src/authoring/nativeReducer.js";
-import type { EventContext, IdentityContext } from "../../src/model/runtime.js";
+} from '../../src/domain/references.js';
+import request from 'supertest';
+import { loadOpenApi } from '../../src/contract/loader.js';
+import { bootRuntime } from '../../src/runtime/system.js';
+import { createDefaultRuntimeHost } from '../../src/runtime/host.js';
+import { createRuntimeGateway } from '../../src/http/runtimeGateway.js';
+import { compileYamlProgram } from '../../src/parser/public.js';
+import { boundary, event, expression, simulation } from '../../src/authoring/builders.js';
+import { compileProgram } from '../../src/authoring/compiler.js';
+import { reducerRule } from '../../src/authoring/nativeReducer.js';
+import type { EventContext, IdentityContext } from '../../src/model/runtime.js';
 
 const OPENAPI = `
 openapi: "3.0.3"
@@ -96,25 +91,25 @@ reducers: []
 function typescriptDefinition() {
   return simulation()
     .boundary(
-      boundary(boundaryName("Widget"), contractPath(pathSegment("widgets")))
+      boundary(boundaryName('Widget'), contractPath(pathSegment('widgets')))
         .identity({
-          generate: expression("identity", ({ payload }: IdentityContext) => String(payload.id)),
+          generate: expression('identity', ({ payload }: IdentityContext) => String(payload.id)),
         })
         .eventCatalog(
-          event(eventType("WidgetCreated"), {
-            id: expression("event", ({ command }: EventContext) => String(command.payload.id)),
-            name: expression("event", ({ command }: EventContext) => String(command.payload.name)),
+          event(eventType('WidgetCreated'), {
+            id: expression('event', ({ command }: EventContext) => String(command.payload.id)),
+            name: expression('event', ({ command }: EventContext) => String(command.payload.name)),
           }),
         )
         .behavior({
-          name: behaviorName("create-widget"),
-          operationId: operationId("createWidget"),
-          condition: expression("behavior", () => true),
-          emit: eventType("WidgetCreated"),
+          name: behaviorName('create-widget'),
+          operationId: operationId('createWidget'),
+          condition: expression('behavior', () => true),
+          emit: eventType('WidgetCreated'),
           responseStatus: 202,
         })
         .reducer(
-          reducerRule(eventType("WidgetCreated"))
+          reducerRule(eventType('WidgetCreated'))
             .apply(({ state, event }) => ({
               ...state,
               id: String(event.payload.id),
@@ -126,8 +121,8 @@ function typescriptDefinition() {
     )
     .boundary(
       boundary(
-        boundaryName("WidgetById"),
-        contractPath(pathSegment("widgets"), pathParameter("id")),
+        boundaryName('WidgetById'),
+        contractPath(pathSegment('widgets'), pathParameter('id')),
       )
         .fallbackOverride(true)
         .build(),
@@ -135,8 +130,8 @@ function typescriptDefinition() {
     .build();
 }
 
-describe("source-independent runtime reload", () => {
-  it("reprojects the existing event log while switching between TypeScript and YAML programs", async () => {
+describe('source-independent runtime reload', () => {
+  it('reprojects the existing event log while switching between TypeScript and YAML programs', async () => {
     const openapi = await loadOpenApi(OPENAPI);
     const system = await bootRuntime({
       host: createDefaultRuntimeHost(),
@@ -146,24 +141,24 @@ describe("source-independent runtime reload", () => {
     });
     try {
       const app = createRuntimeGateway(system);
-      await request(app).post("/widgets").send({ id: "widget-1", name: "first" }).expect(202);
+      await request(app).post('/widgets').send({ id: 'widget-1', name: 'first' }).expect(202);
 
       const yamlProgram = await compileYamlProgram(
         {
           modules: [
-            { name: "widgets.yaml", yaml: YAML },
-            { name: "widgets-by-id.yaml", yaml: YAML_BY_ID },
+            { name: 'widgets.yaml', yaml: YAML },
+            { name: 'widgets-by-id.yaml', yaml: YAML_BY_ID },
           ],
         },
         { dependencies: system.engine.program.dependencies },
       );
       await system.reload(yamlProgram);
 
-      await request(app).get("/widgets/widget-1").expect(200, { id: "widget-1", name: "first" });
-      await request(app).post("/widgets").send({ id: "widget-2", name: "second" }).expect(202);
+      await request(app).get('/widgets/widget-1').expect(200, { id: 'widget-1', name: 'first' });
+      await request(app).post('/widgets').send({ id: 'widget-2', name: 'second' }).expect(202);
       expect(system.engine.snapshot().events.map((event) => event.aggregateId)).toEqual([
-        "widget-1",
-        "widget-2",
+        'widget-1',
+        'widget-2',
       ]);
 
       const invalidDefinition = typescriptDefinition();
@@ -176,7 +171,7 @@ describe("source-independent runtime reload", () => {
                   ...item,
                   state: {
                     validate: () => {
-                      throw new Error("reload validation failed");
+                      throw new Error('reload validation failed');
                     },
                   },
                 }
@@ -188,19 +183,19 @@ describe("source-independent runtime reload", () => {
           openapi,
         },
       );
-      await expect(system.reload(invalidProgram)).rejects.toThrow("reload validation failed");
-      await request(app).get("/widgets/widget-1").expect(200, { id: "widget-1", name: "first" });
+      await expect(system.reload(invalidProgram)).rejects.toThrow('reload validation failed');
+      await request(app).get('/widgets/widget-1').expect(200, { id: 'widget-1', name: 'first' });
 
       const directProgram = compileProgram(typescriptDefinition(), {
         dependencies: system.engine.program.dependencies,
         openapi,
       });
       await system.reload(directProgram);
-      await request(app).get("/widgets/widget-2").expect(200, { id: "widget-2", name: "second" });
+      await request(app).get('/widgets/widget-2').expect(200, { id: 'widget-2', name: 'second' });
       expect(system.engine.snapshot().state).toEqual(
         expect.arrayContaining([
-          ["widget-1", { id: "widget-1", name: "first" }],
-          ["widget-2", { id: "widget-2", name: "second" }],
+          ['widget-1', { id: 'widget-1', name: 'first' }],
+          ['widget-2', { id: 'widget-2', name: 'second' }],
         ]),
       );
     } finally {

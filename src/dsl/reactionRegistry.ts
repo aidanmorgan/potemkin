@@ -1,5 +1,5 @@
-import { BootError } from "../errors.js";
-import type { BoundaryConfig, ReactionRule, ReactionsByTrigger } from "./types.js";
+import { BootError } from '../errors.js';
+import type { BoundaryConfig, ReactionRule, ReactionsByTrigger } from './types.js';
 
 /** Build the source-neutral lookup used by the YAML linker and authoring validator. */
 export function buildReactionRegistry(allReactions: readonly ReactionRule[]): ReactionsByTrigger {
@@ -33,14 +33,14 @@ export function validateReactionCrossReferences(
     const target = byBoundaryName[boundaryName];
     if (target === undefined) {
       throw new BootError(
-        "BOOT_ERR_DSL_REFERENCE",
+        'BOOT_ERR_DSL_REFERENCE',
         `${label}: reacting boundary "${boundaryName}" is not a known boundary`,
         { reaction: reaction.name ?? reaction.on, boundary: boundaryName },
       );
     }
     if (!target.eventCatalog.some((event) => event.type === reaction.emit)) {
       throw new BootError(
-        "BOOT_ERR_DSL_REFERENCE",
+        'BOOT_ERR_DSL_REFERENCE',
         `${label}: "emit" event type "${reaction.emit}" is not in boundary "${boundaryName}" event_catalog`,
         {
           reaction: reaction.name ?? reaction.on,
@@ -49,12 +49,12 @@ export function validateReactionCrossReferences(
         },
       );
     }
-    if (reaction.on.includes(":")) {
-      const [triggerBoundaryName, triggerEventType] = reaction.on.split(":", 2) as [string, string];
+    if (reaction.on.includes(':')) {
+      const [triggerBoundaryName, triggerEventType] = reaction.on.split(':', 2) as [string, string];
       const triggerBoundary = byBoundaryName[triggerBoundaryName];
       if (triggerBoundary === undefined) {
         throw new BootError(
-          "BOOT_ERR_DSL_REFERENCE",
+          'BOOT_ERR_DSL_REFERENCE',
           `${label}: trigger "on" boundary "${triggerBoundaryName}" (in "${reaction.on}") is not a known boundary`,
           {
             reaction: reaction.name ?? reaction.on,
@@ -65,7 +65,7 @@ export function validateReactionCrossReferences(
       }
       if (!triggerBoundary.eventCatalog.some((event) => event.type === triggerEventType)) {
         throw new BootError(
-          "BOOT_ERR_DSL_REFERENCE",
+          'BOOT_ERR_DSL_REFERENCE',
           `${label}: trigger event type "${triggerEventType}" is not in boundary "${triggerBoundaryName}" event_catalog (on: "${reaction.on}")`,
           {
             reaction: reaction.name ?? reaction.on,
@@ -77,7 +77,7 @@ export function validateReactionCrossReferences(
       }
     } else if (!allEventTypes.has(reaction.on)) {
       throw new BootError(
-        "BOOT_ERR_DSL_REFERENCE",
+        'BOOT_ERR_DSL_REFERENCE',
         `${label}: trigger event type "${reaction.on}" is not found in any boundary's event_catalog`,
         { reaction: reaction.name ?? reaction.on, missingType: reaction.on, on: reaction.on },
       );

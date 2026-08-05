@@ -10,4 +10,4 @@ typescript:
     - include:
         - typescript/full/**/*.ts
       exclude:
-        - "**/*.d.ts"
+        - '**/*.d.ts'

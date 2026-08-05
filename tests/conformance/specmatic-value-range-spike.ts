@@ -1,10 +1,10 @@
 /* eslint-disable no-console */
 
-import * as cp from "node:child_process";
-import { ensureSpecmaticJar } from "../../src/conformance/binaries.js";
-import { startSpecmaticTest, SpecmaticVerifierError } from "../_harness/specmatic-test";
+import * as cp from 'node:child_process';
+import { ensureSpecmaticJar } from '../../src/conformance/binaries.js';
+import { startSpecmaticTest, SpecmaticVerifierError } from '../_harness/specmatic-test';
 
-const SPECMATIC_VERSION = "2.46.2";
+const SPECMATIC_VERSION = '2.46.2';
 
 interface SpecmaticHelpResult {
   readonly stdout: string;
@@ -13,17 +13,17 @@ interface SpecmaticHelpResult {
 
 function specmaticTestHelp(jarPath: string): SpecmaticHelpResult {
   const result = cp.spawnSync(
-    "java",
-    ["-cp", jarPath, "application.SpecmaticApplication", "test", "--help"],
-    { encoding: "utf8" },
+    'java',
+    ['-cp', jarPath, 'application.SpecmaticApplication', 'test', '--help'],
+    { encoding: 'utf8' },
   );
   if (result.error) throw result.error;
   if (result.status !== 0) {
     throw new SpecmaticVerifierError(
-      `Specmatic test --help exited with ${result.status}: ${result.stderr ?? ""}`,
+      `Specmatic test --help exited with ${result.status}: ${result.stderr ?? ''}`,
     );
   }
-  return { stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
+  return { stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
 }
 
 /**
@@ -39,8 +39,8 @@ export async function runValueRangeSpike(): Promise<void> {
   );
 
   const result = await startSpecmaticTest({
-    exampleName: "crm",
-    testMode: "all",
+    exampleName: 'crm',
+    testMode: 'all',
     filter: "METHOD='POST' && PATH='/leads'",
     maxTestRequestCombinations: 1,
   });
@@ -48,12 +48,12 @@ export async function runValueRangeSpike(): Promise<void> {
   if (result.process.signal !== null || result.report.tests === 0) {
     throw new SpecmaticVerifierError(
       [
-        `The bounded CRM generative probe did not complete: exit=${result.process.exitCode ?? "unknown"}.`,
+        `The bounded CRM generative probe did not complete: exit=${result.process.exitCode ?? 'unknown'}.`,
         result.process.stderr.trim(),
         result.process.stdout.trim(),
       ]
         .filter(Boolean)
-        .join("\n"),
+        .join('\n'),
     );
   }
 
@@ -62,16 +62,16 @@ export async function runValueRangeSpike(): Promise<void> {
   );
   if (hasGeneratorClassSelector) {
     throw new SpecmaticVerifierError(
-      "The spike detected a generator-class selector; update the determination before routing cases to an allowlist.",
+      'The spike detected a generator-class selector; update the determination before routing cases to an allowlist.',
     );
   }
 
-  console.log(`Specmatic ${SPECMATIC_VERSION} filter keys: ${supportedFilterKeys.join(", ")}`);
+  console.log(`Specmatic ${SPECMATIC_VERSION} filter keys: ${supportedFilterKeys.join(', ')}`);
   console.log(
     `Bounded CRM generative probe: ${result.report.tests} test(s), ${result.report.failures} failure(s).`,
   );
   console.log(
-    "Determination: value-range mutations cannot be isolated by the Specmatic 2.46.2 test CLI/config; route only exact, evidenced divergences to Layer C allowlist entries.",
+    'Determination: value-range mutations cannot be isolated by the Specmatic 2.46.2 test CLI/config; route only exact, evidenced divergences to Layer C allowlist entries.',
   );
 }
 

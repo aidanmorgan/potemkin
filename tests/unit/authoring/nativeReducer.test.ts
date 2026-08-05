@@ -1,6 +1,6 @@
-import { reducerRule } from "../../../src/authoring/nativeReducer.js";
-import { eventType } from "../../../src/authoring/references.js";
-import type { RuntimeHelpers } from "../../../src/model/runtime.js";
+import { reducerRule } from '../../../src/authoring/nativeReducer.js';
+import { eventType } from '../../../src/domain/references.js';
+import type { RuntimeHelpers } from '../../../src/model/runtime.js';
 
 interface OrderCreated {
   order: {
@@ -22,17 +22,17 @@ interface OrderState {
 
 const helpers = {} as RuntimeHelpers;
 
-describe("native TypeScript reducers", () => {
-  it("exposes deeply readonly state and event projections", () => {
+describe('native TypeScript reducers', () => {
+  it('exposes deeply readonly state and event projections', () => {
     type Created = { readonly item: { readonly tags: string[] } };
     type State = { item: { tags: string[] } };
 
-    const reducer = reducerRule<Created, State>(eventType("ItemCreated")).apply(
+    const reducer = reducerRule<Created, State>(eventType('ItemCreated')).apply(
       ({ state, event }) => {
         // @ts-expect-error Reducers cannot mutate nested state owned by the runtime.
-        state.item.tags.push("forbidden");
+        state.item.tags.push('forbidden');
         // @ts-expect-error Reducers cannot mutate nested event payloads.
-        event.payload.item.tags.push("forbidden");
+        event.payload.item.tags.push('forbidden');
 
         return {
           item: {
@@ -45,8 +45,8 @@ describe("native TypeScript reducers", () => {
     expect(reducer).toBeDefined();
   });
 
-  it("return arbitrary-depth objects, arrays, and primitive values", () => {
-    const reducer = reducerRule<OrderCreated, OrderState>(eventType("OrderCreated"))
+  it('return arbitrary-depth objects, arrays, and primitive values', () => {
+    const reducer = reducerRule<OrderCreated, OrderState>(eventType('OrderCreated'))
       .apply(({ state, event }) => ({
         ...state,
         order: {
@@ -55,8 +55,8 @@ describe("native TypeScript reducers", () => {
           lines: [...state.order.lines, ...event.payload.order.lines],
           audit: {
             ...state.order.audit,
-            actor: "system",
-            tags: [...state.order.audit.tags, "created"],
+            actor: 'system',
+            tags: [...state.order.audit.tags, 'created'],
           },
         },
         approved: event.payload.approved,
@@ -64,30 +64,30 @@ describe("native TypeScript reducers", () => {
       }))
       .build();
 
-    expect("apply" in reducer).toBe(false);
+    expect('apply' in reducer).toBe(false);
     expect(reducer.reduce).toBeDefined();
     const next = reducer.reduce!({
-      boundary: "Order",
+      boundary: 'Order',
       state: {
-        order: { id: "old", lines: [], audit: { actor: null, tags: [] } },
+        order: { id: 'old', lines: [], audit: { actor: null, tags: [] } },
         approved: false,
         counters: [0],
       },
       event: {
-        eventId: "event-1",
-        boundary: "Order",
-        aggregateId: "order-1",
-        type: "OrderCreated",
+        eventId: 'event-1',
+        boundary: 'Order',
+        aggregateId: 'order-1',
+        type: 'OrderCreated',
         payload: {
-          order: { id: "order-1", lines: [{ sku: "A", quantity: 2 }] },
+          order: { id: 'order-1', lines: [{ sku: 'A', quantity: 2 }] },
           approved: true,
         },
-        timestamp: "2026-01-01T00:00:00.000Z",
+        timestamp: '2026-01-01T00:00:00.000Z',
         sequenceVersion: 1,
         causedBy: null,
       },
       payload: {
-        order: { id: "order-1", lines: [{ sku: "A", quantity: 2 }] },
+        order: { id: 'order-1', lines: [{ sku: 'A', quantity: 2 }] },
         approved: true,
       },
       helpers,
@@ -95,9 +95,9 @@ describe("native TypeScript reducers", () => {
 
     expect(next).toEqual({
       order: {
-        id: "order-1",
-        lines: [{ sku: "A", quantity: 2 }],
-        audit: { actor: "system", tags: ["created"] },
+        id: 'order-1',
+        lines: [{ sku: 'A', quantity: 2 }],
+        audit: { actor: 'system', tags: ['created'] },
       },
       approved: true,
       counters: [0, 1],

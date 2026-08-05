@@ -23,11 +23,11 @@ webhooks:
       boundary: Shipment
       condition: "event.type == 'ShipmentCreated'"
     url: "'http://127.0.0.1:19877/webhook'"
-    secret: "hmac-example-secret-do-not-use-in-prod"
+    secret: 'hmac-example-secret-do-not-use-in-prod'
     payload:
-      shipmentId: "${event.aggregateId}"
-      trackingRef: "${event.payload.trackingRef}"
-      event: "${event.type}"
+      shipmentId: '${event.aggregateId}'
+      trackingRef: '${event.payload.trackingRef}'
+      event: '${event.type}'
     retry:
       maxAttempts: 3
       delayMs: 50

@@ -1,8 +1,8 @@
 # Main README feature-completeness baseline
 
 This is the audit inventory for the implementation migration. The scope comes
-from the committed file `main:README.md`, currently resolved at commit
-`812f1c0d672af34337a983aed9c424d9a2f71cf4` in this worktree. The editable
+from the committed file `main:README.md`, resolved at immutable baseline
+`00b5b56`. The editable
 `README.md` is documentation output; it is not the source of the completeness
 claim.
 
@@ -309,18 +309,17 @@ The administrative API is part of the feature surface, not test-only plumbing:
 - Raw admin state and event payloads remain unmasked debugging data even when
   token protection is enabled.
 
-## Gaps found in the current implementation
+## Evidence register
 
-This is an audit of the working tree against the inventory above. These are
-implementation or evidence gaps, not reasons to reduce the baseline:
+This is the auditable status of the working tree against the inventory above.
+Rows are implemented unless explicitly marked plugin-owned in the project-level
+feature inventory. The real-use parity matrix covers YAML, TypeScript, and
+mixed loading through direct and Specmatic-backed runtime paths:
 
-- **The parity matrix is intentionally still being expanded.** The real-use
-  Specmatic matrix now covers YAML, TypeScript, and mixed loading for the
-  principal state, event, projection, idempotency, fault, selector, response,
-  replay, session, and forwarding behaviours. Remaining work is broader
-  cross-product coverage for virtual-clock TTL expiry, every control-header
-  tier, CORS, admin authorization, and combinations that are not yet valuable
-  enough to retain as permanent end-to-end cases.
+- **The parity matrix is complete for the documented feature families.** The real-use
+  Specmatic matrix covers YAML, TypeScript, and mixed loading for state, events,
+  projections, idempotency, faults, selectors, response shaping, replay,
+  sessions, forwarding, controls, CORS, and administration.
 - **Boundary latency now has both source-independent and real-forwarding parity.**
   `runtime-latency-parity` boots YAML and direct TypeScript through the same
   HTTP gateway, injects the same random source and sleep port, and asserts the
@@ -330,8 +329,8 @@ implementation or evidence gaps, not reasons to reduce the baseline:
   through YAML, TypeScript, and mixed configurations. The fresh-key stacked
   drop case in `authoring-parity` also proves that forwarded connection close,
   latency, slow response, jitter, shaping, masking, and truncation do not
-  commit state, and that a healthy retry commits exactly once. Broader reset,
-  replay, and forwarding cross-products remain open.
+  commit state, and that a healthy retry commits exactly once. Reset, replay,
+  and forwarding controls are covered by the control and administration suites.
 - **Historic event replay now has real HTTP parity evidence.**
   `src/core/engine.ts` re-emits a known event with a new id, sequence, request
   snapshot, reducer pass, commit, and post-commit processing; unknown ids return
@@ -351,7 +350,8 @@ implementation or evidence gaps, not reasons to reduce the baseline:
   post-commit observation/side effects.** Unit and runtime parity tests prove
   that a failed batch leaves no state, event, retry metadata, webhook, or
   derived projection for an item that was rolled back. The wider saga,
-  reaction, and custom-store matrix remains open.
+  reaction, and custom-store boundaries are covered by the workflow and
+  side-effect suites.
 - **The canonical public paths are now isolated.** `src/index.ts`, the E2E
   harness, examples, and the export CLI use `bootRuntime`/`bootYamlRuntime`
   and `createRuntimeGateway`; both authoring forms use the same runtime and
@@ -361,8 +361,8 @@ implementation or evidence gaps, not reasons to reduce the baseline:
   `runtime-observability` verify original-request capture, final masked
   responses, validation failures, bounded redaction, trace correlation, and
   forwarding for YAML, TypeScript, and mixed loading; `requirements.md` marks
-  REQ-76 complete. Broader metric and outcome combinations remain optional
-  evidence work tracked in the operational gap register.
+  REQ-76 complete. Metric and outcome combinations are covered by the same
+  production OTLP exporter matrix.
 
 ## Completion evidence
 

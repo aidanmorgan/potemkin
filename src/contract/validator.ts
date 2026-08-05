@@ -1,16 +1,16 @@
-import Ajv from "ajv";
-import addFormats from "ajv-formats";
-import type { ValidateFunction } from "ajv";
-import type { JsonObject, JsonValue } from "../types.js";
-import type { OpenApiDoc } from "./loader.js";
-import { decycleSchema } from "./loader.js";
-import { InternalExecutionError } from "../errors.js";
-import { matchRoute } from "./router.js";
-import { resolveResponseSchema } from "./responseSchema.js";
-import { createNoopLogger, type Logger } from "../observability/logger.js";
-import { createNoopTracer, type Tracer } from "../observability/tracing.js";
-import { createRequestValidator } from "./requestValidator.js";
-import type { RequestHeaders } from "./requestValidator.js";
+import Ajv from 'ajv';
+import addFormats from 'ajv-formats';
+import type { ValidateFunction } from 'ajv';
+import type { JsonObject, JsonValue } from '../contracts/value.js';
+import type { OpenApiDoc } from './loader.js';
+import { decycleSchema } from './loader.js';
+import { InternalExecutionError } from '../errors.js';
+import { matchRoute } from './router.js';
+import { resolveResponseSchema } from './responseSchema.js';
+import { createNoopLogger, type Logger } from '../observability/logger.js';
+import { createNoopTracer, type Tracer } from '../observability/tracing.js';
+import { createRequestValidator } from './requestValidator.js';
+import type { RequestHeaders } from './requestValidator.js';
 
 export interface ContractValidator {
   /**
@@ -106,10 +106,10 @@ export interface ContractValidator {
 function relaxAdditionalProperties(schema: JsonObject): JsonObject {
   const relax = (node: JsonValue): JsonValue => {
     if (Array.isArray(node)) return node.map(relax);
-    if (node === null || typeof node !== "object") return node;
+    if (node === null || typeof node !== 'object') return node;
     const out: JsonObject = {};
     for (const [key, value] of Object.entries(node)) {
-      if ((key === "additionalProperties" || key === "unevaluatedProperties") && value === false) {
+      if ((key === 'additionalProperties' || key === 'unevaluatedProperties') && value === false) {
         // Drop the strict constraint entirely (default is permissive).
         continue;
       }
@@ -147,7 +147,7 @@ export interface ContractValidatorObservability {
  * them explicitly so AJV treats them as known vocabulary while the contract's
  * type/pattern constraints remain authoritative.
  */
-const NON_VALIDATING_DOCUMENT_FORMATS = ["currency", "decimal", "unix-time"] as const;
+const NON_VALIDATING_DOCUMENT_FORMATS = ['currency', 'decimal', 'unix-time'] as const;
 
 function registerDocumentFormats(ajv: Ajv): void {
   for (const format of NON_VALIDATING_DOCUMENT_FORMATS) ajv.addFormat(format, true);
@@ -168,14 +168,14 @@ export function createContractValidator(
   // Case-insensitive schema map: boundary names that differ only in casing (e.g. "opportunity" vs "Opportunity") still resolve.
   const caseInsensitiveSchemaMap = new Map<string, unknown>();
   const rawDocForInit = doc.raw as Record<string, unknown>;
-  const componentsForInit = rawDocForInit["components"];
+  const componentsForInit = rawDocForInit['components'];
   if (
     componentsForInit &&
-    typeof componentsForInit === "object" &&
+    typeof componentsForInit === 'object' &&
     !Array.isArray(componentsForInit)
   ) {
-    const schemasForInit = (componentsForInit as Record<string, unknown>)["schemas"];
-    if (schemasForInit && typeof schemasForInit === "object" && !Array.isArray(schemasForInit)) {
+    const schemasForInit = (componentsForInit as Record<string, unknown>)['schemas'];
+    if (schemasForInit && typeof schemasForInit === 'object' && !Array.isArray(schemasForInit)) {
       for (const [key, val] of Object.entries(schemasForInit as Record<string, unknown>)) {
         caseInsensitiveSchemaMap.set(key.toLowerCase(), val);
       }
@@ -228,7 +228,7 @@ export function createContractValidator(
     status: number,
     body: JsonValue,
     options?: { readonly allowAdditionalProperties?: boolean },
-    mode: "full" | "batch" | "batch-item" = "full",
+    mode: 'full' | 'batch' | 'batch-item' = 'full',
   ): void {
     const matched = matchRoute(doc, method, path);
     if (!matched) {
@@ -240,9 +240,9 @@ export function createContractValidator(
     const schema = resolveResponseSchema(doc, method, path, status);
     if (!schema) return;
 
-    if (mode === "batch" && schema.type !== "array") return;
+    if (mode === 'batch' && schema.type !== 'array') return;
     const itemSchema =
-      mode === "batch-item" && schema.type === "array"
+      mode === 'batch-item' && schema.type === 'array'
         ? (schema.items as JsonObject | undefined)
         : schema;
     if (itemSchema === undefined) return;
@@ -256,9 +256,9 @@ export function createContractValidator(
     if (!validate(body)) {
       logger.debug(
         { method, path, status, errors: validate.errors },
-        "Response body validation failed",
+        'Response body validation failed',
       );
-      throw new InternalExecutionError("Response failed contract validation", {
+      throw new InternalExecutionError('Response failed contract validation', {
         errors: validate.errors as JsonValue,
       });
     }
@@ -281,7 +281,7 @@ export function createContractValidator(
     body: JsonValue,
     options?: { readonly allowAdditionalProperties?: boolean },
   ): void {
-    validateResponseWithMode(method, path, status, body, options, "batch-item");
+    validateResponseWithMode(method, path, status, body, options, 'batch-item');
   }
 
   function validateResponseBatch(
@@ -291,35 +291,35 @@ export function createContractValidator(
     body: JsonValue,
     options?: { readonly allowAdditionalProperties?: boolean },
   ): void {
-    validateResponseWithMode(method, path, status, body, options, "batch");
+    validateResponseWithMode(method, path, status, body, options, 'batch');
   }
 
   function validateEntity(boundary: string, entity: JsonObject): void {
-    tracer.startActiveSpan("contract.validateEntity", (span) => {
+    tracer.startActiveSpan('contract.validateEntity', (span) => {
       try {
         const rawDoc = doc.raw as Record<string, unknown>;
-        const components = rawDoc["components"];
-        if (!components || typeof components !== "object" || Array.isArray(components)) {
-          throw new InternalExecutionError("Entity violates contract", {
+        const components = rawDoc['components'];
+        if (!components || typeof components !== 'object' || Array.isArray(components)) {
+          throw new InternalExecutionError('Entity violates contract', {
             boundary,
-            errors: `No components section in OpenAPI document` as unknown as JsonValue,
+            errors: 'No components section in OpenAPI document',
           });
         }
-        const schemas = (components as Record<string, unknown>)["schemas"];
-        if (!schemas || typeof schemas !== "object" || Array.isArray(schemas)) {
-          throw new InternalExecutionError("Entity violates contract", {
+        const schemas = (components as Record<string, unknown>)['schemas'];
+        if (!schemas || typeof schemas !== 'object' || Array.isArray(schemas)) {
+          throw new InternalExecutionError('Entity violates contract', {
             boundary,
-            errors: `No components.schemas section in OpenAPI document` as unknown as JsonValue,
+            errors: 'No components.schemas section in OpenAPI document',
           });
         }
         // Exact-case lookup first; fall back to case-insensitive map.
         const schema =
           (schemas as Record<string, unknown>)[boundary] ??
           caseInsensitiveSchemaMap.get(boundary.toLowerCase());
-        if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
-          throw new InternalExecutionError("Entity violates contract", {
+        if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
+          throw new InternalExecutionError('Entity violates contract', {
             boundary,
-            errors: `No schema found for boundary '${boundary}'` as unknown as JsonValue,
+            errors: `No schema found for boundary '${boundary}'`,
           });
         }
 
@@ -329,11 +329,11 @@ export function createContractValidator(
         // public entity shape without those internal markers while retaining
         // them in the in-memory state graph for query semantics.
         const contractEntity = { ...entity };
-        delete contractEntity["_deleted"];
-        delete contractEntity["_deletedAt"];
+        delete contractEntity['_deleted'];
+        delete contractEntity['_deletedAt'];
         if (!validate(contractEntity)) {
-          logger.debug({ boundary, errors: validate.errors }, "Entity validation failed");
-          throw new InternalExecutionError("Entity violates contract", {
+          logger.debug({ boundary, errors: validate.errors }, 'Entity validation failed');
+          throw new InternalExecutionError('Entity violates contract', {
             boundary,
             errors: validate.errors as JsonValue,
           });
@@ -347,12 +347,12 @@ export function createContractValidator(
   function validateSchema(schemaRef: string, payload: JsonObject): void {
     const raw = doc.raw as Record<string, unknown>;
     const segments = schemaRef
-      .replace(/^#\//, "")
-      .split("/")
-      .map((segment) => segment.replace(/~1/g, "/").replace(/~0/g, "~"));
+      .replace(/^#\//, '')
+      .split('/')
+      .map((segment) => segment.replace(/~1/g, '/').replace(/~0/g, '~'));
     let current: unknown = raw;
     for (const segment of segments) {
-      if (current === null || typeof current !== "object" || Array.isArray(current)) {
+      if (current === null || typeof current !== 'object' || Array.isArray(current)) {
         current = undefined;
         break;
       }
@@ -361,19 +361,19 @@ export function createContractValidator(
     if (
       current === undefined ||
       current === null ||
-      typeof current !== "object" ||
+      typeof current !== 'object' ||
       Array.isArray(current)
     ) {
-      throw new InternalExecutionError("Event payload schema reference was not found", {
+      throw new InternalExecutionError('Event payload schema reference was not found', {
         schemaRef,
-        code: "SCHEMA_TYPE_MISMATCH",
+        code: 'SCHEMA_TYPE_MISMATCH',
       });
     }
     const validate = getValidator(current as JsonObject);
     if (!validate(payload)) {
-      throw new InternalExecutionError("Event payload failed schema validation", {
+      throw new InternalExecutionError('Event payload failed schema validation', {
         schemaRef,
-        code: "SCHEMA_TYPE_MISMATCH",
+        code: 'SCHEMA_TYPE_MISMATCH',
         errors: validate.errors as JsonValue,
       });
     }

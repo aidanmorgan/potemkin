@@ -652,7 +652,7 @@ Implementation evidence recorded on 2026-08-02:
       unknown nested causes, and have isolation/narrowing coverage. No adapter,
       shim, alias, legacy path, or compatibility boot behavior was introduced.
     - The TypeScript authoring surface now uses semantic reference constructors
-      in `src/authoring/references.ts` for boundary names, operation IDs, event
+      in `src/domain/references.ts` for boundary names, operation IDs, event
       types, contract paths, schema references, and response field paths.
       Branded references are required by the authoring builders, components,
       resources, and reducers, then lower to the same canonical string fields

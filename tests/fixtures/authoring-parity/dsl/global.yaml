@@ -15,34 +15,34 @@ fault_rules:
     match:
       headers:
         x-parity-fault: on
-      condition: "true"
+      condition: 'true'
     response:
       status: 503
       body:
         error: PARITY_FAULT
         message: deliberate parity fixture fault
       headers:
-        Retry-After: "5"
+        Retry-After: '5'
 derived_projections:
   - name: OrderSummary
     key: event.aggregateId
     subscribe:
-      - "Order:OrderCreated"
-      - "OrderById:OrderRenamed"
+      - 'Order:OrderCreated'
+      - 'OrderById:OrderRenamed'
     reduce:
-      - on: "Order:OrderCreated"
+      - on: 'Order:OrderCreated'
         patches:
           - op: replace
             path: /name
-            value: "${event.payload.name}"
+            value: '${event.payload.name}'
           - op: replace
             path: /renameCount
-            value: "${0}"
-      - on: "OrderById:OrderRenamed"
+            value: '${0}'
+      - on: 'OrderById:OrderRenamed'
         patches:
           - op: replace
             path: /name
-            value: "${event.payload.name}"
+            value: '${event.payload.name}'
           - op: increment
             path: /renameCount
             by: 1
@@ -55,9 +55,9 @@ webhooks:
     url: "'http://127.0.0.1:19878/order-hook'"
     secret: parity-webhook-secret
     payload:
-      orderId: "${event.aggregateId}"
-      event: "${event.type}"
-      name: "${event.payload.name}"
+      orderId: '${event.aggregateId}'
+      event: '${event.type}'
+      name: '${event.payload.name}'
     retry:
       maxAttempts: 1
       delayMs: 1

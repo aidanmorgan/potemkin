@@ -11,8 +11,8 @@
  * Full process restart remains a separate acceptance concern.
  */
 
-import { startE2eApp } from "./_harness/e2e-test-app";
-import type { E2eApp } from "./_harness/e2e-test-app";
+import { startE2eApp } from './_harness/e2e-test-app';
+import type { E2eApp } from './_harness/e2e-test-app';
 
 async function waitForHealthState(
   pluginControlUrl: string,
@@ -35,7 +35,7 @@ async function waitForHealthState(
   return false;
 }
 
-describe("Reliability: plugin health monitoring", () => {
+describe('Reliability: plugin health monitoring', () => {
   let app: E2eApp;
 
   beforeAll(async () => {
@@ -48,62 +48,62 @@ describe("Reliability: plugin health monitoring", () => {
     await app.shutdown();
   }, 30_000);
 
-  it("engine health endpoint returns UP", async () => {
+  it('engine health endpoint returns UP', async () => {
     const res = await fetch(`${app.engineUrl}/_engine/health`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { status: string };
-    expect(body.status).toBe("UP");
+    expect(body.status).toBe('UP');
   }, 60_000);
 
-  it("plugin control health reports Up when engine is running", async () => {
+  it('plugin control health reports Up when engine is running', async () => {
     const res = await fetch(`${app.pluginControlUrl}/_potemkin/health`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { state: string };
-    expect(["UP", "DEGRADED"]).toContain(body.state);
+    expect(['UP', 'DEGRADED']).toContain(body.state);
   }, 60_000);
 
-  it("sending POST /shutdown to plugin control transitions health to Down", async () => {
+  it('sending POST /shutdown to plugin control transitions health to Down', async () => {
     const shutdownRes = await fetch(`${app.pluginControlUrl}/shutdown`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        engine: "potemkin-stateful",
-        version: "0.1.0",
-        reason: "SIGTERM",
+        engine: 'potemkin-stateful',
+        version: '0.1.0',
+        reason: 'SIGTERM',
         stoppedAt: new Date().toISOString(),
       }),
     });
     expect([200, 204]).toContain(shutdownRes.status);
-    const downNow = await waitForHealthState(app.pluginControlUrl, "DOWN", 5_000);
+    const downNow = await waitForHealthState(app.pluginControlUrl, 'DOWN', 5_000);
     expect(downNow).toBe(true);
   }, 60_000);
 
-  it("sending POST /_potemkin/ready to plugin control transitions health back to Up", async () => {
+  it('sending POST /_potemkin/ready to plugin control transitions health back to Up', async () => {
     await fetch(`${app.pluginControlUrl}/shutdown`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        engine: "potemkin-stateful",
-        version: "0.1.0",
-        reason: "SIGTERM",
+        engine: 'potemkin-stateful',
+        version: '0.1.0',
+        reason: 'SIGTERM',
         stoppedAt: new Date().toISOString(),
       }),
     });
-    await waitForHealthState(app.pluginControlUrl, "DOWN", 3_000);
+    await waitForHealthState(app.pluginControlUrl, 'DOWN', 3_000);
     const readyRes = await fetch(`${app.pluginControlUrl}/_potemkin/ready`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        engine: "potemkin-stateful",
-        version: "0.1.0",
+        engine: 'potemkin-stateful',
+        version: '0.1.0',
         startedAt: new Date().toISOString(),
-        contractPaths: ["/leads"],
-        routesChecksum: "abc",
-        fixturesChecksum: "def",
+        contractPaths: ['/leads'],
+        routesChecksum: 'abc',
+        fixturesChecksum: 'def',
       }),
     });
     expect([200, 204]).toContain(readyRes.status);
-    const upNow = await waitForHealthState(app.pluginControlUrl, "UP", 5_000);
+    const upNow = await waitForHealthState(app.pluginControlUrl, 'UP', 5_000);
     expect(upNow).toBe(true);
   }, 60_000);
 });

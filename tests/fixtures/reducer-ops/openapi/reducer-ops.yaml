@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Reducer Patch Ops (illustrative fixture)
-  version: "1.0.0"
+  version: '1.0.0'
 
 # One aggregate — Item — exercises every patch op in its lifecycle.
 # Fields are declared explicitly so boot-time path validation passes.
@@ -26,12 +26,12 @@ paths:
                 initialScore:
                   type: number
       responses:
-        "201":
+        '201':
           description: Item created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Item"
+                $ref: '#/components/schemas/Item'
 
   /items/{id}:
     get:
@@ -44,12 +44,12 @@ paths:
           schema:
             type: string
       responses:
-        "200":
+        '200':
           description: Item
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Item"
+                $ref: '#/components/schemas/Item'
 
   /items/{id}/rename:
     post:
@@ -72,12 +72,12 @@ paths:
                 name:
                   type: string
       responses:
-        "200":
+        '200':
           description: Renamed
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Item"
+                $ref: '#/components/schemas/Item'
 
   /items/{id}/add-field:
     post:
@@ -100,12 +100,12 @@ paths:
                 note:
                   type: string
       responses:
-        "200":
+        '200':
           description: Field added
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Item"
+                $ref: '#/components/schemas/Item'
 
   /items/{id}/remove-field:
     post:
@@ -124,12 +124,12 @@ paths:
             schema:
               type: object
       responses:
-        "200":
+        '200':
           description: Field removed
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Item"
+                $ref: '#/components/schemas/Item'
 
   /items/{id}/append-tag:
     post:
@@ -152,12 +152,12 @@ paths:
                 tag:
                   type: string
       responses:
-        "200":
+        '200':
           description: Tag appended
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Item"
+                $ref: '#/components/schemas/Item'
 
   /items/{id}/prepend-tag:
     post:
@@ -180,12 +180,12 @@ paths:
                 tag:
                   type: string
       responses:
-        "200":
+        '200':
           description: Tag prepended
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Item"
+                $ref: '#/components/schemas/Item'
 
   /items/{id}/increment-score:
     post:
@@ -204,12 +204,12 @@ paths:
             schema:
               type: object
       responses:
-        "200":
+        '200':
           description: Score incremented
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Item"
+                $ref: '#/components/schemas/Item'
 
   /items/{id}/merge-metadata:
     post:
@@ -231,12 +231,12 @@ paths:
                 changes:
                   type: object
       responses:
-        "200":
+        '200':
           description: Metadata merged
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Item"
+                $ref: '#/components/schemas/Item'
 
   /items/{id}/upsert-member:
     post:
@@ -261,12 +261,12 @@ paths:
                 role:
                   type: string
       responses:
-        "200":
+        '200':
           description: Member upserted
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Item"
+                $ref: '#/components/schemas/Item'
 
   /items/{id}/promote:
     post:
@@ -289,12 +289,12 @@ paths:
                 newStatus:
                   type: string
       responses:
-        "200":
+        '200':
           description: Promoted
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Item"
+                $ref: '#/components/schemas/Item'
 
   /items/{id}/publish:
     post:
@@ -317,12 +317,12 @@ paths:
                 draftBody:
                   type: string
       responses:
-        "200":
+        '200':
           description: Published
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Item"
+                $ref: '#/components/schemas/Item'
 
   /items/{id}/validate-payload:
     post:
@@ -344,12 +344,12 @@ paths:
             schema:
               type: object
       responses:
-        "200":
+        '200':
           description: Payload accepted
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Item"
+                $ref: '#/components/schemas/Item'
 
 components:
   schemas:
@@ -395,27 +395,27 @@ components:
     # Sub-path boundary schemas — each mutation boundary uses $ref to Item
     # because all ops mutate the same aggregate type.
     ItemRename:
-      $ref: "#/components/schemas/Item"
+      $ref: '#/components/schemas/Item'
     ItemAddField:
-      $ref: "#/components/schemas/Item"
+      $ref: '#/components/schemas/Item'
     ItemRemoveField:
-      $ref: "#/components/schemas/Item"
+      $ref: '#/components/schemas/Item'
     ItemAppendTag:
-      $ref: "#/components/schemas/Item"
+      $ref: '#/components/schemas/Item'
     ItemPrependTag:
-      $ref: "#/components/schemas/Item"
+      $ref: '#/components/schemas/Item'
     ItemIncrementScore:
-      $ref: "#/components/schemas/Item"
+      $ref: '#/components/schemas/Item'
     ItemMergeMetadata:
-      $ref: "#/components/schemas/Item"
+      $ref: '#/components/schemas/Item'
     ItemUpsertMember:
-      $ref: "#/components/schemas/Item"
+      $ref: '#/components/schemas/Item'
     ItemPromote:
-      $ref: "#/components/schemas/Item"
+      $ref: '#/components/schemas/Item'
     ItemPublish:
-      $ref: "#/components/schemas/Item"
+      $ref: '#/components/schemas/Item'
     ItemValidatePayload:
-      $ref: "#/components/schemas/Item"
+      $ref: '#/components/schemas/Item'
 
     # Strict schema used by schema_ref validation.
     # amount must be a number — sending a string triggers SCHEMA_TYPE_MISMATCH.

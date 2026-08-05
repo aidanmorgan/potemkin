@@ -1,20 +1,20 @@
-import { promises as fs } from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
-import { loadPotemkinConfig } from "../../../src/parser/configLoader.js";
+import { promises as fs } from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { loadPotemkinConfig } from '../../../src/parser/configLoader.js';
 
 async function temporaryConfig(): Promise<{
   readonly root: string;
   readonly config: string;
   readonly write: (name: string, contents: string) => Promise<string>;
 }> {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "potemkin-config-loader-matrix-"));
-  const modules = path.join(root, "modules");
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'potemkin-config-loader-matrix-'));
+  const modules = path.join(root, 'modules');
   await fs.mkdir(modules);
-  const config = path.join(root, "potemkin.yml");
+  const config = path.join(root, 'potemkin.yml');
   await fs.writeFile(
     config,
-    "version: 1\nspecmatic: ./specmatic.yaml\nmodules: [modules/*.yaml]\n",
+    'version: 1\nspecmatic: ./specmatic.yaml\nmodules: [modules/*.yaml]\n',
   );
   return {
     root,
@@ -27,82 +27,82 @@ async function temporaryConfig(): Promise<{
   };
 }
 
-describe("potemkin.yml file loader edge matrix", () => {
-  it("partitions boundary, component, use, global, and resource modules and records watch paths", async () => {
+describe('potemkin.yml file loader edge matrix', () => {
+  it('partitions boundary, component, use, global, and resource modules and records watch paths', async () => {
     const fixture = await temporaryConfig();
     try {
       const boundaryPath = await fixture.write(
-        "boundary.yaml",
-        "boundary: Orders\ncontract_path: /orders\nspec_id: main\n",
+        'boundary.yaml',
+        'boundary: Orders\ncontract_path: /orders\nspec_id: main\n',
       );
       const componentPath = await fixture.write(
-        "component.yaml",
-        "kind: component\nname: Shared\n",
+        'component.yaml',
+        'kind: component\nname: Shared\n',
       );
-      const usePath = await fixture.write("use.yaml", "use: []\n");
-      const globalPath = await fixture.write("global.yaml", "idempotency: {}\n");
+      const usePath = await fixture.write('use.yaml', 'use: []\n');
+      const globalPath = await fixture.write('global.yaml', 'idempotency: {}\n');
       const loaded = await loadPotemkinConfig(fixture.config, {
-        specEndpoints: [{ specId: "main", path: "/orders", method: "GET" }],
+        specEndpoints: [{ specId: 'main', path: '/orders', method: 'GET' }],
       });
       expect(loaded.boundaryModulePaths).toEqual([boundaryPath]);
       expect(loaded.componentModulePaths).toEqual([componentPath]);
       expect(loaded.useMappingModulePaths).toEqual([usePath]);
       expect(loaded.globalModulePaths).toEqual([globalPath]);
       expect(loaded.yamlProgram.modules).toHaveLength(1);
-      expect(loaded.yamlProgram.globalYaml).toContain("idempotency");
-      expect(loaded.watchGlobs).toEqual([path.join(fixture.root, "modules/*.yaml")]);
+      expect(loaded.yamlProgram.globalYaml).toContain('idempotency');
+      expect(loaded.watchGlobs).toEqual([path.join(fixture.root, 'modules/*.yaml')]);
       expect(loaded.watchIgnores).toEqual([]);
     } finally {
       await fs.rm(fixture.root, { recursive: true, force: true });
     }
   });
 
-  it("expands resource modules only when an OpenAPI document is supplied", async () => {
+  it('expands resource modules only when an OpenAPI document is supplied', async () => {
     const fixture = await temporaryConfig();
     try {
       await fixture.write(
-        "resource.yaml",
-        "resource: Order\nschema: Order\noperations: [{op: createOrder, emit: OrderCreated}]\n",
+        'resource.yaml',
+        'resource: Order\nschema: Order\noperations: [{op: createOrder, emit: OrderCreated}]\n',
       );
       await expect(loadPotemkinConfig(fixture.config)).rejects.toMatchObject({
-        code: "BOOT_ERR_DSL_SYNTAX",
+        code: 'BOOT_ERR_DSL_SYNTAX',
       });
     } finally {
       await fs.rm(fixture.root, { recursive: true, force: true });
     }
   });
 
-  it("rejects missing files, malformed YAML, empty globs, and duplicate global keys", async () => {
-    const missing = path.join(os.tmpdir(), "potemkin-config-loader-missing.yml");
+  it('rejects missing files, malformed YAML, empty globs, and duplicate global keys', async () => {
+    const missing = path.join(os.tmpdir(), 'potemkin-config-loader-missing.yml');
     await expect(loadPotemkinConfig(missing)).rejects.toMatchObject({
-      code: "BOOT_ERR_CONFIG_MISSING",
+      code: 'BOOT_ERR_CONFIG_MISSING',
     });
 
     const malformedRoot = await fs.mkdtemp(
-      path.join(os.tmpdir(), "potemkin-config-loader-invalid-"),
+      path.join(os.tmpdir(), 'potemkin-config-loader-invalid-'),
     );
     try {
-      const malformed = path.join(malformedRoot, "potemkin.yml");
-      await fs.writeFile(malformed, "version: [");
+      const malformed = path.join(malformedRoot, 'potemkin.yml');
+      await fs.writeFile(malformed, 'version: [');
       await expect(loadPotemkinConfig(malformed)).rejects.toMatchObject({
-        code: "BOOT_ERR_INVALID_YAML",
+        code: 'BOOT_ERR_INVALID_YAML',
       });
 
-      const empty = path.join(malformedRoot, "empty.yml");
+      const empty = path.join(malformedRoot, 'empty.yml');
       await fs.writeFile(
         empty,
-        "version: 1\nspecmatic: ./specmatic.yaml\nmodules: [none/*.yaml]\n",
+        'version: 1\nspecmatic: ./specmatic.yaml\nmodules: [none/*.yaml]\n',
       );
       await expect(loadPotemkinConfig(empty)).rejects.toMatchObject({
-        code: "BOOT_ERR_NO_MODULES",
+        code: 'BOOT_ERR_NO_MODULES',
       });
 
       const fixture = await temporaryConfig();
       try {
-        await fixture.write("first.yaml", "auth: {mode: simple}\n");
-        await fixture.write("second.yaml", "auth: {mode: jwt}\n");
+        await fixture.write('first.yaml', 'auth: {mode: simple}\n');
+        await fixture.write('second.yaml', 'auth: {mode: jwt}\n');
         await expect(loadPotemkinConfig(fixture.config)).rejects.toMatchObject({
-          code: "BOOT_ERR_DSL_DUPLICATE_BOUNDARY",
+          code: 'BOOT_ERR_DSL_DUPLICATE_BOUNDARY',
         });
       } finally {
         await fs.rm(fixture.root, { recursive: true, force: true });
@@ -112,26 +112,26 @@ describe("potemkin.yml file loader edge matrix", () => {
     }
   });
 
-  it("enforces spec id, contract path, method, and out-of-contract cross-checks", async () => {
+  it('enforces spec id, contract path, method, and out-of-contract cross-checks', async () => {
     const cases = [
-      ["boundary: Orders\ncontract_path: /orders\n", "BOOT_ERR_MISSING_SPEC_ID"],
-      ["boundary: Orders\ncontract_path: /orders\nspec_id: other\n", "BOOT_ERR_UNKNOWN_SPEC_ID"],
+      ['boundary: Orders\ncontract_path: /orders\n', 'BOOT_ERR_MISSING_SPEC_ID'],
+      ['boundary: Orders\ncontract_path: /orders\nspec_id: other\n', 'BOOT_ERR_UNKNOWN_SPEC_ID'],
       [
-        "boundary: Orders\ncontract_path: /missing\nspec_id: main\n",
-        "BOOT_ERR_UNKNOWN_CONTRACT_PATH",
+        'boundary: Orders\ncontract_path: /missing\nspec_id: main\n',
+        'BOOT_ERR_UNKNOWN_CONTRACT_PATH',
       ],
       [
-        "boundary: Orders\ncontract_path: /orders\nspec_id: main\nmethods: [POST]\n",
-        "BOOT_ERR_UNKNOWN_CONTRACT_PATH",
+        'boundary: Orders\ncontract_path: /orders\nspec_id: main\nmethods: [POST]\n',
+        'BOOT_ERR_UNKNOWN_CONTRACT_PATH',
       ],
     ] as const;
     for (const [module, code] of cases) {
       const fixture = await temporaryConfig();
       try {
-        await fixture.write("boundary.yaml", module);
+        await fixture.write('boundary.yaml', module);
         await expect(
           loadPotemkinConfig(fixture.config, {
-            specEndpoints: [{ specId: "main", path: "/orders", method: "GET" }],
+            specEndpoints: [{ specId: 'main', path: '/orders', method: 'GET' }],
           }),
         ).rejects.toMatchObject({ code });
       } finally {
@@ -141,12 +141,12 @@ describe("potemkin.yml file loader edge matrix", () => {
 
     const exempt = await temporaryConfig();
     try {
-      await exempt.write("boundary.yaml", "boundary: External\nout_of_contract: true\n");
+      await exempt.write('boundary.yaml', 'boundary: External\nout_of_contract: true\n');
       await expect(
         loadPotemkinConfig(exempt.config, {
-          specEndpoints: [{ specId: "main", path: "/orders", method: "GET" }],
+          specEndpoints: [{ specId: 'main', path: '/orders', method: 'GET' }],
         }),
-      ).resolves.toMatchObject({ boundaryModulePaths: [expect.stringContaining("boundary.yaml")] });
+      ).resolves.toMatchObject({ boundaryModulePaths: [expect.stringContaining('boundary.yaml')] });
     } finally {
       await fs.rm(exempt.root, { recursive: true, force: true });
     }

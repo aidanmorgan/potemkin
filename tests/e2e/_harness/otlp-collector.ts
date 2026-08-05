@@ -1,4 +1,4 @@
-import * as http from "node:http";
+import * as http from 'node:http';
 
 export interface OtlpAttributeValue {
   readonly stringValue?: string;
@@ -72,13 +72,13 @@ function closeServer(server: http.Server): Promise<void> {
 
 function readBody(request: http.IncomingMessage): Promise<string> {
   return new Promise<string>((resolve, reject) => {
-    let body = "";
-    request.setEncoding("utf8");
-    request.on("data", (chunk: string) => {
+    let body = '';
+    request.setEncoding('utf8');
+    request.on('data', (chunk: string) => {
       body += chunk;
     });
-    request.on("end", () => resolve(body));
-    request.on("error", reject);
+    request.on('end', () => resolve(body));
+    request.on('error', reject);
   });
 }
 
@@ -89,13 +89,13 @@ export async function startOtlpCollector(
   const traces: OtlpTraceExport[] = [];
   const metrics: OtlpMetricExport[] = [];
   const server = http.createServer(async (request, response) => {
-    if (request.method !== "POST") {
+    if (request.method !== 'POST') {
       response.statusCode = 405;
       response.end();
       return;
     }
     const body = await readBody(request);
-    if (request.url === "/v1/traces") {
+    if (request.url === '/v1/traces') {
       try {
         const traceExport = JSON.parse(body) as OtlpTraceExport;
         traces.push(traceExport);
@@ -106,7 +106,7 @@ export async function startOtlpCollector(
         return;
       }
     }
-    if (request.url === "/v1/metrics") {
+    if (request.url === '/v1/metrics') {
       try {
         const metricExport = JSON.parse(body) as OtlpMetricExport;
         metrics.push(metricExport);
@@ -117,24 +117,24 @@ export async function startOtlpCollector(
         return;
       }
     }
-    if (request.url !== "/v1/traces" && request.url !== "/v1/metrics") {
+    if (request.url !== '/v1/traces' && request.url !== '/v1/metrics') {
       response.statusCode = 404;
       response.end();
       return;
     }
     response.statusCode = 200;
-    response.setHeader("content-type", "application/json");
-    response.end("{}");
+    response.setHeader('content-type', 'application/json');
+    response.end('{}');
   });
 
   await new Promise<void>((resolve, reject) => {
-    server.listen(0, "127.0.0.1", () => resolve());
-    server.once("error", reject);
+    server.listen(0, '127.0.0.1', () => resolve());
+    server.once('error', reject);
   });
   const address = server.address();
-  if (address === null || typeof address === "string") {
+  if (address === null || typeof address === 'string') {
     await closeServer(server);
-    throw new Error("OTLP collector did not expose a TCP address");
+    throw new Error('OTLP collector did not expose a TCP address');
   }
 
   return {

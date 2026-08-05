@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "description": "Potemkin — CQRS/ES HTTP service simulator via OpenAPI and YAML DSL",
   "license": "MIT",
+  "bin": {
+    "potemkin": "./dist/src/cli/index.js",
+    "potemkin-language-server": "./dist/src/language-server/server.js"
+  },
   "files": [
     "dist"
   ],
@@ -19,50 +23,10 @@
       "require": "./dist/src/parser/public.js",
       "default": "./dist/src/parser/public.js"
     },
-    "./parser/runtime": {
-      "types": "./dist/src/parser/runtime.d.ts",
-      "require": "./dist/src/parser/runtime.js",
-      "default": "./dist/src/parser/runtime.js"
-    },
-    "./parser/files": {
-      "types": "./dist/src/parser/files.d.ts",
-      "require": "./dist/src/parser/files.js",
-      "default": "./dist/src/parser/files.js"
-    },
-    "./parser/configured": {
-      "types": "./dist/src/parser/configured.d.ts",
-      "require": "./dist/src/parser/configured.js",
-      "default": "./dist/src/parser/configured.js"
-    },
-    "./parser/mixed": {
-      "types": "./dist/src/parser/mixed.d.ts",
-      "require": "./dist/src/parser/mixed.js",
-      "default": "./dist/src/parser/mixed.js"
-    },
-    "./parser/gateway": {
-      "types": "./dist/src/parser/gateway.d.ts",
-      "require": "./dist/src/parser/gateway.js",
-      "default": "./dist/src/parser/gateway.js"
-    },
-    "./config": {
-      "types": "./dist/src/config.d.ts",
-      "require": "./dist/src/config.js",
-      "default": "./dist/src/config.js"
-    },
-    "./model/builders": {
-      "types": "./dist/src/model/builders.d.ts",
-      "require": "./dist/src/model/builders.js",
-      "default": "./dist/src/model/builders.js"
-    },
-    "./model/compiler": {
-      "types": "./dist/src/model/compiler.d.ts",
-      "require": "./dist/src/model/compiler.js",
-      "default": "./dist/src/model/compiler.js"
-    },
-    "./model/patches": {
-      "types": "./dist/src/model/patches.d.ts",
-      "require": "./dist/src/model/patches.js",
-      "default": "./dist/src/model/patches.js"
+    "./project": {
+      "types": "./dist/src/project/index.d.ts",
+      "require": "./dist/src/project/index.js",
+      "default": "./dist/src/project/index.js"
     },
     "./model": {
       "types": "./dist/src/model/index.d.ts",
@@ -89,36 +53,57 @@
       "require": "./dist/src/sdk/index.js",
       "default": "./dist/src/sdk/index.js"
     },
+    "./typescript-plugin": {
+      "types": "./dist/src/typescript-plugin/index.d.ts",
+      "require": "./dist/src/typescript-plugin/index.js",
+      "default": "./dist/src/typescript-plugin/index.js"
+    },
+    "./language-server": {
+      "types": "./dist/src/language-server/index.d.ts",
+      "require": "./dist/src/language-server/index.js",
+      "default": "./dist/src/language-server/index.js"
+    },
+    "./generation": {
+      "types": "./dist/src/generation/index.d.ts",
+      "require": "./dist/src/generation/index.js",
+      "default": "./dist/src/generation/index.js"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {
-    "prebuild": "node scripts/clean-dist.mjs",
-    "build": "tsc",
+    "build:language-server": "node scripts/clean-dist.mjs && tsc && node scripts/copy-openapi-templates.mjs && node scripts/prepare-binaries.mjs",
+    "build": "pnpm run build:language-server",
+    "package:language-server": "pnpm run build:language-server && node scripts/package-language-server.mjs",
+    "package:vscode": "pnpm run build:language-server && node scripts/package-vscode.mjs",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "test:bdd": "cucumber-js --config cucumber.cjs",
     "test:all": "pnpm test && pnpm run test:bdd",
     "lint": "eslint",
-    "format": "prettier --write",
+    "format": "oxfmt",
     "start": "tsx src/index.ts",
-    "start:server": "tsx src/cli/server.ts",
-    "lint:sim": "tsx src/cli/lint.ts",
+    "start:server": "tsx src/cli/index.ts server",
+    "generate:types": "tsx src/cli/index.ts generate-types",
+    "lint:sim": "tsx src/cli/index.ts lint",
     "start:example": "tsx examples/crm/run-crm-sim.ts",
     "test:contract": "jest --config jest.contract.config.js",
-    "test:conformance": "tsx src/conformance/cli.ts",
+    "test:conformance": "tsx src/cli/index.ts conformance",
     "test:conformance:crm": "tsx tests/conformance/crm-verifier.ts",
     "test:conformance:crm:negative": "tsx tests/conformance/crm-negative-verifier.ts",
     "test:conformance:crm:positive": "tsx tests/conformance/crm-positive-verifier.ts",
     "test:e2e": "NODE_OPTIONS=--experimental-vm-modules jest --config jest.e2e.config.js --runInBand",
     "test:equivalence": "jest --runInBand tests/unit/equivalence tests/integration/equivalence",
     "test:e2e:build": "cd plugin && ./gradlew shadowJar && cd .. && NODE_OPTIONS=--experimental-vm-modules jest --config jest.e2e.config.js --runInBand",
-    "export:examples": "tsx src/cli/export-examples.ts",
+    "export:examples": "tsx src/cli/index.ts export-examples",
     "verify:examples": "pnpm run export:examples -- examples/crm --check && pnpm run export:examples -- examples/stripe --check",
     "test:examples": "jest --config jest.examples.config.js --runInBand",
     "test:examples:build": "cd plugin && ./gradlew shadowJar && cd .. && jest --config jest.examples.config.js --runInBand",
     "verify": "pnpm run verify:no-skips && verifyx && pnpm run verify:examples",
     "verify:no-skips": "node scripts/check-no-skipped-tests.mjs",
+    "verify:architecture": "pnpm run build && node scripts/check-architecture.mjs && POTEMKIN_VERIFY_DIST=1 node scripts/check-public-api.mjs",
+    "verify:public-api": "node scripts/check-public-api.mjs",
+    "verify:cleanup": "pnpm run build && node scripts/check-cleanup.mjs && pnpm run verify:public-api && pnpm run verify:unused-code && pnpm run verify:duplicate-code",
     "verify:complexity": "verifyx complexity --threshold 10 --ignore src/core/engine.ts --ignore src/dsl/schema.ts --ignore src/http/runtimeGateway.ts --ignore src/cel/evaluator.ts \"src/**/*.ts\"",
     "verify:comments": "verifyx comments --max-lines 20 \"src/**/*.ts\"",
     "verify:hardcoded-colors": "verifyx hardcoded-colors",
@@ -150,16 +135,21 @@
     "async-retry": "^1.3.3",
     "body-parser": "^1.20.3",
     "cookie": "^1.1.1",
+    "eta": "^4.6.0",
     "express": "^4.21.2",
     "js-yaml": "^4.1.0",
     "jsonwebtoken": "^9.0.3",
     "openapi-types": "^12.1.3",
+    "openapi-typescript": "^7.13.0",
     "pino": "^9.5.0",
     "pino-pretty": "^13.0.0",
     "supertest": "^7.0.0",
     "tinyglobby": "^0.2.16",
     "typescript": "^5.7.3",
-    "uuidv7": "^1.0.2"
+    "uuidv7": "^1.0.2",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.12",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@cucumber/cucumber": "^11.3.0",

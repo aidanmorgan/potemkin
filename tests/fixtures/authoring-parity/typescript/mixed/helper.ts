@@ -5,12 +5,12 @@ import {
   helperName,
   simulation,
   type FactoryContext,
-} from "potemkin/sdk";
+} from 'potemkin/sdk';
 
-const parityName = defineHelper(helperName("parityName"), (value: string): string => value);
+const parityName = defineHelper(helperName('parityName'), (value: string): string => value);
 
 export class AuthoringParityHelperFactory {
-  @PotemkinConfigure(factoryName("authoring-parity-helper"))
+  @PotemkinConfigure(factoryName('authoring-parity-helper'))
   static create(_context: FactoryContext) {
     return simulation().helper(parityName).build();
   }

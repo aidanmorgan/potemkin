@@ -10,32 +10,32 @@ identity:
     generate: "$concat('re_', $uuidv7())"
 
 query_mapping:
-  charge: "state.charge == param"
+  charge: 'state.charge == param'
 
 event_catalog:
   - type: RefundCreated
     payload_template:
-      id: "command.targetId"
+      id: 'command.targetId'
       object: "'refund'"
-      created: "$unix()"
-      livemode: "false"
-      amount: "has(command.payload.amount) ? command.payload.amount : 0"
+      created: '$unix()'
+      livemode: 'false'
+      amount: 'has(command.payload.amount) ? command.payload.amount : 0'
       currency: "has(command.payload.currency) ? command.payload.currency : 'usd'"
-      charge: "command.payload.charge"
-      payment_intent: "null"
+      charge: 'command.payload.charge'
+      payment_intent: 'null'
       status: "'succeeded'"
-      reason: "has(command.payload.reason) ? command.payload.reason : null"
-      metadata: "has(command.payload.metadata) ? command.payload.metadata : {}"
+      reason: 'has(command.payload.reason) ? command.payload.reason : null'
+      metadata: 'has(command.payload.metadata) ? command.payload.metadata : {}'
   - type: RefundUpdated
     payload_template:
-      metadata: "has(command.payload.metadata) ? command.payload.metadata : state.metadata"
+      metadata: 'has(command.payload.metadata) ? command.payload.metadata : state.metadata'
 
 reducers:
   - on: RefundCreated
     replace_state: true
   - on: RefundUpdated
     patches:
-      - { op: replace, path: /metadata, value: "${event.payload.metadata}" }
+      - { op: replace, path: /metadata, value: '${event.payload.metadata}' }
 
 operations:
   - op: PostRefunds
@@ -44,9 +44,9 @@ operations:
       - boundary: charge__v1_charges_By_charge
         intent: mutation
         operationId: GetChargesCharge
-        target_id: "command.payload.charge"
+        target_id: 'command.payload.charge'
         payload:
-          amount: "command.payload.amount"
+          amount: 'command.payload.amount'
   - { op: GetRefunds, query: true }
   - { op: GetRefundsRefund, query: true }
   - { op: PostRefundsRefund, emit: RefundUpdated }

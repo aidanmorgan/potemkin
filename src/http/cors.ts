@@ -4,7 +4,7 @@
  * previously carried its own copy with identical logic.
  */
 
-export type AllowedOrigins = "*" | readonly string[];
+export type AllowedOrigins = '*' | readonly string[];
 
 /**
  * Resolve the CORS allowed-origin value for a request.
@@ -13,12 +13,12 @@ export type AllowedOrigins = "*" | readonly string[];
  */
 export function getAllowedOrigin(
   requestOrigin: string | undefined,
-  allowedOrigins: AllowedOrigins = "*",
+  allowedOrigins: AllowedOrigins = '*',
 ): string {
-  if (allowedOrigins === "*") return "*";
+  if (allowedOrigins === '*') return '*';
   const allowed = allowedOrigins;
   if (requestOrigin && allowed.includes(requestOrigin)) return requestOrigin;
-  return allowed[0] ?? "*";
+  return allowed[0] ?? '*';
 }
 
 /**
@@ -35,8 +35,8 @@ export function getAllowedOrigin(
  */
 export function isOriginAdmitted(
   requestOrigin: string | undefined,
-  allowedOrigins: AllowedOrigins = "*",
+  allowedOrigins: AllowedOrigins = '*',
 ): boolean {
   if (!requestOrigin) return false;
-  return allowedOrigins === "*" || allowedOrigins.includes(requestOrigin);
+  return allowedOrigins === '*' || allowedOrigins.includes(requestOrigin);
 }

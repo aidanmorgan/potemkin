@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Latency Demo API
-  version: "1.0.0"
+  version: '1.0.0'
 paths:
   /jobs:
     post:
@@ -18,24 +18,24 @@ paths:
                 name:
                   type: string
       responses:
-        "201":
+        '201':
           description: Job submitted
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Job"
-        "503":
+                $ref: '#/components/schemas/Job'
+        '503':
           description: Injected job fault
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
-        "418":
+                $ref: '#/components/schemas/Error'
+        '418':
           description: Forced status
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
   /jobs/ranged:
     post:
       operationId: submitRangedJob
@@ -51,12 +51,12 @@ paths:
                 name:
                   type: string
       responses:
-        "201":
+        '201':
           description: Job submitted
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Job"
+                $ref: '#/components/schemas/Job'
   /jobs/stacked:
     post:
       operationId: submitStackedJob
@@ -72,12 +72,12 @@ paths:
                 name:
                   type: string
       responses:
-        "201":
+        '201':
           description: Job submitted
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Job"
+                $ref: '#/components/schemas/Job'
   /jobs/{id}:
     get:
       operationId: getJob
@@ -89,18 +89,18 @@ paths:
           schema:
             type: string
       responses:
-        "200":
+        '200':
           description: Job found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Job"
-        "404":
+                $ref: '#/components/schemas/Job'
+        '404':
           description: Not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
 components:
   schemas:
     Job:
@@ -113,11 +113,11 @@ components:
         name:
           type: string
     JobById:
-      $ref: "#/components/schemas/Job"
+      $ref: '#/components/schemas/Job'
     JobRanged:
-      $ref: "#/components/schemas/Job"
+      $ref: '#/components/schemas/Job'
     JobStacked:
-      $ref: "#/components/schemas/Job"
+      $ref: '#/components/schemas/Job'
     Error:
       type: object
       required: [error]

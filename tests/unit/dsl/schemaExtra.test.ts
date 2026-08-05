@@ -12,33 +12,33 @@
  *  - validateBoundaryConfig: query_mapping non-object throws; reducers not array throws; event_catalog not array throws
  */
 
-import { validateBoundaryConfig } from "../../../src/dsl/schema";
-import { validateGlobalConfig } from "../../../src/dsl/schema";
-import { BootError } from "../../../src/errors";
+import { validateBoundaryConfig } from '../../../src/dsl/schema';
+import { validateGlobalConfig } from '../../../src/dsl/schema';
+import { BootError } from '../../../src/errors';
 
 const minimalBase = {
-  boundary: "B",
-  contract_path: "/b",
+  boundary: 'B',
+  contract_path: '/b',
   behaviors: [],
   reducers: [],
   event_catalog: [],
 };
 
 const fullBase = {
-  boundary: "B",
-  contract_path: "/b",
+  boundary: 'B',
+  contract_path: '/b',
   behaviors: [
-    { name: "create", match: { operationId: "createThing", condition: "true" }, emit: "Ev" },
+    { name: 'create', match: { operationId: 'createThing', condition: 'true' }, emit: 'Ev' },
   ],
-  reducers: [{ on: "Ev", patches: [{ op: "replace", path: "/status", value: '${"active"}' }] }],
-  event_catalog: [{ type: "Ev", payload_template: {} }],
+  reducers: [{ on: 'Ev', patches: [{ op: 'replace', path: '/status', value: '${"active"}' }] }],
+  event_catalog: [{ type: 'Ev', payload_template: {} }],
 };
 
-describe("dsl/schema — additional branch coverage", () => {
+describe('dsl/schema — additional branch coverage', () => {
   // ── optionalString ──────────────────────────────────────────────────────────
 
-  describe("identity.creation.generate non-string", () => {
-    it("throws when identity.creation.generate is not a string", () => {
+  describe('identity.creation.generate non-string', () => {
+    it('throws when identity.creation.generate is not a string', () => {
       const raw = {
         ...minimalBase,
         identity: { creation: { generate: 123 } },
@@ -49,269 +49,269 @@ describe("dsl/schema — additional branch coverage", () => {
 
   // ── requireStringStringMap ──────────────────────────────────────────────────
 
-  describe("query_mapping validation", () => {
-    it("throws when query_mapping is a string (not object)", () => {
-      const raw = { ...minimalBase, query_mapping: "bad" };
+  describe('query_mapping validation', () => {
+    it('throws when query_mapping is a string (not object)', () => {
+      const raw = { ...minimalBase, query_mapping: 'bad' };
       expect(() => validateBoundaryConfig(raw)).toThrow(BootError);
     });
 
-    it("throws when query_mapping value is not a string", () => {
+    it('throws when query_mapping value is not a string', () => {
       const raw = { ...minimalBase, query_mapping: { filter: 123 } };
       expect(() => validateBoundaryConfig(raw)).toThrow(BootError);
     });
 
-    it("accepts valid string-string query_mapping", () => {
-      const raw = { ...minimalBase, query_mapping: { status: "state.status == param" } };
+    it('accepts valid string-string query_mapping', () => {
+      const raw = { ...minimalBase, query_mapping: { status: 'state.status == param' } };
       const config = validateBoundaryConfig(raw);
-      expect(config.queryMapping?.["status"]).toBe("state.status == param");
+      expect(config.queryMapping?.['status']).toBe('state.status == param');
     });
   });
 
   // ── requireStringMixedMap ───────────────────────────────────────────────────
 
-  describe("reducer patch validation", () => {
-    it("rejects the removed append key with BOOT_ERR_DSL_SYNTAX", () => {
+  describe('reducer patch validation', () => {
+    it('rejects the removed append key with BOOT_ERR_DSL_SYNTAX', () => {
       const raw = {
         ...minimalBase,
         behaviors: [],
-        reducers: [{ on: "Ev", append: { list: '"item"' } }],
-        event_catalog: [{ type: "Ev", payload_template: {} }],
+        reducers: [{ on: 'Ev', append: { list: '"item"' } }],
+        event_catalog: [{ type: 'Ev', payload_template: {} }],
       };
       expect(() => validateBoundaryConfig(raw)).toThrow(BootError);
       try {
         validateBoundaryConfig(raw);
       } catch (e) {
-        expect((e as BootError).code).toBe("BOOT_ERR_DSL_SYNTAX");
+        expect((e as BootError).code).toBe('BOOT_ERR_DSL_SYNTAX');
       }
     });
 
-    it("throws when patches is not an array", () => {
+    it('throws when patches is not an array', () => {
       const raw = {
         ...minimalBase,
         behaviors: [],
-        reducers: [{ on: "Ev", patches: "not-an-array" }],
-        event_catalog: [{ type: "Ev", payload_template: {} }],
+        reducers: [{ on: 'Ev', patches: 'not-an-array' }],
+        event_catalog: [{ type: 'Ev', payload_template: {} }],
       };
       expect(() => validateBoundaryConfig(raw)).toThrow(BootError);
     });
 
-    it("throws when a patch op is invalid", () => {
+    it('throws when a patch op is invalid', () => {
       const raw = {
         ...minimalBase,
         behaviors: [],
-        reducers: [{ on: "Ev", patches: [{ op: "bogus", path: "/list" }] }],
-        event_catalog: [{ type: "Ev", payload_template: {} }],
+        reducers: [{ on: 'Ev', patches: [{ op: 'bogus', path: '/list' }] }],
+        event_catalog: [{ type: 'Ev', payload_template: {} }],
       };
       expect(() => validateBoundaryConfig(raw)).toThrow(BootError);
     });
 
-    it("parses an append patch with a CEL value", () => {
+    it('parses an append patch with a CEL value', () => {
       const raw = {
         ...minimalBase,
         behaviors: [],
         reducers: [
-          { on: "Ev", patches: [{ op: "append", path: "/list", value: "${event.payload.item}" }] },
+          { on: 'Ev', patches: [{ op: 'append', path: '/list', value: '${event.payload.item}' }] },
         ],
-        event_catalog: [{ type: "Ev", payload_template: {} }],
+        event_catalog: [{ type: 'Ev', payload_template: {} }],
       };
       const config = validateBoundaryConfig(raw);
       expect(config.reducers[0]?.patches?.[0]).toEqual({
-        op: "append",
-        path: "/list",
-        value: "${event.payload.item}",
+        op: 'append',
+        path: '/list',
+        value: '${event.payload.item}',
       });
     });
   });
 
   // ── validateBehaviorRule ────────────────────────────────────────────────────
 
-  describe("behavior.match validation", () => {
-    it("throws when behavior.match is not an object", () => {
+  describe('behavior.match validation', () => {
+    it('throws when behavior.match is not an object', () => {
       const raw = {
         ...minimalBase,
-        behaviors: [{ name: "b", match: "bad", emit: "Ev" }],
-        event_catalog: [{ type: "Ev", payload_template: {} }],
+        behaviors: [{ name: 'b', match: 'bad', emit: 'Ev' }],
+        event_catalog: [{ type: 'Ev', payload_template: {} }],
       };
       expect(() => validateBoundaryConfig(raw)).toThrow(BootError);
     });
 
-    it("throws when behavior.match.condition is missing", () => {
+    it('throws when behavior.match.condition is missing', () => {
       const raw = {
         ...minimalBase,
-        behaviors: [{ name: "b", match: { intent: "creation" }, emit: "Ev" }],
-        event_catalog: [{ type: "Ev", payload_template: {} }],
+        behaviors: [{ name: 'b', match: { intent: 'creation' }, emit: 'Ev' }],
+        event_catalog: [{ type: 'Ev', payload_template: {} }],
       };
       expect(() => validateBoundaryConfig(raw)).toThrow(BootError);
     });
 
-    it("parses an explicit response_status", () => {
+    it('parses an explicit response_status', () => {
       const raw = {
         ...minimalBase,
         behaviors: [
           {
-            name: "b",
-            match: { operationId: "createThing", condition: "true" },
+            name: 'b',
+            match: { operationId: 'createThing', condition: 'true' },
             response_status: 202,
-            emit: "Ev",
+            emit: 'Ev',
           },
         ],
-        event_catalog: [{ type: "Ev", payload_template: {} }],
+        event_catalog: [{ type: 'Ev', payload_template: {} }],
       };
       expect(validateBoundaryConfig(raw).behaviors[0]?.responseStatus).toBe(202);
     });
 
-    it.each([99, 600, 202.5, "202"])("rejects invalid response_status %p", (response_status) => {
+    it.each([99, 600, 202.5, '202'])('rejects invalid response_status %p', (response_status) => {
       const raw = {
         ...minimalBase,
         behaviors: [
           {
-            name: "b",
-            match: { operationId: "createThing", condition: "true" },
+            name: 'b',
+            match: { operationId: 'createThing', condition: 'true' },
             response_status,
-            emit: "Ev",
+            emit: 'Ev',
           },
         ],
-        event_catalog: [{ type: "Ev", payload_template: {} }],
+        event_catalog: [{ type: 'Ev', payload_template: {} }],
       };
       expect(() => validateBoundaryConfig(raw)).toThrow(BootError);
     });
   });
 
-  describe("dispatch_commands validation", () => {
-    it("throws when dispatch_commands is not an array", () => {
+  describe('dispatch_commands validation', () => {
+    it('throws when dispatch_commands is not an array', () => {
       const raw = {
         ...minimalBase,
         behaviors: [
           {
-            name: "b",
-            match: { operationId: "createThing", condition: "true" },
-            emit: "Ev",
-            dispatch_commands: "not-array",
+            name: 'b',
+            match: { operationId: 'createThing', condition: 'true' },
+            emit: 'Ev',
+            dispatch_commands: 'not-array',
           },
         ],
-        event_catalog: [{ type: "Ev", payload_template: {} }],
+        event_catalog: [{ type: 'Ev', payload_template: {} }],
       };
       expect(() => validateBoundaryConfig(raw)).toThrow(BootError);
     });
 
-    it("throws when dispatch_commands entry is not an object", () => {
+    it('throws when dispatch_commands entry is not an object', () => {
       const raw = {
         ...minimalBase,
         behaviors: [
           {
-            name: "b",
-            match: { operationId: "createThing", condition: "true" },
-            emit: "Ev",
-            dispatch_commands: ["string-not-object"],
+            name: 'b',
+            match: { operationId: 'createThing', condition: 'true' },
+            emit: 'Ev',
+            dispatch_commands: ['string-not-object'],
           },
         ],
-        event_catalog: [{ type: "Ev", payload_template: {} }],
+        event_catalog: [{ type: 'Ev', payload_template: {} }],
       };
       expect(() => validateBoundaryConfig(raw)).toThrow(BootError);
     });
 
-    it("throws when dispatch_commands[i].intent is invalid", () => {
+    it('throws when dispatch_commands[i].intent is invalid', () => {
       const raw = {
         ...minimalBase,
         behaviors: [
           {
-            name: "b",
-            match: { operationId: "createThing", condition: "true" },
-            emit: "Ev",
-            dispatch_commands: [{ boundary: "Other", intent: "bogus", target_id: "id-1" }],
+            name: 'b',
+            match: { operationId: 'createThing', condition: 'true' },
+            emit: 'Ev',
+            dispatch_commands: [{ boundary: 'Other', intent: 'bogus', target_id: 'id-1' }],
           },
         ],
-        event_catalog: [{ type: "Ev", payload_template: {} }],
+        event_catalog: [{ type: 'Ev', payload_template: {} }],
       };
       expect(() => validateBoundaryConfig(raw)).toThrow(BootError);
     });
 
-    it("accepts a valid dispatch_commands entry without payload", () => {
+    it('accepts a valid dispatch_commands entry without payload', () => {
       const raw = {
         ...minimalBase,
         behaviors: [
           {
-            name: "b",
-            match: { operationId: "createThing", condition: "true" },
-            emit: "Ev",
+            name: 'b',
+            match: { operationId: 'createThing', condition: 'true' },
+            emit: 'Ev',
             dispatch_commands: [
-              { boundary: "Other", intent: "mutation", operationId: "op", target_id: '"some-id"' },
+              { boundary: 'Other', intent: 'mutation', operationId: 'op', target_id: '"some-id"' },
             ],
           },
         ],
-        event_catalog: [{ type: "Ev", payload_template: {} }],
+        event_catalog: [{ type: 'Ev', payload_template: {} }],
       };
       const config = validateBoundaryConfig(raw);
       expect(config.behaviors[0]?.dispatchCommands).toHaveLength(1);
     });
 
-    it("throws BOOT_ERR_DSL_SYNTAX when dispatch_commands[i].target_id is invalid CEL", () => {
+    it('throws BOOT_ERR_DSL_SYNTAX when dispatch_commands[i].target_id is invalid CEL', () => {
       const raw = {
         ...minimalBase,
         behaviors: [
           {
-            name: "b",
-            match: { operationId: "createThing", condition: "true" },
-            emit: "Ev",
+            name: 'b',
+            match: { operationId: 'createThing', condition: 'true' },
+            emit: 'Ev',
             dispatch_commands: [
               {
-                boundary: "Other",
-                intent: "mutation",
-                operationId: "op",
-                target_id: "!!bad cel!!",
+                boundary: 'Other',
+                intent: 'mutation',
+                operationId: 'op',
+                target_id: '!!bad cel!!',
               },
             ],
           },
         ],
-        event_catalog: [{ type: "Ev", payload_template: {} }],
+        event_catalog: [{ type: 'Ev', payload_template: {} }],
       };
       expect(() => validateBoundaryConfig(raw)).toThrow(BootError);
       try {
         validateBoundaryConfig(raw);
       } catch (e) {
-        expect((e as BootError).code).toBe("BOOT_ERR_DSL_SYNTAX");
+        expect((e as BootError).code).toBe('BOOT_ERR_DSL_SYNTAX');
       }
     });
 
-    it("accepts a valid CEL expression as dispatch_commands[i].target_id", () => {
+    it('accepts a valid CEL expression as dispatch_commands[i].target_id', () => {
       const raw = {
         ...minimalBase,
         behaviors: [
           {
-            name: "b",
-            match: { operationId: "createThing", condition: "true" },
-            emit: "Ev",
+            name: 'b',
+            match: { operationId: 'createThing', condition: 'true' },
+            emit: 'Ev',
             dispatch_commands: [
               {
-                boundary: "Other",
-                intent: "mutation",
-                operationId: "op",
-                target_id: "command.payload.leadId",
+                boundary: 'Other',
+                intent: 'mutation',
+                operationId: 'op',
+                target_id: 'command.payload.leadId',
               },
             ],
           },
         ],
-        event_catalog: [{ type: "Ev", payload_template: {} }],
+        event_catalog: [{ type: 'Ev', payload_template: {} }],
       };
       const config = validateBoundaryConfig(raw);
-      expect(config.behaviors[0]?.dispatchCommands?.[0]?.targetId).toBe("command.payload.leadId");
+      expect(config.behaviors[0]?.dispatchCommands?.[0]?.targetId).toBe('command.payload.leadId');
     });
   });
 
   // ── saga step / compensation target_id CEL validation ──────────────────────
 
-  describe("saga target_id CEL validation", () => {
+  describe('saga target_id CEL validation', () => {
     const minimalSagaStep = (targetId: string) => ({
       sagas: [
         {
-          name: "TestSaga",
-          trigger: { boundary: "Lead", intent: "creation", condition: "true" },
+          name: 'TestSaga',
+          trigger: { boundary: 'Lead', intent: 'creation', condition: 'true' },
           steps: [
             {
-              name: "step1",
-              boundary: "Other",
-              intent: "mutation",
-              operationId: "op",
+              name: 'step1',
+              boundary: 'Other',
+              intent: 'mutation',
+              operationId: 'op',
               target_id: targetId,
               payload: { id: '"x"' },
             },
@@ -320,37 +320,37 @@ describe("dsl/schema — additional branch coverage", () => {
       ],
     });
 
-    it("throws BOOT_ERR_DSL_SYNTAX when saga step target_id is invalid CEL", () => {
-      expect(() => validateGlobalConfig(minimalSagaStep("!!bad cel!!"))).toThrow(BootError);
+    it('throws BOOT_ERR_DSL_SYNTAX when saga step target_id is invalid CEL', () => {
+      expect(() => validateGlobalConfig(minimalSagaStep('!!bad cel!!'))).toThrow(BootError);
       try {
-        validateGlobalConfig(minimalSagaStep("!!bad cel!!"));
+        validateGlobalConfig(minimalSagaStep('!!bad cel!!'));
       } catch (e) {
-        expect((e as BootError).code).toBe("BOOT_ERR_DSL_SYNTAX");
+        expect((e as BootError).code).toBe('BOOT_ERR_DSL_SYNTAX');
       }
     });
 
-    it("accepts a valid CEL expression as saga step target_id", () => {
-      const cfg = validateGlobalConfig(minimalSagaStep("command.payload.leadId"));
-      expect(cfg.sagas?.[0]?.steps?.[0]?.targetId).toBe("command.payload.leadId");
+    it('accepts a valid CEL expression as saga step target_id', () => {
+      const cfg = validateGlobalConfig(minimalSagaStep('command.payload.leadId'));
+      expect(cfg.sagas?.[0]?.steps?.[0]?.targetId).toBe('command.payload.leadId');
     });
 
-    it("throws BOOT_ERR_DSL_SYNTAX when saga compensation target_id is invalid CEL", () => {
+    it('throws BOOT_ERR_DSL_SYNTAX when saga compensation target_id is invalid CEL', () => {
       const rawWithCompensation = {
         sagas: [
           {
-            name: "TestSaga",
-            trigger: { boundary: "Lead", intent: "creation", condition: "true" },
+            name: 'TestSaga',
+            trigger: { boundary: 'Lead', intent: 'creation', condition: 'true' },
             steps: [
               {
-                name: "step1",
-                boundary: "Other",
-                intent: "mutation",
-                operationId: "op",
+                name: 'step1',
+                boundary: 'Other',
+                intent: 'mutation',
+                operationId: 'op',
                 payload: { id: '"x"' },
                 compensation: {
-                  intent: "mutation",
-                  operationId: "compensateOp",
-                  target_id: "!!bad cel!!",
+                  intent: 'mutation',
+                  operationId: 'compensateOp',
+                  target_id: '!!bad cel!!',
                   payload: { id: '"x"' },
                 },
               },
@@ -362,27 +362,27 @@ describe("dsl/schema — additional branch coverage", () => {
       try {
         validateGlobalConfig(rawWithCompensation);
       } catch (e) {
-        expect((e as BootError).code).toBe("BOOT_ERR_DSL_SYNTAX");
+        expect((e as BootError).code).toBe('BOOT_ERR_DSL_SYNTAX');
       }
     });
 
-    it("accepts a valid CEL expression as saga compensation target_id", () => {
+    it('accepts a valid CEL expression as saga compensation target_id', () => {
       const rawWithCompensation = {
         sagas: [
           {
-            name: "TestSaga",
-            trigger: { boundary: "Lead", intent: "creation", condition: "true" },
+            name: 'TestSaga',
+            trigger: { boundary: 'Lead', intent: 'creation', condition: 'true' },
             steps: [
               {
-                name: "step1",
-                boundary: "Other",
-                intent: "mutation",
-                operationId: "op",
+                name: 'step1',
+                boundary: 'Other',
+                intent: 'mutation',
+                operationId: 'op',
                 payload: { id: '"x"' },
                 compensation: {
-                  intent: "mutation",
-                  operationId: "compensateOp",
-                  target_id: "command.payload.leadId",
+                  intent: 'mutation',
+                  operationId: 'compensateOp',
+                  target_id: 'command.payload.leadId',
                   payload: { id: '"x"' },
                 },
               },
@@ -391,24 +391,24 @@ describe("dsl/schema — additional branch coverage", () => {
         ],
       };
       const cfg = validateGlobalConfig(rawWithCompensation);
-      expect(cfg.sagas?.[0]?.steps?.[0]?.compensation?.targetId).toBe("command.payload.leadId");
+      expect(cfg.sagas?.[0]?.steps?.[0]?.compensation?.targetId).toBe('command.payload.leadId');
     });
   });
 
   // ── validateIdentityConfig ──────────────────────────────────────────────────
 
-  describe("identity validation", () => {
-    it("throws when identity is not an object", () => {
-      const raw = { ...minimalBase, identity: "string-identity" };
+  describe('identity validation', () => {
+    it('throws when identity is not an object', () => {
+      const raw = { ...minimalBase, identity: 'string-identity' };
       expect(() => validateBoundaryConfig(raw)).toThrow(BootError);
     });
 
-    it("throws when identity.creation is not an object", () => {
-      const raw = { ...minimalBase, identity: { creation: "bad" } };
+    it('throws when identity.creation is not an object', () => {
+      const raw = { ...minimalBase, identity: { creation: 'bad' } };
       expect(() => validateBoundaryConfig(raw)).toThrow(BootError);
     });
 
-    it("accepts identity with no creation field", () => {
+    it('accepts identity with no creation field', () => {
       const raw = { ...minimalBase, identity: {} };
       const config = validateBoundaryConfig(raw);
       expect(config.identity).toEqual({});
@@ -417,21 +417,21 @@ describe("dsl/schema — additional branch coverage", () => {
 
   // ── validateInitialization ──────────────────────────────────────────────────
 
-  describe("initialization validation", () => {
-    it("throws when initialization is not an array", () => {
+  describe('initialization validation', () => {
+    it('throws when initialization is not an array', () => {
       const raw = { ...minimalBase, initialization: { notAnArray: true } };
       expect(() => validateBoundaryConfig(raw)).toThrow(BootError);
     });
 
-    it("throws when initialization array contains non-object", () => {
-      const raw = { ...minimalBase, initialization: ["string-not-object"] };
+    it('throws when initialization array contains non-object', () => {
+      const raw = { ...minimalBase, initialization: ['string-not-object'] };
       expect(() => validateBoundaryConfig(raw)).toThrow(BootError);
     });
 
-    it("accepts a valid initialization array of objects", () => {
+    it('accepts a valid initialization array of objects', () => {
       const raw = {
         ...minimalBase,
-        initialization: [{ id: "seed-1", name: "Seed Entity" }],
+        initialization: [{ id: 'seed-1', name: 'Seed Entity' }],
       };
       const config = validateBoundaryConfig(raw);
       expect(config.initialization).toHaveLength(1);
@@ -440,84 +440,84 @@ describe("dsl/schema — additional branch coverage", () => {
 
   // ── reducers not array ──────────────────────────────────────────────────────
 
-  describe("reducers array validation", () => {
-    it("throws when reducers is not an array", () => {
-      const raw = { ...minimalBase, reducers: "not-array" };
+  describe('reducers array validation', () => {
+    it('throws when reducers is not an array', () => {
+      const raw = { ...minimalBase, reducers: 'not-array' };
       expect(() => validateBoundaryConfig(raw)).toThrow(BootError);
     });
 
-    it("throws when reducer entry is not an object", () => {
-      const raw = { ...minimalBase, reducers: ["string"] };
+    it('throws when reducer entry is not an object', () => {
+      const raw = { ...minimalBase, reducers: ['string'] };
       expect(() => validateBoundaryConfig(raw)).toThrow(BootError);
     });
   });
 
   // ── event_catalog not array ─────────────────────────────────────────────────
 
-  describe("event_catalog array validation", () => {
-    it("throws when event_catalog is not an array", () => {
-      const raw = { ...minimalBase, event_catalog: "not-array" };
+  describe('event_catalog array validation', () => {
+    it('throws when event_catalog is not an array', () => {
+      const raw = { ...minimalBase, event_catalog: 'not-array' };
       expect(() => validateBoundaryConfig(raw)).toThrow(BootError);
     });
 
-    it("throws when event_catalog entry is not an object", () => {
-      const raw = { ...minimalBase, event_catalog: ["string"] };
+    it('throws when event_catalog entry is not an object', () => {
+      const raw = { ...minimalBase, event_catalog: ['string'] };
       expect(() => validateBoundaryConfig(raw)).toThrow(BootError);
     });
   });
 
   // ── cross-validation (BOOT_ERR_DSL_REFERENCE) ──────────────────────────────
 
-  describe("cross-reference validation", () => {
-    it("throws BOOT_ERR_DSL_REFERENCE for reducer referencing unknown event", () => {
+  describe('cross-reference validation', () => {
+    it('throws BOOT_ERR_DSL_REFERENCE for reducer referencing unknown event', () => {
       const raw = {
-        boundary: "B",
-        contract_path: "/b",
+        boundary: 'B',
+        contract_path: '/b',
         behaviors: [],
         reducers: [
-          { on: "UnknownEvent", patches: [{ op: "replace", path: "/x", value: '${"y"}' }] },
+          { on: 'UnknownEvent', patches: [{ op: 'replace', path: '/x', value: '${"y"}' }] },
         ],
-        event_catalog: [{ type: "KnownEvent", payload_template: {} }],
+        event_catalog: [{ type: 'KnownEvent', payload_template: {} }],
       };
       try {
         validateBoundaryConfig(raw);
-        fail("should have thrown");
+        fail('should have thrown');
       } catch (e) {
         expect(e).toBeInstanceOf(BootError);
-        expect((e as BootError).code).toBe("BOOT_ERR_DSL_REFERENCE");
+        expect((e as BootError).code).toBe('BOOT_ERR_DSL_REFERENCE');
       }
     });
   });
 
   // ── snake_case → camelCase conversion ──────────────────────────────────────
 
-  describe("camelCase conversion", () => {
-    it("converts contract_path → contractPath", () => {
+  describe('camelCase conversion', () => {
+    it('converts contract_path → contractPath', () => {
       const config = validateBoundaryConfig(fullBase);
-      expect(config.contractPath).toBe("/b");
+      expect(config.contractPath).toBe('/b');
     });
 
-    it("converts event_catalog → eventCatalog", () => {
+    it('converts event_catalog → eventCatalog', () => {
       const config = validateBoundaryConfig(fullBase);
       expect(Array.isArray(config.eventCatalog)).toBe(true);
     });
 
-    it("converts dispatch_commands → dispatchCommands in behavior", () => {
+    it('converts dispatch_commands → dispatchCommands in behavior', () => {
       const raw = {
-        boundary: "B",
-        contract_path: "/b",
+        boundary: 'B',
+        contract_path: '/b',
         behaviors: [
           {
-            name: "b",
-            match: { operationId: "createThing", condition: "true" },
-            emit: "Ev",
+            name: 'b',
+            match: { operationId: 'createThing', condition: 'true' },
+            emit: 'Ev',
             dispatch_commands: [
-              { boundary: "X", intent: "mutation", operationId: "op", target_id: '"x"' },
+              { boundary: 'X', intent: 'mutation', operationId: 'op', target_id: '"x"' },
             ],
           },
         ],
         reducers: [],
-        event_catalog: [{ type: "Ev", payload_template: {} }],
+        event_catalog: [{ type: 'Ev', payload_template: {} }],
       };
       const config = validateBoundaryConfig(raw);
       expect(config.behaviors[0]?.dispatchCommands?.[0]?.targetId).toBe('"x"');

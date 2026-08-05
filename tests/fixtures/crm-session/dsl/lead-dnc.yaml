@@ -5,14 +5,14 @@ fallback_override: false
 event_catalog:
   - type: LeadMarkedDNC
     payload_template:
-      dncAt: "$now()"
+      dncAt: '$now()'
       reason: "command.payload?.reason != null ? command.payload.reason : 'No reason given'"
 
 behaviors:
   - name: markLeadDNC
     match:
       operationId: markLeadDNC
-      condition: "true"
+      condition: 'true'
       required_scopes:
         - manager
     emit: LeadMarkedDNC

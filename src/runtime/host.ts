@@ -1,8 +1,9 @@
-import { createRuntimeDataGenerator, createSeededRandom } from "../model/data.js";
-import type { RuntimeClock, RuntimeHelpers } from "../model/runtime.js";
-import type { RuntimeTimerScheduler } from "./ports.js";
-import { ConfigurationError } from "../errors.js";
-import { createDeterministicUuidv7Source, nextUuidv7 } from "../ids/uuidv7.js";
+import { createRuntimeDataGenerator, createSeededRandom } from '../model/data.js';
+import type { RuntimeHelpers } from '../model/runtime.js';
+import type { RuntimeClock } from '../contracts/ports.js';
+import type { RuntimeTimerScheduler } from './ports.js';
+import { ConfigurationError } from '../errors.js';
+import { createDeterministicUuidv7Source, nextUuidv7 } from '../ids/uuidv7.js';
 
 /** Host-owned services required to boot a source-independent runtime. */
 export interface RuntimeHostServices {
@@ -59,11 +60,11 @@ export function createDeterministicRuntimeHost(
 ): RuntimeHostServices {
   const epochMs = options.epochMs ?? 0;
   if (!Number.isFinite(epochMs)) {
-    throw new ConfigurationError("Deterministic host epoch must be finite", {
-      field: "runtimeHost.epochMs",
+    throw new ConfigurationError('Deterministic host epoch must be finite', {
+      field: 'runtimeHost.epochMs',
     });
   }
-  const random = createSeededRandom(options.randomSeed ?? "potemkin-deterministic-host");
+  const random = createSeededRandom(options.randomSeed ?? 'potemkin-deterministic-host');
   const uuid = createDeterministicUuidv7Source(options.uuidSeedIndex ?? 0);
   const clock = createFixedClock(epochMs);
   const helpers: RuntimeHelpers = {
@@ -98,14 +99,14 @@ function runtimeSleep(milliseconds: number): Promise<void> {
 }
 
 function clone<T>(value: T): T {
-  if (value === null || typeof value !== "object") return value;
+  if (value === null || typeof value !== 'object') return value;
   return structuredClone(value);
 }
 
 function createSessionToken(random: () => number): string {
-  const alphabet = "0123456789abcdef";
+  const alphabet = '0123456789abcdef';
   return Array.from({ length: 64 }, () => alphabet[Math.floor(random() * alphabet.length)]!).join(
-    "",
+    '',
   );
 }
 
@@ -116,8 +117,8 @@ function createWallClock(): RuntimeClock {
     offsetMs: () => offset,
     advance: (milliseconds) => {
       if (!Number.isFinite(milliseconds))
-        throw new ConfigurationError("Clock advance must be finite", {
-          field: "clock.advance",
+        throw new ConfigurationError('Clock advance must be finite', {
+          field: 'clock.advance',
         });
       offset += milliseconds;
       return offset;
@@ -135,8 +136,8 @@ function createFixedClock(epochMs: number): RuntimeClock {
     offsetMs: () => offset,
     advance: (milliseconds) => {
       if (!Number.isFinite(milliseconds))
-        throw new ConfigurationError("Clock advance must be finite", {
-          field: "clock.advance",
+        throw new ConfigurationError('Clock advance must be finite', {
+          field: 'clock.advance',
         });
       offset += milliseconds;
       return offset;

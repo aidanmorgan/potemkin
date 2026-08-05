@@ -1,9 +1,9 @@
 version: 1
 specmatic: ./specmatic.yaml
 modules:
-  - "dsl/**/*.yaml"
+  - 'dsl/**/*.yaml'
 plugin:
   engine:
-    url: "${POTEMKIN_ENGINE_URL:http://localhost:3000}"
+    url: '${POTEMKIN_ENGINE_URL:http://localhost:3000}'
     timeoutMs: 30000
   controlPort: 0

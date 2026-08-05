@@ -3,22 +3,18 @@
 // potemkin.yml fields are validated by validatePotemkinConfig; boundary and global
 // bodies by the snake_case schema validators. On-disk and inline paths share one dialect.
 
-import { promises as fs } from "node:fs";
-import * as path from "node:path";
+import { promises as fs } from 'node:fs';
+import * as path from 'node:path';
 
-import * as yaml from "js-yaml";
-import { glob } from "tinyglobby";
+import * as yaml from 'js-yaml';
+import { glob } from 'tinyglobby';
 
-import { BootError } from "../errors.js";
-import type { YamlProgramInput } from "./public.js";
-import type { OpenApiDoc } from "../contract/loader.js";
-import type { PotemkinConfiguration } from "../config.js";
-import { expandResourceModules } from "../dsl/resourceExpander.js";
-import {
-  validatePotemkinConfig,
-  type PotemkinConfig,
-  type PotemkinConfigPlugin,
-} from "../dsl/configSchema.js";
+import { BootError } from '../errors.js';
+import type { YamlProgramInput } from './public.js';
+import type { OpenApiDoc } from '../contract/loader.js';
+import type { PotemkinConfiguration, PluginConfiguration } from '../contracts/config.js';
+import { expandResourceModules } from '../dsl/resourceExpander.js';
+import { validatePotemkinConfig } from '../dsl/configSchema.js';
 
 export interface SpecEndpoint {
   readonly specId: string;
@@ -43,8 +39,8 @@ export interface LoadedConfig {
   readonly componentModulePaths: readonly string[];
   /** Absolute paths of use-mapping files (files with only a `use:` key). */
   readonly useMappingModulePaths: readonly string[];
-  readonly pluginConfig: PotemkinConfigPlugin | undefined;
-  readonly typescript: PotemkinConfig["typescript"];
+  readonly pluginConfig: PluginConfiguration | undefined;
+  readonly typescript: PotemkinConfiguration['typescript'];
   /** Absolute glob patterns used to discover YAML/TypeScript source files. */
   readonly watchGlobs: readonly string[];
   /** Absolute TypeScript exclusions applied while polling source files. */
@@ -58,6 +54,8 @@ export interface LoadedConfig {
 }
 
 export interface LoadOptions {
+  /** Optional unsaved potemkin.yml contents supplied by an editor host. */
+  readonly configText?: string;
   // When omitted, contract-path cross-check is skipped; standalone callers
   // must either supply this or mark every boundary outOfContract:true.
   readonly specEndpoints?: readonly SpecEndpoint[];
@@ -83,20 +81,23 @@ export async function loadPotemkinConfig(
   const configDir = path.dirname(absConfigPath);
 
   let configText: string;
-  try {
-    configText = await fs.readFile(absConfigPath, "utf8");
-  } catch (e) {
-    throw new BootError(
-      "BOOT_ERR_CONFIG_MISSING",
-      `Cannot read potemkin.yml at ${absConfigPath}: ${(e as Error).message}`,
-      { source: absConfigPath },
-    );
+  if (opts.configText !== undefined) configText = opts.configText;
+  else {
+    try {
+      configText = await fs.readFile(absConfigPath, 'utf8');
+    } catch (e) {
+      throw new BootError(
+        'BOOT_ERR_CONFIG_MISSING',
+        `Cannot read potemkin.yml at ${absConfigPath}: ${(e as Error).message}`,
+        { source: absConfigPath },
+      );
+    }
   }
   let parsedConfig: unknown;
   try {
     parsedConfig = yaml.load(configText);
   } catch (e) {
-    throw new BootError("BOOT_ERR_INVALID_YAML", `${absConfigPath}: ${(e as Error).message}`, {
+    throw new BootError('BOOT_ERR_INVALID_YAML', `${absConfigPath}: ${(e as Error).message}`, {
       source: absConfigPath,
     });
   }
@@ -121,10 +122,10 @@ export async function loadPotemkinConfig(
   for (const filePath of resolvedFiles) {
     let text: string;
     try {
-      text = await fs.readFile(filePath, "utf8");
+      text = await fs.readFile(filePath, 'utf8');
     } catch (e) {
       throw new BootError(
-        "BOOT_ERR_INVALID_YAML",
+        'BOOT_ERR_INVALID_YAML',
         `${filePath}: read failed — ${(e as Error).message}`,
         { source: filePath },
       );
@@ -133,25 +134,25 @@ export async function loadPotemkinConfig(
     try {
       parsed = yaml.load(text);
     } catch (e) {
-      throw new BootError("BOOT_ERR_INVALID_YAML", `${filePath}: ${(e as Error).message}`, {
+      throw new BootError('BOOT_ERR_INVALID_YAML', `${filePath}: ${(e as Error).message}`, {
         source: filePath,
       });
     }
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
       const rec = parsed as Record<string, unknown>;
-      if (rec["kind"] === "component") {
+      if (rec['kind'] === 'component') {
         // Component file: stash in component catalog, produces no live boundary.
         componentModules.push({ path: filePath, text, parsed });
-      } else if (rec["kind"] !== undefined) {
+      } else if (rec['kind'] !== undefined) {
         // Unknown kind: will fail during compilation with a clear BOOT_ERR_DSL_SYNTAX.
         // Route to component modules so the validator can report the bad kind value.
         componentModules.push({ path: filePath, text, parsed });
-      } else if (rec["boundary"] !== undefined) {
+      } else if (rec['boundary'] !== undefined) {
         boundaryModules.push({ path: filePath, text, parsed });
-      } else if (rec["resource"] !== undefined) {
+      } else if (rec['resource'] !== undefined) {
         // Resource-aggregate file: expanded into per-path boundary modules below.
         resourceModules.push({ path: filePath, text, parsed });
-      } else if (rec["use"] !== undefined && Array.isArray(rec["use"])) {
+      } else if (rec['use'] !== undefined && Array.isArray(rec['use'])) {
         // Use-mapping file: only `use:` entries, no boundary, no kind.
         useMappingModules.push({ path: filePath, text, parsed });
       } else {
@@ -166,8 +167,8 @@ export async function loadPotemkinConfig(
   if (resourceModules.length > 0) {
     if (!opts.openapi) {
       throw new BootError(
-        "BOOT_ERR_DSL_SYNTAX",
-        `resource: file(s) present but no OpenAPI was provided to resolve operations: ${resourceModules.map((m) => m.path).join(", ")}`,
+        'BOOT_ERR_DSL_SYNTAX',
+        `resource: file(s) present but no OpenAPI was provided to resolve operations: ${resourceModules.map((m) => m.path).join(', ')}`,
         { sources: resourceModules.map((m) => m.path) },
       );
     }
@@ -195,8 +196,8 @@ export async function loadPotemkinConfig(
   const boundarySourcePaths: Record<string, string> = {};
   for (const m of boundaryModules) {
     const rec = m.parsed as Record<string, unknown>;
-    if (typeof rec["boundary"] === "string") {
-      boundarySourcePaths[rec["boundary"]] = m.path;
+    if (typeof rec['boundary'] === 'string') {
+      boundarySourcePaths[rec['boundary']] = m.path;
     }
   }
 
@@ -234,7 +235,7 @@ async function resolveModuleGlobs(patterns: readonly string[], cwd: string): Pro
     onlyFiles: true,
   });
   if (matches.length === 0) {
-    throw new BootError("BOOT_ERR_NO_MODULES", `No module files matched: ${patterns.join(", ")}`, {
+    throw new BootError('BOOT_ERR_NO_MODULES', `No module files matched: ${patterns.join(', ')}`, {
       patterns: [...patterns],
       cwd,
     });
@@ -258,7 +259,7 @@ function mergeGlobalModules(modules: readonly ResolvedModule[]): string | undefi
     for (const [k, v] of Object.entries(rec)) {
       if (k in merged) {
         throw new BootError(
-          "BOOT_ERR_DSL_DUPLICATE_BOUNDARY",
+          'BOOT_ERR_DSL_DUPLICATE_BOUNDARY',
           `Duplicate global config key "${k}" found in ${m.path}`,
           { key: k, source: m.path },
         );
@@ -285,44 +286,44 @@ function runContractPathCrossCheck(
 
   for (const m of modules) {
     const rec = m.parsed as Record<string, unknown>;
-    const boundaryName = String(rec["boundary"]);
-    if (rec["out_of_contract"] === true) continue;
+    const boundaryName = String(rec['boundary']);
+    if (rec['out_of_contract'] === true) continue;
 
-    const specId = typeof rec["spec_id"] === "string" ? (rec["spec_id"] as string) : undefined;
+    const specId = typeof rec['spec_id'] === 'string' ? (rec['spec_id'] as string) : undefined;
     const contractPath =
-      typeof rec["contractPath"] === "string"
-        ? (rec["contractPath"] as string)
-        : (rec["contract_path"] as string | undefined);
+      typeof rec['contractPath'] === 'string'
+        ? (rec['contractPath'] as string)
+        : (rec['contract_path'] as string | undefined);
 
-    if (typeof specId !== "string") {
+    if (typeof specId !== 'string') {
       throw new BootError(
-        "BOOT_ERR_MISSING_SPEC_ID",
+        'BOOT_ERR_MISSING_SPEC_ID',
         `${m.path}: boundary "${boundaryName}" is missing required "specId"`,
         { source: m.path, boundary: boundaryName },
       );
     }
     if (!availableSpecIds.has(specId)) {
       throw new BootError(
-        "BOOT_ERR_UNKNOWN_SPEC_ID",
-        `${m.path}: boundary "${boundaryName}" references unknown specId "${specId}". Available: ${[...availableSpecIds].join(", ")}`,
+        'BOOT_ERR_UNKNOWN_SPEC_ID',
+        `${m.path}: boundary "${boundaryName}" references unknown specId "${specId}". Available: ${[...availableSpecIds].join(', ')}`,
         { source, boundary: boundaryName, specId, available: [...availableSpecIds] },
       );
     }
     const cpKey = `${specId}|${contractPath}`;
     if (!bySpecPath.has(cpKey)) {
       throw new BootError(
-        "BOOT_ERR_UNKNOWN_CONTRACT_PATH",
+        'BOOT_ERR_UNKNOWN_CONTRACT_PATH',
         `${m.path}: boundary "${boundaryName}" contractPath "${String(contractPath)}" not present in spec "${specId}"`,
         { source, boundary: boundaryName, specId, contractPath: String(contractPath) },
       );
     }
-    const methodsRaw = rec["methods"];
+    const methodsRaw = rec['methods'];
     if (Array.isArray(methodsRaw) && methodsRaw.length > 0) {
       const available = bySpecPath.get(cpKey)!;
       for (const m_ of methodsRaw) {
-        if (typeof m_ === "string" && !available.has(m_.toUpperCase())) {
+        if (typeof m_ === 'string' && !available.has(m_.toUpperCase())) {
           throw new BootError(
-            "BOOT_ERR_UNKNOWN_CONTRACT_PATH",
+            'BOOT_ERR_UNKNOWN_CONTRACT_PATH',
             `${m.path}: boundary "${boundaryName}" declares method "${m_}" not present at ${specId} ${String(contractPath)}`,
             { source, boundary: boundaryName, specId, path: String(contractPath), method: m_ },
           );

@@ -4,28 +4,28 @@
  * All tests use plain it(...) — they assert behaviour that must hold in src.
  */
 
-import { parseYaml, compileYaml } from "../../../src/parser/yamlParser";
-import { validateBoundaryConfig } from "../../../src/dsl/schema";
-import { BootError } from "../../../src/errors";
+import { parseYaml, compileYaml } from '../../../src/parser/yamlParser';
+import { validateBoundaryConfig } from '../../../src/dsl/schema';
+import { BootError } from '../../../src/errors';
 
 // ---------------------------------------------------------------------------
 // Minimal valid fixtures
 // ---------------------------------------------------------------------------
 
 const minimalRaw = {
-  boundary: "Loan",
-  contract_path: "/loans",
+  boundary: 'Loan',
+  contract_path: '/loans',
   behaviors: [
     {
-      name: "create",
-      match: { operationId: "createLoan", condition: "true" },
-      emit: "LoanCreated",
+      name: 'create',
+      match: { operationId: 'createLoan', condition: 'true' },
+      emit: 'LoanCreated',
     },
   ],
   reducers: [
-    { on: "LoanCreated", patches: [{ op: "replace", path: "/status", value: '${"active"}' }] },
+    { on: 'LoanCreated', patches: [{ op: 'replace', path: '/status', value: '${"active"}' }] },
   ],
-  event_catalog: [{ type: "LoanCreated", payload_template: {} }],
+  event_catalog: [{ type: 'LoanCreated', payload_template: {} }],
 };
 
 const minimalYaml = `
@@ -52,25 +52,25 @@ event_catalog:
 // §7.1 – Boundary Configuration Schema
 // ---------------------------------------------------------------------------
 
-describe("DSL §7.1 – Boundary Configuration Schema", () => {
-  it("accepts a fully-formed boundary config", () => {
+describe('DSL §7.1 – Boundary Configuration Schema', () => {
+  it('accepts a fully-formed boundary config', () => {
     const cfg = validateBoundaryConfig(minimalRaw);
-    expect(cfg.boundary).toBe("Loan");
-    expect(cfg.contractPath).toBe("/loans");
+    expect(cfg.boundary).toBe('Loan');
+    expect(cfg.contractPath).toBe('/loans');
     expect(cfg.fallbackOverride).toBe(false);
   });
 
-  it("normalises contract_path → contractPath (snake_case → camelCase)", () => {
+  it('normalises contract_path → contractPath (snake_case → camelCase)', () => {
     const cfg = validateBoundaryConfig(minimalRaw);
-    expect(cfg.contractPath).toBe("/loans");
+    expect(cfg.contractPath).toBe('/loans');
   });
 
-  it("normalises fallback_override → fallbackOverride", () => {
+  it('normalises fallback_override → fallbackOverride', () => {
     const cfg = validateBoundaryConfig({ ...minimalRaw, fallback_override: true });
     expect(cfg.fallbackOverride).toBe(true);
   });
 
-  it("normalises query_mapping → queryMapping", () => {
+  it('normalises query_mapping → queryMapping', () => {
     const cfg = validateBoundaryConfig({
       ...minimalRaw,
       query_mapping: { status: 'entity.status == "active"' },
@@ -78,57 +78,57 @@ describe("DSL §7.1 – Boundary Configuration Schema", () => {
     expect(cfg.queryMapping).toEqual({ status: 'entity.status == "active"' });
   });
 
-  it("defaults fallbackOverride to false when absent", () => {
+  it('defaults fallbackOverride to false when absent', () => {
     const cfg = validateBoundaryConfig(minimalRaw);
     expect(cfg.fallbackOverride).toBe(false);
   });
 
-  it("throws BootError BOOT_ERR_DSL_SYNTAX when fallback_override is not boolean", () => {
-    expect(() => validateBoundaryConfig({ ...minimalRaw, fallback_override: "yes" })).toThrow(
+  it('throws BootError BOOT_ERR_DSL_SYNTAX when fallback_override is not boolean', () => {
+    expect(() => validateBoundaryConfig({ ...minimalRaw, fallback_override: 'yes' })).toThrow(
       BootError,
     );
   });
 
-  it("throws BootError when boundary is empty string", () => {
-    expect(() => validateBoundaryConfig({ ...minimalRaw, boundary: "" })).toThrow(BootError);
+  it('throws BootError when boundary is empty string', () => {
+    expect(() => validateBoundaryConfig({ ...minimalRaw, boundary: '' })).toThrow(BootError);
   });
 
-  it("throws BootError when contract_path is missing", () => {
+  it('throws BootError when contract_path is missing', () => {
     const { contract_path: _cp, ...rest } = minimalRaw as Record<string, unknown> & {
       contract_path: string;
     };
     expect(() => validateBoundaryConfig(rest)).toThrow(BootError);
   });
 
-  it("throws BootError when root input is not an object", () => {
-    expect(() => validateBoundaryConfig("not-an-object")).toThrow(BootError);
+  it('throws BootError when root input is not an object', () => {
+    expect(() => validateBoundaryConfig('not-an-object')).toThrow(BootError);
   });
 
-  it("throws BootError when root input is null", () => {
+  it('throws BootError when root input is null', () => {
     expect(() => validateBoundaryConfig(null)).toThrow(BootError);
   });
 
-  it("throws BootError when root input is an array", () => {
+  it('throws BootError when root input is an array', () => {
     expect(() => validateBoundaryConfig([minimalRaw])).toThrow(BootError);
   });
 
   it('accepts identity.creation.generate = "$uuidv7()"', () => {
     const cfg = validateBoundaryConfig({
       ...minimalRaw,
-      identity: { creation: { generate: "$uuidv7()" } },
+      identity: { creation: { generate: '$uuidv7()' } },
     });
-    expect(cfg.identity?.creation?.generate).toBe("$uuidv7()");
+    expect(cfg.identity?.creation?.generate).toBe('$uuidv7()');
   });
 
-  it("accepts query_mapping values as arbitrary strings (CEL expressions stored as-is)", () => {
+  it('accepts query_mapping values as arbitrary strings (CEL expressions stored as-is)', () => {
     const cfg = validateBoundaryConfig({
       ...minimalRaw,
-      query_mapping: { status: "state.status" },
+      query_mapping: { status: 'state.status' },
     });
-    expect(cfg.queryMapping).toEqual({ status: "state.status" });
+    expect(cfg.queryMapping).toEqual({ status: 'state.status' });
   });
 
-  it("throws BootError when query_mapping values are not strings", () => {
+  it('throws BootError when query_mapping values are not strings', () => {
     expect(() => validateBoundaryConfig({ ...minimalRaw, query_mapping: { status: 123 } })).toThrow(
       BootError,
     );
@@ -139,129 +139,129 @@ describe("DSL §7.1 – Boundary Configuration Schema", () => {
 // §7.2 – Behaviors Block
 // ---------------------------------------------------------------------------
 
-describe("DSL §7.2 – Behaviors Block", () => {
-  it("accepts a valid behavior keyed by operationId", () => {
+describe('DSL §7.2 – Behaviors Block', () => {
+  it('accepts a valid behavior keyed by operationId', () => {
     const cfg = validateBoundaryConfig(minimalRaw);
-    expect(cfg.behaviors[0].name).toBe("create");
-    expect(cfg.behaviors[0].match.operationId).toBe("createLoan");
-    expect(cfg.behaviors[0].emit).toBe("LoanCreated");
+    expect(cfg.behaviors[0].name).toBe('create');
+    expect(cfg.behaviors[0].match.operationId).toBe('createLoan');
+    expect(cfg.behaviors[0].emit).toBe('LoanCreated');
   });
 
-  it("accepts arbitrary operationId values", () => {
-    for (const operationId of ["updateLoan", "getLoan"] as const) {
+  it('accepts arbitrary operationId values', () => {
+    for (const operationId of ['updateLoan', 'getLoan'] as const) {
       const cfg = validateBoundaryConfig({
         ...minimalRaw,
-        behaviors: [{ name: "op", match: { operationId, condition: "true" }, emit: "LoanCreated" }],
+        behaviors: [{ name: 'op', match: { operationId, condition: 'true' }, emit: 'LoanCreated' }],
       });
       expect(cfg.behaviors[0].match.operationId).toBe(operationId);
     }
   });
 
-  it("throws BootError (BOOT_ERR_DSL_SYNTAX) when match.intent is used", () => {
+  it('throws BootError (BOOT_ERR_DSL_SYNTAX) when match.intent is used', () => {
     try {
       validateBoundaryConfig({
         ...minimalRaw,
         behaviors: [
-          { name: "op", match: { intent: "creation", condition: "true" }, emit: "LoanCreated" },
+          { name: 'op', match: { intent: 'creation', condition: 'true' }, emit: 'LoanCreated' },
         ],
       });
-      throw new Error("expected BootError");
+      throw new Error('expected BootError');
     } catch (e) {
       expect(e).toBeInstanceOf(BootError);
-      expect((e as BootError).code).toBe("BOOT_ERR_DSL_SYNTAX");
+      expect((e as BootError).code).toBe('BOOT_ERR_DSL_SYNTAX');
     }
   });
 
-  it("throws BootError (BOOT_ERR_MISSING_OPERATION_ID) when match.operationId is missing", () => {
+  it('throws BootError (BOOT_ERR_MISSING_OPERATION_ID) when match.operationId is missing', () => {
     try {
       validateBoundaryConfig({
         ...minimalRaw,
-        behaviors: [{ name: "op", match: { condition: "true" }, emit: "LoanCreated" }],
+        behaviors: [{ name: 'op', match: { condition: 'true' }, emit: 'LoanCreated' }],
       });
-      throw new Error("expected BootError");
+      throw new Error('expected BootError');
     } catch (e) {
       expect(e).toBeInstanceOf(BootError);
-      expect((e as BootError).code).toBe("BOOT_ERR_MISSING_OPERATION_ID");
+      expect((e as BootError).code).toBe('BOOT_ERR_MISSING_OPERATION_ID');
     }
   });
 
-  it("throws BootError when match.condition is missing", () => {
+  it('throws BootError when match.condition is missing', () => {
     expect(() =>
       validateBoundaryConfig({
         ...minimalRaw,
-        behaviors: [{ name: "op", match: { operationId: "createLoan" }, emit: "LoanCreated" }],
+        behaviors: [{ name: 'op', match: { operationId: 'createLoan' }, emit: 'LoanCreated' }],
       }),
     ).toThrow(BootError);
   });
 
-  it("throws BootError when emit references an event type not in event_catalog (cross-ref)", () => {
+  it('throws BootError when emit references an event type not in event_catalog (cross-ref)', () => {
     expect(() =>
       validateBoundaryConfig({
         ...minimalRaw,
         behaviors: [
           {
-            name: "op",
-            match: { operationId: "createLoan", condition: "true" },
-            emit: "UNKNOWN_EVENT",
+            name: 'op',
+            match: { operationId: 'createLoan', condition: 'true' },
+            emit: 'UNKNOWN_EVENT',
           },
         ],
       }),
     ).toThrow(BootError);
   });
 
-  it("cross-ref throws BootError code BOOT_ERR_DSL_REFERENCE for unknown emit", () => {
+  it('cross-ref throws BootError code BOOT_ERR_DSL_REFERENCE for unknown emit', () => {
     try {
       validateBoundaryConfig({
         ...minimalRaw,
         behaviors: [
           {
-            name: "op",
-            match: { operationId: "createLoan", condition: "true" },
-            emit: "NoSuchEvent",
+            name: 'op',
+            match: { operationId: 'createLoan', condition: 'true' },
+            emit: 'NoSuchEvent',
           },
         ],
       });
-      fail("expected to throw");
+      fail('expected to throw');
     } catch (e) {
       expect(e).toBeInstanceOf(BootError);
-      expect((e as BootError).code).toBe("BOOT_ERR_DSL_REFERENCE");
+      expect((e as BootError).code).toBe('BOOT_ERR_DSL_REFERENCE');
     }
   });
 
-  it("throws BootError when emit is missing entirely", () => {
+  it('throws BootError when emit is missing entirely', () => {
     expect(() =>
       validateBoundaryConfig({
         ...minimalRaw,
-        behaviors: [{ name: "op", match: { operationId: "createLoan", condition: "true" } }],
+        behaviors: [{ name: 'op', match: { operationId: 'createLoan', condition: 'true' } }],
       }),
     ).toThrow(BootError);
   });
 
-  it("throws BootError when emit is empty string", () => {
+  it('throws BootError when emit is empty string', () => {
     expect(() =>
       validateBoundaryConfig({
         ...minimalRaw,
         behaviors: [
-          { name: "op", match: { operationId: "createLoan", condition: "true" }, emit: "" },
+          { name: 'op', match: { operationId: 'createLoan', condition: 'true' }, emit: '' },
         ],
       }),
     ).toThrow(BootError);
   });
 
-  it("accepts dispatch_commands alongside emit", () => {
+  it('accepts dispatch_commands alongside emit', () => {
     const cfg = validateBoundaryConfig({
       ...minimalRaw,
       behaviors: [
         {
-          name: "create",
-          match: { operationId: "createLoan", condition: "true" },
-          emit: "LoanCreated",
+          name: 'create',
+          match: { operationId: 'createLoan', condition: 'true' },
+          emit: 'LoanCreated',
           dispatch_commands: [
             {
-              boundary: "OtherBoundary",
-              intent: "mutation",
-              operationId: "op",
-              target_id: "command.id",
+              boundary: 'OtherBoundary',
+              intent: 'mutation',
+              operationId: 'op',
+              target_id: 'command.id',
               payload: { field: '"value"' },
             },
           ],
@@ -271,19 +271,19 @@ describe("DSL §7.2 – Behaviors Block", () => {
     expect(cfg.behaviors[0].dispatchCommands).toHaveLength(1);
   });
 
-  it("accepts a dispatch-only behavior", () => {
+  it('accepts a dispatch-only behavior', () => {
     const cfg = validateBoundaryConfig({
       ...minimalRaw,
       behaviors: [
         {
-          name: "dispatch-only",
-          match: { operationId: "createLoan", condition: "true" },
+          name: 'dispatch-only',
+          match: { operationId: 'createLoan', condition: 'true' },
           dispatch_commands: [
             {
-              boundary: "OtherBoundary",
-              intent: "creation",
-              operationId: "createOther",
-              target_id: "command.targetId",
+              boundary: 'OtherBoundary',
+              intent: 'creation',
+              operationId: 'createOther',
+              target_id: 'command.targetId',
             },
           ],
         },
@@ -291,22 +291,22 @@ describe("DSL §7.2 – Behaviors Block", () => {
     });
 
     expect(cfg.behaviors[0]).toMatchObject({
-      name: "dispatch-only",
-      dispatchCommands: [{ operationId: "createOther" }],
+      name: 'dispatch-only',
+      dispatchCommands: [{ operationId: 'createOther' }],
     });
   });
 
-  it("throws BootError when dispatch_commands entry has invalid intent", () => {
+  it('throws BootError when dispatch_commands entry has invalid intent', () => {
     expect(() =>
       validateBoundaryConfig({
         ...minimalRaw,
         behaviors: [
           {
-            name: "create",
-            match: { operationId: "createLoan", condition: "true" },
-            emit: "LoanCreated",
+            name: 'create',
+            match: { operationId: 'createLoan', condition: 'true' },
+            emit: 'LoanCreated',
             dispatch_commands: [
-              { boundary: "Other", intent: "invalid", operationId: "op", target_id: "command.id" },
+              { boundary: 'Other', intent: 'invalid', operationId: 'op', target_id: 'command.id' },
             ],
           },
         ],
@@ -314,16 +314,16 @@ describe("DSL §7.2 – Behaviors Block", () => {
     ).toThrow(BootError);
   });
 
-  it("throws BootError when dispatch_commands entry is missing target_id", () => {
+  it('throws BootError when dispatch_commands entry is missing target_id', () => {
     expect(() =>
       validateBoundaryConfig({
         ...minimalRaw,
         behaviors: [
           {
-            name: "create",
-            match: { operationId: "createLoan", condition: "true" },
-            emit: "LoanCreated",
-            dispatch_commands: [{ boundary: "Other", intent: "mutation" }],
+            name: 'create',
+            match: { operationId: 'createLoan', condition: 'true' },
+            emit: 'LoanCreated',
+            dispatch_commands: [{ boundary: 'Other', intent: 'mutation' }],
           },
         ],
       }),
@@ -340,16 +340,16 @@ describe("DSL §7.2 – Behaviors Block", () => {
         ...minimalRaw,
         behaviors: [
           {
-            name: "create",
-            match: { operationId: "createLoan", condition: "true" },
-            emit: "LoanCreated",
+            name: 'create',
+            match: { operationId: 'createLoan', condition: 'true' },
+            emit: 'LoanCreated',
             dispatch_commands: [
               {
-                boundary: "Other",
-                intent: "mutation",
-                operationId: "op",
-                target_id: "command.id",
-                payload: { x: "{ broken cel +++" },
+                boundary: 'Other',
+                intent: 'mutation',
+                operationId: 'op',
+                target_id: 'command.id',
+                payload: { x: '{ broken cel +++' },
               },
             ],
           },
@@ -361,7 +361,7 @@ describe("DSL §7.2 – Behaviors Block", () => {
   // Intentional permissiveness: dispatch_commands[].payload values accept any string.
   // CEL syntax is validated at execution time for behavior conditions, not at boot time
   // for dispatch payload values. A plain JSON string is a valid (if unusual) string value.
-  it("accepts any string in dispatch_commands payload — CEL syntax checked at execution, not boot time", () => {
+  it('accepts any string in dispatch_commands payload — CEL syntax checked at execution, not boot time', () => {
     // This is deliberate: requireStringStringMap validates that values are strings,
     // but does NOT validate that strings are valid CEL expressions. That check happens
     // when the expression is evaluated at runtime.
@@ -370,15 +370,15 @@ describe("DSL §7.2 – Behaviors Block", () => {
         ...minimalRaw,
         behaviors: [
           {
-            name: "create",
-            match: { operationId: "createLoan", condition: "true" },
-            emit: "LoanCreated",
+            name: 'create',
+            match: { operationId: 'createLoan', condition: 'true' },
+            emit: 'LoanCreated',
             dispatch_commands: [
               {
-                boundary: "Other",
-                intent: "mutation",
-                operationId: "op",
-                target_id: "command.id",
+                boundary: 'Other',
+                intent: 'mutation',
+                operationId: 'op',
+                target_id: 'command.id',
                 payload: { x: '{"plain": "json not cel"}' },
               },
             ],
@@ -393,87 +393,87 @@ describe("DSL §7.2 – Behaviors Block", () => {
 // §7.3 – Reducers Block
 // ---------------------------------------------------------------------------
 
-describe("DSL §7.3 – Reducers Block", () => {
-  it("accepts a reducer with a replace patch", () => {
+describe('DSL §7.3 – Reducers Block', () => {
+  it('accepts a reducer with a replace patch', () => {
     const cfg = validateBoundaryConfig(minimalRaw);
-    expect(cfg.reducers[0].on).toBe("LoanCreated");
+    expect(cfg.reducers[0].on).toBe('LoanCreated');
     expect(cfg.reducers[0].patches).toEqual([
-      { op: "replace", path: "/status", value: '${"active"}' },
+      { op: 'replace', path: '/status', value: '${"active"}' },
     ]);
   });
 
-  it("accepts a reducer with an append patch", () => {
+  it('accepts a reducer with an append patch', () => {
     const cfg = validateBoundaryConfig({
       ...minimalRaw,
       reducers: [
         {
-          on: "LoanCreated",
-          patches: [{ op: "append", path: "/items", value: "${event.payload.item}" }],
+          on: 'LoanCreated',
+          patches: [{ op: 'append', path: '/items', value: '${event.payload.item}' }],
         },
       ],
     });
     expect(cfg.reducers[0].patches?.[0]).toEqual({
-      op: "append",
-      path: "/items",
-      value: "${event.payload.item}",
+      op: 'append',
+      path: '/items',
+      value: '${event.payload.item}',
     });
   });
 
-  it("rejects a reducer that carries the removed assign key with BOOT_ERR_DSL_SYNTAX", () => {
+  it('rejects a reducer that carries the removed assign key with BOOT_ERR_DSL_SYNTAX', () => {
     let caught: BootError | undefined;
     try {
       validateBoundaryConfig({
         ...minimalRaw,
-        reducers: [{ on: "LoanCreated", assign: { status: '"active"' } }],
+        reducers: [{ on: 'LoanCreated', assign: { status: '"active"' } }],
       });
     } catch (e) {
       caught = e as BootError;
     }
     expect(caught).toBeInstanceOf(BootError);
-    expect(caught?.code).toBe("BOOT_ERR_DSL_SYNTAX");
+    expect(caught?.code).toBe('BOOT_ERR_DSL_SYNTAX');
   });
 
-  it("rejects a reducer that carries the removed append key with BOOT_ERR_DSL_SYNTAX", () => {
+  it('rejects a reducer that carries the removed append key with BOOT_ERR_DSL_SYNTAX', () => {
     let caught: BootError | undefined;
     try {
       validateBoundaryConfig({
         ...minimalRaw,
-        reducers: [{ on: "LoanCreated", append: { items: "event.payload.item" } }],
+        reducers: [{ on: 'LoanCreated', append: { items: 'event.payload.item' } }],
       });
     } catch (e) {
       caught = e as BootError;
     }
     expect(caught).toBeInstanceOf(BootError);
-    expect(caught?.code).toBe("BOOT_ERR_DSL_SYNTAX");
+    expect(caught?.code).toBe('BOOT_ERR_DSL_SYNTAX');
   });
 
-  it("throws BootError when reducer references event not in event_catalog", () => {
+  it('throws BootError when reducer references event not in event_catalog', () => {
     expect(() =>
       validateBoundaryConfig({
         ...minimalRaw,
         reducers: [
-          { on: "UnknownEvent", patches: [{ op: "replace", path: "/status", value: '${"x"}' }] },
+          { on: 'UnknownEvent', patches: [{ op: 'replace', path: '/status', value: '${"x"}' }] },
         ],
       }),
     ).toThrow(BootError);
   });
 
-  it("cross-ref: reducer unknown event throws BOOT_ERR_DSL_REFERENCE", () => {
+  it('cross-ref: reducer unknown event throws BOOT_ERR_DSL_REFERENCE', () => {
     try {
       validateBoundaryConfig({
         ...minimalRaw,
-        reducers: [{ on: "NoSuchEvent", patches: [{ op: "replace", path: "/x", value: "${1}" }] }],
+        reducers: [{ on: 'NoSuchEvent', patches: [{ op: 'replace', path: '/x', value: '${1}' }] }],
       });
-      fail("should throw");
+      fail('should throw');
     } catch (e) {
-      expect((e as BootError).code).toBe("BOOT_ERR_DSL_REFERENCE");
+      expect((e as BootError).code).toBe('BOOT_ERR_DSL_REFERENCE');
     }
   });
 
-  it("accepts reducer without patches (optional)", () => {
+  it('accepts reducer without patches (optional)', () => {
     const cfg = validateBoundaryConfig({
       ...minimalRaw,
-      reducers: [{ on: "LoanCreated" }],
+      reducers: [{ on: 'LoanCreated' }],
     });
     expect(cfg.reducers[0].patches).toBeUndefined();
   });
@@ -483,17 +483,17 @@ describe("DSL §7.3 – Reducers Block", () => {
 // Event catalog cross-reference checks
 // ---------------------------------------------------------------------------
 
-describe("DSL event_catalog cross-reference", () => {
-  it("throws BOOT_ERR_DSL_REFERENCE when event_catalog is empty and behavior emits something", () => {
+describe('DSL event_catalog cross-reference', () => {
+  it('throws BOOT_ERR_DSL_REFERENCE when event_catalog is empty and behavior emits something', () => {
     expect(() =>
       validateBoundaryConfig({
         ...minimalRaw,
         event_catalog: [],
         behaviors: [
           {
-            name: "op",
-            match: { operationId: "createLoan", condition: "true" },
-            emit: "LoanCreated",
+            name: 'op',
+            match: { operationId: 'createLoan', condition: 'true' },
+            emit: 'LoanCreated',
           },
         ],
         reducers: [],
@@ -501,27 +501,27 @@ describe("DSL event_catalog cross-reference", () => {
     ).toThrow(BootError);
   });
 
-  it("cross-ref error code is BOOT_ERR_DSL_REFERENCE for empty catalog with non-empty behaviors", () => {
+  it('cross-ref error code is BOOT_ERR_DSL_REFERENCE for empty catalog with non-empty behaviors', () => {
     try {
       validateBoundaryConfig({
         ...minimalRaw,
         event_catalog: [],
         behaviors: [
           {
-            name: "op",
-            match: { operationId: "createLoan", condition: "true" },
-            emit: "SomeEvent",
+            name: 'op',
+            match: { operationId: 'createLoan', condition: 'true' },
+            emit: 'SomeEvent',
           },
         ],
         reducers: [],
       });
-      fail("expected throw");
+      fail('expected throw');
     } catch (e) {
-      expect((e as BootError).code).toBe("BOOT_ERR_DSL_REFERENCE");
+      expect((e as BootError).code).toBe('BOOT_ERR_DSL_REFERENCE');
     }
   });
 
-  it("accepts empty event_catalog when behaviors and reducers are also empty", () => {
+  it('accepts empty event_catalog when behaviors and reducers are also empty', () => {
     const cfg = validateBoundaryConfig({
       ...minimalRaw,
       event_catalog: [],
@@ -536,8 +536,8 @@ describe("DSL event_catalog cross-reference", () => {
 // YAML anchor / alias support
 // ---------------------------------------------------------------------------
 
-describe("DSL YAML anchor/alias support", () => {
-  it("parseYaml resolves YAML anchors/aliases transparently", () => {
+describe('DSL YAML anchor/alias support', () => {
+  it('parseYaml resolves YAML anchors/aliases transparently', () => {
     // js-yaml supports anchors natively; this tests that parseYaml passes through
     const yamlWithAnchors = `
 boundary: Loan
@@ -558,7 +558,7 @@ reducers:
         value: '"active"'
 `;
     const cfg = parseYaml(yamlWithAnchors);
-    expect(cfg.eventCatalog[0].type).toBe("LoanCreated");
+    expect(cfg.eventCatalog[0].type).toBe('LoanCreated');
   });
 });
 
@@ -566,52 +566,52 @@ reducers:
 // compileYaml – duplicate boundary detection
 // ---------------------------------------------------------------------------
 
-describe("compileYaml – duplicate boundary detection", () => {
-  it("throws BOOT_ERR_DSL_DUPLICATE_BOUNDARY when two modules share the same boundary name", async () => {
+describe('compileYaml – duplicate boundary detection', () => {
+  it('throws BOOT_ERR_DSL_DUPLICATE_BOUNDARY when two modules share the same boundary name', async () => {
     await expect(
       compileYaml([
-        { name: "moduleA", yaml: minimalYaml },
-        { name: "moduleB", yaml: minimalYaml },
+        { name: 'moduleA', yaml: minimalYaml },
+        { name: 'moduleB', yaml: minimalYaml },
       ]),
     ).rejects.toThrow(BootError);
   });
 
-  it("duplicate boundary error has code BOOT_ERR_DSL_DUPLICATE_BOUNDARY", async () => {
+  it('duplicate boundary error has code BOOT_ERR_DSL_DUPLICATE_BOUNDARY', async () => {
     await expect(
       compileYaml([
-        { name: "a", yaml: minimalYaml },
-        { name: "b", yaml: minimalYaml },
+        { name: 'a', yaml: minimalYaml },
+        { name: 'b', yaml: minimalYaml },
       ]),
-    ).rejects.toMatchObject({ code: "BOOT_ERR_DSL_DUPLICATE_BOUNDARY" });
+    ).rejects.toMatchObject({ code: 'BOOT_ERR_DSL_DUPLICATE_BOUNDARY' });
   });
 
-  it("compiles a single module without error", async () => {
-    const compiled = await compileYaml([{ name: "a", yaml: minimalYaml }]);
+  it('compiles a single module without error', async () => {
+    const compiled = await compileYaml([{ name: 'a', yaml: minimalYaml }]);
     expect(compiled.boundaries).toHaveLength(1);
-    expect(compiled.byBoundaryName["Loan"]).toBeDefined();
+    expect(compiled.byBoundaryName['Loan']).toBeDefined();
   });
 
-  it("compiles two modules with distinct boundary names", async () => {
+  it('compiles two modules with distinct boundary names', async () => {
     const yaml2 = minimalYaml
-      .replace("boundary: Loan", "boundary: Account")
-      .replace("contract_path: /loans", "contract_path: /accounts");
+      .replace('boundary: Loan', 'boundary: Account')
+      .replace('contract_path: /loans', 'contract_path: /accounts');
     const compiled = await compileYaml([
-      { name: "a", yaml: minimalYaml },
-      { name: "b", yaml: yaml2 },
+      { name: 'a', yaml: minimalYaml },
+      { name: 'b', yaml: yaml2 },
     ]);
     expect(compiled.boundaries).toHaveLength(2);
-    expect(compiled.byBoundaryName["Account"]).toBeDefined();
+    expect(compiled.byBoundaryName['Account']).toBeDefined();
   });
 
-  it("throws BOOT_ERR_DSL_DUPLICATE_BOUNDARY for duplicate contract_path across modules", async () => {
-    const yaml2 = minimalYaml.replace("boundary: Loan", "boundary: OtherBoundary");
+  it('throws BOOT_ERR_DSL_DUPLICATE_BOUNDARY for duplicate contract_path across modules', async () => {
+    const yaml2 = minimalYaml.replace('boundary: Loan', 'boundary: OtherBoundary');
     // Both have contract_path: /loans
     await expect(
       compileYaml([
-        { name: "a", yaml: minimalYaml },
-        { name: "b", yaml: yaml2 },
+        { name: 'a', yaml: minimalYaml },
+        { name: 'b', yaml: yaml2 },
       ]),
-    ).rejects.toMatchObject({ code: "BOOT_ERR_DSL_DUPLICATE_BOUNDARY" });
+    ).rejects.toMatchObject({ code: 'BOOT_ERR_DSL_DUPLICATE_BOUNDARY' });
   });
 });
 
@@ -619,47 +619,47 @@ describe("compileYaml – duplicate boundary detection", () => {
 // snake_case → camelCase normalisation completeness
 // ---------------------------------------------------------------------------
 
-describe("DSL snake_case → camelCase normalisation", () => {
+describe('DSL snake_case → camelCase normalisation', () => {
   // contract_path, fallback_override, query_mapping, event_catalog, payload_template,
   // dispatch_commands, target_id should all be normalised.
 
-  it("normalises event_catalog.payload_template → payloadTemplate", () => {
+  it('normalises event_catalog.payload_template → payloadTemplate', () => {
     const cfg = validateBoundaryConfig(minimalRaw);
     expect(cfg.eventCatalog[0].payloadTemplate).toBeDefined();
     // the raw key is payload_template but the TypeScript key is payloadTemplate
     expect(
-      (cfg.eventCatalog[0] as unknown as Record<string, unknown>)["payload_template"],
+      (cfg.eventCatalog[0] as unknown as Record<string, unknown>)['payload_template'],
     ).toBeUndefined();
   });
 
-  it("normalises dispatch_commands[].target_id → targetId", () => {
+  it('normalises dispatch_commands[].target_id → targetId', () => {
     const cfg = validateBoundaryConfig({
       ...minimalRaw,
       behaviors: [
         {
-          name: "create",
-          match: { operationId: "createLoan", condition: "true" },
-          emit: "LoanCreated",
+          name: 'create',
+          match: { operationId: 'createLoan', condition: 'true' },
+          emit: 'LoanCreated',
           dispatch_commands: [
-            { boundary: "Other", intent: "mutation", operationId: "op", target_id: "command.id" },
+            { boundary: 'Other', intent: 'mutation', operationId: 'op', target_id: 'command.id' },
           ],
         },
       ],
     });
     const cmd = cfg.behaviors[0].dispatchCommands![0];
-    expect(cmd.targetId).toBe("command.id");
-    expect((cmd as unknown as Record<string, unknown>)["target_id"]).toBeUndefined();
+    expect(cmd.targetId).toBe('command.id');
+    expect((cmd as unknown as Record<string, unknown>)['target_id']).toBeUndefined();
   });
 
   // GAP: identity.creation.generate is stored as-is (correct), but there is no
   // normalisation required here since the key is already camelCase-friendly.
   // However: there is no snake_case key 'payload_template' left on the returned object.
-  it("does NOT expose raw snake_case keys on the returned BoundaryConfig", () => {
+  it('does NOT expose raw snake_case keys on the returned BoundaryConfig', () => {
     const cfg = validateBoundaryConfig(minimalRaw) as unknown as Record<string, unknown>;
-    expect(cfg["contract_path"]).toBeUndefined();
-    expect(cfg["fallback_override"]).toBeUndefined();
-    expect(cfg["query_mapping"]).toBeUndefined();
-    expect(cfg["event_catalog"]).toBeUndefined();
+    expect(cfg['contract_path']).toBeUndefined();
+    expect(cfg['fallback_override']).toBeUndefined();
+    expect(cfg['query_mapping']).toBeUndefined();
+    expect(cfg['event_catalog']).toBeUndefined();
   });
 });
 
@@ -667,16 +667,16 @@ describe("DSL snake_case → camelCase normalisation", () => {
 // YAML parse error handling
 // ---------------------------------------------------------------------------
 
-describe("DSL YAML parse error handling", () => {
-  it("throws BootError BOOT_ERR_DSL_SYNTAX on malformed YAML", () => {
-    expect(() => parseYaml("boundary: [\nbad yaml")).toThrow(BootError);
+describe('DSL YAML parse error handling', () => {
+  it('throws BootError BOOT_ERR_DSL_SYNTAX on malformed YAML', () => {
+    expect(() => parseYaml('boundary: [\nbad yaml')).toThrow(BootError);
   });
 
-  it("throws BootError when YAML parses to a scalar (not an object)", () => {
-    expect(() => parseYaml("just a string")).toThrow(BootError);
+  it('throws BootError when YAML parses to a scalar (not an object)', () => {
+    expect(() => parseYaml('just a string')).toThrow(BootError);
   });
 
-  it("throws BootError when YAML is a list not an object", () => {
-    expect(() => parseYaml("- item1\n- item2")).toThrow(BootError);
+  it('throws BootError when YAML is a list not an object', () => {
+    expect(() => parseYaml('- item1\n- item2')).toThrow(BootError);
   });
 });

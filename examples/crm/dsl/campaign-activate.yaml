@@ -5,19 +5,19 @@ fallback_override: false
 event_catalog:
   - type: CampaignActivated
     payload_template:
-      activatedAt: "$now()"
+      activatedAt: '$now()'
 
 behaviors:
   # requires guard — must be in DRAFT or PAUSED status
   - name: activateCampaign
     match:
       operationId: activateCampaign
-      condition: "true"
+      condition: 'true'
       requires:
         - name: must-be-draft-or-paused
           condition: "state.status == 'DRAFT' || state.status == 'PAUSED'"
           error_code: CAMPAIGN_NOT_ACTIVATABLE
-          error_message: "Campaign must be in DRAFT or PAUSED status to activate"
+          error_message: 'Campaign must be in DRAFT or PAUSED status to activate'
     emit: CampaignActivated
 
 reducers:

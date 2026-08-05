@@ -11,14 +11,14 @@ audit_fields: true
 event_catalog:
   - type: NoteUpdated
     payload_template:
-      title: "command.payload.title != null ? command.payload.title : state.title"
-      body: "command.payload.body != null ? command.payload.body : state.body"
+      title: 'command.payload.title != null ? command.payload.title : state.title'
+      body: 'command.payload.body != null ? command.payload.body : state.body'
 
 behaviors:
   - name: updateNote
     match:
       operationId: updateNote
-      condition: "true"
+      condition: 'true'
     emit: NoteUpdated
 
 reducers:
@@ -26,9 +26,9 @@ reducers:
     patches:
       - op: replace
         path: /title
-        value: "${event.payload.title}"
+        value: '${event.payload.title}'
       - op: replace
         path: /body
-        value: "${event.payload.body}"
+        value: '${event.payload.body}'
 
 initialization: []

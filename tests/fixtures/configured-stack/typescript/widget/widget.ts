@@ -14,8 +14,8 @@ import {
   simulation,
   PotemkinConfigure,
   type EventContext,
-} from "potemkin/sdk";
-import { sourceLabel } from "../shared/source-label";
+} from 'potemkin/sdk';
+import { sourceLabel } from '../shared/source-label';
 
 interface WidgetState {
   id: string;
@@ -30,27 +30,27 @@ interface WidgetCreated {
 }
 
 export class ConfiguredWidget {
-  @PotemkinConfigure(factoryName("configured-widget"))
+  @PotemkinConfigure(factoryName('configured-widget'))
   static create() {
-    const widget = boundary(boundaryName("Widget"), contractPath(pathSegment("widgets")))
+    const widget = boundary(boundaryName('Widget'), contractPath(pathSegment('widgets')))
       .identity({ generate: ({ helpers }) => helpers.uuid() })
       .eventCatalog(
-        event(eventType("WidgetCreated"), {
-          id: ({ command }: EventContext) => String(command.targetId ?? ""),
-          name: ({ command }: EventContext) => String(command.payload.name ?? ""),
-          source: () => sourceLabel("typescript"),
+        event(eventType('WidgetCreated'), {
+          id: ({ command }: EventContext) => String(command.targetId ?? ''),
+          name: ({ command }: EventContext) => String(command.payload.name ?? ''),
+          source: () => sourceLabel('typescript'),
         }),
       )
       .behavior(
         defineBehavior({
-          name: behaviorName("createWidget"),
-          operationId: operationId("createWidget"),
+          name: behaviorName('createWidget'),
+          operationId: operationId('createWidget'),
           condition: () => true,
-          emit: eventType("WidgetCreated"),
+          emit: eventType('WidgetCreated'),
         }),
       )
       .reducer(
-        reducerRule<WidgetCreated, WidgetState>(eventType("WidgetCreated"))
+        reducerRule<WidgetCreated, WidgetState>(eventType('WidgetCreated'))
           .apply(({ state, event: emitted }) => ({
             ...state,
             id: emitted.payload.id,
@@ -65,8 +65,8 @@ export class ConfiguredWidget {
       .boundary(widget)
       .boundary(
         boundary(
-          boundaryName("WidgetById"),
-          contractPath(pathSegment("widgets"), pathParameter("id")),
+          boundaryName('WidgetById'),
+          contractPath(pathSegment('widgets'), pathParameter('id')),
         ).fallbackOverride(true),
       )
       .helper(sourceLabel)

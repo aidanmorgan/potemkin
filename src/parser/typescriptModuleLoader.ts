@@ -1,16 +1,16 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
-import * as vm from "node:vm";
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as vm from 'node:vm';
 
-import ts from "typescript";
+import ts from 'typescript';
 
 import {
   errorMessage,
   isTypeScriptAuthoringError,
   TypeScriptAuthoringError,
-} from "../authoring/errors.js";
-import type { ScanEntry } from "../config.js";
-import { isTypeScriptSdkSpecifier, type TypeScriptSdk } from "../sdk/index.js";
+} from '../authoring/errors.js';
+import type { ScanEntry } from '../contracts/config.js';
+import { isTypeScriptSdkSpecifier, type TypeScriptSdk } from '../sdk/index.js';
 
 export interface TypeScriptModuleRecord {
   readonly exports: Record<string, unknown>;
@@ -25,7 +25,7 @@ export interface TypeScriptModuleLoaderOptions {
 
 /** Platform effects used by the TypeScript module loader. */
 export interface TypeScriptModuleLoaderDependencies {
-  readonly readFile: (file: string, encoding: "utf8") => string;
+  readonly readFile: (file: string, encoding: 'utf8') => string;
   readonly exists: (file: string) => boolean;
   readonly isFile: (file: string) => boolean;
   readonly transpile: (source: string, file: string) => string;
@@ -46,7 +46,7 @@ export function createDefaultTypeScriptModuleLoaderDependencies(): TypeScriptMod
           module: ts.ModuleKind.CommonJS,
           target: ts.ScriptTarget.ES2022,
           experimentalDecorators: true,
-          jsx: file.endsWith(".tsx") ? ts.JsxEmit.ReactJSX : undefined,
+          jsx: file.endsWith('.tsx') ? ts.JsxEmit.ReactJSX : undefined,
         },
       }).outputText,
     createContext: (globals) => vm.createContext(globals),
@@ -57,22 +57,22 @@ export function createDefaultTypeScriptModuleLoaderDependencies(): TypeScriptMod
 }
 
 const FORBIDDEN_BUILTINS: ReadonlySet<string> = new Set([
-  "fs",
-  "node:fs",
-  "fs/promises",
-  "node:fs/promises",
-  "net",
-  "node:net",
-  "http",
-  "node:http",
-  "https",
-  "node:https",
-  "child_process",
-  "node:child_process",
-  "os",
-  "node:os",
-  "process",
-  "node:process",
+  'fs',
+  'node:fs',
+  'fs/promises',
+  'node:fs/promises',
+  'net',
+  'node:net',
+  'http',
+  'node:http',
+  'https',
+  'node:https',
+  'child_process',
+  'node:child_process',
+  'os',
+  'node:os',
+  'process',
+  'node:process',
 ]);
 
 /** Loads one configured TypeScript module graph with injected SDK services. */
@@ -93,7 +93,7 @@ export class TypeScriptModuleLoader {
     const cached = this.modules.get(absPath);
     if (cached !== undefined) return cached;
     if (inProgress.has(absPath)) {
-      throw new TypeScriptAuthoringError("TS_TRANSPILE", `Circular TypeScript import: ${absPath}`, {
+      throw new TypeScriptAuthoringError('TS_TRANSPILE', `Circular TypeScript import: ${absPath}`, {
         details: { path: absPath },
         source: absPath,
       });
@@ -136,7 +136,7 @@ export class TypeScriptModuleLoader {
       } catch (error) {
         if (isTypeScriptAuthoringError(error)) throw error;
         throw new TypeScriptAuthoringError(
-          "TS_EXECUTION",
+          'TS_EXECUTION',
           `Top-level execution of ${absPath} failed: ${errorMessage(error)}`,
           {
             details: { path: absPath, message: errorMessage(error) },
@@ -154,10 +154,10 @@ export class TypeScriptModuleLoader {
 
   private readSource(absPath: string): string {
     try {
-      return this.dependencies.readFile(absPath, "utf8");
+      return this.dependencies.readFile(absPath, 'utf8');
     } catch (error) {
       throw new TypeScriptAuthoringError(
-        "TS_SOURCE_READ",
+        'TS_SOURCE_READ',
         `Cannot read TypeScript authoring file ${absPath}: ${errorMessage(error)}`,
         { details: { path: absPath }, source: absPath, cause: error },
       );
@@ -169,7 +169,7 @@ export class TypeScriptModuleLoader {
       return this.dependencies.transpile(source, absPath);
     } catch (error) {
       throw new TypeScriptAuthoringError(
-        "TS_TRANSPILE",
+        'TS_TRANSPILE',
         `TypeScript transpilation failed for ${absPath}: ${errorMessage(error)}`,
         {
           details: { path: absPath, message: errorMessage(error) },
@@ -184,14 +184,14 @@ export class TypeScriptModuleLoader {
     if (isTypeScriptSdkSpecifier(specifier)) return this.options.sdk;
     if (FORBIDDEN_BUILTINS.has(specifier)) {
       throw new TypeScriptAuthoringError(
-        "TS_IMPORT_FORBIDDEN",
+        'TS_IMPORT_FORBIDDEN',
         `Forbidden import "${specifier}" in ${fromFile}`,
         { details: { specifier, from: fromFile }, source: fromFile },
       );
     }
-    if (!specifier.startsWith(".")) {
+    if (!specifier.startsWith('.')) {
       throw new TypeScriptAuthoringError(
-        "TS_IMPORT_FORBIDDEN",
+        'TS_IMPORT_FORBIDDEN',
         `Non-relative imports are forbidden in TypeScript authoring files: "${specifier}"`,
         { details: { specifier, from: fromFile }, source: fromFile },
       );
@@ -202,13 +202,13 @@ export class TypeScriptModuleLoader {
       !isInsideAnyScanDir(candidate, this.options.cwd, this.options.scan)
     ) {
       throw new TypeScriptAuthoringError(
-        "TS_IMPORT_OUTSIDE_SCAN",
+        'TS_IMPORT_OUTSIDE_SCAN',
         `Import "${specifier}" from ${fromFile} is outside the configured typescript.scan roots`,
         {
           details: {
             specifier,
             from: fromFile,
-            candidate: candidate ?? "",
+            candidate: candidate ?? '',
             cwd: this.options.cwd,
           },
           source: fromFile,
@@ -221,7 +221,7 @@ export class TypeScriptModuleLoader {
   private resolveSibling(candidate: string): string | undefined {
     if (this.dependencies.exists(candidate) && this.dependencies.isFile(candidate))
       return candidate;
-    for (const extension of [".ts", ".tsx", ".js", "/index.ts", "/index.tsx", "/index.js"]) {
+    for (const extension of ['.ts', '.tsx', '.js', '/index.ts', '/index.tsx', '/index.js']) {
       const resolved = candidate + extension;
       if (this.dependencies.exists(resolved) && this.dependencies.isFile(resolved)) return resolved;
     }
@@ -234,7 +234,7 @@ function isInsideAnyScanDir(resolved: string, cwd: string, scan: readonly ScanEn
     for (const include of entry.include) {
       const root = path.resolve(cwd, stripGlobTail(include));
       const relative = path.relative(root, resolved);
-      if (relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))) {
+      if (relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))) {
         return true;
       }
     }

@@ -14,7 +14,7 @@
  *  - onShutdown still works when afterDrain is absent (no regression)
  */
 
-import type { Server } from "http";
+import type { Server } from 'http';
 
 // ---------------------------------------------------------------------------
 // Mock @godaddy/terminus so we can capture the onShutdown handler
@@ -27,9 +27,9 @@ type TerminusOptions = {
 
 let capturedOnShutdown: (() => void | Promise<void>) | undefined;
 
-jest.mock("@godaddy/terminus", () => ({
+jest.mock('@godaddy/terminus', () => ({
   createTerminus: jest.fn((_server: unknown, opts: TerminusOptions) => {
-    capturedOnShutdown = opts["onShutdown"];
+    capturedOnShutdown = opts['onShutdown'];
   }),
 }));
 
@@ -44,7 +44,7 @@ const mockLog = {
   child: jest.fn(),
 };
 
-jest.mock("../../../src/observability/logger.js", () => ({
+jest.mock('../../../src/observability/logger.js', () => ({
   childLogger: jest.fn(() => mockLog),
 }));
 
@@ -52,7 +52,7 @@ jest.mock("../../../src/observability/logger.js", () => ({
 // Import SUT after mocks are set up
 // ---------------------------------------------------------------------------
 
-import { installGracefulShutdown } from "../../../src/lifecycle/gracefulShutdown.js";
+import { installGracefulShutdown } from '../../../src/lifecycle/gracefulShutdown.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -73,29 +73,29 @@ function resetMocks(): void {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe("installGracefulShutdown — onShutdown without afterDrain", () => {
+describe('installGracefulShutdown — onShutdown without afterDrain', () => {
   beforeEach(resetMocks);
 
-  it("logs engine-drained message", async () => {
+  it('logs engine-drained message', async () => {
     installGracefulShutdown({ server: fakeServer(), logger: mockLog as never });
 
     expect(capturedOnShutdown).toBeDefined();
     await capturedOnShutdown!();
 
-    expect(mockLog.info).toHaveBeenCalledWith(expect.stringContaining("engine drained"));
+    expect(mockLog.info).toHaveBeenCalledWith(expect.stringContaining('engine drained'));
   });
 
-  it("resolves without error when afterDrain is absent", async () => {
+  it('resolves without error when afterDrain is absent', async () => {
     installGracefulShutdown({ server: fakeServer(), logger: mockLog as never });
 
     await expect(capturedOnShutdown!()).resolves.toBeUndefined();
   });
 });
 
-describe("installGracefulShutdown — onShutdown with afterDrain", () => {
+describe('installGracefulShutdown — onShutdown with afterDrain', () => {
   beforeEach(resetMocks);
 
-  it("invokes afterDrain during shutdown", async () => {
+  it('invokes afterDrain during shutdown', async () => {
     const afterDrain = jest.fn().mockResolvedValue(undefined);
 
     installGracefulShutdown({
@@ -109,13 +109,13 @@ describe("installGracefulShutdown — onShutdown with afterDrain", () => {
     expect(afterDrain).toHaveBeenCalledTimes(1);
   });
 
-  it("awaits an async afterDrain before resolving", async () => {
+  it('awaits an async afterDrain before resolving', async () => {
     const order: string[] = [];
 
     const afterDrain = jest.fn().mockImplementation(async () => {
-      order.push("afterDrain-start");
+      order.push('afterDrain-start');
       await Promise.resolve();
-      order.push("afterDrain-end");
+      order.push('afterDrain-end');
     });
 
     installGracefulShutdown({
@@ -126,18 +126,18 @@ describe("installGracefulShutdown — onShutdown with afterDrain", () => {
 
     await capturedOnShutdown!();
 
-    expect(order).toEqual(["afterDrain-start", "afterDrain-end"]);
+    expect(order).toEqual(['afterDrain-start', 'afterDrain-end']);
   });
 
-  it("calls afterDrain after the engine-drained log", async () => {
+  it('calls afterDrain after the engine-drained log', async () => {
     const order: string[] = [];
 
     mockLog.info.mockImplementation(() => {
-      order.push("log");
+      order.push('log');
     });
 
     const afterDrain = jest.fn().mockImplementation(() => {
-      order.push("afterDrain");
+      order.push('afterDrain');
     });
 
     installGracefulShutdown({
@@ -148,12 +148,12 @@ describe("installGracefulShutdown — onShutdown with afterDrain", () => {
 
     await capturedOnShutdown!();
 
-    expect(order).toEqual(["log", "afterDrain"]);
+    expect(order).toEqual(['log', 'afterDrain']);
   });
 
-  it("does not propagate a synchronous throw from afterDrain", async () => {
+  it('does not propagate a synchronous throw from afterDrain', async () => {
     const afterDrain = jest.fn().mockImplementation(() => {
-      throw new Error("cleanup exploded");
+      throw new Error('cleanup exploded');
     });
 
     installGracefulShutdown({
@@ -165,8 +165,8 @@ describe("installGracefulShutdown — onShutdown with afterDrain", () => {
     await expect(capturedOnShutdown!()).resolves.toBeUndefined();
   });
 
-  it("does not propagate a rejected promise from afterDrain", async () => {
-    const afterDrain = jest.fn().mockRejectedValue(new Error("async cleanup failed"));
+  it('does not propagate a rejected promise from afterDrain', async () => {
+    const afterDrain = jest.fn().mockRejectedValue(new Error('async cleanup failed'));
 
     installGracefulShutdown({
       server: fakeServer(),
@@ -177,8 +177,8 @@ describe("installGracefulShutdown — onShutdown with afterDrain", () => {
     await expect(capturedOnShutdown!()).resolves.toBeUndefined();
   });
 
-  it("logs a warning when afterDrain throws", async () => {
-    const boom = new Error("cleanup exploded");
+  it('logs a warning when afterDrain throws', async () => {
+    const boom = new Error('cleanup exploded');
     const afterDrain = jest.fn().mockImplementation(() => {
       throw boom;
     });
@@ -193,12 +193,12 @@ describe("installGracefulShutdown — onShutdown with afterDrain", () => {
 
     expect(mockLog.warn).toHaveBeenCalledWith(
       expect.objectContaining({ err: boom }),
-      expect.stringContaining("afterDrain"),
+      expect.stringContaining('afterDrain'),
     );
   });
 
-  it("logs a warning when afterDrain rejects", async () => {
-    const boom = new Error("async cleanup failed");
+  it('logs a warning when afterDrain rejects', async () => {
+    const boom = new Error('async cleanup failed');
     const afterDrain = jest.fn().mockRejectedValue(boom);
 
     installGracefulShutdown({
@@ -211,12 +211,12 @@ describe("installGracefulShutdown — onShutdown with afterDrain", () => {
 
     expect(mockLog.warn).toHaveBeenCalledWith(
       expect.objectContaining({ err: boom }),
-      expect.stringContaining("afterDrain"),
+      expect.stringContaining('afterDrain'),
     );
   });
 
-  it("works without a logger (no crash when afterDrain throws)", async () => {
-    const afterDrain = jest.fn().mockRejectedValue(new Error("no logger"));
+  it('works without a logger (no crash when afterDrain throws)', async () => {
+    const afterDrain = jest.fn().mockRejectedValue(new Error('no logger'));
 
     installGracefulShutdown({
       server: fakeServer(),

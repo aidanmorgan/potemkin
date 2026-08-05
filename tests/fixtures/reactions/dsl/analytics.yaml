@@ -9,14 +9,14 @@ fallback_override: false
 
 identity:
   creation:
-    generate: "$uuidv7()"
+    generate: '$uuidv7()'
 
 event_catalog:
   - type: AnalyticsRecorded
     payload_template:
-      id: "$uuidv7()"
-      dispatchId: "event.aggregateId"
-      recorded: "true"
+      id: '$uuidv7()'
+      dispatchId: 'event.aggregateId'
+      recorded: 'true'
 
 behaviors: []
 
@@ -25,16 +25,16 @@ reducers:
     patches:
       - op: add
         path: /id
-        value: "${event.payload.id}"
+        value: '${event.payload.id}'
       - op: add
         path: /dispatchId
-        value: "${event.payload.dispatchId}"
+        value: '${event.payload.dispatchId}'
       - op: add
         path: /recorded
-        value: "${event.payload.recorded}"
+        value: '${event.payload.recorded}'
 
 reactions:
   - name: record-analytics-on-dispatch-confirmed
-    on: "Dispatch:DispatchConfirmed"
+    on: 'Dispatch:DispatchConfirmed'
     intent: creation
     emit: AnalyticsRecorded

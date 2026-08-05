@@ -8,13 +8,13 @@ fallback_override: false
 event_catalog:
   - type: ItemPromoted
     payload_template:
-      newStatus: "command.payload.newStatus"
+      newStatus: 'command.payload.newStatus'
 
 behaviors:
   - name: promoteItem
     match:
       operationId: promoteItem
-      condition: "true"
+      condition: 'true'
     emit: ItemPromoted
 
 reducers:
@@ -27,6 +27,6 @@ reducers:
       # op: replace — then overwrite /status with the new value
       - op: replace
         path: /status
-        value: "${event.payload.newStatus}"
+        value: '${event.payload.newStatus}'
 
 initialization: []

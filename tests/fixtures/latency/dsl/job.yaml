@@ -14,7 +14,7 @@ fault_rules:
     match:
       headers:
         x-latency-fault: on
-      condition: "true"
+      condition: 'true'
     response:
       status: 503
       body:
@@ -32,14 +32,14 @@ identity:
 event_catalog:
   - type: JobSubmitted
     payload_template:
-      id: "command.targetId"
-      name: "command.payload.name"
+      id: 'command.targetId'
+      name: 'command.payload.name'
 
 behaviors:
   - name: submitJob
     match:
       operationId: submitJob
-      condition: "true"
+      condition: 'true'
     emit: JobSubmitted
 
 reducers:
@@ -47,9 +47,9 @@ reducers:
     patches:
       - op: replace
         path: /id
-        value: "${event.payload.id}"
+        value: '${event.payload.id}'
       - op: replace
         path: /name
-        value: "${event.payload.name}"
+        value: '${event.payload.name}'
 
 initialization: []

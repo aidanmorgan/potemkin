@@ -9,4 +9,4 @@ typescript:
     - include:
         - typescript/mixed/**/*.ts
       exclude:
-        - "**/*.d.ts"
+        - '**/*.d.ts'

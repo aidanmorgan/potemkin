@@ -1,0 +1,8 @@
+{
+  "$schema": <%~ it.json(it.schema.$schema) %>,
+  "$id": <%~ it.json(it.schema.$id) %>,
+  "title": <%~ it.json(it.schema.title) %>,
+  "description": <%~ it.json(it.schema.description) %>,
+  "$defs": <%~ it.json(it.schema.$defs) %>,
+  "oneOf": <%~ it.json(it.schema.oneOf) %>
+}

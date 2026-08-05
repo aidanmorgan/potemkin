@@ -1,10 +1,10 @@
-import type { ValidateFunction } from "ajv";
-import type { JsonObject, JsonValue } from "../types.js";
-import type { OpenApiDoc } from "./loader.js";
-import { ContractViolationError } from "../errors.js";
-import { matchRoute } from "./router.js";
-import type { Logger } from "../observability/logger.js";
-import { normalizeEntityTag } from "../http/entityTag.js";
+import type { ValidateFunction } from 'ajv';
+import type { JsonObject, JsonValue } from '../contracts/value.js';
+import type { OpenApiDoc } from './loader.js';
+import { ContractViolationError } from '../errors.js';
+import { matchRoute } from './router.js';
+import type { Logger } from '../observability/logger.js';
+import { normalizeEntityTag } from '../http/entityTag.js';
 
 export type RequestHeaders = Readonly<Record<string, string | string[] | undefined>>;
 
@@ -17,8 +17,8 @@ export interface RequestValidator {
     pathParams: Record<string, string>,
     headers?: RequestHeaders,
   ) => void;
-  readonly validateRequestBatch: RequestValidator["validateRequest"];
-  readonly validateRequestItem: RequestValidator["validateRequest"];
+  readonly validateRequestBatch: RequestValidator['validateRequest'];
+  readonly validateRequestItem: RequestValidator['validateRequest'];
 }
 
 interface RequestValidatorDependencies {
@@ -27,12 +27,12 @@ interface RequestValidatorDependencies {
   readonly logger: Logger;
 }
 
-type ValidationMode = "full" | "batch" | "batch-item";
+type ValidationMode = 'full' | 'batch' | 'batch-item';
 
 function coerceParamValue(value: string, schema: JsonObject | undefined): unknown {
   if (schema === undefined) return value;
-  const type = schema["type"];
-  if (type === "number" || type === "integer") {
+  const type = schema['type'];
+  if (type === 'number' || type === 'integer') {
     const number = Number(value);
     if (!Number.isNaN(number)) return number;
   }
@@ -41,10 +41,10 @@ function coerceParamValue(value: string, schema: JsonObject | undefined): unknow
 
 function validateParameter(
   parameter: NonNullable<
-    NonNullable<ReturnType<typeof matchRoute>>["operation"]["parameters"]
+    NonNullable<ReturnType<typeof matchRoute>>['operation']['parameters']
   >[number],
   rawValue: string | string[] | undefined,
-  getValidator: RequestValidatorDependencies["getValidator"],
+  getValidator: RequestValidatorDependencies['getValidator'],
   logger: Logger,
 ): void {
   if (rawValue === undefined) {
@@ -59,12 +59,12 @@ function validateParameter(
 
   const value = Array.isArray(rawValue) ? rawValue[0] : rawValue;
   const normalizedValue =
-    parameter.in === "header" && parameter.name.toLowerCase() === "if-match"
+    parameter.in === 'header' && parameter.name.toLowerCase() === 'if-match'
       ? value === undefined
         ? undefined
         : normalizeEntityTag(value)
       : value;
-  const coerced = coerceParamValue(normalizedValue ?? "", parameter.schema);
+  const coerced = coerceParamValue(normalizedValue ?? '', parameter.schema);
   const validate = getValidator(parameter.schema);
   if (validate(coerced)) return;
 
@@ -79,18 +79,18 @@ function validateParameter(
 }
 
 function validateParameters(
-  operation: NonNullable<ReturnType<typeof matchRoute>>["operation"],
+  operation: NonNullable<ReturnType<typeof matchRoute>>['operation'],
   queryParams: Record<string, string | string[]>,
   pathParams: Record<string, string>,
   headers: RequestHeaders,
-  getValidator: RequestValidatorDependencies["getValidator"],
+  getValidator: RequestValidatorDependencies['getValidator'],
   logger: Logger,
 ): void {
   for (const parameter of operation.parameters ?? []) {
     const rawValue =
-      parameter.in === "path"
+      parameter.in === 'path'
         ? pathParams[parameter.name]
-        : parameter.in === "query"
+        : parameter.in === 'query'
           ? queryParams[parameter.name]
           : Object.entries(headers).find(
               ([name]) => name.toLowerCase() === parameter.name.toLowerCase(),
@@ -100,27 +100,27 @@ function validateParameters(
 }
 
 function validateBody(
-  operation: NonNullable<ReturnType<typeof matchRoute>>["operation"],
+  operation: NonNullable<ReturnType<typeof matchRoute>>['operation'],
   payload: JsonValue,
   mode: ValidationMode,
-  getValidator: RequestValidatorDependencies["getValidator"],
+  getValidator: RequestValidatorDependencies['getValidator'],
   logger: Logger,
   method: string,
   path: string,
   formEncoded: boolean,
 ): void {
   const schema = operation.requestBodySchema;
-  if (schema === undefined || (mode === "batch" && schema.type !== "array")) return;
+  if (schema === undefined || (mode === 'batch' && schema.type !== 'array')) return;
   if (formEncoded) coerceFormPayload(payload, schema);
   const itemSchema =
-    mode === "batch-item" && schema.type === "array"
+    mode === 'batch-item' && schema.type === 'array'
       ? (schema.items as JsonObject | undefined)
       : schema;
   if (itemSchema === undefined) return;
 
   const validate = getValidator(itemSchema);
   if (validate(payload)) return;
-  logger.debug({ errors: validate.errors }, "Request body validation failed");
+  logger.debug({ errors: validate.errors }, 'Request body validation failed');
   throw new ContractViolationError(
     `Request body failed contract validation for ${method} ${path}`,
     {
@@ -163,11 +163,11 @@ function validateRequestWithMode(
 
 function isFormEncoded(headers: RequestHeaders): boolean {
   const contentType = Object.entries(headers).find(
-    ([name]) => name.toLowerCase() === "content-type",
+    ([name]) => name.toLowerCase() === 'content-type',
   )?.[1];
   const value = Array.isArray(contentType) ? contentType[0] : contentType;
   return (
-    typeof value === "string" &&
+    typeof value === 'string' &&
     /^(application\/x-www-form-urlencoded|multipart\/form-data)/i.test(value)
   );
 }
@@ -176,11 +176,11 @@ function isFormEncoded(headers: RequestHeaders): boolean {
  * source-independent engine sees the command. JSON transports remain strict. */
 function coerceFormPayload(payload: JsonValue, schema: JsonObject): void {
   if (Array.isArray(payload)) {
-    const itemSchema = asSchema(schema["items"]);
+    const itemSchema = asSchema(schema['items']);
     if (itemSchema !== undefined) for (const item of payload) coerceFormPayload(item, itemSchema);
     return;
   }
-  if (payload === null || typeof payload !== "object") return;
+  if (payload === null || typeof payload !== 'object') return;
   const properties = schemaProperties(schema);
   for (const [key, value] of Object.entries(payload)) {
     const fieldSchema = properties[key];
@@ -192,21 +192,21 @@ function coerceFormPayload(payload: JsonValue, schema: JsonObject): void {
 
 function coerceFormValue(value: JsonValue, schema: JsonObject): JsonValue {
   const selected = selectSchema(value, schema);
-  const type = selected["type"];
-  if (typeof value === "string" && type === "boolean") {
-    if (value === "true") return true;
-    if (value === "false") return false;
+  const type = selected['type'];
+  if (typeof value === 'string' && type === 'boolean') {
+    if (value === 'true') return true;
+    if (value === 'false') return false;
   }
-  if (typeof value === "string" && (type === "integer" || type === "number")) {
+  if (typeof value === 'string' && (type === 'integer' || type === 'number')) {
     const number = Number(value);
-    if (Number.isFinite(number) && (type !== "integer" || Number.isInteger(number))) return number;
+    if (Number.isFinite(number) && (type !== 'integer' || Number.isInteger(number))) return number;
   }
-  if (value !== null && typeof value === "object") coerceFormPayload(value, selected);
+  if (value !== null && typeof value === 'object') coerceFormPayload(value, selected);
   return value;
 }
 
 function selectSchema(value: JsonValue, schema: JsonObject): JsonObject {
-  const branches = [schema["anyOf"], schema["oneOf"]].find(Array.isArray);
+  const branches = [schema['anyOf'], schema['oneOf']].find(Array.isArray);
   if (branches === undefined) return schema;
   return (
     branches
@@ -218,8 +218,8 @@ function selectSchema(value: JsonValue, schema: JsonObject): JsonObject {
 }
 
 function schemaProperties(schema: JsonObject): Record<string, JsonObject> {
-  const properties = schema["properties"];
-  if (properties === null || typeof properties !== "object" || Array.isArray(properties)) return {};
+  const properties = schema['properties'];
+  if (properties === null || typeof properties !== 'object' || Array.isArray(properties)) return {};
   return Object.fromEntries(
     Object.entries(properties).flatMap(([key, value]) => {
       const child = asSchema(value);
@@ -229,21 +229,21 @@ function schemaProperties(schema: JsonObject): Record<string, JsonObject> {
 }
 
 function asSchema(value: unknown): JsonObject | undefined {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
     ? (value as JsonObject)
     : undefined;
 }
 
 function matchesSchemaType(value: JsonValue, schema: JsonObject): boolean {
-  const type = schema["type"];
-  if (type === "object")
-    return value !== null && typeof value === "object" && !Array.isArray(value);
-  if (type === "array") return Array.isArray(value);
-  if (type === "boolean")
-    return typeof value === "boolean" || value === "true" || value === "false";
-  if (type === "integer" || type === "number")
-    return typeof value === "number" || /^-?\d+(\.\d+)?$/.test(String(value));
-  if (type === "string") return typeof value === "string";
+  const type = schema['type'];
+  if (type === 'object')
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+  if (type === 'array') return Array.isArray(value);
+  if (type === 'boolean')
+    return typeof value === 'boolean' || value === 'true' || value === 'false';
+  if (type === 'integer' || type === 'number')
+    return typeof value === 'number' || /^-?\d+(\.\d+)?$/.test(String(value));
+  if (type === 'string') return typeof value === 'string';
   return true;
 }
 
@@ -257,7 +257,7 @@ export function createRequestValidator(
     queryParams: Record<string, string | string[]>,
     pathParams: Record<string, string>,
     headers: RequestHeaders = {},
-    mode: ValidationMode = "full",
+    mode: ValidationMode = 'full',
   ): void => {
     validateRequestWithMode(
       dependencies,
@@ -274,8 +274,8 @@ export function createRequestValidator(
   return {
     validateRequest: (...args) => validate(...args),
     validateRequestBatch: (method, path, payload, queryParams, pathParams, headers = {}) =>
-      validate(method, path, payload, queryParams, pathParams, headers, "batch"),
+      validate(method, path, payload, queryParams, pathParams, headers, 'batch'),
     validateRequestItem: (method, path, payload, queryParams, pathParams, headers = {}) =>
-      validate(method, path, payload, queryParams, pathParams, headers, "batch-item"),
+      validate(method, path, payload, queryParams, pathParams, headers, 'batch-item'),
   };
 }

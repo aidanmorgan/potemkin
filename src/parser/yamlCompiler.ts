@@ -8,12 +8,13 @@ import type {
   ReducerPatchOp,
   SagaConfig,
   WebhookConfig,
-} from "../dsl/types.js";
-import type { DeclaredState } from "../dsl/schemaTypes.js";
-import { resolveActor, JwtValidationError } from "../identity/actorResolver.js";
-import { createCelEvaluator, type CelEvaluator } from "../cel/evaluator.js";
-import { CelPhase } from "../cel/phases.js";
-import type { Command, DomainEvent, JsonObject, JsonValue } from "../types.js";
+} from '../dsl/types.js';
+import type { DeclaredState } from '../dsl/schemaTypes.js';
+import { resolveActor, JwtValidationError } from '../identity/actorResolver.js';
+import { createCelEvaluator, type CelEvaluator } from '../cel/evaluator.js';
+import { CelPhase } from '../cel/phases.js';
+import type { Command, DomainEvent } from '../contracts/domain.js';
+import type { JsonObject, JsonValue, Patch } from '../contracts/value.js';
 import type {
   EventContext,
   FaultContext,
@@ -46,14 +47,14 @@ import type {
   RuntimeHelpers,
   SagaContext,
   WebhookContext,
-} from "../model/runtime.js";
-import type { Patch } from "../model/patches.js";
-import { compileRuntime } from "../model/compiler.js";
-import type { RuntimeDefinition, RuntimeModel } from "../model/index.js";
-import { runLifecyclePhase, type LifecycleDefinition } from "../authoring/lifecycle.js";
-import type { Logger } from "../observability/logger.js";
-import { BootError } from "../errors.js";
-import { compareQueryValues, readPath } from "../core/queryPolicies.js";
+} from '../model/runtime.js';
+import { compileRuntime } from '../model/compiler.js';
+import type { RuntimeDefinition, RuntimeModel } from '../model/index.js';
+import { runLifecyclePhase } from '../authoring/lifecycle.js';
+import type { LifecycleDefinition } from '../contracts/lifecycle.js';
+import type { Logger } from '../observability/logger.js';
+import { BootError } from '../errors.js';
+import { compareQueryValues, readPath } from '../domain/query.js';
 
 /**
  * Dependencies required while compiling YAML into the canonical runtime model.
@@ -66,10 +67,9 @@ export interface ParserRuntimeOptions {
   readonly logger?: Logger;
   /** TypeScript helpers made available to YAML CEL before compilation. */
   readonly helpers?: readonly RuntimeHelperDefinition[];
-  readonly allowExternalReferences?: boolean;
 }
 
-const GLOBAL_BOUNDARY = "__global__";
+const GLOBAL_BOUNDARY = '__global__';
 
 interface ExpressionContext {
   readonly command?: Command;
@@ -97,7 +97,7 @@ function evaluate(
   context: ExpressionContext,
   cel: CelEvaluator,
 ): unknown {
-  if (typeof value !== "string") return value;
+  if (typeof value !== 'string') return value;
   const controls = context.request?.controls;
   const requestCel =
     controls === undefined || (controls.clockOffsetMs === undefined && controls.seed === undefined)
@@ -124,11 +124,11 @@ function evaluate(
     ...(context.steps !== undefined ? { steps: context.steps } : {}),
     ...(context.prevStep !== undefined ? { prevStep: context.prevStep } : {}),
     ...(context.committedEvents !== undefined ? { committedEvents: context.committedEvents } : {}),
-    ...("response" in context && context.response !== undefined
+    ...('response' in context && context.response !== undefined
       ? { response: context.response }
       : {}),
   });
-  if (value.includes("${")) {
+  if (value.includes('${')) {
     return requestCel.evaluateDslValue(value, ctx, phase);
   }
   return requestCel.evaluate(value, ctx, phase);
@@ -141,12 +141,12 @@ function value<Input, Output>(
   cel: CelEvaluator,
   fallbackLiteral = false,
 ): RuntimeValue<Input, Output> {
-  if (typeof raw !== "string") return raw as Output;
+  if (typeof raw !== 'string') return raw as Output;
   return (context: Readonly<Input>): Output => {
     try {
       return evaluate(raw, phase, boundary, context as unknown as ExpressionContext, cel) as Output;
     } catch (error) {
-      if (fallbackLiteral && !raw.includes("${")) return raw as Output;
+      if (fallbackLiteral && !raw.includes('${')) return raw as Output;
       throw error;
     }
   };
@@ -280,7 +280,7 @@ function patchValue(
   cel: CelEvaluator,
 ): JsonValue {
   const evaluated = evaluate(raw, CelPhase.Reducer, boundary, context, cel);
-  if (evaluated === undefined || typeof evaluated === "function") return null;
+  if (evaluated === undefined || typeof evaluated === 'function') return null;
   return evaluated as JsonValue;
 }
 
@@ -291,49 +291,49 @@ function compilePatch(
   context: RuntimeReducerContext,
 ): Patch {
   switch (raw.op) {
-    case "remove":
-      return { op: "remove", path: raw.path };
-    case "move":
-      return { op: "move", path: raw.path, from: raw.from! };
-    case "copy":
-      return { op: "copy", path: raw.path, from: raw.from! };
-    case "increment":
-      return { op: "increment", path: raw.path, by: raw.by ?? 0 };
-    case "upsert":
+    case 'remove':
+      return { op: 'remove', path: raw.path };
+    case 'move':
+      return { op: 'move', path: raw.path, from: raw.from! };
+    case 'copy':
+      return { op: 'copy', path: raw.path, from: raw.from! };
+    case 'increment':
+      return { op: 'increment', path: raw.path, by: raw.by ?? 0 };
+    case 'upsert':
       return {
-        op: "upsert",
+        op: 'upsert',
         path: raw.path,
         key: raw.key!,
         value: patchValue(raw.value, context, boundary, cel) as JsonObject,
       };
-    case "merge":
+    case 'merge':
       return {
-        op: "merge",
+        op: 'merge',
         path: raw.path,
         value: patchValue(raw.value, context, boundary, cel) as JsonObject,
         ...(raw.deep !== undefined ? { deep: raw.deep } : {}),
       };
-    case "add":
+    case 'add':
       return {
-        op: "add",
+        op: 'add',
         path: raw.path,
         value: patchValue(raw.value, context, boundary, cel),
       };
-    case "replace":
+    case 'replace':
       return {
-        op: "replace",
+        op: 'replace',
         path: raw.path,
         value: patchValue(raw.value, context, boundary, cel),
       };
-    case "append":
+    case 'append':
       return {
-        op: "append",
+        op: 'append',
         path: raw.path,
         value: patchValue(raw.value, context, boundary, cel),
       };
-    case "prepend":
+    case 'prepend':
       return {
-        op: "prepend",
+        op: 'prepend',
         path: raw.path,
         value: patchValue(raw.value, context, boundary, cel),
       };
@@ -341,7 +341,7 @@ function compilePatch(
 }
 
 function compileReducer(
-  raw: NonNullable<BoundaryConfig["reducers"]>[number],
+  raw: NonNullable<BoundaryConfig['reducers']>[number],
   boundary: string,
   cel: CelEvaluator,
 ): RuntimeReducer {
@@ -359,7 +359,7 @@ function compileState(
   state: DeclaredState | undefined,
   boundary: string,
   cel: CelEvaluator,
-): RuntimeBoundary["state"] {
+): RuntimeBoundary['state'] {
   if (state === undefined) return undefined;
   return {
     computed: state.computed?.map((field) => ({
@@ -427,24 +427,24 @@ function compileFault(raw: FaultRule, boundary: string, cel: CelEvaluator): Runt
   const selector = (name: string): string | undefined =>
     Object.entries(raw.match.headers ?? {}).find(([key]) => key.toLowerCase() === name)?.[1];
   const selectors = {
-    ...(selector("x-potemkin-signal") === undefined
+    ...(selector('x-potemkin-signal') === undefined
       ? {}
-      : { signal: selector("x-potemkin-signal") }),
-    ...(selector("x-potemkin-force-response") === undefined
+      : { signal: selector('x-potemkin-signal') }),
+    ...(selector('x-potemkin-force-response') === undefined
       ? {}
-      : { forceResponse: selector("x-potemkin-force-response") }),
-    ...(selector("x-potemkin-scenario") === undefined
+      : { forceResponse: selector('x-potemkin-force-response') }),
+    ...(selector('x-potemkin-scenario') === undefined
       ? {}
-      : { scenario: selector("x-potemkin-scenario") }),
-    ...(selector("x-potemkin-feature-flag") === undefined
+      : { scenario: selector('x-potemkin-scenario') }),
+    ...(selector('x-potemkin-feature-flag') === undefined
       ? {}
-      : { featureFlag: selector("x-potemkin-feature-flag") }),
-    ...(selector("x-potemkin-error-class") === undefined
+      : { featureFlag: selector('x-potemkin-feature-flag') }),
+    ...(selector('x-potemkin-error-class') === undefined
       ? {}
       : {
           errorClass: selector(
-            "x-potemkin-error-class",
-          ) as RuntimeFault["selectors"] extends Readonly<{ errorClass?: infer T }> ? T : never,
+            'x-potemkin-error-class',
+          ) as RuntimeFault['selectors'] extends Readonly<{ errorClass?: infer T }> ? T : never,
         }),
   };
   return {
@@ -460,7 +460,7 @@ function compileFault(raw: FaultRule, boundary: string, cel: CelEvaluator): Runt
     matches: (context) => {
       if (
         raw.match.boundary !== undefined &&
-        raw.match.boundary !== "*" &&
+        raw.match.boundary !== '*' &&
         raw.match.boundary !== context.command.boundary
       )
         return false;
@@ -484,7 +484,7 @@ function compileFault(raw: FaultRule, boundary: string, cel: CelEvaluator): Runt
           )?.[1];
           return (
             actual !== undefined &&
-            (expected === "*" || expected === "present" || actual === expected)
+            (expected === '*' || expected === 'present' || actual === expected)
           );
         })
       )
@@ -538,9 +538,9 @@ function compileWebhook(raw: WebhookConfig, boundary: string, cel: CelEvaluator)
 
 function compileLifecycle(
   definition: LifecycleDefinition | undefined,
-  helpers: RuntimeDependencies["helpers"],
-  clock: RuntimeDependencies["clock"],
-): RuntimePolicies["lifecycle"] {
+  helpers: RuntimeDependencies['helpers'],
+  clock: RuntimeDependencies['clock'],
+): RuntimePolicies['lifecycle'] {
   if (definition === undefined) return undefined;
   const run = async (
     phase: Parameters<typeof runLifecyclePhase>[1],
@@ -553,11 +553,11 @@ function compileLifecycle(
         ...(context?.command !== undefined
           ? { boundary: context.command.boundary, command: context.command }
           : {}),
-        ...(context !== undefined && "event" in context && context.event !== undefined
+        ...(context !== undefined && 'event' in context && context.event !== undefined
           ? { event: context.event }
           : {}),
         ...(context?.state !== undefined ? { state: context.state } : {}),
-        ...(context !== undefined && "response" in context && context.response !== undefined
+        ...(context !== undefined && 'response' in context && context.response !== undefined
           ? { response: context.response }
           : {}),
         helpers: {
@@ -569,26 +569,26 @@ function compileLifecycle(
         },
       },
       {
-        failure: phase === "post-commit" ? "continue" : "abort",
+        failure: phase === 'post-commit' ? 'continue' : 'abort',
         nowMs: clock.nowMs,
       },
     );
   };
   return {
-    boot: () => run("boot"),
-    validation: () => run("validation"),
-    initialization: () => run("initialization"),
-    request: (context) => run("request", context),
-    projection: (context) => run("projection", context),
-    commit: (context) => run("commit", context),
-    postCommit: (context) => run("post-commit", context),
-    reset: () => run("reset"),
-    shutdown: () => run("shutdown"),
+    boot: () => run('boot'),
+    validation: () => run('validation'),
+    initialization: () => run('initialization'),
+    request: (context) => run('request', context),
+    projection: (context) => run('projection', context),
+    commit: (context) => run('commit', context),
+    postCommit: (context) => run('post-commit', context),
+    reset: () => run('reset'),
+    shutdown: () => run('shutdown'),
   };
 }
 
 function compileSaga(raw: SagaConfig, boundary: string, cel: CelEvaluator): RuntimeSaga {
-  const step = (item: SagaConfig["steps"][number]): RuntimeSagaStep => ({
+  const step = (item: SagaConfig['steps'][number]): RuntimeSagaStep => ({
     name: item.name,
     boundary: item.boundary,
     intent: item.intent,
@@ -657,11 +657,11 @@ function responseHelper(
   name: string,
   helpers: readonly RuntimeHelperDefinition[],
   boundary: string,
-): NonNullable<RuntimeBoundary["response"]>["transform"] {
+): NonNullable<RuntimeBoundary['response']>['transform'] {
   const helper = helpers.find((candidate) => candidate.name === name);
   if (helper === undefined) {
     throw new BootError(
-      "BOOT_ERR_DSL_REFERENCE",
+      'BOOT_ERR_DSL_REFERENCE',
       `Boundary "${boundary}" references unknown response helper "${name}"`,
       { boundary, helper: name },
     );
@@ -687,13 +687,13 @@ function responseHelper(
       payload: context.payload,
       response: context.response,
     };
-    const result = helper.invoke([input]);
-    if (result === null || Array.isArray(result) || typeof result !== "object") return undefined;
+    const result = helper.invoke([input], CelPhase.Response);
+    if (result === null || Array.isArray(result) || typeof result !== 'object') return undefined;
     const output = result as JsonObject;
-    const headers = output["headers"];
+    const headers = output['headers'];
     return {
-      ...(typeof output["status"] === "number" ? { status: output["status"] } : {}),
-      ...(output["body"] === undefined ? {} : { body: output["body"] }),
+      ...(typeof output['status'] === 'number' ? { status: output['status'] } : {}),
+      ...(output['body'] === undefined ? {} : { body: output['body'] }),
       ...(isStringMap(headers) ? { headers } : {}),
     };
   };
@@ -703,17 +703,17 @@ function isStringMap(value: JsonValue | undefined): value is Record<string, stri
   return (
     value !== undefined &&
     value !== null &&
-    typeof value === "object" &&
+    typeof value === 'object' &&
     !Array.isArray(value) &&
-    Object.values(value).every((entry) => typeof entry === "string")
+    Object.values(value).every((entry) => typeof entry === 'string')
   );
 }
 
 function compileQuery(
-  raw: NonNullable<BoundaryConfig["query"]>,
+  raw: NonNullable<BoundaryConfig['query']>,
   boundary: string,
   cel: CelEvaluator,
-): NonNullable<RuntimeBoundary["query"]> {
+): NonNullable<RuntimeBoundary['query']> {
   return {
     ...(raw.fields === undefined
       ? {}
@@ -733,7 +733,7 @@ function compileQuery(
       : {
           sort: (left: Readonly<JsonObject>, right: Readonly<JsonObject>) => {
             for (const key of raw.sort ?? []) {
-              const direction = key.direction === "desc" ? -1 : 1;
+              const direction = key.direction === 'desc' ? -1 : 1;
               const compared =
                 direction *
                 compareQueryValues(readPath(left, key.field), readPath(right, key.field));
@@ -757,7 +757,7 @@ function compileQuery(
               context as unknown as ExpressionContext,
               cel,
             );
-            return typeof resolved === "string" ? resolved : undefined;
+            return typeof resolved === 'string' ? resolved : undefined;
           },
         }),
     ...(raw.expand === undefined ? {} : { expand: raw.expand }),
@@ -795,7 +795,7 @@ function compileBoundary(
         : {
             ...(raw.identity.key === undefined
               ? {}
-              : { key: { ...raw.identity.key, from: raw.identity.key.from ?? "path" } }),
+              : { key: { ...raw.identity.key, from: raw.identity.key.from ?? 'path' } }),
             ...(raw.identity.creation?.generate
               ? {
                   generate: (context) =>
@@ -866,8 +866,8 @@ function compileBoundary(
 function compilePolicies(
   dsl: YamlLinkedProgram,
   cel: CelEvaluator,
-  helpers: RuntimeDependencies["helpers"],
-  clock: RuntimeDependencies["clock"],
+  helpers: RuntimeDependencies['helpers'],
+  clock: RuntimeDependencies['clock'],
 ): RuntimePolicies {
   const globalFaults = dsl.faults?.map((fault) => compileFault(fault, GLOBAL_BOUNDARY, cel));
   const coverage = compileCoverage(dsl.coverage);
@@ -892,10 +892,10 @@ function compilePolicies(
         // declare a scope. Keeping this at the YAML policy boundary means the
         // direct engine and the Specmatic forward path have identical
         // authentication semantics.
-        if (actor === null && dsl.auth?.mode === "jwt") {
+        if (actor === null && dsl.auth?.mode === 'jwt') {
           throw new JwtValidationError(
-            "Authorization header is required in JWT mode",
-            "JWT_MISSING",
+            'Authorization header is required in JWT mode',
+            'JWT_MISSING',
           );
         }
         return actor ?? undefined;
@@ -952,7 +952,7 @@ function compilePolicies(
   };
 }
 
-function compileCoverage(coverage: YamlLinkedProgram["coverage"]): RuntimePolicies["coverage"] {
+function compileCoverage(coverage: YamlLinkedProgram['coverage']): RuntimePolicies['coverage'] {
   if (coverage === undefined) return undefined;
   return Object.fromEntries(
     Object.entries(coverage).map(([aggregate, policy]) => [
@@ -973,10 +973,19 @@ export function compileYamlModel(
   dsl: YamlLinkedProgram,
   options: ParserRuntimeOptions,
 ): RuntimeModel {
+  return compileRuntime(compileYamlDefinitionModel(dsl, options), options.dependencies);
+}
+
+/** Lower the linked YAML graph without validating references against another source. */
+export function compileYamlDefinitionModel(
+  dsl: YamlLinkedProgram,
+  options: ParserRuntimeOptions,
+): RuntimeDefinition {
   const custom = new Map(
     (options.helpers ?? []).map((helper) => [
       helper.name,
-      (args: readonly unknown[]) => helper.invoke(args as readonly JsonValue[]),
+      (args: readonly unknown[], _context: Readonly<Record<string, unknown>>, phase: CelPhase) =>
+        helper.invoke(args as readonly JsonValue[], phase),
     ]),
   );
   const cel =
@@ -994,7 +1003,5 @@ export function compileYamlModel(
     policies: compilePolicies(dsl, cel, options.dependencies.helpers, options.dependencies.clock),
     helpers: options.helpers,
   };
-  return compileRuntime(definition, options.dependencies, {
-    allowExternalReferences: options.allowExternalReferences,
-  });
+  return definition;
 }

@@ -1,5 +1,5 @@
-import type { AllowedOrigins } from "./cors.js";
-import type { RuntimeFault } from "../model/runtime.js";
+import type { AllowedOrigins } from './cors.js';
+import type { RuntimeFault } from '../model/runtime.js';
 
 /** Optional infrastructure supplied by the application composition root. */
 export interface RuntimeGatewayExtensions {

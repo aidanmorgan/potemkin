@@ -24,24 +24,24 @@ fallback_override: false
 
 identity:
   creation:
-    generate: "$uuidv7()"
+    generate: '$uuidv7()'
 
 event_catalog:
   # Emitted when x-channel: mobile selects the mobile behavior.
   - type: MobileOrderPlaced
     payload_template:
-      id: "command.targetId"
-      productId: "command.payload.productId"
-      quantity: "command.payload.quantity"
+      id: 'command.targetId'
+      productId: 'command.payload.productId'
+      quantity: 'command.payload.quantity'
       channel: "'mobile'"
       priority: "'EXPRESS'"
 
   # Emitted when no discriminating header is present (default behavior).
   - type: OrderPlaced
     payload_template:
-      id: "command.targetId"
-      productId: "command.payload.productId"
-      quantity: "command.payload.quantity"
+      id: 'command.targetId'
+      productId: 'command.payload.productId'
+      quantity: 'command.payload.quantity'
       channel: "'standard'"
       priority: "'NORMAL'"
 
@@ -55,7 +55,7 @@ behaviors:
       operationId: submitOrder
       headers:
         x-channel: mobile
-      condition: "true"
+      condition: 'true'
     emit: MobileOrderPlaced
 
   # Behavior B — default channel.
@@ -65,7 +65,7 @@ behaviors:
   - name: submitOrder.default
     match:
       operationId: submitOrder
-      condition: "true"
+      condition: 'true'
     emit: OrderPlaced
 
 reducers:
@@ -73,36 +73,36 @@ reducers:
     patches:
       - op: replace
         path: /id
-        value: "${event.payload.id}"
+        value: '${event.payload.id}'
       - op: replace
         path: /productId
-        value: "${event.payload.productId}"
+        value: '${event.payload.productId}'
       - op: replace
         path: /quantity
-        value: "${event.payload.quantity}"
+        value: '${event.payload.quantity}'
       - op: replace
         path: /channel
-        value: "${event.payload.channel}"
+        value: '${event.payload.channel}'
       - op: replace
         path: /priority
-        value: "${event.payload.priority}"
+        value: '${event.payload.priority}'
 
   - on: OrderPlaced
     patches:
       - op: replace
         path: /id
-        value: "${event.payload.id}"
+        value: '${event.payload.id}'
       - op: replace
         path: /productId
-        value: "${event.payload.productId}"
+        value: '${event.payload.productId}'
       - op: replace
         path: /quantity
-        value: "${event.payload.quantity}"
+        value: '${event.payload.quantity}'
       - op: replace
         path: /channel
-        value: "${event.payload.channel}"
+        value: '${event.payload.channel}'
       - op: replace
         path: /priority
-        value: "${event.payload.priority}"
+        value: '${event.payload.priority}'
 
 initialization: []

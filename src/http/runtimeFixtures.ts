@@ -1,9 +1,9 @@
-import type { JsonObject } from "../types.js";
-import type { RuntimeSystem } from "../runtime/system.js";
-import type { FixtureStub } from "./specmaticTransport.js";
+import type { JsonObject } from '../contracts/value.js';
+import type { RuntimeSystem } from '../runtime/system.js';
+import type { FixtureStub } from './specmaticTransport.js';
 
 function isJsonObject(value: unknown): value is JsonObject {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function getByIdTemplate(system: RuntimeSystem, collectionPath: string): string | undefined {
@@ -19,7 +19,7 @@ function getByIdTemplate(system: RuntimeSystem, collectionPath: string): string 
 }
 
 function getByIdParameter(pathTemplate: string): string {
-  return /\/\{([^/}]+)\}$/.exec(pathTemplate)?.[1] ?? "id";
+  return /\/\{([^/}]+)\}$/.exec(pathTemplate)?.[1] ?? 'id';
 }
 
 /**
@@ -32,7 +32,7 @@ export function deriveRuntimeFixtures(system: RuntimeSystem): readonly FixtureSt
     .snapshot()
     .events.filter(
       (event) =>
-        event.eventId.startsWith("baseline-") && system.program.byBoundaryName.has(event.boundary),
+        event.eventId.startsWith('baseline-') && system.program.byBoundaryName.has(event.boundary),
     );
   const fixtures: FixtureStub[] = [];
   for (const boundary of system.program.boundaries) {
@@ -43,12 +43,12 @@ export function deriveRuntimeFixtures(system: RuntimeSystem): readonly FixtureSt
       if (!isJsonObject(event.payload)) continue;
       fixtures.push({
         httpRequest: {
-          method: "GET",
+          method: 'GET',
           path: pathTemplate.replace(`{${parameter}}`, event.aggregateId),
         },
         httpResponse: {
           status: 200,
-          headers: { "content-type": "application/json" },
+          headers: { 'content-type': 'application/json' },
           body: event.payload,
         },
         source: {

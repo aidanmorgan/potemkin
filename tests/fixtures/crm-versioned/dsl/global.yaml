@@ -16,10 +16,10 @@ hateoas:
 versioning:
   enabled: true
   versions:
-    - version: "v1"
-      prefix: "/v1"
-    - version: "v2"
-      prefix: "/v2"
+    - version: 'v1'
+      prefix: '/v1'
+    - version: 'v2'
+      prefix: '/v2'
       default: true
 
 # HTTP security headers — applied to every response
@@ -28,9 +28,9 @@ security_headers:
   hsts: true
   nosniff: true
   frame_deny: true
-  referrer_policy: "strict-origin-when-cross-origin"
+  referrer_policy: 'strict-origin-when-cross-origin'
   custom_headers:
-    X-Custom-Sim-Header: "potemkin-sim"
+    X-Custom-Sim-Header: 'potemkin-sim'
 
 # Sagas with compensation
 sagas:
@@ -46,19 +46,19 @@ sagas:
         boundary: Opportunity
         intent: creation
         operationId: createOpportunity
-        target_id: "$uuidv7()"
+        target_id: '$uuidv7()'
         payload:
-          leadId: "${event.aggregateId}"
-          agentId: "${event.payload.agentId}"
-          campaignId: "${event.payload.campaignId}"
-          value: "${command.payload.value}"
-          probability: "${command.payload.probability}"
-          expectedCloseDate: "${command.payload.expectedCloseDate}"
+          leadId: '${event.aggregateId}'
+          agentId: '${event.payload.agentId}'
+          campaignId: '${event.payload.campaignId}'
+          value: '${command.payload.value}'
+          probability: '${command.payload.probability}'
+          expectedCloseDate: '${command.payload.expectedCloseDate}'
         compensation:
           intent: mutation
           operationId: closeOpportunity
           payload:
-            revertStatus: "true"
+            revertStatus: 'true'
 
 # Webhook declarations — outbound HTTP POST on event emission
 webhooks:
@@ -68,10 +68,10 @@ webhooks:
       intent: mutation
       condition: "event.type == 'LeadConverted'"
     url: "'http://127.0.0.1:19876/webhook'"
-    secret: "webhook-test-secret-do-not-use-in-prod"
+    secret: 'webhook-test-secret-do-not-use-in-prod'
     payload:
-      leadId: "${event.aggregateId}"
-      event: "${event.type}"
+      leadId: '${event.aggregateId}'
+      event: '${event.type}'
     retry:
       maxAttempts: 1
       delayMs: 100
@@ -110,9 +110,9 @@ fault_rules:
   # Any value on the header triggers the rule (presence-only via "*").
   - name: rate-limit-via-header
     match:
-      condition: "true"
+      condition: 'true'
       potemkin:
-        rate_limit: "*"
+        rate_limit: '*'
     response:
       status: 429
       body:
@@ -120,24 +120,24 @@ fault_rules:
         message: Simulated rate limit (header-triggered)
         retryAfter: 30
       headers:
-        Retry-After: "30"
-        X-RateLimit-Limit: "100"
-        X-RateLimit-Remaining: "0"
+        Retry-After: '30'
+        X-RateLimit-Limit: '100'
+        X-RateLimit-Remaining: '0'
 
   # Header-matched via convenience `potemkin.force_response` with specific value.
   # Expands to X-Potemkin-Force-Response: maintenance.
   - name: maintenance-mode-via-header
     match:
-      condition: "true"
+      condition: 'true'
       potemkin:
-        force_response: "maintenance"
+        force_response: 'maintenance'
     response:
       status: 503
       body:
         error: SERVICE_UNAVAILABLE
         message: Service in maintenance mode
       headers:
-        Retry-After: "60"
+        Retry-After: '60'
 
   # Header-matched scoped to a boundary via convenience `potemkin.feature_flag`.
   # Expands to X-Potemkin-Feature-Flag: v2-experimental.
@@ -145,9 +145,9 @@ fault_rules:
     match:
       boundary: Lead
       intent: query
-      condition: "true"
+      condition: 'true'
       potemkin:
-        feature_flag: "v2-experimental"
+        feature_flag: 'v2-experimental'
     response:
       status: 418
       body:
@@ -160,16 +160,16 @@ fault_rules:
     match:
       boundary: Call
       intent: creation
-      condition: "true"
+      condition: 'true'
       headers:
-        x-potemkin-scenario: "slow_db"
+        x-potemkin-scenario: 'slow_db'
     response:
       status: 504
       body:
         error: GATEWAY_TIMEOUT
         message: Simulated slow database scenario
       headers:
-        Retry-After: "5"
+        Retry-After: '5'
 
   # ── Chaos-header response overrides (suite 46) ────────────────────────────
   # These rules own the response shape when a client opts in via the matching
@@ -179,23 +179,23 @@ fault_rules:
   # X-Potemkin-Force-Status: 599 → YAML body overrides the generic forced-status body.
   - name: force-status-599-custom
     match:
-      condition: "true"
+      condition: 'true'
       headers:
-        x-potemkin-force-status: "599"
+        x-potemkin-force-status: '599'
     response:
       status: 599
       body:
         error: FORCED_STATUS_599
-        hint: "Client should retry after the response is available."
+        hint: 'Client should retry after the response is available.'
       headers:
-        Retry-After: "15"
+        Retry-After: '15'
 
   # X-Potemkin-Force-Latency: 750 → YAML response returned after the delay.
   - name: force-latency-750-accepted
     match:
-      condition: "true"
+      condition: 'true'
       headers:
-        x-potemkin-force-latency: "750"
+        x-potemkin-force-latency: '750'
     response:
       status: 202
       body:
@@ -205,23 +205,23 @@ fault_rules:
   # X-Potemkin-Error-Class: throttle → custom QUOTA_EXCEEDED body (overrides canonical 429).
   - name: error-class-throttle-custom
     match:
-      condition: "true"
+      condition: 'true'
       headers:
-        x-potemkin-error-class: "throttle"
+        x-potemkin-error-class: 'throttle'
     response:
       status: 429
       body:
         error: QUOTA_EXCEEDED
         quotaRemaining: 0
       headers:
-        Retry-After: "45"
+        Retry-After: '45'
 
   # X-Potemkin-Jitter: any value → 200 body marked jittered (delay applied by engine).
   - name: jitter-yaml-response
     match:
-      condition: "true"
+      condition: 'true'
       headers:
-        x-potemkin-jitter: "*"
+        x-potemkin-jitter: '*'
     response:
       status: 200
       body:
@@ -230,9 +230,9 @@ fault_rules:
   # X-Potemkin-Success-Rate: 0 → always fails the gate, custom degraded body.
   - name: success-rate-failure-custom
     match:
-      condition: "true"
+      condition: 'true'
       headers:
-        x-potemkin-success-rate: "0"
+        x-potemkin-success-rate: '0'
     response:
       status: 503
       body:
@@ -243,51 +243,51 @@ fault_rules:
 derived_projections:
   # CampaignDashboard: aggregates lead count and conversion rate per campaign
   - name: CampaignDashboard
-    key: "event.payload.campaignId != null ? event.payload.campaignId : event.payload.assignedCampaignId"
+    key: 'event.payload.campaignId != null ? event.payload.campaignId : event.payload.assignedCampaignId'
     subscribe:
-      - "Lead:LeadCreated"
-      - "Lead:LeadConverted"
-      - "Call:CallLogged"
-      - "Opportunity:OpportunityWon"
+      - 'Lead:LeadCreated'
+      - 'Lead:LeadConverted'
+      - 'Call:CallLogged'
+      - 'Opportunity:OpportunityWon'
     reduce:
-      - on: "Lead:LeadCreated"
+      - on: 'Lead:LeadCreated'
         patches:
           - op: replace
             path: /totalLeads
-            value: "${state.totalLeads != null ? state.totalLeads + 1 : 1}"
+            value: '${state.totalLeads != null ? state.totalLeads + 1 : 1}'
           - op: replace
             path: /totalConversions
-            value: "${state.totalConversions != null ? state.totalConversions : 0}"
-      - on: "Lead:LeadConverted"
+            value: '${state.totalConversions != null ? state.totalConversions : 0}'
+      - on: 'Lead:LeadConverted'
         patches:
           - op: replace
             path: /totalConversions
-            value: "${state.totalConversions != null ? state.totalConversions + 1 : 1}"
-      - on: "Call:CallLogged"
+            value: '${state.totalConversions != null ? state.totalConversions + 1 : 1}'
+      - on: 'Call:CallLogged'
         patches:
           - op: replace
             path: /totalCalls
-            value: "${state.totalCalls != null ? state.totalCalls + 1 : 1}"
-      - on: "Opportunity:OpportunityWon"
+            value: '${state.totalCalls != null ? state.totalCalls + 1 : 1}'
+      - on: 'Opportunity:OpportunityWon'
         patches:
           - op: replace
             path: /wonCount
-            value: "${state.wonCount != null ? state.wonCount + 1 : 1}"
+            value: '${state.wonCount != null ? state.wonCount + 1 : 1}'
 
   # AgentPerformance: tracks per-agent call and conversion metrics
   - name: AgentPerformance
-    key: "event.payload.agentId != null ? event.payload.agentId : event.aggregateId"
+    key: 'event.payload.agentId != null ? event.payload.agentId : event.aggregateId'
     subscribe:
-      - "Call:CallLogged"
-      - "Agent:AgentConversionIncremented"
+      - 'Call:CallLogged'
+      - 'Agent:AgentConversionIncremented'
     reduce:
-      - on: "Call:CallLogged"
+      - on: 'Call:CallLogged'
         patches:
           - op: replace
             path: /callCount
-            value: "${state.callCount != null ? state.callCount + 1 : 1}"
-      - on: "Agent:AgentConversionIncremented"
+            value: '${state.callCount != null ? state.callCount + 1 : 1}'
+      - on: 'Agent:AgentConversionIncremented'
         patches:
           - op: replace
             path: /conversionCount
-            value: "${state.conversionCount != null ? state.conversionCount + 1 : 1}"
+            value: '${state.conversionCount != null ? state.conversionCount + 1 : 1}'

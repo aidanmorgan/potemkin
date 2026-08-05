@@ -1,6 +1,6 @@
-import type { OpenApiDoc } from "../../contract/loader.js";
-import type { Transition, TransitionMachine } from "../../model/transitionModel.js";
-import type { LintCheck, LintFinding } from "../types.js";
+import type { OpenApiDoc } from '../../contract/loader.js';
+import type { Transition, TransitionMachine } from '../../model/transitionModel.js';
+import type { LintCheck, LintFinding } from '../types.js';
 
 /**
  * Check the aggregated, source-independent transition model.
@@ -21,7 +21,7 @@ function checkMachine(machine: TransitionMachine, openapi: OpenApiDoc): readonly
   const knownStates = new Set(machine.states);
   const knownTargets = new Set(
     machine.transitions
-      .filter((transition) => transition.nextStateKnown && transition.to !== "UNKNOWN")
+      .filter((transition) => transition.nextStateKnown && transition.to !== 'UNKNOWN')
       .map((transition) => transition.to),
   );
   const analysis = machine.analysis;
@@ -50,7 +50,7 @@ function strictGraphFindings(
     for (const state of states) {
       if (!reachable.has(state)) {
         findings.push(
-          finding("MODEL_UNREACHABLE_STATE", `State "${state}" is unreachable`, machine),
+          finding('MODEL_UNREACHABLE_STATE', `State "${state}" is unreachable`, machine),
         );
       }
     }
@@ -63,7 +63,7 @@ function strictGraphFindings(
     if (outgoing(machine.transitions, state).length === 0) {
       findings.push(
         finding(
-          "MODEL_DEAD_STATE",
+          'MODEL_DEAD_STATE',
           `State "${state}" has no legal outgoing transition and is not terminal`,
           machine,
         ),
@@ -82,7 +82,7 @@ function strictGraphFindings(
       if (!hasTransition(machine.transitions, state, operation)) {
         findings.push(
           finding(
-            "MODEL_TOTALITY_GAP",
+            'MODEL_TOTALITY_GAP',
             `No transition is defined for state "${state}" and operation "${operation}"`,
             machine,
           ),
@@ -101,7 +101,7 @@ function initialStatesFor(
   if (configured.length > 0) return configured;
   const incoming = new Set(
     machine.transitions
-      .filter((transition) => transition.to !== "UNKNOWN")
+      .filter((transition) => transition.to !== 'UNKNOWN')
       .map((transition) => transition.to),
   );
   return [...states].filter((state) => !incoming.has(state));
@@ -116,7 +116,7 @@ function reachableStates(
   while (pending.length > 0) {
     const state = pending.shift()!;
     for (const transition of outgoing(transitions, state)) {
-      if (transition.to === "UNKNOWN" || reachable.has(transition.to)) continue;
+      if (transition.to === 'UNKNOWN' || reachable.has(transition.to)) continue;
       reachable.add(transition.to);
       pending.push(transition.to);
     }
@@ -125,7 +125,7 @@ function reachableStates(
 }
 
 function outgoing(transitions: readonly Transition[], state: string): readonly Transition[] {
-  return transitions.filter((transition) => transition.from === "*" || transition.from === state);
+  return transitions.filter((transition) => transition.from === '*' || transition.from === state);
 }
 
 function hasTransition(
@@ -135,7 +135,7 @@ function hasTransition(
 ): boolean {
   return transitions.some(
     (transition) =>
-      transition.op === operation && (transition.from === "*" || transition.from === state),
+      transition.op === operation && (transition.from === '*' || transition.from === state),
   );
 }
 
@@ -150,7 +150,7 @@ function coverageFindings(
     if (!contractStates.includes(state)) {
       findings.push(
         finding(
-          "MODEL_UNKNOWN_STATE_SUPPRESSION",
+          'MODEL_UNKNOWN_STATE_SUPPRESSION',
           `Suppressed state "${state}" is not present in the OpenAPI enum for ${machine.aggregate}.${machine.controlField}`,
           machine,
         ),
@@ -161,10 +161,10 @@ function coverageFindings(
     if (knownTargets.has(state) || suppressed.has(state)) continue;
     findings.push(
       finding(
-        "MODEL_CONTRACT_STATE_UNCOVERED",
+        'MODEL_CONTRACT_STATE_UNCOVERED',
         `OpenAPI enum state "${state}" has no realizing transition`,
         machine,
-        "warning",
+        'warning',
       ),
     );
   }
@@ -179,7 +179,7 @@ function guardFindings(
   const values = new Set<string>();
   const pattern = new RegExp(
     `state\\.${escapeRegExp(machine.controlField)}\\s*(?:==|!=)\\s*(['"])([^'"]+)\\1`,
-    "g",
+    'g',
   );
   for (const transition of machine.transitions) {
     if (transition.guardCel === null) continue;
@@ -189,10 +189,10 @@ function guardFindings(
     .filter((state) => !produced.has(state))
     .map((state) =>
       finding(
-        "MODEL_GUARD_STATE_UNPRODUCED",
+        'MODEL_GUARD_STATE_UNPRODUCED',
         `Guard references state "${state}", but no transition produces it`,
         machine,
-        "warning",
+        'warning',
       ),
     );
 }
@@ -207,7 +207,7 @@ function contractEnumStates(machine: TransitionMachine, openapi: OpenApiDoc): re
   const field = record(schema?.properties)?.[machine.controlField];
   const values = record(field)?.enum;
   return Array.isArray(values)
-    ? values.filter((value): value is string => typeof value === "string")
+    ? values.filter((value): value is string => typeof value === 'string')
     : [];
 }
 
@@ -217,19 +217,19 @@ function resolveSchema(
 ): Record<string, unknown> | undefined {
   const schema = record(value);
   if (schema === undefined) return undefined;
-  const ref = schema["$ref"];
-  if (typeof ref === "string" && ref.startsWith("#/components/schemas/")) {
-    return resolveSchema(schemas[ref.slice("#/components/schemas/".length)], schemas);
+  const ref = schema['$ref'];
+  if (typeof ref === 'string' && ref.startsWith('#/components/schemas/')) {
+    return resolveSchema(schemas[ref.slice('#/components/schemas/'.length)], schemas);
   }
-  if (!Array.isArray(schema["allOf"])) return schema;
-  return schema["allOf"].reduce<Record<string, unknown>>(
+  if (!Array.isArray(schema['allOf'])) return schema;
+  return schema['allOf'].reduce<Record<string, unknown>>(
     (merged, part) => ({ ...merged, ...resolveSchema(part, schemas) }),
     { ...schema },
   );
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
 }
@@ -238,7 +238,7 @@ function finding(
   code: string,
   message: string,
   machine: TransitionMachine,
-  severity: "error" | "warning" = "error",
+  severity: 'error' | 'warning' = 'error',
 ): LintFinding {
   return {
     severity,
@@ -253,5 +253,5 @@ function finding(
 }
 
 function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

@@ -8,13 +8,13 @@ fallback_override: false
 event_catalog:
   - type: ItemMetadataMerged
     payload_template:
-      changes: "command.payload.changes"
+      changes: 'command.payload.changes'
 
 behaviors:
   - name: mergeMetadata
     match:
       operationId: mergeMetadata
-      condition: "true"
+      condition: 'true'
     emit: ItemMetadataMerged
 
 reducers:
@@ -24,6 +24,6 @@ reducers:
       # Keys not present in `changes` survive untouched.
       - op: merge
         path: /metadata
-        value: "${event.payload.changes}"
+        value: '${event.payload.changes}'
 
 initialization: []

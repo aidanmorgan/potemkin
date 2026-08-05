@@ -1,7 +1,7 @@
-import { existsSync, readdirSync, statSync } from "node:fs";
-import path from "node:path";
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import path from 'node:path';
 
-import { policyForTestFile, TEST_VALUE_POLICIES } from "../../_support/testValueInventory.js";
+import { policyForTestFile, TEST_VALUE_POLICIES } from '../../_support/testValueInventory.js';
 
 function filesUnder(root: string): string[] {
   const files: string[] = [];
@@ -14,29 +14,29 @@ function filesUnder(root: string): string[] {
 }
 
 function testFiles(root: string): string[] {
-  return ["tests", "examples", "plugin/src/test"]
+  return ['tests', 'examples', 'plugin/src/test']
     .flatMap((directory) => filesUnder(path.join(root, directory)))
     .filter((file) => {
-      const relative = path.relative(root, file).split(path.sep).join("/");
+      const relative = path.relative(root, file).split(path.sep).join('/');
       return (
         /\.(test|spec)\.(ts|kt|js)$/.test(relative) ||
-        relative.endsWith("Test.kt") ||
-        relative.endsWith(".feature")
+        relative.endsWith('Test.kt') ||
+        relative.endsWith('.feature')
       );
     });
 }
 
-describe("test value and traceability inventory", () => {
-  it("assigns every test artifact to one explicit value policy", () => {
+describe('test value and traceability inventory', () => {
+  it('assigns every test artifact to one explicit value policy', () => {
     const root = process.cwd();
     const unmatched = testFiles(root)
       .filter((file) => policyForTestFile(root, file) === undefined)
-      .map((file) => path.relative(root, file).split(path.sep).join("/"));
+      .map((file) => path.relative(root, file).split(path.sep).join('/'));
 
     expect(unmatched).toEqual([]);
   });
 
-  it("keeps every policy backed by a canonical evidence test and a boundary", () => {
+  it('keeps every policy backed by a canonical evidence test and a boundary', () => {
     const root = process.cwd();
     const missing = TEST_VALUE_POLICIES.flatMap((policy) => {
       const missingTests = policy.canonicalTests
@@ -50,16 +50,18 @@ describe("test value and traceability inventory", () => {
     expect(missing).toEqual([]);
   });
 
-  it("keeps the high-coverage gate explicit and no-skip enforcement in the package contract", () => {
-    const packageJson = require(path.join(process.cwd(), "package.json")) as {
+  it('keeps the high-coverage gate explicit and no-skip enforcement in the package contract', () => {
+    const packageJson = JSON.parse(
+      readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'),
+    ) as {
       scripts?: Record<string, string>;
     };
-    const jestConfig = require(path.join(process.cwd(), "jest.config.js")) as {
+    const jestConfig = loadJestConfig(path.join(process.cwd(), 'jest.config.js')) as {
       coverageThreshold?: { global?: Record<string, number> };
     };
 
-    expect(packageJson.scripts?.["test:coverage"]).toContain("--coverage");
-    expect(packageJson.scripts?.["verify:no-skips"]).toBeDefined();
+    expect(packageJson.scripts?.['test:coverage']).toContain('--coverage');
+    expect(packageJson.scripts?.['verify:no-skips']).toBeDefined();
     expect(jestConfig.coverageThreshold?.global).toEqual({
       statements: expect.any(Number),
       branches: expect.any(Number),
@@ -71,3 +73,16 @@ describe("test value and traceability inventory", () => {
     }
   });
 });
+
+function loadJestConfig(file: string): unknown {
+  const source = readFileSync(file, 'utf8');
+  const match = source.match(/coverageThreshold:\s*\{\s*global:\s*\{([\s\S]*?)\}\s*,?\s*\}/);
+  if (match === null) return {};
+  return {
+    coverageThreshold: {
+      global: Object.fromEntries(
+        [...match[1].matchAll(/(\w+):\s*(\d+)/g)].map(([, key, value]) => [key, Number(value)]),
+      ),
+    },
+  };
+}

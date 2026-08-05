@@ -1,18 +1,18 @@
-import { createHash } from "node:crypto";
-import type { Server } from "node:http";
-import request, { type Test } from "supertest";
-import type { OpenApiDoc, OpenApiOperation } from "../contract/loader.js";
-import type { DomainEvent } from "../types.js";
-import type { IdentityContext, RuntimeBoundary } from "../model/runtime.js";
-import type { RuntimeSystem } from "../runtime/system.js";
-import type { Transition, TransitionMachine } from "../model/transitionModel.js";
-import type { JsonObject, JsonValue } from "../types.js";
-import type { ExportExample } from "./export-examples.js";
-import type { createRuntimeGateway } from "../http/runtimeGateway.js";
-import { POTEMKIN_SEED } from "../http/potemkinHeaders.js";
-import { deterministicUuidv7 } from "../ids/uuidv7.js";
-import { ExportError } from "../errors.js";
-import type { ExportStatePlan, ExportStep } from "../dsl/types.js";
+import { createHash } from 'node:crypto';
+import type { Server } from 'node:http';
+import request, { type Test } from 'supertest';
+import type { OpenApiDoc, OpenApiOperation } from '../contract/loader.js';
+import type { DomainEvent } from '../contracts/domain.js';
+import type { IdentityContext, RuntimeBoundary } from '../model/runtime.js';
+import type { RuntimeSystem } from '../runtime/system.js';
+import type { Transition, TransitionMachine } from '../model/transitionModel.js';
+import type { JsonObject, JsonValue } from '../contracts/value.js';
+import type { ExportExample } from './exportContracts.js';
+import type { createRuntimeGateway } from '../http/runtimeGateway.js';
+import { POTEMKIN_SEED } from '../http/potemkinHeaders.js';
+import { deterministicUuidv7 } from '../ids/uuidv7.js';
+import { ExportError } from '../errors.js';
+import type { ExportStatePlan, ExportStep } from '../dsl/types.js';
 
 export type ExportRequestTarget = ReturnType<typeof createRuntimeGateway> | Server;
 
@@ -29,22 +29,22 @@ interface TransitionBranch {
   readonly steps: readonly Transition[];
 }
 
-const FORM_MEDIA_TYPE = "application/x-www-form-urlencoded";
+const FORM_MEDIA_TYPE = 'application/x-www-form-urlencoded';
 
 export function safeName(value: string): string {
-  return value.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "example";
+  return value.replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^_+|_+$/g, '') || 'example';
 }
 
 function normalized(value: string): string {
-  return value.replace(/[^A-Za-z0-9]/g, "").toLowerCase();
+  return value.replace(/[^A-Za-z0-9]/g, '').toLowerCase();
 }
 
 function aggregateAliases(value: string): ReadonlySet<string> {
   const key = normalized(value);
   const aliases = new Set([key]);
-  if (key.endsWith("ies")) aliases.add(`${key.slice(0, -3)}y`);
-  if (key.endsWith("ie")) aliases.add(`${key.slice(0, -2)}y`);
-  if (key.endsWith("s")) aliases.add(key.slice(0, -1));
+  if (key.endsWith('ies')) aliases.add(`${key.slice(0, -3)}y`);
+  if (key.endsWith('ie')) aliases.add(`${key.slice(0, -2)}y`);
+  if (key.endsWith('s')) aliases.add(key.slice(0, -1));
   return aliases;
 }
 
@@ -54,7 +54,7 @@ function sameAggregate(left: string, right: string): boolean {
 }
 
 export function isObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 export function jsonObject(value: unknown): JsonObject {
@@ -100,47 +100,47 @@ function primitiveFor(name: string, schema: Record<string, unknown>): JsonValue 
   const enumValues = schema.enum;
   if (Array.isArray(enumValues) && enumValues.length > 0) {
     const preferred =
-      name === "currency" && enumValues.includes("usd")
-        ? "usd"
+      name === 'currency' && enumValues.includes('usd')
+        ? 'usd'
         : enumValues.find((value) => value !== null);
     return (preferred ?? enumValues[0]) as JsonValue;
   }
   if (schema.default !== undefined) return schema.default as JsonValue;
   if (schema.example !== undefined) return schema.example as JsonValue;
-  if (name === "currency") return "usd";
-  if (name === "payment_method") return "pm_card_visa";
-  if (name === "capture_method") return "automatic";
-  if (name === "amount" || name === "amount_received" || name === "amount_to_capture") return 2000;
-  if (name === "startedAt" || name === "startDate") return "2020-01-01T00:00:00.000Z";
-  if (name === "endedAt" || name === "endDate") return "2020-01-02T00:00:00.000Z";
-  if (name.toLowerCase().includes("email")) return "export@example.com";
-  if (name.toLowerCase().includes("date")) return "2020-01-01T00:00:00.000Z";
+  if (name === 'currency') return 'usd';
+  if (name === 'payment_method') return 'pm_card_visa';
+  if (name === 'capture_method') return 'automatic';
+  if (name === 'amount' || name === 'amount_received' || name === 'amount_to_capture') return 2000;
+  if (name === 'startedAt' || name === 'startDate') return '2020-01-01T00:00:00.000Z';
+  if (name === 'endedAt' || name === 'endDate') return '2020-01-02T00:00:00.000Z';
+  if (name.toLowerCase().includes('email')) return 'export@example.com';
+  if (name.toLowerCase().includes('date')) return '2020-01-01T00:00:00.000Z';
   switch (schema.format) {
-    case "email":
-      return "export@example.com";
-    case "uuid":
-      return "00000000-0000-7000-8000-000000000001";
-    case "date":
-      return "2020-01-01";
-    case "date-time":
-      return "2020-01-01T00:00:00.000Z";
-    case "uri":
-      return "https://example.com/export";
+    case 'email':
+      return 'export@example.com';
+    case 'uuid':
+      return '00000000-0000-7000-8000-000000000001';
+    case 'date':
+      return '2020-01-01';
+    case 'date-time':
+      return '2020-01-01T00:00:00.000Z';
+    case 'uri':
+      return 'https://example.com/export';
     default:
       break;
   }
   const type = Array.isArray(schema.type)
-    ? schema.type.find((value) => value !== "null")
+    ? schema.type.find((value) => value !== 'null')
     : schema.type;
-  if (type === "integer" || type === "number") {
-    return typeof schema.minimum === "number" ? schema.minimum : 1;
+  if (type === 'integer' || type === 'number') {
+    return typeof schema.minimum === 'number' ? schema.minimum : 1;
   }
-  if (type === "boolean") return false;
-  return "export";
+  if (type === 'boolean') return false;
+  return 'export';
 }
 
 function schemaValue(name: string, schema: unknown, depth = 0): JsonValue {
-  if (!isObject(schema) || depth > 6) return "export";
+  if (!isObject(schema) || depth > 6) return 'export';
   if (Array.isArray(schema.oneOf) && schema.oneOf.length > 0)
     return schemaValue(name, schema.oneOf[0], depth + 1);
   if (Array.isArray(schema.anyOf) && schema.anyOf.length > 0)
@@ -154,26 +154,26 @@ function schemaValue(name: string, schema: unknown, depth = 0): JsonValue {
     }
     return result;
   }
-  if (schema.type === "array" || schema.items !== undefined) {
+  if (schema.type === 'array' || schema.items !== undefined) {
     return schema.items === undefined ? [] : [schemaValue(name, schema.items, depth + 1)];
   }
   return primitiveFor(name, schema);
 }
 
 export function requestBody(route: OperationRoute, variant: number): JsonObject {
-  const base = jsonObject(schemaValue("body", route.operation.requestBodySchema ?? {}, 0));
+  const base = jsonObject(schemaValue('body', route.operation.requestBodySchema ?? {}, 0));
   const properties = isObject(route.operation.requestBodySchema?.properties)
     ? route.operation.requestBodySchema.properties
     : {};
   const result = { ...base };
-  for (const property of ["targetCalls", "targetConversions"]) {
+  for (const property of ['targetCalls', 'targetConversions']) {
     if (properties[property] !== undefined && result[property] === undefined)
       result[property] = schemaValue(property, properties[property]);
   }
   if (variant % 2 === 1 && properties.payment_method !== undefined)
-    result.payment_method = "pm_card_visa";
+    result.payment_method = 'pm_card_visa';
   if (properties.capture_method !== undefined)
-    result.capture_method = variant >= 2 && variant % 2 === 0 ? "manual" : "automatic";
+    result.capture_method = variant >= 2 && variant % 2 === 0 ? 'manual' : 'automatic';
   return result;
 }
 
@@ -220,13 +220,13 @@ export function operationRequest(
   const method = route.method.toLowerCase();
   let result: Test;
   switch (method) {
-    case "delete":
+    case 'delete':
       result = request(app).delete(route.path);
       break;
-    case "patch":
+    case 'patch':
       result = request(app).patch(route.path);
       break;
-    case "put":
+    case 'put':
       result = request(app).put(route.path);
       break;
     default:
@@ -236,9 +236,9 @@ export function operationRequest(
   if (route.headers !== undefined)
     for (const [name, value] of Object.entries(route.headers)) result.set(name, value);
   if (route.headers?.[POTEMKIN_SEED] === undefined) {
-    result.set(POTEMKIN_SEED, createHash("sha256").update(seed).digest("hex"));
+    result.set(POTEMKIN_SEED, createHash('sha256').update(seed).digest('hex'));
   }
-  return route.form === true ? result.type("form").send(body) : result.send(body);
+  return route.form === true ? result.type('form').send(body) : result.send(body);
 }
 
 function transitionPaths(
@@ -258,8 +258,8 @@ function transitionPaths(
     if (current.steps.length >= 5) continue;
     for (const transition of machine.transitions) {
       if (transition.op === excludedOperation) continue;
-      if (!transition.nextStateKnown || transition.to === "UNKNOWN") continue;
-      if (transition.from !== "*" && transition.from !== current.state) continue;
+      if (!transition.nextStateKnown || transition.to === 'UNKNOWN') continue;
+      if (transition.from !== '*' && transition.from !== current.state) continue;
       if (current.steps.some((step) => step.op === transition.op && step.to === transition.to))
         continue;
       if ([start, ...current.steps.map((step) => step.to)].includes(transition.to)) continue;
@@ -279,7 +279,7 @@ async function restoreSeed(
   const baseline = system.engine.snapshot();
   const seedEvent: DomainEvent = {
     eventId: `transition-seed-${boundary.boundary}-${id}`,
-    type: "BaselineEntityCreatedEvent",
+    type: 'BaselineEntityCreatedEvent',
     boundary: boundary.boundary,
     aggregateId: id,
     payload: state,
@@ -310,24 +310,24 @@ function responseExample(
       .filter(
         ([name]) =>
           !new Set([
-            "connection",
-            "content-length",
-            "date",
-            "etag",
-            "keep-alive",
-            "transfer-encoding",
-            "x-powered-by",
+            'connection',
+            'content-length',
+            'date',
+            'etag',
+            'keep-alive',
+            'transfer-encoding',
+            'x-powered-by',
           ]).has(name.toLowerCase()),
       )
       .map(([name, value]) => [
         name.toLowerCase(),
-        Array.isArray(value) ? value.join(", ") : value,
+        Array.isArray(value) ? value.join(', ') : value,
       ]),
   );
   return {
     name: `${safeName(boundary.boundary)}__${safeName(state)}__GET__${safeName(id)}`,
     httpRequest: {
-      method: "GET",
+      method: 'GET',
       path: byIdPath(system.openapi, boundary.contractPath, id) ?? boundary.contractPath,
     },
     httpResponse: { status: response.status, headers, body: (response.body ?? null) as JsonValue },
@@ -335,11 +335,11 @@ function responseExample(
 }
 
 function stateOf(value: unknown, field: string): string | undefined {
-  return isObject(value) && typeof value[field] === "string" ? value[field] : undefined;
+  return isObject(value) && typeof value[field] === 'string' ? value[field] : undefined;
 }
 
 function rebaseIdentity(value: JsonValue, from: string, to: string): JsonValue {
-  if (typeof value === "string") {
+  if (typeof value === 'string') {
     if (value === from) return to;
     if (value.startsWith(`${from}_`)) return `${to}${value.slice(from.length)}`;
     return value;
@@ -366,13 +366,13 @@ function allocateIdentity(
   const command = {
     commandId: `transition-identity-${boundary.boundary}-${state}`,
     boundary: boundary.boundary,
-    intent: "creation" as const,
+    intent: 'creation' as const,
     targetId: null,
     payload: {},
     queryParams: {},
-    httpMethod: "POST",
+    httpMethod: 'POST',
     path: boundary.contractPath,
-    origin: "inbound" as const,
+    origin: 'inbound' as const,
     depth: 0,
   };
   return generate({
@@ -400,7 +400,7 @@ function machineBoundary(
   return system.program.boundaries.find(
     (boundary) =>
       boundary.identity !== undefined &&
-      boundary.contractPath.includes("{") === false &&
+      boundary.contractPath.includes('{') === false &&
       sameAggregate(boundary.schema ?? boundary.boundary, key),
   );
 }
@@ -411,7 +411,7 @@ function createRouteFor(
   transition: Transition,
 ): OperationRoute | undefined {
   const route = routeFor(routes, transition.op);
-  return route?.method === "POST" && route.path === boundary.contractPath ? route : undefined;
+  return route?.method === 'POST' && route.path === boundary.contractPath ? route : undefined;
 }
 
 async function capture(
@@ -429,7 +429,7 @@ async function capture(
 }
 
 function resolveExportValue(value: JsonValue, targetId: string | undefined): JsonValue {
-  if (value === "$targetId" && targetId !== undefined) return targetId;
+  if (value === '$targetId' && targetId !== undefined) return targetId;
   if (Array.isArray(value)) return value.map((entry) => resolveExportValue(entry, targetId));
   if (isObject(value)) {
     return Object.fromEntries(
@@ -458,17 +458,17 @@ function collectionBoundaryForAggregate(
   boundaryName: string,
 ): RuntimeBoundary | undefined {
   const direct = system.program.byBoundaryName.get(boundaryName);
-  if (direct?.contractPath.includes("{") === false) return direct;
+  if (direct?.contractPath.includes('{') === false) return direct;
   const source = direct?.schema ?? direct?.contractPath ?? boundaryName;
   const firstSegment = source
-    .split("/")
+    .split('/')
     .filter(Boolean)
     .find((segment) => !/^v\d+$/i.test(segment));
   const aggregate = firstSegment ?? boundaryName;
   return system.program.boundaries.find((candidate) => {
-    if (candidate.contractPath.includes("{") || candidate.identity === undefined) return false;
+    if (candidate.contractPath.includes('{') || candidate.identity === undefined) return false;
     const segment = candidate.contractPath
-      .split("/")
+      .split('/')
       .filter(Boolean)
       .find((entry) => !/^v\d+$/i.test(entry));
     return sameAggregate(candidate.schema ?? segment ?? candidate.boundary, aggregate);
@@ -479,7 +479,7 @@ function collectionBoundaryForEvent(
   system: RuntimeSystem,
   event: DomainEvent,
 ): RuntimeBoundary | undefined {
-  if (event.boundary === "__saga__") return undefined;
+  if (event.boundary === '__saga__') return undefined;
   return collectionBoundaryForAggregate(system, event.boundary);
 }
 
@@ -487,7 +487,7 @@ function baselineAggregateIds(system: RuntimeSystem): ReadonlySet<string> {
   return new Set(
     system.engine
       .snapshot()
-      .events.filter((event) => event.eventId.startsWith("baseline-"))
+      .events.filter((event) => event.eventId.startsWith('baseline-'))
       .map((event) => event.aggregateId),
   );
 }
@@ -503,9 +503,9 @@ async function captureSideEffects(
     .snapshot()
     .events.filter(
       (candidate) =>
-        !candidate.eventId.startsWith("baseline-") &&
-        !candidate.eventId.startsWith("transition-seed-") &&
-        candidate.boundary !== "__saga__",
+        !candidate.eventId.startsWith('baseline-') &&
+        !candidate.eventId.startsWith('transition-seed-') &&
+        candidate.boundary !== '__saga__',
     )) {
     if (seen.has(event.aggregateId)) continue;
     const boundary = collectionBoundaryForEvent(system, event);
@@ -560,7 +560,7 @@ async function runDeclaredDirectPlan(
   );
   if (created.status < 200 || created.status >= 300) return undefined;
   const createdBody = jsonObject(created.body);
-  const createdId = typeof createdBody.id === "string" ? createdBody.id : undefined;
+  const createdId = typeof createdBody.id === 'string' ? createdBody.id : undefined;
   if (createdId === undefined) return undefined;
   const createdState = system.engine.snapshot().state.find(([id]) => id === createdId)?.[1];
   if (createdState === undefined) return undefined;
@@ -615,7 +615,7 @@ async function runDeclaredSagaPlan(
 ): Promise<readonly ExportExample[] | undefined> {
   const saga = system.program.policies.sagas?.find((candidate) => candidate.name === plan.saga);
   if (saga === undefined) {
-    throw new ExportError(`Declared export references unknown saga ${plan.saga ?? ""}`, {
+    throw new ExportError(`Declared export references unknown saga ${plan.saga ?? ''}`, {
       boundary: boundary.boundary,
       state: plan.name,
       ...(plan.saga === undefined ? {} : { saga: plan.saga }),
@@ -638,7 +638,7 @@ async function runDeclaredSagaPlan(
         },
       );
     }
-    if (route.path.includes("{") && targetId === undefined) return undefined;
+    if (route.path.includes('{') && targetId === undefined) return undefined;
     const response = await operationRequest(
       app,
       {
@@ -654,7 +654,7 @@ async function runDeclaredSagaPlan(
     );
     if (response.status < 200 || response.status >= 300) return undefined;
     const responseBody = jsonObject(response.body);
-    if (targetId === undefined && typeof responseBody.id === "string") targetId = responseBody.id;
+    if (targetId === undefined && typeof responseBody.id === 'string') targetId = responseBody.id;
   }
   if (targetId === undefined) return undefined;
 
@@ -663,9 +663,9 @@ async function runDeclaredSagaPlan(
     .find(
       (event) =>
         event.boundary === finalStep.boundary &&
-        event.type !== "BaselineEntityCreatedEvent" &&
-        event.type !== "SagaStarted" &&
-        event.type !== "SagaStepCompleted",
+        event.type !== 'BaselineEntityCreatedEvent' &&
+        event.type !== 'SagaStarted' &&
+        event.type !== 'SagaStepCompleted',
     );
   if (targetEvent === undefined) return undefined;
   const targetBoundary = collectionBoundaryForAggregate(system, finalStep.boundary);
@@ -689,7 +689,7 @@ export async function collectDeclaredExportExamples(
     for (const boundary of system.program.boundaries) {
       const config = boundary.export;
       if (config === undefined) continue;
-      if (boundary.contractPath.includes("{") || boundary.identity?.generate === undefined) {
+      if (boundary.contractPath.includes('{') || boundary.identity?.generate === undefined) {
         throw new ExportError(
           `Declared export boundary ${boundary.boundary} must be a collection with an identity generator`,
           { boundary: boundary.boundary },
@@ -742,7 +742,7 @@ async function runTarget(
     );
     if (created.status < 200 || created.status >= 300) continue;
     const createdBody = jsonObject(created.body);
-    const id = typeof createdBody.id === "string" ? createdBody.id : undefined;
+    const id = typeof createdBody.id === 'string' ? createdBody.id : undefined;
     if (id === undefined) continue;
     const createdState = system.engine.snapshot().state.find(([entryId]) => entryId === id)?.[1];
     if (createdState === undefined) continue;
@@ -753,9 +753,9 @@ async function runTarget(
     for (const branch of branches) {
       const rebasedState = rebaseIdentity(createdState, id, targetId) as JsonObject;
       const seededState =
-        (target === "QUALIFIED" || target === "CONVERTED") &&
-        normalized(machine.aggregate) === "lead"
-          ? { ...rebasedState, callIds: ["00000000-0000-7000-8000-000000000010"] }
+        (target === 'QUALIFIED' || target === 'CONVERTED') &&
+        normalized(machine.aggregate) === 'lead'
+          ? { ...rebasedState, callIds: ['00000000-0000-7000-8000-000000000010'] }
           : rebasedState;
       await restoreSeed(system, boundary, targetId, seededState);
       let reached = current;
@@ -777,8 +777,8 @@ async function runTarget(
             ...action,
             path,
             form: isFormOperation(system.openapi, action),
-            ...(transition.op === "dncLead"
-              ? { headers: { "x-potemkin-actor": "export:manager" } }
+            ...(transition.op === 'dncLead'
+              ? { headers: { 'x-potemkin-actor': 'export:manager' } }
               : {}),
           },
           requestBody(action, variant),
@@ -799,7 +799,7 @@ async function runTarget(
         .snapshot()
         .events.filter(
           (candidate) =>
-            !candidate.eventId.startsWith("baseline-") && candidate.aggregateId !== targetId,
+            !candidate.eventId.startsWith('baseline-') && candidate.aggregateId !== targetId,
         )) {
         if (seen.has(event.aggregateId)) continue;
         const sideBoundary = system.program.byBoundaryName.get(event.boundary);
@@ -842,7 +842,7 @@ export async function collectTransitionExamples(
         console.warn(`Transition export coverage: no creation operation for ${machine.aggregate}`);
         continue;
       }
-      for (const target of machine.states.filter((state) => state !== "UNKNOWN").sort()) {
+      for (const target of machine.states.filter((state) => state !== 'UNKNOWN').sort()) {
         const targetId = allocateIdentity(system, boundary, target, identitySeedIndex++);
         if (targetId === undefined) {
           console.warn(

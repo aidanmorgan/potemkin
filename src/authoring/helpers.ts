@@ -1,30 +1,51 @@
-import type { JsonValue } from "../types.js";
-import { helperError } from "./errors.js";
-import type { HelperName } from "./references.js";
+import type { JsonValue } from '../contracts/value.js';
+import { helperError } from './errors.js';
+import type { HelperName } from '../domain/references.js';
+import type {
+  TypeScriptHelper,
+  TypeScriptHelperDefinition,
+  TypeScriptHelperPhase,
+  TypeScriptHelperRegistration,
+} from './types.js';
 
-export interface TypeScriptHelperDefinition {
-  readonly name: HelperName;
-  readonly invoke: (args: readonly JsonValue[]) => JsonValue;
+export type {
+  TypeScriptHelper,
+  TypeScriptHelperDefinition,
+  TypeScriptHelperPhase,
+  TypeScriptHelperRegistration,
+};
+
+export interface TypeScriptHelperOptions {
+  readonly phases?: readonly TypeScriptHelperPhase[];
+  readonly maxDurationMs?: number;
 }
 
-/** A callable TypeScript helper which can also be registered in the model. */
-export interface TypeScriptHelper<
-  Args extends readonly JsonValue[] = readonly JsonValue[],
-  Output extends JsonValue = JsonValue,
-> {
-  (...args: Args): Output;
-  readonly definition: TypeScriptHelperDefinition;
-}
+const DEFAULT_PHASES: readonly TypeScriptHelperPhase[] = [
+  'behavior',
+  'event-hydration',
+  'identity',
+  'query',
+  'response',
+  'post-commit',
+  'fault',
+  'webhook',
+  'saga',
+  'projection',
+  'lifecycle',
+];
+const DEFAULT_MAX_DURATION_MS = 50;
+const MAX_HELPER_DURATION_MS = 1_000;
+const MAX_HELPER_ARGUMENTS = 32;
+const MAX_HELPER_INPUT_BYTES = 64 * 1024;
 
 /** Structural registration surface used by the simulation builder. */
-export type TypeScriptHelperRegistration = Pick<TypeScriptHelper, "definition">;
 
 function isJsonValue(value: unknown): value is JsonValue {
   if (value === null) return true;
-  if (typeof value === "string" || typeof value === "boolean") return true;
-  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value === 'string' || typeof value === 'boolean') return true;
+  if (typeof value === 'number') return Number.isFinite(value);
   if (Array.isArray(value)) return value.every(isJsonValue);
-  if (typeof value === "object") {
+  if (typeof value === 'object') {
     return Object.values(value as Record<string, unknown>).every(isJsonValue);
   }
   return false;
@@ -39,27 +60,62 @@ function validateHelperName(name: string): void {
 /**
  * Define one pure, typed helper. The returned function is usable directly by
  * TypeScript configuration code and can be registered on a simulation with
- * `.helper()`/`.helpers()` for YAML CEL use.
+ * `.helper()` for YAML CEL use.
  */
 export function defineHelper<Args extends readonly JsonValue[], Output extends JsonValue>(
   name: HelperName,
   implementation: (...args: Args) => Output,
+  options: TypeScriptHelperOptions = {},
 ): TypeScriptHelper<Args, Output> {
   validateHelperName(name);
-  if (typeof implementation !== "function") {
+  if (typeof implementation !== 'function') {
     throw helperError(`TypeScript helper "${name}" must be a function`);
   }
 
-  const invoke = (args: readonly JsonValue[]): JsonValue => {
+  const phases = [...new Set(options.phases ?? DEFAULT_PHASES)];
+  const maxDurationMs = options.maxDurationMs ?? DEFAULT_MAX_DURATION_MS;
+  if (
+    phases.length === 0 ||
+    !Number.isInteger(maxDurationMs) ||
+    maxDurationMs < 1 ||
+    maxDurationMs > MAX_HELPER_DURATION_MS
+  ) {
+    throw helperError(
+      `TypeScript helper "${name}" requires at least one allowed phase and a duration between 1 and ${MAX_HELPER_DURATION_MS}ms`,
+    );
+  }
+
+  const invoke = (args: readonly JsonValue[], phase?: string): JsonValue => {
+    if (args.length > MAX_HELPER_ARGUMENTS) {
+      throw helperError(`TypeScript helper "${name}" received too many arguments`);
+    }
+    const inputBytes = new TextEncoder().encode(JSON.stringify(args)).byteLength;
+    if (inputBytes > MAX_HELPER_INPUT_BYTES) {
+      throw helperError(`TypeScript helper "${name}" received arguments larger than 64KiB`);
+    }
+    if (phase !== undefined && !phases.includes(phase as TypeScriptHelperPhase)) {
+      throw helperError(`TypeScript helper "${name}" is not allowed in phase "${phase}"`);
+    }
+    const startedAt = performance.now();
     const value = implementation(...(args as Args));
+    if (performance.now() - startedAt > maxDurationMs) {
+      throw helperError(
+        `TypeScript helper "${name}" exceeded its ${maxDurationMs}ms execution budget`,
+      );
+    }
     if (!isJsonValue(value)) {
       throw helperError(`TypeScript helper "${name}" must return a JSON value`);
     }
     return value;
   };
-  const definition: TypeScriptHelperDefinition = Object.freeze({ name, invoke });
+  const definition: TypeScriptHelperDefinition = Object.freeze({
+    name,
+    phases,
+    maxDurationMs,
+    invoke,
+  });
   const helper = ((...args: Args) => invoke(args) as Output) as TypeScriptHelper<Args, Output>;
-  Object.defineProperty(helper, "definition", {
+  Object.defineProperty(helper, 'definition', {
     configurable: false,
     enumerable: false,
     value: definition,

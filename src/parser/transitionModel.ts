@@ -1,19 +1,22 @@
-import type { OpenApiDoc } from "../contract/loader.js";
-import type { RuntimeModelCoverage } from "../model/runtime.js";
-import type { BoundaryConfig, BehaviorRule, ReducerRule } from "../dsl/types.js";
-import type { YamlLinkedProgram } from "../dsl/types.js";
-import type { DeclaredState } from "../dsl/schemaTypes.js";
-import type { YamlProgramInput } from "./public.js";
-import { compileYaml } from "./yamlParser.js";
-import type { SimulationDefinition } from "../authoring/runtimeModel.js";
-import { buildTypeScriptTransitionModel } from "../authoring/transitionModel.js";
-import { mergeTransitionModels } from "../model/transitionModel.js";
+import type { OpenApiDoc } from '../contract/loader.js';
+import type { RuntimeModelCoverage } from '../model/runtime.js';
+import type { BoundaryConfig, BehaviorRule, ReducerRule } from '../dsl/types.js';
+import type { YamlLinkedProgram } from '../dsl/types.js';
+import type { DeclaredState } from '../dsl/schemaTypes.js';
+import type { YamlProgramInput } from './public.js';
+import { compileYaml } from './yamlParser.js';
+import type { SimulationDefinition } from '../authoring/types.js';
+import { buildTypeScriptTransitionModel } from '../authoring/transitionModel.js';
+import { use } from '../authoring/composition.js';
+import { boundaryName, parseContractPath } from '../domain/references.js';
+import { collectTypeScriptComponents, prepareMixedYaml } from './mixed.js';
+import { mergeTransitionModels } from '../model/transitionModel.js';
 import type {
   Transition,
   TransitionMachine,
   TransitionModel,
   TransitionWriteSet,
-} from "../model/transitionModel.js";
+} from '../model/transitionModel.js';
 
 /** Input accepted by the pure static model builder. */
 export interface TransitionModelInput {
@@ -27,16 +30,39 @@ export async function buildConfiguredTransitionModel(
   openapi: OpenApiDoc,
   authoring?: SimulationDefinition,
 ): Promise<TransitionModel> {
+  const prepared =
+    authoring === undefined
+      ? { input, uses: [] }
+      : prepareMixedYaml(input, collectTypeScriptComponents(authoring));
   const linked = await compileYaml(
-    input.modules,
-    input.globalYaml,
-    input.componentModules,
-    input.useMappingModules,
+    prepared.input.modules,
+    prepared.input.globalYaml,
+    prepared.input.componentModules,
+    prepared.input.useMappingModules,
   );
   const yamlModel = buildTransitionModel({ program: linked, openapi });
-  return authoring === undefined
-    ? yamlModel
-    : mergeTransitionModels(yamlModel, buildTypeScriptTransitionModel(authoring, openapi));
+  if (authoring === undefined) return yamlModel;
+  return mergeTransitionModels(
+    yamlModel,
+    buildTypeScriptTransitionModel(
+      {
+        ...authoring,
+        uses: [
+          ...(authoring.uses ?? []),
+          ...prepared.uses.map((entry) =>
+            use(
+              entry.component,
+              boundaryName(entry.as),
+              parseContractPath(entry.contractPath),
+              entry.with,
+              entry.bind,
+            ),
+          ),
+        ],
+      },
+      openapi,
+    ),
+  );
 }
 
 interface AggregateGroup {
@@ -56,11 +82,11 @@ interface TransitionCandidate {
   readonly reducer: ReducerRule;
   readonly behavior: BehaviorRule;
   readonly guardCel: string | null;
-  readonly from: string | "*";
+  readonly from: string | '*';
 }
 
 interface NextState {
-  readonly to: string | "UNKNOWN";
+  readonly to: string | 'UNKNOWN';
   readonly guardCel: string | null;
   readonly nextStateKnown: boolean;
 }
@@ -93,22 +119,22 @@ function aggregateBoundaries(boundaries: readonly BoundaryConfig[]): readonly Ag
 }
 
 function aggregateKey(boundary: BoundaryConfig): string {
-  if (boundary.schema !== undefined && boundary.schema.trim() !== "") return boundary.schema;
-  const segments = boundary.contractPath.split("/").filter(Boolean);
+  if (boundary.schema !== undefined && boundary.schema.trim() !== '') return boundary.schema;
+  const segments = boundary.contractPath.split('/').filter(Boolean);
   const firstResource = segments.find((segment) => !/^v\d+$/i.test(segment));
   return firstResource === undefined ? boundary.boundary : firstResource.toLowerCase();
 }
 
 function aggregateName(boundary: BoundaryConfig): string {
-  const source = aggregateKey(boundary).replace(/[-_]+/g, " ");
+  const source = aggregateKey(boundary).replace(/[-_]+/g, ' ');
   return source
     .split(/\s+/)
     .filter(Boolean)
     .map((part) => {
-      const singular = part.length > 3 && part.endsWith("s") ? part.slice(0, -1) : part;
+      const singular = part.length > 3 && part.endsWith('s') ? part.slice(0, -1) : part;
       return singular[0]!.toUpperCase() + singular.slice(1);
     })
-    .join("");
+    .join('');
 }
 
 function buildMachine(
@@ -125,17 +151,17 @@ function buildMachine(
   const candidates = transitionCandidates(allBehaviors, allReducers, allEvents, controlField);
   const transitions = candidates.flatMap((candidate) => resolveNextStates(candidate, controlField));
   const knownStates = transitions
-    .filter((transition) => transition.nextStateKnown && transition.to !== "UNKNOWN")
+    .filter((transition) => transition.nextStateKnown && transition.to !== 'UNKNOWN')
     .map((transition) => transition.to);
   const states = uniqueStrings(enumStates.length > 0 ? enumStates : knownStates);
-  const normalizedStates = states.length === 0 ? ["UNKNOWN"] : states;
+  const normalizedStates = states.length === 0 ? ['UNKNOWN'] : states;
   const policy = inputCoverage(group, program);
   const initialStates = uniqueStrings([
     ...(policy?.initialStates ?? []),
     ...group.boundaries.flatMap((boundary) =>
       (boundary.initialization ?? [])
         .map((seed) => seed[controlField])
-        .filter((value): value is string => typeof value === "string"),
+        .filter((value): value is string => typeof value === 'string'),
     ),
   ]);
 
@@ -235,13 +261,13 @@ function transitionCandidates(
 
 function requiresGuard(behavior: BehaviorRule): string | null {
   const guards = (behavior.match.requires ?? []).map((guard) => text(guard.condition));
-  return guards.length === 0 ? null : guards.map((guard) => `(${guard})`).join(" && ");
+  return guards.length === 0 ? null : guards.map((guard) => `(${guard})`).join(' && ');
 }
 
 function reducerTouchesField(reducer: ReducerRule, controlField: string): boolean {
   if (reducer.replaceState === true) return true;
   return (
-    reducer.patches?.some((patch) => patch.path.split("/").filter(Boolean)[0] === controlField) ??
+    reducer.patches?.some((patch) => patch.path.split('/').filter(Boolean)[0] === controlField) ??
     false
   );
 }
@@ -268,7 +294,7 @@ function controlExpression(
   if (reducer.replaceState === true)
     return resolveEventReference(text(event.payloadTemplate[controlField]), event);
   const patch = reducer.patches?.find(
-    (candidate) => candidate.path.split("/").filter(Boolean)[0] === controlField,
+    (candidate) => candidate.path.split('/').filter(Boolean)[0] === controlField,
   );
   return patch === undefined ? undefined : resolveEventReference(text(patch.value), event);
 }
@@ -300,18 +326,18 @@ function expandNextState(expression: string | undefined): readonly NextState[] {
   }
   const literal = literalString(unwrapped);
   return literal === undefined
-    ? [{ to: "UNKNOWN", guardCel: null, nextStateKnown: false }]
+    ? [{ to: 'UNKNOWN', guardCel: null, nextStateKnown: false }]
     : [{ to: literal, guardCel: null, nextStateKnown: true }];
 }
 
-function fromGuard(behavior: BehaviorRule, controlField: string): string | "*" {
+function fromGuard(behavior: BehaviorRule, controlField: string): string | '*' {
   for (const guard of behavior.match.requires ?? []) {
     const match = text(guard.condition).match(
       new RegExp(`^\\s*state\\.${escapeRegExp(controlField)}\\s*==\\s*(['"])([^'"]+)\\1\\s*$`),
     );
     if (match !== null) return match[2]!;
   }
-  return "*";
+  return '*';
 }
 
 function buildWriteSets(
@@ -361,7 +387,7 @@ function writeSetFor(
   const fields =
     reducer.replaceState === true
       ? Object.keys(event.payloadTemplate)
-      : (reducer.patches ?? []).map((patch) => patch.path.split("/").filter(Boolean).join("."));
+      : (reducer.patches ?? []).map((patch) => patch.path.split('/').filter(Boolean).join('.'));
   const uniqueFields = uniqueStrings(fields);
   const computed = boundaries.flatMap((boundary) => boundary.state?.computed ?? []);
   const derivedClosure = closure(uniqueFields, computed);
@@ -390,7 +416,7 @@ function mergeWriteSets(left: TransitionWriteSet, right: TransitionWriteSet): Tr
 
 function closure(
   fields: readonly string[],
-  computed: readonly NonNullable<DeclaredState["computed"]>[number][],
+  computed: readonly NonNullable<DeclaredState['computed']>[number][],
 ): readonly string[] {
   const result = new Set<string>();
   const pending = [...fields];
@@ -417,14 +443,14 @@ function selectControlField(
   if (enumFields.length === 0) {
     const patched = uniqueStrings(
       reducers.flatMap((reducer) =>
-        (reducer.patches ?? []).map((patch) => patch.path.split("/").filter(Boolean)[0] ?? ""),
+        (reducer.patches ?? []).map((patch) => patch.path.split('/').filter(Boolean)[0] ?? ''),
       ),
     );
-    return patched.find(Boolean) ?? "state";
+    return patched.find(Boolean) ?? 'state';
   }
   const patched = new Set(
     reducers.flatMap((reducer) =>
-      (reducer.patches ?? []).map((patch) => patch.path.split("/").filter(Boolean)[0]),
+      (reducer.patches ?? []).map((patch) => patch.path.split('/').filter(Boolean)[0]),
     ),
   );
   const referenced = new Set(
@@ -457,13 +483,13 @@ function resolveSchema(
 ): Record<string, unknown> | undefined {
   const source = record(value);
   if (source === undefined) return undefined;
-  const ref = source["$ref"];
-  if (typeof ref === "string" && ref.startsWith("#/components/schemas/")) {
-    const target = schemas[ref.slice("#/components/schemas/".length)];
+  const ref = source['$ref'];
+  if (typeof ref === 'string' && ref.startsWith('#/components/schemas/')) {
+    const target = schemas[ref.slice('#/components/schemas/'.length)];
     return target === value ? source : resolveSchema(target, schemas);
   }
-  if (Array.isArray(source["allOf"])) {
-    return source["allOf"].reduce<Record<string, unknown>>(
+  if (Array.isArray(source['allOf'])) {
+    return source['allOf'].reduce<Record<string, unknown>>(
       (merged, part) => ({ ...merged, ...resolveSchema(part, schemas) }),
       { ...source, allOf: undefined },
     );
@@ -472,33 +498,32 @@ function resolveSchema(
 }
 
 function properties(schema: Record<string, unknown> | undefined): Record<string, unknown> {
-  return record(schema?.["properties"]) ?? {};
+  return record(schema?.['properties']) ?? {};
 }
 
 function schemaField(
   schema: Record<string, unknown> | undefined,
   path: string,
 ): Record<string, unknown> | undefined {
-  const parts = path.split(".").filter(Boolean);
+  const parts = path.split('.').filter(Boolean);
   let current = schema;
   for (const part of parts) {
-    current = record(current?.["properties"])?.[part] as Record<string, unknown> | undefined;
+    current = record(current?.['properties'])?.[part] as Record<string, unknown> | undefined;
   }
   return current;
 }
 
 function enumValues(value: unknown): readonly string[] {
-  return Array.isArray(record(value)?.["enum"])
-    ? (record(value)!["enum"] as unknown[]).filter(
-        (candidate): candidate is string => typeof candidate === "string",
-      )
+  const enumValues = record(value)?.['enum'];
+  return Array.isArray(enumValues)
+    ? enumValues.filter((candidate): candidate is string => typeof candidate === 'string')
     : [];
 }
 
 function text(value: unknown): string {
-  if (typeof value === "string") return value;
+  if (typeof value === 'string') return value;
   const serialized = JSON.stringify(value);
-  return serialized === undefined ? "" : serialized;
+  return serialized === undefined ? '' : serialized;
 }
 
 function unwrapTemplate(value: string): string {
@@ -522,18 +547,18 @@ function splitTernary(value: string): readonly [string, string, string] | undefi
   for (let index = 0; index < value.length; index++) {
     const char = value[index]!;
     if (quote !== undefined) {
-      if (char === quote && value[index - 1] !== "\\") quote = undefined;
+      if (char === quote && value[index - 1] !== '\\') quote = undefined;
       continue;
     }
     if (char === "'" || char === '"') {
       quote = char;
       continue;
     }
-    if (char === "(") depth += 1;
-    if (char === ")") depth -= 1;
+    if (char === '(') depth += 1;
+    if (char === ')') depth -= 1;
     if (depth !== 0) continue;
-    if (char === "?" && question < 0) question = index;
-    if (char === ":" && question >= 0) {
+    if (char === '?' && question < 0) question = index;
+    if (char === ':' && question >= 0) {
       return [
         value.slice(0, question).trim(),
         value.slice(question + 1, index).trim(),
@@ -545,8 +570,8 @@ function splitTernary(value: string): readonly [string, string, string] | undefi
 }
 
 function combineGuards(left: string | null, right: string | null): string | null {
-  if (left === null || left.trim() === "") return right;
-  if (right === null || right.trim() === "") return left;
+  if (left === null || left.trim() === '') return right;
+  if (right === null || right.trim() === '') return left;
   return `(${left}) && (${right})`;
 }
 
@@ -557,14 +582,14 @@ function uniqueTransitions(values: readonly Transition[]): readonly Transition[]
     if (!result.has(key)) result.set(key, value);
   }
   return [...result.values()].sort((left, right) =>
-    `${left.op}:${left.from}:${left.to}:${left.guardCel ?? ""}`.localeCompare(
-      `${right.op}:${right.from}:${right.to}:${right.guardCel ?? ""}`,
+    `${left.op}:${left.from}:${left.to}:${left.guardCel ?? ''}`.localeCompare(
+      `${right.op}:${right.from}:${right.to}:${right.guardCel ?? ''}`,
     ),
   );
 }
 
 function uniqueStrings(values: readonly string[]): readonly string[] {
-  return [...new Set(values.filter((value) => value !== ""))].sort();
+  return [...new Set(values.filter((value) => value !== ''))].sort();
 }
 
 function isNonDeterministic(expression: string): boolean {
@@ -572,11 +597,11 @@ function isNonDeterministic(expression: string): boolean {
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
 }
 
 function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

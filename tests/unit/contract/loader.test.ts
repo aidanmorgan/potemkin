@@ -1,17 +1,17 @@
-import { loadOpenApi } from "../../../src/contract/loader";
+import { loadOpenApi } from '../../../src/contract/loader';
 
 const minimalOpenApiObject = {
-  openapi: "3.0.0",
-  info: { title: "Test", version: "1.0.0" },
+  openapi: '3.0.0',
+  info: { title: 'Test', version: '1.0.0' },
   paths: {
-    "/loans": {
+    '/loans': {
       get: {
-        operationId: "listLoans",
+        operationId: 'listLoans',
         responses: {
-          "200": {
+          '200': {
             content: {
-              "application/json": {
-                schema: { type: "array", items: { type: "object" } },
+              'application/json': {
+                schema: { type: 'array', items: { type: 'object' } },
               },
             },
           },
@@ -23,56 +23,56 @@ const minimalOpenApiObject = {
 
 const minimalOpenApiJson = JSON.stringify(minimalOpenApiObject);
 
-describe("contract/loader", () => {
-  describe("loadOpenApi", () => {
-    it("loads from a pre-parsed object", async () => {
+describe('contract/loader', () => {
+  describe('loadOpenApi', () => {
+    it('loads from a pre-parsed object', async () => {
       const doc = await loadOpenApi(minimalOpenApiObject);
       expect(doc.paths).toBeDefined();
     });
 
-    it("includes /loans path", async () => {
+    it('includes /loans path', async () => {
       const doc = await loadOpenApi(minimalOpenApiObject);
-      expect(doc.paths["/loans"]).toBeDefined();
+      expect(doc.paths['/loans']).toBeDefined();
     });
 
-    it("extracts get operation from /loans", async () => {
+    it('extracts get operation from /loans', async () => {
       const doc = await loadOpenApi(minimalOpenApiObject);
-      expect(doc.paths["/loans"]?.["get"]).toBeDefined();
+      expect(doc.paths['/loans']?.['get']).toBeDefined();
     });
 
-    it("preserves operationId", async () => {
+    it('preserves operationId', async () => {
       const doc = await loadOpenApi(minimalOpenApiObject);
-      expect(doc.paths["/loans"]?.["get"]?.operationId).toBe("listLoans");
+      expect(doc.paths['/loans']?.['get']?.operationId).toBe('listLoans');
     });
 
-    it("loads from inline JSON string", async () => {
+    it('loads from inline JSON string', async () => {
       const doc = await loadOpenApi(minimalOpenApiJson);
-      expect(doc.paths["/loans"]).toBeDefined();
+      expect(doc.paths['/loans']).toBeDefined();
     });
 
-    it("returns raw property from loaded doc", async () => {
+    it('returns raw property from loaded doc', async () => {
       const doc = await loadOpenApi(minimalOpenApiObject);
       expect(doc.raw).toBeDefined();
     });
 
-    it("extracts response schemas", async () => {
+    it('extracts response schemas', async () => {
       const doc = await loadOpenApi(minimalOpenApiObject);
-      const op = doc.paths["/loans"]?.["get"];
+      const op = doc.paths['/loans']?.['get'];
       expect(op?.responseSchemas).toBeDefined();
-      expect(op?.responseSchemas?.["200"]).toBeDefined();
+      expect(op?.responseSchemas?.['200']).toBeDefined();
     });
 
-    it("extracts requestBodySchema for POST", async () => {
+    it('extracts requestBodySchema for POST', async () => {
       const spec = {
-        openapi: "3.0.0",
-        info: { title: "T", version: "1" },
+        openapi: '3.0.0',
+        info: { title: 'T', version: '1' },
         paths: {
-          "/loans": {
+          '/loans': {
             post: {
               requestBody: {
                 content: {
-                  "application/json": {
-                    schema: { type: "object", properties: { amount: { type: "number" } } },
+                  'application/json': {
+                    schema: { type: 'object', properties: { amount: { type: 'number' } } },
                   },
                 },
               },
@@ -82,29 +82,29 @@ describe("contract/loader", () => {
         },
       };
       const doc = await loadOpenApi(spec);
-      expect(doc.paths["/loans"]?.["post"]?.requestBodySchema).toBeDefined();
+      expect(doc.paths['/loans']?.['post']?.requestBodySchema).toBeDefined();
     });
 
-    it("extracts path parameters", async () => {
+    it('extracts path parameters', async () => {
       const spec = {
-        openapi: "3.0.0",
-        info: { title: "T", version: "1" },
+        openapi: '3.0.0',
+        info: { title: 'T', version: '1' },
         paths: {
-          "/loans/{id}": {
+          '/loans/{id}': {
             get: {
-              parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+              parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
               responses: {},
             },
           },
         },
       };
       const doc = await loadOpenApi(spec);
-      const op = doc.paths["/loans/{id}"]?.["get"];
+      const op = doc.paths['/loans/{id}']?.['get'];
       expect(op?.parameters).toHaveLength(1);
-      expect(op?.parameters?.[0]?.name).toBe("id");
+      expect(op?.parameters?.[0]?.name).toBe('id');
     });
 
-    it("loads inline YAML string", async () => {
+    it('loads inline YAML string', async () => {
       const yaml = `
 openapi: "3.0.0"
 info:
@@ -117,7 +117,7 @@ paths:
       responses: {}
 `;
       const doc = await loadOpenApi(yaml);
-      expect(doc.paths["/loans"]).toBeDefined();
+      expect(doc.paths['/loans']).toBeDefined();
     });
   });
 });

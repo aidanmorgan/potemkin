@@ -15,13 +15,13 @@
  * The launcher sets that env var so the served spec reflects the overlay.
  */
 
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
-import * as yaml from "js-yaml";
-import { translateOverlayPatches } from "../../../src/dsl/forwardBlocks";
-import { resolveFixtureDir } from "../../fixtures/index";
-import type { Patch } from "../../../src/model/patches";
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import * as yaml from 'js-yaml';
+import { translateOverlayPatches } from '../../../src/dsl/forwardBlocks';
+import { resolveFixtureDir } from '../../fixtures/index';
+import type { Patch } from '../../../src/contracts/value';
 
 export interface FixtureForwardBlocks {
   /** YAML snippet (top-level keys) to splice into the plugin's potemkin.yml. */
@@ -53,16 +53,16 @@ export function buildSharedForwardBlocks(fixtureNames: readonly string[]): Share
 
   for (const fixtureName of fixtureNames) {
     const fixtureDir = resolveFixtureDir(fixtureName);
-    const potemkinDoc = readYaml(path.join(fixtureDir, "potemkin.yml"));
-    const fixtureSeeds = potemkinDoc["seeds"];
+    const potemkinDoc = readYaml(path.join(fixtureDir, 'potemkin.yml'));
+    const fixtureSeeds = potemkinDoc['seeds'];
     if (Array.isArray(fixtureSeeds)) seeds.push(...fixtureSeeds);
-    const fixtureWorkflow = asRecord(potemkinDoc["workflow"]);
-    const fixtureIds = asRecord(fixtureWorkflow["ids"]);
+    const fixtureWorkflow = asRecord(potemkinDoc['workflow']);
+    const fixtureIds = asRecord(fixtureWorkflow['ids']);
     Object.assign(workflowIds, fixtureIds);
-    const fixtureOverlay = asRecord(potemkinDoc["overlay"]);
-    const fixturePatches = fixtureOverlay["patches"];
+    const fixtureOverlay = asRecord(potemkinDoc['overlay']);
+    const fixturePatches = fixtureOverlay['patches'];
     if (Array.isArray(fixturePatches)) overlayPatches.push(...(fixturePatches as Patch[]));
-    const fixtureGovernance = asRecord(potemkinDoc["governance"]);
+    const fixtureGovernance = asRecord(potemkinDoc['governance']);
     Object.assign(governance, fixtureGovernance);
 
     // Auth is deliberately resolved by the reloaded Node runtime. A single
@@ -70,13 +70,13 @@ export function buildSharedForwardBlocks(fixtureNames: readonly string[]): Share
     // between fixtures.
   }
 
-  if (seeds.length > 0) merged["seeds"] = seeds;
-  if (Object.keys(workflowIds).length > 0) merged["workflow"] = { ids: workflowIds };
-  if (overlayPatches.length > 0) merged["overlay"] = { patches: overlayPatches };
-  if (Object.keys(governance).length > 0) merged["governance"] = governance;
+  if (seeds.length > 0) merged['seeds'] = seeds;
+  if (Object.keys(workflowIds).length > 0) merged['workflow'] = { ids: workflowIds };
+  if (overlayPatches.length > 0) merged['overlay'] = { patches: overlayPatches };
+  if (Object.keys(governance).length > 0) merged['governance'] = governance;
 
-  const overlayFilePath = writeOverlayFile("shared", { patches: overlayPatches });
-  const pluginConfigYaml = Object.keys(merged).length === 0 ? "" : yaml.dump(merged);
+  const overlayFilePath = writeOverlayFile('shared', { patches: overlayPatches });
+  const pluginConfigYaml = Object.keys(merged).length === 0 ? '' : yaml.dump(merged);
   return {
     fixtureNames: [...fixtureNames],
     pluginConfigYaml,
@@ -86,12 +86,12 @@ export function buildSharedForwardBlocks(fixtureNames: readonly string[]): Share
 
 function readYaml(p: string): Record<string, unknown> {
   if (!fs.existsSync(p)) return {};
-  const doc = yaml.load(fs.readFileSync(p, "utf8"));
-  return doc !== null && typeof doc === "object" ? (doc as Record<string, unknown>) : {};
+  const doc = yaml.load(fs.readFileSync(p, 'utf8'));
+  return doc !== null && typeof doc === 'object' ? (doc as Record<string, unknown>) : {};
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
 }
@@ -110,9 +110,9 @@ function writeOverlayFile(
   const actions = translateOverlayPatches(patches).map((a) =>
     a.remove === true ? { target: a.target, remove: true } : { target: a.target, update: a.update },
   );
-  const overlayDoc = { overlay: "1.0.0", actions };
+  const overlayDoc = { overlay: '1.0.0', actions };
 
   const filePath = path.join(os.tmpdir(), `potemkin-overlay-${fixtureName}-${Date.now()}.yaml`);
-  fs.writeFileSync(filePath, yaml.dump(overlayDoc), "utf8");
+  fs.writeFileSync(filePath, yaml.dump(overlayDoc), 'utf8');
   return filePath;
 }

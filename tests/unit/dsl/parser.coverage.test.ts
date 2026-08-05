@@ -1,5 +1,5 @@
-import { parseYaml } from "../../../src/parser/yamlParser";
-import { BootError } from "../../../src/errors";
+import { parseYaml } from '../../../src/parser/yamlParser';
+import { BootError } from '../../../src/errors';
 
 /**
  * Coverage backfill for parser/yamlParser.ts
@@ -20,33 +20,33 @@ import { BootError } from "../../../src/errors";
  *  We use jest.mock and jest.resetModules to achieve this.
  */
 
-describe("parser/yamlParser.ts — line 19 non-Error throw coverage", () => {
+describe('parser/yamlParser.ts — line 19 non-Error throw coverage', () => {
   afterEach(() => {
     jest.resetModules();
     jest.restoreAllMocks();
   });
 
-  it("handles non-Error throw from yaml.load — message uses String(err)", async () => {
+  it('handles non-Error throw from yaml.load — message uses String(err)', async () => {
     jest.resetModules();
 
     // Mock js-yaml to throw a plain string (non-Error)
-    jest.mock("js-yaml", () => ({
+    jest.mock('js-yaml', () => ({
       load: () => {
-        throw "non-error-string-42";
+        throw 'non-error-string-42';
       },
       dump: jest.fn(),
     }));
 
-    const parserModule = await import("../../../src/parser/yamlParser");
+    const parserModule = await import('../../../src/parser/yamlParser');
 
     // The error thrown must be an instance of BootError from the same module
     // Since modules are reset, we import BootError from the same reset context
-    const errorsModule = await import("../../../src/errors");
+    const errorsModule = await import('../../../src/errors');
     const { BootError } = errorsModule;
 
     let caughtError: unknown;
     try {
-      parserModule.parseYaml("valid: yaml");
+      parserModule.parseYaml('valid: yaml');
     } catch (err) {
       caughtError = err;
     }
@@ -54,25 +54,25 @@ describe("parser/yamlParser.ts — line 19 non-Error throw coverage", () => {
     expect(caughtError).toBeInstanceOf(BootError);
     // The message should contain the string representation of the thrown value
     const msg = (caughtError as InstanceType<typeof BootError>).message;
-    expect(msg).toContain("non-error-string-42");
+    expect(msg).toContain('non-error-string-42');
   });
 
-  it("handles numeric non-Error throw from yaml.load", async () => {
+  it('handles numeric non-Error throw from yaml.load', async () => {
     jest.resetModules();
 
-    jest.mock("js-yaml", () => ({
+    jest.mock('js-yaml', () => ({
       load: () => {
         throw 42;
       }, // numeric throw
       dump: jest.fn(),
     }));
 
-    const parserModule = await import("../../../src/parser/yamlParser");
-    const { BootError } = await import("../../../src/errors");
+    const parserModule = await import('../../../src/parser/yamlParser');
+    const { BootError } = await import('../../../src/errors');
 
     let caughtError: unknown;
     try {
-      parserModule.parseYaml("some: yaml");
+      parserModule.parseYaml('some: yaml');
     } catch (err) {
       caughtError = err;
     }
@@ -80,25 +80,25 @@ describe("parser/yamlParser.ts — line 19 non-Error throw coverage", () => {
     expect(caughtError).toBeInstanceOf(BootError);
     const msg = (caughtError as InstanceType<typeof BootError>).message;
     // String(42) = '42' → should appear in the message
-    expect(msg).toContain("42");
+    expect(msg).toContain('42');
   });
 
-  it("handles null throw from yaml.load", async () => {
+  it('handles null throw from yaml.load', async () => {
     jest.resetModules();
 
-    jest.mock("js-yaml", () => ({
+    jest.mock('js-yaml', () => ({
       load: () => {
         throw null;
       },
       dump: jest.fn(),
     }));
 
-    const parserModule = await import("../../../src/parser/yamlParser");
-    const { BootError } = await import("../../../src/errors");
+    const parserModule = await import('../../../src/parser/yamlParser');
+    const { BootError } = await import('../../../src/errors');
 
     let caughtError: unknown;
     try {
-      parserModule.parseYaml("some: yaml");
+      parserModule.parseYaml('some: yaml');
     } catch (err) {
       caughtError = err;
     }
@@ -106,22 +106,22 @@ describe("parser/yamlParser.ts — line 19 non-Error throw coverage", () => {
     expect(caughtError).toBeInstanceOf(BootError);
     // String(null) = 'null'
     const msg = (caughtError as InstanceType<typeof BootError>).message;
-    expect(msg).toContain("null");
+    expect(msg).toContain('null');
   });
 
-  it("normal Error throw still uses err.message (existing path — control)", () => {
+  it('normal Error throw still uses err.message (existing path — control)', () => {
     // This verifies the positive branch (err instanceof Error) still works correctly.
     // js-yaml throws YAMLException which IS an Error subclass.
 
     let caughtError: unknown;
     try {
-      parseYaml("{ bad yaml [[[");
-      fail("should have thrown BootError for malformed YAML");
+      parseYaml('{ bad yaml [[[');
+      fail('should have thrown BootError for malformed YAML');
     } catch (err) {
       caughtError = err;
     }
 
     expect(caughtError).toBeInstanceOf(BootError);
-    expect((caughtError as InstanceType<typeof BootError>).code).toBe("BOOT_ERR_DSL_SYNTAX");
+    expect((caughtError as InstanceType<typeof BootError>).code).toBe('BOOT_ERR_DSL_SYNTAX');
   });
 });

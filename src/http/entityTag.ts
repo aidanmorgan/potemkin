@@ -6,7 +6,7 @@
  */
 export function normalizeEntityTag(value: string): string {
   let normalized = value.trim();
-  if (normalized.startsWith("W/")) normalized = normalized.slice(2).trim();
+  if (normalized.startsWith('W/')) normalized = normalized.slice(2).trim();
   while (normalized.length >= 2 && normalized.startsWith('"') && normalized.endsWith('"')) {
     normalized = normalized.slice(1, -1).trim();
   }

@@ -6,9 +6,9 @@ audit_fields: true
 event_catalog:
   - type: LeadConverted
     payload_template:
-      convertedAt: "$now()"
-      agentId: "state.assignedAgentId"
-      campaignId: "state.assignedCampaignId"
+      convertedAt: '$now()'
+      agentId: 'state.assignedAgentId'
+      campaignId: 'state.assignedCampaignId'
 
 behaviors:
   # postcondition

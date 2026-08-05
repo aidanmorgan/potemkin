@@ -1,9 +1,9 @@
-import type { RuntimeGatewayExtensions } from "../http/runtimeGatewayTypes.js";
-import type { RuntimeSystem } from "../runtime/system.js";
-import type { JsonObject } from "../types.js";
-import { parseRuntimeFaultRegistration } from "./runtimeAdmin.js";
-import { RuntimeExecutionError } from "../core/errors.js";
-import { createCelEvaluator } from "../cel/evaluator.js";
+import type { RuntimeGatewayExtensions } from '../http/runtimeGatewayTypes.js';
+import type { RuntimeSystem } from '../runtime/system.js';
+import type { JsonObject } from '../contracts/value.js';
+import { parseRuntimeFaultRegistration } from './runtimeAdmin.js';
+import { RuntimeExecutionError } from '../core/errors.js';
+import { createCelEvaluator } from '../cel/evaluator.js';
 
 /**
  * Bind parser-owned admin operations to the source-independent HTTP gateway.
@@ -27,9 +27,9 @@ export function createYamlRuntimeExtensions(system: RuntimeSystem): RuntimeGatew
             return await system.reloadConfiguration!();
           } catch (error) {
             const result = reloadError(error);
-            const message = Array.isArray(result.body["messages"])
-              ? result.body["messages"].join("; ")
-              : "Configuration reload failed";
+            const message = Array.isArray(result.body['messages'])
+              ? result.body['messages'].join('; ')
+              : 'Configuration reload failed';
             throw new RuntimeExecutionError(result.status, message, result.body);
           }
         };
@@ -50,29 +50,29 @@ function reloadError(error: unknown): { readonly status: number; readonly body: 
   };
   const details =
     candidate.details !== null &&
-    typeof candidate.details === "object" &&
+    typeof candidate.details === 'object' &&
     !Array.isArray(candidate.details)
       ? (candidate.details as Record<string, unknown>)
       : undefined;
   const body =
-    candidate.body !== null && typeof candidate.body === "object" && !Array.isArray(candidate.body)
+    candidate.body !== null && typeof candidate.body === 'object' && !Array.isArray(candidate.body)
       ? (candidate.body as Record<string, unknown>)
       : undefined;
-  const status = typeof candidate.status === "number" ? candidate.status : 500;
+  const status = typeof candidate.status === 'number' ? candidate.status : 500;
   const code =
-    typeof body?.code === "string"
+    typeof body?.code === 'string'
       ? body.code
-      : typeof details?.code === "string"
+      : typeof details?.code === 'string'
         ? details.code
-        : typeof candidate.code === "string"
+        : typeof candidate.code === 'string'
           ? candidate.code
-          : "BOOT_ERR_DSL_SCHEMA_VIOLATION";
+          : 'BOOT_ERR_DSL_SCHEMA_VIOLATION';
   const messages = Array.isArray(body?.messages)
-    ? body.messages.filter((message): message is string => typeof message === "string")
+    ? body.messages.filter((message): message is string => typeof message === 'string')
     : [
-        typeof body?.message === "string"
+        typeof body?.message === 'string'
           ? body.message
-          : typeof candidate.message === "string"
+          : typeof candidate.message === 'string'
             ? candidate.message
             : String(error),
       ];

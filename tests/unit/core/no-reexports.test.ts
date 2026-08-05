@@ -1,6 +1,6 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import path from "node:path";
-import ts from "typescript";
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import path from 'node:path';
+import ts from 'typescript';
 
 function typescriptFiles(directory: string): string[] {
   const files: string[] = [];
@@ -12,15 +12,15 @@ function typescriptFiles(directory: string): string[] {
   return files;
 }
 
-describe("module boundary policy", () => {
-  it("does not use export-from re-export declarations", () => {
-    const roots = [path.resolve(__dirname, "../../../src"), path.resolve(__dirname, "../../")];
+describe('module boundary policy', () => {
+  it('does not use export-from re-export declarations', () => {
+    const roots = [path.resolve(__dirname, '../../../src'), path.resolve(__dirname, '../../')];
     const violations = roots
       .flatMap((root) => typescriptFiles(root))
       .filter((file) => {
         const source = ts.createSourceFile(
           file,
-          readFileSync(file, "utf8"),
+          readFileSync(file, 'utf8'),
           ts.ScriptTarget.Latest,
           true,
         );

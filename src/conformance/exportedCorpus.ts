@@ -1,16 +1,17 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
-import { matchRoute } from "../contract/router.js";
-import type { RuntimeBoundary } from "../model/runtime.js";
-import type { RuntimeSystem } from "../runtime/system.js";
-import type { DomainEvent, JsonObject } from "../types.js";
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { matchRoute } from '../contract/router.js';
+import type { RuntimeBoundary } from '../model/runtime.js';
+import type { RuntimeSystem } from '../runtime/system.js';
+import type { DomainEvent } from '../contracts/domain.js';
+import type { JsonObject } from '../contracts/value.js';
 
 interface ExportedExample {
-  readonly "http-request"?: {
+  readonly 'http-request'?: {
     readonly method?: unknown;
     readonly path?: unknown;
   };
-  readonly "http-response"?: {
+  readonly 'http-response'?: {
     readonly status?: unknown;
     readonly body?: unknown;
   };
@@ -23,7 +24,7 @@ interface CorpusSeed {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function isJsonObject(value: unknown): value is JsonObject {
@@ -33,11 +34,11 @@ function isJsonObject(value: unknown): value is JsonObject {
 function readExamples(directory: string): readonly [string, ExportedExample][] {
   return fs
     .readdirSync(directory)
-    .filter((file) => file.endsWith(".json"))
+    .filter((file) => file.endsWith('.json'))
     .sort()
     .map((file) => {
       const source = path.join(directory, file);
-      const parsed: unknown = JSON.parse(fs.readFileSync(source, "utf8"));
+      const parsed: unknown = JSON.parse(fs.readFileSync(source, 'utf8'));
       return [source, isRecord(parsed) ? (parsed as ExportedExample) : {}] as const;
     });
 }
@@ -49,7 +50,7 @@ function collectionBoundaryFor(
   return [...system.program.boundaries]
     .filter(
       (boundary) =>
-        !boundary.contractPath.includes("{") &&
+        !boundary.contractPath.includes('{') &&
         contractPath.startsWith(`${boundary.contractPath}/`),
     )
     .sort((left, right) => right.contractPath.length - left.contractPath.length)[0];
@@ -61,14 +62,14 @@ function seedsFrom(
 ): readonly CorpusSeed[] {
   const seeds: CorpusSeed[] = [];
   for (const [, candidate] of examples) {
-    const method = candidate["http-request"]?.method;
-    const requestPath = candidate["http-request"]?.path;
-    const status = candidate["http-response"]?.status;
+    const method = candidate['http-request']?.method;
+    const requestPath = candidate['http-request']?.path;
+    const status = candidate['http-response']?.status;
     if (
-      method !== "GET" ||
-      typeof requestPath !== "string" ||
+      method !== 'GET' ||
+      typeof requestPath !== 'string' ||
       status !== 200 ||
-      !isJsonObject(candidate["http-response"]?.body)
+      !isJsonObject(candidate['http-response']?.body)
     )
       continue;
 
@@ -80,7 +81,7 @@ function seedsFrom(
     seeds.push({
       boundary,
       aggregateId,
-      state: candidate["http-response"]!.body as JsonObject,
+      state: candidate['http-response']!.body as JsonObject,
     });
   }
   return seeds;
@@ -111,7 +112,7 @@ export function seedRuntimeFromExportedExamples(
     state.push([seed.aggregateId, seed.state]);
     events.push({
       eventId: `corpus-${seed.boundary.boundary}-${seed.aggregateId}`,
-      type: "BaselineEntityCreatedEvent",
+      type: 'BaselineEntityCreatedEvent',
       boundary: seed.boundary.boundary,
       aggregateId: seed.aggregateId,
       payload: seed.state,

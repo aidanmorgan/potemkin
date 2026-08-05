@@ -9,13 +9,13 @@ fallback_override: false
 
 identity:
   creation:
-    generate: "$uuidv7()"
+    generate: '$uuidv7()'
 
 event_catalog:
   - type: AuditRecorded
     payload_template:
-      id: "$uuidv7()"
-      orderId: "event.aggregateId"
+      id: '$uuidv7()'
+      orderId: 'event.aggregateId'
       action: "'ORDER_PLACED'"
 
 behaviors: []
@@ -25,16 +25,16 @@ reducers:
     patches:
       - op: add
         path: /id
-        value: "${event.payload.id}"
+        value: '${event.payload.id}'
       - op: add
         path: /orderId
-        value: "${event.payload.orderId}"
+        value: '${event.payload.orderId}'
       - op: add
         path: /action
-        value: "${event.payload.action}"
+        value: '${event.payload.action}'
 
 reactions:
   - name: record-audit-on-order-placed
-    on: "Order:OrderPlaced"
+    on: 'Order:OrderPlaced'
     intent: creation
     emit: AuditRecorded

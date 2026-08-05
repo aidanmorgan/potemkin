@@ -5,69 +5,38 @@
  * rebuilt around a request-local random source.
  */
 
-export type RuntimeDataFormat =
-  | "email"
-  | "uuid"
-  | "date"
-  | "date-time"
-  | "uri"
-  | "url"
-  | "hostname"
-  | "ipv4"
-  | "string";
-
-export interface RuntimeDataGenerator {
-  readonly person: Readonly<{
-    firstName: () => string;
-    lastName: () => string;
-    fullName: () => string;
-  }>;
-  readonly internet: Readonly<{
-    email: () => string;
-    url: () => string;
-    domainName: () => string;
-  }>;
-  readonly phone: Readonly<{ number: () => string }>;
-  readonly company: Readonly<{ name: () => string }>;
-  readonly address: Readonly<{
-    city: () => string;
-    streetAddress: () => string;
-  }>;
-  readonly fromFormat: (format: RuntimeDataFormat) => string;
-  /** Build an equivalent generator using a request-scoped random source. */
-  readonly withRandom: (random: () => number) => RuntimeDataGenerator;
-}
+import type { DataGenerator } from '../contracts/data.js';
 
 const FIRST_NAMES = [
-  "Alex",
-  "Jordan",
-  "Sam",
-  "Taylor",
-  "Casey",
-  "Morgan",
-  "Riley",
-  "Quinn",
-  "Avery",
-  "Drew",
+  'Alex',
+  'Jordan',
+  'Sam',
+  'Taylor',
+  'Casey',
+  'Morgan',
+  'Riley',
+  'Quinn',
+  'Avery',
+  'Drew',
 ] as const;
 const LAST_NAMES = [
-  "Smith",
-  "Jones",
-  "Brown",
-  "Taylor",
-  "Wilson",
-  "Davies",
-  "Evans",
-  "Robinson",
-  "Walker",
-  "Wright",
+  'Smith',
+  'Jones',
+  'Brown',
+  'Taylor',
+  'Wilson',
+  'Davies',
+  'Evans',
+  'Robinson',
+  'Walker',
+  'Wright',
 ] as const;
-const EMAIL_DOMAINS = ["example.com", "test.org", "fake.net"] as const;
-const COMPANY_PREFIXES = ["Apex", "BlueSky", "Cornerstone", "Delta", "Echo", "Foxtrot"] as const;
-const COMPANY_SUFFIXES = ["Solutions", "Systems", "Holdings", "Group", "Industries"] as const;
-const CITIES = ["Sydney", "Melbourne", "Brisbane", "Perth", "Adelaide", "Hobart"] as const;
-const STREET_NAMES = ["George", "King", "Queen", "High", "Main"] as const;
-const ALPHANUMERIC = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+const EMAIL_DOMAINS = ['example.com', 'test.org', 'fake.net'] as const;
+const COMPANY_PREFIXES = ['Apex', 'BlueSky', 'Cornerstone', 'Delta', 'Echo', 'Foxtrot'] as const;
+const COMPANY_SUFFIXES = ['Solutions', 'Systems', 'Holdings', 'Group', 'Industries'] as const;
+const CITIES = ['Sydney', 'Melbourne', 'Brisbane', 'Perth', 'Adelaide', 'Hobart'] as const;
+const STREET_NAMES = ['George', 'King', 'Queen', 'High', 'Main'] as const;
+const ALPHANUMERIC = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 const MULBERRY32_INCREMENT = 1831565813;
 
 /** Stable string-to-state conversion shared by all runtime data providers. */
@@ -102,20 +71,20 @@ function pick<T>(random: () => number, values: readonly T[]): T {
 }
 
 function digits(random: () => number, length: number): string {
-  return Array.from({ length }, () => String(Math.floor(boundedRandom(random) * 10))).join("");
+  return Array.from({ length }, () => String(Math.floor(boundedRandom(random) * 10))).join('');
 }
 
 function alphanumeric(random: () => number, length: number): string {
   return Array.from(
     { length },
     () => ALPHANUMERIC[Math.floor(boundedRandom(random) * ALPHANUMERIC.length)]!,
-  ).join("");
+  ).join('');
 }
 
 function uuid(random: () => number): string {
   const hex = (length: number): string =>
-    Array.from({ length }, () => Math.floor(boundedRandom(random) * 16).toString(16)).join("");
-  return `${hex(8)}-${hex(4)}-4${hex(3)}-${pick(random, ["8", "9", "a", "b"])}${hex(3)}-${hex(12)}`;
+    Array.from({ length }, () => Math.floor(boundedRandom(random) * 16).toString(16)).join('');
+  return `${hex(8)}-${hex(4)}-4${hex(3)}-${pick(random, ['8', '9', 'a', 'b'])}${hex(3)}-${hex(12)}`;
 }
 
 function date(random: () => number): Date {
@@ -124,7 +93,7 @@ function date(random: () => number): Date {
   return new Date(start + Math.floor(boundedRandom(random) * (end - start)));
 }
 
-export function createRuntimeDataGenerator(random: () => number): RuntimeDataGenerator {
+export function createRuntimeDataGenerator(random: () => number): DataGenerator {
   const person = {
     firstName: () => pick(random, FIRST_NAMES),
     lastName: () => pick(random, LAST_NAMES),
@@ -147,7 +116,7 @@ export function createRuntimeDataGenerator(random: () => number): RuntimeDataGen
     streetAddress: () =>
       `${Math.floor(boundedRandom(random) * 999) + 1} ${pick(random, STREET_NAMES)} St`,
   };
-  const generator: RuntimeDataGenerator = {
+  const generator: DataGenerator = {
     person,
     internet,
     phone,
@@ -155,22 +124,22 @@ export function createRuntimeDataGenerator(random: () => number): RuntimeDataGen
     address,
     fromFormat: (format) => {
       switch (format) {
-        case "email":
+        case 'email':
           return internet.email();
-        case "uuid":
+        case 'uuid':
           return uuid(random);
-        case "date":
+        case 'date':
           return date(random).toISOString().slice(0, 10);
-        case "date-time":
+        case 'date-time':
           return date(random).toISOString();
-        case "uri":
-        case "url":
+        case 'uri':
+        case 'url':
           return internet.url();
-        case "hostname":
+        case 'hostname':
           return internet.domainName();
-        case "ipv4":
+        case 'ipv4':
           return `${Math.floor(boundedRandom(random) * 256)}.${Math.floor(boundedRandom(random) * 256)}.${Math.floor(boundedRandom(random) * 256)}.${Math.floor(boundedRandom(random) * 256)}`;
-        case "string":
+        case 'string':
           return alphanumeric(random, 10);
       }
     },

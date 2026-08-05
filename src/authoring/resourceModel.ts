@@ -1,69 +1,12 @@
-import type { OpenApiDoc } from "../contract/loader.js";
-import type { RuntimeBehavior, RuntimeFault } from "../model/runtime.js";
-import type { ComposableBoundary } from "./composition.js";
-import type { RuntimeValue } from "../model/runtime.js";
-import type { JsonObject } from "../types.js";
-import { definitionError } from "./errors.js";
-import type {
-  BehaviorDefinition,
-  DeprecationDefinition,
-  EventDefinition,
-  FaultDefinition,
-  IdentityDefinition,
-  InitializationDefinition,
-  QueryDefinition,
-  LatencyDefinition,
-  ReactionDefinition,
-  ResponseDefinition,
-  StateDefinition,
-} from "./runtimeModel.js";
-import type { NativeReducer } from "./nativeReducer.js";
-import type {
-  ContractPath,
-  EventType,
-  FieldPath,
-  HttpMethod,
-  OperationId,
-  ResourceName,
-  SchemaReference,
-} from "./references.js";
+import type { OpenApiDocumentDescriptor } from '../contracts/openapi.js';
+import type { ComposableBoundary } from './composition.js';
+import { definitionError } from './errors.js';
+import type { BehaviorDefinition } from './types.js';
+import type { HttpMethod } from '../domain/references.js';
+import { behaviorName } from '../domain/references.js';
+import type { ResourceDefinition, ResourceOperation } from './types.js';
 
-/** An OpenAPI operation projected into a typed resource boundary. */
-export interface ResourceOperation {
-  readonly operationId: OperationId;
-  readonly contractPath?: ContractPath;
-  readonly method?: HttpMethod;
-  readonly emit?: EventType;
-  readonly query?: boolean;
-  readonly behavior?: Omit<BehaviorDefinition, "name" | "operationId">;
-}
-
-/**
- * A convenience authoring form for repeated CRUD boundaries.
- *
- * Resources are expanded before the core compiler sees them. The runtime has
- * no resource concept; it receives ordinary boundaries, events, behaviors,
- * reducers, and policies.
- */
-export interface ResourceDefinition {
-  readonly resource: ResourceName;
-  readonly schema: SchemaReference;
-  readonly identity?: IdentityDefinition;
-  readonly response?: ResponseDefinition;
-  readonly query?: QueryDefinition;
-  readonly eventCatalog: readonly EventDefinition[];
-  readonly reducers: readonly NativeReducer<object, object>[];
-  readonly initialization?: readonly InitializationDefinition[];
-  readonly operations: readonly ResourceOperation[];
-  readonly mask?: readonly FieldPath[];
-  readonly auditFields?: boolean;
-  readonly deprecated?: DeprecationDefinition;
-  readonly latency?: LatencyDefinition;
-  readonly state?: StateDefinition;
-  readonly strictSchema?: boolean;
-  readonly faults?: readonly FaultDefinition[];
-  readonly reactions?: readonly ReactionDefinition[];
-}
+export type { ResourceDefinition, ResourceOperation };
 
 interface IndexedOperation {
   readonly path: string;
@@ -73,14 +16,14 @@ interface IndexedOperation {
 function httpMethod(value: string): HttpMethod {
   const normalized = value.toUpperCase();
   switch (normalized) {
-    case "GET":
-    case "POST":
-    case "PUT":
-    case "PATCH":
-    case "DELETE":
-    case "HEAD":
-    case "OPTIONS":
-    case "TRACE":
+    case 'GET':
+    case 'POST':
+    case 'PUT':
+    case 'PATCH':
+    case 'DELETE':
+    case 'HEAD':
+    case 'OPTIONS':
+    case 'TRACE':
       return normalized;
     default:
       throw definitionError(`Unsupported HTTP method "${value}" in a resource operation`);
@@ -89,10 +32,10 @@ function httpMethod(value: string): HttpMethod {
 
 function pathSuffix(path: string): string {
   return path
-    .replace(/^\//, "")
-    .replace(/\{([^}]+)\}/g, "By_$1")
-    .replace(/[^A-Za-z0-9]+/g, "_")
-    .replace(/_+$/g, "");
+    .replace(/^\//, '')
+    .replace(/\{([^}]+)\}/g, 'By_$1')
+    .replace(/[^A-Za-z0-9]+/g, '_')
+    .replace(/_+$/g, '');
 }
 
 function hasPathParameter(path: string): boolean {
@@ -104,7 +47,9 @@ function lastPathParameter(path: string): string | undefined {
   return matches.at(-1)?.[1];
 }
 
-function operationIndex(openapi?: OpenApiDoc): ReadonlyMap<string, IndexedOperation> {
+function operationIndex(
+  openapi?: OpenApiDocumentDescriptor,
+): ReadonlyMap<string, IndexedOperation> {
   const result = new Map<string, IndexedOperation>();
   for (const [path, item] of Object.entries(openapi?.paths ?? {})) {
     for (const [method, operation] of Object.entries(item)) {
@@ -123,7 +68,7 @@ function resolveOperation(
   const indexed = index.get(operation.operationId);
   if (indexed !== undefined) return indexed;
   if (operation.contractPath !== undefined) {
-    return { path: operation.contractPath, method: operation.method ?? "POST" };
+    return { path: operation.contractPath, method: operation.method ?? 'POST' };
   }
   throw definitionError(
     `Resource operation "${operation.operationId}" is not present in the OpenAPI contract`,
@@ -133,14 +78,14 @@ function resolveOperation(
 function resourceBehavior(
   operation: ResourceOperation,
   resolved: IndexedOperation,
-): RuntimeBehavior {
+): BehaviorDefinition {
   return {
-    name: operation.operationId,
+    name: behaviorName(operation.operationId),
     operationId: operation.operationId,
     method: resolved.method,
     ...operation.behavior,
     ...(operation.emit === undefined ? {} : { emit: operation.emit }),
-  };
+  } as BehaviorDefinition;
 }
 
 function resourceBoundary(
@@ -158,11 +103,11 @@ function resourceBoundary(
     .map((operation) => resourceBehavior(operation, resolveOperation(operation, index)));
   const identity = collection
     ? resource.identity
-    : { key: { from: "path" as const, name: lastPathParameter(path) } };
+    : { key: { from: 'path' as const, name: lastPathParameter(path)! } };
 
   return {
-    boundary: `${resource.resource}__${pathSuffix(path)}`,
-    contractPath: path,
+    boundary: `${resource.resource}__${pathSuffix(path)}` as ComposableBoundary['boundary'],
+    contractPath: path as ComposableBoundary['contractPath'],
     schema: resource.schema,
     fallbackOverride: query,
     ...(identity === undefined ? {} : { identity }),
@@ -189,20 +134,20 @@ function resourceBoundary(
 
 export function expandResources(
   resources: readonly ResourceDefinition[],
-  openapi?: OpenApiDoc,
+  openapi?: OpenApiDocumentDescriptor,
 ): readonly ComposableBoundary[] {
   const index = operationIndex(openapi);
   const expanded: ComposableBoundary[] = [];
   for (const resource of resources) {
-    if (resource.resource.trim() === "" || resource.schema.trim() === "") {
-      throw definitionError("A resource requires non-empty resource and schema names");
+    if (resource.resource.trim() === '' || resource.schema.trim() === '') {
+      throw definitionError('A resource requires non-empty resource and schema names');
     }
     if (resource.operations.length === 0) {
       throw definitionError(`Resource "${resource.resource}" requires at least one operation`);
     }
     const grouped = new Map<string, ResourceOperation[]>();
     for (const operation of resource.operations) {
-      if (operation.operationId.trim() === "")
+      if (operation.operationId.trim() === '')
         throw definitionError(
           `Resource "${resource.resource}" has an operation without an operationId`,
         );
@@ -250,9 +195,9 @@ export function expandResources(
 }
 
 export function defineResource(definition: ResourceDefinition): ResourceDefinition {
-  if (typeof definition?.resource !== "string" || definition.resource.trim() === "")
-    throw definitionError("Resource.resource must be non-empty");
-  if (typeof definition.schema !== "string" || definition.schema.trim() === "")
+  if (typeof definition?.resource !== 'string' || definition.resource.trim() === '')
+    throw definitionError('Resource.resource must be non-empty');
+  if (typeof definition.schema !== 'string' || definition.schema.trim() === '')
     throw definitionError(`Resource "${definition.resource}" requires a non-empty schema`);
   if (!Array.isArray(definition.operations) || definition.operations.length === 0)
     throw definitionError(`Resource "${definition.resource}" requires operations`);
@@ -263,4 +208,4 @@ export function defineResource(definition: ResourceDefinition): ResourceDefiniti
   return definition;
 }
 
-export type ResourceValue<Context, Value> = RuntimeValue<Context, Value>;
+export type ResourceValue<Context, Value> = Value | ((input: Readonly<Context>) => Value);

@@ -8,13 +8,13 @@ fallback_override: false
 event_catalog:
   - type: ItemFieldAdded
     payload_template:
-      note: "command.payload.note"
+      note: 'command.payload.note'
 
 behaviors:
   - name: addField
     match:
       operationId: addField
-      condition: "true"
+      condition: 'true'
     emit: ItemFieldAdded
 
 reducers:
@@ -23,6 +23,6 @@ reducers:
       # op: add — create the previously-absent /addedNote field
       - op: add
         path: /addedNote
-        value: "${event.payload.note}"
+        value: '${event.payload.note}'
 
 initialization: []

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Token API (identity-key fixture)
-  version: "1.0.0"
+  version: '1.0.0'
 # identity-key fixture — exercises every identity.key source.
 #
 # /tokens          — from: header (X-Token-Id)
@@ -30,12 +30,12 @@ paths:
                 scope:
                   type: string
       responses:
-        "201":
+        '201':
           description: Token issued
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Token"
+                $ref: '#/components/schemas/Token'
   /tokens/{id}:
     get:
       operationId: getToken
@@ -47,18 +47,18 @@ paths:
           schema:
             type: string
       responses:
-        "200":
+        '200':
           description: Token found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Token"
-        "404":
+                $ref: '#/components/schemas/Token'
+        '404':
           description: Not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
   # ── from: path ────────────────────────────────────────────────────────────────
   # identity.key.from: path, name: ref — aggregate id from a named path parameter.
   # The path param is named "ref" (not the default "id") to show the engine is not
@@ -87,12 +87,12 @@ paths:
                 quantity:
                   type: integer
       responses:
-        "201":
+        '201':
           description: Order placed
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Order"
+                $ref: '#/components/schemas/Order'
     get:
       operationId: getOrderByRef
       summary: Retrieve an order by its ref path parameter
@@ -103,18 +103,18 @@ paths:
           schema:
             type: string
       responses:
-        "200":
+        '200':
           description: Order found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Order"
-        "404":
+                $ref: '#/components/schemas/Order'
+        '404':
           description: Not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
   # ── from: query ───────────────────────────────────────────────────────────────
   # identity.key.from: query, name: sessionId — aggregate id from a query parameter.
   # The caller passes ?sessionId=<id> on the POST; the engine stores the entity
@@ -142,12 +142,12 @@ paths:
                 userId:
                   type: string
       responses:
-        "201":
+        '201':
           description: Session event recorded
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SessionEvent"
+                $ref: '#/components/schemas/SessionEvent'
   /session-events/{id}:
     get:
       operationId: getSessionEvent
@@ -159,18 +159,18 @@ paths:
           schema:
             type: string
       responses:
-        "200":
+        '200':
           description: Session event found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SessionEvent"
-        "404":
+                $ref: '#/components/schemas/SessionEvent'
+        '404':
           description: Not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
   # ── from: payload ─────────────────────────────────────────────────────────────
   # identity.key.from: payload, pointer: accountId — aggregate id from a body field.
   # The caller includes "accountId" in the JSON body; the engine uses its value as
@@ -193,12 +193,12 @@ paths:
                 plan:
                   type: string
       responses:
-        "201":
+        '201':
           description: Subscription created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Subscription"
+                $ref: '#/components/schemas/Subscription'
   /subscriptions/{id}:
     get:
       operationId: getSubscription
@@ -210,18 +210,18 @@ paths:
           schema:
             type: string
       responses:
-        "200":
+        '200':
           description: Subscription found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Subscription"
-        "404":
+                $ref: '#/components/schemas/Subscription'
+        '404':
           description: Not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
 components:
   schemas:
     Token:
@@ -239,13 +239,13 @@ components:
         status:
           type: string
     TokenById:
-      $ref: "#/components/schemas/Token"
+      $ref: '#/components/schemas/Token'
     # Alias schemas for the read-back boundaries — the engine resolves schemas
     # by boundary name, so each boundary needs a matching entry in components.schemas.
     SessionEventById:
-      $ref: "#/components/schemas/SessionEvent"
+      $ref: '#/components/schemas/SessionEvent'
     SubscriptionById:
-      $ref: "#/components/schemas/Subscription"
+      $ref: '#/components/schemas/Subscription'
     Order:
       type: object
       additionalProperties: false

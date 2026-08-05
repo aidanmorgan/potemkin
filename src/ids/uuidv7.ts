@@ -1,5 +1,5 @@
-import { uuidv7 } from "uuidv7";
-import { createHash } from "crypto";
+import { uuidv7 } from 'uuidv7';
+import { createHash } from 'crypto';
 
 export function nextUuidv7(): string {
   return uuidv7();
@@ -30,7 +30,7 @@ export function createDeterministicUuidv7Source(seedIndex = 0): () => string {
  * @param seedIndex - monotonic counter used to differentiate multiple epoch-anchored IDs
  */
 export function epochAnchoredUuidv7(seedIndex: number): string {
-  return formatUuidv7(createHash("sha256").update(seedIndex.toString()).digest());
+  return formatUuidv7(createHash('sha256').update(seedIndex.toString()).digest());
 }
 
 /**
@@ -43,7 +43,7 @@ export function epochAnchoredUuidv7(seedIndex: number): string {
  * contracts that require a UUIDv7-shaped identifier.
  */
 export function deterministicUuidv7(seed: string): string {
-  return formatUuidv7(createHash("sha256").update(seed).digest());
+  return formatUuidv7(createHash('sha256').update(seed).digest());
 }
 
 function formatUuidv7(hash: Uint8Array): string {
@@ -74,17 +74,17 @@ function formatUuidv7(hash: Uint8Array): string {
   b[15] = hash[9]!;
 
   const hex = Array.from(b)
-    .map((x) => x.toString(16).padStart(2, "0"))
-    .join("");
+    .map((x) => x.toString(16).padStart(2, '0'))
+    .join('');
   return (
     hex.slice(0, 8) +
-    "-" +
+    '-' +
     hex.slice(8, 12) +
-    "-" +
+    '-' +
     hex.slice(12, 16) +
-    "-" +
+    '-' +
     hex.slice(16, 20) +
-    "-" +
+    '-' +
     hex.slice(20, 32)
   );
 }

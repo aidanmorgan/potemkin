@@ -1,11 +1,11 @@
-import * as path from "node:path";
+import * as path from 'node:path';
 
-import { TypeScriptAuthoringError } from "../../../src/authoring/errors.js";
-import { hasPotemkinConfigureDecorator } from "../../../src/parser/typescriptFactorySyntax.js";
-import { isDecoratedTypeScriptModule } from "../../../src/parser/typescriptDiscovery.js";
+import { TypeScriptAuthoringError } from '../../../src/authoring/errors.js';
+import { hasPotemkinConfigureDecorator } from '../../../src/parser/typescriptFactorySyntax.js';
+import { isDecoratedTypeScriptModule } from '../../../src/parser/typescriptDiscovery.js';
 
-describe("TypeScript factory syntax discovery", () => {
-  it("recognizes only a static method decorated with the imported factory decorator", () => {
+describe('TypeScript factory syntax discovery', () => {
+  it('recognizes only a static method decorated with the imported factory decorator', () => {
     expect(
       hasPotemkinConfigureDecorator(
         `
@@ -15,12 +15,12 @@ describe("TypeScript factory syntax discovery", () => {
             static create() { return { boundaries: [] }; }
           }
         `,
-        "scenario.ts",
+        'scenario.ts',
       ),
     ).toBe(true);
   });
 
-  it("does not match comments, strings, instance methods, or aliased decorators", () => {
+  it('does not match comments, strings, instance methods, or aliased decorators', () => {
     expect(
       hasPotemkinConfigureDecorator(
         `
@@ -32,14 +32,14 @@ describe("TypeScript factory syntax discovery", () => {
             create() { return { boundaries: [] }; }
           }
         `,
-        "scenario.ts",
+        'scenario.ts',
       ),
     ).toBe(false);
   });
 
-  it("reports source inspection failures through the typed diagnostic contract", () => {
+  it('reports source inspection failures through the typed diagnostic contract', () => {
     const missingFile = path.join(
-      "/tmp",
+      '/tmp',
       `potemkin-missing-authoring-${process.pid}-${Date.now()}.ts`,
     );
 
@@ -52,7 +52,7 @@ describe("TypeScript factory syntax discovery", () => {
 
     expect(failure).toBeInstanceOf(TypeScriptAuthoringError);
     expect(failure).toMatchObject({
-      code: "TS_SOURCE_READ",
+      code: 'TS_SOURCE_READ',
       location: { source: missingFile },
     });
   });

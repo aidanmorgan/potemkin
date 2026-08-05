@@ -1,10 +1,10 @@
 /** @type {import('ts-jest').JestConfigWithTsJest} */
 module.exports = {
-  preset: "ts-jest",
-  testEnvironment: "node",
-  roots: ["<rootDir>/src", "<rootDir>/tests"],
-  collectCoverageFrom: ["src/**/*.ts"],
-  coveragePathIgnorePatterns: ["/node_modules/", "src/index\\.ts"],
+  preset: 'ts-jest',
+  testEnvironment: 'node',
+  roots: ['<rootDir>/src', '<rootDir>/tests'],
+  collectCoverageFrom: ['src/**/*.ts'],
+  coveragePathIgnorePatterns: ['/node_modules/', 'src/index\\.ts'],
   coverageThreshold: {
     global: {
       statements: 80,
@@ -13,22 +13,22 @@ module.exports = {
       lines: 80,
     },
   },
-  testMatch: ["**/*.test.ts", "**/*.spec.ts"],
+  testMatch: ['**/*.test.ts', '**/*.spec.ts'],
   // Exclude CLI contract tests — they require Java and a live Specmatic jar.
   // Run them with: npm run test:contract
   testPathIgnorePatterns: [
-    "/node_modules/",
-    "/tests/integration/specmatic-cli/",
-    "/tests/e2e/",
+    '/node_modules/',
+    '/tests/integration/specmatic-cli/',
+    '/tests/e2e/',
     // Adversarial red-team repros: failing-by-design until their bug is fixed,
     // kept as evidence and converted into proper regression tests per fix.
-    "/tests/redteam/",
+    '/tests/redteam/',
   ],
-  moduleFileExtensions: ["ts", "js", "json"],
-  setupFiles: ["<rootDir>/tests/setup.ts"],
+  moduleFileExtensions: ['ts', 'js', 'json'],
+  setupFiles: ['<rootDir>/tests/setup.ts'],
   // Per-test process.env isolation (snapshot/restore) so env mutations don't
   // leak across files sharing a worker process (potemkin-1ef).
-  setupFilesAfterEnv: ["<rootDir>/tests/setupAfterEnv.ts"],
+  setupFilesAfterEnv: ['<rootDir>/tests/setupAfterEnv.ts'],
   // Cap worker count to bound file-descriptor and CPU pressure. Higher
   // parallelism, especially with a cold ts-jest cache under concurrent external
   // load, has produced intermittent socket-hang-up and "Cannot find module"
@@ -37,6 +37,6 @@ module.exports = {
   maxWorkers: 4,
   // Map .js imports to .ts sources so ts-jest can resolve them in CommonJS mode.
   moduleNameMapper: {
-    "^(\\.{1,2}/.*)\\.js$": "$1",
+    '^(\\.{1,2}/.*)\\.js$': '$1',
   },
 };

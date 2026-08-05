@@ -1,7 +1,7 @@
-import { isValidRuntimeLatency, runtimeLatencyProblem } from "../../../src/model/latency.js";
+import { isValidRuntimeLatency, runtimeLatencyProblem } from '../../../src/model/latency.js';
 
-describe("runtime latency validation", () => {
-  it("rejects unknown fields and accepts finite non-negative combinations", () => {
+describe('runtime latency validation', () => {
+  it('rejects unknown fields and accepts finite non-negative combinations', () => {
     expect(runtimeLatencyProblem({ unknown: 1 })).toMatchObject({
       message: 'latency contains unknown field "unknown"',
     });

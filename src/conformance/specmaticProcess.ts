@@ -4,9 +4,9 @@
  * shutdown helper.
  */
 
-import * as cp from "node:child_process";
-import * as http from "node:http";
-import { getFreePort } from "./portAllocator.js";
+import * as cp from 'node:child_process';
+import * as http from 'node:http';
+import { getFreePort } from './portAllocator.js';
 
 export interface SpecmaticHandle {
   readonly stubPort: number;
@@ -42,7 +42,7 @@ async function probeUntilUp(targetUrl: string, timeoutMs = 30_000): Promise<void
         res.resume();
         resolve(true);
       });
-      req.on("error", () => resolve(false));
+      req.on('error', () => resolve(false));
       req.setTimeout(1000, () => {
         req.destroy();
         resolve(false);
@@ -62,20 +62,20 @@ async function probeUntilUp(targetUrl: string, timeoutMs = 30_000): Promise<void
 
 export async function startSpecmatic(opts: SpecmaticOptions): Promise<SpecmaticHandle> {
   const stubPort = opts.stubPort ?? (await getFreePort());
-  const sep = process.platform === "win32" ? ";" : ":";
+  const sep = process.platform === 'win32' ? ';' : ':';
   const classpath = `${opts.specmaticJar}${sep}${opts.pluginJar}`;
 
   const jvmArgs = [
     // Cap the heap so several Specmatic JVMs (serialised across e2e suites, or
     // running alongside another test process on the same host) cannot exhaust
     // machine memory — keeps stub startup reliable under contention.
-    "-Xmx512m",
-    "-XX:+UseSerialGC",
-    "-cp",
+    '-Xmx512m',
+    '-XX:+UseSerialGC',
+    '-cp',
     classpath,
-    "application.SpecmaticApplication",
-    "stub",
-    "--port",
+    'application.SpecmaticApplication',
+    'stub',
+    '--port',
     String(stubPort),
     ...opts.contractPaths,
   ];
@@ -85,16 +85,16 @@ export async function startSpecmatic(opts: SpecmaticOptions): Promise<SpecmaticH
     ...opts.extraEnv,
   };
 
-  const child = cp.spawn("java", jvmArgs, {
+  const child = cp.spawn('java', jvmArgs, {
     env: childEnv,
-    stdio: ["ignore", "ignore", "ignore"],
+    stdio: ['ignore', 'ignore', 'ignore'],
   });
   // The test worker owns this process for the duration of the run, but the
   // JVM must not keep Jest alive after the worker has finished. The worker's
   // exit handler performs the final SIGTERM cleanup.
   child.unref();
 
-  child.on("error", (err) => {
+  child.on('error', (err) => {
     process.stderr.write(`[specmatic] Process error: ${err.message}\n`);
   });
 
@@ -122,15 +122,15 @@ export async function startSpecmatic(opts: SpecmaticOptions): Promise<SpecmaticH
         }
 
         const timer = setTimeout(() => {
-          child.kill("SIGKILL");
+          child.kill('SIGKILL');
         }, 5_000);
 
-        child.on("exit", () => {
+        child.on('exit', () => {
           clearTimeout(timer);
           resolve();
         });
 
-        child.kill("SIGTERM");
+        child.kill('SIGTERM');
       });
     },
   };

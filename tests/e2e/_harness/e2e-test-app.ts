@@ -9,30 +9,30 @@
  *   await app.shutdown();
  */
 
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
-import * as http from "node:http";
-import type { ChildProcess } from "node:child_process";
-import * as yaml from "js-yaml";
-import { ensureSpecmaticJar, ensurePluginJar } from "../../../src/conformance/binaries.js";
-import { startSpecmatic } from "../../../src/conformance/specmaticProcess.js";
-import { startEngine } from "./engine-driver";
-import { getFreePort } from "../../../src/conformance/portAllocator.js";
-import { buildSharedForwardBlocks } from "./forward-blocks";
-import { loadEngineFixture, resolveFixtureDir } from "../../fixtures/index";
-import type { SpecmaticHandle } from "../../../src/conformance/specmaticProcess.js";
-import type { EngineHandle } from "./engine-driver";
-import type { RuntimeTransportObservation } from "../../../src/model/runtime";
-import type { JsonValue } from "../../../src/types";
-import { createRuntimeOtelRequestResponseObserver } from "../../../src/observability/runtimeExchange";
-import { createRuntimeOtelMetricObserver } from "../../../src/observability/metrics";
-import { getTracer, initTracing } from "../../../src/observability/tracing";
-import type { OtlpCollector, OtlpMetricExport, OtlpTraceExport } from "./otlp-collector";
-import { startOtlpCollector } from "./otlp-collector";
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import * as http from 'node:http';
+import type { ChildProcess } from 'node:child_process';
+import * as yaml from 'js-yaml';
+import { ensureSpecmaticJar, ensurePluginJar } from '../../../src/conformance/binaries.js';
+import { startSpecmatic } from '../../../src/conformance/specmaticProcess.js';
+import { startEngine } from './engine-driver';
+import { getFreePort } from '../../../src/conformance/portAllocator.js';
+import { buildSharedForwardBlocks } from './forward-blocks';
+import { loadEngineFixture, resolveFixtureDir } from '../../fixtures/index';
+import type { SpecmaticHandle } from '../../../src/conformance/specmaticProcess.js';
+import type { EngineHandle } from './engine-driver';
+import type { RuntimeTransportObservation } from '../../../src/contracts/ports';
+import type { JsonValue } from '../../../src/contracts/value';
+import { createRuntimeOtelRequestResponseObserver } from '../../../src/observability/runtimeExchange';
+import { createRuntimeOtelMetricObserver } from '../../../src/observability/metrics';
+import { initTracing } from '../../../src/observability/tracing';
+import type { OtlpCollector, OtlpMetricExport, OtlpTraceExport } from './otlp-collector';
+import { startOtlpCollector } from './otlp-collector';
 
 export interface RuntimeLogObservation {
-  readonly level: "debug" | "info" | "warn" | "error";
+  readonly level: 'debug' | 'info' | 'warn' | 'error';
   readonly message: string;
   readonly fields?: Readonly<Record<string, unknown>>;
 }
@@ -44,30 +44,30 @@ export interface RuntimeMetricObservation {
 }
 
 const E2E_FIXTURES = [
-  "crm",
-  "audit-fields",
-  "authoring-parity",
-  "composition",
-  "configured-stack",
-  "crm-forward",
-  "crm-jwt",
-  "crm-session",
-  "crm-versioned",
-  "governance",
-  "header-match",
-  "identity-key",
-  "latency",
-  "mask-fields",
-  "reactions",
-  "reducer-ops",
-  "saga-comp",
-  "seeds-engine",
-  "strict-schema",
-  "webhook-hmac",
-  "observability",
-  "session-parity",
-  "query-policy",
-  "validation-controls",
+  'crm',
+  'audit-fields',
+  'authoring-parity',
+  'composition',
+  'configured-stack',
+  'crm-forward',
+  'crm-jwt',
+  'crm-session',
+  'crm-versioned',
+  'governance',
+  'header-match',
+  'identity-key',
+  'latency',
+  'mask-fields',
+  'reactions',
+  'reducer-ops',
+  'saga-comp',
+  'seeds-engine',
+  'strict-schema',
+  'webhook-hmac',
+  'observability',
+  'session-parity',
+  'query-policy',
+  'validation-controls',
 ] as const;
 
 /**
@@ -77,32 +77,32 @@ const E2E_FIXTURES = [
  * when no fixture is supplied or the fixture has no openapi/ directory.
  */
 function resolveContractPath(fixtureName: string | undefined): string {
-  const name = fixtureName ?? "crm";
+  const name = fixtureName ?? 'crm';
   const fixtureDir = resolveFixtureDir(name);
-  const openapiDir = path.join(fixtureDir, "openapi");
+  const openapiDir = path.join(fixtureDir, 'openapi');
   if (!fs.existsSync(openapiDir))
-    return path.join(resolveFixtureDir("crm"), "openapi", "nuisance-bureau.yaml");
-  const files = fs.readdirSync(openapiDir).filter((f) => f.endsWith(".yaml") || f.endsWith(".yml"));
-  const fullContract = files.find((file) => file === "specmatic-contract.yaml");
+    return path.join(resolveFixtureDir('crm'), 'openapi', 'nuisance-bureau.yaml');
+  const files = fs.readdirSync(openapiDir).filter((f) => f.endsWith('.yaml') || f.endsWith('.yml'));
+  const fullContract = files.find((file) => file === 'specmatic-contract.yaml');
   if (fullContract !== undefined) return path.join(openapiDir, fullContract);
-  if (!fixtureName) return path.join(resolveFixtureDir("crm"), "openapi", "nuisance-bureau.yaml");
+  if (!fixtureName) return path.join(resolveFixtureDir('crm'), 'openapi', 'nuisance-bureau.yaml');
   if (files.length === 0)
-    return path.join(resolveFixtureDir("crm"), "openapi", "nuisance-bureau.yaml");
-  const preferred = files.find((f) => f === "nuisance-bureau.yaml") ?? files[0];
+    return path.join(resolveFixtureDir('crm'), 'openapi', 'nuisance-bureau.yaml');
+  const preferred = files.find((f) => f === 'nuisance-bureau.yaml') ?? files[0];
   return path.join(openapiDir, preferred);
 }
 
 function resolveAllContractPaths(): string[] {
   const unique = new Map<string, string>();
   for (const fixtureName of E2E_FIXTURES) {
-    const openapiDir = path.join(resolveFixtureDir(fixtureName), "openapi");
+    const openapiDir = path.join(resolveFixtureDir(fixtureName), 'openapi');
     if (!fs.existsSync(openapiDir)) continue;
     const files = fs
       .readdirSync(openapiDir)
-      .filter((file) => file.endsWith(".yaml") || file.endsWith(".yml"));
-    const selected = files.includes("specmatic-contract.yaml")
-      ? ["specmatic-contract.yaml"]
-      : files.filter((file) => !file.startsWith("part-"));
+      .filter((file) => file.endsWith('.yaml') || file.endsWith('.yml'));
+    const selected = files.includes('specmatic-contract.yaml')
+      ? ['specmatic-contract.yaml']
+      : files.filter((file) => !file.startsWith('part-'));
     for (const file of selected) {
       const absolute = path.resolve(openapiDir, file);
       try {
@@ -172,7 +172,7 @@ async function probeUrl(targetUrl: string, timeoutMs = 10_000): Promise<boolean>
         res.resume();
         resolve(true);
       });
-      req.on("error", () => resolve(false));
+      req.on('error', () => resolve(false));
       req.setTimeout(1000, () => {
         req.destroy();
         resolve(false);
@@ -188,35 +188,35 @@ async function probeUrl(targetUrl: string, timeoutMs = 10_000): Promise<boolean>
 // Shared JWT secret for the crm-jwt / crm-forward fixtures (auth.mode: jwt).
 // Kept in sync with tests/fixtures/crm-jwt/dsl/global.yaml — used only to mint a
 // warmup token so the discovery probe can reach the engine past JWT auth.
-const WARMUP_JWT_SECRET = "potemkin-jwt-e2e-test-secret-do-not-use";
-const WARMUP_JWT_ISSUER = "potemkin-test";
-const WARMUP_JWT_AUDIENCE = "potemkin-api";
+const WARMUP_JWT_SECRET = 'potemkin-jwt-e2e-test-secret-do-not-use';
+const WARMUP_JWT_ISSUER = 'potemkin-test';
+const WARMUP_JWT_AUDIENCE = 'potemkin-api';
 
 function base64url(buf: Buffer): string {
-  return buf.toString("base64").replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
+  return buf.toString('base64').replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
 }
 
 /** Mint an HS256 JWT valid for the crm-jwt/crm-forward fixtures. */
 function mintWarmupJwt(): string {
   const now = Math.floor(Date.now() / 1000);
-  const header = base64url(Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" }), "utf8"));
+  const header = base64url(Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' }), 'utf8'));
   const payload = base64url(
     Buffer.from(
       JSON.stringify({
-        sub: "warmup",
-        scopes: "manager admin",
+        sub: 'warmup',
+        scopes: 'manager admin',
         iss: WARMUP_JWT_ISSUER,
         aud: WARMUP_JWT_AUDIENCE,
         iat: now,
         exp: now + 3600,
       }),
-      "utf8",
+      'utf8',
     ),
   );
   const signingInput = `${header}.${payload}`;
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { createHmac } = require("node:crypto");
-  const sig = base64url(createHmac("sha256", WARMUP_JWT_SECRET).update(signingInput).digest());
+  const { createHmac } = require('node:crypto');
+  const sig = base64url(createHmac('sha256', WARMUP_JWT_SECRET).update(signingInput).digest());
   return `${signingInput}.${sig}`;
 }
 
@@ -237,7 +237,7 @@ function mintWarmupJwt(): string {
  * 401 (which would be ambiguous against operations that declare a 401 response).
  */
 type WarmupProbe = {
-  readonly method?: "GET" | "POST";
+  readonly method?: 'GET' | 'POST';
   path: string;
   engineStatuses: readonly number[];
   headers: Record<string, string>;
@@ -249,59 +249,59 @@ type WarmupProbe = {
 function warmupProbeForFixture(fixtureName: string | undefined): WarmupProbe {
   // A syntactically valid UUID that no fixture seeds, so the engine never holds
   // an entity for it.
-  const BOGUS_ID = "00000000-0000-7000-8000-0000deadbeef";
-  const accept: Record<string, string> = { Accept: "application/json" };
+  const BOGUS_ID = '00000000-0000-7000-8000-0000deadbeef';
+  const accept: Record<string, string> = { Accept: 'application/json' };
   switch (fixtureName) {
-    case "governance":
+    case 'governance':
       return { path: `/documents/${BOGUS_ID}`, engineStatuses: [404, 422], headers: accept };
-    case "composition":
+    case 'composition':
       return { path: `/documents/${BOGUS_ID}`, engineStatuses: [404, 422], headers: accept };
-    case "reducer-ops":
+    case 'reducer-ops':
       return { path: `/items/${BOGUS_ID}`, engineStatuses: [404, 422], headers: accept };
-    case "identity-key":
+    case 'identity-key':
       return { path: `/tokens/${BOGUS_ID}`, engineStatuses: [404, 422], headers: accept };
-    case "header-match":
+    case 'header-match':
       return { path: `/orders/${BOGUS_ID}`, engineStatuses: [404, 422], headers: accept };
-    case "saga-comp":
+    case 'saga-comp':
       return { path: `/orders/${BOGUS_ID}`, engineStatuses: [404, 422], headers: accept };
-    case "webhook-hmac":
+    case 'webhook-hmac':
       return { path: `/shipments/${BOGUS_ID}`, engineStatuses: [404, 422], headers: accept };
-    case "latency":
+    case 'latency':
       return { path: `/jobs/${BOGUS_ID}`, engineStatuses: [404, 422], headers: accept };
-    case "reactions":
+    case 'reactions':
       return { path: `/orders/${BOGUS_ID}`, engineStatuses: [404, 422], headers: accept };
-    case "strict-schema":
+    case 'strict-schema':
       return { path: `/order-items/${BOGUS_ID}`, engineStatuses: [404, 422], headers: accept };
-    case "seeds-engine":
+    case 'seeds-engine':
       return { path: `/widgets/${BOGUS_ID}`, engineStatuses: [404, 422], headers: accept };
-    case "mask-fields":
+    case 'mask-fields':
       return { path: `/reports/${BOGUS_ID}`, engineStatuses: [404, 422], headers: accept };
-    case "audit-fields":
+    case 'audit-fields':
       return { path: `/notes/${BOGUS_ID}`, engineStatuses: [404, 422], headers: accept };
-    case "crm-jwt":
-    case "crm-forward":
+    case 'crm-jwt':
+    case 'crm-forward':
       return {
         path: `/leads/${BOGUS_ID}`,
         engineStatuses: [404],
         headers: { ...accept, authorization: `Bearer ${mintWarmupJwt()}` },
       };
-    case "crm-session":
+    case 'crm-session':
       return {
-        method: "POST",
-        path: "/sessions",
+        method: 'POST',
+        path: '/sessions',
         engineStatuses: [200],
-        headers: { ...accept, "content-type": "application/json" },
-        requestBody: { actorId: "potemkin-readiness", scopes: ["agent"] },
+        headers: { ...accept, 'content-type': 'application/json' },
+        requestBody: { actorId: 'potemkin-readiness', scopes: ['agent'] },
         bodyMatches: (body) =>
           body !== null &&
-          typeof body === "object" &&
+          typeof body === 'object' &&
           !Array.isArray(body) &&
-          (body as Record<string, unknown>)["csrfToken"] !== undefined &&
-          typeof (body as Record<string, unknown>)["csrfToken"] === "string" &&
-          typeof (body as Record<string, unknown>)["actor"] === "object" &&
-          (body as { actor: { id?: unknown } }).actor?.id === "potemkin-readiness",
+          (body as Record<string, unknown>)['csrfToken'] !== undefined &&
+          typeof (body as Record<string, unknown>)['csrfToken'] === 'string' &&
+          typeof (body as Record<string, unknown>)['actor'] === 'object' &&
+          (body as { actor: { id?: unknown } }).actor?.id === 'potemkin-readiness',
         responseHeadersMatch: (headers) =>
-          headers.get("set-cookie")?.startsWith("potemkin_sid=") === true,
+          headers.get('set-cookie')?.startsWith('potemkin_sid=') === true,
       };
     default:
       // A missing-entity 404 is not a sufficient readiness proof: a stale
@@ -309,14 +309,14 @@ function warmupProbeForFixture(fixtureName: string | undefined): WarmupProbe {
       // to the newly loaded CRM runtime. Require a known baseline response
       // whose identity cannot be produced by an unrelated generated example.
       return {
-        path: "/leads/00000000-0000-7000-8000-000000000010",
+        path: '/leads/00000000-0000-7000-8000-000000000010',
         engineStatuses: [200],
         headers: accept,
         bodyMatches: (body) =>
           body !== null &&
-          typeof body === "object" &&
+          typeof body === 'object' &&
           !Array.isArray(body) &&
-          (body as Record<string, unknown>)["id"] === "00000000-0000-7000-8000-000000000010",
+          (body as Record<string, unknown>)['id'] === '00000000-0000-7000-8000-000000000010',
       };
   }
 }
@@ -335,7 +335,7 @@ async function warmStubForwarding(
   customProbe?: WarmupProbe,
 ): Promise<boolean> {
   const {
-    method = "GET",
+    method = 'GET',
     path: p,
     engineStatuses,
     headers,
@@ -351,7 +351,7 @@ async function warmStubForwarding(
     try {
       const res = await fetch(`${stubUrl}${p}`, {
         method,
-        headers: { connection: "close", ...headers },
+        headers: { connection: 'close', ...headers },
         ...(requestBody === undefined ? {} : { body: JSON.stringify(requestBody) }),
       });
       // Drain the response before starting the next request. Cancelling the
@@ -443,7 +443,7 @@ interface E2eRegistry {
 
 const E2E_REGISTRY_PATH = path.join(
   os.tmpdir(),
-  `potemkin-e2e-session-${process.env["JEST_WORKER_ID"] ?? "0"}.json`,
+  `potemkin-e2e-session-${process.env['JEST_WORKER_ID'] ?? '0'}.json`,
 );
 
 function e2eProcessState(): E2eProcessState {
@@ -453,7 +453,7 @@ function e2eProcessState(): E2eProcessState {
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
 }
@@ -461,7 +461,7 @@ function asRecord(value: unknown): Record<string, unknown> {
 function absolutePatterns(patterns: unknown, cwd: string): unknown {
   return Array.isArray(patterns)
     ? patterns.map((pattern) =>
-        typeof pattern === "string" ? path.resolve(cwd, pattern) : pattern,
+        typeof pattern === 'string' ? path.resolve(cwd, pattern) : pattern,
       )
     : patterns;
 }
@@ -474,29 +474,29 @@ function normalizedConfiguration(
   sharedForwardConfig: Record<string, unknown>,
 ): string {
   const sourceDir = path.dirname(path.resolve(sourcePath));
-  const root = asRecord(yaml.load(fs.readFileSync(sourcePath, "utf8")));
-  root["specmatic"] = path.resolve(sourceDir, String(root["specmatic"] ?? "specmatic.yaml"));
-  root["modules"] = absolutePatterns(root["modules"], sourceDir);
-  root["openapi"] = absolutePatterns(root["openapi"] ?? [fallbackContractPath], sourceDir);
-  const typescript = asRecord(root["typescript"]);
-  const scan = Array.isArray(typescript["scan"])
-    ? typescript["scan"].map((entry) => {
+  const root = asRecord(yaml.load(fs.readFileSync(sourcePath, 'utf8')));
+  root['specmatic'] = path.resolve(sourceDir, String(root['specmatic'] ?? 'specmatic.yaml'));
+  root['modules'] = absolutePatterns(root['modules'], sourceDir);
+  root['openapi'] = absolutePatterns(root['openapi'] ?? [fallbackContractPath], sourceDir);
+  const typescript = asRecord(root['typescript']);
+  const scan = Array.isArray(typescript['scan'])
+    ? typescript['scan'].map((entry) => {
         const item = asRecord(entry);
         return {
           ...item,
-          include: absolutePatterns(item["include"], sourceDir),
-          ...(item["exclude"] === undefined
+          include: absolutePatterns(item['include'], sourceDir),
+          ...(item['exclude'] === undefined
             ? {}
-            : { exclude: absolutePatterns(item["exclude"], sourceDir) }),
+            : { exclude: absolutePatterns(item['exclude'], sourceDir) }),
         };
       })
     : undefined;
-  if (scan !== undefined) root["typescript"] = { ...typescript, scan };
-  const plugin = asRecord(root["plugin"]);
-  root["plugin"] = {
+  if (scan !== undefined) root['typescript'] = { ...typescript, scan };
+  const plugin = asRecord(root['plugin']);
+  root['plugin'] = {
     ...plugin,
     engine: {
-      ...asRecord(plugin["engine"]),
+      ...asRecord(plugin['engine']),
       url: `http://127.0.0.1:${enginePort}`,
       timeoutMs: 5_000,
     },
@@ -511,7 +511,7 @@ function sharedForwardConfig(pluginConfigYaml: string): Record<string, unknown> 
 }
 
 async function ensureEngineRunning(
-  session: Omit<SharedE2eSession, "reload" | "shutdown">,
+  session: Omit<SharedE2eSession, 'reload' | 'shutdown'>,
 ): Promise<void> {
   if (await probeUrl(`${session.engineUrl}/_engine/health`, 1_500)) return;
   await session.engine.restart(session.pluginControlUrl);
@@ -529,10 +529,10 @@ function processIsAlive(pid: number): boolean {
 
 function readRegistry(): E2eRegistry | undefined {
   try {
-    const parsed = JSON.parse(fs.readFileSync(E2E_REGISTRY_PATH, "utf8")) as E2eRegistry;
+    const parsed = JSON.parse(fs.readFileSync(E2E_REGISTRY_PATH, 'utf8')) as E2eRegistry;
     if (!processIsAlive(parsed.ownerPid) || !processIsAlive(parsed.jvmPid)) {
       try {
-        process.kill(parsed.jvmPid, "SIGTERM");
+        process.kill(parsed.jvmPid, 'SIGTERM');
       } catch {
         /* stale process */
       }
@@ -547,7 +547,7 @@ function readRegistry(): E2eRegistry | undefined {
 
 function readTransportObservations(filePath: string): RuntimeTransportObservation[] {
   try {
-    const value: unknown = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    const value: unknown = JSON.parse(fs.readFileSync(filePath, 'utf8'));
     return Array.isArray(value) ? (value as RuntimeTransportObservation[]) : [];
   } catch {
     return [];
@@ -556,7 +556,7 @@ function readTransportObservations(filePath: string): RuntimeTransportObservatio
 
 function readSharedArray<T>(filePath: string): T[] {
   try {
-    const value: unknown = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    const value: unknown = JSON.parse(fs.readFileSync(filePath, 'utf8'));
     return Array.isArray(value) ? (value as T[]) : [];
   } catch {
     return [];
@@ -564,7 +564,7 @@ function readSharedArray<T>(filePath: string): T[] {
 }
 
 function writeSharedArray<T>(filePath: string, values: readonly T[]): void {
-  fs.writeFileSync(filePath, JSON.stringify(values), "utf8");
+  fs.writeFileSync(filePath, JSON.stringify(values), 'utf8');
 }
 
 function writeConfiguration(filePath: string, contents: string): void {
@@ -573,7 +573,7 @@ function writeConfiguration(filePath: string, contents: string): void {
     `.${path.basename(filePath)}.${process.pid}.${Date.now()}.tmp`,
   );
   try {
-    fs.writeFileSync(temporaryPath, contents, "utf8");
+    fs.writeFileSync(temporaryPath, contents, 'utf8');
     fs.renameSync(temporaryPath, filePath);
   } catch (error) {
     try {
@@ -589,7 +589,7 @@ function writeTransportObservations(
   filePath: string,
   observations: readonly RuntimeTransportObservation[],
 ): void {
-  fs.writeFileSync(filePath, JSON.stringify(observations), "utf8");
+  fs.writeFileSync(filePath, JSON.stringify(observations), 'utf8');
 }
 
 function sharedObservations<T>(filePath: string, owner: boolean): T[] {
@@ -605,8 +605,8 @@ function sharedObservations<T>(filePath: string, owner: boolean): T[] {
       const value = Reflect.get(target, property, receiver);
       if (
         !owner &&
-        typeof value === "function" &&
-        (typeof property === "string" || typeof property === "symbol") &&
+        typeof value === 'function' &&
+        (typeof property === 'string' || typeof property === 'symbol') &&
         property in Array.prototype
       ) {
         return (...args: unknown[]) => {
@@ -622,7 +622,7 @@ function sharedObservations<T>(filePath: string, owner: boolean): T[] {
       if (
         !owner &&
         arrayOperationDepth === 0 &&
-        (property === "length" || (typeof property === "string" && /^\d+$/.test(property)))
+        (property === 'length' || (typeof property === 'string' && /^\d+$/.test(property)))
       ) {
         refresh();
       }
@@ -630,7 +630,7 @@ function sharedObservations<T>(filePath: string, owner: boolean): T[] {
     },
     set(target, property, value, receiver) {
       const result = Reflect.set(target, property, value, receiver);
-      if (!owner && property === "length") writeSharedArray(filePath, target);
+      if (!owner && property === 'length') writeSharedArray(filePath, target);
       return result;
     },
   });
@@ -656,8 +656,8 @@ function sharedTransportObservations(
       const value = Reflect.get(target, property, receiver);
       if (
         !owner &&
-        typeof value === "function" &&
-        (typeof property === "string" || typeof property === "symbol") &&
+        typeof value === 'function' &&
+        (typeof property === 'string' || typeof property === 'symbol') &&
         property in Array.prototype
       ) {
         return (...args: unknown[]) => {
@@ -673,7 +673,7 @@ function sharedTransportObservations(
       if (
         !owner &&
         arrayOperationDepth === 0 &&
-        (property === "length" || (typeof property === "string" && /^\d+$/.test(property)))
+        (property === 'length' || (typeof property === 'string' && /^\d+$/.test(property)))
       ) {
         refresh();
       }
@@ -681,7 +681,7 @@ function sharedTransportObservations(
     },
     set(target, property, value, receiver) {
       const result = Reflect.set(target, property, value, receiver);
-      if (property === "length") writeTransportObservations(filePath, target);
+      if (property === 'length') writeTransportObservations(filePath, target);
       return result;
     },
   });
@@ -703,7 +703,7 @@ function remoteEngine(registry: E2eRegistry): EngineHandle {
       return `http://127.0.0.1:${registry.enginePort}`;
     },
     get system(): never {
-      throw new Error("The shared engine runtime is owned by the booting Jest VM");
+      throw new Error('The shared engine runtime is owned by the booting Jest VM');
     },
     stop: async () => undefined,
     restart: async () => undefined,
@@ -717,7 +717,7 @@ async function connectToSharedSession(
   if (!(await probeUrl(`${engineUrl}/_engine/health`, 1_500))) return undefined;
   const forward = buildSharedForwardBlocks(E2E_FIXTURES);
   const reload = async (input: E2eReloadInput): Promise<boolean> => {
-    const fixture = input.fixtureName ?? "crm";
+    const fixture = input.fixtureName ?? 'crm';
     writeConfiguration(
       registry.configPath,
       normalizedConfiguration(
@@ -728,7 +728,7 @@ async function connectToSharedSession(
         sharedForwardConfig(forward.pluginConfigYaml),
       ),
     );
-    const response = await fetch(`${engineUrl}/_admin/force-reload`, { method: "POST" });
+    const response = await fetch(`${engineUrl}/_admin/force-reload`, { method: 'POST' });
     if (!response.ok)
       throw new Error(
         `Configuration reload failed with HTTP ${response.status}: ${await response.text()}`,
@@ -741,7 +741,7 @@ async function connectToSharedSession(
         : {
             path: input.warmupPath,
             engineStatuses: [input.warmupExpectedStatus ?? 404],
-            headers: { Accept: "application/json" },
+            headers: { Accept: 'application/json' },
           },
     );
   };
@@ -783,9 +783,9 @@ async function bootSharedE2eSession(): Promise<SharedE2eSession> {
   const enginePort = await getFreePort();
   const pluginControlPort = await getFreePort();
   const [specmaticJar, pluginJar, initialFixture] = await Promise.all([
-    ensureSpecmaticJar("2.46.2"),
+    ensureSpecmaticJar('2.46.2'),
     ensurePluginJar(),
-    loadEngineFixture("crm"),
+    loadEngineFixture('crm'),
   ]);
   const forward = buildSharedForwardBlocks(E2E_FIXTURES);
   const contractPaths = resolveAllContractPaths();
@@ -802,15 +802,15 @@ async function bootSharedE2eSession(): Promise<SharedE2eSession> {
       initialFixture.potemkinConfigPath,
       enginePort,
       pluginControlPort,
-      resolveContractPath("crm"),
+      resolveContractPath('crm'),
       sharedForwardConfig(forward.pluginConfigYaml),
     ),
-    "utf8",
+    'utf8',
   );
 
   const specmaticEnv: Record<string, string> = { POTEMKIN_CONFIG_PATH: configPath };
   if (forward.overlayFilePath !== undefined)
-    specmaticEnv["overlayFilePath"] = forward.overlayFilePath;
+    specmaticEnv['overlayFilePath'] = forward.overlayFilePath;
   let specmatic: SpecmaticHandle | undefined;
   let engine: EngineHandle | undefined;
   const transportObservations = sharedTransportObservations(observationPath, true);
@@ -845,7 +845,7 @@ async function bootSharedE2eSession(): Promise<SharedE2eSession> {
   };
   const requestResponseCapture = {
     maxBytes: 8_192,
-    redact: (_direction: "request" | "response", body: JsonValue | null) =>
+    redact: (_direction: 'request' | 'response', body: JsonValue | null) =>
       redactSensitiveBody(body),
   } as const;
   try {
@@ -853,16 +853,16 @@ async function bootSharedE2eSession(): Promise<SharedE2eSession> {
       enabled: true,
       env: {},
       otlpEndpoint: otlpCollector.url,
-      serviceName: "potemkin-e2e",
-      spanProcessor: "simple",
+      serviceName: 'potemkin-e2e',
+      spanProcessor: 'simple',
       metricExportIntervalMs: 100,
     });
     tracingShutdown = tracing.shutdown;
     const otelObserver = createRuntimeOtelRequestResponseObserver({
-      tracer: getTracer("potemkin-e2e"),
-      spanName: "potemkin.e2e.exchange",
+      tracer: tracing.tracer,
+      spanName: 'potemkin.e2e.exchange',
     });
-    const otelMetricObserver = createRuntimeOtelMetricObserver();
+    const otelMetricObserver = createRuntimeOtelMetricObserver(tracing.meter);
     const observeTransportAndExport = (observation: RuntimeTransportObservation): void => {
       observeTransportRequestResponse(observation);
       otelObserver(observation);
@@ -882,7 +882,7 @@ async function bootSharedE2eSession(): Promise<SharedE2eSession> {
       potemkinConfigPath: configPath,
       openapi: initialFixture.openapi,
       onConfigurationError: (error) =>
-        console.error("[potemkin watcher]", error instanceof Error ? error.message : String(error)),
+        console.error('[potemkin watcher]', error instanceof Error ? error.message : String(error)),
       observability: {
         observeTransportRequestResponse: observeTransportAndExport,
         requestResponseCapture,
@@ -933,7 +933,7 @@ async function bootSharedE2eSession(): Promise<SharedE2eSession> {
       await previous;
       try {
         await ensureEngineRunning(session);
-        const fixture = input.fixtureName ?? "crm";
+        const fixture = input.fixtureName ?? 'crm';
         writeConfiguration(
           session.configPath,
           normalizedConfiguration(
@@ -945,7 +945,7 @@ async function bootSharedE2eSession(): Promise<SharedE2eSession> {
           ),
         );
         const response = await fetch(`${session.engineUrl}/_admin/force-reload`, {
-          method: "POST",
+          method: 'POST',
         });
         if (!response.ok) {
           const body = await response.text();
@@ -959,7 +959,7 @@ async function bootSharedE2eSession(): Promise<SharedE2eSession> {
             : {
                 path: input.warmupPath,
                 engineStatuses: [input.warmupExpectedStatus ?? 404],
-                headers: { Accept: "application/json" },
+                headers: { Accept: 'application/json' },
               },
         );
       } finally {
@@ -967,7 +967,7 @@ async function bootSharedE2eSession(): Promise<SharedE2eSession> {
       }
     };
     const shutdown = async (): Promise<void> => {
-      process.removeListener("exit", exitCleanup);
+      process.removeListener('exit', exitCleanup);
       await session.engine.stop().catch(() => {
         /* best effort */
       });
@@ -1027,16 +1027,16 @@ async function bootSharedE2eSession(): Promise<SharedE2eSession> {
     const exitCleanup = (): void => {
       // Jest's globalTeardown runs in a separate process. Keep the JVM from
       // becoming an orphan when the worker exits normally.
-      runningSpecmatic.process.kill("SIGTERM");
+      runningSpecmatic.process.kill('SIGTERM');
       try {
         fs.unlinkSync(E2E_REGISTRY_PATH);
       } catch {
         /* best effort */
       }
     };
-    process.once("exit", exitCleanup);
+    process.once('exit', exitCleanup);
     const jvmPid = runningSpecmatic.process.pid;
-    if (jvmPid === undefined) throw new Error("Specmatic JVM did not expose a process id");
+    if (jvmPid === undefined) throw new Error('Specmatic JVM did not expose a process id');
     fs.writeFileSync(
       E2E_REGISTRY_PATH,
       JSON.stringify({
@@ -1055,9 +1055,9 @@ async function bootSharedE2eSession(): Promise<SharedE2eSession> {
           ? {}
           : { overlayFilePath: forward.overlayFilePath }),
       } satisfies E2eRegistry),
-      "utf8",
+      'utf8',
     );
-    specmatic.process.on("exit", () => {
+    specmatic.process.on('exit', () => {
       try {
         fs.unlinkSync(configPath);
       } catch {
@@ -1149,7 +1149,7 @@ export async function startE2eApp(opts: E2eAppOptions = {}): Promise<E2eApp> {
   const session = await state.sharedSession;
   const fixtureName = opts.fixtureName;
   const sourceConfigPath =
-    opts.potemkinConfigPath ?? path.join(resolveFixtureDir(fixtureName ?? "crm"), "potemkin.yml");
+    opts.potemkinConfigPath ?? path.join(resolveFixtureDir(fixtureName ?? 'crm'), 'potemkin.yml');
   const healthy = await session.reload({
     configPath: sourceConfigPath,
     ...(fixtureName === undefined ? {} : { fixtureName }),
@@ -1160,7 +1160,7 @@ export async function startE2eApp(opts: E2eAppOptions = {}): Promise<E2eApp> {
   });
   if (!healthy)
     throw new Error(
-      `Specmatic did not forward an engine-owned route for fixture ${fixtureName ?? "crm"}`,
+      `Specmatic did not forward an engine-owned route for fixture ${fixtureName ?? 'crm'}`,
     );
   // The health/warmup requests can finish their transport callbacks one tick
   // after the forwarding probe resolves. Leave each suite with a quiet,
@@ -1194,12 +1194,12 @@ export async function startE2eApp(opts: E2eAppOptions = {}): Promise<E2eApp> {
 function redactSensitiveBody(body: JsonValue | null): JsonValue | null {
   if (body === null) return null;
   if (Array.isArray(body)) return body.map((value) => redactSensitiveBody(value));
-  if (typeof body !== "object") return body;
+  if (typeof body !== 'object') return body;
   return Object.fromEntries(
     Object.entries(body).map(([key, value]) => [
       key,
-      ["authorization", "cardNumber", "password", "secret", "token"].includes(key)
-        ? "[REDACTED]"
+      ['authorization', 'cardNumber', 'password', 'secret', 'token'].includes(key)
+        ? '[REDACTED]'
         : redactSensitiveBody(value),
     ]),
   );

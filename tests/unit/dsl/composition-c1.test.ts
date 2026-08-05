@@ -17,13 +17,13 @@
  *  - Intra-component cross-reference: reducer on unknown event is rejected
  */
 
-import { compileYaml, parseComponent, parseUseMapping } from "../../../src/parser/yamlParser";
+import { compileYaml, parseComponent, parseUseMapping } from '../../../src/parser/yamlParser';
 import {
   validateBoundaryConfig,
   validateIncludeEntries,
   validateUseEntries,
-} from "../../../src/dsl/schema";
-import { BootError } from "../../../src/errors";
+} from '../../../src/dsl/schema';
+import { BootError } from '../../../src/errors';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -52,38 +52,38 @@ behaviors: []
 // 1. A kind: component file yields zero live boundaries
 // ---------------------------------------------------------------------------
 
-describe("component file classification", () => {
-  it("a kind: component module produces no entry in byBoundaryName", async () => {
+describe('component file classification', () => {
+  it('a kind: component module produces no entry in byBoundaryName', async () => {
     const compiled = await compileYaml(
       [], // no live boundary modules
       undefined,
-      [{ name: "document.yaml", yaml: minimalComponentYaml }],
+      [{ name: 'document.yaml', yaml: minimalComponentYaml }],
     );
 
     expect(Object.keys(compiled.byBoundaryName)).toHaveLength(0);
     expect(compiled.boundaries).toHaveLength(0);
   });
 
-  it("a kind: component module appears in compiled.components", async () => {
+  it('a kind: component module appears in compiled.components', async () => {
     const compiled = await compileYaml([], undefined, [
-      { name: "document.yaml", yaml: minimalComponentYaml },
+      { name: 'document.yaml', yaml: minimalComponentYaml },
     ]);
 
     expect(compiled.components).toBeDefined();
-    expect(compiled.components!["DocumentEntity"]).toBeDefined();
-    expect(compiled.components!["DocumentEntity"]!.kind).toBe("component");
-    expect(compiled.components!["DocumentEntity"]!.name).toBe("DocumentEntity");
+    expect(compiled.components!['DocumentEntity']).toBeDefined();
+    expect(compiled.components!['DocumentEntity']!.kind).toBe('component');
+    expect(compiled.components!['DocumentEntity']!.name).toBe('DocumentEntity');
   });
 
-  it("live boundary files still classify as boundaries alongside component files", async () => {
+  it('live boundary files still classify as boundaries alongside component files', async () => {
     const compiled = await compileYaml(
-      [{ name: "widget.yaml", yaml: minimalBoundaryYaml }],
+      [{ name: 'widget.yaml', yaml: minimalBoundaryYaml }],
       undefined,
-      [{ name: "document.yaml", yaml: minimalComponentYaml }],
+      [{ name: 'document.yaml', yaml: minimalComponentYaml }],
     );
 
     expect(compiled.boundaries).toHaveLength(1);
-    expect(compiled.byBoundaryName["Widget"]).toBeDefined();
+    expect(compiled.byBoundaryName['Widget']).toBeDefined();
     expect(Object.keys(compiled.components ?? {})).toHaveLength(1);
   });
 });
@@ -92,8 +92,8 @@ describe("component file classification", () => {
 // 2. parameters: block parsing
 // ---------------------------------------------------------------------------
 
-describe("parameters block", () => {
-  it("parses a component with typed parameters into ComponentDefinition", () => {
+describe('parameters block', () => {
+  it('parses a component with typed parameters into ComponentDefinition', () => {
     const yaml = `
 kind: component
 name: DocEntity
@@ -111,12 +111,12 @@ event_catalog: []
 `;
     const def = parseComponent(yaml);
     expect(def.parameters).toBeDefined();
-    expect(def.parameters!["initialStatus"]).toEqual({ type: "string", required: true });
-    expect(def.parameters!["statusField"]).toEqual({ type: "string", default: "status" });
-    expect(def.parameters!["maxRetries"]).toEqual({ type: "number", default: 3 });
+    expect(def.parameters!['initialStatus']).toEqual({ type: 'string', required: true });
+    expect(def.parameters!['statusField']).toEqual({ type: 'string', default: 'status' });
+    expect(def.parameters!['maxRetries']).toEqual({ type: 'number', default: 3 });
   });
 
-  it("throws BOOT_ERR_DSL_SYNTAX for an unknown parameter type keyword", () => {
+  it('throws BOOT_ERR_DSL_SYNTAX for an unknown parameter type keyword', () => {
     expect(() =>
       parseComponent(`
 kind: component
@@ -125,10 +125,10 @@ parameters:
   myField:
     type: integer
 `),
-    ).toThrow(expect.objectContaining({ code: "BOOT_ERR_DSL_SYNTAX" }));
+    ).toThrow(expect.objectContaining({ code: 'BOOT_ERR_DSL_SYNTAX' }));
   });
 
-  it("allows a parameter entry with neither default nor required (optional param)", () => {
+  it('allows a parameter entry with neither default nor required (optional param)', () => {
     const def = parseComponent(`
 kind: component
 name: Flexible
@@ -136,7 +136,7 @@ parameters:
   optionalField:
     type: boolean
 `);
-    expect(def.parameters!["optionalField"]).toEqual({ type: "boolean" });
+    expect(def.parameters!['optionalField']).toEqual({ type: 'boolean' });
   });
 });
 
@@ -144,7 +144,7 @@ parameters:
 // 3. use: grammar
 // ---------------------------------------------------------------------------
 
-describe("use: grammar", () => {
+describe('use: grammar', () => {
   // The component that the use: entries reference — must be supplied so the C3
   // linker can resolve and instantiate it. Parameters are not required here so
   // no `with:` values need to match declared required parameters.
@@ -159,7 +159,7 @@ reducers:
 behaviors: []
 `;
 
-  it("parses a use: array into UseEntry structures on the linked YAML program", async () => {
+  it('parses a use: array into UseEntry structures on the linked YAML program', async () => {
     const useMappingYaml = `
 use:
   - component: DocumentEntity
@@ -174,74 +174,74 @@ use:
     const compiled = await compileYaml(
       [],
       undefined,
-      [{ name: "document-entity.yaml", yaml: documentComponentYaml }],
-      [{ name: "simulation.yaml", yaml: useMappingYaml }],
+      [{ name: 'document-entity.yaml', yaml: documentComponentYaml }],
+      [{ name: 'simulation.yaml', yaml: useMappingYaml }],
     );
 
     // C3 linker resolved the use entries into concrete boundaries.
-    expect(compiled.byBoundaryName["Document"]).toBeDefined();
-    expect(compiled.byBoundaryName["ArchivedDocument"]).toBeDefined();
+    expect(compiled.byBoundaryName['Document']).toBeDefined();
+    expect(compiled.byBoundaryName['ArchivedDocument']).toBeDefined();
     // The raw use entries are still stashed for downstream consumers.
     expect(compiled.use).toBeDefined();
     expect(compiled.use!).toHaveLength(2);
     expect(compiled.use![0]).toMatchObject({
-      component: "DocumentEntity",
-      as: "Document",
-      contractPath: "/documents",
+      component: 'DocumentEntity',
+      as: 'Document',
+      contractPath: '/documents',
     });
     expect(compiled.use![1]).toMatchObject({
-      component: "DocumentEntity",
-      as: "ArchivedDocument",
-      contractPath: "/archived-documents",
-      bind: { SiblingAlias: "ConcreteTarget" },
+      component: 'DocumentEntity',
+      as: 'ArchivedDocument',
+      contractPath: '/archived-documents',
+      bind: { SiblingAlias: 'ConcreteTarget' },
     });
   });
 
   it('throws BOOT_ERR_DSL_SYNTAX for use entry missing "component"', () => {
-    expect(() => validateUseEntries([{ as: "Doc", contract_path: "/docs" }], "root")).toThrow(
-      expect.objectContaining({ code: "BOOT_ERR_DSL_SYNTAX" }),
+    expect(() => validateUseEntries([{ as: 'Doc', contract_path: '/docs' }], 'root')).toThrow(
+      expect.objectContaining({ code: 'BOOT_ERR_DSL_SYNTAX' }),
     );
   });
 
   it('throws BOOT_ERR_DSL_SYNTAX for use entry missing "as"', () => {
     expect(() =>
-      validateUseEntries([{ component: "DocEntity", contract_path: "/docs" }], "root"),
-    ).toThrow(expect.objectContaining({ code: "BOOT_ERR_DSL_SYNTAX" }));
+      validateUseEntries([{ component: 'DocEntity', contract_path: '/docs' }], 'root'),
+    ).toThrow(expect.objectContaining({ code: 'BOOT_ERR_DSL_SYNTAX' }));
   });
 
   it('throws BOOT_ERR_DSL_SYNTAX for use entry missing "contract_path"', () => {
-    expect(() => validateUseEntries([{ component: "DocEntity", as: "Doc" }], "root")).toThrow(
-      expect.objectContaining({ code: "BOOT_ERR_DSL_SYNTAX" }),
+    expect(() => validateUseEntries([{ component: 'DocEntity', as: 'Doc' }], 'root')).toThrow(
+      expect.objectContaining({ code: 'BOOT_ERR_DSL_SYNTAX' }),
     );
   });
 
-  it("throws BOOT_ERR_DSL_SYNTAX for unknown key on use: entry", () => {
+  it('throws BOOT_ERR_DSL_SYNTAX for unknown key on use: entry', () => {
     expect(() =>
       validateUseEntries(
-        [{ component: "DocEntity", as: "Doc", contract_path: "/docs", binds: { x: "y" } }],
-        "root",
+        [{ component: 'DocEntity', as: 'Doc', contract_path: '/docs', binds: { x: 'y' } }],
+        'root',
       ),
     ).toThrow(
       expect.objectContaining({
-        code: "BOOT_ERR_DSL_SYNTAX",
-        message: expect.stringContaining("binds"),
+        code: 'BOOT_ERR_DSL_SYNTAX',
+        message: expect.stringContaining('binds'),
       }),
     );
   });
 
-  it("accepts valid use: entry with all known keys", () => {
+  it('accepts valid use: entry with all known keys', () => {
     expect(() =>
       validateUseEntries(
         [
           {
-            component: "DocEntity",
-            as: "Doc",
-            contract_path: "/docs",
+            component: 'DocEntity',
+            as: 'Doc',
+            contract_path: '/docs',
             with: { x: 1 },
-            bind: { A: "B" },
+            bind: { A: 'B' },
           },
         ],
-        "root",
+        'root',
       ),
     ).not.toThrow();
   });
@@ -251,32 +251,32 @@ use:
 // 4. include: grammar
 // ---------------------------------------------------------------------------
 
-describe("include: grammar", () => {
-  it("parses include: entries on a live boundary config", () => {
+describe('include: grammar', () => {
+  it('parses include: entries on a live boundary config', () => {
     const cfg = validateBoundaryConfig({
-      boundary: "Document",
-      contract_path: "/documents",
+      boundary: 'Document',
+      contract_path: '/documents',
       behaviors: [],
       reducers: [],
       event_catalog: [],
-      include: [{ component: "AuditMixin", with: { actorField: "modifiedBy" } }],
+      include: [{ component: 'AuditMixin', with: { actorField: 'modifiedBy' } }],
     });
 
     expect(cfg.include).toBeDefined();
     expect(cfg.include!).toHaveLength(1);
     expect(cfg.include![0]).toMatchObject({
-      component: "AuditMixin",
-      with: { actorField: "modifiedBy" },
+      component: 'AuditMixin',
+      with: { actorField: 'modifiedBy' },
     });
   });
 
   it('throws BOOT_ERR_DSL_SYNTAX for include entry missing "component"', () => {
-    expect(() => validateIncludeEntries([{ with: { foo: "bar" } }], "root")).toThrow(
-      expect.objectContaining({ code: "BOOT_ERR_DSL_SYNTAX" }),
+    expect(() => validateIncludeEntries([{ with: { foo: 'bar' } }], 'root')).toThrow(
+      expect.objectContaining({ code: 'BOOT_ERR_DSL_SYNTAX' }),
     );
   });
 
-  it("parses include: on a component definition", () => {
+  it('parses include: on a component definition', () => {
     const def = parseComponent(`
 kind: component
 name: ComposedEntity
@@ -288,27 +288,27 @@ event_catalog: []
 `);
     expect(def.include).toBeDefined();
     expect(def.include![0]).toMatchObject({
-      component: "AuditMixin",
-      with: { actorField: "updatedBy" },
+      component: 'AuditMixin',
+      with: { actorField: 'updatedBy' },
     });
   });
 
-  it("throws BOOT_ERR_DSL_SYNTAX for unknown key on include: entry", () => {
+  it('throws BOOT_ERR_DSL_SYNTAX for unknown key on include: entry', () => {
     expect(() =>
-      validateIncludeEntries([{ component: "AuditMixin", bind: { x: "y" } }], "root"),
+      validateIncludeEntries([{ component: 'AuditMixin', bind: { x: 'y' } }], 'root'),
     ).toThrow(
       expect.objectContaining({
-        code: "BOOT_ERR_DSL_SYNTAX",
-        message: expect.stringContaining("bind"),
+        code: 'BOOT_ERR_DSL_SYNTAX',
+        message: expect.stringContaining('bind'),
       }),
     );
   });
 
-  it("accepts valid include: entry with only component and with", () => {
+  it('accepts valid include: entry with only component and with', () => {
     expect(() =>
       validateIncludeEntries(
-        [{ component: "AuditMixin", with: { actorField: "modifiedBy" } }],
-        "root",
+        [{ component: 'AuditMixin', with: { actorField: 'modifiedBy' } }],
+        'root',
       ),
     ).not.toThrow();
   });
@@ -318,14 +318,14 @@ event_catalog: []
 // 5. Unknown kind value
 // ---------------------------------------------------------------------------
 
-describe("unknown kind value", () => {
-  it("throws BOOT_ERR_DSL_SYNTAX for a file with an unrecognised kind", () => {
+describe('unknown kind value', () => {
+  it('throws BOOT_ERR_DSL_SYNTAX for a file with an unrecognised kind', () => {
     expect(() =>
       parseComponent(`
 kind: singleton
 name: Foo
 `),
-    ).toThrow(expect.objectContaining({ code: "BOOT_ERR_DSL_SYNTAX" }));
+    ).toThrow(expect.objectContaining({ code: 'BOOT_ERR_DSL_SYNTAX' }));
   });
 });
 
@@ -333,8 +333,8 @@ name: Foo
 // 6. Intra-component cross-reference validation (Phase-1)
 // ---------------------------------------------------------------------------
 
-describe("intra-component cross-reference validation", () => {
-  it("throws BOOT_ERR_DSL_REFERENCE when a component reducer references an unknown event", () => {
+describe('intra-component cross-reference validation', () => {
+  it('throws BOOT_ERR_DSL_REFERENCE when a component reducer references an unknown event', () => {
     expect(() =>
       parseComponent(`
 kind: component
@@ -348,7 +348,7 @@ reducers:
     ).toThrow(BootError);
   });
 
-  it("does not throw for a well-formed component with matching event refs", () => {
+  it('does not throw for a well-formed component with matching event refs', () => {
     expect(() =>
       parseComponent(`
 kind: component
@@ -367,8 +367,8 @@ reducers:
 // 7. parseUseMapping direct tests
 // ---------------------------------------------------------------------------
 
-describe("parseUseMapping", () => {
-  it("parses a standalone use-mapping YAML into UseEntry array", () => {
+describe('parseUseMapping', () => {
+  it('parses a standalone use-mapping YAML into UseEntry array', () => {
     const entries = parseUseMapping(`
 use:
   - component: Widget
@@ -377,15 +377,15 @@ use:
 `);
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({
-      component: "Widget",
-      as: "SmallWidget",
-      contractPath: "/small-widgets",
+      component: 'Widget',
+      as: 'SmallWidget',
+      contractPath: '/small-widgets',
     });
   });
 
-  it("throws BOOT_ERR_DSL_SYNTAX for an empty use array", () => {
-    expect(() => parseUseMapping("use: []")).toThrow(
-      expect.objectContaining({ code: "BOOT_ERR_DSL_SYNTAX" }),
+  it('throws BOOT_ERR_DSL_SYNTAX for an empty use array', () => {
+    expect(() => parseUseMapping('use: []')).toThrow(
+      expect.objectContaining({ code: 'BOOT_ERR_DSL_SYNTAX' }),
     );
   });
 });

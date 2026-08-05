@@ -1,4 +1,4 @@
-import type { EquivalenceRequest } from "./types.js";
+import type { EquivalenceRequest } from './types.js';
 
 export interface DependentRequest extends EquivalenceRequest {
   readonly dependsOn?: readonly number[];

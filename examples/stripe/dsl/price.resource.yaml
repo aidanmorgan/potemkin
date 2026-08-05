@@ -12,38 +12,38 @@ identity:
     generate: "$concat('price_', $uuidv7())"
 
 query_mapping:
-  product: "state.product == param"
-  active: "state.active == param"
+  product: 'state.product == param'
+  active: 'state.active == param'
 
 event_catalog:
   - type: PriceCreated
     payload_template:
-      id: "command.targetId"
+      id: 'command.targetId'
       object: "'price'"
-      created: "$unix()"
-      livemode: "false"
-      product: "command.payload.product"
-      unit_amount: "has(command.payload.unit_amount) ? command.payload.unit_amount : null"
-      currency: "command.payload.currency"
+      created: '$unix()'
+      livemode: 'false'
+      product: 'command.payload.product'
+      unit_amount: 'has(command.payload.unit_amount) ? command.payload.unit_amount : null'
+      currency: 'command.payload.currency'
       type: "'one_time'"
       billing_scheme: "'per_unit'"
-      active: "has(command.payload.active) ? command.payload.active : true"
-      nickname: "has(command.payload.nickname) ? command.payload.nickname : null"
-      metadata: "has(command.payload.metadata) ? command.payload.metadata : {}"
+      active: 'has(command.payload.active) ? command.payload.active : true'
+      nickname: 'has(command.payload.nickname) ? command.payload.nickname : null'
+      metadata: 'has(command.payload.metadata) ? command.payload.metadata : {}'
   - type: PriceUpdated
     payload_template:
-      active: "has(command.payload.active) ? command.payload.active : state.active"
-      nickname: "has(command.payload.nickname) ? command.payload.nickname : state.nickname"
-      metadata: "has(command.payload.metadata) ? command.payload.metadata : state.metadata"
+      active: 'has(command.payload.active) ? command.payload.active : state.active'
+      nickname: 'has(command.payload.nickname) ? command.payload.nickname : state.nickname'
+      metadata: 'has(command.payload.metadata) ? command.payload.metadata : state.metadata'
 
 reducers:
   - on: PriceCreated
     replace_state: true
   - on: PriceUpdated
     patches:
-      - { op: replace, path: /active, value: "${event.payload.active}" }
-      - { op: replace, path: /nickname, value: "${event.payload.nickname}" }
-      - { op: replace, path: /metadata, value: "${event.payload.metadata}" }
+      - { op: replace, path: /active, value: '${event.payload.active}' }
+      - { op: replace, path: /nickname, value: '${event.payload.nickname}' }
+      - { op: replace, path: /metadata, value: '${event.payload.metadata}' }
 
 operations:
   - { op: PostPrices, emit: PriceCreated }

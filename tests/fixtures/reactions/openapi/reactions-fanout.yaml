@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Reactions Fan-Out Example
-  version: "1.0.0"
+  version: '1.0.0'
 
 # Canonical example: one inbound operation fans out to >=3 boundaries via reactions,
 # with a chain 6 hops deep. Reactions are declared ONLY in the reacting boundaries'
@@ -38,12 +38,12 @@ paths:
                 qty:
                   type: number
       responses:
-        "201":
+        '201':
           description: Order created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Order"
+                $ref: '#/components/schemas/Order'
 
   /orders/{id}:
     get:
@@ -55,12 +55,12 @@ paths:
           schema:
             type: string
       responses:
-        "200":
+        '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Order"
+                $ref: '#/components/schemas/Order'
 
   /inventory/{id}:
     get:
@@ -72,12 +72,12 @@ paths:
           schema:
             type: string
       responses:
-        "200":
+        '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Inventory"
+                $ref: '#/components/schemas/Inventory'
 
   /notifications/{id}:
     get:
@@ -89,12 +89,12 @@ paths:
           schema:
             type: string
       responses:
-        "200":
+        '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Notification"
+                $ref: '#/components/schemas/Notification'
 
   /audits/{id}:
     get:
@@ -106,12 +106,12 @@ paths:
           schema:
             type: string
       responses:
-        "200":
+        '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Audit"
+                $ref: '#/components/schemas/Audit'
 
   /fulfillments/{id}:
     get:
@@ -123,12 +123,12 @@ paths:
           schema:
             type: string
       responses:
-        "200":
+        '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Fulfillment"
+                $ref: '#/components/schemas/Fulfillment'
 
   /shipping/{id}:
     get:
@@ -140,12 +140,12 @@ paths:
           schema:
             type: string
       responses:
-        "200":
+        '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Shipping"
+                $ref: '#/components/schemas/Shipping'
 
   /tracking/{id}:
     get:
@@ -157,12 +157,12 @@ paths:
           schema:
             type: string
       responses:
-        "200":
+        '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Tracking"
+                $ref: '#/components/schemas/Tracking'
 
   /dispatch/{id}:
     get:
@@ -174,12 +174,12 @@ paths:
           schema:
             type: string
       responses:
-        "200":
+        '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Dispatch"
+                $ref: '#/components/schemas/Dispatch'
 
   /analytics/{id}:
     get:
@@ -191,12 +191,12 @@ paths:
           schema:
             type: string
       responses:
-        "200":
+        '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Analytics"
+                $ref: '#/components/schemas/Analytics'
 
   /warehouses:
     post:
@@ -215,12 +215,12 @@ paths:
                 totalStock:
                   type: number
       responses:
-        "201":
+        '201':
           description: Warehouse initialised
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Warehouse"
+                $ref: '#/components/schemas/Warehouse'
 
   /warehouses/{id}:
     get:
@@ -232,12 +232,12 @@ paths:
           schema:
             type: string
       responses:
-        "200":
+        '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Warehouse"
+                $ref: '#/components/schemas/Warehouse'
 
 components:
   schemas:

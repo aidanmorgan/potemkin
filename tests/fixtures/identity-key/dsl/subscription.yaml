@@ -24,20 +24,20 @@ identity:
     pointer: accountId
   # Fallback when accountId is absent from the payload: auto-generate a UUIDv7.
   creation:
-    generate: "$uuidv7()"
+    generate: '$uuidv7()'
 
 event_catalog:
   - type: SubscriptionCreated
     payload_template:
-      id: "command.targetId"
-      plan: "command.payload.plan"
+      id: 'command.targetId'
+      plan: 'command.payload.plan'
       status: "'ACTIVE'"
 
 behaviors:
   - name: createSubscription
     match:
       operationId: createSubscription
-      condition: "true"
+      condition: 'true'
     emit: SubscriptionCreated
 
 reducers:
@@ -45,12 +45,12 @@ reducers:
     patches:
       - op: replace
         path: /id
-        value: "${event.payload.id}"
+        value: '${event.payload.id}'
       - op: replace
         path: /plan
-        value: "${event.payload.plan}"
+        value: '${event.payload.plan}'
       - op: replace
         path: /status
-        value: "${event.payload.status}"
+        value: '${event.payload.status}'
 
 initialization: []

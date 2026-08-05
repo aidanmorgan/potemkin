@@ -35,7 +35,7 @@ The fat-JAR bundles all transitive dependencies (OkHttp, Jackson, SnakeYAML, SLF
    Copy `potemkin-plugin.example.yaml` from the plugin's `src/main/resources/` directory as a starting point:
 
    ```yaml
-   backendUrl: "http://localhost:3000"
+   backendUrl: 'http://localhost:3000'
    forwardTimeoutMs: 5000
    discoveryRefreshOnFailureMs: 5000
    ```

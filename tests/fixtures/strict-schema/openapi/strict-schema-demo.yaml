@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Strict Schema Demo API
-  version: "1.0.0"
+  version: '1.0.0'
 paths:
   /order-items:
     post:
@@ -22,12 +22,12 @@ paths:
                 unitPrice:
                   type: number
       responses:
-        "201":
+        '201':
           description: Order item created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/OrderItem"
+                $ref: '#/components/schemas/OrderItem'
   /order-items/{id}:
     get:
       operationId: getOrderItem
@@ -39,18 +39,18 @@ paths:
           schema:
             type: string
       responses:
-        "200":
+        '200':
           description: Order item found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/OrderItem"
-        "404":
+                $ref: '#/components/schemas/OrderItem'
+        '404':
           description: Not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
 components:
   schemas:
     OrderItem:
@@ -69,7 +69,7 @@ components:
         lineTotal:
           type: number
     OrderItemById:
-      $ref: "#/components/schemas/OrderItem"
+      $ref: '#/components/schemas/OrderItem'
     Error:
       type: object
       required: [error]

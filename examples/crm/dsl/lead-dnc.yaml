@@ -6,7 +6,7 @@ audit_fields: true
 event_catalog:
   - type: LeadMarkedDNC
     payload_template:
-      dncAt: "$now()"
+      dncAt: '$now()'
       reason: "command.payload?.reason != null ? command.payload.reason : 'No reason given'"
 
 behaviors:
@@ -18,7 +18,7 @@ behaviors:
     match:
       operationId: dncLead
       method: POST
-      condition: "true"
+      condition: 'true'
       required_scopes:
         - manager
     emit: LeadMarkedDNC

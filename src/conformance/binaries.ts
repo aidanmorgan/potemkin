@@ -7,16 +7,16 @@
  *   ensurePluginJar()             — returns absolute path to plugin shadowJar
  */
 
-import * as fs from "node:fs";
-import * as path from "node:path";
-import * as https from "node:https";
-import * as http from "node:http";
-import * as url from "node:url";
-import { execSync, spawnSync } from "node:child_process";
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as https from 'node:https';
+import * as http from 'node:http';
+import * as url from 'node:url';
+import { execSync, spawnSync } from 'node:child_process';
 
-const CACHE_DIR = path.resolve(__dirname, "..", "..", ".cache");
-const PLUGIN_ROOT = path.resolve(__dirname, "..", "..", "plugin");
-const PLUGIN_JAR_PATH = path.join(PLUGIN_ROOT, "build", "libs", "potemkin-stateful-plugin.jar");
+const CACHE_DIR = path.resolve(__dirname, '..', '..', '.cache');
+const PLUGIN_ROOT = path.resolve(__dirname, '..', '..', 'plugin');
+const PLUGIN_JAR_PATH = path.join(PLUGIN_ROOT, 'build', 'libs', 'potemkin-stateful-plugin.jar');
 
 // ---------------------------------------------------------------------------
 // Java availability check
@@ -24,7 +24,7 @@ const PLUGIN_JAR_PATH = path.join(PLUGIN_ROOT, "build", "libs", "potemkin-statef
 
 export function javaAvailable(): boolean {
   try {
-    execSync("java -version", { stdio: "pipe" });
+    execSync('java -version', { stdio: 'pipe' });
     return true;
   } catch {
     return false;
@@ -39,7 +39,7 @@ async function downloadFile(downloadUrl: string, dest: string): Promise<void> {
   return new Promise((resolve, reject) => {
     function get(currentUrl: string): void {
       const parsed = new url.URL(currentUrl);
-      const transport = parsed.protocol === "https:" ? https : http;
+      const transport = parsed.protocol === 'https:' ? https : http;
 
       transport
         .get(currentUrl, (res) => {
@@ -60,30 +60,30 @@ async function downloadFile(downloadUrl: string, dest: string): Promise<void> {
             return;
           }
 
-          const tmpPath = dest + ".tmp";
+          const tmpPath = dest + '.tmp';
           const out = fs.createWriteStream(tmpPath);
           res.pipe(out);
-          out.on("finish", () => {
+          out.on('finish', () => {
             out.close(() => {
               fs.renameSync(tmpPath, dest);
               resolve();
             });
           });
-          out.on("error", (err) => {
+          out.on('error', (err) => {
             fs.unlinkSync(tmpPath);
             reject(err);
           });
         })
-        .on("error", reject);
+        .on('error', reject);
     }
 
     get(downloadUrl);
   });
 }
 
-export async function ensureSpecmaticJar(version = "2.46.2"): Promise<string> {
+export async function ensureSpecmaticJar(version = '2.46.2'): Promise<string> {
   if (!javaAvailable()) {
-    throw new Error("Java is not available on PATH — cannot run Specmatic");
+    throw new Error('Java is not available on PATH — cannot run Specmatic');
   }
 
   fs.mkdirSync(CACHE_DIR, { recursive: true });
@@ -108,19 +108,19 @@ export async function ensureSpecmaticJar(version = "2.46.2"): Promise<string> {
 
 export async function ensurePluginJar(): Promise<string> {
   if (!javaAvailable()) {
-    throw new Error("Java is not available on PATH — cannot build the plugin JAR");
+    throw new Error('Java is not available on PATH — cannot build the plugin JAR');
   }
 
   if (fs.existsSync(PLUGIN_JAR_PATH)) {
     return PLUGIN_JAR_PATH;
   }
 
-  console.log("[potemkin-conformance] Building plugin shadowJar…");
-  const gradleCmd = process.platform === "win32" ? "gradlew.bat" : "./gradlew";
-  const result = spawnSync(gradleCmd, ["shadowJar", "--no-daemon"], {
+  console.log('[potemkin-conformance] Building plugin shadowJar…');
+  const gradleCmd = process.platform === 'win32' ? 'gradlew.bat' : './gradlew';
+  const result = spawnSync(gradleCmd, ['shadowJar', '--no-daemon'], {
     cwd: PLUGIN_ROOT,
-    stdio: "inherit",
-    shell: process.platform === "win32",
+    stdio: 'inherit',
+    shell: process.platform === 'win32',
   });
 
   if (result.status !== 0) {

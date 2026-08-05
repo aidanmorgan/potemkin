@@ -16,14 +16,14 @@ identity:
 event_catalog:
   - type: RangedJobSubmitted
     payload_template:
-      id: "command.targetId"
-      name: "command.payload.name"
+      id: 'command.targetId'
+      name: 'command.payload.name'
 
 behaviors:
   - name: submitRangedJob
     match:
       operationId: submitRangedJob
-      condition: "true"
+      condition: 'true'
     emit: RangedJobSubmitted
 
 reducers:
@@ -31,9 +31,9 @@ reducers:
     patches:
       - op: replace
         path: /id
-        value: "${event.payload.id}"
+        value: '${event.payload.id}'
       - op: replace
         path: /name
-        value: "${event.payload.name}"
+        value: '${event.payload.name}'
 
 initialization: []

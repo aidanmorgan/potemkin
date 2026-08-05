@@ -9,4813 +9,4813 @@
  * actions in parser.ts). States: 95.
  */
 
-import type { ParseTables } from "./lalr.js";
+import type { ParseTables } from './lalr.js';
 
 export const TABLES: ParseTables = {
   stateCount: 95,
   action: [
     {
-      "!": {
-        type: "shift",
+      '!': {
+        type: 'shift',
         state: 9,
       },
-      "-": {
-        type: "shift",
+      '-': {
+        type: 'shift',
         state: 10,
       },
       NUMBER: {
-        type: "shift",
+        type: 'shift',
         state: 13,
       },
       STRING: {
-        type: "shift",
+        type: 'shift',
         state: 14,
       },
       BOOL: {
-        type: "shift",
+        type: 'shift',
         state: 15,
       },
       NULL: {
-        type: "shift",
+        type: 'shift',
         state: 16,
       },
       IDENT: {
-        type: "shift",
+        type: 'shift',
         state: 17,
       },
-      "(": {
-        type: "shift",
+      '(': {
+        type: 'shift',
         state: 18,
       },
-      "[": {
-        type: "shift",
+      '[': {
+        type: 'shift',
         state: 19,
       },
-      "{": {
-        type: "shift",
+      '{': {
+        type: 'shift',
         state: 20,
       },
     },
     {
       $end: {
-        type: "accept",
+        type: 'accept',
       },
     },
     {
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 0,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 0,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 0,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 0,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 0,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 0,
       },
     },
     {
-      "?": {
-        type: "shift",
+      '?': {
+        type: 'shift',
         state: 21,
       },
-      "||": {
-        type: "shift",
+      '||': {
+        type: 'shift',
         state: 22,
       },
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 1,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 1,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 1,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 1,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 1,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 1,
       },
     },
     {
-      "&&": {
-        type: "shift",
+      '&&': {
+        type: 'shift',
         state: 23,
       },
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 4,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 4,
       },
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 4,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 4,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 4,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 4,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 4,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 4,
       },
     },
     {
-      "==": {
-        type: "shift",
+      '==': {
+        type: 'shift',
         state: 24,
       },
-      "!=": {
-        type: "shift",
+      '!=': {
+        type: 'shift',
         state: 25,
       },
-      "<": {
-        type: "shift",
+      '<': {
+        type: 'shift',
         state: 26,
       },
-      "<=": {
-        type: "shift",
+      '<=': {
+        type: 'shift',
         state: 27,
       },
-      ">": {
-        type: "shift",
+      '>': {
+        type: 'shift',
         state: 28,
       },
-      ">=": {
-        type: "shift",
+      '>=': {
+        type: 'shift',
         state: 29,
       },
       in: {
-        type: "shift",
+        type: 'shift',
         state: 30,
       },
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 6,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 6,
       },
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 6,
       },
-      "&&": {
-        type: "reduce",
+      '&&': {
+        type: 'reduce',
         production: 6,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 6,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 6,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 6,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 6,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 6,
       },
     },
     {
-      "+": {
-        type: "shift",
+      '+': {
+        type: 'shift',
         state: 31,
       },
-      "-": {
-        type: "shift",
+      '-': {
+        type: 'shift',
         state: 32,
       },
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 14,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 14,
       },
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 14,
       },
-      "&&": {
-        type: "reduce",
+      '&&': {
+        type: 'reduce',
         production: 14,
       },
-      "==": {
-        type: "reduce",
+      '==': {
+        type: 'reduce',
         production: 14,
       },
-      "!=": {
-        type: "reduce",
+      '!=': {
+        type: 'reduce',
         production: 14,
       },
-      "<": {
-        type: "reduce",
+      '<': {
+        type: 'reduce',
         production: 14,
       },
-      "<=": {
-        type: "reduce",
+      '<=': {
+        type: 'reduce',
         production: 14,
       },
-      ">": {
-        type: "reduce",
+      '>': {
+        type: 'reduce',
         production: 14,
       },
-      ">=": {
-        type: "reduce",
+      '>=': {
+        type: 'reduce',
         production: 14,
       },
       in: {
-        type: "reduce",
+        type: 'reduce',
         production: 14,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 14,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 14,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 14,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 14,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 14,
       },
     },
     {
-      "*": {
-        type: "shift",
+      '*': {
+        type: 'shift',
         state: 33,
       },
-      "/": {
-        type: "shift",
+      '/': {
+        type: 'shift',
         state: 34,
       },
-      "%": {
-        type: "shift",
+      '%': {
+        type: 'shift',
         state: 35,
       },
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 17,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 17,
       },
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 17,
       },
-      "&&": {
-        type: "reduce",
+      '&&': {
+        type: 'reduce',
         production: 17,
       },
-      "==": {
-        type: "reduce",
+      '==': {
+        type: 'reduce',
         production: 17,
       },
-      "!=": {
-        type: "reduce",
+      '!=': {
+        type: 'reduce',
         production: 17,
       },
-      "<": {
-        type: "reduce",
+      '<': {
+        type: 'reduce',
         production: 17,
       },
-      "<=": {
-        type: "reduce",
+      '<=': {
+        type: 'reduce',
         production: 17,
       },
-      ">": {
-        type: "reduce",
+      '>': {
+        type: 'reduce',
         production: 17,
       },
-      ">=": {
-        type: "reduce",
+      '>=': {
+        type: 'reduce',
         production: 17,
       },
       in: {
-        type: "reduce",
+        type: 'reduce',
         production: 17,
       },
-      "+": {
-        type: "reduce",
+      '+': {
+        type: 'reduce',
         production: 17,
       },
-      "-": {
-        type: "reduce",
+      '-': {
+        type: 'reduce',
         production: 17,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 17,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 17,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 17,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 17,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 17,
       },
     },
     {
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 21,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 21,
       },
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 21,
       },
-      "&&": {
-        type: "reduce",
+      '&&': {
+        type: 'reduce',
         production: 21,
       },
-      "==": {
-        type: "reduce",
+      '==': {
+        type: 'reduce',
         production: 21,
       },
-      "!=": {
-        type: "reduce",
+      '!=': {
+        type: 'reduce',
         production: 21,
       },
-      "<": {
-        type: "reduce",
+      '<': {
+        type: 'reduce',
         production: 21,
       },
-      "<=": {
-        type: "reduce",
+      '<=': {
+        type: 'reduce',
         production: 21,
       },
-      ">": {
-        type: "reduce",
+      '>': {
+        type: 'reduce',
         production: 21,
       },
-      ">=": {
-        type: "reduce",
+      '>=': {
+        type: 'reduce',
         production: 21,
       },
       in: {
-        type: "reduce",
+        type: 'reduce',
         production: 21,
       },
-      "+": {
-        type: "reduce",
+      '+': {
+        type: 'reduce',
         production: 21,
       },
-      "-": {
-        type: "reduce",
+      '-': {
+        type: 'reduce',
         production: 21,
       },
-      "*": {
-        type: "reduce",
+      '*': {
+        type: 'reduce',
         production: 21,
       },
-      "/": {
-        type: "reduce",
+      '/': {
+        type: 'reduce',
         production: 21,
       },
-      "%": {
-        type: "reduce",
+      '%': {
+        type: 'reduce',
         production: 21,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 21,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 21,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 21,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 21,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 21,
       },
     },
     {
-      "!": {
-        type: "shift",
+      '!': {
+        type: 'shift',
         state: 9,
       },
-      "-": {
-        type: "shift",
+      '-': {
+        type: 'shift',
         state: 10,
       },
       NUMBER: {
-        type: "shift",
+        type: 'shift',
         state: 13,
       },
       STRING: {
-        type: "shift",
+        type: 'shift',
         state: 14,
       },
       BOOL: {
-        type: "shift",
+        type: 'shift',
         state: 15,
       },
       NULL: {
-        type: "shift",
+        type: 'shift',
         state: 16,
       },
       IDENT: {
-        type: "shift",
+        type: 'shift',
         state: 17,
       },
-      "(": {
-        type: "shift",
+      '(': {
+        type: 'shift',
         state: 18,
       },
-      "[": {
-        type: "shift",
+      '[': {
+        type: 'shift',
         state: 19,
       },
-      "{": {
-        type: "shift",
+      '{': {
+        type: 'shift',
         state: 20,
       },
     },
     {
-      "!": {
-        type: "shift",
+      '!': {
+        type: 'shift',
         state: 9,
       },
-      "-": {
-        type: "shift",
+      '-': {
+        type: 'shift',
         state: 10,
       },
       NUMBER: {
-        type: "shift",
+        type: 'shift',
         state: 13,
       },
       STRING: {
-        type: "shift",
+        type: 'shift',
         state: 14,
       },
       BOOL: {
-        type: "shift",
+        type: 'shift',
         state: 15,
       },
       NULL: {
-        type: "shift",
+        type: 'shift',
         state: 16,
       },
       IDENT: {
-        type: "shift",
+        type: 'shift',
         state: 17,
       },
-      "(": {
-        type: "shift",
+      '(': {
+        type: 'shift',
         state: 18,
       },
-      "[": {
-        type: "shift",
+      '[': {
+        type: 'shift',
         state: 19,
       },
-      "{": {
-        type: "shift",
+      '{': {
+        type: 'shift',
         state: 20,
       },
     },
     {
-      ".": {
-        type: "shift",
+      '.': {
+        type: 'shift',
         state: 38,
       },
-      "?.": {
-        type: "shift",
+      '?.': {
+        type: 'shift',
         state: 39,
       },
-      "[": {
-        type: "shift",
+      '[': {
+        type: 'shift',
         state: 40,
       },
-      "?[": {
-        type: "shift",
+      '?[': {
+        type: 'shift',
         state: 41,
       },
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 24,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 24,
       },
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 24,
       },
-      "&&": {
-        type: "reduce",
+      '&&': {
+        type: 'reduce',
         production: 24,
       },
-      "==": {
-        type: "reduce",
+      '==': {
+        type: 'reduce',
         production: 24,
       },
-      "!=": {
-        type: "reduce",
+      '!=': {
+        type: 'reduce',
         production: 24,
       },
-      "<": {
-        type: "reduce",
+      '<': {
+        type: 'reduce',
         production: 24,
       },
-      "<=": {
-        type: "reduce",
+      '<=': {
+        type: 'reduce',
         production: 24,
       },
-      ">": {
-        type: "reduce",
+      '>': {
+        type: 'reduce',
         production: 24,
       },
-      ">=": {
-        type: "reduce",
+      '>=': {
+        type: 'reduce',
         production: 24,
       },
       in: {
-        type: "reduce",
+        type: 'reduce',
         production: 24,
       },
-      "+": {
-        type: "reduce",
+      '+': {
+        type: 'reduce',
         production: 24,
       },
-      "-": {
-        type: "reduce",
+      '-': {
+        type: 'reduce',
         production: 24,
       },
-      "*": {
-        type: "reduce",
+      '*': {
+        type: 'reduce',
         production: 24,
       },
-      "/": {
-        type: "reduce",
+      '/': {
+        type: 'reduce',
         production: 24,
       },
-      "%": {
-        type: "reduce",
+      '%': {
+        type: 'reduce',
         production: 24,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 24,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 24,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 24,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 24,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 24,
       },
     },
     {
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 25,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 25,
       },
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 25,
       },
-      "&&": {
-        type: "reduce",
+      '&&': {
+        type: 'reduce',
         production: 25,
       },
-      "==": {
-        type: "reduce",
+      '==': {
+        type: 'reduce',
         production: 25,
       },
-      "!=": {
-        type: "reduce",
+      '!=': {
+        type: 'reduce',
         production: 25,
       },
-      "<": {
-        type: "reduce",
+      '<': {
+        type: 'reduce',
         production: 25,
       },
-      "<=": {
-        type: "reduce",
+      '<=': {
+        type: 'reduce',
         production: 25,
       },
-      ">": {
-        type: "reduce",
+      '>': {
+        type: 'reduce',
         production: 25,
       },
-      ">=": {
-        type: "reduce",
+      '>=': {
+        type: 'reduce',
         production: 25,
       },
       in: {
-        type: "reduce",
+        type: 'reduce',
         production: 25,
       },
-      "+": {
-        type: "reduce",
+      '+': {
+        type: 'reduce',
         production: 25,
       },
-      "-": {
-        type: "reduce",
+      '-': {
+        type: 'reduce',
         production: 25,
       },
-      "*": {
-        type: "reduce",
+      '*': {
+        type: 'reduce',
         production: 25,
       },
-      "/": {
-        type: "reduce",
+      '/': {
+        type: 'reduce',
         production: 25,
       },
-      "%": {
-        type: "reduce",
+      '%': {
+        type: 'reduce',
         production: 25,
       },
-      ".": {
-        type: "reduce",
+      '.': {
+        type: 'reduce',
         production: 25,
       },
-      "?.": {
-        type: "reduce",
+      '?.': {
+        type: 'reduce',
         production: 25,
       },
-      "[": {
-        type: "reduce",
+      '[': {
+        type: 'reduce',
         production: 25,
       },
-      "?[": {
-        type: "reduce",
+      '?[': {
+        type: 'reduce',
         production: 25,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 25,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 25,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 25,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 25,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 25,
       },
     },
     {
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 32,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 32,
       },
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 32,
       },
-      "&&": {
-        type: "reduce",
+      '&&': {
+        type: 'reduce',
         production: 32,
       },
-      "==": {
-        type: "reduce",
+      '==': {
+        type: 'reduce',
         production: 32,
       },
-      "!=": {
-        type: "reduce",
+      '!=': {
+        type: 'reduce',
         production: 32,
       },
-      "<": {
-        type: "reduce",
+      '<': {
+        type: 'reduce',
         production: 32,
       },
-      "<=": {
-        type: "reduce",
+      '<=': {
+        type: 'reduce',
         production: 32,
       },
-      ">": {
-        type: "reduce",
+      '>': {
+        type: 'reduce',
         production: 32,
       },
-      ">=": {
-        type: "reduce",
+      '>=': {
+        type: 'reduce',
         production: 32,
       },
       in: {
-        type: "reduce",
+        type: 'reduce',
         production: 32,
       },
-      "+": {
-        type: "reduce",
+      '+': {
+        type: 'reduce',
         production: 32,
       },
-      "-": {
-        type: "reduce",
+      '-': {
+        type: 'reduce',
         production: 32,
       },
-      "*": {
-        type: "reduce",
+      '*': {
+        type: 'reduce',
         production: 32,
       },
-      "/": {
-        type: "reduce",
+      '/': {
+        type: 'reduce',
         production: 32,
       },
-      "%": {
-        type: "reduce",
+      '%': {
+        type: 'reduce',
         production: 32,
       },
-      ".": {
-        type: "reduce",
+      '.': {
+        type: 'reduce',
         production: 32,
       },
-      "?.": {
-        type: "reduce",
+      '?.': {
+        type: 'reduce',
         production: 32,
       },
-      "[": {
-        type: "reduce",
+      '[': {
+        type: 'reduce',
         production: 32,
       },
-      "?[": {
-        type: "reduce",
+      '?[': {
+        type: 'reduce',
         production: 32,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 32,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 32,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 32,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 32,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 32,
       },
     },
     {
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 33,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 33,
       },
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 33,
       },
-      "&&": {
-        type: "reduce",
+      '&&': {
+        type: 'reduce',
         production: 33,
       },
-      "==": {
-        type: "reduce",
+      '==': {
+        type: 'reduce',
         production: 33,
       },
-      "!=": {
-        type: "reduce",
+      '!=': {
+        type: 'reduce',
         production: 33,
       },
-      "<": {
-        type: "reduce",
+      '<': {
+        type: 'reduce',
         production: 33,
       },
-      "<=": {
-        type: "reduce",
+      '<=': {
+        type: 'reduce',
         production: 33,
       },
-      ">": {
-        type: "reduce",
+      '>': {
+        type: 'reduce',
         production: 33,
       },
-      ">=": {
-        type: "reduce",
+      '>=': {
+        type: 'reduce',
         production: 33,
       },
       in: {
-        type: "reduce",
+        type: 'reduce',
         production: 33,
       },
-      "+": {
-        type: "reduce",
+      '+': {
+        type: 'reduce',
         production: 33,
       },
-      "-": {
-        type: "reduce",
+      '-': {
+        type: 'reduce',
         production: 33,
       },
-      "*": {
-        type: "reduce",
+      '*': {
+        type: 'reduce',
         production: 33,
       },
-      "/": {
-        type: "reduce",
+      '/': {
+        type: 'reduce',
         production: 33,
       },
-      "%": {
-        type: "reduce",
+      '%': {
+        type: 'reduce',
         production: 33,
       },
-      ".": {
-        type: "reduce",
+      '.': {
+        type: 'reduce',
         production: 33,
       },
-      "?.": {
-        type: "reduce",
+      '?.': {
+        type: 'reduce',
         production: 33,
       },
-      "[": {
-        type: "reduce",
+      '[': {
+        type: 'reduce',
         production: 33,
       },
-      "?[": {
-        type: "reduce",
+      '?[': {
+        type: 'reduce',
         production: 33,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 33,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 33,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 33,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 33,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 33,
       },
     },
     {
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 34,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 34,
       },
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 34,
       },
-      "&&": {
-        type: "reduce",
+      '&&': {
+        type: 'reduce',
         production: 34,
       },
-      "==": {
-        type: "reduce",
+      '==': {
+        type: 'reduce',
         production: 34,
       },
-      "!=": {
-        type: "reduce",
+      '!=': {
+        type: 'reduce',
         production: 34,
       },
-      "<": {
-        type: "reduce",
+      '<': {
+        type: 'reduce',
         production: 34,
       },
-      "<=": {
-        type: "reduce",
+      '<=': {
+        type: 'reduce',
         production: 34,
       },
-      ">": {
-        type: "reduce",
+      '>': {
+        type: 'reduce',
         production: 34,
       },
-      ">=": {
-        type: "reduce",
+      '>=': {
+        type: 'reduce',
         production: 34,
       },
       in: {
-        type: "reduce",
+        type: 'reduce',
         production: 34,
       },
-      "+": {
-        type: "reduce",
+      '+': {
+        type: 'reduce',
         production: 34,
       },
-      "-": {
-        type: "reduce",
+      '-': {
+        type: 'reduce',
         production: 34,
       },
-      "*": {
-        type: "reduce",
+      '*': {
+        type: 'reduce',
         production: 34,
       },
-      "/": {
-        type: "reduce",
+      '/': {
+        type: 'reduce',
         production: 34,
       },
-      "%": {
-        type: "reduce",
+      '%': {
+        type: 'reduce',
         production: 34,
       },
-      ".": {
-        type: "reduce",
+      '.': {
+        type: 'reduce',
         production: 34,
       },
-      "?.": {
-        type: "reduce",
+      '?.': {
+        type: 'reduce',
         production: 34,
       },
-      "[": {
-        type: "reduce",
+      '[': {
+        type: 'reduce',
         production: 34,
       },
-      "?[": {
-        type: "reduce",
+      '?[': {
+        type: 'reduce',
         production: 34,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 34,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 34,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 34,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 34,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 34,
       },
     },
     {
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 35,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 35,
       },
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 35,
       },
-      "&&": {
-        type: "reduce",
+      '&&': {
+        type: 'reduce',
         production: 35,
       },
-      "==": {
-        type: "reduce",
+      '==': {
+        type: 'reduce',
         production: 35,
       },
-      "!=": {
-        type: "reduce",
+      '!=': {
+        type: 'reduce',
         production: 35,
       },
-      "<": {
-        type: "reduce",
+      '<': {
+        type: 'reduce',
         production: 35,
       },
-      "<=": {
-        type: "reduce",
+      '<=': {
+        type: 'reduce',
         production: 35,
       },
-      ">": {
-        type: "reduce",
+      '>': {
+        type: 'reduce',
         production: 35,
       },
-      ">=": {
-        type: "reduce",
+      '>=': {
+        type: 'reduce',
         production: 35,
       },
       in: {
-        type: "reduce",
+        type: 'reduce',
         production: 35,
       },
-      "+": {
-        type: "reduce",
+      '+': {
+        type: 'reduce',
         production: 35,
       },
-      "-": {
-        type: "reduce",
+      '-': {
+        type: 'reduce',
         production: 35,
       },
-      "*": {
-        type: "reduce",
+      '*': {
+        type: 'reduce',
         production: 35,
       },
-      "/": {
-        type: "reduce",
+      '/': {
+        type: 'reduce',
         production: 35,
       },
-      "%": {
-        type: "reduce",
+      '%': {
+        type: 'reduce',
         production: 35,
       },
-      ".": {
-        type: "reduce",
+      '.': {
+        type: 'reduce',
         production: 35,
       },
-      "?.": {
-        type: "reduce",
+      '?.': {
+        type: 'reduce',
         production: 35,
       },
-      "[": {
-        type: "reduce",
+      '[': {
+        type: 'reduce',
         production: 35,
       },
-      "?[": {
-        type: "reduce",
+      '?[': {
+        type: 'reduce',
         production: 35,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 35,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 35,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 35,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 35,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 35,
       },
     },
     {
-      "(": {
-        type: "shift",
+      '(': {
+        type: 'shift',
         state: 42,
       },
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 36,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 36,
       },
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 36,
       },
-      "&&": {
-        type: "reduce",
+      '&&': {
+        type: 'reduce',
         production: 36,
       },
-      "==": {
-        type: "reduce",
+      '==': {
+        type: 'reduce',
         production: 36,
       },
-      "!=": {
-        type: "reduce",
+      '!=': {
+        type: 'reduce',
         production: 36,
       },
-      "<": {
-        type: "reduce",
+      '<': {
+        type: 'reduce',
         production: 36,
       },
-      "<=": {
-        type: "reduce",
+      '<=': {
+        type: 'reduce',
         production: 36,
       },
-      ">": {
-        type: "reduce",
+      '>': {
+        type: 'reduce',
         production: 36,
       },
-      ">=": {
-        type: "reduce",
+      '>=': {
+        type: 'reduce',
         production: 36,
       },
       in: {
-        type: "reduce",
+        type: 'reduce',
         production: 36,
       },
-      "+": {
-        type: "reduce",
+      '+': {
+        type: 'reduce',
         production: 36,
       },
-      "-": {
-        type: "reduce",
+      '-': {
+        type: 'reduce',
         production: 36,
       },
-      "*": {
-        type: "reduce",
+      '*': {
+        type: 'reduce',
         production: 36,
       },
-      "/": {
-        type: "reduce",
+      '/': {
+        type: 'reduce',
         production: 36,
       },
-      "%": {
-        type: "reduce",
+      '%': {
+        type: 'reduce',
         production: 36,
       },
-      ".": {
-        type: "reduce",
+      '.': {
+        type: 'reduce',
         production: 36,
       },
-      "?.": {
-        type: "reduce",
+      '?.': {
+        type: 'reduce',
         production: 36,
       },
-      "[": {
-        type: "reduce",
+      '[': {
+        type: 'reduce',
         production: 36,
       },
-      "?[": {
-        type: "reduce",
+      '?[': {
+        type: 'reduce',
         production: 36,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 36,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 36,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 36,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 36,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 36,
       },
     },
     {
-      "!": {
-        type: "shift",
+      '!': {
+        type: 'shift',
         state: 9,
       },
-      "-": {
-        type: "shift",
+      '-': {
+        type: 'shift',
         state: 10,
       },
       NUMBER: {
-        type: "shift",
+        type: 'shift',
         state: 13,
       },
       STRING: {
-        type: "shift",
+        type: 'shift',
         state: 14,
       },
       BOOL: {
-        type: "shift",
+        type: 'shift',
         state: 15,
       },
       NULL: {
-        type: "shift",
+        type: 'shift',
         state: 16,
       },
       IDENT: {
-        type: "shift",
+        type: 'shift',
         state: 17,
       },
-      "(": {
-        type: "shift",
+      '(': {
+        type: 'shift',
         state: 18,
       },
-      "[": {
-        type: "shift",
+      '[': {
+        type: 'shift',
         state: 19,
       },
-      "{": {
-        type: "shift",
+      '{': {
+        type: 'shift',
         state: 20,
       },
     },
     {
-      "!": {
-        type: "shift",
+      '!': {
+        type: 'shift',
         state: 9,
       },
-      "-": {
-        type: "shift",
+      '-': {
+        type: 'shift',
         state: 10,
       },
       NUMBER: {
-        type: "shift",
+        type: 'shift',
         state: 13,
       },
       STRING: {
-        type: "shift",
+        type: 'shift',
         state: 14,
       },
       BOOL: {
-        type: "shift",
+        type: 'shift',
         state: 15,
       },
       NULL: {
-        type: "shift",
+        type: 'shift',
         state: 16,
       },
       IDENT: {
-        type: "shift",
+        type: 'shift',
         state: 17,
       },
-      "(": {
-        type: "shift",
+      '(': {
+        type: 'shift',
         state: 18,
       },
-      "[": {
-        type: "shift",
+      '[': {
+        type: 'shift',
         state: 19,
       },
-      "{": {
-        type: "shift",
+      '{': {
+        type: 'shift',
         state: 20,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 46,
       },
     },
     {
-      "!": {
-        type: "shift",
+      '!': {
+        type: 'shift',
         state: 9,
       },
-      "-": {
-        type: "shift",
+      '-': {
+        type: 'shift',
         state: 10,
       },
       NUMBER: {
-        type: "shift",
+        type: 'shift',
         state: 13,
       },
       STRING: {
-        type: "shift",
+        type: 'shift',
         state: 14,
       },
       BOOL: {
-        type: "shift",
+        type: 'shift',
         state: 15,
       },
       NULL: {
-        type: "shift",
+        type: 'shift',
         state: 16,
       },
       IDENT: {
-        type: "shift",
+        type: 'shift',
         state: 17,
       },
-      "(": {
-        type: "shift",
+      '(': {
+        type: 'shift',
         state: 18,
       },
-      "[": {
-        type: "shift",
+      '[': {
+        type: 'shift',
         state: 19,
       },
-      "{": {
-        type: "shift",
+      '{': {
+        type: 'shift',
         state: 20,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 51,
       },
     },
     {
-      "!": {
-        type: "shift",
+      '!': {
+        type: 'shift',
         state: 9,
       },
-      "-": {
-        type: "shift",
+      '-': {
+        type: 'shift',
         state: 10,
       },
       NUMBER: {
-        type: "shift",
+        type: 'shift',
         state: 13,
       },
       STRING: {
-        type: "shift",
+        type: 'shift',
         state: 14,
       },
       BOOL: {
-        type: "shift",
+        type: 'shift',
         state: 15,
       },
       NULL: {
-        type: "shift",
+        type: 'shift',
         state: 16,
       },
       IDENT: {
-        type: "shift",
+        type: 'shift',
         state: 17,
       },
-      "(": {
-        type: "shift",
+      '(': {
+        type: 'shift',
         state: 18,
       },
-      "[": {
-        type: "shift",
+      '[': {
+        type: 'shift',
         state: 19,
       },
-      "{": {
-        type: "shift",
+      '{': {
+        type: 'shift',
         state: 20,
       },
     },
     {
-      "!": {
-        type: "shift",
+      '!': {
+        type: 'shift',
         state: 9,
       },
-      "-": {
-        type: "shift",
+      '-': {
+        type: 'shift',
         state: 10,
       },
       NUMBER: {
-        type: "shift",
+        type: 'shift',
         state: 13,
       },
       STRING: {
-        type: "shift",
+        type: 'shift',
         state: 14,
       },
       BOOL: {
-        type: "shift",
+        type: 'shift',
         state: 15,
       },
       NULL: {
-        type: "shift",
+        type: 'shift',
         state: 16,
       },
       IDENT: {
-        type: "shift",
+        type: 'shift',
         state: 17,
       },
-      "(": {
-        type: "shift",
+      '(': {
+        type: 'shift',
         state: 18,
       },
-      "[": {
-        type: "shift",
+      '[': {
+        type: 'shift',
         state: 19,
       },
-      "{": {
-        type: "shift",
+      '{': {
+        type: 'shift',
         state: 20,
       },
     },
     {
-      "!": {
-        type: "shift",
+      '!': {
+        type: 'shift',
         state: 9,
       },
-      "-": {
-        type: "shift",
+      '-': {
+        type: 'shift',
         state: 10,
       },
       NUMBER: {
-        type: "shift",
+        type: 'shift',
         state: 13,
       },
       STRING: {
-        type: "shift",
+        type: 'shift',
         state: 14,
       },
       BOOL: {
-        type: "shift",
+        type: 'shift',
         state: 15,
       },
       NULL: {
-        type: "shift",
+        type: 'shift',
         state: 16,
       },
       IDENT: {
-        type: "shift",
+        type: 'shift',
         state: 17,
       },
-      "(": {
-        type: "shift",
+      '(': {
+        type: 'shift',
         state: 18,
       },
-      "[": {
-        type: "shift",
+      '[': {
+        type: 'shift',
         state: 19,
       },
-      "{": {
-        type: "shift",
+      '{': {
+        type: 'shift',
         state: 20,
       },
     },
     {
-      "!": {
-        type: "shift",
+      '!': {
+        type: 'shift',
         state: 9,
       },
-      "-": {
-        type: "shift",
+      '-': {
+        type: 'shift',
         state: 10,
       },
       NUMBER: {
-        type: "shift",
+        type: 'shift',
         state: 13,
       },
       STRING: {
-        type: "shift",
+        type: 'shift',
         state: 14,
       },
       BOOL: {
-        type: "shift",
+        type: 'shift',
         state: 15,
       },
       NULL: {
-        type: "shift",
+        type: 'shift',
         state: 16,
       },
       IDENT: {
-        type: "shift",
+        type: 'shift',
         state: 17,
       },
-      "(": {
-        type: "shift",
+      '(': {
+        type: 'shift',
         state: 18,
       },
-      "[": {
-        type: "shift",
+      '[': {
+        type: 'shift',
         state: 19,
       },
-      "{": {
-        type: "shift",
+      '{': {
+        type: 'shift',
         state: 20,
       },
     },
     {
-      "!": {
-        type: "shift",
+      '!': {
+        type: 'shift',
         state: 9,
       },
-      "-": {
-        type: "shift",
+      '-': {
+        type: 'shift',
         state: 10,
       },
       NUMBER: {
-        type: "shift",
+        type: 'shift',
         state: 13,
       },
       STRING: {
-        type: "shift",
+        type: 'shift',
         state: 14,
       },
       BOOL: {
-        type: "shift",
+        type: 'shift',
         state: 15,
       },
       NULL: {
-        type: "shift",
+        type: 'shift',
         state: 16,
       },
       IDENT: {
-        type: "shift",
+        type: 'shift',
         state: 17,
       },
-      "(": {
-        type: "shift",
+      '(': {
+        type: 'shift',
         state: 18,
       },
-      "[": {
-        type: "shift",
+      '[': {
+        type: 'shift',
         state: 19,
       },
-      "{": {
-        type: "shift",
+      '{': {
+        type: 'shift',
         state: 20,
       },
     },
     {
-      "!": {
-        type: "shift",
+      '!': {
+        type: 'shift',
         state: 9,
       },
-      "-": {
-        type: "shift",
+      '-': {
+        type: 'shift',
         state: 10,
       },
       NUMBER: {
-        type: "shift",
+        type: 'shift',
         state: 13,
       },
       STRING: {
-        type: "shift",
+        type: 'shift',
         state: 14,
       },
       BOOL: {
-        type: "shift",
+        type: 'shift',
         state: 15,
       },
       NULL: {
-        type: "shift",
+        type: 'shift',
         state: 16,
       },
       IDENT: {
-        type: "shift",
+        type: 'shift',
         state: 17,
       },
-      "(": {
-        type: "shift",
+      '(': {
+        type: 'shift',
         state: 18,
       },
-      "[": {
-        type: "shift",
+      '[': {
+        type: 'shift',
         state: 19,
       },
-      "{": {
-        type: "shift",
+      '{': {
+        type: 'shift',
         state: 20,
       },
     },
     {
-      "!": {
-        type: "shift",
+      '!': {
+        type: 'shift',
         state: 9,
       },
-      "-": {
-        type: "shift",
+      '-': {
+        type: 'shift',
         state: 10,
       },
       NUMBER: {
-        type: "shift",
+        type: 'shift',
         state: 13,
       },
       STRING: {
-        type: "shift",
+        type: 'shift',
         state: 14,
       },
       BOOL: {
-        type: "shift",
+        type: 'shift',
         state: 15,
       },
       NULL: {
-        type: "shift",
+        type: 'shift',
         state: 16,
       },
       IDENT: {
-        type: "shift",
+        type: 'shift',
         state: 17,
       },
-      "(": {
-        type: "shift",
+      '(': {
+        type: 'shift',
         state: 18,
       },
-      "[": {
-        type: "shift",
+      '[': {
+        type: 'shift',
         state: 19,
       },
-      "{": {
-        type: "shift",
+      '{': {
+        type: 'shift',
         state: 20,
       },
     },
     {
-      "!": {
-        type: "shift",
+      '!': {
+        type: 'shift',
         state: 9,
       },
-      "-": {
-        type: "shift",
+      '-': {
+        type: 'shift',
         state: 10,
       },
       NUMBER: {
-        type: "shift",
+        type: 'shift',
         state: 13,
       },
       STRING: {
-        type: "shift",
+        type: 'shift',
         state: 14,
       },
       BOOL: {
-        type: "shift",
+        type: 'shift',
         state: 15,
       },
       NULL: {
-        type: "shift",
+        type: 'shift',
         state: 16,
       },
       IDENT: {
-        type: "shift",
+        type: 'shift',
         state: 17,
       },
-      "(": {
-        type: "shift",
+      '(': {
+        type: 'shift',
         state: 18,
       },
-      "[": {
-        type: "shift",
+      '[': {
+        type: 'shift',
         state: 19,
       },
-      "{": {
-        type: "shift",
+      '{': {
+        type: 'shift',
         state: 20,
       },
     },
     {
-      "!": {
-        type: "shift",
+      '!': {
+        type: 'shift',
         state: 9,
       },
-      "-": {
-        type: "shift",
+      '-': {
+        type: 'shift',
         state: 10,
       },
       NUMBER: {
-        type: "shift",
+        type: 'shift',
         state: 13,
       },
       STRING: {
-        type: "shift",
+        type: 'shift',
         state: 14,
       },
       BOOL: {
-        type: "shift",
+        type: 'shift',
         state: 15,
       },
       NULL: {
-        type: "shift",
+        type: 'shift',
         state: 16,
       },
       IDENT: {
-        type: "shift",
+        type: 'shift',
         state: 17,
       },
-      "(": {
-        type: "shift",
+      '(': {
+        type: 'shift',
         state: 18,
       },
-      "[": {
-        type: "shift",
+      '[': {
+        type: 'shift',
         state: 19,
       },
-      "{": {
-        type: "shift",
+      '{': {
+        type: 'shift',
         state: 20,
       },
     },
     {
-      "!": {
-        type: "shift",
+      '!': {
+        type: 'shift',
         state: 9,
       },
-      "-": {
-        type: "shift",
+      '-': {
+        type: 'shift',
         state: 10,
       },
       NUMBER: {
-        type: "shift",
+        type: 'shift',
         state: 13,
       },
       STRING: {
-        type: "shift",
+        type: 'shift',
         state: 14,
       },
       BOOL: {
-        type: "shift",
+        type: 'shift',
         state: 15,
       },
       NULL: {
-        type: "shift",
+        type: 'shift',
         state: 16,
       },
       IDENT: {
-        type: "shift",
+        type: 'shift',
         state: 17,
       },
-      "(": {
-        type: "shift",
+      '(': {
+        type: 'shift',
         state: 18,
       },
-      "[": {
-        type: "shift",
+      '[': {
+        type: 'shift',
         state: 19,
       },
-      "{": {
-        type: "shift",
+      '{': {
+        type: 'shift',
         state: 20,
       },
     },
     {
-      "!": {
-        type: "shift",
+      '!': {
+        type: 'shift',
         state: 9,
       },
-      "-": {
-        type: "shift",
+      '-': {
+        type: 'shift',
         state: 10,
       },
       NUMBER: {
-        type: "shift",
+        type: 'shift',
         state: 13,
       },
       STRING: {
-        type: "shift",
+        type: 'shift',
         state: 14,
       },
       BOOL: {
-        type: "shift",
+        type: 'shift',
         state: 15,
       },
       NULL: {
-        type: "shift",
+        type: 'shift',
         state: 16,
       },
       IDENT: {
-        type: "shift",
+        type: 'shift',
         state: 17,
       },
-      "(": {
-        type: "shift",
+      '(': {
+        type: 'shift',
         state: 18,
       },
-      "[": {
-        type: "shift",
+      '[': {
+        type: 'shift',
         state: 19,
       },
-      "{": {
-        type: "shift",
+      '{': {
+        type: 'shift',
         state: 20,
       },
     },
     {
-      "!": {
-        type: "shift",
+      '!': {
+        type: 'shift',
         state: 9,
       },
-      "-": {
-        type: "shift",
+      '-': {
+        type: 'shift',
         state: 10,
       },
       NUMBER: {
-        type: "shift",
+        type: 'shift',
         state: 13,
       },
       STRING: {
-        type: "shift",
+        type: 'shift',
         state: 14,
       },
       BOOL: {
-        type: "shift",
+        type: 'shift',
         state: 15,
       },
       NULL: {
-        type: "shift",
+        type: 'shift',
         state: 16,
       },
       IDENT: {
-        type: "shift",
+        type: 'shift',
         state: 17,
       },
-      "(": {
-        type: "shift",
+      '(': {
+        type: 'shift',
         state: 18,
       },
-      "[": {
-        type: "shift",
+      '[': {
+        type: 'shift',
         state: 19,
       },
-      "{": {
-        type: "shift",
+      '{': {
+        type: 'shift',
         state: 20,
       },
     },
     {
-      "!": {
-        type: "shift",
+      '!': {
+        type: 'shift',
         state: 9,
       },
-      "-": {
-        type: "shift",
+      '-': {
+        type: 'shift',
         state: 10,
       },
       NUMBER: {
-        type: "shift",
+        type: 'shift',
         state: 13,
       },
       STRING: {
-        type: "shift",
+        type: 'shift',
         state: 14,
       },
       BOOL: {
-        type: "shift",
+        type: 'shift',
         state: 15,
       },
       NULL: {
-        type: "shift",
+        type: 'shift',
         state: 16,
       },
       IDENT: {
-        type: "shift",
+        type: 'shift',
         state: 17,
       },
-      "(": {
-        type: "shift",
+      '(': {
+        type: 'shift',
         state: 18,
       },
-      "[": {
-        type: "shift",
+      '[': {
+        type: 'shift',
         state: 19,
       },
-      "{": {
-        type: "shift",
+      '{': {
+        type: 'shift',
         state: 20,
       },
     },
     {
-      "!": {
-        type: "shift",
+      '!': {
+        type: 'shift',
         state: 9,
       },
-      "-": {
-        type: "shift",
+      '-': {
+        type: 'shift',
         state: 10,
       },
       NUMBER: {
-        type: "shift",
+        type: 'shift',
         state: 13,
       },
       STRING: {
-        type: "shift",
+        type: 'shift',
         state: 14,
       },
       BOOL: {
-        type: "shift",
+        type: 'shift',
         state: 15,
       },
       NULL: {
-        type: "shift",
+        type: 'shift',
         state: 16,
       },
       IDENT: {
-        type: "shift",
+        type: 'shift',
         state: 17,
       },
-      "(": {
-        type: "shift",
+      '(': {
+        type: 'shift',
         state: 18,
       },
-      "[": {
-        type: "shift",
+      '[': {
+        type: 'shift',
         state: 19,
       },
-      "{": {
-        type: "shift",
+      '{': {
+        type: 'shift',
         state: 20,
       },
     },
     {
-      "!": {
-        type: "shift",
+      '!': {
+        type: 'shift',
         state: 9,
       },
-      "-": {
-        type: "shift",
+      '-': {
+        type: 'shift',
         state: 10,
       },
       NUMBER: {
-        type: "shift",
+        type: 'shift',
         state: 13,
       },
       STRING: {
-        type: "shift",
+        type: 'shift',
         state: 14,
       },
       BOOL: {
-        type: "shift",
+        type: 'shift',
         state: 15,
       },
       NULL: {
-        type: "shift",
+        type: 'shift',
         state: 16,
       },
       IDENT: {
-        type: "shift",
+        type: 'shift',
         state: 17,
       },
-      "(": {
-        type: "shift",
+      '(': {
+        type: 'shift',
         state: 18,
       },
-      "[": {
-        type: "shift",
+      '[': {
+        type: 'shift',
         state: 19,
       },
-      "{": {
-        type: "shift",
+      '{': {
+        type: 'shift',
         state: 20,
       },
     },
     {
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 22,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 22,
       },
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 22,
       },
-      "&&": {
-        type: "reduce",
+      '&&': {
+        type: 'reduce',
         production: 22,
       },
-      "==": {
-        type: "reduce",
+      '==': {
+        type: 'reduce',
         production: 22,
       },
-      "!=": {
-        type: "reduce",
+      '!=': {
+        type: 'reduce',
         production: 22,
       },
-      "<": {
-        type: "reduce",
+      '<': {
+        type: 'reduce',
         production: 22,
       },
-      "<=": {
-        type: "reduce",
+      '<=': {
+        type: 'reduce',
         production: 22,
       },
-      ">": {
-        type: "reduce",
+      '>': {
+        type: 'reduce',
         production: 22,
       },
-      ">=": {
-        type: "reduce",
+      '>=': {
+        type: 'reduce',
         production: 22,
       },
       in: {
-        type: "reduce",
+        type: 'reduce',
         production: 22,
       },
-      "+": {
-        type: "reduce",
+      '+': {
+        type: 'reduce',
         production: 22,
       },
-      "-": {
-        type: "reduce",
+      '-': {
+        type: 'reduce',
         production: 22,
       },
-      "*": {
-        type: "reduce",
+      '*': {
+        type: 'reduce',
         production: 22,
       },
-      "/": {
-        type: "reduce",
+      '/': {
+        type: 'reduce',
         production: 22,
       },
-      "%": {
-        type: "reduce",
+      '%': {
+        type: 'reduce',
         production: 22,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 22,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 22,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 22,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 22,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 22,
       },
     },
     {
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 23,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 23,
       },
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 23,
       },
-      "&&": {
-        type: "reduce",
+      '&&': {
+        type: 'reduce',
         production: 23,
       },
-      "==": {
-        type: "reduce",
+      '==': {
+        type: 'reduce',
         production: 23,
       },
-      "!=": {
-        type: "reduce",
+      '!=': {
+        type: 'reduce',
         production: 23,
       },
-      "<": {
-        type: "reduce",
+      '<': {
+        type: 'reduce',
         production: 23,
       },
-      "<=": {
-        type: "reduce",
+      '<=': {
+        type: 'reduce',
         production: 23,
       },
-      ">": {
-        type: "reduce",
+      '>': {
+        type: 'reduce',
         production: 23,
       },
-      ">=": {
-        type: "reduce",
+      '>=': {
+        type: 'reduce',
         production: 23,
       },
       in: {
-        type: "reduce",
+        type: 'reduce',
         production: 23,
       },
-      "+": {
-        type: "reduce",
+      '+': {
+        type: 'reduce',
         production: 23,
       },
-      "-": {
-        type: "reduce",
+      '-': {
+        type: 'reduce',
         production: 23,
       },
-      "*": {
-        type: "reduce",
+      '*': {
+        type: 'reduce',
         production: 23,
       },
-      "/": {
-        type: "reduce",
+      '/': {
+        type: 'reduce',
         production: 23,
       },
-      "%": {
-        type: "reduce",
+      '%': {
+        type: 'reduce',
         production: 23,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 23,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 23,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 23,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 23,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 23,
       },
     },
     {
       IDENT: {
-        type: "shift",
+        type: 'shift',
         state: 66,
       },
     },
     {
       IDENT: {
-        type: "shift",
+        type: 'shift',
         state: 67,
       },
     },
     {
-      "!": {
-        type: "shift",
+      '!': {
+        type: 'shift',
         state: 9,
       },
-      "-": {
-        type: "shift",
+      '-': {
+        type: 'shift',
         state: 10,
       },
       NUMBER: {
-        type: "shift",
+        type: 'shift',
         state: 13,
       },
       STRING: {
-        type: "shift",
+        type: 'shift',
         state: 14,
       },
       BOOL: {
-        type: "shift",
+        type: 'shift',
         state: 15,
       },
       NULL: {
-        type: "shift",
+        type: 'shift',
         state: 16,
       },
       IDENT: {
-        type: "shift",
+        type: 'shift',
         state: 17,
       },
-      "(": {
-        type: "shift",
+      '(': {
+        type: 'shift',
         state: 18,
       },
-      "[": {
-        type: "shift",
+      '[': {
+        type: 'shift',
         state: 19,
       },
-      "{": {
-        type: "shift",
+      '{': {
+        type: 'shift',
         state: 20,
       },
     },
     {
-      "!": {
-        type: "shift",
+      '!': {
+        type: 'shift',
         state: 9,
       },
-      "-": {
-        type: "shift",
+      '-': {
+        type: 'shift',
         state: 10,
       },
       NUMBER: {
-        type: "shift",
+        type: 'shift',
         state: 13,
       },
       STRING: {
-        type: "shift",
+        type: 'shift',
         state: 14,
       },
       BOOL: {
-        type: "shift",
+        type: 'shift',
         state: 15,
       },
       NULL: {
-        type: "shift",
+        type: 'shift',
         state: 16,
       },
       IDENT: {
-        type: "shift",
+        type: 'shift',
         state: 17,
       },
-      "(": {
-        type: "shift",
+      '(': {
+        type: 'shift',
         state: 18,
       },
-      "[": {
-        type: "shift",
+      '[': {
+        type: 'shift',
         state: 19,
       },
-      "{": {
-        type: "shift",
+      '{': {
+        type: 'shift',
         state: 20,
       },
     },
     {
-      "!": {
-        type: "shift",
+      '!': {
+        type: 'shift',
         state: 9,
       },
-      "-": {
-        type: "shift",
+      '-': {
+        type: 'shift',
         state: 10,
       },
       NUMBER: {
-        type: "shift",
+        type: 'shift',
         state: 13,
       },
       STRING: {
-        type: "shift",
+        type: 'shift',
         state: 14,
       },
       BOOL: {
-        type: "shift",
+        type: 'shift',
         state: 15,
       },
       NULL: {
-        type: "shift",
+        type: 'shift',
         state: 16,
       },
       IDENT: {
-        type: "shift",
+        type: 'shift',
         state: 17,
       },
-      "(": {
-        type: "shift",
+      '(': {
+        type: 'shift',
         state: 18,
       },
-      "[": {
-        type: "shift",
+      '[': {
+        type: 'shift',
         state: 19,
       },
-      "{": {
-        type: "shift",
+      '{': {
+        type: 'shift',
         state: 20,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 41,
       },
     },
     {
-      ")": {
-        type: "shift",
+      ')': {
+        type: 'shift',
         state: 73,
       },
     },
     {
-      "]": {
-        type: "shift",
+      ']': {
+        type: 'shift',
         state: 74,
       },
     },
     {
-      ",": {
-        type: "shift",
+      ',': {
+        type: 'shift',
         state: 75,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 47,
       },
     },
     {
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 49,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 49,
       },
     },
     {
-      "}": {
-        type: "shift",
+      '}': {
+        type: 'shift',
         state: 76,
       },
     },
     {
-      ",": {
-        type: "shift",
+      ',': {
+        type: 'shift',
         state: 77,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 52,
       },
     },
     {
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 54,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 54,
       },
     },
     {
-      ":": {
-        type: "shift",
+      ':': {
+        type: 'shift',
         state: 78,
       },
     },
     {
-      ":": {
-        type: "shift",
+      ':': {
+        type: 'shift',
         state: 79,
       },
     },
     {
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 3,
       },
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 3,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 3,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 3,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 3,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 3,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 3,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 3,
       },
     },
     {
-      "&&": {
-        type: "reduce",
+      '&&': {
+        type: 'reduce',
         production: 5,
       },
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 5,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 5,
       },
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 5,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 5,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 5,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 5,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 5,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 5,
       },
     },
     {
-      "==": {
-        type: "reduce",
+      '==': {
+        type: 'reduce',
         production: 7,
       },
-      "!=": {
-        type: "reduce",
+      '!=': {
+        type: 'reduce',
         production: 7,
       },
-      "<": {
-        type: "reduce",
+      '<': {
+        type: 'reduce',
         production: 7,
       },
-      "<=": {
-        type: "reduce",
+      '<=': {
+        type: 'reduce',
         production: 7,
       },
-      ">": {
-        type: "reduce",
+      '>': {
+        type: 'reduce',
         production: 7,
       },
-      ">=": {
-        type: "reduce",
+      '>=': {
+        type: 'reduce',
         production: 7,
       },
       in: {
-        type: "reduce",
+        type: 'reduce',
         production: 7,
       },
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 7,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 7,
       },
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 7,
       },
-      "&&": {
-        type: "reduce",
+      '&&': {
+        type: 'reduce',
         production: 7,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 7,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 7,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 7,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 7,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 7,
       },
     },
     {
-      "==": {
-        type: "reduce",
+      '==': {
+        type: 'reduce',
         production: 8,
       },
-      "!=": {
-        type: "reduce",
+      '!=': {
+        type: 'reduce',
         production: 8,
       },
-      "<": {
-        type: "reduce",
+      '<': {
+        type: 'reduce',
         production: 8,
       },
-      "<=": {
-        type: "reduce",
+      '<=': {
+        type: 'reduce',
         production: 8,
       },
-      ">": {
-        type: "reduce",
+      '>': {
+        type: 'reduce',
         production: 8,
       },
-      ">=": {
-        type: "reduce",
+      '>=': {
+        type: 'reduce',
         production: 8,
       },
       in: {
-        type: "reduce",
+        type: 'reduce',
         production: 8,
       },
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 8,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 8,
       },
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 8,
       },
-      "&&": {
-        type: "reduce",
+      '&&': {
+        type: 'reduce',
         production: 8,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 8,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 8,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 8,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 8,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 8,
       },
     },
     {
-      "==": {
-        type: "reduce",
+      '==': {
+        type: 'reduce',
         production: 9,
       },
-      "!=": {
-        type: "reduce",
+      '!=': {
+        type: 'reduce',
         production: 9,
       },
-      "<": {
-        type: "reduce",
+      '<': {
+        type: 'reduce',
         production: 9,
       },
-      "<=": {
-        type: "reduce",
+      '<=': {
+        type: 'reduce',
         production: 9,
       },
-      ">": {
-        type: "reduce",
+      '>': {
+        type: 'reduce',
         production: 9,
       },
-      ">=": {
-        type: "reduce",
+      '>=': {
+        type: 'reduce',
         production: 9,
       },
       in: {
-        type: "reduce",
+        type: 'reduce',
         production: 9,
       },
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 9,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 9,
       },
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 9,
       },
-      "&&": {
-        type: "reduce",
+      '&&': {
+        type: 'reduce',
         production: 9,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 9,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 9,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 9,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 9,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 9,
       },
     },
     {
-      "==": {
-        type: "reduce",
+      '==': {
+        type: 'reduce',
         production: 10,
       },
-      "!=": {
-        type: "reduce",
+      '!=': {
+        type: 'reduce',
         production: 10,
       },
-      "<": {
-        type: "reduce",
+      '<': {
+        type: 'reduce',
         production: 10,
       },
-      "<=": {
-        type: "reduce",
+      '<=': {
+        type: 'reduce',
         production: 10,
       },
-      ">": {
-        type: "reduce",
+      '>': {
+        type: 'reduce',
         production: 10,
       },
-      ">=": {
-        type: "reduce",
+      '>=': {
+        type: 'reduce',
         production: 10,
       },
       in: {
-        type: "reduce",
+        type: 'reduce',
         production: 10,
       },
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 10,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 10,
       },
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 10,
       },
-      "&&": {
-        type: "reduce",
+      '&&': {
+        type: 'reduce',
         production: 10,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 10,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 10,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 10,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 10,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 10,
       },
     },
     {
-      "==": {
-        type: "reduce",
+      '==': {
+        type: 'reduce',
         production: 11,
       },
-      "!=": {
-        type: "reduce",
+      '!=': {
+        type: 'reduce',
         production: 11,
       },
-      "<": {
-        type: "reduce",
+      '<': {
+        type: 'reduce',
         production: 11,
       },
-      "<=": {
-        type: "reduce",
+      '<=': {
+        type: 'reduce',
         production: 11,
       },
-      ">": {
-        type: "reduce",
+      '>': {
+        type: 'reduce',
         production: 11,
       },
-      ">=": {
-        type: "reduce",
+      '>=': {
+        type: 'reduce',
         production: 11,
       },
       in: {
-        type: "reduce",
+        type: 'reduce',
         production: 11,
       },
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 11,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 11,
       },
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 11,
       },
-      "&&": {
-        type: "reduce",
+      '&&': {
+        type: 'reduce',
         production: 11,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 11,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 11,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 11,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 11,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 11,
       },
     },
     {
-      "==": {
-        type: "reduce",
+      '==': {
+        type: 'reduce',
         production: 12,
       },
-      "!=": {
-        type: "reduce",
+      '!=': {
+        type: 'reduce',
         production: 12,
       },
-      "<": {
-        type: "reduce",
+      '<': {
+        type: 'reduce',
         production: 12,
       },
-      "<=": {
-        type: "reduce",
+      '<=': {
+        type: 'reduce',
         production: 12,
       },
-      ">": {
-        type: "reduce",
+      '>': {
+        type: 'reduce',
         production: 12,
       },
-      ">=": {
-        type: "reduce",
+      '>=': {
+        type: 'reduce',
         production: 12,
       },
       in: {
-        type: "reduce",
+        type: 'reduce',
         production: 12,
       },
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 12,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 12,
       },
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 12,
       },
-      "&&": {
-        type: "reduce",
+      '&&': {
+        type: 'reduce',
         production: 12,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 12,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 12,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 12,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 12,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 12,
       },
     },
     {
-      "==": {
-        type: "reduce",
+      '==': {
+        type: 'reduce',
         production: 13,
       },
-      "!=": {
-        type: "reduce",
+      '!=': {
+        type: 'reduce',
         production: 13,
       },
-      "<": {
-        type: "reduce",
+      '<': {
+        type: 'reduce',
         production: 13,
       },
-      "<=": {
-        type: "reduce",
+      '<=': {
+        type: 'reduce',
         production: 13,
       },
-      ">": {
-        type: "reduce",
+      '>': {
+        type: 'reduce',
         production: 13,
       },
-      ">=": {
-        type: "reduce",
+      '>=': {
+        type: 'reduce',
         production: 13,
       },
       in: {
-        type: "reduce",
+        type: 'reduce',
         production: 13,
       },
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 13,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 13,
       },
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 13,
       },
-      "&&": {
-        type: "reduce",
+      '&&': {
+        type: 'reduce',
         production: 13,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 13,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 13,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 13,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 13,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 13,
       },
     },
     {
-      "+": {
-        type: "reduce",
+      '+': {
+        type: 'reduce',
         production: 15,
       },
-      "-": {
-        type: "reduce",
+      '-': {
+        type: 'reduce',
         production: 15,
       },
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 15,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 15,
       },
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 15,
       },
-      "&&": {
-        type: "reduce",
+      '&&': {
+        type: 'reduce',
         production: 15,
       },
-      "==": {
-        type: "reduce",
+      '==': {
+        type: 'reduce',
         production: 15,
       },
-      "!=": {
-        type: "reduce",
+      '!=': {
+        type: 'reduce',
         production: 15,
       },
-      "<": {
-        type: "reduce",
+      '<': {
+        type: 'reduce',
         production: 15,
       },
-      "<=": {
-        type: "reduce",
+      '<=': {
+        type: 'reduce',
         production: 15,
       },
-      ">": {
-        type: "reduce",
+      '>': {
+        type: 'reduce',
         production: 15,
       },
-      ">=": {
-        type: "reduce",
+      '>=': {
+        type: 'reduce',
         production: 15,
       },
       in: {
-        type: "reduce",
+        type: 'reduce',
         production: 15,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 15,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 15,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 15,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 15,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 15,
       },
     },
     {
-      "+": {
-        type: "reduce",
+      '+': {
+        type: 'reduce',
         production: 16,
       },
-      "-": {
-        type: "reduce",
+      '-': {
+        type: 'reduce',
         production: 16,
       },
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 16,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 16,
       },
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 16,
       },
-      "&&": {
-        type: "reduce",
+      '&&': {
+        type: 'reduce',
         production: 16,
       },
-      "==": {
-        type: "reduce",
+      '==': {
+        type: 'reduce',
         production: 16,
       },
-      "!=": {
-        type: "reduce",
+      '!=': {
+        type: 'reduce',
         production: 16,
       },
-      "<": {
-        type: "reduce",
+      '<': {
+        type: 'reduce',
         production: 16,
       },
-      "<=": {
-        type: "reduce",
+      '<=': {
+        type: 'reduce',
         production: 16,
       },
-      ">": {
-        type: "reduce",
+      '>': {
+        type: 'reduce',
         production: 16,
       },
-      ">=": {
-        type: "reduce",
+      '>=': {
+        type: 'reduce',
         production: 16,
       },
       in: {
-        type: "reduce",
+        type: 'reduce',
         production: 16,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 16,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 16,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 16,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 16,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 16,
       },
     },
     {
-      "*": {
-        type: "reduce",
+      '*': {
+        type: 'reduce',
         production: 18,
       },
-      "/": {
-        type: "reduce",
+      '/': {
+        type: 'reduce',
         production: 18,
       },
-      "%": {
-        type: "reduce",
+      '%': {
+        type: 'reduce',
         production: 18,
       },
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 18,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 18,
       },
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 18,
       },
-      "&&": {
-        type: "reduce",
+      '&&': {
+        type: 'reduce',
         production: 18,
       },
-      "==": {
-        type: "reduce",
+      '==': {
+        type: 'reduce',
         production: 18,
       },
-      "!=": {
-        type: "reduce",
+      '!=': {
+        type: 'reduce',
         production: 18,
       },
-      "<": {
-        type: "reduce",
+      '<': {
+        type: 'reduce',
         production: 18,
       },
-      "<=": {
-        type: "reduce",
+      '<=': {
+        type: 'reduce',
         production: 18,
       },
-      ">": {
-        type: "reduce",
+      '>': {
+        type: 'reduce',
         production: 18,
       },
-      ">=": {
-        type: "reduce",
+      '>=': {
+        type: 'reduce',
         production: 18,
       },
       in: {
-        type: "reduce",
+        type: 'reduce',
         production: 18,
       },
-      "+": {
-        type: "reduce",
+      '+': {
+        type: 'reduce',
         production: 18,
       },
-      "-": {
-        type: "reduce",
+      '-': {
+        type: 'reduce',
         production: 18,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 18,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 18,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 18,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 18,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 18,
       },
     },
     {
-      "*": {
-        type: "reduce",
+      '*': {
+        type: 'reduce',
         production: 19,
       },
-      "/": {
-        type: "reduce",
+      '/': {
+        type: 'reduce',
         production: 19,
       },
-      "%": {
-        type: "reduce",
+      '%': {
+        type: 'reduce',
         production: 19,
       },
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 19,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 19,
       },
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 19,
       },
-      "&&": {
-        type: "reduce",
+      '&&': {
+        type: 'reduce',
         production: 19,
       },
-      "==": {
-        type: "reduce",
+      '==': {
+        type: 'reduce',
         production: 19,
       },
-      "!=": {
-        type: "reduce",
+      '!=': {
+        type: 'reduce',
         production: 19,
       },
-      "<": {
-        type: "reduce",
+      '<': {
+        type: 'reduce',
         production: 19,
       },
-      "<=": {
-        type: "reduce",
+      '<=': {
+        type: 'reduce',
         production: 19,
       },
-      ">": {
-        type: "reduce",
+      '>': {
+        type: 'reduce',
         production: 19,
       },
-      ">=": {
-        type: "reduce",
+      '>=': {
+        type: 'reduce',
         production: 19,
       },
       in: {
-        type: "reduce",
+        type: 'reduce',
         production: 19,
       },
-      "+": {
-        type: "reduce",
+      '+': {
+        type: 'reduce',
         production: 19,
       },
-      "-": {
-        type: "reduce",
+      '-': {
+        type: 'reduce',
         production: 19,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 19,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 19,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 19,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 19,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 19,
       },
     },
     {
-      "*": {
-        type: "reduce",
+      '*': {
+        type: 'reduce',
         production: 20,
       },
-      "/": {
-        type: "reduce",
+      '/': {
+        type: 'reduce',
         production: 20,
       },
-      "%": {
-        type: "reduce",
+      '%': {
+        type: 'reduce',
         production: 20,
       },
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 20,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 20,
       },
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 20,
       },
-      "&&": {
-        type: "reduce",
+      '&&': {
+        type: 'reduce',
         production: 20,
       },
-      "==": {
-        type: "reduce",
+      '==': {
+        type: 'reduce',
         production: 20,
       },
-      "!=": {
-        type: "reduce",
+      '!=': {
+        type: 'reduce',
         production: 20,
       },
-      "<": {
-        type: "reduce",
+      '<': {
+        type: 'reduce',
         production: 20,
       },
-      "<=": {
-        type: "reduce",
+      '<=': {
+        type: 'reduce',
         production: 20,
       },
-      ">": {
-        type: "reduce",
+      '>': {
+        type: 'reduce',
         production: 20,
       },
-      ">=": {
-        type: "reduce",
+      '>=': {
+        type: 'reduce',
         production: 20,
       },
       in: {
-        type: "reduce",
+        type: 'reduce',
         production: 20,
       },
-      "+": {
-        type: "reduce",
+      '+': {
+        type: 'reduce',
         production: 20,
       },
-      "-": {
-        type: "reduce",
+      '-': {
+        type: 'reduce',
         production: 20,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 20,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 20,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 20,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 20,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 20,
       },
     },
     {
-      "(": {
-        type: "shift",
+      '(': {
+        type: 'shift',
         state: 80,
       },
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 26,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 26,
       },
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 26,
       },
-      "&&": {
-        type: "reduce",
+      '&&': {
+        type: 'reduce',
         production: 26,
       },
-      "==": {
-        type: "reduce",
+      '==': {
+        type: 'reduce',
         production: 26,
       },
-      "!=": {
-        type: "reduce",
+      '!=': {
+        type: 'reduce',
         production: 26,
       },
-      "<": {
-        type: "reduce",
+      '<': {
+        type: 'reduce',
         production: 26,
       },
-      "<=": {
-        type: "reduce",
+      '<=': {
+        type: 'reduce',
         production: 26,
       },
-      ">": {
-        type: "reduce",
+      '>': {
+        type: 'reduce',
         production: 26,
       },
-      ">=": {
-        type: "reduce",
+      '>=': {
+        type: 'reduce',
         production: 26,
       },
       in: {
-        type: "reduce",
+        type: 'reduce',
         production: 26,
       },
-      "+": {
-        type: "reduce",
+      '+': {
+        type: 'reduce',
         production: 26,
       },
-      "-": {
-        type: "reduce",
+      '-': {
+        type: 'reduce',
         production: 26,
       },
-      "*": {
-        type: "reduce",
+      '*': {
+        type: 'reduce',
         production: 26,
       },
-      "/": {
-        type: "reduce",
+      '/': {
+        type: 'reduce',
         production: 26,
       },
-      "%": {
-        type: "reduce",
+      '%': {
+        type: 'reduce',
         production: 26,
       },
-      ".": {
-        type: "reduce",
+      '.': {
+        type: 'reduce',
         production: 26,
       },
-      "?.": {
-        type: "reduce",
+      '?.': {
+        type: 'reduce',
         production: 26,
       },
-      "[": {
-        type: "reduce",
+      '[': {
+        type: 'reduce',
         production: 26,
       },
-      "?[": {
-        type: "reduce",
+      '?[': {
+        type: 'reduce',
         production: 26,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 26,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 26,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 26,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 26,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 26,
       },
     },
     {
-      "(": {
-        type: "shift",
+      '(': {
+        type: 'shift',
         state: 81,
       },
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 28,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 28,
       },
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 28,
       },
-      "&&": {
-        type: "reduce",
+      '&&': {
+        type: 'reduce',
         production: 28,
       },
-      "==": {
-        type: "reduce",
+      '==': {
+        type: 'reduce',
         production: 28,
       },
-      "!=": {
-        type: "reduce",
+      '!=': {
+        type: 'reduce',
         production: 28,
       },
-      "<": {
-        type: "reduce",
+      '<': {
+        type: 'reduce',
         production: 28,
       },
-      "<=": {
-        type: "reduce",
+      '<=': {
+        type: 'reduce',
         production: 28,
       },
-      ">": {
-        type: "reduce",
+      '>': {
+        type: 'reduce',
         production: 28,
       },
-      ">=": {
-        type: "reduce",
+      '>=': {
+        type: 'reduce',
         production: 28,
       },
       in: {
-        type: "reduce",
+        type: 'reduce',
         production: 28,
       },
-      "+": {
-        type: "reduce",
+      '+': {
+        type: 'reduce',
         production: 28,
       },
-      "-": {
-        type: "reduce",
+      '-': {
+        type: 'reduce',
         production: 28,
       },
-      "*": {
-        type: "reduce",
+      '*': {
+        type: 'reduce',
         production: 28,
       },
-      "/": {
-        type: "reduce",
+      '/': {
+        type: 'reduce',
         production: 28,
       },
-      "%": {
-        type: "reduce",
+      '%': {
+        type: 'reduce',
         production: 28,
       },
-      ".": {
-        type: "reduce",
+      '.': {
+        type: 'reduce',
         production: 28,
       },
-      "?.": {
-        type: "reduce",
+      '?.': {
+        type: 'reduce',
         production: 28,
       },
-      "[": {
-        type: "reduce",
+      '[': {
+        type: 'reduce',
         production: 28,
       },
-      "?[": {
-        type: "reduce",
+      '?[': {
+        type: 'reduce',
         production: 28,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 28,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 28,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 28,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 28,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 28,
       },
     },
     {
-      "]": {
-        type: "shift",
+      ']': {
+        type: 'shift',
         state: 82,
       },
     },
     {
-      "]": {
-        type: "shift",
+      ']': {
+        type: 'shift',
         state: 83,
       },
     },
     {
-      ")": {
-        type: "shift",
+      ')': {
+        type: 'shift',
         state: 84,
       },
     },
     {
-      ",": {
-        type: "shift",
+      ',': {
+        type: 'shift',
         state: 85,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 42,
       },
     },
     {
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 44,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 44,
       },
     },
     {
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 38,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 38,
       },
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 38,
       },
-      "&&": {
-        type: "reduce",
+      '&&': {
+        type: 'reduce',
         production: 38,
       },
-      "==": {
-        type: "reduce",
+      '==': {
+        type: 'reduce',
         production: 38,
       },
-      "!=": {
-        type: "reduce",
+      '!=': {
+        type: 'reduce',
         production: 38,
       },
-      "<": {
-        type: "reduce",
+      '<': {
+        type: 'reduce',
         production: 38,
       },
-      "<=": {
-        type: "reduce",
+      '<=': {
+        type: 'reduce',
         production: 38,
       },
-      ">": {
-        type: "reduce",
+      '>': {
+        type: 'reduce',
         production: 38,
       },
-      ">=": {
-        type: "reduce",
+      '>=': {
+        type: 'reduce',
         production: 38,
       },
       in: {
-        type: "reduce",
+        type: 'reduce',
         production: 38,
       },
-      "+": {
-        type: "reduce",
+      '+': {
+        type: 'reduce',
         production: 38,
       },
-      "-": {
-        type: "reduce",
+      '-': {
+        type: 'reduce',
         production: 38,
       },
-      "*": {
-        type: "reduce",
+      '*': {
+        type: 'reduce',
         production: 38,
       },
-      "/": {
-        type: "reduce",
+      '/': {
+        type: 'reduce',
         production: 38,
       },
-      "%": {
-        type: "reduce",
+      '%': {
+        type: 'reduce',
         production: 38,
       },
-      ".": {
-        type: "reduce",
+      '.': {
+        type: 'reduce',
         production: 38,
       },
-      "?.": {
-        type: "reduce",
+      '?.': {
+        type: 'reduce',
         production: 38,
       },
-      "[": {
-        type: "reduce",
+      '[': {
+        type: 'reduce',
         production: 38,
       },
-      "?[": {
-        type: "reduce",
+      '?[': {
+        type: 'reduce',
         production: 38,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 38,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 38,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 38,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 38,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 38,
       },
     },
     {
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 39,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 39,
       },
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 39,
       },
-      "&&": {
-        type: "reduce",
+      '&&': {
+        type: 'reduce',
         production: 39,
       },
-      "==": {
-        type: "reduce",
+      '==': {
+        type: 'reduce',
         production: 39,
       },
-      "!=": {
-        type: "reduce",
+      '!=': {
+        type: 'reduce',
         production: 39,
       },
-      "<": {
-        type: "reduce",
+      '<': {
+        type: 'reduce',
         production: 39,
       },
-      "<=": {
-        type: "reduce",
+      '<=': {
+        type: 'reduce',
         production: 39,
       },
-      ">": {
-        type: "reduce",
+      '>': {
+        type: 'reduce',
         production: 39,
       },
-      ">=": {
-        type: "reduce",
+      '>=': {
+        type: 'reduce',
         production: 39,
       },
       in: {
-        type: "reduce",
+        type: 'reduce',
         production: 39,
       },
-      "+": {
-        type: "reduce",
+      '+': {
+        type: 'reduce',
         production: 39,
       },
-      "-": {
-        type: "reduce",
+      '-': {
+        type: 'reduce',
         production: 39,
       },
-      "*": {
-        type: "reduce",
+      '*': {
+        type: 'reduce',
         production: 39,
       },
-      "/": {
-        type: "reduce",
+      '/': {
+        type: 'reduce',
         production: 39,
       },
-      "%": {
-        type: "reduce",
+      '%': {
+        type: 'reduce',
         production: 39,
       },
-      ".": {
-        type: "reduce",
+      '.': {
+        type: 'reduce',
         production: 39,
       },
-      "?.": {
-        type: "reduce",
+      '?.': {
+        type: 'reduce',
         production: 39,
       },
-      "[": {
-        type: "reduce",
+      '[': {
+        type: 'reduce',
         production: 39,
       },
-      "?[": {
-        type: "reduce",
+      '?[': {
+        type: 'reduce',
         production: 39,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 39,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 39,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 39,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 39,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 39,
       },
     },
     {
-      "!": {
-        type: "shift",
+      '!': {
+        type: 'shift',
         state: 9,
       },
-      "-": {
-        type: "shift",
+      '-': {
+        type: 'shift',
         state: 10,
       },
       NUMBER: {
-        type: "shift",
+        type: 'shift',
         state: 13,
       },
       STRING: {
-        type: "shift",
+        type: 'shift',
         state: 14,
       },
       BOOL: {
-        type: "shift",
+        type: 'shift',
         state: 15,
       },
       NULL: {
-        type: "shift",
+        type: 'shift',
         state: 16,
       },
       IDENT: {
-        type: "shift",
+        type: 'shift',
         state: 17,
       },
-      "(": {
-        type: "shift",
+      '(': {
+        type: 'shift',
         state: 18,
       },
-      "[": {
-        type: "shift",
+      '[': {
+        type: 'shift',
         state: 19,
       },
-      "{": {
-        type: "shift",
+      '{': {
+        type: 'shift',
         state: 20,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 48,
       },
     },
     {
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 40,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 40,
       },
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 40,
       },
-      "&&": {
-        type: "reduce",
+      '&&': {
+        type: 'reduce',
         production: 40,
       },
-      "==": {
-        type: "reduce",
+      '==': {
+        type: 'reduce',
         production: 40,
       },
-      "!=": {
-        type: "reduce",
+      '!=': {
+        type: 'reduce',
         production: 40,
       },
-      "<": {
-        type: "reduce",
+      '<': {
+        type: 'reduce',
         production: 40,
       },
-      "<=": {
-        type: "reduce",
+      '<=': {
+        type: 'reduce',
         production: 40,
       },
-      ">": {
-        type: "reduce",
+      '>': {
+        type: 'reduce',
         production: 40,
       },
-      ">=": {
-        type: "reduce",
+      '>=': {
+        type: 'reduce',
         production: 40,
       },
       in: {
-        type: "reduce",
+        type: 'reduce',
         production: 40,
       },
-      "+": {
-        type: "reduce",
+      '+': {
+        type: 'reduce',
         production: 40,
       },
-      "-": {
-        type: "reduce",
+      '-': {
+        type: 'reduce',
         production: 40,
       },
-      "*": {
-        type: "reduce",
+      '*': {
+        type: 'reduce',
         production: 40,
       },
-      "/": {
-        type: "reduce",
+      '/': {
+        type: 'reduce',
         production: 40,
       },
-      "%": {
-        type: "reduce",
+      '%': {
+        type: 'reduce',
         production: 40,
       },
-      ".": {
-        type: "reduce",
+      '.': {
+        type: 'reduce',
         production: 40,
       },
-      "?.": {
-        type: "reduce",
+      '?.': {
+        type: 'reduce',
         production: 40,
       },
-      "[": {
-        type: "reduce",
+      '[': {
+        type: 'reduce',
         production: 40,
       },
-      "?[": {
-        type: "reduce",
+      '?[': {
+        type: 'reduce',
         production: 40,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 40,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 40,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 40,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 40,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 40,
       },
     },
     {
-      "!": {
-        type: "shift",
+      '!': {
+        type: 'shift',
         state: 9,
       },
-      "-": {
-        type: "shift",
+      '-': {
+        type: 'shift',
         state: 10,
       },
       NUMBER: {
-        type: "shift",
+        type: 'shift',
         state: 13,
       },
       STRING: {
-        type: "shift",
+        type: 'shift',
         state: 14,
       },
       BOOL: {
-        type: "shift",
+        type: 'shift',
         state: 15,
       },
       NULL: {
-        type: "shift",
+        type: 'shift',
         state: 16,
       },
       IDENT: {
-        type: "shift",
+        type: 'shift',
         state: 17,
       },
-      "(": {
-        type: "shift",
+      '(': {
+        type: 'shift',
         state: 18,
       },
-      "[": {
-        type: "shift",
+      '[': {
+        type: 'shift',
         state: 19,
       },
-      "{": {
-        type: "shift",
+      '{': {
+        type: 'shift',
         state: 20,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 53,
       },
     },
     {
-      "!": {
-        type: "shift",
+      '!': {
+        type: 'shift',
         state: 9,
       },
-      "-": {
-        type: "shift",
+      '-': {
+        type: 'shift',
         state: 10,
       },
       NUMBER: {
-        type: "shift",
+        type: 'shift',
         state: 13,
       },
       STRING: {
-        type: "shift",
+        type: 'shift',
         state: 14,
       },
       BOOL: {
-        type: "shift",
+        type: 'shift',
         state: 15,
       },
       NULL: {
-        type: "shift",
+        type: 'shift',
         state: 16,
       },
       IDENT: {
-        type: "shift",
+        type: 'shift',
         state: 17,
       },
-      "(": {
-        type: "shift",
+      '(': {
+        type: 'shift',
         state: 18,
       },
-      "[": {
-        type: "shift",
+      '[': {
+        type: 'shift',
         state: 19,
       },
-      "{": {
-        type: "shift",
+      '{': {
+        type: 'shift',
         state: 20,
       },
     },
     {
-      "!": {
-        type: "shift",
+      '!': {
+        type: 'shift',
         state: 9,
       },
-      "-": {
-        type: "shift",
+      '-': {
+        type: 'shift',
         state: 10,
       },
       NUMBER: {
-        type: "shift",
+        type: 'shift',
         state: 13,
       },
       STRING: {
-        type: "shift",
+        type: 'shift',
         state: 14,
       },
       BOOL: {
-        type: "shift",
+        type: 'shift',
         state: 15,
       },
       NULL: {
-        type: "shift",
+        type: 'shift',
         state: 16,
       },
       IDENT: {
-        type: "shift",
+        type: 'shift',
         state: 17,
       },
-      "(": {
-        type: "shift",
+      '(': {
+        type: 'shift',
         state: 18,
       },
-      "[": {
-        type: "shift",
+      '[': {
+        type: 'shift',
         state: 19,
       },
-      "{": {
-        type: "shift",
+      '{': {
+        type: 'shift',
         state: 20,
       },
     },
     {
-      "!": {
-        type: "shift",
+      '!': {
+        type: 'shift',
         state: 9,
       },
-      "-": {
-        type: "shift",
+      '-': {
+        type: 'shift',
         state: 10,
       },
       NUMBER: {
-        type: "shift",
+        type: 'shift',
         state: 13,
       },
       STRING: {
-        type: "shift",
+        type: 'shift',
         state: 14,
       },
       BOOL: {
-        type: "shift",
+        type: 'shift',
         state: 15,
       },
       NULL: {
-        type: "shift",
+        type: 'shift',
         state: 16,
       },
       IDENT: {
-        type: "shift",
+        type: 'shift',
         state: 17,
       },
-      "(": {
-        type: "shift",
+      '(': {
+        type: 'shift',
         state: 18,
       },
-      "[": {
-        type: "shift",
+      '[': {
+        type: 'shift',
         state: 19,
       },
-      "{": {
-        type: "shift",
+      '{': {
+        type: 'shift',
         state: 20,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 41,
       },
     },
     {
-      "!": {
-        type: "shift",
+      '!': {
+        type: 'shift',
         state: 9,
       },
-      "-": {
-        type: "shift",
+      '-': {
+        type: 'shift',
         state: 10,
       },
       NUMBER: {
-        type: "shift",
+        type: 'shift',
         state: 13,
       },
       STRING: {
-        type: "shift",
+        type: 'shift',
         state: 14,
       },
       BOOL: {
-        type: "shift",
+        type: 'shift',
         state: 15,
       },
       NULL: {
-        type: "shift",
+        type: 'shift',
         state: 16,
       },
       IDENT: {
-        type: "shift",
+        type: 'shift',
         state: 17,
       },
-      "(": {
-        type: "shift",
+      '(': {
+        type: 'shift',
         state: 18,
       },
-      "[": {
-        type: "shift",
+      '[': {
+        type: 'shift',
         state: 19,
       },
-      "{": {
-        type: "shift",
+      '{': {
+        type: 'shift',
         state: 20,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 41,
       },
     },
     {
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 30,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 30,
       },
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 30,
       },
-      "&&": {
-        type: "reduce",
+      '&&': {
+        type: 'reduce',
         production: 30,
       },
-      "==": {
-        type: "reduce",
+      '==': {
+        type: 'reduce',
         production: 30,
       },
-      "!=": {
-        type: "reduce",
+      '!=': {
+        type: 'reduce',
         production: 30,
       },
-      "<": {
-        type: "reduce",
+      '<': {
+        type: 'reduce',
         production: 30,
       },
-      "<=": {
-        type: "reduce",
+      '<=': {
+        type: 'reduce',
         production: 30,
       },
-      ">": {
-        type: "reduce",
+      '>': {
+        type: 'reduce',
         production: 30,
       },
-      ">=": {
-        type: "reduce",
+      '>=': {
+        type: 'reduce',
         production: 30,
       },
       in: {
-        type: "reduce",
+        type: 'reduce',
         production: 30,
       },
-      "+": {
-        type: "reduce",
+      '+': {
+        type: 'reduce',
         production: 30,
       },
-      "-": {
-        type: "reduce",
+      '-': {
+        type: 'reduce',
         production: 30,
       },
-      "*": {
-        type: "reduce",
+      '*': {
+        type: 'reduce',
         production: 30,
       },
-      "/": {
-        type: "reduce",
+      '/': {
+        type: 'reduce',
         production: 30,
       },
-      "%": {
-        type: "reduce",
+      '%': {
+        type: 'reduce',
         production: 30,
       },
-      ".": {
-        type: "reduce",
+      '.': {
+        type: 'reduce',
         production: 30,
       },
-      "?.": {
-        type: "reduce",
+      '?.': {
+        type: 'reduce',
         production: 30,
       },
-      "[": {
-        type: "reduce",
+      '[': {
+        type: 'reduce',
         production: 30,
       },
-      "?[": {
-        type: "reduce",
+      '?[': {
+        type: 'reduce',
         production: 30,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 30,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 30,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 30,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 30,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 30,
       },
     },
     {
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 31,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 31,
       },
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 31,
       },
-      "&&": {
-        type: "reduce",
+      '&&': {
+        type: 'reduce',
         production: 31,
       },
-      "==": {
-        type: "reduce",
+      '==': {
+        type: 'reduce',
         production: 31,
       },
-      "!=": {
-        type: "reduce",
+      '!=': {
+        type: 'reduce',
         production: 31,
       },
-      "<": {
-        type: "reduce",
+      '<': {
+        type: 'reduce',
         production: 31,
       },
-      "<=": {
-        type: "reduce",
+      '<=': {
+        type: 'reduce',
         production: 31,
       },
-      ">": {
-        type: "reduce",
+      '>': {
+        type: 'reduce',
         production: 31,
       },
-      ">=": {
-        type: "reduce",
+      '>=': {
+        type: 'reduce',
         production: 31,
       },
       in: {
-        type: "reduce",
+        type: 'reduce',
         production: 31,
       },
-      "+": {
-        type: "reduce",
+      '+': {
+        type: 'reduce',
         production: 31,
       },
-      "-": {
-        type: "reduce",
+      '-': {
+        type: 'reduce',
         production: 31,
       },
-      "*": {
-        type: "reduce",
+      '*': {
+        type: 'reduce',
         production: 31,
       },
-      "/": {
-        type: "reduce",
+      '/': {
+        type: 'reduce',
         production: 31,
       },
-      "%": {
-        type: "reduce",
+      '%': {
+        type: 'reduce',
         production: 31,
       },
-      ".": {
-        type: "reduce",
+      '.': {
+        type: 'reduce',
         production: 31,
       },
-      "?.": {
-        type: "reduce",
+      '?.': {
+        type: 'reduce',
         production: 31,
       },
-      "[": {
-        type: "reduce",
+      '[': {
+        type: 'reduce',
         production: 31,
       },
-      "?[": {
-        type: "reduce",
+      '?[': {
+        type: 'reduce',
         production: 31,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 31,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 31,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 31,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 31,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 31,
       },
     },
     {
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 37,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 37,
       },
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 37,
       },
-      "&&": {
-        type: "reduce",
+      '&&': {
+        type: 'reduce',
         production: 37,
       },
-      "==": {
-        type: "reduce",
+      '==': {
+        type: 'reduce',
         production: 37,
       },
-      "!=": {
-        type: "reduce",
+      '!=': {
+        type: 'reduce',
         production: 37,
       },
-      "<": {
-        type: "reduce",
+      '<': {
+        type: 'reduce',
         production: 37,
       },
-      "<=": {
-        type: "reduce",
+      '<=': {
+        type: 'reduce',
         production: 37,
       },
-      ">": {
-        type: "reduce",
+      '>': {
+        type: 'reduce',
         production: 37,
       },
-      ">=": {
-        type: "reduce",
+      '>=': {
+        type: 'reduce',
         production: 37,
       },
       in: {
-        type: "reduce",
+        type: 'reduce',
         production: 37,
       },
-      "+": {
-        type: "reduce",
+      '+': {
+        type: 'reduce',
         production: 37,
       },
-      "-": {
-        type: "reduce",
+      '-': {
+        type: 'reduce',
         production: 37,
       },
-      "*": {
-        type: "reduce",
+      '*': {
+        type: 'reduce',
         production: 37,
       },
-      "/": {
-        type: "reduce",
+      '/': {
+        type: 'reduce',
         production: 37,
       },
-      "%": {
-        type: "reduce",
+      '%': {
+        type: 'reduce',
         production: 37,
       },
-      ".": {
-        type: "reduce",
+      '.': {
+        type: 'reduce',
         production: 37,
       },
-      "?.": {
-        type: "reduce",
+      '?.': {
+        type: 'reduce',
         production: 37,
       },
-      "[": {
-        type: "reduce",
+      '[': {
+        type: 'reduce',
         production: 37,
       },
-      "?[": {
-        type: "reduce",
+      '?[': {
+        type: 'reduce',
         production: 37,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 37,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 37,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 37,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 37,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 37,
       },
     },
     {
-      "!": {
-        type: "shift",
+      '!': {
+        type: 'shift',
         state: 9,
       },
-      "-": {
-        type: "shift",
+      '-': {
+        type: 'shift',
         state: 10,
       },
       NUMBER: {
-        type: "shift",
+        type: 'shift',
         state: 13,
       },
       STRING: {
-        type: "shift",
+        type: 'shift',
         state: 14,
       },
       BOOL: {
-        type: "shift",
+        type: 'shift',
         state: 15,
       },
       NULL: {
-        type: "shift",
+        type: 'shift',
         state: 16,
       },
       IDENT: {
-        type: "shift",
+        type: 'shift',
         state: 17,
       },
-      "(": {
-        type: "shift",
+      '(': {
+        type: 'shift',
         state: 18,
       },
-      "[": {
-        type: "shift",
+      '[': {
+        type: 'shift',
         state: 19,
       },
-      "{": {
-        type: "shift",
+      '{': {
+        type: 'shift',
         state: 20,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 43,
       },
     },
     {
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 50,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 50,
       },
     },
     {
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 55,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 55,
       },
     },
     {
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 56,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 56,
       },
     },
     {
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 2,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 2,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 2,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 2,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 2,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 2,
       },
     },
     {
-      ")": {
-        type: "shift",
+      ')': {
+        type: 'shift',
         state: 93,
       },
     },
     {
-      ")": {
-        type: "shift",
+      ')': {
+        type: 'shift',
         state: 94,
       },
     },
     {
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 45,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 45,
       },
     },
     {
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 27,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 27,
       },
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 27,
       },
-      "&&": {
-        type: "reduce",
+      '&&': {
+        type: 'reduce',
         production: 27,
       },
-      "==": {
-        type: "reduce",
+      '==': {
+        type: 'reduce',
         production: 27,
       },
-      "!=": {
-        type: "reduce",
+      '!=': {
+        type: 'reduce',
         production: 27,
       },
-      "<": {
-        type: "reduce",
+      '<': {
+        type: 'reduce',
         production: 27,
       },
-      "<=": {
-        type: "reduce",
+      '<=': {
+        type: 'reduce',
         production: 27,
       },
-      ">": {
-        type: "reduce",
+      '>': {
+        type: 'reduce',
         production: 27,
       },
-      ">=": {
-        type: "reduce",
+      '>=': {
+        type: 'reduce',
         production: 27,
       },
       in: {
-        type: "reduce",
+        type: 'reduce',
         production: 27,
       },
-      "+": {
-        type: "reduce",
+      '+': {
+        type: 'reduce',
         production: 27,
       },
-      "-": {
-        type: "reduce",
+      '-': {
+        type: 'reduce',
         production: 27,
       },
-      "*": {
-        type: "reduce",
+      '*': {
+        type: 'reduce',
         production: 27,
       },
-      "/": {
-        type: "reduce",
+      '/': {
+        type: 'reduce',
         production: 27,
       },
-      "%": {
-        type: "reduce",
+      '%': {
+        type: 'reduce',
         production: 27,
       },
-      ".": {
-        type: "reduce",
+      '.': {
+        type: 'reduce',
         production: 27,
       },
-      "?.": {
-        type: "reduce",
+      '?.': {
+        type: 'reduce',
         production: 27,
       },
-      "[": {
-        type: "reduce",
+      '[': {
+        type: 'reduce',
         production: 27,
       },
-      "?[": {
-        type: "reduce",
+      '?[': {
+        type: 'reduce',
         production: 27,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 27,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 27,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 27,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 27,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 27,
       },
     },
     {
       $end: {
-        type: "reduce",
+        type: 'reduce',
         production: 29,
       },
-      "?": {
-        type: "reduce",
+      '?': {
+        type: 'reduce',
         production: 29,
       },
-      "||": {
-        type: "reduce",
+      '||': {
+        type: 'reduce',
         production: 29,
       },
-      "&&": {
-        type: "reduce",
+      '&&': {
+        type: 'reduce',
         production: 29,
       },
-      "==": {
-        type: "reduce",
+      '==': {
+        type: 'reduce',
         production: 29,
       },
-      "!=": {
-        type: "reduce",
+      '!=': {
+        type: 'reduce',
         production: 29,
       },
-      "<": {
-        type: "reduce",
+      '<': {
+        type: 'reduce',
         production: 29,
       },
-      "<=": {
-        type: "reduce",
+      '<=': {
+        type: 'reduce',
         production: 29,
       },
-      ">": {
-        type: "reduce",
+      '>': {
+        type: 'reduce',
         production: 29,
       },
-      ">=": {
-        type: "reduce",
+      '>=': {
+        type: 'reduce',
         production: 29,
       },
       in: {
-        type: "reduce",
+        type: 'reduce',
         production: 29,
       },
-      "+": {
-        type: "reduce",
+      '+': {
+        type: 'reduce',
         production: 29,
       },
-      "-": {
-        type: "reduce",
+      '-': {
+        type: 'reduce',
         production: 29,
       },
-      "*": {
-        type: "reduce",
+      '*': {
+        type: 'reduce',
         production: 29,
       },
-      "/": {
-        type: "reduce",
+      '/': {
+        type: 'reduce',
         production: 29,
       },
-      "%": {
-        type: "reduce",
+      '%': {
+        type: 'reduce',
         production: 29,
       },
-      ".": {
-        type: "reduce",
+      '.': {
+        type: 'reduce',
         production: 29,
       },
-      "?.": {
-        type: "reduce",
+      '?.': {
+        type: 'reduce',
         production: 29,
       },
-      "[": {
-        type: "reduce",
+      '[': {
+        type: 'reduce',
         production: 29,
       },
-      "?[": {
-        type: "reduce",
+      '?[': {
+        type: 'reduce',
         production: 29,
       },
-      ")": {
-        type: "reduce",
+      ')': {
+        type: 'reduce',
         production: 29,
       },
-      "]": {
-        type: "reduce",
+      ']': {
+        type: 'reduce',
         production: 29,
       },
-      ",": {
-        type: "reduce",
+      ',': {
+        type: 'reduce',
         production: 29,
       },
-      ":": {
-        type: "reduce",
+      ':': {
+        type: 'reduce',
         production: 29,
       },
-      "}": {
-        type: "reduce",
+      '}': {
+        type: 'reduce',
         production: 29,
       },
     },
@@ -5197,231 +5197,231 @@ export const TABLES: ParseTables = {
   ],
   productions: [
     {
-      lhs: "Expr",
+      lhs: 'Expr',
       length: 1,
     },
     {
-      lhs: "Cond",
+      lhs: 'Cond',
       length: 1,
     },
     {
-      lhs: "Cond",
+      lhs: 'Cond',
       length: 5,
     },
     {
-      lhs: "Or",
+      lhs: 'Or',
       length: 3,
     },
     {
-      lhs: "Or",
+      lhs: 'Or',
       length: 1,
     },
     {
-      lhs: "And",
+      lhs: 'And',
       length: 3,
     },
     {
-      lhs: "And",
+      lhs: 'And',
       length: 1,
     },
     {
-      lhs: "Rel",
+      lhs: 'Rel',
       length: 3,
     },
     {
-      lhs: "Rel",
+      lhs: 'Rel',
       length: 3,
     },
     {
-      lhs: "Rel",
+      lhs: 'Rel',
       length: 3,
     },
     {
-      lhs: "Rel",
+      lhs: 'Rel',
       length: 3,
     },
     {
-      lhs: "Rel",
+      lhs: 'Rel',
       length: 3,
     },
     {
-      lhs: "Rel",
+      lhs: 'Rel',
       length: 3,
     },
     {
-      lhs: "Rel",
+      lhs: 'Rel',
       length: 3,
     },
     {
-      lhs: "Rel",
+      lhs: 'Rel',
       length: 1,
     },
     {
-      lhs: "Add",
+      lhs: 'Add',
       length: 3,
     },
     {
-      lhs: "Add",
+      lhs: 'Add',
       length: 3,
     },
     {
-      lhs: "Add",
+      lhs: 'Add',
       length: 1,
     },
     {
-      lhs: "Mul",
+      lhs: 'Mul',
       length: 3,
     },
     {
-      lhs: "Mul",
+      lhs: 'Mul',
       length: 3,
     },
     {
-      lhs: "Mul",
+      lhs: 'Mul',
       length: 3,
     },
     {
-      lhs: "Mul",
+      lhs: 'Mul',
       length: 1,
     },
     {
-      lhs: "Unary",
+      lhs: 'Unary',
       length: 2,
     },
     {
-      lhs: "Unary",
+      lhs: 'Unary',
       length: 2,
     },
     {
-      lhs: "Unary",
+      lhs: 'Unary',
       length: 1,
     },
     {
-      lhs: "Postfix",
+      lhs: 'Postfix',
       length: 1,
     },
     {
-      lhs: "Postfix",
+      lhs: 'Postfix',
       length: 3,
     },
     {
-      lhs: "Postfix",
+      lhs: 'Postfix',
       length: 6,
     },
     {
-      lhs: "Postfix",
+      lhs: 'Postfix',
       length: 3,
     },
     {
-      lhs: "Postfix",
+      lhs: 'Postfix',
       length: 6,
     },
     {
-      lhs: "Postfix",
+      lhs: 'Postfix',
       length: 4,
     },
     {
-      lhs: "Postfix",
+      lhs: 'Postfix',
       length: 4,
     },
     {
-      lhs: "Primary",
+      lhs: 'Primary',
       length: 1,
     },
     {
-      lhs: "Primary",
+      lhs: 'Primary',
       length: 1,
     },
     {
-      lhs: "Primary",
+      lhs: 'Primary',
       length: 1,
     },
     {
-      lhs: "Primary",
+      lhs: 'Primary',
       length: 1,
     },
     {
-      lhs: "Primary",
+      lhs: 'Primary',
       length: 1,
     },
     {
-      lhs: "Primary",
+      lhs: 'Primary',
       length: 4,
     },
     {
-      lhs: "Primary",
+      lhs: 'Primary',
       length: 3,
     },
     {
-      lhs: "Primary",
+      lhs: 'Primary',
       length: 3,
     },
     {
-      lhs: "Primary",
+      lhs: 'Primary',
       length: 3,
     },
     {
-      lhs: "Args",
+      lhs: 'Args',
       length: 0,
     },
     {
-      lhs: "Args",
+      lhs: 'Args',
       length: 1,
     },
     {
-      lhs: "Args",
+      lhs: 'Args',
       length: 2,
     },
     {
-      lhs: "ArgList",
+      lhs: 'ArgList',
       length: 1,
     },
     {
-      lhs: "ArgList",
+      lhs: 'ArgList',
       length: 3,
     },
     {
-      lhs: "Elems",
+      lhs: 'Elems',
       length: 0,
     },
     {
-      lhs: "Elems",
+      lhs: 'Elems',
       length: 1,
     },
     {
-      lhs: "Elems",
+      lhs: 'Elems',
       length: 2,
     },
     {
-      lhs: "ElemList",
+      lhs: 'ElemList',
       length: 1,
     },
     {
-      lhs: "ElemList",
+      lhs: 'ElemList',
       length: 3,
     },
     {
-      lhs: "Entries",
+      lhs: 'Entries',
       length: 0,
     },
     {
-      lhs: "Entries",
+      lhs: 'Entries',
       length: 1,
     },
     {
-      lhs: "Entries",
+      lhs: 'Entries',
       length: 2,
     },
     {
-      lhs: "EntryList",
+      lhs: 'EntryList',
       length: 1,
     },
     {
-      lhs: "EntryList",
+      lhs: 'EntryList',
       length: 3,
     },
     {
-      lhs: "Entry",
+      lhs: 'Entry',
       length: 3,
     },
   ],

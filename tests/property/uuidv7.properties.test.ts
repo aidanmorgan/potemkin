@@ -2,17 +2,17 @@
  * Property-based tests for UUIDv7 utilities.
  */
 
-import * as fc from "fast-check";
-import { nextUuidv7, epochAnchoredUuidv7, isUuidv7 } from "../../src/ids/uuidv7";
+import * as fc from 'fast-check';
+import { nextUuidv7, epochAnchoredUuidv7, isUuidv7 } from '../../src/ids/uuidv7';
 
 const RUN_COUNT = 200;
 const SEED = 42;
 
-describe("uuidv7 properties", () => {
+describe('uuidv7 properties', () => {
   // ---------------------------------------------------------------------------
   // P1: Every nextUuidv7() result is a valid UUIDv7
   // ---------------------------------------------------------------------------
-  it("nextUuidv7 always produces a valid UUIDv7", () => {
+  it('nextUuidv7 always produces a valid UUIDv7', () => {
     fc.assert(
       fc.property(fc.integer({ min: 0, max: 999 }), (_i) => {
         const id = nextUuidv7();
@@ -26,7 +26,7 @@ describe("uuidv7 properties", () => {
   // P2: 1000 sequential nextUuidv7() calls are strictly time-ordered
   // (UUIDv7 first 48 bits encode ms timestamp, so sort order = insertion order)
   // ---------------------------------------------------------------------------
-  it("1000 sequential nextUuidv7() calls are non-decreasing by timestamp", () => {
+  it('1000 sequential nextUuidv7() calls are non-decreasing by timestamp', () => {
     const ids: string[] = [];
     for (let i = 0; i < 1000; i++) {
       ids.push(nextUuidv7());
@@ -47,7 +47,7 @@ describe("uuidv7 properties", () => {
   // ---------------------------------------------------------------------------
   // P3: epochAnchoredUuidv7 is deterministic — same seedIndex → same UUID
   // ---------------------------------------------------------------------------
-  it("epochAnchoredUuidv7 is deterministic for same seedIndex", () => {
+  it('epochAnchoredUuidv7 is deterministic for same seedIndex', () => {
     fc.assert(
       fc.property(fc.integer({ min: 0, max: 100_000 }), (seedIndex) => {
         const a = epochAnchoredUuidv7(seedIndex);
@@ -62,7 +62,7 @@ describe("uuidv7 properties", () => {
   // ---------------------------------------------------------------------------
   // P4: epochAnchoredUuidv7 produces distinct UUIDs for distinct seedIndexes
   // ---------------------------------------------------------------------------
-  it("epochAnchoredUuidv7 produces distinct UUIDs for 10k distinct seedIndexes", () => {
+  it('epochAnchoredUuidv7 produces distinct UUIDs for 10k distinct seedIndexes', () => {
     const N = 10_000;
     const ids = new Set<string>();
     for (let i = 0; i < N; i++) {
@@ -74,14 +74,14 @@ describe("uuidv7 properties", () => {
   // ---------------------------------------------------------------------------
   // P5: epochAnchoredUuidv7 timestamps are anchored at epoch 0
   // ---------------------------------------------------------------------------
-  it("epochAnchoredUuidv7 has zero timestamp (epoch anchor)", () => {
+  it('epochAnchoredUuidv7 has zero timestamp (epoch anchor)', () => {
     fc.assert(
       fc.property(fc.integer({ min: 0, max: 10_000 }), (seedIndex) => {
         const id = epochAnchoredUuidv7(seedIndex);
         // First 12 hex chars (without hyphens) encode the bit timestamp — should all be 0
-        const hexNoHyphens = id.replace(/-/g, "");
+        const hexNoHyphens = id.replace(/-/g, '');
         const timestampHex = hexNoHyphens.slice(0, 12);
-        expect(timestampHex).toBe("000000000000");
+        expect(timestampHex).toBe('000000000000');
       }),
       { numRuns: RUN_COUNT, seed: SEED },
     );

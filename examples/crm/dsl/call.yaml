@@ -5,23 +5,23 @@ identity:
   creation:
     generate: $uuidv7()
 query_mapping:
-  leadId: "state.leadId == param"
-  agentId: "state.agentId == param"
-  campaignId: "state.campaignId == param"
+  leadId: 'state.leadId == param'
+  agentId: 'state.agentId == param'
+  campaignId: 'state.campaignId == param'
 
 event_catalog:
   # schema_ref on CallLogged event
   - type: CallLogged
-    schema_ref: "#/components/schemas/CallLogged"
+    schema_ref: '#/components/schemas/CallLogged'
     payload_template:
-      id: "command.targetId"
-      leadId: "command.payload.leadId"
-      agentId: "command.payload.agentId"
-      campaignId: "command.payload.campaignId"
-      startedAt: "command.payload?.startedAt != null ? command.payload.startedAt : $now()"
-      endedAt: "command.payload?.endedAt != null ? command.payload.endedAt : $now()"
-      durationSeconds: "command.payload?.durationSeconds != null ? command.payload.durationSeconds : 0"
-      outcome: "command.payload.outcome"
+      id: 'command.targetId'
+      leadId: 'command.payload.leadId'
+      agentId: 'command.payload.agentId'
+      campaignId: 'command.payload.campaignId'
+      startedAt: 'command.payload?.startedAt != null ? command.payload.startedAt : $now()'
+      endedAt: 'command.payload?.endedAt != null ? command.payload.endedAt : $now()'
+      durationSeconds: 'command.payload?.durationSeconds != null ? command.payload.durationSeconds : 0'
+      outcome: 'command.payload.outcome'
       notes: "command.payload?.notes != null ? command.payload.notes : ''"
 
 behaviors:
@@ -31,71 +31,71 @@ behaviors:
   - name: logCall
     match:
       operationId: logCall
-      condition: "true"
+      condition: 'true'
       requires:
         - name: valid-outcome
-          condition: "command.payload.outcome != null"
+          condition: 'command.payload.outcome != null'
           error_code: MISSING_OUTCOME
-          error_message: "Call outcome is required"
+          error_message: 'Call outcome is required'
         - name: valid-lead
-          condition: "command.payload.leadId != null"
+          condition: 'command.payload.leadId != null'
           error_code: MISSING_LEAD
-          error_message: "Call must be associated with a lead"
+          error_message: 'Call must be associated with a lead'
     emit: CallLogged
     dispatch_commands:
       # Append callId to the Lead's callIds array
       - boundary: Lead
         intent: mutation
         operationId: patchLead
-        target_id: "command.payload.leadId"
+        target_id: 'command.payload.leadId'
         payload:
-          callId: "command.targetId"
-        condition: "command.payload?.leadId != null"
+          callId: 'command.targetId'
+        condition: 'command.payload?.leadId != null'
       # Increment agent's daily call count
       - boundary: Agent
         intent: mutation
         operationId: updateAgentStatus
-        target_id: "command.payload.agentId"
+        target_id: 'command.payload.agentId'
         payload:
-          callId: "command.targetId"
-          incrementCall: "true"
-        condition: "command.payload?.agentId != null"
+          callId: 'command.targetId'
+          incrementCall: 'true'
+        condition: 'command.payload?.agentId != null'
 
 reducers:
   - on: CallLogged
     patches:
       - op: replace
         path: /id
-        value: "${event.payload.id}"
+        value: '${event.payload.id}'
       - op: replace
         path: /leadId
-        value: "${event.payload.leadId}"
+        value: '${event.payload.leadId}'
       - op: replace
         path: /agentId
-        value: "${event.payload.agentId}"
+        value: '${event.payload.agentId}'
       - op: replace
         path: /campaignId
-        value: "${event.payload.campaignId}"
+        value: '${event.payload.campaignId}'
       - op: replace
         path: /startedAt
-        value: "${event.payload.startedAt}"
+        value: '${event.payload.startedAt}'
       - op: replace
         path: /endedAt
-        value: "${event.payload.endedAt}"
+        value: '${event.payload.endedAt}'
       - op: replace
         path: /durationSeconds
-        value: "${event.payload.durationSeconds}"
+        value: '${event.payload.durationSeconds}'
       - op: replace
         path: /outcome
-        value: "${event.payload.outcome}"
+        value: '${event.payload.outcome}'
       - op: replace
         path: /notes
-        value: "${event.payload.notes}"
+        value: '${event.payload.notes}'
       # Initialise the transcript array so the CallAddTranscript boundary can
       # append entries and the Call response always carries a (possibly empty)
       # transcript array.
       - op: replace
         path: /transcript
-        value: "${[]}"
+        value: '${[]}'
 
 initialization: []

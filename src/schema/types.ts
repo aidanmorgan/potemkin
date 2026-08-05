@@ -1,15 +1,15 @@
-import type { JsonValue } from "../types.js";
+import type { JsonValue } from '../contracts/value.js';
 
 export type SchemaTypeKind =
-  | "object"
-  | "array"
-  | "string"
-  | "number"
-  | "integer"
-  | "boolean"
-  | "null"
-  | "union"
-  | "any";
+  | 'object'
+  | 'array'
+  | 'string'
+  | 'number'
+  | 'integer'
+  | 'boolean'
+  | 'null'
+  | 'union'
+  | 'any';
 
 export interface ObjectGraphSchema {
   readonly name: string;
@@ -28,7 +28,7 @@ export interface ObjectGraphSchema {
    * Distinguishes oneOf (exactly one match) from anyOf (at least one match) when kind === 'union'.
    * Maps from OpenAPI `oneOf` vs `anyOf`.
    */
-  readonly unionVariant?: "oneOf" | "anyOf";
+  readonly unionVariant?: 'oneOf' | 'anyOf';
   /**
    * Minimum numeric value (inclusive). Enforced for integer and number kinds.
    * Maps from OpenAPI `minimum`.

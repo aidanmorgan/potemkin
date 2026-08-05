@@ -35,4 +35,4 @@ COPY --from=build /app/plugin/build/libs/potemkin-stateful-plugin.jar /opt/potem
 COPY --from=build /tmp/specmatic.jar /opt/potemkin/specmatic.jar
 
 EXPOSE 3000 9000 9090
-CMD ["node", "dist/src/cli/server.js"]
+CMD ["node", "dist/src/cli/index.js", "server"]

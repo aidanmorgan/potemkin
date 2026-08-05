@@ -1,11 +1,12 @@
-import type { OpenApiDoc } from "../contract/loader.js";
-import type { RuntimeModelCoverage } from "../model/runtime.js";
+import type { OpenApiDoc } from '../contract/loader.js';
+import type { RuntimeModelCoverage } from '../model/runtime.js';
 import type {
   TransitionMachine,
   TransitionModel,
   TransitionWriteSet,
-} from "../model/transitionModel.js";
-import type { SimulationDefinition } from "./runtimeModel.js";
+} from '../model/transitionModel.js';
+import type { SimulationDefinition } from './types.js';
+import { composeBoundaries } from './composition.js';
 
 /**
  * Build the same versioned model shape for direct TypeScript authoring.
@@ -19,22 +20,23 @@ export function buildTypeScriptTransitionModel(
   definition: SimulationDefinition,
   openapi: OpenApiDoc,
 ): TransitionModel {
-  const groups = new Map<string, SimulationDefinition["boundaries"]>();
-  for (const boundary of definition.boundaries) {
+  const groups = new Map<string, SimulationDefinition['boundaries']>();
+  const boundaries = [...definition.boundaries, ...composeBoundaries([], definition.uses ?? [])];
+  for (const boundary of boundaries) {
     const key = aggregateKey(boundary.schema, boundary.contractPath);
     groups.set(key, [...(groups.get(key) ?? []), boundary]);
   }
 
   const machines = [...groups.entries()]
     .sort(([left], [right]) => left.localeCompare(right))
-    .map(([key, boundaries]) => buildMachine(definition, key, boundaries, openapi));
+    .map(([key, groupedBoundaries]) => buildMachine(definition, key, groupedBoundaries, openapi));
   return { schemaVersion: 1, machines };
 }
 
 function buildMachine(
   definition: SimulationDefinition,
   key: string,
-  boundaries: SimulationDefinition["boundaries"],
+  boundaries: SimulationDefinition['boundaries'],
   openapi: OpenApiDoc,
 ): TransitionMachine {
   const schema = resolveSchema(key, boundaries[0]?.schema, openapi);
@@ -53,8 +55,8 @@ function buildMachine(
       return emitted
         .filter((event) => events.has(event) && reducers.some((reducer) => reducer.on === event))
         .map(() => ({
-          from: "*" as const,
-          to: "UNKNOWN" as const,
+          from: '*' as const,
+          to: 'UNKNOWN' as const,
           op: behavior.operationId,
           guardCel: null,
           nextStateKnown: false as const,
@@ -92,7 +94,7 @@ function buildMachine(
   return {
     aggregate: aggregateName(key),
     controlField,
-    states: states.length === 0 ? ["UNKNOWN"] : states,
+    states: states.length === 0 ? ['UNKNOWN'] : states,
     transitions: uniqueTransitions(transitions),
     writeSets: Object.fromEntries(
       [...writeSets.entries()].sort(([left], [right]) => left.localeCompare(right)),
@@ -104,7 +106,7 @@ function buildMachine(
 function buildAnalysis(
   definition: SimulationDefinition,
   key: string,
-  boundaries: SimulationDefinition["boundaries"],
+  boundaries: SimulationDefinition['boundaries'],
   controlField: string,
 ): RuntimeModelCoverage {
   const policy =
@@ -116,7 +118,7 @@ function buildAnalysis(
         const nestedState = record(value?.state);
         return nestedState?.[controlField] ?? value?.[controlField];
       })
-      .filter((value): value is string => typeof value === "string"),
+      .filter((value): value is string => typeof value === 'string'),
   );
   const configuredInitialStates = policy?.initialStates ?? [];
   return {
@@ -131,24 +133,24 @@ function buildAnalysis(
 }
 
 function aggregateKey(schema: string | undefined, contractPath: string): string {
-  if (schema !== undefined && schema.trim() !== "") return schema;
+  if (schema !== undefined && schema.trim() !== '') return schema;
   const segment = contractPath
-    .split("/")
+    .split('/')
     .filter(Boolean)
     .find((value) => !/^v\d+$/i.test(value));
-  return segment?.toLowerCase() ?? "runtime";
+  return segment?.toLowerCase() ?? 'runtime';
 }
 
 function aggregateName(key: string): string {
   return key
-    .replace(/[-_]+/g, " ")
+    .replace(/[-_]+/g, ' ')
     .split(/\s+/)
     .filter(Boolean)
     .map((part) => {
-      const singular = part.length > 3 && part.endsWith("s") ? part.slice(0, -1) : part;
+      const singular = part.length > 3 && part.endsWith('s') ? part.slice(0, -1) : part;
       return singular[0]!.toUpperCase() + singular.slice(1);
     })
-    .join("");
+    .join('');
 }
 
 function resolveSchema(
@@ -169,18 +171,17 @@ function resolveSchema(
 function selectControlField(schema: Record<string, unknown> | undefined): string {
   const fields = record(schema?.properties) ?? {};
   const enums = Object.entries(fields).filter(
-    ([, value]) => enumValues(record(value), "").length > 0,
+    ([, value]) => enumValues(record(value), '').length > 0,
   );
-  if (enums.length === 0) return "state";
+  if (enums.length === 0) return 'state';
   return enums.sort(([left], [right]) => left.localeCompare(right))[0]![0];
 }
 
 function enumValues(schema: Record<string, unknown> | undefined, field: string): readonly string[] {
-  const value = field === "" ? schema : record(schema?.properties)?.[field];
-  return Array.isArray(record(value)?.enum)
-    ? (record(value)!.enum as unknown[]).filter(
-        (entry): entry is string => typeof entry === "string",
-      )
+  const value = field === '' ? schema : record(schema?.properties)?.[field];
+  const enumValues = record(value)?.enum;
+  return Array.isArray(enumValues)
+    ? enumValues.filter((entry): entry is string => typeof entry === 'string')
     : [];
 }
 
@@ -202,7 +203,7 @@ function uniqueTransitions<T extends { readonly op: string; readonly to: string 
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
 }

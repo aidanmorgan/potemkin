@@ -1,45 +1,48 @@
-import type { OpenApiDoc } from "../contract/loader.js";
-import { lookupOperationId } from "../contract/loader.js";
-import { matchRoute } from "../contract/router.js";
-import { createContractValidator, type ContractValidator } from "../contract/validator.js";
-import type { PotemkinConfiguration } from "../config.js";
-import { createRuntimeEngine, type RuntimeEngine } from "../core/engine.js";
+import type { OpenApiDoc } from '../contract/loader.js';
+import { lookupOperationId } from '../contract/loader.js';
+import { matchRoute } from '../contract/router.js';
+import { createContractValidator, type ContractValidator } from '../contract/validator.js';
+import type { PotemkinConfiguration } from '../contracts/config.js';
+import { createRuntimeEngine, type RuntimeEngine } from '../core/engine.js';
 import type {
   RuntimeDependencies,
-  RuntimeClock,
   RuntimeContract,
-  RuntimeForwardingPort,
   RuntimeProgram,
   RuntimeRequest,
-  RuntimeSessionStore,
-  RuntimeWebhookTransport,
   RuntimeFaultStore,
   RuntimeHelpers,
-} from "../model/runtime.js";
-import { createRuntimeFaultStore } from "../core/faults.js";
+} from '../model/runtime.js';
+import type {
+  RuntimeClock,
+  RuntimeForwardingPort,
+  RuntimeSessionStore,
+  RuntimeWebhookTransport,
+} from '../contracts/ports.js';
+import { createRuntimeFaultStore } from '../core/faults.js';
 import {
   createMemoryEventStore,
   createMemoryIdempotencyStore,
   createMemoryStateStore,
-} from "../core/storage.js";
-import { responseSupportsHateoas } from "../contract/hateoas.js";
-import { buildContractErrorBody, validateContractErrorBody } from "../contract/errorBody.js";
-import { createRuntimeAuthenticationPort } from "../identity/actorResolver.js";
-import { createSessionStore, type SessionStore } from "../identity/sessionStore.js";
-import type { Actor, JsonObject, JsonValue } from "../types.js";
-import { ConfigurationError, InternalExecutionError } from "../errors.js";
+} from '../core/storage.js';
+import { responseSupportsHateoas } from '../contract/hateoas.js';
+import { buildContractErrorBody, validateContractErrorBody } from '../contract/errorBody.js';
+import { createRuntimeAuthenticationPort } from '../identity/actorResolver.js';
+import { createSessionStore, type SessionStore } from '../identity/sessionStore.js';
+import type { Actor } from '../contracts/identity.js';
+import type { JsonObject, JsonValue } from '../contracts/value.js';
+import { ConfigurationError, InternalExecutionError } from '../errors.js';
 
 function isJsonObject(value: JsonValue | null | undefined): value is JsonObject {
   return (
-    value !== null && value !== undefined && typeof value === "object" && !Array.isArray(value)
+    value !== null && value !== undefined && typeof value === 'object' && !Array.isArray(value)
   );
 }
-import type { PluginControlClient } from "../lifecycle/types.js";
-import { createHash } from "node:crypto";
-import type { RuntimeHostServices } from "./host.js";
-import type { RuntimeTimerScheduler } from "./ports.js";
-import { lintOrThrow } from "../lint/runner.js";
-import type { TransitionModel } from "../model/transitionModel.js";
+import type { PluginControlClient } from '../contracts/lifecycle.js';
+import { createHash } from 'node:crypto';
+import type { RuntimeHostServices } from './host.js';
+import type { RuntimeTimerScheduler } from './ports.js';
+import { lintOrThrow } from '../lint/runner.js';
+import type { TransitionModel } from '../model/transitionModel.js';
 
 /** A contract binding used by the source-independent engine. */
 export interface RuntimeContractOptions {
@@ -88,7 +91,7 @@ export function runtimeContract(
       const matched = matchRoute(doc, method, path);
       return matched?.operation.operationId ?? lookupOperationId(doc, path, method);
     },
-    responseStatusFor: (operationId: string, intent: RuntimeRequest["command"]["intent"]) => {
+    responseStatusFor: (operationId: string, intent: RuntimeRequest['command']['intent']) => {
       const route = operationRoutes.get(operationId);
       if (route === undefined) return undefined;
       const operation = inputOperation(doc, route.path, route.method);
@@ -97,7 +100,7 @@ export function runtimeContract(
         .filter((status) => Number.isInteger(status) && status >= 200 && status < 300)
         .sort((left, right) => left - right);
       if (statuses.length === 0) return undefined;
-      if (intent === "creation" && statuses.includes(201)) return 201;
+      if (intent === 'creation' && statuses.includes(201)) return 201;
       if (statuses.includes(200)) return 200;
       return statuses[0];
     },
@@ -178,10 +181,10 @@ export function runtimeContract(
       const candidate = isJsonObject(body) ? body : {};
       if (validateContractErrorBody(doc, route.method, route.path, status, body).valid) return body;
       const code =
-        typeof candidate["code"] === "string"
-          ? candidate["code"]
-          : typeof candidate["error"] === "string"
-            ? candidate["error"]
+        typeof candidate['code'] === 'string'
+          ? candidate['code']
+          : typeof candidate['error'] === 'string'
+            ? candidate['error']
             : undefined;
       return buildContractErrorBody(
         doc,
@@ -190,9 +193,9 @@ export function runtimeContract(
         status,
         {
           code,
-          message: typeof candidate["message"] === "string" ? candidate["message"] : undefined,
+          message: typeof candidate['message'] === 'string' ? candidate['message'] : undefined,
           details:
-            candidate["details"] ??
+            candidate['details'] ??
             (code === undefined
               ? undefined
               : {
@@ -211,8 +214,8 @@ export function runtimeContract(
       return (
         doc.paths[route.path]?.[route.method]?.parameters?.some(
           (parameter) =>
-            parameter.in === "header" &&
-            parameter.name.toLowerCase() === "if-match" &&
+            parameter.in === 'header' &&
+            parameter.name.toLowerCase() === 'if-match' &&
             parameter.required === true,
         ) ?? false
       );
@@ -228,8 +231,8 @@ export function runtimeContract(
         validator.validateSchema(schemaRef, payload);
       } catch (error) {
         if (error instanceof InternalExecutionError) throw error;
-        throw new InternalExecutionError("Event payload failed schema validation", {
-          code: "SCHEMA_TYPE_MISMATCH",
+        throw new InternalExecutionError('Event payload failed schema validation', {
+          code: 'SCHEMA_TYPE_MISMATCH',
           error: String(error),
         });
       }
@@ -263,15 +266,15 @@ function inputOperation(doc: OpenApiDoc, path: string, method: string) {
 }
 
 export interface RuntimeSystemDependencies {
-  readonly events?: RuntimeDependencies["events"];
-  readonly state?: RuntimeDependencies["state"];
-  readonly idempotency?: RuntimeDependencies["idempotency"];
+  readonly events?: RuntimeDependencies['events'];
+  readonly state?: RuntimeDependencies['state'];
+  readonly idempotency?: RuntimeDependencies['idempotency'];
   readonly faults?: RuntimeFaultStore;
   readonly webhooks?: RuntimeWebhookTransport;
   readonly forwarding?: RuntimeForwardingPort;
-  readonly observability?: RuntimeDependencies["observability"];
-  readonly sleep?: RuntimeDependencies["sleep"];
-  readonly helpers?: RuntimeDependencies["helpers"];
+  readonly observability?: RuntimeDependencies['observability'];
+  readonly sleep?: RuntimeDependencies['sleep'];
+  readonly helpers?: RuntimeDependencies['helpers'];
   readonly clock?: RuntimeClock;
   /** Timer port for runtime-owned stores and background maintenance. */
   readonly timers?: RuntimeTimerScheduler;
@@ -375,9 +378,9 @@ function buildDependencies(
   clock: RuntimeClock,
   helpers: RuntimeHelpers,
   stores: Readonly<{
-    events: NonNullable<RuntimeDependencies["events"]>;
-    state: NonNullable<RuntimeDependencies["state"]>;
-    idempotency: NonNullable<RuntimeDependencies["idempotency"]>;
+    events: NonNullable<RuntimeDependencies['events']>;
+    state: NonNullable<RuntimeDependencies['state']>;
+    idempotency: NonNullable<RuntimeDependencies['idempotency']>;
   }>,
 ): RuntimeDependencies {
   return {
@@ -407,12 +410,12 @@ function buildDependencies(
  */
 export async function bootRuntime(input: RuntimeBootInput): Promise<RuntimeSystem> {
   if ([input.program, input.programFactory].filter((value) => value !== undefined).length !== 1) {
-    throw new ConfigurationError("bootRuntime requires exactly one of program or programFactory", {
-      field: "bootRuntime.source",
+    throw new ConfigurationError('bootRuntime requires exactly one of program or programFactory', {
+      field: 'bootRuntime.source',
     });
   }
   const validator = createContractValidator(input.openapi, []);
-  const runtimeVersion = input.version ?? "0.1.0";
+  const runtimeVersion = input.version ?? '0.1.0';
   const host = input.host;
   const clock = input.clock ?? input.program?.dependencies.clock ?? host.clock;
   const helpers = input.helpers ?? input.program?.dependencies.helpers ?? host.helpers;
@@ -481,18 +484,18 @@ export async function bootRuntime(input: RuntimeBootInput): Promise<RuntimeSyste
   await engine.start();
   const startedAt = helpers.now();
   const contractPaths = [...program.byContractPath.keys()].sort();
-  const routesChecksum = createHash("sha256").update(contractPaths.join("\n")).digest("hex");
+  const routesChecksum = createHash('sha256').update(contractPaths.join('\n')).digest('hex');
   const baselineEvents = engine
     .snapshot()
-    .events.filter((event) => event.eventId.startsWith("baseline-"))
+    .events.filter((event) => event.eventId.startsWith('baseline-'))
     .map((event) => ({
       boundary: event.boundary,
       aggregateId: event.aggregateId,
       payload: event.payload,
     }));
-  const fixturesChecksum = createHash("sha256")
+  const fixturesChecksum = createHash('sha256')
     .update(JSON.stringify(baselineEvents))
-    .digest("hex");
+    .digest('hex');
   const disposeHooks = new Set<() => Promise<void> | void>();
   let disposed = false;
   const system: RuntimeSystem = {
@@ -507,8 +510,8 @@ export async function bootRuntime(input: RuntimeBootInput): Promise<RuntimeSyste
     ...(input.transitionModel === undefined ? {} : { transitionModel: input.transitionModel }),
     reload: async (nextProgram, options = {}) => {
       if (disposed)
-        throw new ConfigurationError("Cannot reload a disposed runtime", {
-          field: "runtime.reload",
+        throw new ConfigurationError('Cannot reload a disposed runtime', {
+          field: 'runtime.reload',
         });
       const nextValidator =
         options.openapi === undefined ? undefined : createContractValidator(options.openapi, []);
@@ -542,21 +545,21 @@ export async function bootRuntime(input: RuntimeBootInput): Promise<RuntimeSyste
         const nextContractPaths = [...engine.program.byContractPath.keys()].sort();
         const nextBaselineEvents = engine
           .snapshot()
-          .events.filter((event) => event.eventId.startsWith("baseline-"))
+          .events.filter((event) => event.eventId.startsWith('baseline-'))
           .map((event) => ({
             boundary: event.boundary,
             aggregateId: event.aggregateId,
             payload: event.payload,
           }));
         await input.pluginControl.notifyReady({
-          engine: "potemkin-stateful",
+          engine: 'potemkin-stateful',
           version: runtimeVersion,
           startedAt: helpers.now(),
           contractPaths: nextContractPaths,
-          routesChecksum: createHash("sha256").update(nextContractPaths.join("\n")).digest("hex"),
-          fixturesChecksum: createHash("sha256")
+          routesChecksum: createHash('sha256').update(nextContractPaths.join('\n')).digest('hex'),
+          fixturesChecksum: createHash('sha256')
             .update(JSON.stringify(nextBaselineEvents))
-            .digest("hex"),
+            .digest('hex'),
         });
       }
     },
@@ -574,9 +577,9 @@ export async function bootRuntime(input: RuntimeBootInput): Promise<RuntimeSyste
       disposeHooks.clear();
       if (input.pluginControl !== undefined) {
         await input.pluginControl.notifyShutdown({
-          engine: "potemkin-stateful",
+          engine: 'potemkin-stateful',
           version: runtimeVersion,
-          reason: "manual",
+          reason: 'manual',
           stoppedAt: helpers.now(),
         });
       }
@@ -586,7 +589,7 @@ export async function bootRuntime(input: RuntimeBootInput): Promise<RuntimeSyste
   };
   if (input.pluginControl !== undefined) {
     void input.pluginControl.notifyReady({
-      engine: "potemkin-stateful",
+      engine: 'potemkin-stateful',
       version: runtimeVersion,
       startedAt,
       contractPaths,

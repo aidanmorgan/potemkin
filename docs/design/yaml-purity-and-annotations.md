@@ -12,12 +12,12 @@ invokes only static methods decorated with the exact `@PotemkinConfigure`
 decorator imported from `potemkin/sdk`:
 
 ```typescript
-import { PotemkinConfigure, defineHelper, simulation } from "potemkin/sdk";
+import { PotemkinConfigure, defineHelper, simulation } from 'potemkin/sdk';
 
-const sourceLabel = defineHelper("sourceLabel", (value: string) => value);
+const sourceLabel = defineHelper('sourceLabel', (value: string) => value);
 
 class SharedConfiguration {
-  @PotemkinConfigure("shared")
+  @PotemkinConfigure('shared')
   static create() {
     return simulation().helper(sourceLabel).build();
   }
@@ -35,14 +35,14 @@ that is not imported remains ignored.
 ## Shared helpers
 
 `defineHelper` returns a typed callable and a source-independent helper
-definition. Registering it with `.helper()` or `.helpers()` puts the definition
+definition. Registering it with `.helper()` puts the definition
 in the model. The YAML compiler receives those definitions before compiling CEL:
 
 ```yaml
 event_catalog:
   - type: ThingCreated
     payload_template:
-      source: "sourceLabel(command.payload.source)"
+      source: 'sourceLabel(command.payload.source)'
 ```
 
 There is no sentinel declaration. Helper names are CEL identifiers,

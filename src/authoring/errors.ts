@@ -1,4 +1,4 @@
-import type { JsonValue } from "../types.js";
+import type { JsonValue } from '../contracts/value.js';
 
 /** Stable source location attached to TypeScript authoring diagnostics. */
 export interface TypeScriptSourceLocation {
@@ -9,20 +9,21 @@ export interface TypeScriptSourceLocation {
 
 /** Expected failures produced by the TypeScript SDK and its loader. */
 export type TypeScriptDiagnosticCode =
-  | "TS_FACTORY_CONFLICT"
-  | "TS_FACTORY_INVALID"
-  | "TS_DECORATOR_INVALID"
-  | "TS_HELPER_INVALID"
-  | "TS_REFERENCE_INVALID"
-  | "TS_BUILDER_INVALID"
-  | "TS_COMPOSITION_CONFLICT"
-  | "TS_DEFINITION_INVALID"
-  | "TS_SOURCE_READ"
-  | "TS_TRANSPILE"
-  | "TS_EXECUTION"
-  | "TS_IMPORT_FORBIDDEN"
-  | "TS_IMPORT_OUTSIDE_SCAN"
-  | "TS_CONFIGURATION_INVALID";
+  | 'TS_FACTORY_CONFLICT'
+  | 'TS_FACTORY_INVALID'
+  | 'TS_DECORATOR_INVALID'
+  | 'TS_HELPER_INVALID'
+  | 'TS_LEGACY_ALIAS'
+  | 'TS_BUILDER_INVALID'
+  | 'TS_COMPOSITION_CONFLICT'
+  | 'TS_DEFINITION_INVALID'
+  | 'TS_SOURCE_READ'
+  | 'TS_TRANSPILE'
+  | 'TS_EXECUTION'
+  | 'TS_IMPORT_FORBIDDEN'
+  | 'TS_IMPORT_OUTSIDE_SCAN'
+  | 'TS_LEGACY_REDUCER_SCANNER'
+  | 'TS_CONFIGURATION_INVALID';
 
 export interface TypeScriptAuthoringErrorOptions {
   readonly details?: JsonValue;
@@ -38,10 +39,11 @@ export interface TypeScriptAuthoringErrorOptions {
  * stable machine-readable contract for expected failures.
  */
 export class TypeScriptAuthoringError extends Error {
+  override readonly name = 'TypeScriptAuthoringError';
   readonly code: TypeScriptDiagnosticCode;
   readonly details?: JsonValue;
   readonly location?: TypeScriptSourceLocation;
-  readonly cause?: unknown;
+  override readonly cause?: unknown;
 
   constructor(
     code: TypeScriptDiagnosticCode,
@@ -49,7 +51,6 @@ export class TypeScriptAuthoringError extends Error {
     options: TypeScriptAuthoringErrorOptions = {},
   ) {
     super(message);
-    this.name = "TypeScriptAuthoringError";
     this.code = code;
     this.details = options.details;
     this.location = normalizeLocation(options.source);
@@ -76,21 +77,29 @@ export function definitionError(
   message: string,
   options: TypeScriptAuthoringErrorOptions = {},
 ): TypeScriptAuthoringError {
-  return new TypeScriptAuthoringError("TS_DEFINITION_INVALID", message, options);
+  return new TypeScriptAuthoringError('TS_DEFINITION_INVALID', message, options);
+}
+
+export function removedAliasError(alias: string, replacement: string): TypeScriptAuthoringError {
+  return new TypeScriptAuthoringError(
+    'TS_LEGACY_ALIAS',
+    `Authoring member "${alias}" was removed; use "${replacement}"`,
+    { details: { alias, replacement } },
+  );
 }
 
 export function helperError(
   message: string,
   options: TypeScriptAuthoringErrorOptions = {},
 ): TypeScriptAuthoringError {
-  return new TypeScriptAuthoringError("TS_HELPER_INVALID", message, options);
+  return new TypeScriptAuthoringError('TS_HELPER_INVALID', message, options);
 }
 
 export function compositionError(
   message: string,
   options: TypeScriptAuthoringErrorOptions = {},
 ): TypeScriptAuthoringError {
-  return new TypeScriptAuthoringError("TS_COMPOSITION_CONFLICT", message, options);
+  return new TypeScriptAuthoringError('TS_COMPOSITION_CONFLICT', message, options);
 }
 
 export function errorMessage(error: unknown): string {
@@ -101,5 +110,5 @@ function normalizeLocation(
   source: TypeScriptSourceLocation | string | undefined,
 ): TypeScriptSourceLocation | undefined {
   if (source === undefined) return undefined;
-  return typeof source === "string" ? { source } : source;
+  return typeof source === 'string' ? { source } : source;
 }

@@ -1,6 +1,6 @@
-import type { OpenApiDoc, OpenApiOperation } from "./loader.js";
-import { matchRoute } from "./router.js";
-import type { JsonObject } from "../types.js";
+import type { OpenApiDoc, OpenApiOperation } from './loader.js';
+import { matchRoute } from './router.js';
+import type { JsonObject } from '../contracts/value.js';
 
 /**
  * Resolve the response schema for one concrete operation and status.

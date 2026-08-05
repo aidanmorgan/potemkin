@@ -6,28 +6,23 @@ import {
   operationId,
   pathSegment,
   projectionName,
-} from "../../src/authoring/references.js";
-import request from "supertest";
-import { loadOpenApi } from "../../src/contract/loader.js";
-import { createRuntimeGateway } from "../../src/http/runtimeGateway.js";
-import { bootRuntime, type RuntimeSystem } from "../../src/runtime/system.js";
-import { createDefaultRuntimeHost } from "../../src/runtime/host.js";
-import { bootYamlRuntime } from "../../src/parser/runtime.js";
+} from '../../src/domain/references.js';
+import request from 'supertest';
+import { loadOpenApi } from '../../src/contract/loader.js';
+import { createRuntimeGateway } from '../../src/http/runtimeGateway.js';
+import { bootRuntime, type RuntimeSystem } from '../../src/runtime/system.js';
+import { createDefaultRuntimeHost } from '../../src/runtime/host.js';
+import { bootYamlRuntime } from '../../src/parser/runtime.js';
 import {
   boundary,
-  compileProgram,
   defineProjection,
   event,
   expression,
   simulation,
-} from "../../src/authoring/runtimeModel.js";
-import { reducerRule } from "../../src/authoring/nativeReducer.js";
-import type {
-  EventContext,
-  IdentityContext,
-  ProjectionContext,
-  RuntimeReducerContext,
-} from "../../src/model/runtime.js";
+} from '../../src/authoring/builders.js';
+import { compileProgram } from '../../src/authoring/compiler.js';
+import { reducerRule } from '../../src/authoring/nativeReducer.js';
+import type { EventContext, IdentityContext, ProjectionContext } from '../../src/model/runtime.js';
 
 const OPENAPI = `
 openapi: "3.0.3"
@@ -102,25 +97,25 @@ derived_projections:
 function typescriptDefinition() {
   return simulation()
     .boundary(
-      boundary(boundaryName("Order"), contractPath(pathSegment("orders")))
+      boundary(boundaryName('Order'), contractPath(pathSegment('orders')))
         .identity({
-          generate: expression("identity", ({ helpers }: IdentityContext) => helpers.uuid()),
+          generate: expression('identity', ({ helpers }: IdentityContext) => helpers.uuid()),
         })
-        .initialization({ id: "seeded-order", label: "seeded" })
-        .event(
-          event(eventType("OrderCreated"), {
-            id: expression("event", ({ command }: EventContext) => String(command.targetId)),
-            label: expression("event", ({ command }: EventContext) => command.payload.label),
+        .initialization({ id: 'seeded-order', label: 'seeded' })
+        .eventCatalog(
+          event(eventType('OrderCreated'), {
+            id: expression('event', ({ command }: EventContext) => String(command.targetId)),
+            label: expression('event', ({ command }: EventContext) => command.payload.label),
           }),
         )
         .behavior({
-          name: behaviorName("create-order"),
-          operationId: operationId("createOrder"),
-          condition: expression("behavior", () => true),
-          emit: eventType("OrderCreated"),
+          name: behaviorName('create-order'),
+          operationId: operationId('createOrder'),
+          condition: expression('behavior', () => true),
+          emit: eventType('OrderCreated'),
         })
         .reducer(
-          reducerRule(eventType("OrderCreated"))
+          reducerRule(eventType('OrderCreated'))
             .apply(({ state, event: emitted }) => ({
               ...state,
               id: emitted.payload.id,
@@ -129,22 +124,22 @@ function typescriptDefinition() {
             .build(),
         ),
     )
-    .policies({
+    .global({
       derivedProjections: [
         defineProjection({
-          name: projectionName("OrderSummary"),
-          key: expression("projection", ({ event }: ProjectionContext) =>
+          name: projectionName('OrderSummary'),
+          key: expression('projection', ({ event }: ProjectionContext) =>
             String(event?.aggregateId),
           ),
-          subscribe: [eventType("BaselineEntityCreatedEvent"), eventType("OrderCreated")],
+          subscribe: [eventType('BaselineEntityCreatedEvent'), eventType('OrderCreated')],
           reduce: [
-            reducerRule(eventType("BaselineEntityCreatedEvent"))
+            reducerRule(eventType('BaselineEntityCreatedEvent'))
               .apply(({ state, event: emitted }) => ({
                 ...state,
                 label: emitted.payload.label,
               }))
               .build(),
-            reducerRule(eventType("OrderCreated"))
+            reducerRule(eventType('OrderCreated'))
               .apply(({ state, event: emitted }) => ({
                 ...state,
                 label: emitted.payload.label,
@@ -164,7 +159,7 @@ async function bootPair(): Promise<[RuntimeSystem, RuntimeSystem]> {
       host: createDefaultRuntimeHost(),
       openapi,
       yamlProgram: {
-        modules: [{ name: "order.yaml", yaml: YAML_MODULE }],
+        modules: [{ name: 'order.yaml', yaml: YAML_MODULE }],
         globalYaml: YAML_GLOBAL,
       },
     }),
@@ -178,40 +173,40 @@ async function bootPair(): Promise<[RuntimeSystem, RuntimeSystem]> {
 }
 
 async function projection(app: ReturnType<typeof createRuntimeGateway>): Promise<unknown> {
-  const response = await request(app).get("/_admin/derived/OrderSummary").expect(200);
+  const response = await request(app).get('/_admin/derived/OrderSummary').expect(200);
   return response.body;
 }
 
-describe("runtime derived projection parity", () => {
-  it("projects initialization and mutations, then restores the same projection on reset", async () => {
+describe('runtime derived projection parity', () => {
+  it('projects initialization and mutations, then restores the same projection on reset', async () => {
     const [yamlSystem, typescriptSystem] = await bootPair();
     const yamlApp = createRuntimeGateway(yamlSystem);
     const typescriptApp = createRuntimeGateway(typescriptSystem);
     try {
       const initialYaml = await projection(yamlApp);
       const initialTypescript = await projection(typescriptApp);
-      expect(initialYaml).toEqual({ "seeded-order": { label: "seeded" } });
+      expect(initialYaml).toEqual({ 'seeded-order': { label: 'seeded' } });
       expect(initialTypescript).toEqual(initialYaml);
 
       const [yamlCreated, typescriptCreated] = await Promise.all([
         request(yamlApp)
-          .post("/orders")
-          .set("X-Potemkin-Seed", "projection-seed")
-          .send({ label: "created" }),
+          .post('/orders')
+          .set('X-Potemkin-Seed', 'projection-seed')
+          .send({ label: 'created' }),
         request(typescriptApp)
-          .post("/orders")
-          .set("X-Potemkin-Seed", "projection-seed")
-          .send({ label: "created" }),
+          .post('/orders')
+          .set('X-Potemkin-Seed', 'projection-seed')
+          .send({ label: 'created' }),
       ]);
       expect(yamlCreated.status).toBe(201);
       expect(typescriptCreated.status).toBe(201);
       expect(typescriptCreated.body).toEqual(yamlCreated.body);
-      expect(await projection(yamlApp)).toMatchObject({ "seeded-order": { label: "seeded" } });
+      expect(await projection(yamlApp)).toMatchObject({ 'seeded-order': { label: 'seeded' } });
       expect(await projection(typescriptApp)).toEqual(await projection(yamlApp));
 
       await Promise.all([
-        request(yamlApp).post("/_admin/reset").expect(204),
-        request(typescriptApp).post("/_admin/reset").expect(204),
+        request(yamlApp).post('/_admin/reset').expect(204),
+        request(typescriptApp).post('/_admin/reset').expect(204),
       ]);
       expect(await projection(yamlApp)).toEqual(initialYaml);
       expect(await projection(typescriptApp)).toEqual(initialTypescript);

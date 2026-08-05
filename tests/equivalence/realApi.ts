@@ -1,5 +1,5 @@
-import type { JsonValue } from "../../src/types.js";
-import { compareEquivalenceTrace } from "./comparator.js";
+import type { JsonValue } from '../../src/contracts/value.js';
+import { compareEquivalenceTrace } from './comparator.js';
 import type {
   DivergenceLedgerEntry,
   EquivalenceComparison,
@@ -8,7 +8,7 @@ import type {
   EquivalenceRequest,
   EquivalenceStep,
   ProjectionPolicy,
-} from "./types.js";
+} from './types.js';
 
 /** The small response surface needed by an HTTP endpoint, making fetch easy to inject in tests. */
 export interface HttpFetchResponse {
@@ -85,13 +85,13 @@ export function createRealApiEndpoint(options: RealApiEndpointOptions = {}): Equ
       };
       let body: string | undefined;
       if (request.body !== undefined) {
-        if (request.bodyEncoding === "form") {
+        if (request.bodyEncoding === 'form') {
           body = encodeFormBody(request.body);
-          if (!hasHeader(headers, "content-type"))
-            headers["content-type"] = "application/x-www-form-urlencoded";
+          if (!hasHeader(headers, 'content-type'))
+            headers['content-type'] = 'application/x-www-form-urlencoded';
         } else {
           body = JSON.stringify(request.body);
-          if (!hasHeader(headers, "content-type")) headers["content-type"] = "application/json";
+          if (!hasHeader(headers, 'content-type')) headers['content-type'] = 'application/json';
         }
       }
 
@@ -172,14 +172,14 @@ export class RealApiEquivalenceRunner {
         this.options.model,
         request,
         context,
-        "model",
+        'model',
         endpointDivergences,
       );
       const real = await executeSafely(
         this.options.real,
         request,
         context,
-        "real",
+        'real',
         endpointDivergences,
       );
       const pair = { operation, request, model, real };
@@ -219,7 +219,7 @@ export function normalizeHeaders(
 ): Readonly<Record<string, string>> {
   if (headers === undefined) return {};
   const entries: Array<[string, string]> = [];
-  if (typeof (headers as { forEach?: unknown }).forEach === "function") {
+  if (typeof (headers as { forEach?: unknown }).forEach === 'function') {
     (headers as { forEach(callback: (value: string, key: string) => void): void }).forEach(
       (value, key) => {
         entries.push([key, value]);
@@ -241,11 +241,11 @@ export function normalizeHeaders(
 export async function normalizeHttpObservation(
   raw: RawHttpObservation,
 ): Promise<EquivalenceObservation> {
-  const contentType = raw.headers["content-type"]?.toLowerCase() ?? "";
+  const contentType = raw.headers['content-type']?.toLowerCase() ?? '';
   const text = raw.text.trim();
   let body: JsonValue | null = null;
   if (text.length > 0) {
-    if (contentType.includes("json") || looksLikeJson(text)) {
+    if (contentType.includes('json') || looksLikeJson(text)) {
       try {
         body = JSON.parse(text) as JsonValue;
       } catch {
@@ -259,22 +259,22 @@ export async function normalizeHttpObservation(
 }
 
 export function formatDivergenceReport(divergences: readonly EquivalenceDivergence[]): string {
-  if (divergences.length === 0) return "No equivalence divergences.";
+  if (divergences.length === 0) return 'No equivalence divergences.';
   return divergences
     .map((divergence, index) => {
       const expected =
-        divergence.expected === undefined ? "" : ` expected=${display(divergence.expected)}`;
-      const actual = divergence.actual === undefined ? "" : ` actual=${display(divergence.actual)}`;
+        divergence.expected === undefined ? '' : ` expected=${display(divergence.expected)}`;
+      const actual = divergence.actual === undefined ? '' : ` actual=${display(divergence.actual)}`;
       return `${index + 1}. [${divergence.code}] ${divergence.operation} ${divergence.path}: ${divergence.message}${expected}${actual}`;
     })
-    .join("\n");
+    .join('\n');
 }
 
 async function executeSafely(
   endpoint: EquivalenceEndpoint,
   request: EquivalenceRequest,
   context: EquivalenceExecutionContext,
-  side: "model" | "real",
+  side: 'model' | 'real',
   divergences: EquivalenceDivergence[],
 ): Promise<EquivalenceObservation> {
   try {
@@ -282,7 +282,7 @@ async function executeSafely(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     divergences.push({
-      code: "ENDPOINT_FAILURE",
+      code: 'ENDPOINT_FAILURE',
       operation: context.operation,
       path: `$.${side}`,
       actual: message,
@@ -309,8 +309,8 @@ function compareEvents(
     for (const divergence of comparison.divergences) {
       divergences.push({
         ...divergence,
-        code: divergence.code === "BODY_MISMATCH" ? "EVENT_MISMATCH" : divergence.code,
-        path: divergence.path.replace("$.body", "$.events"),
+        code: divergence.code === 'BODY_MISMATCH' ? 'EVENT_MISMATCH' : divergence.code,
+        path: divergence.path.replace('$.body', '$.events'),
         message: `Event observation differs: ${divergence.message}`,
       });
     }
@@ -320,8 +320,8 @@ function compareEvents(
 
 function resolveUrl(baseUrl: string | undefined, path: string): string {
   if (/^[a-z][a-z\d+.-]*:\/\//i.test(path) || baseUrl === undefined) return path;
-  const base = new URL(`${baseUrl.replace(/\/$/, "")}/`);
-  const relativePath = path.replace(/^\/+/, "");
+  const base = new URL(`${baseUrl.replace(/\/$/, '')}/`);
+  const relativePath = path.replace(/^\/+/, '');
   return new URL(relativePath, base).toString();
 }
 
@@ -330,12 +330,12 @@ function hasHeader(headers: Readonly<Record<string, string>>, name: string): boo
 }
 
 function encodeFormBody(value: JsonValue): string {
-  if (value === null || Array.isArray(value) || typeof value !== "object")
-    throw new Error("Form request bodies must be JSON objects");
+  if (value === null || Array.isArray(value) || typeof value !== 'object')
+    throw new Error('Form request bodies must be JSON objects');
   const form = new URLSearchParams();
   for (const [key, child] of Object.entries(value)) {
-    if (child === null) form.append(key, "");
-    else if (typeof child === "string" || typeof child === "number" || typeof child === "boolean")
+    if (child === null) form.append(key, '');
+    else if (typeof child === 'string' || typeof child === 'number' || typeof child === 'boolean')
       form.append(key, String(child));
     else form.append(key, JSON.stringify(child));
   }
@@ -344,17 +344,17 @@ function encodeFormBody(value: JsonValue): string {
 
 function looksLikeJson(text: string): boolean {
   return (
-    text.startsWith("{") ||
-    text.startsWith("[") ||
-    text === "null" ||
-    text === "true" ||
-    text === "false" ||
+    text.startsWith('{') ||
+    text.startsWith('[') ||
+    text === 'null' ||
+    text === 'true' ||
+    text === 'false' ||
     /^-?\d/.test(text)
   );
 }
 
 function display(value: JsonValue | string | number): string {
-  return typeof value === "string" ? JSON.stringify(value) : JSON.stringify(value);
+  return typeof value === 'string' ? JSON.stringify(value) : JSON.stringify(value);
 }
 
 async function withTimeout<T>(

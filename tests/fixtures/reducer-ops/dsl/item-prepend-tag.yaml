@@ -7,13 +7,13 @@ fallback_override: false
 event_catalog:
   - type: ItemTagPrepended
     payload_template:
-      tag: "command.payload.tag"
+      tag: 'command.payload.tag'
 
 behaviors:
   - name: prependTag
     match:
       operationId: prependTag
-      condition: "true"
+      condition: 'true'
     emit: ItemTagPrepended
 
 reducers:
@@ -22,6 +22,6 @@ reducers:
       # op: prepend — push tag onto the FRONT of /tags
       - op: prepend
         path: /tags
-        value: "${event.payload.tag}"
+        value: '${event.payload.tag}'
 
 initialization: []

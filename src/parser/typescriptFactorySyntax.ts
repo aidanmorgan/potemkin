@@ -1,7 +1,7 @@
-import * as ts from "typescript";
+import * as ts from 'typescript';
 
-const FACTORY_MODULE = "potemkin/sdk";
-const FACTORY_DECORATOR = "PotemkinConfigure";
+const FACTORY_MODULE = 'potemkin/sdk';
+const FACTORY_DECORATOR = 'PotemkinConfigure';
 
 /**
  * Determine whether a source file contains a real static factory decorator.
@@ -30,6 +30,42 @@ export function hasPotemkinConfigureDecorator(source: string, fileName: string):
     }
   }
   return false;
+}
+
+/**
+ * The historical independently-scanned reducer decorator is intentionally not
+ * part of the canonical factory API. Detect it at discovery time so a stale
+ * source file gets an actionable migration diagnostic instead of being
+ * silently ignored by the factory scanner.
+ */
+export function hasRemovedReducerScannerSyntax(source: string, fileName: string): boolean {
+  const sourceFile = ts.createSourceFile(
+    fileName,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    scriptKind(fileName),
+  );
+  let found = false;
+  const visit = (node: ts.Node): void => {
+    if (found) return;
+    if (ts.isImportSpecifier(node) && node.name.text === 'PotemkinReducer') {
+      found = true;
+      return;
+    }
+    if (ts.isDecorator(node)) {
+      const expression = ts.isCallExpression(node.expression)
+        ? node.expression.expression
+        : node.expression;
+      if (ts.isIdentifier(expression) && expression.text === 'PotemkinReducer') {
+        found = true;
+        return;
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return found;
 }
 
 function importedFactoryNames(sourceFile: ts.SourceFile): ReadonlySet<string> {
@@ -65,8 +101,8 @@ function hasStaticModifier(method: ts.MethodDeclaration): boolean {
 }
 
 function scriptKind(fileName: string): ts.ScriptKind {
-  if (fileName.endsWith(".tsx")) return ts.ScriptKind.TSX;
-  if (fileName.endsWith(".js")) return ts.ScriptKind.JS;
-  if (fileName.endsWith(".jsx")) return ts.ScriptKind.JSX;
+  if (fileName.endsWith('.tsx')) return ts.ScriptKind.TSX;
+  if (fileName.endsWith('.js')) return ts.ScriptKind.JS;
+  if (fileName.endsWith('.jsx')) return ts.ScriptKind.JSX;
   return ts.ScriptKind.TS;
 }

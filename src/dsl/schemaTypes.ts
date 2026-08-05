@@ -1,14 +1,14 @@
 export type FieldKind =
-  | "string"
-  | "integer"
-  | "number"
-  | "boolean"
-  | "null"
-  | "array"
-  | "object"
-  | "unknown";
+  | 'string'
+  | 'integer'
+  | 'number'
+  | 'boolean'
+  | 'null'
+  | 'array'
+  | 'object'
+  | 'unknown';
 
-export type Confidence = "known" | "narrowed" | "unknown";
+export type Confidence = 'known' | 'narrowed' | 'unknown';
 
 export interface FieldType {
   readonly kind: FieldKind;

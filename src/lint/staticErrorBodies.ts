@@ -1,8 +1,8 @@
-import type { OpenApiDoc } from "../contract/loader.js";
-import { buildContractErrorBody, validateContractErrorBody } from "../contract/errorBody.js";
-import { resolveResponseSchema } from "../contract/responseSchema.js";
-import { BootError } from "../errors.js";
-import type { RuntimeBoundary, RuntimeFault, RuntimeProgram } from "../model/runtime.js";
+import type { OpenApiDoc } from '../contract/loader.js';
+import { buildContractErrorBody, validateContractErrorBody } from '../contract/errorBody.js';
+import { resolveResponseSchema } from '../contract/responseSchema.js';
+import { BootError } from '../errors.js';
+import type { RuntimeBoundary, RuntimeFault, RuntimeProgram } from '../model/runtime.js';
 
 export interface StaticErrorLintOptions {
   readonly sourceByBoundary?: Readonly<Record<string, string>>;
@@ -23,7 +23,7 @@ interface OperationLocation {
  * therefore outside this check and remain runtime/conformance concerns.
  */
 export function lintStaticErrorBodies(
-  program: Pick<RuntimeProgram, "boundaries" | "policies">,
+  program: Pick<RuntimeProgram, 'boundaries' | 'policies'>,
   openapi: OpenApiDoc,
   options: StaticErrorLintOptions = {},
 ): void {
@@ -40,7 +40,7 @@ export function lintStaticErrorBodies(
     );
   }
 
-  lintFaults(program.policies.faults ?? [], "__global__", operations, openapi, options);
+  lintFaults(program.policies.faults ?? [], '__global__', operations, openapi, options);
 }
 
 function lintBoundaryGuards(
@@ -130,7 +130,7 @@ function assertValid(
   const source = options.sourceByBoundary?.[boundary];
   const location = source === undefined ? boundary : `${source} (${boundary})`;
   throw new BootError(
-    "BOOT_ERR_DSL_SCHEMA_VIOLATION",
+    'BOOT_ERR_DSL_SCHEMA_VIOLATION',
     `${location}: ${declaration} produces a body that does not conform to ${operation.method.toUpperCase()} ${operation.path} ${status}`,
     {
       boundary,

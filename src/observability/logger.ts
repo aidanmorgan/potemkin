@@ -1,7 +1,10 @@
-import pino from "pino";
-import type { Logger, LoggerOptions } from "pino";
-import { randomUUID } from "node:crypto";
-import { nextUuidv7 } from "../ids/uuidv7.js";
+import pino from 'pino';
+import type { Logger, LoggerOptions } from 'pino';
+import { randomUUID } from 'node:crypto';
+import { createRequire } from 'node:module';
+import { nextUuidv7 } from '../ids/uuidv7.js';
+
+const loadOptionalModule = createRequire(__filename);
 
 export type { Logger };
 
@@ -11,12 +14,7 @@ export type { Logger };
  * contract modules therefore never creates process-global logging state.
  */
 export function createNoopLogger(): Logger {
-  return {
-    debug: () => undefined,
-    info: () => undefined,
-    warn: () => undefined,
-    error: () => undefined,
-  } as unknown as Logger;
+  return pino({ enabled: false });
 }
 
 export interface CreateLoggerOptions {
@@ -32,7 +30,7 @@ export interface CreateLoggerOptions {
 
 function resolvePrettyDestination(): NodeJS.WritableStream | undefined {
   try {
-    const prettyModule = require(require.resolve("pino-pretty")) as (
+    const prettyModule = loadOptionalModule(loadOptionalModule.resolve('pino-pretty')) as (
       options: Readonly<Record<string, unknown>>,
     ) => NodeJS.WritableStream;
     return prettyModule({ colorize: true });
@@ -58,7 +56,7 @@ function createPino(
 export function createLogger(opts?: CreateLoggerOptions): Logger {
   const env = opts?.env ?? {};
   const level: pino.LevelWithSilent =
-    opts?.level ?? (env["LOG_LEVEL"] as pino.LevelWithSilent | undefined) ?? "info";
+    opts?.level ?? (env['LOG_LEVEL'] as pino.LevelWithSilent | undefined) ?? 'info';
 
   // When a custom dest is provided (test-only), skip pretty so JSON goes directly to the stream.
   const usePretty =
@@ -66,7 +64,7 @@ export function createLogger(opts?: CreateLoggerOptions): Logger {
       ? false
       : opts?.pretty !== undefined
         ? opts.pretty
-        : env["NODE_ENV"] !== "production";
+        : env['NODE_ENV'] !== 'production';
 
   // Generate a stable instanceId for root loggers; may throw NotImplemented in tests
   let instanceId: string;
@@ -77,7 +75,7 @@ export function createLogger(opts?: CreateLoggerOptions): Logger {
   }
 
   const baseBindings: Record<string, unknown> = {
-    name: opts?.name ?? "potemkin",
+    name: opts?.name ?? 'potemkin',
     instanceId,
     ...opts?.bindings,
   };

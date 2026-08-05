@@ -14,10 +14,10 @@ sagas:
         boundary: Opportunity
         intent: creation
         operationId: createOpportunity
-        target_id: "$uuidv7()"
+        target_id: '$uuidv7()'
         payload:
-          leadId: "command.targetId"
-          value: "command.payload.value"
+          leadId: 'command.targetId'
+          value: 'command.payload.value'
         compensation:
           intent: mutation
           operationId: closeOpportunity
@@ -29,12 +29,12 @@ sagas:
         operationId: createNotification
         payload:
           subject: "'New opportunity created'"
-          leadId: "command.targetId"
-          value: "command.payload.value"
+          leadId: 'command.targetId'
+          value: 'command.payload.value'
 
 derived_projections:
   - name: LeadSummary
-    key: "event.aggregateId"
+    key: 'event.aggregateId'
     subscribe:
       - Lead:LeadCreated
       - Opportunity:OpportunityCreated
@@ -43,15 +43,15 @@ derived_projections:
         patches:
           - op: replace
             path: /lead_id
-            value: "${event.aggregateId}"
+            value: '${event.aggregateId}'
           - op: replace
             path: /companyName
-            value: "${event.payload.companyName}"
+            value: '${event.payload.companyName}'
           - op: replace
             path: /total_opportunities
-            value: "${0}"
+            value: '${0}'
       - on: OpportunityCreated
         patches:
           - op: replace
             path: /total_opportunities
-            value: "${coalesce(state.total_opportunities, 0) + 1}"
+            value: '${coalesce(state.total_opportunities, 0) + 1}'

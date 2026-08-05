@@ -1,9 +1,9 @@
 /* eslint-disable no-console */
 
-import * as path from "node:path";
-import { startSpecmaticTest, SpecmaticVerifierError } from "../_harness/specmatic-test";
+import * as path from 'node:path';
+import { startSpecmaticTest, SpecmaticVerifierError } from '../_harness/specmatic-test';
 
-const CONFIG_PATH = path.resolve("tests/conformance/specmatic-negative-verifier.yaml");
+const CONFIG_PATH = path.resolve('tests/conformance/specmatic-negative-verifier.yaml');
 const FILTER = "STATUS='400'";
 
 interface ScenarioResult {
@@ -42,7 +42,7 @@ function assertSuccessfulRun(
     result.report.errors > 0
   ) {
     throw new SpecmaticVerifierError(
-      `${label} CRM Layer-A run failed: exit=${result.process.exitCode ?? "unknown"}, tests=${result.report.tests}, failures=${result.report.failures}, errors=${result.report.errors}.`,
+      `${label} CRM Layer-A run failed: exit=${result.process.exitCode ?? 'unknown'}, tests=${result.report.tests}, failures=${result.report.failures}, errors=${result.report.errors}.`,
     );
   }
   const parsed = scenarios(result);
@@ -57,14 +57,14 @@ function assertSuccessfulRun(
 /** Run the negative CRM verifier twice and compare every testcase outcome. */
 export async function verifyCrmNegative(): Promise<void> {
   const options = {
-    exampleName: "crm",
+    exampleName: 'crm',
     configPath: CONFIG_PATH,
     filter: FILTER,
-    testMode: "all" as const,
+    testMode: 'all' as const,
     maxTestRequestCombinations: 1,
   };
-  const first = assertSuccessfulRun("first", await startSpecmaticTest(options));
-  const second = assertSuccessfulRun("second", await startSpecmaticTest(options));
+  const first = assertSuccessfulRun('first', await startSpecmaticTest(options));
+  const second = assertSuccessfulRun('second', await startSpecmaticTest(options));
   if (JSON.stringify(second) !== JSON.stringify(first)) {
     throw new SpecmaticVerifierError(
       `CRM Layer-A testcase outcomes were not deterministic across runs (${first.length} vs ${second.length}).`,

@@ -1,7 +1,7 @@
-import type { JsonObject, JsonValue } from "../types.js";
-import { compileRuntime } from "./compiler.js";
-import type { RuntimeDefinition } from "./index.js";
-import { RuntimeModelError } from "./errors.js";
+import type { JsonObject, JsonValue } from '../contracts/value.js';
+import { compileRuntime } from './compiler.js';
+import type { RuntimeDefinition } from './index.js';
+import { RuntimeModelError } from './errors.js';
 import type {
   RuntimeBehavior,
   RuntimeBoundary,
@@ -13,16 +13,16 @@ import type {
   RuntimeReaction,
   RuntimeReducer,
   RuntimeResponsePolicy,
-} from "../model/runtime.js";
+} from '../model/runtime.js';
 
 function freeze<T>(value: T): T {
-  if (value === null || typeof value !== "object" || Object.isFrozen(value)) return value;
+  if (value === null || typeof value !== 'object' || Object.isFrozen(value)) return value;
   for (const child of Object.values(value as Record<string, unknown>)) freeze(child);
   return Object.freeze(value);
 }
 
 export interface RuntimeEventBuilder {
-  payload(values: Readonly<Record<string, RuntimeEvent["payload"][string]>>): RuntimeEventBuilder;
+  payload(values: Readonly<Record<string, RuntimeEvent['payload'][string]>>): RuntimeEventBuilder;
   schemaRef(reference: string): RuntimeEventBuilder;
   build(): RuntimeEvent;
 }
@@ -38,16 +38,16 @@ export function runtimeEvent(type: string): RuntimeEventBuilder {
 
 export interface RuntimeBehaviorBuilder {
   operation(operationId: string): RuntimeBehaviorBuilder;
-  when(condition: RuntimeBehavior["condition"]): RuntimeBehaviorBuilder;
+  when(condition: RuntimeBehavior['condition']): RuntimeBehaviorBuilder;
   method(method: string): RuntimeBehaviorBuilder;
   headers(headers: Readonly<Record<string, string>>): RuntimeBehaviorBuilder;
-  requires(...guards: NonNullable<RuntimeBehavior["requires"]>): RuntimeBehaviorBuilder;
+  requires(...guards: NonNullable<RuntimeBehavior['requires']>): RuntimeBehaviorBuilder;
   scopes(...scopes: readonly string[]): RuntimeBehaviorBuilder;
   emit(event: string): RuntimeBehaviorBuilder;
-  emitWhen(...emissions: NonNullable<RuntimeBehavior["emitWhen"]>): RuntimeBehaviorBuilder;
-  dispatch(...commands: NonNullable<RuntimeBehavior["dispatchCommands"]>): RuntimeBehaviorBuilder;
-  postcondition(condition: RuntimeBehavior["postcondition"]): RuntimeBehaviorBuilder;
-  link(name: string, condition?: RuntimeBehavior["linkCondition"]): RuntimeBehaviorBuilder;
+  emitWhen(...emissions: NonNullable<RuntimeBehavior['emitWhen']>): RuntimeBehaviorBuilder;
+  dispatch(...commands: NonNullable<RuntimeBehavior['dispatchCommands']>): RuntimeBehaviorBuilder;
+  postcondition(condition: RuntimeBehavior['postcondition']): RuntimeBehaviorBuilder;
+  link(name: string, condition?: RuntimeBehavior['linkCondition']): RuntimeBehaviorBuilder;
   status(status: number): RuntimeBehaviorBuilder;
   build(): RuntimeBehavior;
 }
@@ -75,9 +75,9 @@ export function runtimeBehavior(name: string): RuntimeBehaviorBuilder {
       }),
     status: (status) => build({ ...behavior, responseStatus: status }),
     build: () => {
-      if (behavior.operationId === "")
+      if (behavior.operationId === '')
         throw new RuntimeModelError(
-          "RUNTIME_BUILDER_INVALID",
+          'RUNTIME_BUILDER_INVALID',
           `Runtime behavior "${name}" requires an operation id`,
         );
       if (
@@ -86,18 +86,18 @@ export function runtimeBehavior(name: string): RuntimeBehaviorBuilder {
         behavior.dispatchCommands === undefined
       ) {
         throw new RuntimeModelError(
-          "RUNTIME_BUILDER_INVALID",
+          'RUNTIME_BUILDER_INVALID',
           `Runtime behavior "${name}" requires an emission or dispatch`,
         );
       }
       return freeze({ ...behavior });
     },
   });
-  return build({ name, operationId: "" });
+  return build({ name, operationId: '' });
 }
 
 export interface RuntimeReducerBuilder {
-  apply(fn: NonNullable<RuntimeReducer["apply"]>): RuntimeReducerBuilder;
+  apply(fn: NonNullable<RuntimeReducer['apply']>): RuntimeReducerBuilder;
   replaceState(enabled?: boolean): RuntimeReducerBuilder;
   build(): RuntimeReducer;
 }
@@ -116,21 +116,21 @@ export interface RuntimeBoundaryBuilder {
   behavior(behavior: RuntimeBehavior): RuntimeBoundaryBuilder;
   reducer(reducer: RuntimeReducer): RuntimeBoundaryBuilder;
   seed(
-    ...records: readonly NonNullable<RuntimeBoundary["initialization"]>[number][]
+    ...records: readonly NonNullable<RuntimeBoundary['initialization']>[number][]
   ): RuntimeBoundaryBuilder;
-  identity(identity: RuntimeBoundary["identity"]): RuntimeBoundaryBuilder;
-  query(query: RuntimeBoundary["query"]): RuntimeBoundaryBuilder;
+  identity(identity: RuntimeBoundary['identity']): RuntimeBoundaryBuilder;
+  query(query: RuntimeBoundary['query']): RuntimeBoundaryBuilder;
   response(response: RuntimeResponsePolicy): RuntimeBoundaryBuilder;
   fallbackOverride(enabled?: boolean): RuntimeBoundaryBuilder;
   mask(...paths: readonly string[]): RuntimeBoundaryBuilder;
-  deprecated(value: NonNullable<RuntimeBoundary["deprecated"]>): RuntimeBoundaryBuilder;
-  latency(value: NonNullable<RuntimeBoundary["latency"]>): RuntimeBoundaryBuilder;
+  deprecated(value: NonNullable<RuntimeBoundary['deprecated']>): RuntimeBoundaryBuilder;
+  latency(value: NonNullable<RuntimeBoundary['latency']>): RuntimeBoundaryBuilder;
   auditFields(enabled?: boolean): RuntimeBoundaryBuilder;
   strictSchema(enabled?: boolean): RuntimeBoundaryBuilder;
-  queryMapping(value: NonNullable<RuntimeBoundary["queryMapping"]>): RuntimeBoundaryBuilder;
+  queryMapping(value: NonNullable<RuntimeBoundary['queryMapping']>): RuntimeBoundaryBuilder;
   faults(...faults: readonly RuntimeFault[]): RuntimeBoundaryBuilder;
   reactions(...reactions: readonly RuntimeReaction[]): RuntimeBoundaryBuilder;
-  state(state: RuntimeBoundary["state"]): RuntimeBoundaryBuilder;
+  state(state: RuntimeBoundary['state']): RuntimeBoundaryBuilder;
   build(): RuntimeBoundary;
 }
 

@@ -1,4 +1,4 @@
-import type { RuntimeModelCoverage, RuntimePolicies } from "../model/runtime.js";
+import type { RuntimeModelCoverage, RuntimePolicies } from '../model/runtime.js';
 
 /** Merge source-independent policy fragments without source-specific branches. */
 export function mergeRuntimePolicies(policies: readonly RuntimePolicies[]): RuntimePolicies {
@@ -13,7 +13,7 @@ export function mergeRuntimePolicies(policies: readonly RuntimePolicies[]): Runt
   } as RuntimePolicies;
 }
 
-function mergeCoverage(policies: readonly RuntimePolicies[]): RuntimePolicies["coverage"] {
+function mergeCoverage(policies: readonly RuntimePolicies[]): RuntimePolicies['coverage'] {
   const entries = policies.flatMap((policy) => Object.entries(policy.coverage ?? {}));
   if (entries.length === 0) return undefined;
   const merged = new Map<string, RuntimeModelCoverage>();
@@ -25,17 +25,17 @@ function mergeCoverage(policies: readonly RuntimePolicies[]): RuntimePolicies["c
     }
     merged.set(aggregate, {
       ...(previous.strict === true || policy.strict === true ? { strict: true } : {}),
-      ...mergeValues("initialStates", previous.initialStates, policy.initialStates),
-      ...mergeValues("terminalStates", previous.terminalStates, policy.terminalStates),
-      ...mergeValues("operations", previous.operations, policy.operations),
-      ...mergeValues("suppressStates", previous.suppressStates, policy.suppressStates),
+      ...mergeValues('initialStates', previous.initialStates, policy.initialStates),
+      ...mergeValues('terminalStates', previous.terminalStates, policy.terminalStates),
+      ...mergeValues('operations', previous.operations, policy.operations),
+      ...mergeValues('suppressStates', previous.suppressStates, policy.suppressStates),
     });
   }
   return Object.fromEntries(merged);
 }
 
 function mergeValues(
-  key: "initialStates" | "terminalStates" | "operations" | "suppressStates",
+  key: 'initialStates' | 'terminalStates' | 'operations' | 'suppressStates',
   left: readonly string[] | undefined,
   right: readonly string[] | undefined,
 ): Partial<RuntimeModelCoverage> {

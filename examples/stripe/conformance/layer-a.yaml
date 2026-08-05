@@ -21,8 +21,8 @@ paths:
             type: integer
             minimum: 1
       responses:
-        "200": { $ref: "#/components/responses/SuccessfulObject" }
-        "400": { $ref: "#/components/responses/Error" }
+        '200': { $ref: '#/components/responses/SuccessfulObject' }
+        '400': { $ref: '#/components/responses/Error' }
     post:
       requestBody:
         required: true
@@ -38,8 +38,8 @@ paths:
                 phone: { type: string }
               required: [email]
       responses:
-        "200": { $ref: "#/components/responses/SuccessfulObject" }
-        "400": { $ref: "#/components/responses/Error" }
+        '200': { $ref: '#/components/responses/SuccessfulObject' }
+        '400': { $ref: '#/components/responses/Error' }
 
   /v1/products:
     get:
@@ -51,8 +51,8 @@ paths:
             type: integer
             minimum: 1
       responses:
-        "200": { $ref: "#/components/responses/SuccessfulObject" }
-        "400": { $ref: "#/components/responses/Error" }
+        '200': { $ref: '#/components/responses/SuccessfulObject' }
+        '400': { $ref: '#/components/responses/Error' }
     post:
       requestBody:
         required: true
@@ -67,8 +67,8 @@ paths:
                 active: { type: boolean }
               required: [name]
       responses:
-        "200": { $ref: "#/components/responses/SuccessfulObject" }
-        "400": { $ref: "#/components/responses/Error" }
+        '200': { $ref: '#/components/responses/SuccessfulObject' }
+        '400': { $ref: '#/components/responses/Error' }
 
   /v1/prices:
     get:
@@ -80,8 +80,8 @@ paths:
             type: integer
             minimum: 1
       responses:
-        "200": { $ref: "#/components/responses/SuccessfulObject" }
-        "400": { $ref: "#/components/responses/Error" }
+        '200': { $ref: '#/components/responses/SuccessfulObject' }
+        '400': { $ref: '#/components/responses/Error' }
     post:
       requestBody:
         required: true
@@ -97,8 +97,8 @@ paths:
                 active: { type: boolean }
               required: [currency, product]
       responses:
-        "200": { $ref: "#/components/responses/SuccessfulObject" }
-        "400": { $ref: "#/components/responses/Error" }
+        '200': { $ref: '#/components/responses/SuccessfulObject' }
+        '400': { $ref: '#/components/responses/Error' }
 
   /v1/payment_intents:
     get:
@@ -110,8 +110,8 @@ paths:
             type: integer
             minimum: 1
       responses:
-        "200": { $ref: "#/components/responses/SuccessfulObject" }
-        "400": { $ref: "#/components/responses/Error" }
+        '200': { $ref: '#/components/responses/SuccessfulObject' }
+        '400': { $ref: '#/components/responses/Error' }
     post:
       requestBody:
         required: true
@@ -128,8 +128,8 @@ paths:
                 capture_method: { type: string }
               required: [amount, currency]
       responses:
-        "200": { $ref: "#/components/responses/SuccessfulObject" }
-        "400": { $ref: "#/components/responses/Error" }
+        '200': { $ref: '#/components/responses/SuccessfulObject' }
+        '400': { $ref: '#/components/responses/Error' }
 
   /v1/refunds:
     get:
@@ -141,8 +141,8 @@ paths:
             type: integer
             minimum: 1
       responses:
-        "200": { $ref: "#/components/responses/SuccessfulObject" }
-        "400": { $ref: "#/components/responses/Error" }
+        '200': { $ref: '#/components/responses/SuccessfulObject' }
+        '400': { $ref: '#/components/responses/Error' }
     post:
       requestBody:
         required: true
@@ -157,8 +157,8 @@ paths:
                 reason: { type: string }
               required: [charge, amount]
       responses:
-        "200": { $ref: "#/components/responses/SuccessfulObject" }
-        "400": { $ref: "#/components/responses/Error" }
+        '200': { $ref: '#/components/responses/SuccessfulObject' }
+        '400': { $ref: '#/components/responses/Error' }
 
 components:
   responses:

@@ -7,22 +7,17 @@ import {
   operationId,
   pathParameter,
   pathSegment,
-} from "../../src/authoring/references.js";
-import request from "supertest";
-import { loadOpenApi } from "../../src/contract/loader.js";
-import { bootRuntime, type RuntimeSystem } from "../../src/runtime/system.js";
-import { createDefaultRuntimeHost } from "../../src/runtime/host.js";
-import { bootYamlRuntime } from "../../src/parser/runtime.js";
-import { createRuntimeGateway } from "../../src/http/runtimeGateway.js";
-import {
-  boundary,
-  behavior,
-  compileProgram,
-  event,
-  simulation,
-} from "../../src/authoring/runtimeModel.js";
-import { reducerRule } from "../../src/authoring/nativeReducer.js";
-import type { EventContext, FaultContext, IdentityContext } from "../../src/model/runtime.js";
+} from '../../src/domain/references.js';
+import request from 'supertest';
+import { loadOpenApi } from '../../src/contract/loader.js';
+import { bootRuntime, type RuntimeSystem } from '../../src/runtime/system.js';
+import { createDefaultRuntimeHost } from '../../src/runtime/host.js';
+import { bootYamlRuntime } from '../../src/parser/runtime.js';
+import { createRuntimeGateway } from '../../src/http/runtimeGateway.js';
+import { boundary, behavior, event, simulation } from '../../src/authoring/builders.js';
+import { compileProgram } from '../../src/authoring/compiler.js';
+import { reducerRule } from '../../src/authoring/nativeReducer.js';
+import type { EventContext, FaultContext, IdentityContext } from '../../src/model/runtime.js';
 
 const OPENAPI = `
 openapi: "3.0.3"
@@ -160,36 +155,36 @@ fault_rules:
 `;
 
 function directDefinition() {
-  const created = event(eventType("ResourceCreated"), {
+  const created = event(eventType('ResourceCreated'), {
     id: ({ command }: EventContext) => command.payload.id,
     value: ({ command }: EventContext) => command.payload.value,
     at: ({ helpers }: EventContext) => helpers.now(),
     generated: ({ helpers }: EventContext) => helpers.uuid(),
   });
-  const updated = event(eventType("ResourceUpdated"), {
+  const updated = event(eventType('ResourceUpdated'), {
     value: ({ command }: EventContext) => command.payload.value,
     at: ({ helpers }: EventContext) => helpers.now(),
     generated: ({ helpers }: EventContext) => helpers.uuid(),
   });
   const maintenance = {
-    name: faultName("maintenance"),
-    selectors: { forceResponse: "maintenance" },
-    matches: ({ headers }: FaultContext) => headers["x-potemkin-force-response"] === "maintenance",
-    response: { status: 503, body: { code: "MAINTENANCE" } },
+    name: faultName('maintenance'),
+    selectors: { forceResponse: 'maintenance' },
+    matches: ({ headers }: FaultContext) => headers['x-potemkin-force-response'] === 'maintenance',
+    response: { status: 503, body: { code: 'MAINTENANCE' } },
   } as const;
   const slowScenario = {
-    name: faultName("slow-scenario"),
-    selectors: { scenario: "slow" },
+    name: faultName('slow-scenario'),
+    selectors: { scenario: 'slow' },
     matches: () => true,
-    response: { status: 429, body: { code: "SLOW_SCENARIO" } },
+    response: { status: 429, body: { code: 'SLOW_SCENARIO' } },
   } as const;
   const betaResponse = {
-    name: faultName("beta-response"),
-    selectors: { featureFlag: "beta" },
+    name: faultName('beta-response'),
+    selectors: { featureFlag: 'beta' },
     matches: () => true,
-    response: { status: 418, body: { code: "BETA_RESPONSE" } },
+    response: { status: 418, body: { code: 'BETA_RESPONSE' } },
   } as const;
-  const createdReducer = reducerRule(eventType("ResourceCreated"))
+  const createdReducer = reducerRule(eventType('ResourceCreated'))
     .apply(({ state, event: emitted }) => ({
       ...state,
       id: emitted.payload.id,
@@ -198,7 +193,7 @@ function directDefinition() {
       generated: emitted.payload.generated,
     }))
     .build();
-  const updatedReducer = reducerRule(eventType("ResourceUpdated"))
+  const updatedReducer = reducerRule(eventType('ResourceUpdated'))
     .apply(({ state, event: emitted }) => ({
       ...state,
       value: emitted.payload.value,
@@ -208,14 +203,14 @@ function directDefinition() {
     .build();
   return simulation()
     .boundary(
-      boundary(boundaryName("Resource"), contractPath(pathSegment("resources")))
+      boundary(boundaryName('Resource'), contractPath(pathSegment('resources')))
         .identity({ generate: ({ payload }: IdentityContext) => String(payload.id) })
         .eventCatalog(created)
         .behavior(
           behavior({
-            name: behaviorName("create-resource"),
-            operationId: operationId("createResource"),
-            emit: eventType("ResourceCreated"),
+            name: behaviorName('create-resource'),
+            operationId: operationId('createResource'),
+            emit: eventType('ResourceCreated'),
           }),
         )
         .reducer(createdReducer)
@@ -224,17 +219,17 @@ function directDefinition() {
     )
     .boundary(
       boundary(
-        boundaryName("ResourceById"),
-        contractPath(pathSegment("resources"), pathParameter("id")),
+        boundaryName('ResourceById'),
+        contractPath(pathSegment('resources'), pathParameter('id')),
       )
         .fallbackOverride(true)
-        .identity({ key: { from: "path", name: "id" } })
+        .identity({ key: { from: 'path', name: 'id' } })
         .eventCatalog(updated)
         .behavior(
           behavior({
-            name: behaviorName("update-resource"),
-            operationId: operationId("updateResource"),
-            emit: eventType("ResourceUpdated"),
+            name: behaviorName('update-resource'),
+            operationId: operationId('updateResource'),
+            emit: eventType('ResourceUpdated'),
           }),
         )
         .reducer(updatedReducer)
@@ -248,10 +243,10 @@ async function bootPair(): Promise<[RuntimeSystem, RuntimeSystem, number[][]]> {
   const openapi = await loadOpenApi(OPENAPI);
   const sleeps: number[][] = [[], []];
   const helpers = {
-    now: () => "2026-01-01T00:00:00.000Z",
-    uuid: () => "00000000-0000-7000-8000-000000000001",
+    now: () => '2026-01-01T00:00:00.000Z',
+    uuid: () => '00000000-0000-7000-8000-000000000001',
     random: () => 0,
-    data: (await import("../../src/model/data.js")).createRuntimeDataGenerator(() => 0),
+    data: (await import('../../src/model/data.js')).createRuntimeDataGenerator(() => 0),
     clone: <T>(value: T) => structuredClone(value),
   };
   const [yamlSystem, typescriptSystem] = await Promise.all([
@@ -260,8 +255,8 @@ async function bootPair(): Promise<[RuntimeSystem, RuntimeSystem, number[][]]> {
       openapi,
       yamlProgram: {
         modules: [
-          { name: "resources.yaml", yaml: YAML_BOUNDARIES },
-          { name: "resource-by-id.yaml", yaml: YAML_BY_ID },
+          { name: 'resources.yaml', yaml: YAML_BOUNDARIES },
+          { name: 'resource-by-id.yaml', yaml: YAML_BY_ID },
         ],
         globalYaml: YAML_GLOBAL,
       },
@@ -284,7 +279,7 @@ async function bootPair(): Promise<[RuntimeSystem, RuntimeSystem, number[][]]> {
   return [yamlSystem, typescriptSystem, sleeps];
 }
 
-describe("source-independent runtime control behaviour", () => {
+describe('source-independent runtime control behaviour', () => {
   let systems: [RuntimeSystem, RuntimeSystem, number[][]];
 
   beforeEach(async () => {
@@ -295,164 +290,164 @@ describe("source-independent runtime control behaviour", () => {
   });
 
   it.each([
-    ["YAML", 0],
-    ["TypeScript", 1],
+    ['YAML', 0],
+    ['TypeScript', 1],
   ] as const)(
-    "%s applies request-local clock offsets and deterministic seeds",
+    '%s applies request-local clock offsets and deterministic seeds',
     async (_name, index) => {
       const app = createRuntimeGateway(systems[index]);
       const response = await request(app)
-        .post("/resources")
-        .set("X-Potemkin-Clock-Offset", "3600000")
-        .set("X-Potemkin-Seed", "same-seed")
-        .send({ id: `${_name.toLowerCase()}-seeded`, value: "created" })
+        .post('/resources')
+        .set('X-Potemkin-Clock-Offset', '3600000')
+        .set('X-Potemkin-Seed', 'same-seed')
+        .send({ id: `${_name.toLowerCase()}-seeded`, value: 'created' })
         .expect(201);
-      expect(response.body.at).toBe("2026-01-01T01:00:00.000Z");
+      expect(response.body.at).toBe('2026-01-01T01:00:00.000Z');
       expect(response.body.generated).toMatch(
         /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
       );
 
       const ordinary = await request(app)
-        .post("/resources")
-        .send({ id: `${_name.toLowerCase()}-ordinary`, value: "ordinary" })
+        .post('/resources')
+        .send({ id: `${_name.toLowerCase()}-ordinary`, value: 'ordinary' })
         .expect(201);
-      expect(ordinary.body.at).toBe("2026-01-01T00:00:00.000Z");
+      expect(ordinary.body.at).toBe('2026-01-01T00:00:00.000Z');
     },
   );
 
   it.each([
-    ["YAML", 0],
-    ["TypeScript", 1],
+    ['YAML', 0],
+    ['TypeScript', 1],
   ] as const)(
-    "%s isolates request-local clock and seed controls across concurrent requests",
+    '%s isolates request-local clock and seed controls across concurrent requests',
     async (_name, index) => {
       const app = createRuntimeGateway(systems[index]);
       const [ahead, behind] = await Promise.all([
         request(app)
-          .post("/resources")
-          .set("X-Potemkin-Clock-Offset", "3600000")
-          .set("X-Potemkin-Seed", `${_name}-ahead`)
-          .send({ id: `${_name.toLowerCase()}-concurrent-ahead`, value: "ahead" }),
+          .post('/resources')
+          .set('X-Potemkin-Clock-Offset', '3600000')
+          .set('X-Potemkin-Seed', `${_name}-ahead`)
+          .send({ id: `${_name.toLowerCase()}-concurrent-ahead`, value: 'ahead' }),
         request(app)
-          .post("/resources")
-          .set("X-Potemkin-Clock-Offset", "-3600000")
-          .set("X-Potemkin-Seed", `${_name}-behind`)
-          .send({ id: `${_name.toLowerCase()}-concurrent-behind`, value: "behind" }),
+          .post('/resources')
+          .set('X-Potemkin-Clock-Offset', '-3600000')
+          .set('X-Potemkin-Seed', `${_name}-behind`)
+          .send({ id: `${_name.toLowerCase()}-concurrent-behind`, value: 'behind' }),
       ]);
 
       expect(ahead.status).toBe(201);
       expect(behind.status).toBe(201);
-      expect(ahead.body.at).toBe("2026-01-01T01:00:00.000Z");
-      expect(behind.body.at).toBe("2025-12-31T23:00:00.000Z");
+      expect(ahead.body.at).toBe('2026-01-01T01:00:00.000Z');
+      expect(behind.body.at).toBe('2025-12-31T23:00:00.000Z');
       expect(ahead.body.generated).not.toBe(behind.body.generated);
 
       const ordinary = await request(app)
-        .post("/resources")
-        .send({ id: `${_name.toLowerCase()}-concurrent-ordinary`, value: "ordinary" })
+        .post('/resources')
+        .send({ id: `${_name.toLowerCase()}-concurrent-ordinary`, value: 'ordinary' })
         .expect(201);
-      expect(ordinary.body.at).toBe("2026-01-01T00:00:00.000Z");
+      expect(ordinary.body.at).toBe('2026-01-01T00:00:00.000Z');
     },
   );
 
   it.each([
-    ["YAML", 0],
-    ["TypeScript", 1],
+    ['YAML', 0],
+    ['TypeScript', 1],
   ] as const)(
-    "%s reads history through a separate resource-by-id boundary and replays events",
+    '%s reads history through a separate resource-by-id boundary and replays events',
     async (_name, index) => {
       const app = createRuntimeGateway(systems[index]);
       const created = await request(app)
-        .post("/resources")
-        .send({ id: `${_name.toLowerCase()}-history`, value: "created" })
+        .post('/resources')
+        .send({ id: `${_name.toLowerCase()}-history`, value: 'created' })
         .expect(201);
       await request(app)
         .patch(`/resources/${_name.toLowerCase()}-history`)
-        .send({ id: `${_name.toLowerCase()}-history`, value: "updated" })
+        .send({ id: `${_name.toLowerCase()}-history`, value: 'updated' })
         .expect(200);
 
       const historical = await request(app)
         .get(`/resources/${_name.toLowerCase()}-history`)
-        .set("X-Potemkin-Read-At-Version", "1")
+        .set('X-Potemkin-Read-At-Version', '1')
         .expect(200);
-      expect(historical.body.value).toBe("created");
+      expect(historical.body.value).toBe('created');
       expect(historical.headers.etag).toBe('"1"');
 
       const before = systems[index].engine.snapshot().events.length;
       const replay = await request(app)
         .get(`/resources/${_name.toLowerCase()}-history`)
         .set(
-          "X-Potemkin-Replay-Event",
+          'X-Potemkin-Replay-Event',
           created.body._events?.[0]?.eventId ??
             systems[index].engine
               .snapshot()
-              .events.find((event) => event.type === "ResourceCreated")!.eventId,
+              .events.find((event) => event.type === 'ResourceCreated')!.eventId,
         );
       expect(replay.status).toBe(200);
-      expect(replay.headers["x-potemkin-replayed-event"]).toBeDefined();
+      expect(replay.headers['x-potemkin-replayed-event']).toBeDefined();
       expect(systems[index].engine.snapshot().events.length).toBe(before + 1);
     },
   );
 
   it.each([
-    ["YAML", 0],
-    ["TypeScript", 1],
-  ] as const)("%s preserves chaos precedence and prevents mutation", async (_name, index) => {
+    ['YAML', 0],
+    ['TypeScript', 1],
+  ] as const)('%s preserves chaos precedence and prevents mutation', async (_name, index) => {
     const app = createRuntimeGateway(systems[index]);
     await request(app)
-      .post("/resources")
-      .set("X-Potemkin-Force-Response", "maintenance")
-      .send({ id: `${_name.toLowerCase()}-fault`, value: "blocked" })
-      .expect(503, { code: "MAINTENANCE" });
+      .post('/resources')
+      .set('X-Potemkin-Force-Response', 'maintenance')
+      .send({ id: `${_name.toLowerCase()}-fault`, value: 'blocked' })
+      .expect(503, { code: 'MAINTENANCE' });
     await request(app)
-      .post("/resources")
-      .set("X-Potemkin-Scenario", "slow")
-      .send({ id: `${_name.toLowerCase()}-scenario`, value: "blocked" })
-      .expect(429, { code: "SLOW_SCENARIO" });
+      .post('/resources')
+      .set('X-Potemkin-Scenario', 'slow')
+      .send({ id: `${_name.toLowerCase()}-scenario`, value: 'blocked' })
+      .expect(429, { code: 'SLOW_SCENARIO' });
     await request(app)
-      .post("/resources")
-      .set("X-Potemkin-Feature-Flag", "beta")
-      .send({ id: `${_name.toLowerCase()}-feature`, value: "blocked" })
-      .expect(418, { code: "BETA_RESPONSE" });
+      .post('/resources')
+      .set('X-Potemkin-Feature-Flag', 'beta')
+      .send({ id: `${_name.toLowerCase()}-feature`, value: 'blocked' })
+      .expect(418, { code: 'BETA_RESPONSE' });
     expect(systems[index].engine.snapshot().events).toHaveLength(0);
 
     const forced = await request(app)
       .get(`/resources/${_name.toLowerCase()}-missing`)
-      .set("X-Potemkin-Force-Status", "418")
-      .set("X-Potemkin-Retry-After", "4")
-      .set("X-Potemkin-Body-Truncate", "10")
+      .set('X-Potemkin-Force-Status', '418')
+      .set('X-Potemkin-Retry-After', '4')
+      .set('X-Potemkin-Body-Truncate', '10')
       .buffer(true)
       .parse((response, callback) => {
-        let data = "";
-        response.on("data", (chunk: Buffer) => {
+        let data = '';
+        response.on('data', (chunk: Buffer) => {
           data += chunk.toString();
         });
-        response.on("end", () => callback(null, data));
+        response.on('end', () => callback(null, data));
       })
       .expect(418);
-    expect(forced.headers["retry-after"]).toBe("4");
+    expect(forced.headers['retry-after']).toBe('4');
     expect(String(forced.body).length).toBeLessThanOrEqual(10);
   });
 
   it.each([
-    ["YAML", 0],
-    ["TypeScript", 1],
+    ['YAML', 0],
+    ['TypeScript', 1],
   ] as const)(
-    "%s stacks boundary latency and exposes synthetic forwarding drops",
+    '%s stacks boundary latency and exposes synthetic forwarding drops',
     async (_name, index) => {
       const app = createRuntimeGateway(systems[index]);
       await request(app)
-        .post("/resources")
-        .send({ id: `${_name.toLowerCase()}-latency`, value: "created" })
+        .post('/resources')
+        .send({ id: `${_name.toLowerCase()}-latency`, value: 'created' })
         .expect(201);
       expect(systems[2][index]).toContain(7);
 
       const before = systems[index].engine.snapshot().events.length;
       const forwarded = await request(app)
-        .post("/_engine/forward")
+        .post('/_engine/forward')
         .send({
-          method: "GET",
+          method: 'GET',
           path: `/resources/${_name.toLowerCase()}-latency`,
-          headers: { "x-potemkin-drop-connection": "0" },
+          headers: { 'x-potemkin-drop-connection': '0' },
           query: {},
           body: null,
         })
@@ -460,60 +455,60 @@ describe("source-independent runtime control behaviour", () => {
       expect(forwarded.body).toMatchObject({
         status: 504,
         body: null,
-        headers: { "x-potemkin-dropped": "true" },
+        headers: { 'x-potemkin-dropped': 'true' },
       });
       expect(systems[index].engine.snapshot().events.length).toBe(before);
     },
   );
 
   it.each([
-    ["YAML", 0],
-    ["TypeScript", 1],
-  ] as const)("%s truncates UTF-8 responses at a valid byte boundary", async (_name, index) => {
+    ['YAML', 0],
+    ['TypeScript', 1],
+  ] as const)('%s truncates UTF-8 responses at a valid byte boundary', async (_name, index) => {
     const response = await request(createRuntimeGateway(systems[index]))
-      .post("/resources")
-      .set("X-Potemkin-Body-Truncate", "24")
-      .send({ id: `${_name.toLowerCase()}-é`, value: "éclair" })
+      .post('/resources')
+      .set('X-Potemkin-Body-Truncate', '24')
+      .send({ id: `${_name.toLowerCase()}-é`, value: 'éclair' })
       .buffer(true)
       .parse((incoming, callback) => {
         const chunks: Buffer[] = [];
-        incoming.on("data", (chunk: Buffer) => chunks.push(chunk));
-        incoming.on("end", () => callback(null, Buffer.concat(chunks)));
+        incoming.on('data', (chunk: Buffer) => chunks.push(chunk));
+        incoming.on('end', () => callback(null, Buffer.concat(chunks)));
       });
     const body = Buffer.isBuffer(response.body)
       ? response.body
       : Buffer.from(String(response.body));
     expect(body.byteLength).toBeLessThanOrEqual(24);
-    expect(body.toString("utf8")).not.toContain("�");
+    expect(body.toString('utf8')).not.toContain('�');
   });
 
   it.each([
-    ["YAML", 0],
-    ["TypeScript", 1],
+    ['YAML', 0],
+    ['TypeScript', 1],
   ] as const)(
-    "%s expires dynamic typed faults under the administrative clock and reset clears them",
+    '%s expires dynamic typed faults under the administrative clock and reset clears them',
     async (_name, index) => {
       const system = systems[index];
       const app = createRuntimeGateway(system);
       system.faults.add(
         {
-          name: "temporary",
+          name: 'temporary',
           matches: () => true,
-          response: { status: 503, body: { code: "TEMPORARY" } },
+          response: { status: 503, body: { code: 'TEMPORARY' } },
         },
         1_000,
       );
       await request(app)
         .get(`/resources/${_name.toLowerCase()}-none`)
-        .expect(503, { code: "TEMPORARY" });
-      await request(app).post("/_admin/clock/advance").send({ ms: 1_001 }).expect(200);
+        .expect(503, { code: 'TEMPORARY' });
+      await request(app).post('/_admin/clock/advance').send({ ms: 1_001 }).expect(200);
       await request(app).get(`/resources/${_name.toLowerCase()}-none`).expect(404);
       system.faults.add({
-        name: "reset-me",
+        name: 'reset-me',
         matches: () => true,
-        response: { status: 503, body: { code: "RESET_ME" } },
+        response: { status: 503, body: { code: 'RESET_ME' } },
       });
-      await request(app).post("/_admin/reset").expect(204);
+      await request(app).post('/_admin/reset').expect(204);
       await request(app).get(`/resources/${_name.toLowerCase()}-none`).expect(404);
       expect(system.clock.offsetMs()).toBe(0);
     },

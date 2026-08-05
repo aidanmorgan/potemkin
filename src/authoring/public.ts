@@ -1,8 +1,10 @@
 /** Public TypeScript authoring surface. */
 
-import * as model from "./runtimeModel.js";
-import { reducerRule } from "./nativeReducer.js";
-import { defineHelper } from "./helpers.js";
+import * as builders from './builders.js';
+import { reducerRule } from './nativeReducer.js';
+import { defineHelper } from './helpers.js';
+import { yamlComponent } from './composition.js';
+import type { TypeScriptHelperOptions } from './helpers.js';
 import {
   behaviorName,
   boundaryName,
@@ -28,79 +30,9 @@ import {
   resourceName,
   schemaReference,
   scopeName,
-  TypeScriptReferenceError,
-} from "./references.js";
-import type { TypeScriptHelper, TypeScriptHelperDefinition } from "./helpers.js";
-import type { DeepReadonly } from "../types.js";
-import type {
-  AuthoringPredicate,
-  AuthoringValue,
-  BehaviorBuilder,
-  BehaviorEmissionDefinition,
-  BehaviorDefinition,
-  BoundaryBuilder,
-  BoundaryDefinition,
-  EventBuilder,
-  EventDefinition,
-  TypedEventDefinition,
-  FaultDefinition,
-  FaultErrorClass,
-  FaultResponseDefinition,
-  FaultSelectorDefinition,
-  GlobalDefinition,
-  GuardDefinition,
-  IdentityDefinition,
-  IdentityKeyDefinition,
-  InitializationDefinition,
-  SeedDefinition,
-  StateDefinition,
-  StateFieldType,
-  ComputedFieldDefinition,
-  InternalFieldDefinition,
-  QueryMappingDefinition,
-  DeprecationDefinition,
-  LatencyDefinition,
-  ProjectionDefinition,
-  QueryDefinition,
-  QueryExpression,
-  QueryValue,
-  ReactionDefinition,
-  ReducerExpression,
-  ResponseDefinition,
-  ResponseLinkDefinition,
-  SagaDefinition,
-  SagaCompensationDefinition,
-  SagaStepDefinition,
-  SagaTriggerDefinition,
-  SecondaryCommandDefinition,
-  SimulationBuilder,
-  SimulationDefinition,
-  TypedEventContext,
-  TypedMatchContext,
-  TypedReducerContext,
-  WebhookDefinition,
-} from "./runtimeModel.js";
-import type {
-  EventContext,
-  IdentityContext,
-  MatchContext,
-  QueryContext,
-  RuntimeReducerContext,
-} from "../model/runtime.js";
-import type { NativeReducer, NativeReducerBuilder, NativeReducerContext } from "./nativeReducer.js";
-import type {
-  AuthDefinition,
-  ControlDefaultsDefinition,
-  CoverageDefinition,
-  FallbackDefinition,
-  FallbackRuleDefinition,
-  HateoasDefinition,
-  IdempotencyDefinition,
-  LifecycleDefinition,
-  SecurityHeadersDefinition,
-  VersionDefinition,
-  VersioningDefinition,
-} from "./policyModel.js";
+  ReferenceValidationError,
+} from '../domain/references.js';
+import type { NativeReducer, NativeReducerBuilder, NativeReducerContext } from './nativeReducer.js';
 import type {
   BoundaryName,
   BehaviorName,
@@ -127,33 +59,145 @@ import type {
   ResourceName,
   ScopeName,
   SchemaReference,
-} from "./references.js";
+  ScenarioEventRegistry,
+} from '../domain/references.js';
 
-const {
-  all,
-  any,
-  not,
-  pipe,
-  compose,
-  mapReadonly,
-  concatReadonly,
-  query,
-  expression,
-  event,
-  behavior,
-  defineSimulation,
-  compileProgram,
-  defineEvent,
-  defineBehavior,
-  defineFault,
-  defineReaction,
-  defineWebhook,
-  defineSaga,
-  defineProjection,
-  defineGlobal,
-  boundary,
-  simulation,
-} = model;
+import type {
+  AuthoringPredicate,
+  AuthoringValue,
+  AuthoringHelpers,
+  AuthoringRequest,
+  RequestControls,
+  BehaviorBuilder,
+  BehaviorEmissionDefinition,
+  BehaviorDefinition,
+  BehaviorFactory,
+  EventFactory,
+  BoundaryBuilder,
+  BoundaryDefinition,
+  EventBuilder,
+  EventDefinition,
+  Expression,
+  ExpressionPhase,
+  Pipe,
+  Compose,
+  GlobalDefinition,
+  QueryDefinition,
+  QueryExpression,
+  FaultDefinition,
+  FaultErrorClass,
+  FaultResponseDefinition,
+  FaultSelectorDefinition,
+  QueryMappingDefinition,
+  QueryValue,
+  ReactionDefinition,
+  ReducerExpression,
+  ReducerDefinition,
+  Response,
+  ResponseDefinition,
+  ResponseLinkDefinition,
+  SagaCompensationDefinition,
+  SagaDefinition,
+  SagaStepDefinition,
+  SagaTriggerDefinition,
+  SecondaryCommandDefinition,
+  SimulationBuilder,
+  SimulationDefinition,
+  TypeScriptHelper,
+  YamlComponentReference,
+  TypeScriptHelperDefinition,
+  TypeScriptHelperPhase,
+  TypeScriptHelperRegistration,
+  WebhookDefinition,
+  AuthDefinition,
+  ControlDefaultsDefinition,
+  CoverageDefinition,
+  FallbackDefinition,
+  FallbackRuleDefinition,
+  HateoasDefinition,
+  IdempotencyDefinition,
+  LifecycleDefinition,
+  SecurityHeadersDefinition,
+  VersionDefinition,
+  VersioningDefinition,
+  GuardDefinition,
+  IdentityDefinition,
+  IdentityKeyDefinition,
+  InitializationDefinition,
+  SeedDefinition,
+  StateDefinition,
+  StateFieldType,
+  ComputedFieldDefinition,
+  InternalFieldDefinition,
+  DeprecationDefinition,
+  LatencyDefinition,
+  ProjectionDefinition,
+  QueryContext,
+  ReducerContext,
+  EventHydrationExpression,
+  IdentityExpression,
+  FaultExpression,
+  WebhookExpression,
+  SagaExpression,
+  ProjectionExpression,
+  ResponseExpression,
+  TypedEventDefinition,
+  TypedEventContext,
+  TypedMatchContext,
+  TypedReducerContext,
+  EventContext,
+  IdentityContext,
+  MatchContext,
+  PostCommitContext,
+  ResponseContext,
+  FaultContext,
+  WebhookContext,
+  SagaContext,
+  ProjectionContext,
+  DeepReadonly,
+} from './types.js';
+import type { DataFormat, DataGenerator } from '../contracts/data.js';
+import type { JwtValidationConfig } from '../contracts/identity.js';
+
+const all: <Context>(
+  ...predicates: readonly AuthoringPredicate<Context>[]
+) => AuthoringPredicate<Context> = builders.all;
+const any: <Context>(
+  ...predicates: readonly AuthoringPredicate<Context>[]
+) => AuthoringPredicate<Context> = builders.any;
+const not: <Context>(predicate: AuthoringPredicate<Context>) => AuthoringPredicate<Context> =
+  builders.not;
+const pipe = builders.pipe as Pipe;
+const compose = builders.compose as Compose;
+const mapReadonly = builders.mapReadonly as <Input, Output>(
+  values: readonly Input[],
+  map: (value: Input) => Output,
+) => readonly Output[];
+const concatReadonly = builders.concatReadonly as <Value>(
+  ...values: readonly (readonly Value[])[]
+) => readonly Value[];
+const query: (predicate: QueryExpression) => QueryExpression = builders.query;
+const expression: <Context, Value, Phase extends ExpressionPhase>(
+  phase: Phase,
+  callback: (context: Readonly<Context>) => Value,
+) => Expression<Context, Value, Phase> = builders.expression;
+const event: EventFactory = builders.event;
+const behavior: BehaviorFactory = builders.behavior;
+const defineSimulation = builders.defineSimulation;
+const defineEvent = builders.defineEvent;
+const defineBehavior = builders.defineBehavior;
+const defineFault = builders.defineFault;
+const defineReaction = builders.defineReaction;
+const defineWebhook = builders.defineWebhook;
+const defineSaga = builders.defineSaga;
+const defineProjection = builders.defineProjection;
+const defineGlobal = builders.defineGlobal;
+const defineResponse = builders.defineResponse;
+const defineQuery = builders.defineQuery;
+const boundary: (name: BoundaryName, contractPath: ContractPath) => BoundaryBuilder =
+  builders.boundary;
+const simulation: (initial?: readonly BoundaryDefinition[]) => SimulationBuilder =
+  builders.simulation;
 
 export {
   all,
@@ -169,7 +213,6 @@ export {
   behavior,
   reducerRule,
   defineSimulation,
-  compileProgram,
   defineEvent,
   defineBehavior,
   defineFault,
@@ -178,6 +221,8 @@ export {
   defineSaga,
   defineProjection,
   defineGlobal,
+  defineResponse,
+  defineQuery,
   boundary,
   simulation,
   boundaryName,
@@ -204,27 +249,38 @@ export {
   resourceName,
   scopeName,
   schemaReference,
-  TypeScriptReferenceError,
+  ReferenceValidationError,
   defineHelper,
+  yamlComponent,
 };
 
 export type {
   AuthoringPredicate,
   AuthoringValue,
+  AuthoringHelpers,
+  AuthoringRequest,
+  RequestControls,
   BehaviorBuilder,
   BehaviorEmissionDefinition,
   BehaviorDefinition,
+  BehaviorFactory,
   BoundaryBuilder,
   BoundaryDefinition,
   EventBuilder,
   EventDefinition,
+  EventFactory,
   TypedEventDefinition,
+  Expression,
+  ExpressionPhase,
+  Pipe,
+  Compose,
   FaultDefinition,
   FaultErrorClass,
   FaultResponseDefinition,
   FaultSelectorDefinition,
   GlobalDefinition,
   AuthDefinition,
+  JwtValidationConfig,
   ControlDefaultsDefinition,
   CoverageDefinition,
   FallbackDefinition,
@@ -250,9 +306,19 @@ export type {
   ProjectionDefinition,
   QueryDefinition,
   QueryExpression,
+  QueryContext,
   QueryValue,
+  EventHydrationExpression,
+  IdentityExpression,
+  FaultExpression,
+  WebhookExpression,
+  SagaExpression,
+  ProjectionExpression,
+  ResponseExpression,
   ReactionDefinition,
   ReducerExpression,
+  ReducerDefinition,
+  Response,
   ResponseDefinition,
   ResponseLinkDefinition,
   SagaDefinition,
@@ -262,15 +328,24 @@ export type {
   SecondaryCommandDefinition,
   SimulationBuilder,
   SimulationDefinition,
+  TypeScriptHelperRegistration,
+  YamlComponentReference,
   TypedEventContext,
   TypedMatchContext,
   TypedReducerContext,
   EventContext,
   IdentityContext,
   MatchContext,
-  QueryContext,
-  RuntimeReducerContext,
+  ReducerContext,
+  PostCommitContext,
+  ResponseContext,
+  FaultContext,
+  WebhookContext,
+  SagaContext,
+  ProjectionContext,
   DeepReadonly,
+  DataGenerator,
+  DataFormat,
   WebhookDefinition,
   BoundaryName,
   BehaviorName,
@@ -297,7 +372,13 @@ export type {
   ResourceName,
   ScopeName,
   SchemaReference,
+  ScenarioEventRegistry,
 };
 
 export type { NativeReducer, NativeReducerBuilder, NativeReducerContext };
-export type { TypeScriptHelper, TypeScriptHelperDefinition };
+export type {
+  TypeScriptHelper,
+  TypeScriptHelperDefinition,
+  TypeScriptHelperOptions,
+  TypeScriptHelperPhase,
+};

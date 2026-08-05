@@ -6,7 +6,7 @@ audit_fields: true
 event_catalog:
   - type: LeadQualified
     payload_template:
-      qualifiedAt: "$now()"
+      qualifiedAt: '$now()'
 
 behaviors:
   # requires guard using CEL comprehension (filter/exists)
@@ -17,16 +17,16 @@ behaviors:
     match:
       operationId: qualifyLead
       method: POST
-      condition: "true"
+      condition: 'true'
       requires:
         - name: must-be-contacted
           condition: "state.status == 'CONTACTED'"
           error_code: LEAD_NOT_CONTACTED
-          error_message: "Lead must be in CONTACTED status to be qualified"
+          error_message: 'Lead must be in CONTACTED status to be qualified'
         - name: has-calls
-          condition: "state.callIds.exists(c, true)"
+          condition: 'state.callIds.exists(c, true)'
           error_code: NO_CALLS_RECORDED
-          error_message: "Lead must have at least one recorded call to be qualified"
+          error_message: 'Lead must have at least one recorded call to be qualified'
     emit: LeadQualified
 
 reducers:

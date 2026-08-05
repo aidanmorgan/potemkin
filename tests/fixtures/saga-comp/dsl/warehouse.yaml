@@ -11,16 +11,16 @@ fallback_override: false
 event_catalog:
   - type: WarehouseNotified
     payload_template:
-      orderId: "command.payload.orderId"
-      itemId: "command.payload.itemId"
-      quantity: "command.payload.quantity"
-      notifiedAt: "$now()"
+      orderId: 'command.payload.orderId'
+      itemId: 'command.payload.itemId'
+      quantity: 'command.payload.quantity'
+      notifiedAt: '$now()'
 
 behaviors:
   - name: notifyWarehouse
     match:
       operationId: notifyWarehouse
-      condition: "true"
+      condition: 'true'
     emit: WarehouseNotified
 
 reducers:
@@ -28,7 +28,7 @@ reducers:
     patches:
       - op: replace
         path: /lastNotifiedOrderId
-        value: "${event.payload.orderId}"
+        value: '${event.payload.orderId}'
       - op: replace
         path: /status
         value: "${'NOTIFIED'}"

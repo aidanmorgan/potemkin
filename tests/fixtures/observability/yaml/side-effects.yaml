@@ -3,7 +3,7 @@ sagas:
     trigger:
       boundary: RecordBatch
       intent: creation
-      condition: "true"
+      condition: 'true'
     steps:
       - name: create-saga-receipt
         boundary: BulkReceipt
@@ -17,19 +17,19 @@ derived_projections:
   - name: BulkSummary
     key: event.aggregateId
     subscribe:
-      - "RecordBatch:RecordCreated"
+      - 'RecordBatch:RecordCreated'
     reduce:
-      - on: "RecordBatch:RecordCreated"
+      - on: 'RecordBatch:RecordCreated'
         patches:
           - op: replace
             path: /name
-            value: "${event.payload.name}"
+            value: '${event.payload.name}'
           - op: replace
             path: /created
-            value: "${true}"
+            value: '${true}'
 reactions:
   - name: audit-record-creation
-    on: "RecordBatch:RecordCreated"
+    on: 'RecordBatch:RecordCreated'
     intent: creation
     boundary: BulkAudit
     emit: BulkAuditRecorded
@@ -43,9 +43,9 @@ webhooks:
       condition: "event.type == 'RecordCreated'"
     url: "'http://127.0.0.1:19879/bulk-hook'"
     payload:
-      recordId: "${event.aggregateId}"
-      event: "${event.type}"
-      name: "${event.payload.name}"
+      recordId: '${event.aggregateId}'
+      event: '${event.type}'
+      name: '${event.payload.name}'
     retry:
       maxAttempts: 1
       delayMs: 1

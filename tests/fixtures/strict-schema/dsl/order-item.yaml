@@ -25,10 +25,10 @@ identity:
 event_catalog:
   - type: OrderItemCreated
     payload_template:
-      id: "command.targetId"
-      description: "command.payload.description"
-      quantity: "command.payload.quantity"
-      unitPrice: "command.payload.unitPrice"
+      id: 'command.targetId'
+      description: 'command.payload.description'
+      quantity: 'command.payload.quantity'
+      unitPrice: 'command.payload.unitPrice'
 
 state:
   computed:
@@ -37,7 +37,7 @@ state:
     # that triggers the INCOMPLETE_DEPS check. With strict_schema: false the
     # engine logs a WARN and boots successfully instead of rejecting the config.
     - name: lineTotal
-      formula: "state.quantity * state.unitPrice"
+      formula: 'state.quantity * state.unitPrice'
       depends_on:
         - unitPrice
 
@@ -45,7 +45,7 @@ behaviors:
   - name: createOrderItem
     match:
       operationId: createOrderItem
-      condition: "true"
+      condition: 'true'
     emit: OrderItemCreated
 
 reducers:
@@ -53,15 +53,15 @@ reducers:
     patches:
       - op: replace
         path: /id
-        value: "${event.payload.id}"
+        value: '${event.payload.id}'
       - op: replace
         path: /description
-        value: "${event.payload.description}"
+        value: '${event.payload.description}'
       - op: replace
         path: /quantity
-        value: "${event.payload.quantity}"
+        value: '${event.payload.quantity}'
       - op: replace
         path: /unitPrice
-        value: "${event.payload.unitPrice}"
+        value: '${event.payload.unitPrice}'
 
 initialization: []

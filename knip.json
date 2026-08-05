@@ -20,6 +20,7 @@
     "@opentelemetry/instrumentation-express",
     "@opentelemetry/instrumentation-http",
     "@opentelemetry/instrumentation-pino",
+    "pino-pretty",
     "cookie",
     "@types/cookie",
     "ts-node"

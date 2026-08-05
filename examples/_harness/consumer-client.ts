@@ -36,7 +36,7 @@ function encodeForm(form: Record<string, unknown>): string {
     parts.push(`${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`);
   };
   for (const [key, value] of Object.entries(form)) {
-    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+    if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
       for (const [sub, subVal] of Object.entries(value as Record<string, unknown>)) {
         add(`${key}[${sub}]`, subVal);
       }
@@ -44,12 +44,12 @@ function encodeForm(form: Record<string, unknown>): string {
       add(key, value);
     }
   }
-  return parts.join("&");
+  return parts.join('&');
 }
 
 function assertLoopbackHttpUrl(url: URL): URL {
-  const loopbackHosts = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
-  if (url.protocol !== "http:" || !loopbackHosts.has(url.hostname)) {
+  const loopbackHosts = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
+  if (url.protocol !== 'http:' || !loopbackHosts.has(url.hostname)) {
     throw new TypeError(
       `ConsumerClient only permits loopback HTTP endpoints, received ${url.origin}`,
     );
@@ -57,7 +57,7 @@ function assertLoopbackHttpUrl(url: URL): URL {
   return url;
 }
 
-function buildUrl(baseUrl: string, path: string, query?: RequestOptions["query"]): string {
+function buildUrl(baseUrl: string, path: string, query?: RequestOptions['query']): string {
   // Resolve and validate the final URL. URL() accepts an absolute `path`, which
   // would otherwise allow a caller to bypass the loopback base URL entirely.
   const url = assertLoopbackHttpUrl(new URL(path, baseUrl));
@@ -92,13 +92,13 @@ export class ConsumerClient {
     path: string,
     opts: RequestOptions = {},
   ): Promise<ConsumerResponse> {
-    const headers: Record<string, string> = { Accept: "application/json", ...opts.headers };
+    const headers: Record<string, string> = { Accept: 'application/json', ...opts.headers };
     let body: string | undefined;
     if (opts.json !== undefined) {
-      headers["Content-Type"] = "application/json";
+      headers['Content-Type'] = 'application/json';
       body = JSON.stringify(opts.json);
     } else if (opts.form !== undefined) {
-      headers["Content-Type"] = "application/x-www-form-urlencoded";
+      headers['Content-Type'] = 'application/x-www-form-urlencoded';
       body = encodeForm(opts.form);
     }
 
@@ -116,14 +116,14 @@ export class ConsumerClient {
   }
 
   get(path: string, opts?: RequestOptions): Promise<ConsumerResponse> {
-    return this.request("GET", path, opts);
+    return this.request('GET', path, opts);
   }
 
   post(path: string, opts?: RequestOptions): Promise<ConsumerResponse> {
-    return this.request("POST", path, opts);
+    return this.request('POST', path, opts);
   }
 
   delete(path: string, opts?: RequestOptions): Promise<ConsumerResponse> {
-    return this.request("DELETE", path, opts);
+    return this.request('DELETE', path, opts);
   }
 }

@@ -11,9 +11,9 @@
 // so connections are pooled across calls rather than spinning up a new server
 // per request. The returned close() tears the server + agent down in afterAll.
 
-import http from "node:http";
-import request from "supertest";
-import type { Express } from "express";
+import http from 'node:http';
+import request from 'supertest';
+import type { Express } from 'express';
 
 /** A supertest-style agent: one method per HTTP verb, each returning a Test. */
 export interface PersistentAgent {
@@ -48,7 +48,7 @@ export async function withPersistentServer(
   const keepAliveAgent = new http.Agent({ keepAlive: true, maxSockets });
 
   const server = await new Promise<http.Server>((resolve) => {
-    const s = app.listen(0, "127.0.0.1", () => resolve(s));
+    const s = app.listen(0, '127.0.0.1', () => resolve(s));
   });
   server.unref();
 

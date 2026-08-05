@@ -14,18 +14,18 @@ identity:
 event_catalog:
   - type: ItemCreated
     payload_template:
-      id: "command.targetId"
-      name: "command.payload.name"
+      id: 'command.targetId'
+      name: 'command.payload.name'
       status: "'DRAFT'"
       # has() + ternary: plain CEL (no ${} needed in payload_template)
-      score: "has(command.payload.initialScore) ? command.payload.initialScore : 0"
-      tags: "[]"
+      score: 'has(command.payload.initialScore) ? command.payload.initialScore : 0'
+      tags: '[]'
 
 behaviors:
   - name: createItem
     match:
       operationId: createItem
-      condition: "true"
+      condition: 'true'
     emit: ItemCreated
 
 # ── op: add ────────────────────────────────────────────────────────────────────
@@ -36,24 +36,24 @@ reducers:
     patches:
       - op: add
         path: /id
-        value: "${event.payload.id}"
+        value: '${event.payload.id}'
       - op: add
         path: /name
-        value: "${event.payload.name}"
+        value: '${event.payload.name}'
       - op: add
         path: /status
-        value: "${event.payload.status}"
+        value: '${event.payload.status}'
       - op: add
         path: /score
-        value: "${event.payload.score}"
+        value: '${event.payload.score}'
       - op: add
         path: /tags
-        value: "${event.payload.tags}"
+        value: '${event.payload.tags}'
       - op: add
         path: /metadata
-        value: "${{}}"
+        value: '${{}}'
       - op: add
         path: /members
-        value: "${[]}"
+        value: '${[]}'
 
 initialization: []

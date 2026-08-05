@@ -42,76 +42,16 @@ import {
   POTEMKIN_SKIP_REQUEST_VALIDATION,
   POTEMKIN_SKIP_RESPONSE_VALIDATION,
   POTEMKIN_ALLOW_ADDITIONAL_PROPERTIES,
-} from "./potemkinHeaders.js";
-import { ConfigurationError } from "../errors.js";
-
-export interface TransparencyControls {
-  readonly dryRun?: boolean;
-  readonly includeEvents?: boolean;
-  readonly echo?: boolean;
-  readonly seed?: string;
-  /** Signed integer milliseconds; positive moves clock forward. */
-  readonly clockOffsetMs?: number;
-}
-
-export interface SideEffectControls {
-  readonly skipSagas?: boolean;
-  readonly skipWebhooks?: boolean;
-  readonly skipProjections?: boolean;
-  readonly skipReactions?: boolean;
-  readonly skipDispatch?: boolean;
-  readonly maxCascadeDepth?: number;
-  readonly bulkTransactional?: boolean;
-}
-
-export interface IdentityControls {
-  /** Override actor: format `<id>:<scope1>,<scope2>`. */
-  readonly actorOverride?: string;
-  /** Force causedBy on emitted events. */
-  readonly causedBy?: string;
-  /** Admin-gated impersonation target. */
-  readonly impersonate?: string;
-}
-
-export interface TimeTravelControls {
-  readonly readAtVersion?: number;
-  readonly replayEvent?: string;
-}
-
-export type ResponseFormat = "hal" | "jsonapi" | "plain";
-export type PaginationStyle = "envelope" | "raw" | "link-header";
-
-export interface FormatControls {
-  readonly responseFormat?: ResponseFormat;
-  readonly paginationStyle?: PaginationStyle;
-  readonly maskFields?: readonly string[];
-}
-
-export type LogLevel = "debug" | "info" | "warn" | "error";
-
-export interface ObservabilityControls {
-  readonly traceId?: string;
-  readonly spanName?: string;
-  readonly logLevel?: LogLevel;
-  /** Tag `{key, value}` parsed from `key=value`. */
-  readonly metricTag?: { readonly key: string; readonly value: string };
-}
-
-export interface ValidationControls {
-  readonly skipRequestValidation?: boolean;
-  readonly skipResponseValidation?: boolean;
-  readonly allowAdditionalProperties?: boolean;
-}
-
-export interface ControlHeaders {
-  readonly transparency: TransparencyControls;
-  readonly sideEffects: SideEffectControls;
-  readonly identity: IdentityControls;
-  readonly timeTravel: TimeTravelControls;
-  readonly format: FormatControls;
-  readonly observability: ObservabilityControls;
-  readonly validation: ValidationControls;
-}
+} from './potemkinHeaders.js';
+import { ConfigurationError } from '../errors.js';
+import type {
+  ControlHeaders,
+  LogLevel,
+  ObservabilityControls,
+  PartialControlHeaders,
+  PaginationStyle,
+  ResponseFormat,
+} from '../contracts/controlHeaders.js';
 
 /** A complete, empty policy used when no authored defaults were supplied. */
 export const EMPTY_CONTROL_HEADERS: ControlHeaders = Object.freeze({
@@ -146,34 +86,24 @@ export function mergeControlHeaders(
 }
 
 /** TypeScript authoring may omit tiers and individual controls. */
-export type PartialControlHeaders = {
-  readonly transparency?: TransparencyControls;
-  readonly sideEffects?: SideEffectControls;
-  readonly identity?: IdentityControls;
-  readonly timeTravel?: TimeTravelControls;
-  readonly format?: FormatControls;
-  readonly observability?: ObservabilityControls;
-  readonly validation?: ValidationControls;
-};
-
 /**
  * Validate a control policy supplied by JavaScript or generated code.  Header
  * values are deliberately checked here rather than silently ignored: a bad
  * authored default would otherwise affect every request in the process.
  */
 export function validateControlHeaders(raw: unknown): PartialControlHeaders {
-  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new ConfigurationError("controlHeaders must be an object", { field: "controlHeaders" });
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new ConfigurationError('controlHeaders must be an object', { field: 'controlHeaders' });
   }
   const input = raw as Record<string, unknown>;
   const allowed = new Set([
-    "transparency",
-    "sideEffects",
-    "identity",
-    "timeTravel",
-    "format",
-    "observability",
-    "validation",
+    'transparency',
+    'sideEffects',
+    'identity',
+    'timeTravel',
+    'format',
+    'observability',
+    'validation',
   ]);
   for (const key of Object.keys(input)) {
     if (!allowed.has(key))
@@ -181,7 +111,7 @@ export function validateControlHeaders(raw: unknown): PartialControlHeaders {
         field: `controlHeaders.${key}`,
       });
     const tier = input[key];
-    if (tier !== undefined && (tier === null || typeof tier !== "object" || Array.isArray(tier))) {
+    if (tier !== undefined && (tier === null || typeof tier !== 'object' || Array.isArray(tier))) {
       throw new ConfigurationError(`controlHeaders.${key} must be an object`, {
         field: `controlHeaders.${key}`,
       });
@@ -203,14 +133,14 @@ function readHeader(
 function parseBool(raw: string | undefined): boolean | undefined {
   if (raw === undefined) return undefined;
   const v = raw.trim().toLowerCase();
-  if (v === "") return undefined;
-  if (v === "true" || v === "1" || v === "yes" || v === "on") return true;
-  if (v === "false" || v === "0" || v === "no" || v === "off") return false;
+  if (v === '') return undefined;
+  if (v === 'true' || v === '1' || v === 'yes' || v === 'on') return true;
+  if (v === 'false' || v === '0' || v === 'no' || v === 'off') return false;
   return undefined;
 }
 
 function parseSignedInt(raw: string | undefined): number | undefined {
-  if (raw === undefined || raw.trim() === "") return undefined;
+  if (raw === undefined || raw.trim() === '') return undefined;
   const n = Number(raw);
   if (!Number.isInteger(n)) return undefined;
   return n;
@@ -225,35 +155,35 @@ function parseNonNegInt(raw: string | undefined): number | undefined {
 function parseResponseFormat(raw: string | undefined): ResponseFormat | undefined {
   if (raw === undefined) return undefined;
   const v = raw.trim().toLowerCase();
-  if (v === "hal" || v === "jsonapi" || v === "plain") return v;
+  if (v === 'hal' || v === 'jsonapi' || v === 'plain') return v;
   return undefined;
 }
 
 function parsePaginationStyle(raw: string | undefined): PaginationStyle | undefined {
   if (raw === undefined) return undefined;
   const v = raw.trim().toLowerCase();
-  if (v === "envelope" || v === "raw" || v === "link-header") return v;
+  if (v === 'envelope' || v === 'raw' || v === 'link-header') return v;
   return undefined;
 }
 
 function parseLogLevel(raw: string | undefined): LogLevel | undefined {
   if (raw === undefined) return undefined;
   const v = raw.trim().toLowerCase();
-  if (v === "debug" || v === "info" || v === "warn" || v === "error") return v;
+  if (v === 'debug' || v === 'info' || v === 'warn' || v === 'error') return v;
   return undefined;
 }
 
 function parseCsv(raw: string | undefined): readonly string[] | undefined {
-  if (raw === undefined || raw.trim() === "") return undefined;
+  if (raw === undefined || raw.trim() === '') return undefined;
   return raw
-    .split(",")
+    .split(',')
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
 }
 
-function parseMetricTag(raw: string | undefined): ObservabilityControls["metricTag"] {
-  if (raw === undefined || raw.trim() === "") return undefined;
-  const eq = raw.indexOf("=");
+function parseMetricTag(raw: string | undefined): ObservabilityControls['metricTag'] {
+  if (raw === undefined || raw.trim() === '') return undefined;
+  const eq = raw.indexOf('=');
   if (eq <= 0 || eq === raw.length - 1) return undefined;
   return { key: raw.slice(0, eq).trim(), value: raw.slice(eq + 1).trim() };
 }
@@ -394,15 +324,15 @@ export function requiresAdminAuth(c: ControlHeaders): boolean {
 export function applyMask(body: unknown, fields: readonly string[]): unknown {
   if (fields.length === 0) return body;
   if (Array.isArray(body)) return body.map((item) => applyMask(item, fields));
-  if (body !== null && typeof body === "object") {
+  if (body !== null && typeof body === 'object') {
     const out: Record<string, unknown> = { ...(body as Record<string, unknown>) };
     for (const field of fields) {
-      if (field in out) out[field] = "[MASKED]";
+      if (field in out) out[field] = '[MASKED]';
     }
     // Recurse into nested values (e.g. envelope.items[]).
     for (const k of Object.keys(out)) {
       const v = out[k];
-      if (Array.isArray(v) || (v !== null && typeof v === "object")) {
+      if (Array.isArray(v) || (v !== null && typeof v === 'object')) {
         out[k] = applyMask(v, fields);
       }
     }

@@ -1,8 +1,8 @@
-import type { JsonValue } from "../types.js";
-import type { ObjectGraphSchemaRegistry } from "./types.js";
-import { resolvePath } from "./pathResolver.js";
-import { isAssignable } from "./typeCheck.js";
-import { InternalExecutionError } from "../errors.js";
+import type { JsonValue } from '../contracts/value.js';
+import type { ObjectGraphSchemaRegistry } from './types.js';
+import { resolvePath } from './pathResolver.js';
+import { isAssignable } from './typeCheck.js';
+import { InternalExecutionError } from '../errors.js';
 
 /**
  * Throws `InternalExecutionError` (SCHEMA_PATH_UNKNOWN) if `dotPath` does not
@@ -16,7 +16,7 @@ export function guardAssignPath(
   const bs = registry.get(boundary);
   if (!bs) {
     throw new InternalExecutionError(`SCHEMA_PATH_UNKNOWN: no schema for boundary '${boundary}'`, {
-      code: "SCHEMA_PATH_UNKNOWN",
+      code: 'SCHEMA_PATH_UNKNOWN',
       boundary,
       dotPath,
     });
@@ -25,7 +25,7 @@ export function guardAssignPath(
   if (resolved === null) {
     throw new InternalExecutionError(
       `SCHEMA_PATH_UNKNOWN: path '${dotPath}' does not exist in schema for boundary '${boundary}'`,
-      { code: "SCHEMA_PATH_UNKNOWN", boundary, dotPath },
+      { code: 'SCHEMA_PATH_UNKNOWN', boundary, dotPath },
     );
   }
 }
@@ -43,7 +43,7 @@ export function guardAssignedValue(
   boundary: string,
   dotPath: string,
   value: JsonValue,
-  mode: "assign" | "append" = "assign",
+  mode: 'assign' | 'append' = 'assign',
 ): void {
   const bs = registry.get(boundary);
   if (!bs) return; // boundary unknown — let guardAssignPath handle it
@@ -51,19 +51,19 @@ export function guardAssignedValue(
   const targetSchema = resolvePath(bs.entity, dotPath);
   if (targetSchema === null) return; // path unknown — let guardAssignPath handle it
 
-  if (mode === "append") {
+  if (mode === 'append') {
     // For append, the path must resolve to an array; validate the scalar against items
-    if (targetSchema.kind !== "array") {
+    if (targetSchema.kind !== 'array') {
       throw new InternalExecutionError(
         `SCHEMA_TYPE_MISMATCH: append target '${dotPath}' must be an array schema (got ${targetSchema.kind}) in boundary '${boundary}'`,
-        { code: "SCHEMA_TYPE_MISMATCH", boundary, dotPath, expectedKind: "array" },
+        { code: 'SCHEMA_TYPE_MISMATCH', boundary, dotPath, expectedKind: 'array' },
       );
     }
     const itemsSchema = targetSchema.items;
     if (itemsSchema && !isAssignable(value, itemsSchema)) {
       throw new InternalExecutionError(
         `SCHEMA_TYPE_MISMATCH: value ${JSON.stringify(value)} is not assignable to items of '${dotPath}' (expected ${itemsSchema.kind}) in boundary '${boundary}'`,
-        { code: "SCHEMA_TYPE_MISMATCH", boundary, dotPath, expectedKind: itemsSchema.kind },
+        { code: 'SCHEMA_TYPE_MISMATCH', boundary, dotPath, expectedKind: itemsSchema.kind },
       );
     }
     return;
@@ -72,7 +72,7 @@ export function guardAssignedValue(
   if (!isAssignable(value, targetSchema)) {
     throw new InternalExecutionError(
       `SCHEMA_TYPE_MISMATCH: value ${JSON.stringify(value)} is not assignable to '${dotPath}' (expected ${targetSchema.kind}) in boundary '${boundary}'`,
-      { code: "SCHEMA_TYPE_MISMATCH", boundary, dotPath, expectedKind: targetSchema.kind },
+      { code: 'SCHEMA_TYPE_MISMATCH', boundary, dotPath, expectedKind: targetSchema.kind },
     );
   }
 }

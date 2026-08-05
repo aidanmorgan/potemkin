@@ -1,39 +1,41 @@
-import express, { type Express, type NextFunction, type Request, type Response } from "express";
-import bodyParser from "body-parser";
-import { createHash } from "node:crypto";
-import type { RuntimeSystem } from "../runtime/system.js";
-import { RuntimeExecutionError } from "../core/errors.js";
-import { normalizeEntityTag, parseEntityTagVersion } from "./entityTag.js";
+import express, { type Express, type NextFunction, type Request, type Response } from 'express';
+import bodyParser from 'body-parser';
+import { createHash } from 'node:crypto';
+import type { RuntimeSystem } from '../runtime/system.js';
+import { RuntimeExecutionError } from '../core/errors.js';
+import { normalizeEntityTag, parseEntityTagVersion } from './entityTag.js';
 import {
   type RuntimeBoundary,
   type RuntimeControls,
   type RuntimeRequest,
-} from "../model/runtime.js";
-import type { Actor, Command, JsonObject, JsonValue } from "../types.js";
-import { applyPatches, diffJsonJournal, type JournalEntry, type Patch } from "../model/patches.js";
-import { applyResponseFormat, compileMaskValuePatches } from "../core/responsePolicies.js";
-import { matchRoute, resolveVersion } from "../contract/router.js";
-import { parseControlHeaders } from "./controlHeaders.js";
-import { controlsFromHeaders, controlsOf } from "./runtimeControls.js";
-import { getAllowedOrigin, isOriginAdmitted, type AllowedOrigins } from "./cors.js";
-import { POTEMKIN_REQUEST_HEADERS } from "./potemkinHeaders.js";
+} from '../model/runtime.js';
+import type { Actor } from '../contracts/identity.js';
+import type { Command } from '../contracts/domain.js';
+import type { JsonObject, JsonValue, Patch } from '../contracts/value.js';
+import { applyPatches, diffJsonJournal, type JournalEntry } from '../model/patches.js';
+import { applyResponseFormat, compileMaskValuePatches } from '../core/responsePolicies.js';
+import { matchRoute, resolveVersion } from '../contract/router.js';
+import { parseControlHeaders } from './controlHeaders.js';
+import { controlsFromHeaders, controlsOf } from './runtimeControls.js';
+import { getAllowedOrigin, isOriginAdmitted, type AllowedOrigins } from './cors.js';
+import { POTEMKIN_REQUEST_HEADERS } from './potemkinHeaders.js';
 import {
   validateForwardedRequest,
-  type ForwardedRequest,
   type ForwardedResponse,
   type FixturesResponse,
   type RoutesDiscoveryResponse,
-} from "./specmaticTransport.js";
-import { deriveRuntimeFixtures } from "./runtimeFixtures.js";
+} from './specmaticTransport.js';
+import type { ForwardedRequest } from '../contracts/transport.js';
+import { deriveRuntimeFixtures } from './runtimeFixtures.js';
 import {
   captureParsedRequestBody,
   headersOf,
   installRuntimeObservation,
   queryOf,
   type RuntimeTransportRequestInput,
-} from "./runtimeObservation.js";
-import { registerRuntimeAdminRoutes } from "./runtimeAdminRoutes.js";
-import type { RuntimeGatewayExtensions } from "./runtimeGatewayTypes.js";
+} from './runtimeObservation.js';
+import { registerRuntimeAdminRoutes } from './runtimeAdminRoutes.js';
+import type { RuntimeGatewayExtensions } from './runtimeGatewayTypes.js';
 
 export type RuntimeExpressApp = Express;
 
@@ -41,7 +43,7 @@ export type RuntimeExpressApp = Express;
 const DEFAULT_ROUTES_TTL_SECONDS = 30;
 
 interface RuntimeConfigurationResponse {
-  readonly engine: "potemkin-stateful";
+  readonly engine: 'potemkin-stateful';
   readonly version: string;
   readonly potemkin: unknown;
   readonly pluginMetadata?: unknown;
@@ -53,7 +55,7 @@ function runtimeConfigurationResponse(
   pluginMetadata: unknown,
 ): RuntimeConfigurationResponse {
   return {
-    engine: "potemkin-stateful",
+    engine: 'potemkin-stateful',
     version,
     potemkin,
     ...(pluginMetadata === undefined ? {} : { pluginMetadata }),
@@ -67,7 +69,7 @@ function lowerCaseHeaders(headers: Readonly<Record<string, string>>): Record<str
 }
 
 function checksum(value: string): string {
-  return createHash("sha256").update(value).digest("hex");
+  return createHash('sha256').update(value).digest('hex');
 }
 
 function routesTtlSeconds(extensions: RuntimeGatewayExtensions): number {
@@ -82,19 +84,19 @@ function stripEtag(value: string): string {
 }
 
 function hasMatchingEtag(request: Request, value: string): boolean {
-  const header = request.headers["if-none-match"];
+  const header = request.headers['if-none-match'];
   const candidates: string[] = Array.isArray(header)
     ? header.map(String)
     : header === undefined
       ? []
       : [header];
   return candidates.some((candidate) =>
-    candidate.split(",").some((item: string) => stripEtag(item) === value),
+    candidate.split(',').some((item: string) => stripEtag(item) === value),
   );
 }
 
 function isJsonObject(value: unknown): value is JsonObject {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function routesProjection(
@@ -103,25 +105,25 @@ function routesProjection(
 ): RoutesDiscoveryResponse & { readonly etag: string } {
   const paths = new Set(system.program.byContractPath.keys());
   const session = system.program.policies.auth?.session;
-  if (system.program.policies.auth?.mode === "session" && session !== undefined) {
-    paths.add(session.loginPath ?? "/sessions");
-    paths.add(session.logoutPath ?? "/sessions/current");
+  if (system.program.policies.auth?.mode === 'session' && session !== undefined) {
+    paths.add(session.loginPath ?? '/sessions');
+    paths.add(session.logoutPath ?? '/sessions/current');
   }
   for (const contractPath of Object.keys(system.openapi.paths)) paths.add(contractPath);
   const versioning = system.program.policies.versioning;
   if (versioning?.enabled && versioning.versions !== undefined) {
     for (const version of versioning.versions) {
       for (const contractPath of Array.from(paths)) {
-        paths.add(contractPath === "/" ? version.prefix : `${version.prefix}${contractPath}`);
+        paths.add(contractPath === '/' ? version.prefix : `${version.prefix}${contractPath}`);
       }
     }
   }
   const sortedPaths = [...paths].sort();
-  const etag = checksum(sortedPaths.join("\n"));
+  const etag = checksum(sortedPaths.join('\n'));
   return {
     paths: sortedPaths,
-    engine: "potemkin-stateful",
-    version: extensions.version ?? "0.1.0",
+    engine: 'potemkin-stateful',
+    version: extensions.version ?? '0.1.0',
     ttlSeconds: routesTtlSeconds(extensions),
     generatedAt: new Date(system.clock.nowMs()).toISOString(),
     checksum: etag,
@@ -136,8 +138,8 @@ function fixturesProjection(
   const fixtures = deriveRuntimeFixtures(system);
   const etag = checksum(JSON.stringify(fixtures));
   return {
-    engine: "potemkin-stateful",
-    version: extensions.version ?? "0.1.0",
+    engine: 'potemkin-stateful',
+    version: extensions.version ?? '0.1.0',
     generatedAt: new Date(system.clock.nowMs()).toISOString(),
     checksum: etag,
     fixtures,
@@ -151,22 +153,22 @@ function bodyValue(request: Request): JsonValue {
 }
 
 function objectBody(body: unknown): JsonObject {
-  return body !== null && typeof body === "object" && !Array.isArray(body)
+  return body !== null && typeof body === 'object' && !Array.isArray(body)
     ? (body as JsonObject)
     : {};
 }
 
 function actorOverride(raw: string | undefined): Actor | undefined {
-  if (raw === undefined || raw.trim() === "") return undefined;
-  const separator = raw.indexOf(":");
+  if (raw === undefined || raw.trim() === '') return undefined;
+  const separator = raw.indexOf(':');
   const id = (separator < 0 ? raw : raw.slice(0, separator)).trim();
-  if (id === "") return undefined;
+  if (id === '') return undefined;
   const scopes =
     separator < 0
       ? []
       : raw
           .slice(separator + 1)
-          .split(",")
+          .split(',')
           .map((scope) => scope.trim())
           .filter(Boolean);
   return { id, scopes };
@@ -176,23 +178,23 @@ function intentFor(
   method: string,
   boundary: RuntimeBoundary,
   route?: NonNullable<ReturnType<typeof matchRoute>>,
-): Command["intent"] {
+): Command['intent'] {
   switch (method.toUpperCase()) {
-    case "GET":
-    case "HEAD":
-      return "query";
-    case "POST":
+    case 'GET':
+    case 'HEAD':
+      return 'query';
+    case 'POST':
       return route?.contractPath === boundary.contractPath &&
-        (!boundary.contractPath.includes("{") ||
-          route.operation.responseSchemas?.["201"] !== undefined)
-        ? "creation"
-        : "mutation";
-    case "PUT":
-    case "PATCH":
-    case "DELETE":
-      return "mutation";
+        (!boundary.contractPath.includes('{') ||
+          route.operation.responseSchemas?.['201'] !== undefined)
+        ? 'creation'
+        : 'mutation';
+    case 'PUT':
+    case 'PATCH':
+    case 'DELETE':
+      return 'mutation';
     default:
-      return "mutation";
+      return 'mutation';
   }
 }
 
@@ -204,26 +206,26 @@ function targetFor(
   body: JsonObject,
 ): string | null {
   const key = boundary.identity?.key;
-  if (key === undefined) return route.pathParams["id"] ?? null;
+  if (key === undefined) return route.pathParams['id'] ?? null;
   const read = (value: unknown): string | null =>
-    typeof value === "string" && value.length > 0
+    typeof value === 'string' && value.length > 0
       ? value
-      : typeof value === "number"
+      : typeof value === 'number'
         ? String(value)
         : null;
-  if (key.from === "path") return read(route.pathParams[key.name ?? "id"]);
-  if (key.from === "header")
+  if (key.from === 'path') return read(route.pathParams[key.name ?? 'id']);
+  if (key.from === 'header')
     return read(
       Object.entries(headers).find(
-        ([name]) => name.toLowerCase() === (key.name ?? key.pointer ?? "").toLowerCase(),
+        ([name]) => name.toLowerCase() === (key.name ?? key.pointer ?? '').toLowerCase(),
       )?.[1],
     );
-  const source = key.from === "query" ? query : body;
+  const source = key.from === 'query' ? query : body;
   const pointer = key.pointer ?? key.name;
   if (pointer === undefined) return null;
   let current: unknown = source;
-  for (const segment of pointer.replace(/^\//, "").split(/[./]/).filter(Boolean)) {
-    if (current === null || typeof current !== "object") return null;
+  for (const segment of pointer.replace(/^\//, '').split(/[./]/).filter(Boolean)) {
+    if (current === null || typeof current !== 'object') return null;
     current = (current as Record<string, unknown>)[segment];
   }
   return read(Array.isArray(current) ? current[0] : current);
@@ -238,7 +240,7 @@ function boundaryForRoute(
   return [...system.program.boundaries]
     .filter(
       (candidate) =>
-        !candidate.contractPath.includes("{") &&
+        !candidate.contractPath.includes('{') &&
         contractPath.startsWith(`${candidate.contractPath}/`),
     )
     .sort((left, right) => right.contractPath.length - left.contractPath.length)[0];
@@ -267,7 +269,7 @@ function adminControlAllowed(
 ): boolean {
   if (adminToken !== undefined) return headers.authorization === `Bearer ${adminToken}`;
   const actor = system.program.policies.auth?.authenticate?.({ command, headers });
-  return actor?.scopes.includes("admin") ?? false;
+  return actor?.scopes.includes('admin') ?? false;
 }
 
 function errorDetails(error: unknown): {
@@ -278,7 +280,7 @@ function errorDetails(error: unknown): {
   if (error instanceof RuntimeExecutionError) {
     const body =
       isJsonObject(error.body) &&
-      typeof error.body.code === "string" &&
+      typeof error.body.code === 'string' &&
       error.body.details === undefined
         ? { ...error.body, details: { code: error.body.code } }
         : error.body;
@@ -290,29 +292,29 @@ function errorDetails(error: unknown): {
     readonly code?: unknown;
     readonly message?: unknown;
   };
-  const status = typeof candidate.status === "number" ? candidate.status : 500;
+  const status = typeof candidate.status === 'number' ? candidate.status : 500;
   const message = candidate.message === undefined ? String(error) : String(candidate.message);
   const details = (error as { readonly details?: unknown }).details;
   const detailObject =
-    details !== null && typeof details === "object" && !Array.isArray(details)
+    details !== null && typeof details === 'object' && !Array.isArray(details)
       ? (details as Record<string, unknown>)
       : undefined;
-  const detailCode = typeof detailObject?.code === "string" ? detailObject.code : undefined;
+  const detailCode = typeof detailObject?.code === 'string' ? detailObject.code : undefined;
   const body =
-    candidate.body !== undefined && candidate.body !== null && typeof candidate.body === "object"
+    candidate.body !== undefined && candidate.body !== null && typeof candidate.body === 'object'
       ? (candidate.body as JsonValue)
       : {
           code:
             detailCode ??
-            (typeof candidate.code === "string"
+            (typeof candidate.code === 'string'
               ? candidate.code
               : status === 400
-                ? "CONTRACT_VIOLATION"
-                : "INTERNAL"),
+                ? 'CONTRACT_VIOLATION'
+                : 'INTERNAL'),
           message,
           ...(detailObject === undefined ? {} : { details: detailObject as JsonObject }),
         };
-  return { status, body, headers: status === 401 ? { "WWW-Authenticate": "Bearer" } : {} };
+  return { status, body, headers: status === 401 ? { 'WWW-Authenticate': 'Bearer' } : {} };
 }
 
 function shapeContractError(
@@ -338,36 +340,36 @@ function writeResponse(
   rawJson = false,
 ): void {
   if (
-    headers["X-Potemkin-Idempotency-Replay"] !== undefined &&
-    headers["X-Idempotency-Replay"] === undefined
+    headers['X-Potemkin-Idempotency-Replay'] !== undefined &&
+    headers['X-Idempotency-Replay'] === undefined
   ) {
-    headers["X-Idempotency-Replay"] = headers["X-Potemkin-Idempotency-Replay"];
+    headers['X-Idempotency-Replay'] = headers['X-Potemkin-Idempotency-Replay'];
   }
-  if (headers["x-specmatic-result"] === undefined && headers["X-Specmatic-Result"] === undefined) {
-    headers["X-Specmatic-Result"] = status >= 200 && status < 300 ? "success" : "failure";
+  if (headers['x-specmatic-result'] === undefined && headers['X-Specmatic-Result'] === undefined) {
+    headers['X-Specmatic-Result'] = status >= 200 && status < 300 ? 'success' : 'failure';
   }
   for (const [name, value] of Object.entries(headers)) response.setHeader(name, value);
   if (head || status === 204 || status === 304) {
     response.status(status).end();
     return;
   }
-  if (rawJson && typeof body === "string") {
-    if (response.getHeader("Content-Type") === undefined)
-      response.setHeader("Content-Type", "application/json");
+  if (rawJson && typeof body === 'string') {
+    if (response.getHeader('Content-Type') === undefined)
+      response.setHeader('Content-Type', 'application/json');
     response.status(status).end(body);
     return;
   }
   response.status(status).json(body);
 }
 
-const CORS_ALLOW_METHODS = "GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS";
+const CORS_ALLOW_METHODS = 'GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS';
 const CORS_ALLOW_HEADERS = [
-  "Content-Type",
-  "Authorization",
-  "If-Match",
-  "Idempotency-Key",
+  'Content-Type',
+  'Authorization',
+  'If-Match',
+  'Idempotency-Key',
   ...POTEMKIN_REQUEST_HEADERS,
-].join(", ");
+].join(', ');
 
 function isCredentialed(request: Request): boolean {
   return request.headers.cookie !== undefined || request.headers.authorization !== undefined;
@@ -376,33 +378,33 @@ function isCredentialed(request: Request): boolean {
 function applyCors(
   request: Request,
   response: Response,
-  allowedOrigins: AllowedOrigins = "*",
+  allowedOrigins: AllowedOrigins = '*',
 ): void {
-  const origin = typeof request.headers.origin === "string" ? request.headers.origin : undefined;
+  const origin = typeof request.headers.origin === 'string' ? request.headers.origin : undefined;
   const admitted = isCredentialed(request) && isOriginAdmitted(origin, allowedOrigins);
   response.setHeader(
-    "Access-Control-Allow-Origin",
+    'Access-Control-Allow-Origin',
     admitted ? origin! : getAllowedOrigin(origin, allowedOrigins),
   );
-  response.setHeader("Access-Control-Allow-Methods", CORS_ALLOW_METHODS);
-  response.setHeader("Access-Control-Allow-Headers", CORS_ALLOW_HEADERS);
-  response.setHeader("Vary", "Origin");
-  if (admitted) response.setHeader("Access-Control-Allow-Credentials", "true");
+  response.setHeader('Access-Control-Allow-Methods', CORS_ALLOW_METHODS);
+  response.setHeader('Access-Control-Allow-Headers', CORS_ALLOW_HEADERS);
+  response.setHeader('Vary', 'Origin');
+  if (admitted) response.setHeader('Access-Control-Allow-Credentials', 'true');
 }
 
 function applyRuntimeSecurityHeaders(
   response: Response,
-  security: RuntimeSystem["program"]["policies"]["securityHeaders"],
+  security: RuntimeSystem['program']['policies']['securityHeaders'],
 ): void {
   if (security?.enabled === false) return;
-  if (security?.nosniff) response.setHeader("X-Content-Type-Options", "nosniff");
-  if (security?.frameDeny) response.setHeader("X-Frame-Options", "DENY");
+  if (security?.nosniff) response.setHeader('X-Content-Type-Options', 'nosniff');
+  if (security?.frameDeny) response.setHeader('X-Frame-Options', 'DENY');
   if (security?.hsts)
     response.setHeader(
-      "Strict-Transport-Security",
-      `max-age=31536000${security.includeSubDomains === false ? "" : "; includeSubDomains"}`,
+      'Strict-Transport-Security',
+      `max-age=31536000${security.includeSubDomains === false ? '' : '; includeSubDomains'}`,
     );
-  if (security?.referrerPolicy) response.setHeader("Referrer-Policy", security.referrerPolicy);
+  if (security?.referrerPolicy) response.setHeader('Referrer-Policy', security.referrerPolicy);
   if (security?.customHeaders)
     for (const [name, value] of Object.entries(security.customHeaders))
       response.setHeader(name, value);
@@ -415,7 +417,7 @@ function jsonObjectBody(value: JsonValue): JsonObject {
 function preserveForwardDecorations(base: JsonValue, decorated: JsonValue): JsonValue {
   if (!isJsonObject(base) || !isJsonObject(decorated)) return base;
   const decoration = Object.fromEntries(
-    ["_events", "_debug"].flatMap((key) =>
+    ['_events', '_debug'].flatMap((key) =>
       decorated[key] === undefined ? [] : [[key, decorated[key]]],
     ),
   ) as JsonObject;
@@ -438,8 +440,8 @@ function runtimeForwardResponse(result: {
   if (result.unmaskedBody !== undefined && isJsonObject(body) && isJsonObject(result.body)) {
     const decorated = result.body as JsonObject;
     const decorationKeys = hasResponsePatches
-      ? ["_events", "_debug"]
-      : ["_links", "_events", "_debug"];
+      ? ['_events', '_debug']
+      : ['_links', '_events', '_debug'];
     const decoration = Object.fromEntries(
       decorationKeys.flatMap((key) =>
         decorated[key] === undefined ? [] : [[key, decorated[key]]],
@@ -448,17 +450,17 @@ function runtimeForwardResponse(result: {
     if (Object.keys(decoration).length > 0) body = { ...body, ...decoration };
   }
   const headers = lowerCaseHeaders({
-    ...(body === null ? {} : { "content-type": "application/json" }),
+    ...(body === null ? {} : { 'content-type': 'application/json' }),
     ...result.headers,
   });
   if (
-    headers["x-potemkin-idempotency-replay"] !== undefined &&
-    headers["x-idempotency-replay"] === undefined
+    headers['x-potemkin-idempotency-replay'] !== undefined &&
+    headers['x-idempotency-replay'] === undefined
   ) {
-    headers["x-idempotency-replay"] = headers["x-potemkin-idempotency-replay"];
+    headers['x-idempotency-replay'] = headers['x-potemkin-idempotency-replay'];
   }
-  headers["x-specmatic-result"] =
-    result.status >= 200 && result.status < 300 ? "success" : "failure";
+  headers['x-specmatic-result'] =
+    result.status >= 200 && result.status < 300 ? 'success' : 'failure';
   return {
     status: result.status,
     headers,
@@ -478,7 +480,7 @@ function runtimeForwardResponse(result: {
  */
 function observedForwardResponse(result: ForwardedResponse): ForwardedResponse {
   if (result._patches === undefined || result._patches.length === 0) return result;
-  const body = applyPatches(result.body, result._patches.map(journalEntryToPatch), "overlay", {
+  const body = applyPatches(result.body, result._patches.map(journalEntryToPatch), 'overlay', {
     autoVivify: true,
   }).newState;
   return { ...result, body };
@@ -486,10 +488,10 @@ function observedForwardResponse(result: ForwardedResponse): ForwardedResponse {
 
 function journalEntryToPatch(entry: JournalEntry): Patch {
   switch (entry.op) {
-    case "remove":
-      return { op: "remove", path: entry.path };
-    case "move":
-    case "copy":
+    case 'remove':
+      return { op: 'remove', path: entry.path };
+    case 'move':
+    case 'copy':
       if (entry.from === undefined) {
         throw new RuntimeExecutionError(
           500,
@@ -497,26 +499,26 @@ function journalEntryToPatch(entry: JournalEntry): Patch {
         );
       }
       return { op: entry.op, path: entry.path, from: entry.from };
-    case "increment":
+    case 'increment':
       if (entry.by === undefined) {
         throw new RuntimeExecutionError(
           500,
-          "Forwarded response increment patch is missing its amount",
+          'Forwarded response increment patch is missing its amount',
         );
       }
-      return { op: "increment", path: entry.path, by: entry.by };
-    case "merge":
+      return { op: 'increment', path: entry.path, by: entry.by };
+    case 'merge':
       if (!isJsonObject(entry.value)) {
         throw new RuntimeExecutionError(
           500,
-          "Forwarded response merge patch is missing an object value",
+          'Forwarded response merge patch is missing an object value',
         );
       }
-      return { op: "merge", path: entry.path, value: entry.value };
-    case "upsert":
+      return { op: 'merge', path: entry.path, value: entry.value };
+    case 'upsert':
       throw new RuntimeExecutionError(
         500,
-        "Forwarded response upsert patches cannot be represented by the transport journal",
+        'Forwarded response upsert patches cannot be represented by the transport journal',
       );
     default:
       if (entry.value === undefined) {
@@ -544,7 +546,7 @@ function alternateResponsePatchPlan(
       ? unmaskedBody.map((item) => applyResponseFormat(item, format, resourceType, path))
       : applyResponseFormat(unmaskedBody, format, resourceType, path);
   if (unmaskedShape === null) return undefined;
-  const source = controls.maskFields === undefined ? "overlay" : "mask";
+  const source = controls.maskFields === undefined ? 'overlay' : 'mask';
   const patches = diffJsonJournal(unmaskedShape, shapedBody, source);
   if (patches === undefined || patches.length === 0) return undefined;
   return { body: unmaskedShape, patches };
@@ -557,13 +559,13 @@ async function handleRuntimeForward(
   extensions: RuntimeGatewayExtensions = {},
 ): Promise<ForwardedResponse> {
   const rawMethod = forwarded.method.toUpperCase();
-  const isHead = rawMethod === "HEAD";
-  const method = isHead ? "GET" : rawMethod;
+  const isHead = rawMethod === 'HEAD';
+  const method = isHead ? 'GET' : rawMethod;
   const version = resolveVersion(forwarded.path, system.program.policies.versioning);
   const versionHeaders: Readonly<Record<string, string>> =
     version.version === undefined
       ? {}
-      : { "X-Potemkin-Version": version.version, "X-API-Version": version.version };
+      : { 'X-Potemkin-Version': version.version, 'X-API-Version': version.version };
   const controls: RuntimeControls = controlsFromHeaders(
     forwarded.headers,
     system.program.policies.controlDefaults,
@@ -608,25 +610,25 @@ async function handleRuntimeForward(
           shapedResult.unmaskedBody,
           shapedResult.body,
           controls,
-          currentBoundary?.boundary ?? "Resource",
+          currentBoundary?.boundary ?? 'Resource',
           forwarded.path,
         )
       : undefined;
     const staticPatches: JournalEntry[] = [
       ...(currentBoundary?.mask ?? []).map((field) => ({
-        op: "remove" as const,
+        op: 'remove' as const,
         path: `/${field}`,
-        source: "mask" as const,
+        source: 'mask' as const,
       })),
       ...((currentBoundary?.response?.hateoas ?? []).length > 0 &&
       isJsonObject(shapedResult.body) &&
-      shapedResult.body["_links"] !== undefined
+      shapedResult.body['_links'] !== undefined
         ? [
             {
-              op: "add" as const,
-              path: "/_links",
-              value: shapedResult.body["_links"] as JsonValue,
-              source: "hateoas" as const,
+              op: 'add' as const,
+              path: '/_links',
+              value: shapedResult.body['_links'] as JsonValue,
+              source: 'hateoas' as const,
             },
           ]
         : []),
@@ -641,7 +643,7 @@ async function handleRuntimeForward(
                 : applyPatches(
                     shapedResult.unmaskedBody,
                     staticPatches.map(journalEntryToPatch),
-                    "overlay",
+                    'overlay',
                     { autoVivify: true },
                   ).newState;
             const requestMaskPatches =
@@ -650,7 +652,7 @@ async function handleRuntimeForward(
                 : compileMaskValuePatches(staticBody, controls.maskFields);
             return [
               ...staticPatches,
-              ...applyPatches(staticBody, requestMaskPatches, "mask", {
+              ...applyPatches(staticBody, requestMaskPatches, 'mask', {
                 autoVivify: false,
               }).journal,
             ];
@@ -685,14 +687,14 @@ async function handleRuntimeForward(
       patches,
     });
   };
-  if (rawMethod === "OPTIONS")
+  if (rawMethod === 'OPTIONS')
     return output({
       status: 204,
       headers: {
-        "access-control-allow-origin": forwarded.headers.origin ?? "*",
-        "access-control-allow-methods": CORS_ALLOW_METHODS,
-        "access-control-allow-headers": CORS_ALLOW_HEADERS,
-        vary: "Origin",
+        'access-control-allow-origin': forwarded.headers.origin ?? '*',
+        'access-control-allow-methods': CORS_ALLOW_METHODS,
+        'access-control-allow-headers': CORS_ALLOW_HEADERS,
+        vary: 'Origin',
       },
       body: null,
     });
@@ -703,8 +705,8 @@ async function handleRuntimeForward(
     return output({
       status: 404,
       body: {
-        error: "NO_ROUTE",
-        code: "NO_ROUTE",
+        error: 'NO_ROUTE',
+        code: 'NO_ROUTE',
         message: `No route for ${method} ${version.path}`,
       },
       headers: {},
@@ -712,20 +714,20 @@ async function handleRuntimeForward(
   const boundary = boundaryForRoute(system, route.contractPath);
   const session = system.program.policies.auth?.session;
   const isSessionEndpoint =
-    system.program.policies.auth?.mode === "session" &&
-    ((method === "POST" && version.path === (session?.loginPath ?? "/sessions")) ||
-      (method === "DELETE" && version.path === (session?.logoutPath ?? "/sessions/current")));
+    system.program.policies.auth?.mode === 'session' &&
+    ((method === 'POST' && version.path === (session?.loginPath ?? '/sessions')) ||
+      (method === 'DELETE' && version.path === (session?.logoutPath ?? '/sessions/current')));
   if (boundary === undefined && isSessionEndpoint) {
     const command: Command = {
       commandId: commandId(system),
-      boundary: "__session__",
-      intent: "mutation",
+      boundary: '__session__',
+      intent: 'mutation',
       targetId: null,
       payload: body,
       queryParams: forwarded.query,
       httpMethod: method,
       path: version.path,
-      origin: "inbound",
+      origin: 'inbound',
       depth: 0,
       ...(route.operation.operationId === undefined
         ? {}
@@ -749,8 +751,8 @@ async function handleRuntimeForward(
       {
         status: 501,
         body: {
-          error: "NOT_IMPLEMENTED",
-          code: "BOUNDARY_NOT_IMPLEMENTED",
+          error: 'NOT_IMPLEMENTED',
+          code: 'BOUNDARY_NOT_IMPLEMENTED',
           message: `No runtime boundary for ${route.contractPath}`,
         },
         headers: {},
@@ -759,11 +761,11 @@ async function handleRuntimeForward(
       route.operation.operationId,
     );
   const actor =
-    actorOverride(forwarded.headers["x-potemkin-actor"]) ??
+    actorOverride(forwarded.headers['x-potemkin-actor']) ??
     (parseControlHeaders(forwarded.headers).identity.impersonate === undefined
       ? undefined
       : actorOverride(parseControlHeaders(forwarded.headers).identity.impersonate));
-  const ifMatch = forwarded.headers["if-match"];
+  const ifMatch = forwarded.headers['if-match'];
   const parsedIfMatch = parseEntityTagVersion(ifMatch);
   // Keep the malformed marker until the forwarded request is inside the
   // response envelope; the plugin must receive a typed 400 rather than treat
@@ -780,7 +782,7 @@ async function handleRuntimeForward(
     queryParams: forwarded.query,
     httpMethod: method,
     path: version.path,
-    origin: "inbound",
+    origin: 'inbound',
     depth: 0,
     ...(route.operation.operationId === undefined
       ? {}
@@ -806,10 +808,10 @@ async function handleRuntimeForward(
       {
         status,
         body: {
-          code: "ADMIN_REQUIRED",
-          message: "admin scope required for this X-Potemkin-* control",
+          code: 'ADMIN_REQUIRED',
+          message: 'admin scope required for this X-Potemkin-* control',
         },
-        headers: status === 401 ? { "www-authenticate": "Bearer" } : {},
+        headers: status === 401 ? { 'www-authenticate': 'Bearer' } : {},
       },
       boundary,
       route.operation.operationId,
@@ -817,18 +819,18 @@ async function handleRuntimeForward(
   }
   try {
     if (Number.isNaN(parsedIfMatch)) {
-      throw new RuntimeExecutionError(400, "If-Match value is not a valid integer", {
-        code: "INVALID_IF_MATCH",
-        message: "If-Match value is not a valid integer (weak validators are not supported)",
+      throw new RuntimeExecutionError(400, 'If-Match value is not a valid integer', {
+        code: 'INVALID_IF_MATCH',
+        message: 'If-Match value is not a valid integer (weak validators are not supported)',
       });
     }
-    if (Array.isArray(rawBody) && rawBody.length === 0 && intent !== "query") {
-      throw new RuntimeExecutionError(400, "Request array must contain at least one item", {
-        code: "CONTRACT_VIOLATION",
-        message: "Request array must contain at least one item",
+    if (Array.isArray(rawBody) && rawBody.length === 0 && intent !== 'query') {
+      throw new RuntimeExecutionError(400, 'Request array must contain at least one item', {
+        code: 'CONTRACT_VIOLATION',
+        message: 'Request array must contain at least one item',
       });
     }
-    if (Array.isArray(rawBody) && intent !== "query") {
+    if (Array.isArray(rawBody) && intent !== 'query') {
       const requests = rawBody.map((item, index) => {
         const payload = jsonObjectBody(item);
         const itemCommand = commandFor(payload);
@@ -856,7 +858,7 @@ async function handleRuntimeForward(
       }
       return output(
         {
-          status: first?.status ?? (intent === "creation" ? 201 : 200),
+          status: first?.status ?? (intent === 'creation' ? 201 : 200),
           body: results.map((result) => result.body),
           headers: first?.headers ?? {},
           unmaskedBody: results.map((result) =>
@@ -885,7 +887,7 @@ function registerRuntimeForwarding(
   system: RuntimeSystem,
   extensions: RuntimeGatewayExtensions,
 ): void {
-  app.post("/_engine/forward", async (request, response) => {
+  app.post('/_engine/forward', async (request, response) => {
     try {
       const forwarded = validateForwardedRequest(request.body);
       const originalForwarded = structuredClone(forwarded);
@@ -896,6 +898,8 @@ function registerRuntimeForwarding(
       // caller's path/body and records only the simulated body.
       response.locals.potemkinTransportRequest =
         originalForwarded satisfies RuntimeTransportRequestInput;
+      // The observer records the complete forwarding envelope, matching the
+      // transport response rather than only the nested simulated body.
       response.locals.potemkinTransportResponseBody = observedForwardResponse(
         result,
       ) as unknown as JsonValue;
@@ -907,84 +911,84 @@ function registerRuntimeForwarding(
       // carry the simulated status in the envelope.
       const result = errorDetails(error);
       response.status(400).json({
-        error: "MALFORMED_FORWARDED_REQUEST",
+        error: 'MALFORMED_FORWARDED_REQUEST',
         code:
           error instanceof Error &&
-          "code" in error &&
-          typeof (error as { code?: unknown }).code === "string"
+          'code' in error &&
+          typeof (error as { code?: unknown }).code === 'string'
             ? (error as { code: string }).code
-            : "BOOT_ERR_MALFORMED_FORWARDED_REQUEST",
+            : 'BOOT_ERR_MALFORMED_FORWARDED_REQUEST',
         message:
-          isJsonObject(result.body) && typeof result.body.message === "string"
+          isJsonObject(result.body) && typeof result.body.message === 'string'
             ? result.body.message
-            : "Forwarded request envelope is invalid",
+            : 'Forwarded request envelope is invalid',
       });
     }
   });
-  app.get("/_engine/health", (_request, response) =>
+  app.get('/_engine/health', (_request, response) =>
     response.status(200).json({
-      status: "UP",
-      engine: "potemkin-stateful",
-      version: extensions.version ?? "0.1.0",
+      status: 'UP',
+      engine: 'potemkin-stateful',
+      version: extensions.version ?? '0.1.0',
       ready: true,
     }),
   );
-  app.get("/_engine/ready", (_request, response) =>
+  app.get('/_engine/ready', (_request, response) =>
     response
       .status(200)
-      .json({ ready: true, state: "UP", routesDiscovered: system.program.byContractPath.size }),
+      .json({ ready: true, state: 'UP', routesDiscovered: system.program.byContractPath.size }),
   );
-  app.get("/_engine/routes", (request, response) => {
+  app.get('/_engine/routes', (request, response) => {
     const projection = routesProjection(system, extensions);
     if (hasMatchingEtag(request, projection.etag)) {
       response.status(304).end();
       return;
     }
-    response.setHeader("Cache-Control", `max-age=${projection.ttlSeconds}, public`);
-    response.setHeader("ETag", `"${projection.etag}"`);
+    response.setHeader('Cache-Control', `max-age=${projection.ttlSeconds}, public`);
+    response.setHeader('ETag', `"${projection.etag}"`);
     const { etag: _etag, ...body } = projection;
     response.status(200).json(body);
   });
-  app.get("/_engine/fixtures", (request, response) => {
+  app.get('/_engine/fixtures', (request, response) => {
     const projection = fixturesProjection(system, extensions);
     if (hasMatchingEtag(request, projection.etag)) {
       response.status(304).end();
       return;
     }
-    response.setHeader("Cache-Control", `max-age=${routesTtlSeconds(extensions)}, public`);
-    response.setHeader("ETag", `"${projection.etag}"`);
+    response.setHeader('Cache-Control', `max-age=${routesTtlSeconds(extensions)}, public`);
+    response.setHeader('ETag', `"${projection.etag}"`);
     const { etag: _etag, ...body } = projection;
     response.status(200).json(body);
   });
-  app.get("/_engine/config", (_request, response) => {
+  app.get('/_engine/config', (_request, response) => {
     if (system.configuration === undefined) {
       response.status(404).json({
-        error: "CONFIG_NOT_AVAILABLE",
-        message: "No top-level Potemkin configuration was supplied to this runtime",
+        error: 'CONFIG_NOT_AVAILABLE',
+        message: 'No top-level Potemkin configuration was supplied to this runtime',
       });
       return;
     }
-    response.setHeader("Cache-Control", "no-store");
+    response.setHeader('Cache-Control', 'no-store');
     response
       .status(200)
       .json(
         runtimeConfigurationResponse(
-          extensions.version ?? "0.1.0",
+          extensions.version ?? '0.1.0',
           system.configuration,
           system.configuration.plugin,
         ),
       );
   });
-  app.get("/_engine/state/:boundary/:id", (request, response) => {
+  app.get('/_engine/state/:boundary/:id', (request, response) => {
     const boundary = system.program.byBoundaryName.get(request.params.boundary);
     if (boundary === undefined) {
-      response.status(404).json({ code: "BOUNDARY_NOT_FOUND", message: "Boundary not found" });
+      response.status(404).json({ code: 'BOUNDARY_NOT_FOUND', message: 'Boundary not found' });
       return;
     }
     const snapshot = system.engine.snapshot();
     const state = snapshot.state.find(([id]) => id === request.params.id)?.[1];
     if (state === undefined) {
-      response.status(404).json({ code: "ENTITY_ABSENCE", message: "Entity not found" });
+      response.status(404).json({ code: 'ENTITY_ABSENCE', message: 'Entity not found' });
       return;
     }
     const events = snapshot.events.filter(
@@ -1023,8 +1027,8 @@ export function createRuntimeGateway(
   app.use(
     bodyParser.json({
       strict: false,
-      limit: "10mb",
-      type: ["application/json", "text/json", "application/*+json"],
+      limit: '10mb',
+      type: ['application/json', 'text/json', 'application/*+json'],
       verify: captureParsedRequestBody,
     }),
   );
@@ -1033,7 +1037,7 @@ export function createRuntimeGateway(
     applyCors(request, response, extensions.allowedOrigins);
     next();
   });
-  app.options("*", (request, response) => {
+  app.options('*', (request, response) => {
     applyCors(request, response, extensions.allowedOrigins);
     response.status(204).end();
   });
@@ -1041,20 +1045,20 @@ export function createRuntimeGateway(
   registerRuntimeForwarding(app, system, extensions);
 
   app.use(async (request: Request, response: Response, next: NextFunction) => {
-    if (request.path.startsWith("/_admin")) {
+    if (request.path.startsWith('/_admin')) {
       next();
       return;
     }
     const version = resolveVersion(request.path, system.program.policies.versioning);
     const effectiveMethod =
-      request.method.toUpperCase() === "HEAD" ? "GET" : request.method.toUpperCase();
+      request.method.toUpperCase() === 'HEAD' ? 'GET' : request.method.toUpperCase();
     const route = matchRoute(system.openapi, effectiveMethod, version.path);
     const headers = headersOf(request);
     const query = queryOf(request);
     const rawBody = bodyValue(request);
     const body = objectBody(rawBody);
     const controls = controlsOf(request, system.program.policies.controlDefaults);
-    const actorHeader = headers["x-potemkin-actor"];
+    const actorHeader = headers['x-potemkin-actor'];
     const parsedControls = parseControlHeaders(
       request.headers as Record<string, string | string[] | undefined>,
     );
@@ -1065,14 +1069,14 @@ export function createRuntimeGateway(
         : actorOverride(parsedControls.identity.impersonate));
     const provisionalCommand: Command = {
       commandId: commandId(system),
-      boundary: "__control__",
-      intent: "query",
+      boundary: '__control__',
+      intent: 'query',
       targetId: null,
       payload: body,
       queryParams: query,
       httpMethod: effectiveMethod,
       path: version.path,
-      origin: "inbound",
+      origin: 'inbound',
       depth: 0,
     };
     response.locals.potemkinCommandId = provisionalCommand.commandId;
@@ -1088,14 +1092,14 @@ export function createRuntimeGateway(
       writeResponse(
         response,
         status,
-        { code: "ADMIN_REQUIRED", message: "admin scope required for this X-Potemkin-* control" },
-        status === 401 ? { "WWW-Authenticate": "Bearer" } : {},
-        request.method === "HEAD",
+        { code: 'ADMIN_REQUIRED', message: 'admin scope required for this X-Potemkin-* control' },
+        status === 401 ? { 'WWW-Authenticate': 'Bearer' } : {},
+        request.method === 'HEAD',
       );
       return;
     }
     if (route === null) {
-      const command: Command = { ...provisionalCommand, boundary: "__unknown__" };
+      const command: Command = { ...provisionalCommand, boundary: '__unknown__' };
       try {
         const result = await system.engine.execute({
           command,
@@ -1112,8 +1116,8 @@ export function createRuntimeGateway(
           result.status,
           result.body,
           { ...result.headers },
-          request.method === "HEAD",
-          typeof result.body === "string" && controls.bodyTruncateBytes !== undefined,
+          request.method === 'HEAD',
+          typeof result.body === 'string' && controls.bodyTruncateBytes !== undefined,
         );
       } catch (error) {
         const result = errorDetails(error);
@@ -1122,7 +1126,7 @@ export function createRuntimeGateway(
           result.status,
           result.body,
           result.headers,
-          request.method === "HEAD",
+          request.method === 'HEAD',
         );
       }
       return;
@@ -1131,16 +1135,16 @@ export function createRuntimeGateway(
     if (boundary === undefined) {
       const session = system.program.policies.auth?.session;
       const isSessionEndpoint =
-        system.program.policies.auth?.mode === "session" &&
-        ((effectiveMethod === "POST" && version.path === (session?.loginPath ?? "/sessions")) ||
-          (effectiveMethod === "DELETE" &&
-            version.path === (session?.logoutPath ?? "/sessions/current")));
+        system.program.policies.auth?.mode === 'session' &&
+        ((effectiveMethod === 'POST' && version.path === (session?.loginPath ?? '/sessions')) ||
+          (effectiveMethod === 'DELETE' &&
+            version.path === (session?.logoutPath ?? '/sessions/current')));
       if (isSessionEndpoint) {
         try {
           const command: Command = {
             ...provisionalCommand,
-            boundary: "__session__",
-            intent: "mutation",
+            boundary: '__session__',
+            intent: 'mutation',
             httpMethod: effectiveMethod,
             path: version.path,
             ...(route.operation.operationId === undefined
@@ -1158,7 +1162,7 @@ export function createRuntimeGateway(
             result.status,
             result.body,
             { ...result.headers },
-            request.method === "HEAD",
+            request.method === 'HEAD',
           );
         } catch (error) {
           const result = shapeContractError(
@@ -1171,13 +1175,13 @@ export function createRuntimeGateway(
             result.status,
             result.body,
             result.headers,
-            request.method === "HEAD",
+            request.method === 'HEAD',
           );
         }
         return;
       }
       const fallbackBody = {
-        code: "BOUNDARY_NOT_IMPLEMENTED",
+        code: 'BOUNDARY_NOT_IMPLEMENTED',
         message: `No runtime boundary for ${route.contractPath}`,
       } satisfies JsonObject;
       const shapedBody =
@@ -1198,23 +1202,23 @@ export function createRuntimeGateway(
       // values to a typed RuntimeRequest.
       const intent = intentFor(effectiveMethod, boundary, route);
       const targetId = targetFor(boundary, route, query, headers, body);
-      const ifMatch = headers["if-match"];
+      const ifMatch = headers['if-match'];
       const parsedIfMatch = parseEntityTagVersion(ifMatch);
       if (parsedIfMatch !== undefined && !Number.isInteger(parsedIfMatch)) {
-        throw new RuntimeExecutionError(400, "If-Match value is not a valid integer", {
-          code: "INVALID_IF_MATCH",
-          message: "If-Match value is not a valid integer (weak validators are not supported)",
+        throw new RuntimeExecutionError(400, 'If-Match value is not a valid integer', {
+          code: 'INVALID_IF_MATCH',
+          message: 'If-Match value is not a valid integer (weak validators are not supported)',
         });
       }
       const sequenceVersion = parsedIfMatch;
 
-      if (Array.isArray(rawBody) && rawBody.length === 0 && intent !== "query") {
-        throw new RuntimeExecutionError(400, "Request array must contain at least one item", {
-          code: "CONTRACT_VIOLATION",
-          message: "Request array must contain at least one item",
+      if (Array.isArray(rawBody) && rawBody.length === 0 && intent !== 'query') {
+        throw new RuntimeExecutionError(400, 'Request array must contain at least one item', {
+          code: 'CONTRACT_VIOLATION',
+          message: 'Request array must contain at least one item',
         });
       }
-      if (Array.isArray(rawBody) && intent !== "query") {
+      if (Array.isArray(rawBody) && intent !== 'query') {
         const batchRequests: RuntimeRequest[] = rawBody.map((item, index) => {
           const itemBody = objectBody(item);
           const itemTarget = targetFor(boundary, route, query, headers, itemBody);
@@ -1227,7 +1231,7 @@ export function createRuntimeGateway(
             queryParams: query,
             httpMethod: effectiveMethod,
             path: version.path,
-            origin: "inbound",
+            origin: 'inbound',
             depth: 0,
             ...(route.operation.operationId === undefined
               ? {}
@@ -1255,7 +1259,7 @@ export function createRuntimeGateway(
           response.destroy();
           return;
         }
-        const status = results[0]?.status ?? (intent === "creation" ? 201 : 200);
+        const status = results[0]?.status ?? (intent === 'creation' ? 201 : 200);
         const resultBody = results.map((item) => item.body);
         const operationId = batchRequests[0]?.command.operationId;
         if (operationId !== undefined) {
@@ -1270,9 +1274,9 @@ export function createRuntimeGateway(
           ...results[0]?.headers,
           ...(version.version === undefined
             ? {}
-            : { "X-Potemkin-Version": version.version, "X-API-Version": version.version }),
+            : { 'X-Potemkin-Version': version.version, 'X-API-Version': version.version }),
         };
-        writeResponse(response, status, resultBody, resultHeaders, request.method === "HEAD");
+        writeResponse(response, status, resultBody, resultHeaders, request.method === 'HEAD');
         return;
       }
       const command: Command = {
@@ -1284,7 +1288,7 @@ export function createRuntimeGateway(
         queryParams: query,
         httpMethod: effectiveMethod,
         path: version.path,
-        origin: "inbound",
+        origin: 'inbound',
         depth: 0,
         ...(route.operation.operationId === undefined
           ? {}
@@ -1310,15 +1314,15 @@ export function createRuntimeGateway(
         ...result.headers,
         ...(version.version === undefined
           ? {}
-          : { "X-Potemkin-Version": version.version, "X-API-Version": version.version }),
+          : { 'X-Potemkin-Version': version.version, 'X-API-Version': version.version }),
       };
       writeResponse(
         response,
         result.status,
         result.body,
         outputHeaders,
-        request.method === "HEAD",
-        typeof result.body === "string" && controls.bodyTruncateBytes !== undefined,
+        request.method === 'HEAD',
+        typeof result.body === 'string' && controls.bodyTruncateBytes !== undefined,
       );
     } catch (error) {
       const result = shapeContractError(system, errorDetails(error), route.operation.operationId);
@@ -1327,7 +1331,7 @@ export function createRuntimeGateway(
         result.status,
         result.body,
         result.headers,
-        request.method === "HEAD",
+        request.method === 'HEAD',
       );
     }
   });

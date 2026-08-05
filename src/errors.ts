@@ -1,8 +1,8 @@
-import type { JsonObject, JsonValue } from "./types.js";
+import type { JsonObject, JsonValue } from './contracts/value.js';
 
 function isJsonObject(value: JsonValue | undefined): value is JsonObject {
   return (
-    value !== undefined && value !== null && typeof value === "object" && !Array.isArray(value)
+    value !== undefined && value !== null && typeof value === 'object' && !Array.isArray(value)
   );
 }
 
@@ -33,50 +33,50 @@ export abstract class SimError extends Error {
  * error construction has one explicit dependency-free boundary.
  */
 export function deserializeSimError(value: unknown): SimError | null {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
   const json = value as Record<string, unknown>;
-  const code = json["code"];
-  const message = typeof json["message"] === "string" ? json["message"] : String(code ?? "unknown");
-  const details = (json["details"] as JsonValue | undefined) ?? undefined;
+  const code = json['code'];
+  const message = typeof json['message'] === 'string' ? json['message'] : String(code ?? 'unknown');
+  const details = (json['details'] as JsonValue | undefined) ?? undefined;
 
   switch (code) {
-    case "CONTRACT_VIOLATION":
+    case 'CONTRACT_VIOLATION':
       return new ContractViolationError(message, details);
-    case "ENTITY_ABSENCE":
+    case 'ENTITY_ABSENCE':
       return new EntityAbsenceError(message, details);
-    case "ENTITY_CONFLICT":
+    case 'ENTITY_CONFLICT':
       return new EntityConflictError(message, details);
-    case "UNHANDLED_OPERATION":
+    case 'UNHANDLED_OPERATION':
       return new UnhandledOperationError(message, details);
-    case "CONCURRENCY_CONFLICT":
+    case 'CONCURRENCY_CONFLICT':
       return new ConcurrencyConflictError(message, details);
-    case "MISSING_PRECONDITION":
+    case 'MISSING_PRECONDITION':
       return new MissingPreconditionError(message, details);
-    case "INTERNAL_EXECUTION_ERROR":
+    case 'INTERNAL_EXECUTION_ERROR':
       return new InternalExecutionError(message, details);
-    case "INFINITE_LOOP":
+    case 'INFINITE_LOOP':
       return new InfiniteLoopError(message, details);
-    case "REACTION_BUDGET_EXCEEDED":
+    case 'REACTION_BUDGET_EXCEEDED':
       return new ReactionBudgetExceededError(message, details);
-    case "FAULT_SIMULATED": {
-      const status = typeof json["status"] === "number" ? json["status"] : 500;
-      const simulatedBody = (json["simulatedBody"] as JsonValue | undefined) ?? null;
-      const simulatedHeaders = json["simulatedHeaders"] as Record<string, string> | undefined;
+    case 'FAULT_SIMULATED': {
+      const status = typeof json['status'] === 'number' ? json['status'] : 500;
+      const simulatedBody = (json['simulatedBody'] as JsonValue | undefined) ?? null;
+      const simulatedHeaders = json['simulatedHeaders'] as Record<string, string> | undefined;
       return new FaultSimulatedError(status, simulatedBody, simulatedHeaders, details);
     }
-    case "AUTH_MISSING":
+    case 'AUTH_MISSING':
       return new AuthenticationRequiredError(message, details);
-    case "AUTH_INSUFFICIENT_SCOPES":
+    case 'AUTH_INSUFFICIENT_SCOPES':
       return new AuthorizationDeniedError(message, details);
-    case "IDEMPOTENCY_KEY_CONFLICT":
+    case 'IDEMPOTENCY_KEY_CONFLICT':
       return new IdempotencyConflictError(message, details);
-    case "CONFIG_INVALID":
+    case 'CONFIG_INVALID':
       return new ConfigurationError(message, details);
-    case "EXPORT_INVALID":
+    case 'EXPORT_INVALID':
       return new ExportError(message, details);
-    case "SESSION_LIMIT_EXCEEDED": {
-      const maxSessions = isJsonObject(details) ? details["maxSessions"] : undefined;
-      return new SessionLimitError(typeof maxSessions === "number" ? maxSessions : 0, message);
+    case 'SESSION_LIMIT_EXCEEDED': {
+      const maxSessions = isJsonObject(details) ? details['maxSessions'] : undefined;
+      return new SessionLimitError(typeof maxSessions === 'number' ? maxSessions : 0, message);
     }
     default:
       return null;
@@ -89,16 +89,16 @@ export class BootError extends SimError {
 
   constructor(
     code:
-      | "BOOT_ERR_DSL_SYNTAX"
-      | "BOOT_ERR_DSL_REFERENCE"
-      | "BOOT_ERR_DSL_DUPLICATE_BOUNDARY"
-      | "BOOT_ERR_CONTRACT_BIND"
-      | "BOOT_ERR_CONTRACT_LOAD"
-      | "BOOT_ERR_BASELINE_HYDRATION"
-      | "BOOT_ERR_SCHEMA_MISSING"
-      | "BOOT_ERR_SCHEMA_UNSUPPORTED"
-      | "BOOT_ERR_DSL_SCHEMA_VIOLATION"
-      | "BOOT_ERR_DSL_EMIT_REQUIRED"
+      | 'BOOT_ERR_DSL_SYNTAX'
+      | 'BOOT_ERR_DSL_REFERENCE'
+      | 'BOOT_ERR_DSL_DUPLICATE_BOUNDARY'
+      | 'BOOT_ERR_CONTRACT_BIND'
+      | 'BOOT_ERR_CONTRACT_LOAD'
+      | 'BOOT_ERR_BASELINE_HYDRATION'
+      | 'BOOT_ERR_SCHEMA_MISSING'
+      | 'BOOT_ERR_SCHEMA_UNSUPPORTED'
+      | 'BOOT_ERR_DSL_SCHEMA_VIOLATION'
+      | 'BOOT_ERR_DSL_EMIT_REQUIRED'
       | string,
     message: string,
     details?: JsonValue,
@@ -110,7 +110,7 @@ export class BootError extends SimError {
 
 export class ContractViolationError extends SimError {
   readonly status = 400 as const;
-  readonly code = "CONTRACT_VIOLATION" as const;
+  readonly code = 'CONTRACT_VIOLATION' as const;
 
   constructor(message: string, details?: JsonValue) {
     super(message, details);
@@ -119,7 +119,7 @@ export class ContractViolationError extends SimError {
 
 export class EntityAbsenceError extends SimError {
   readonly status = 404 as const;
-  readonly code = "ENTITY_ABSENCE" as const;
+  readonly code = 'ENTITY_ABSENCE' as const;
 
   constructor(message: string, details?: JsonValue) {
     super(message, details);
@@ -128,7 +128,7 @@ export class EntityAbsenceError extends SimError {
 
 export class EntityConflictError extends SimError {
   readonly status = 409 as const;
-  readonly code = "ENTITY_CONFLICT" as const;
+  readonly code = 'ENTITY_CONFLICT' as const;
 
   constructor(message: string, details?: JsonValue) {
     super(message, details);
@@ -137,7 +137,7 @@ export class EntityConflictError extends SimError {
 
 export class UnhandledOperationError extends SimError {
   readonly status = 422 as const;
-  readonly code = "UNHANDLED_OPERATION" as const;
+  readonly code = 'UNHANDLED_OPERATION' as const;
 
   constructor(message: string, details?: JsonValue) {
     super(message, details);
@@ -146,7 +146,7 @@ export class UnhandledOperationError extends SimError {
 
 export class ConcurrencyConflictError extends SimError {
   readonly status = 412 as const;
-  readonly code = "CONCURRENCY_CONFLICT" as const;
+  readonly code = 'CONCURRENCY_CONFLICT' as const;
 
   constructor(message: string, details?: JsonValue) {
     super(message, details);
@@ -155,7 +155,7 @@ export class ConcurrencyConflictError extends SimError {
 
 export class MissingPreconditionError extends SimError {
   readonly status = 428 as const;
-  readonly code = "MISSING_PRECONDITION" as const;
+  readonly code = 'MISSING_PRECONDITION' as const;
 
   constructor(message: string, details?: JsonValue) {
     super(message, details);
@@ -171,7 +171,7 @@ export class MissingPreconditionError extends SimError {
  */
 export class InternalExecutionError extends SimError {
   readonly status = 500 as const;
-  readonly code = "INTERNAL_EXECUTION_ERROR" as const;
+  readonly code = 'INTERNAL_EXECUTION_ERROR' as const;
 
   constructor(message: string, details?: JsonValue) {
     super(message, details);
@@ -180,7 +180,7 @@ export class InternalExecutionError extends SimError {
 
 export class InfiniteLoopError extends SimError {
   readonly status = 508 as const;
-  readonly code = "INFINITE_LOOP" as const;
+  readonly code = 'INFINITE_LOOP' as const;
 
   constructor(message: string, details?: JsonValue) {
     super(message, details);
@@ -196,7 +196,7 @@ export class InfiniteLoopError extends SimError {
  */
 export class ReactionBudgetExceededError extends SimError {
   readonly status = 508 as const;
-  readonly code = "REACTION_BUDGET_EXCEEDED" as const;
+  readonly code = 'REACTION_BUDGET_EXCEEDED' as const;
 
   constructor(message: string, details?: JsonValue) {
     super(message, details);
@@ -209,7 +209,7 @@ export class ReactionBudgetExceededError extends SimError {
  */
 export class AuthenticationRequiredError extends SimError {
   readonly status = 401 as const;
-  readonly code = "AUTH_MISSING" as const;
+  readonly code = 'AUTH_MISSING' as const;
 
   constructor(message: string, details?: JsonValue) {
     super(message, details);
@@ -222,7 +222,7 @@ export class AuthenticationRequiredError extends SimError {
  */
 export class AuthorizationDeniedError extends SimError {
   readonly status = 403 as const;
-  readonly code = "AUTH_INSUFFICIENT_SCOPES" as const;
+  readonly code = 'AUTH_INSUFFICIENT_SCOPES' as const;
 
   constructor(message: string, details?: JsonValue) {
     super(message, details);
@@ -235,7 +235,7 @@ export class AuthorizationDeniedError extends SimError {
  */
 export class IdempotencyConflictError extends SimError {
   readonly status = 409 as const;
-  readonly code = "IDEMPOTENCY_KEY_CONFLICT" as const;
+  readonly code = 'IDEMPOTENCY_KEY_CONFLICT' as const;
 
   constructor(message: string, details?: JsonValue) {
     super(message, details);
@@ -250,7 +250,7 @@ export class IdempotencyConflictError extends SimError {
  * identifies the invalid configuration member when one is available.
  */
 export class ConfigurationError extends SimError {
-  readonly code = "CONFIG_INVALID" as const;
+  readonly code = 'CONFIG_INVALID' as const;
 
   constructor(message: string, details?: JsonValue) {
     super(message, details);
@@ -259,7 +259,7 @@ export class ConfigurationError extends SimError {
 
 /** A deterministic export could not produce a contract-valid example. */
 export class ExportError extends SimError {
-  readonly code = "EXPORT_INVALID" as const;
+  readonly code = 'EXPORT_INVALID' as const;
 
   constructor(message: string, details?: JsonValue) {
     super(message, details);
@@ -269,7 +269,7 @@ export class ExportError extends SimError {
 /** The configured in-memory session capacity has been reached. */
 export class SessionLimitError extends SimError {
   readonly status = 429 as const;
-  readonly code = "SESSION_LIMIT_EXCEEDED" as const;
+  readonly code = 'SESSION_LIMIT_EXCEEDED' as const;
   readonly maxSessions: number;
 
   constructor(
@@ -286,7 +286,7 @@ export function isConfigurationError(error: unknown): error is ConfigurationErro
 }
 
 export class FaultSimulatedError extends SimError {
-  readonly code = "FAULT_SIMULATED" as const;
+  readonly code = 'FAULT_SIMULATED' as const;
   readonly status: number;
   readonly simulatedBody: JsonValue;
   readonly simulatedHeaders?: Record<string, string>;
@@ -314,7 +314,7 @@ export class FaultSimulatedError extends SimError {
    */
   override toJSON(): Record<string, unknown> {
     return this.simulatedBody !== null &&
-      typeof this.simulatedBody === "object" &&
+      typeof this.simulatedBody === 'object' &&
       !Array.isArray(this.simulatedBody)
       ? (this.simulatedBody as Record<string, unknown>)
       : { body: this.simulatedBody };

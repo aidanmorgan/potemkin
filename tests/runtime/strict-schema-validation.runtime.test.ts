@@ -1,7 +1,7 @@
-import * as path from "node:path";
-import { loadOpenApi } from "../../src/contract/loader.js";
-import { bootYamlRuntime } from "../../src/parser/runtime.js";
-import { createDefaultRuntimeHost } from "../../src/runtime/host.js";
+import * as path from 'node:path';
+import { loadOpenApi } from '../../src/contract/loader.js';
+import { bootYamlRuntime } from '../../src/parser/runtime.js';
+import { createDefaultRuntimeHost } from '../../src/runtime/host.js';
 
 const STRICT_DSL = `
 boundary: OrderItem
@@ -32,22 +32,22 @@ reducers:
       - { op: replace, path: /unitPrice, value: "\${event.payload.unitPrice}" }
 `;
 
-it("rejects an incomplete strict YAML dependency declaration before traffic", async () => {
+it('rejects an incomplete strict YAML dependency declaration before traffic', async () => {
   const openapi = await loadOpenApi(
     path.resolve(
       __dirname,
-      "..",
-      "fixtures",
-      "strict-schema",
-      "openapi",
-      "strict-schema-demo.yaml",
+      '..',
+      'fixtures',
+      'strict-schema',
+      'openapi',
+      'strict-schema-demo.yaml',
     ),
   );
   await expect(
     bootYamlRuntime({
       host: createDefaultRuntimeHost(),
       openapi,
-      yamlProgram: { modules: [{ name: "strict.yaml", yaml: STRICT_DSL }] },
+      yamlProgram: { modules: [{ name: 'strict.yaml', yaml: STRICT_DSL }] },
     }),
-  ).rejects.toMatchObject({ code: "BOOT_ERR_COMPUTED_FIELD_INCOMPLETE_DEPS" });
+  ).rejects.toMatchObject({ code: 'BOOT_ERR_COMPUTED_FIELD_INCOMPLETE_DEPS' });
 });

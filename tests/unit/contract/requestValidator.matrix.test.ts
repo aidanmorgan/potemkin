@@ -1,37 +1,37 @@
-import Ajv from "ajv";
-import { loadOpenApi } from "../../../src/contract/loader.js";
-import { createRequestValidator } from "../../../src/contract/requestValidator.js";
-import { createNoopLogger } from "../../../src/observability/logger.js";
-import type { JsonValue } from "../../../src/types.js";
+import Ajv from 'ajv';
+import { loadOpenApi } from '../../../src/contract/loader.js';
+import { createRequestValidator } from '../../../src/contract/requestValidator.js';
+import { createNoopLogger } from '../../../src/observability/logger.js';
+import type { JsonValue } from '../../../src/contracts/value.js';
 
-describe("request validator transport modes", () => {
-  it("validates typed path/query/header parameters and form coercion", async () => {
+describe('request validator transport modes', () => {
+  it('validates typed path/query/header parameters and form coercion', async () => {
     const doc = await loadOpenApi({
-      openapi: "3.0.3",
-      info: { title: "request validator", version: "1" },
+      openapi: '3.0.3',
+      info: { title: 'request validator', version: '1' },
       paths: {
-        "/forms/{id}": {
+        '/forms/{id}': {
           post: {
-            operationId: "submitForm",
+            operationId: 'submitForm',
             parameters: [
-              { name: "id", in: "path", required: true, schema: { type: "integer" } },
-              { name: "page", in: "query", required: true, schema: { type: "integer" } },
-              { name: "If-Match", in: "header", required: true, schema: { type: "integer" } },
-              { name: "optional", in: "query", required: false },
+              { name: 'id', in: 'path', required: true, schema: { type: 'integer' } },
+              { name: 'page', in: 'query', required: true, schema: { type: 'integer' } },
+              { name: 'If-Match', in: 'header', required: true, schema: { type: 'integer' } },
+              { name: 'optional', in: 'query', required: false },
             ],
             requestBody: {
               content: {
-                "application/x-www-form-urlencoded": {
+                'application/x-www-form-urlencoded': {
                   schema: {
-                    type: "object",
-                    required: ["active", "count", "nested", "entries"],
+                    type: 'object',
+                    required: ['active', 'count', 'nested', 'entries'],
                     properties: {
-                      active: { type: "boolean" },
-                      count: { type: "integer" },
-                      nested: { type: "object", properties: { score: { type: "number" } } },
+                      active: { type: 'boolean' },
+                      count: { type: 'integer' },
+                      nested: { type: 'object', properties: { score: { type: 'number' } } },
                       entries: {
-                        type: "array",
-                        items: { type: "object", properties: { enabled: { type: "boolean" } } },
+                        type: 'array',
+                        items: { type: 'object', properties: { enabled: { type: 'boolean' } } },
                       },
                     },
                   },
@@ -49,19 +49,19 @@ describe("request validator transport modes", () => {
       logger: createNoopLogger(),
     });
     const payload: JsonValue = {
-      active: "true",
-      count: "3",
-      nested: { score: "2.5" },
-      entries: [{ enabled: "false" }],
+      active: 'true',
+      count: '3',
+      nested: { score: '2.5' },
+      entries: [{ enabled: 'false' }],
     };
 
     validator.validateRequest(
-      "POST",
-      "/forms/7",
+      'POST',
+      '/forms/7',
       payload,
-      { page: "2" },
-      { id: "7" },
-      { "content-type": "application/x-www-form-urlencoded", "if-match": 'W/"5"' },
+      { page: '2' },
+      { id: '7' },
+      { 'content-type': 'application/x-www-form-urlencoded', 'if-match': 'W/"5"' },
     );
     expect(payload).toEqual({
       active: true,
@@ -71,49 +71,49 @@ describe("request validator transport modes", () => {
     });
 
     expect(() =>
-      validator.validateRequest("POST", "/forms/7", payload, {}, { id: "7" }, { "if-match": "5" }),
-    ).toThrow("Missing required query parameter");
+      validator.validateRequest('POST', '/forms/7', payload, {}, { id: '7' }, { 'if-match': '5' }),
+    ).toThrow('Missing required query parameter');
     expect(() =>
       validator.validateRequest(
-        "POST",
-        "/forms/not-number",
+        'POST',
+        '/forms/not-number',
         payload,
-        { page: "2" },
-        { id: "not-number" },
-        { "if-match": "5" },
+        { page: '2' },
+        { id: 'not-number' },
+        { 'if-match': '5' },
       ),
-    ).toThrow("failed validation");
+    ).toThrow('failed validation');
     expect(() =>
       validator.validateRequest(
-        "POST",
-        "/forms/7",
+        'POST',
+        '/forms/7',
         payload,
-        { page: "2" },
-        { id: "7" },
-        { "if-match": "not-a-tag" },
+        { page: '2' },
+        { id: '7' },
+        { 'if-match': 'not-a-tag' },
       ),
-    ).toThrow("failed validation");
+    ).toThrow('failed validation');
   });
 
-  it("distinguishes batch documents from batch items and selects anyOf/oneOf branches", async () => {
+  it('distinguishes batch documents from batch items and selects anyOf/oneOf branches', async () => {
     const doc = await loadOpenApi({
-      openapi: "3.0.3",
-      info: { title: "batch validator", version: "1" },
+      openapi: '3.0.3',
+      info: { title: 'batch validator', version: '1' },
       paths: {
-        "/batch": {
+        '/batch': {
           post: {
-            operationId: "createBatch",
+            operationId: 'createBatch',
             requestBody: {
               content: {
-                "application/json": {
+                'application/json': {
                   schema: {
-                    type: "array",
+                    type: 'array',
                     items: {
-                      type: "object",
-                      required: ["value"],
+                      type: 'object',
+                      required: ['value'],
                       properties: {
-                        value: { anyOf: [{ type: "integer" }, { type: "string" }] },
-                        enabled: { oneOf: [{ type: "boolean" }, { type: "string" }] },
+                        value: { anyOf: [{ type: 'integer' }, { type: 'string' }] },
+                        enabled: { oneOf: [{ type: 'boolean' }, { type: 'string' }] },
                       },
                     },
                   },
@@ -122,11 +122,11 @@ describe("request validator transport modes", () => {
             },
           },
         },
-        "/plain": {
+        '/plain': {
           post: {
-            operationId: "createPlain",
+            operationId: 'createPlain',
             requestBody: {
-              content: { "application/json": { schema: { type: "object" } } },
+              content: { 'application/json': { schema: { type: 'object' } } },
             },
           },
         },
@@ -139,23 +139,23 @@ describe("request validator transport modes", () => {
       logger: createNoopLogger(),
     });
 
-    validator.validateRequestItem("POST", "/batch", { value: 2, enabled: true }, {}, {});
+    validator.validateRequestItem('POST', '/batch', { value: 2, enabled: true }, {}, {});
     validator.validateRequestBatch(
-      "POST",
-      "/batch",
-      [{ value: 2 }, { value: "two", enabled: "false" }],
+      'POST',
+      '/batch',
+      [{ value: 2 }, { value: 'two', enabled: 'false' }],
       {},
       {},
     );
-    expect(() => validator.validateRequestItem("POST", "/batch", { value: false }, {}, {})).toThrow(
-      "Request body failed",
+    expect(() => validator.validateRequestItem('POST', '/batch', { value: false }, {}, {})).toThrow(
+      'Request body failed',
     );
     expect(() =>
-      validator.validateRequestBatch("POST", "/batch", [{ missing: true }], {}, {}),
-    ).toThrow("Request body failed");
-    validator.validateRequestBatch("POST", "/plain", { arbitrary: true }, {}, {});
-    expect(() => validator.validateRequest("GET", "/unknown", null, {}, {})).toThrow(
-      "No route matches",
+      validator.validateRequestBatch('POST', '/batch', [{ missing: true }], {}, {}),
+    ).toThrow('Request body failed');
+    validator.validateRequestBatch('POST', '/plain', { arbitrary: true }, {}, {});
+    expect(() => validator.validateRequest('GET', '/unknown', null, {}, {})).toThrow(
+      'No route matches',
     );
   });
 });

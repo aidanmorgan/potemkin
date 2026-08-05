@@ -1,14 +1,14 @@
-import type { JsonObject } from "../../src/types.js";
+import type { JsonObject } from '../../src/contracts/value.js';
 import type {
   Transition,
   TransitionMachine,
   TransitionModel,
-} from "../../src/model/transitionModel.js";
+} from '../../src/model/transitionModel.js';
 
 export interface ModelDrivenStep {
   readonly operation: string;
-  readonly from: string | "*";
-  readonly to: string | "UNKNOWN";
+  readonly from: string | '*';
+  readonly to: string | 'UNKNOWN';
   readonly guardCel: string | null;
   readonly input: JsonObject;
   readonly targetRef?: string;
@@ -122,7 +122,7 @@ function generateMachineSequences(
     const item = queue.shift()!;
     if (item.steps.length >= maxDepth) continue;
     const transitions = enabledTransitions(machine, item.state, item.steps.length === 0);
-    const key = `${item.state}|${item.steps.map(stepKey).join("/")}`;
+    const key = `${item.state}|${item.steps.map(stepKey).join('/')}`;
     if (seen.has(key)) continue;
     seen.add(key);
 
@@ -137,7 +137,7 @@ function generateMachineSequences(
             {
               operation,
               from: item.state,
-              to: "UNKNOWN",
+              to: 'UNKNOWN',
               guardCel: null,
               input: {},
               negative: true,
@@ -154,7 +154,7 @@ function generateMachineSequences(
     }
 
     for (const transition of transitions) {
-      if (transition.to === "UNKNOWN") continue;
+      if (transition.to === 'UNKNOWN') continue;
       const targetRef = isCreation(machine, transition)
         ? nextTarget(machine.aggregate, item.steps)
         : undefined;
@@ -203,7 +203,7 @@ function extendValidSuffixes(
   if (depth <= 0 || (maxDepth !== undefined && sequence.steps.length >= maxDepth)) return;
   const transitions = enabledTransitions(machine, sequence.finalState, false);
   for (const transition of transitions) {
-    if (transition.to === "UNKNOWN") continue;
+    if (transition.to === 'UNKNOWN') continue;
     const targetRef = isCreation(machine, transition)
       ? nextTarget(machine.aggregate, sequence.steps)
       : undefined;
@@ -248,7 +248,7 @@ function enabledTransitions(
   state: string,
   atRoot: boolean,
 ): readonly Transition[] {
-  const wildcard = machine.transitions.filter((transition) => transition.from === "*");
+  const wildcard = machine.transitions.filter((transition) => transition.from === '*');
   if (atRoot) {
     const creations = wildcard.filter((transition) => isCreation(machine, transition));
     return creations.length > 0 ? creations : wildcard;
@@ -256,16 +256,16 @@ function enabledTransitions(
   return machine.transitions.filter(
     (transition) =>
       transition.from === state ||
-      (transition.from === "*" && transition.guardCel?.includes("state.") === true),
+      (transition.from === '*' && transition.guardCel?.includes('state.') === true),
   );
 }
 
 function initialState(machine: TransitionMachine): string {
   return (
     machine.analysis?.initialStates?.[0] ??
-    machine.transitions.find((transition) => transition.from === "*")?.to ??
+    machine.transitions.find((transition) => transition.from === '*')?.to ??
     machine.states[0] ??
-    "UNKNOWN"
+    'UNKNOWN'
   );
 }
 
@@ -337,8 +337,8 @@ function satisfyDataGuards(
     if (supportOperation === undefined || input === undefined || targetRef === undefined) continue;
     additions.push({
       operation: supportOperation,
-      from: steps.at(-1)?.from ?? "*",
-      to: steps.at(-1)?.from ?? "*",
+      from: steps.at(-1)?.from ?? '*',
+      to: steps.at(-1)?.from ?? '*',
       guardCel: null,
       input,
       targetRef,
@@ -355,8 +355,8 @@ function isCreationOperation(machine: TransitionMachine, operation: string): boo
 
 function supportInput(field: string): JsonObject | undefined {
   switch (field) {
-    case "callIds":
-      return { callId: "generated-call-1" };
+    case 'callIds':
+      return { callId: 'generated-call-1' };
     default:
       return undefined;
   }
@@ -369,17 +369,17 @@ function writesField(machine: TransitionMachine, operation: string, field: strin
 
 function isCreation(machine: TransitionMachine, transition: Transition): boolean {
   const writeSet = machine.writeSets[transition.op];
-  if (transition.from !== "*" || writeSet === undefined) return false;
+  if (transition.from !== '*' || writeSet === undefined) return false;
   // Some YAML reducers build a newly-created entity with patch operations
   // rather than replace_state. The canonical model still identifies those
   // operations by their id write; treating them as creations keeps symbolic
   // target allocation faithful to the runtime without adding a source-specific
   // branch to the generator.
-  return writeSet.replaceState || writeSet.fields.includes("id");
+  return writeSet.replaceState || writeSet.fields.includes('id');
 }
 
 function nextTarget(aggregate: string, steps: readonly ModelDrivenStep[]): string {
-  const count = steps.filter((step) => step.from === "*").length;
+  const count = steps.filter((step) => step.from === '*').length;
   return `${aggregate.toLowerCase()}-${count + 1}`;
 }
 
@@ -399,7 +399,7 @@ function uniqueSequences(sequences: readonly ModelDrivenSequence[]): ModelDriven
   const seen = new Set<string>();
   const result: ModelDrivenSequence[] = [];
   for (const sequence of sequences) {
-    const key = `${sequence.aggregate}|${sequence.steps.map(stepKey).join("/")}`;
+    const key = `${sequence.aggregate}|${sequence.steps.map(stepKey).join('/')}`;
     if (seen.has(key)) continue;
     seen.add(key);
     result.push(sequence);

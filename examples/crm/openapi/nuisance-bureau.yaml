@@ -1,7 +1,7 @@
-openapi: "3.0.3"
+openapi: '3.0.3'
 info:
   title: The Nuisance Bureau CRM API
-  version: "1.0.0"
+  version: '1.0.0'
   description: |
     The Nuisance Bureau CRM domain for outbound calling campaigns.
     Models Lead, Campaign, Agent, Call, and Opportunity boundaries.
@@ -84,53 +84,53 @@ paths:
             type: string
         # Advanced comparison / set / string operators (param name carries the
         # `field:operator` form, e.g. score:gte).
-        - name: "score:gte"
+        - name: 'score:gte'
           in: query
           required: false
           schema:
             type: string
-        - name: "score:gt"
+        - name: 'score:gt'
           in: query
           required: false
           schema:
             type: string
-        - name: "score:lte"
+        - name: 'score:lte'
           in: query
           required: false
           schema:
             type: string
-        - name: "score:lt"
+        - name: 'score:lt'
           in: query
           required: false
           schema:
             type: string
-        - name: "score:ne"
+        - name: 'score:ne'
           in: query
           required: false
           schema:
             type: string
-        - name: "status:in"
+        - name: 'status:in'
           in: query
           required: false
           schema:
             type: string
-        - name: "companyName:contains"
+        - name: 'companyName:contains'
           in: query
           required: false
           schema:
             type: string
-        - name: "companyName:startsWith"
+        - name: 'companyName:startsWith'
           in: query
           required: false
           schema:
             type: string
-        - name: "companyName:endsWith"
+        - name: 'companyName:endsWith'
           in: query
           required: false
           schema:
             type: string
       responses:
-        "200":
+        '200':
           description: List of leads (raw array, or envelope when ?limit is supplied)
           content:
             application/json:
@@ -138,14 +138,14 @@ paths:
                 oneOf:
                   - type: array
                     items:
-                      $ref: "#/components/schemas/Lead"
+                      $ref: '#/components/schemas/Lead'
                   - type: object
                     required: [items, totalCount, offset, limit, hasMore]
                     properties:
                       items:
                         type: array
                         items:
-                          $ref: "#/components/schemas/Lead"
+                          $ref: '#/components/schemas/Lead'
                       totalCount:
                         type: integer
                       offset:
@@ -156,12 +156,12 @@ paths:
                         type: boolean
                       nextCursor:
                         type: string
-        "400":
+        '400':
           description: Invalid lead query parameters
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
     post:
       operationId: createLead
       summary: Create a new lead
@@ -171,7 +171,7 @@ paths:
           required: false
           schema:
             type: string
-            pattern: "^0$"
+            pattern: '^0$'
         - name: Idempotency-Key
           in: header
           required: false
@@ -213,18 +213,18 @@ paths:
                   type: string
                   format: uuid
       responses:
-        "201":
+        '201':
           description: Lead created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Lead"
-        "400":
+                $ref: '#/components/schemas/Lead'
+        '400':
           description: Bad request
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
 
   /leads/{id}:
     get:
@@ -238,18 +238,18 @@ paths:
             type: string
             format: uuid
       responses:
-        "200":
+        '200':
           description: Lead found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Lead"
-        "404":
+                $ref: '#/components/schemas/Lead'
+        '404':
           description: Lead not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
     patch:
       operationId: patchLead
       summary: Partially update a lead
@@ -265,7 +265,7 @@ paths:
           required: false
           schema:
             type: string
-            pattern: "^[0-9]+$"
+            pattern: '^[0-9]+$'
       requestBody:
         required: false
         content:
@@ -274,18 +274,18 @@ paths:
               type: object
               additionalProperties: true
       responses:
-        "200":
+        '200':
           description: Updated lead
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Lead"
-        "404":
+                $ref: '#/components/schemas/Lead'
+        '404':
           description: Lead not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
     delete:
       operationId: deleteLead
       summary: Soft-delete a lead (sets _deleted/_deletedAt; not removed from graph)
@@ -297,18 +297,18 @@ paths:
             type: string
             format: uuid
       responses:
-        "200":
+        '200':
           description: Lead soft-deleted (returns the lead with _deleted/_deletedAt set)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Lead"
-        "404":
+                $ref: '#/components/schemas/Lead'
+        '404':
           description: Lead not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
 
   /leads/{id}/contact:
     post:
@@ -326,7 +326,7 @@ paths:
           required: false
           schema:
             type: string
-            pattern: "^[0-9]+$"
+            pattern: '^[0-9]+$'
       requestBody:
         required: false
         content:
@@ -338,24 +338,24 @@ paths:
                 notes:
                   type: string
       responses:
-        "200":
+        '200':
           description: Lead contacted
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Lead"
-        "404":
+                $ref: '#/components/schemas/Lead'
+        '404':
           description: Lead not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
-        "422":
+                $ref: '#/components/schemas/Error'
+        '422':
           description: Transition not allowed
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
 
   /leads/{id}/qualify:
     post:
@@ -373,7 +373,7 @@ paths:
           required: false
           schema:
             type: string
-            pattern: "^[0-9]+$"
+            pattern: '^[0-9]+$'
       requestBody:
         required: false
         content:
@@ -382,24 +382,24 @@ paths:
               type: object
               additionalProperties: true
       responses:
-        "200":
+        '200':
           description: Lead qualified
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Lead"
-        "404":
+                $ref: '#/components/schemas/Lead'
+        '404':
           description: Lead not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
-        "422":
+                $ref: '#/components/schemas/Error'
+        '422':
           description: Transition not allowed
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
 
   /leads/{id}/disqualify:
     post:
@@ -417,7 +417,7 @@ paths:
           required: false
           schema:
             type: string
-            pattern: "^[0-9]+$"
+            pattern: '^[0-9]+$'
       requestBody:
         required: false
         content:
@@ -429,24 +429,24 @@ paths:
                 reason:
                   type: string
       responses:
-        "200":
+        '200':
           description: Lead disqualified
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Lead"
-        "404":
+                $ref: '#/components/schemas/Lead'
+        '404':
           description: Lead not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
-        "422":
+                $ref: '#/components/schemas/Error'
+        '422':
           description: Transition not allowed
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
 
   /leads/{id}/convert:
     post:
@@ -464,7 +464,7 @@ paths:
           required: false
           schema:
             type: string
-            pattern: "^[0-9]+$"
+            pattern: '^[0-9]+$'
       requestBody:
         required: true
         content:
@@ -485,24 +485,24 @@ paths:
                   type: string
                   format: date
       responses:
-        "200":
+        '200':
           description: Lead converted
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Lead"
-        "404":
+                $ref: '#/components/schemas/Lead'
+        '404':
           description: Lead not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
-        "422":
+                $ref: '#/components/schemas/Error'
+        '422':
           description: Transition not allowed
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
 
   /leads/{id}/dnc:
     post:
@@ -520,7 +520,7 @@ paths:
           required: false
           schema:
             type: string
-            pattern: "^[0-9]+$"
+            pattern: '^[0-9]+$'
       requestBody:
         required: false
         content:
@@ -532,30 +532,30 @@ paths:
                 reason:
                   type: string
       responses:
-        "200":
+        '200':
           description: Lead marked DNC
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Lead"
-        "401":
+                $ref: '#/components/schemas/Lead'
+        '401':
           description: Authentication required
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
-        "403":
+                $ref: '#/components/schemas/Error'
+        '403':
           description: Insufficient permissions
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
-        "404":
+                $ref: '#/components/schemas/Error'
+        '404':
           description: Lead not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
 
   # ── Campaigns ──────────────────────────────────────────────────────────────
   /campaigns:
@@ -582,20 +582,20 @@ paths:
             type: integer
             minimum: 0
       responses:
-        "200":
+        '200':
           description: List of campaigns
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Campaign"
-        "400":
+                  $ref: '#/components/schemas/Campaign'
+        '400':
           description: Invalid campaign query parameters
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
     post:
       operationId: createCampaign
       summary: Create a new campaign
@@ -605,7 +605,7 @@ paths:
           required: false
           schema:
             type: string
-            pattern: "^0$"
+            pattern: '^0$'
       requestBody:
         required: true
         content:
@@ -636,24 +636,24 @@ paths:
                   type: integer
                   minimum: 0
       responses:
-        "201":
+        '201':
           description: Campaign created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Campaign"
-        "400":
+                $ref: '#/components/schemas/Campaign'
+        '400':
           description: Bad request
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
-        "422":
+                $ref: '#/components/schemas/Error'
+        '422':
           description: Validation failed
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
 
   /campaigns/{id}:
     get:
@@ -667,18 +667,18 @@ paths:
             type: string
             format: uuid
       responses:
-        "200":
+        '200':
           description: Campaign found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Campaign"
-        "404":
+                $ref: '#/components/schemas/Campaign'
+        '404':
           description: Campaign not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
 
   /campaigns/{id}/activate:
     patch:
@@ -696,26 +696,26 @@ paths:
           required: false
           schema:
             type: string
-            pattern: "^[0-9]+$"
+            pattern: '^[0-9]+$'
       responses:
-        "200":
+        '200':
           description: Campaign activated
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Campaign"
-        "404":
+                $ref: '#/components/schemas/Campaign'
+        '404':
           description: Campaign not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
-        "422":
+                $ref: '#/components/schemas/Error'
+        '422':
           description: Cannot activate
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
 
   /campaigns/{id}/pause:
     patch:
@@ -733,26 +733,26 @@ paths:
           required: false
           schema:
             type: string
-            pattern: "^[0-9]+$"
+            pattern: '^[0-9]+$'
       responses:
-        "200":
+        '200':
           description: Campaign paused
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Campaign"
-        "404":
+                $ref: '#/components/schemas/Campaign'
+        '404':
           description: Campaign not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
-        "422":
+                $ref: '#/components/schemas/Error'
+        '422':
           description: Cannot pause
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
 
   /campaigns/{id}/complete:
     patch:
@@ -770,20 +770,20 @@ paths:
           required: false
           schema:
             type: string
-            pattern: "^[0-9]+$"
+            pattern: '^[0-9]+$'
       responses:
-        "200":
+        '200':
           description: Campaign completed
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Campaign"
-        "404":
+                $ref: '#/components/schemas/Campaign'
+        '404':
           description: Campaign not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
 
   # ── Agents ─────────────────────────────────────────────────────────────────
   /agents:
@@ -810,20 +810,20 @@ paths:
             type: integer
             minimum: 0
       responses:
-        "200":
+        '200':
           description: List of agents
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Agent"
-        "400":
+                  $ref: '#/components/schemas/Agent'
+        '400':
           description: Invalid agent query parameters
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
     post:
       operationId: createAgent
       summary: Create a new agent
@@ -833,7 +833,7 @@ paths:
           required: false
           schema:
             type: string
-            pattern: "^0$"
+            pattern: '^0$'
       requestBody:
         required: true
         content:
@@ -857,18 +857,18 @@ paths:
                   items:
                     type: string
       responses:
-        "201":
+        '201':
           description: Agent created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Agent"
-        "400":
+                $ref: '#/components/schemas/Agent'
+        '400':
           description: Bad request
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
 
   /agents/{id}:
     get:
@@ -882,18 +882,18 @@ paths:
             type: string
             format: uuid
       responses:
-        "200":
+        '200':
           description: Agent found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Agent"
-        "404":
+                $ref: '#/components/schemas/Agent'
+        '404':
           description: Agent not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
 
   /agents/{id}/status:
     patch:
@@ -911,7 +911,7 @@ paths:
           required: false
           schema:
             type: string
-            pattern: "^[0-9]+$"
+            pattern: '^[0-9]+$'
       requestBody:
         required: true
         content:
@@ -925,18 +925,18 @@ paths:
                   type: string
                   enum: [AVAILABLE, ON_CALL, BREAK, OFFLINE]
       responses:
-        "200":
+        '200':
           description: Agent status updated
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Agent"
-        "404":
+                $ref: '#/components/schemas/Agent'
+        '404':
           description: Agent not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
 
   # ── Calls ──────────────────────────────────────────────────────────────────
   /calls:
@@ -975,20 +975,20 @@ paths:
             type: integer
             minimum: 0
       responses:
-        "200":
+        '200':
           description: List of calls
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Call"
-        "400":
+                  $ref: '#/components/schemas/Call'
+        '400':
           description: Invalid call query parameters
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
     post:
       operationId: logCall
       summary: Log a completed call
@@ -998,7 +998,7 @@ paths:
           required: false
           schema:
             type: string
-            pattern: "^0$"
+            pattern: '^0$'
         - name: Idempotency-Key
           in: header
           required: false
@@ -1050,18 +1050,18 @@ paths:
                 recordingUrl:
                   type: string
       responses:
-        "201":
+        '201':
           description: Call logged
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Call"
-        "400":
+                $ref: '#/components/schemas/Call'
+        '400':
           description: Bad request
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
 
   /calls/{id}:
     get:
@@ -1075,18 +1075,18 @@ paths:
             type: string
             format: uuid
       responses:
-        "200":
+        '200':
           description: Call found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Call"
-        "404":
+                $ref: '#/components/schemas/Call'
+        '404':
           description: Call not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
 
   # ── Opportunities ──────────────────────────────────────────────────────────
   /opportunities:
@@ -1125,20 +1125,20 @@ paths:
             type: integer
             minimum: 0
       responses:
-        "200":
+        '200':
           description: List of opportunities
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Opportunity"
-        "400":
+                  $ref: '#/components/schemas/Opportunity'
+        '400':
           description: Invalid opportunity query parameters
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
     post:
       operationId: createOpportunity
       summary: Create an opportunity
@@ -1165,18 +1165,18 @@ paths:
                 expectedCloseDate:
                   type: string
       responses:
-        "201":
+        '201':
           description: Opportunity created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Opportunity"
-        "422":
+                $ref: '#/components/schemas/Opportunity'
+        '422':
           description: Opportunity could not be created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
 
   /opportunities/{id}:
     get:
@@ -1190,18 +1190,18 @@ paths:
             type: string
             format: uuid
       responses:
-        "200":
+        '200':
           description: Opportunity found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Opportunity"
-        "404":
+                $ref: '#/components/schemas/Opportunity'
+        '404':
           description: Opportunity not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
 
   /opportunities/{id}/advance:
     patch:
@@ -1219,7 +1219,7 @@ paths:
           required: false
           schema:
             type: string
-            pattern: "^[0-9]+$"
+            pattern: '^[0-9]+$'
       requestBody:
         required: false
         content:
@@ -1233,24 +1233,24 @@ paths:
                   minimum: 0
                   maximum: 100
       responses:
-        "200":
+        '200':
           description: Opportunity advanced
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Opportunity"
-        "404":
+                $ref: '#/components/schemas/Opportunity'
+        '404':
           description: Opportunity not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
-        "422":
+                $ref: '#/components/schemas/Error'
+        '422':
           description: Cannot advance
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
 
   /opportunities/{id}/close:
     patch:
@@ -1268,7 +1268,7 @@ paths:
           required: false
           schema:
             type: string
-            pattern: "^[0-9]+$"
+            pattern: '^[0-9]+$'
       requestBody:
         required: true
         content:
@@ -1287,24 +1287,24 @@ paths:
                   type: number
                   minimum: 0
       responses:
-        "200":
+        '200':
           description: Opportunity closed
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Opportunity"
-        "404":
+                $ref: '#/components/schemas/Opportunity'
+        '404':
           description: Opportunity not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
-        "422":
+                $ref: '#/components/schemas/Error'
+        '422':
           description: Cannot close
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
 
   /opportunities/{id}/line-items:
     post:
@@ -1335,24 +1335,24 @@ paths:
                   type: number
                   minimum: 0
       responses:
-        "200":
+        '200':
           description: Line item added
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Opportunity"
-        "404":
+                $ref: '#/components/schemas/Opportunity'
+        '404':
           description: Opportunity not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
-        "422":
+                $ref: '#/components/schemas/Error'
+        '422':
           description: Cannot add line item
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
 
   /leads/{id}/notes:
     post:
@@ -1381,18 +1381,18 @@ paths:
                 author:
                   type: string
       responses:
-        "200":
+        '200':
           description: Note appended
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Lead"
-        "422":
+                $ref: '#/components/schemas/Lead'
+        '422':
           description: Cannot append note
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
 
   /calls/{id}/transcript:
     post:
@@ -1421,18 +1421,18 @@ paths:
                   type: string
                   minLength: 1
       responses:
-        "200":
+        '200':
           description: Transcript entry appended
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Call"
-        "422":
+                $ref: '#/components/schemas/Call'
+        '422':
           description: Cannot append transcript entry
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
 
 components:
   schemas:
@@ -1835,43 +1835,43 @@ components:
 
     # Sub-path boundary schemas — mirrors of parent schemas to satisfy schema registry
     LeadById:
-      $ref: "#/components/schemas/Lead"
+      $ref: '#/components/schemas/Lead'
     LeadContact:
-      $ref: "#/components/schemas/Lead"
+      $ref: '#/components/schemas/Lead'
     LeadQualify:
-      $ref: "#/components/schemas/Lead"
+      $ref: '#/components/schemas/Lead'
     LeadDisqualify:
-      $ref: "#/components/schemas/Lead"
+      $ref: '#/components/schemas/Lead'
     LeadConvert:
-      $ref: "#/components/schemas/Lead"
+      $ref: '#/components/schemas/Lead'
     LeadDNC:
-      $ref: "#/components/schemas/Lead"
+      $ref: '#/components/schemas/Lead'
     CampaignById:
-      $ref: "#/components/schemas/Campaign"
+      $ref: '#/components/schemas/Campaign'
     CampaignActivate:
-      $ref: "#/components/schemas/Campaign"
+      $ref: '#/components/schemas/Campaign'
     CampaignPause:
-      $ref: "#/components/schemas/Campaign"
+      $ref: '#/components/schemas/Campaign'
     CampaignComplete:
-      $ref: "#/components/schemas/Campaign"
+      $ref: '#/components/schemas/Campaign'
     AgentById:
-      $ref: "#/components/schemas/Agent"
+      $ref: '#/components/schemas/Agent'
     AgentStatus:
-      $ref: "#/components/schemas/Agent"
+      $ref: '#/components/schemas/Agent'
     CallById:
-      $ref: "#/components/schemas/Call"
+      $ref: '#/components/schemas/Call'
     OpportunityById:
-      $ref: "#/components/schemas/Opportunity"
+      $ref: '#/components/schemas/Opportunity'
     OpportunityAdvance:
-      $ref: "#/components/schemas/Opportunity"
+      $ref: '#/components/schemas/Opportunity'
     OpportunityClose:
-      $ref: "#/components/schemas/Opportunity"
+      $ref: '#/components/schemas/Opportunity'
     OpportunityAddLineItem:
-      $ref: "#/components/schemas/Opportunity"
+      $ref: '#/components/schemas/Opportunity'
     LeadAddNote:
-      $ref: "#/components/schemas/Lead"
+      $ref: '#/components/schemas/Lead'
     CallAddTranscript:
-      $ref: "#/components/schemas/Call"
+      $ref: '#/components/schemas/Call'
 
     Error:
       type: object

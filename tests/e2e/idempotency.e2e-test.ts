@@ -6,13 +6,13 @@
  * complexity.  The CRM fixture's global.yaml enables idempotency.
  */
 
-import { startE2eApp } from "./_harness/e2e-test-app";
-import type { E2eApp } from "./_harness/e2e-test-app";
-import { requestThroughSpecmatic } from "./_harness/crm-e2e-helpers";
+import { startE2eApp } from './_harness/e2e-test-app';
+import type { E2eApp } from './_harness/e2e-test-app';
+import { requestThroughSpecmatic } from './_harness/crm-e2e-helpers';
 
-const APEX_LEAD_ID = "00000000-0000-7000-8000-000000000010";
-const CAMPAIGN_ID = "00000000-0000-7000-8000-000000000001";
-const AGENT_ID = "00000000-0000-7000-8000-000000000003";
+const APEX_LEAD_ID = '00000000-0000-7000-8000-000000000010';
+const CAMPAIGN_ID = '00000000-0000-7000-8000-000000000001';
+const AGENT_ID = '00000000-0000-7000-8000-000000000003';
 
 async function postForward(
   stubUrl: string,
@@ -24,7 +24,7 @@ async function postForward(
   return requestThroughSpecmatic(stubUrl, method, path, body, headers);
 }
 
-describe("Idempotency: replay returns cached response", () => {
+describe('Idempotency: replay returns cached response', () => {
   let app: E2eApp;
 
   beforeAll(async () => {
@@ -35,71 +35,71 @@ describe("Idempotency: replay returns cached response", () => {
     await app.shutdown();
   }, 30_000);
 
-  it("first POST /calls with Idempotency-Key creates the call (201)", async () => {
+  it('first POST /calls with Idempotency-Key creates the call (201)', async () => {
     const key = `idem-key-${Date.now()}-1`;
     const result = await postForward(
       app.stubUrl,
-      "POST",
-      "/calls",
+      'POST',
+      '/calls',
       {
         leadId: APEX_LEAD_ID,
         agentId: AGENT_ID,
         campaignId: CAMPAIGN_ID,
-        outcome: "INTERESTED",
+        outcome: 'INTERESTED',
       },
-      { "idempotency-key": key },
+      { 'idempotency-key': key },
     );
     expect([200, 201]).toContain(result.status);
-    expect(result.headers["x-idempotency-replay"]).not.toBe("true");
+    expect(result.headers['x-idempotency-replay']).not.toBe('true');
   }, 60_000);
 
-  it("second POST /calls with same Idempotency-Key returns X-Idempotency-Replay: true", async () => {
+  it('second POST /calls with same Idempotency-Key returns X-Idempotency-Replay: true', async () => {
     const key = `idem-key-${Date.now()}-replay`;
     const callBody = {
       leadId: APEX_LEAD_ID,
       agentId: AGENT_ID,
       campaignId: CAMPAIGN_ID,
-      outcome: "NO_ANSWER",
+      outcome: 'NO_ANSWER',
     };
 
     // First request  creates
-    const first = await postForward(app.stubUrl, "POST", "/calls", callBody, {
-      "idempotency-key": key,
+    const first = await postForward(app.stubUrl, 'POST', '/calls', callBody, {
+      'idempotency-key': key,
     });
     expect([200, 201]).toContain(first.status);
-    const firstId = (first.body as Record<string, unknown>)["id"] as string;
+    const firstId = (first.body as Record<string, unknown>)['id'] as string;
 
     // Second request  should replay
-    const second = await postForward(app.stubUrl, "POST", "/calls", callBody, {
-      "idempotency-key": key,
+    const second = await postForward(app.stubUrl, 'POST', '/calls', callBody, {
+      'idempotency-key': key,
     });
     expect(second.status).toBe(first.status);
-    expect((second.body as Record<string, unknown>)["id"]).toBe(firstId);
-    expect(second.headers["x-idempotency-replay"]).toBe("true");
+    expect((second.body as Record<string, unknown>)['id']).toBe(firstId);
+    expect(second.headers['x-idempotency-replay']).toBe('true');
   }, 60_000);
 
-  it("different Idempotency-Key produces a new call entity", async () => {
+  it('different Idempotency-Key produces a new call entity', async () => {
     const key1 = `idem-key-${Date.now()}-a`;
     const key2 = `idem-key-${Date.now()}-b`;
     const callBody = {
       leadId: APEX_LEAD_ID,
       agentId: AGENT_ID,
       campaignId: CAMPAIGN_ID,
-      outcome: "CALLBACK_SCHEDULED",
+      outcome: 'CALLBACK_SCHEDULED',
     };
 
-    const res1 = await postForward(app.stubUrl, "POST", "/calls", callBody, {
-      "idempotency-key": key1,
+    const res1 = await postForward(app.stubUrl, 'POST', '/calls', callBody, {
+      'idempotency-key': key1,
     });
-    const res2 = await postForward(app.stubUrl, "POST", "/calls", callBody, {
-      "idempotency-key": key2,
+    const res2 = await postForward(app.stubUrl, 'POST', '/calls', callBody, {
+      'idempotency-key': key2,
     });
 
-    const id1 = (res1.body as Record<string, unknown>)["id"] as string;
-    const id2 = (res2.body as Record<string, unknown>)["id"] as string;
+    const id1 = (res1.body as Record<string, unknown>)['id'] as string;
+    const id2 = (res2.body as Record<string, unknown>)['id'] as string;
 
     // Different keys must produce different call IDs
     expect(id1).not.toBe(id2);
-    expect(res2.headers["x-idempotency-replay"]).not.toBe("true");
+    expect(res2.headers['x-idempotency-replay']).not.toBe('true');
   }, 60_000);
 });

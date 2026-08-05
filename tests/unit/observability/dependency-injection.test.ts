@@ -1,9 +1,9 @@
-import type { Logger } from "../../../src/observability/logger.js";
-import type { Span, Tracer } from "../../../src/observability/tracing.js";
-import { createCelEvaluator } from "../../../src/cel/evaluator.js";
-import { CelPhase } from "../../../src/cel/phases.js";
-import { compileYaml } from "../../../src/parser/yamlParser.js";
-import { loadOpenApi } from "../../../src/contract/loader.js";
+import type { Logger } from '../../../src/observability/logger.js';
+import type { Span, Tracer } from '../../../src/observability/tracing.js';
+import { createCelEvaluator } from '../../../src/cel/evaluator.js';
+import { CelPhase } from '../../../src/cel/phases.js';
+import { compileYaml } from '../../../src/parser/yamlParser.js';
+import { loadOpenApi } from '../../../src/contract/loader.js';
 
 function logger(): Logger & { readonly debug: jest.Mock; readonly info: jest.Mock } {
   return {
@@ -39,48 +39,48 @@ event_catalog: []
 `;
 
 const openapi = {
-  openapi: "3.0.3",
-  info: { title: "dependency ports", version: "1.0.0" },
+  openapi: '3.0.3',
+  info: { title: 'dependency ports', version: '1.0.0' },
   paths: {
-    "/widgets": {
+    '/widgets': {
       get: {
-        operationId: "listWidgets",
-        responses: { "200": { description: "ok" } },
+        operationId: 'listWidgets',
+        responses: { '200': { description: 'ok' } },
       },
     },
   },
 };
 
-describe("authoring and contract diagnostic ports", () => {
-  it("keeps CEL diagnostic state isolated per evaluator", () => {
+describe('authoring and contract diagnostic ports', () => {
+  it('keeps CEL diagnostic state isolated per evaluator', () => {
     const first = logger();
     const second = logger();
     const firstEvaluator = createCelEvaluator({ logger: first });
     const secondEvaluator = createCelEvaluator({ logger: second });
 
-    expect(() => firstEvaluator.compile("(")).toThrow();
+    expect(() => firstEvaluator.compile('(')).toThrow();
     expect(first.debug).toHaveBeenCalled();
     expect(second.debug).not.toHaveBeenCalled();
 
-    expect(() => secondEvaluator.compile("(")).toThrow();
+    expect(() => secondEvaluator.compile('(')).toThrow();
     expect(second.debug).toHaveBeenCalled();
   });
 
-  it("uses the runtime-supplied random port for unseeded CEL fake data", () => {
+  it('uses the runtime-supplied random port for unseeded CEL fake data', () => {
     const random = jest.fn(() => 0);
     const evaluator = createCelEvaluator({ random });
 
     expect(evaluator.evaluate("$fake('person.firstName')", {}, CelPhase.EventHydration)).toBe(
-      "Alex",
+      'Alex',
     );
     expect(random).toHaveBeenCalled();
   });
 
-  it("uses host-supplied logger and tracer ports for YAML linking", async () => {
+  it('uses host-supplied logger and tracer ports for YAML linking', async () => {
     const diagnosticLogger = logger();
     const names: string[] = [];
 
-    await compileYaml([{ name: "widget.yaml", yaml }], undefined, undefined, undefined, {
+    await compileYaml([{ name: 'widget.yaml', yaml }], undefined, undefined, undefined, {
       logger: diagnosticLogger,
       tracer: tracer(names),
     });
@@ -89,10 +89,10 @@ describe("authoring and contract diagnostic ports", () => {
       expect.objectContaining({ moduleCount: 1 }),
       expect.any(String),
     );
-    expect(names).toContain("dsl.compile");
+    expect(names).toContain('dsl.compile');
   });
 
-  it("uses host-supplied logger and tracer ports for OpenAPI loading", async () => {
+  it('uses host-supplied logger and tracer ports for OpenAPI loading', async () => {
     const diagnosticLogger = logger();
     const names: string[] = [];
 
@@ -102,6 +102,6 @@ describe("authoring and contract diagnostic ports", () => {
       expect.objectContaining({ pathCount: 1, operationCount: 1 }),
       expect.any(String),
     );
-    expect(names).toContain("contract.load");
+    expect(names).toContain('contract.load');
   });
 });

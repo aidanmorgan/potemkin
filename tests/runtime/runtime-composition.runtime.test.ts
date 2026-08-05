@@ -6,23 +6,18 @@ import {
   eventType,
   operationId,
   pathSegment,
-} from "../../src/authoring/references.js";
-import request from "supertest";
-import { loadOpenApi } from "../../src/contract/loader.js";
-import { createRuntimeGateway } from "../../src/http/runtimeGateway.js";
-import { bootRuntime, type RuntimeSystem } from "../../src/runtime/system.js";
-import { createDefaultRuntimeHost } from "../../src/runtime/host.js";
-import { bootYamlRuntime } from "../../src/parser/runtime.js";
-import {
-  behavior,
-  compileProgram,
-  event,
-  expression,
-  simulation,
-} from "../../src/authoring/runtimeModel.js";
-import { reducerRule } from "../../src/authoring/nativeReducer.js";
-import { defineComponent, include, use } from "../../src/authoring/composition.js";
-import type { EventContext, IdentityContext } from "../../src/model/runtime.js";
+} from '../../src/domain/references.js';
+import request from 'supertest';
+import { loadOpenApi } from '../../src/contract/loader.js';
+import { createRuntimeGateway } from '../../src/http/runtimeGateway.js';
+import { bootRuntime, type RuntimeSystem } from '../../src/runtime/system.js';
+import { createDefaultRuntimeHost } from '../../src/runtime/host.js';
+import { bootYamlRuntime } from '../../src/parser/runtime.js';
+import { behavior, event, expression, simulation } from '../../src/authoring/builders.js';
+import { compileProgram } from '../../src/authoring/compiler.js';
+import { reducerRule } from '../../src/authoring/nativeReducer.js';
+import { defineComponent, include, use } from '../../src/authoring/composition.js';
+import type { EventContext, IdentityContext } from '../../src/model/runtime.js';
 
 const OPENAPI = `
 openapi: "3.0.3"
@@ -60,7 +55,7 @@ components:
 
 const YAML_COMPONENTS = [
   {
-    name: "audit.yaml",
+    name: 'audit.yaml',
     yaml: `
 kind: component
 name: Audit
@@ -75,7 +70,7 @@ reducers:
 `,
   },
   {
-    name: "order.yaml",
+    name: 'order.yaml',
     yaml: `
 kind: component
 name: Order
@@ -115,10 +110,10 @@ use:
 `;
 
 function directDefinition() {
-  const audit = defineComponent(componentName("Audit"), () => ({
-    eventCatalog: [event(eventType("AuditRecorded"), { audited: () => true })],
+  const audit = defineComponent(componentName('Audit'), () => ({
+    eventCatalog: [event(eventType('AuditRecorded'), { audited: () => true })],
     reducers: [
-      reducerRule(eventType("AuditRecorded"))
+      reducerRule(eventType('AuditRecorded'))
         .apply(({ state, event: emitted }) => ({
           ...state,
           audited: emitted.payload.audited,
@@ -126,29 +121,29 @@ function directDefinition() {
         .build(),
     ],
   }));
-  const order = defineComponent(componentName("Order"), () => ({
+  const order = defineComponent(componentName('Order'), () => ({
     identity: {
-      generate: expression("identity", ({ helpers }: IdentityContext) => helpers.uuid()),
+      generate: expression('identity', ({ helpers }: IdentityContext) => helpers.uuid()),
     },
     eventCatalog: [
-      event(eventType("OrderCreated"), {
-        id: expression("event", ({ command }: EventContext) => String(command.targetId)),
-        label: expression("event", ({ command }: EventContext) => command.payload.label),
-        status: expression("event", () => "CREATED"),
+      event(eventType('OrderCreated'), {
+        id: expression('event', ({ command }: EventContext) => String(command.targetId)),
+        label: expression('event', ({ command }: EventContext) => command.payload.label),
+        status: expression('event', () => 'CREATED'),
       }),
-      event(eventType("AuditRecorded"), { audited: () => true }),
+      event(eventType('AuditRecorded'), { audited: () => true }),
     ],
     behaviors: [
-      behavior(behaviorName("create-order"))
-        .operation(operationId("createOrder"))
+      behavior(behaviorName('create-order'))
+        .operation(operationId('createOrder'))
         .emitWhen(
-          { when: expression("behavior", () => true), event: eventType("OrderCreated") },
-          { when: expression("behavior", () => true), event: eventType("AuditRecorded") },
+          { when: expression('behavior', () => true), event: eventType('OrderCreated') },
+          { when: expression('behavior', () => true), event: eventType('AuditRecorded') },
         )
         .build(),
     ],
     reducers: [
-      reducerRule(eventType("OrderCreated"))
+      reducerRule(eventType('OrderCreated'))
         .apply(({ state, event: emitted }) => ({
           ...state,
           id: emitted.payload.id,
@@ -160,7 +155,7 @@ function directDefinition() {
     include: [include(audit)],
   }));
   return simulation()
-    .use(use(order, boundaryName("Order"), contractPath(pathSegment("orders"))))
+    .use(use(order, boundaryName('Order'), contractPath(pathSegment('orders'))))
     .build();
 }
 
@@ -173,7 +168,7 @@ async function bootPair(): Promise<[RuntimeSystem, RuntimeSystem]> {
       yamlProgram: {
         modules: [],
         componentModules: YAML_COMPONENTS,
-        useMappingModules: [{ name: "use.yaml", yaml: YAML_USE }],
+        useMappingModules: [{ name: 'use.yaml', yaml: YAML_USE }],
       },
     }),
     bootRuntime({
@@ -185,31 +180,31 @@ async function bootPair(): Promise<[RuntimeSystem, RuntimeSystem]> {
   ]);
 }
 
-describe("runtime component composition parity", () => {
-  it("runs YAML use/include and direct TypeScript use/include through the same runtime", async () => {
+describe('runtime component composition parity', () => {
+  it('runs YAML use/include and direct TypeScript use/include through the same runtime', async () => {
     const [yamlSystem, typescriptSystem] = await bootPair();
     try {
       const [yamlResponse, typescriptResponse] = await Promise.all([
         request(createRuntimeGateway(yamlSystem))
-          .post("/orders")
-          .set("X-Potemkin-Seed", "composition-seed")
-          .send({ label: "first" }),
+          .post('/orders')
+          .set('X-Potemkin-Seed', 'composition-seed')
+          .send({ label: 'first' }),
         request(createRuntimeGateway(typescriptSystem))
-          .post("/orders")
-          .set("X-Potemkin-Seed", "composition-seed")
-          .send({ label: "first" }),
+          .post('/orders')
+          .set('X-Potemkin-Seed', 'composition-seed')
+          .send({ label: 'first' }),
       ]);
       expect(yamlResponse.status).toBe(201);
       expect(typescriptResponse.status).toBe(201);
       expect(typescriptResponse.body).toEqual(yamlResponse.body);
-      expect(yamlResponse.body).toMatchObject({ label: "first", status: "CREATED", audited: true });
+      expect(yamlResponse.body).toMatchObject({ label: 'first', status: 'CREATED', audited: true });
       expect(yamlSystem.engine.snapshot().events.map((event) => event.type)).toEqual([
-        "OrderCreated",
-        "AuditRecorded",
+        'OrderCreated',
+        'AuditRecorded',
       ]);
       expect(typescriptSystem.engine.snapshot().events.map((event) => event.type)).toEqual([
-        "OrderCreated",
-        "AuditRecorded",
+        'OrderCreated',
+        'AuditRecorded',
       ]);
     } finally {
       await Promise.all([yamlSystem.dispose(), typescriptSystem.dispose()]);

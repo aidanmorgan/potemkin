@@ -9,8 +9,8 @@
  *  2. Sending the engine shutdown lifecycle signal transitions the plugin to Down.
  */
 
-import { startE2eApp } from "./_harness/e2e-test-app";
-import type { E2eApp } from "./_harness/e2e-test-app";
+import { startE2eApp } from './_harness/e2e-test-app';
+import type { E2eApp } from './_harness/e2e-test-app';
 
 async function getPluginHealthState(pluginControlUrl: string): Promise<string | null> {
   try {
@@ -39,7 +39,7 @@ async function waitForState(
   return false;
 }
 
-describe("Shutdown notification: /ready and /shutdown lifecycle", () => {
+describe('Shutdown notification: /ready and /shutdown lifecycle', () => {
   let app: E2eApp;
 
   beforeAll(async () => {
@@ -54,23 +54,23 @@ describe("Shutdown notification: /ready and /shutdown lifecycle", () => {
     });
   }, 30_000);
 
-  it("plugin health state is Up after engine boot (engine sent /ready)", async () => {
+  it('plugin health state is Up after engine boot (engine sent /ready)', async () => {
     const state = await getPluginHealthState(app.pluginControlUrl);
-    expect(["UP", "DEGRADED"]).toContain(state);
+    expect(['UP', 'DEGRADED']).toContain(state);
   }, 60_000);
 
-  it("shutdown lifecycle signal transitions plugin to Down", async () => {
+  it('shutdown lifecycle signal transitions plugin to Down', async () => {
     await fetch(`${app.pluginControlUrl}/shutdown`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        engine: "potemkin-stateful",
-        version: "0.1.0",
-        reason: "manual",
+        engine: 'potemkin-stateful',
+        version: '0.1.0',
+        reason: 'manual',
         stoppedAt: new Date().toISOString(),
       }),
     });
-    const isDown = await waitForState(app.pluginControlUrl, "DOWN", 5_000);
+    const isDown = await waitForState(app.pluginControlUrl, 'DOWN', 5_000);
     expect(isDown).toBe(true);
   }, 60_000);
 });

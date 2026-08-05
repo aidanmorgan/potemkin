@@ -8,8 +8,8 @@ hateoas:
 mask:
   - internalNote
 deprecated:
-  date: "2026-01-01T00:00:00Z"
-  sunset: "2027-01-01T00:00:00Z"
+  date: '2026-01-01T00:00:00Z'
+  sunset: '2027-01-01T00:00:00Z'
   replacement: /v2/orders
 event_catalog:
   - type: OrderRenamed
@@ -22,7 +22,7 @@ behaviors:
       operationId: renameOrder
       headers:
         x-parity-dispatch-only: on
-      condition: "true"
+      condition: 'true'
     dispatch_commands:
       - boundary: Receipt
         intent: creation
@@ -30,15 +30,15 @@ behaviors:
         target_id: "$concat(command.targetId, '-dispatch-only-receipt')"
         payload:
           orderId: command.targetId
-          amount: "1"
+          amount: '1'
   - name: rename-order
     match:
       operationId: renameOrder
-      condition: "true"
+      condition: 'true'
     emit: OrderRenamed
 reducers:
   - on: OrderRenamed
     patches:
       - op: replace
         path: /name
-        value: "${event.payload.name}"
+        value: '${event.payload.name}'

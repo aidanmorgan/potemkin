@@ -15,14 +15,14 @@
  *        -d '{"companyName":"Acme","contactName":"A","phone":"+61...","email":"a@x","source":"WEBSITE"}'
  */
 
-import { startExampleStack } from "../../src/conformance/exampleStack.js";
-import { createLogger } from "../../src/observability/logger.js";
+import { startExampleStack } from '../../src/conformance/exampleStack.js';
+import { createLogger } from '../../src/observability/logger.js';
 
-const log = createLogger({ name: "nuisance-bureau-sim" });
+const log = createLogger({ name: 'nuisance-bureau-sim' });
 
 async function main(): Promise<void> {
-  log.info("Booting the full Specmatic + plugin + engine stack for the CRM example…");
-  const stack = await startExampleStack({ exampleName: "crm" });
+  log.info('Booting the full Specmatic + plugin + engine stack for the CRM example…');
+  const stack = await startExampleStack({ exampleName: 'crm' });
 
   log.info(
     {
@@ -31,22 +31,22 @@ async function main(): Promise<void> {
       boundaries: stack.system.program.boundaries.map((b) => b.boundary),
       seededEntities: stack.system.engine.snapshot().state.length,
     },
-    "CRM simulation running — send requests to the STUB URL (Specmatic-validated). " +
-      "The engine URL exposes /_admin/* and /_engine/* for introspection.",
+    'CRM simulation running — send requests to the STUB URL (Specmatic-validated). ' +
+      'The engine URL exposes /_admin/* and /_engine/* for introspection.',
   );
 
   const shutdown = (): void => {
-    log.info("Shutting down the CRM simulation stack…");
+    log.info('Shutting down the CRM simulation stack…');
     void stack.shutdown().then(() => process.exit(0));
   };
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
 }
 
 main().catch((err) => {
   log.error(
     { err },
-    "nuisance-bureau-sim: failed to start (is the plugin JAR built? cd plugin && ./gradlew shadowJar)",
+    'nuisance-bureau-sim: failed to start (is the plugin JAR built? cd plugin && ./gradlew shadowJar)',
   );
   process.exit(1);
 });

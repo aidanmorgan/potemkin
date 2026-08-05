@@ -1,10 +1,11 @@
-import type { Intent, JsonObject, JsonValue } from "../types.js";
-import type { DeclaredState } from "./schemaTypes.js";
-import type { PotemkinConfig } from "./configSchema.js";
-import type { LifecycleDefinition } from "../authoring/lifecycle.js";
-import type { PartialControlHeaders } from "../http/controlHeaders.js";
-import type { PluginControlConfig } from "../lifecycle/types.js";
-import type { ForwardedRequest } from "../http/specmaticTransport.js";
+import type { Intent } from '../contracts/domain.js';
+import type { JsonObject, JsonValue } from '../contracts/value.js';
+import type { DeprecationConfig, SecurityHeadersConfig } from '../contracts/response.js';
+import type { DeclaredState } from './schemaTypes.js';
+import type { PotemkinConfiguration } from '../contracts/config.js';
+import type { LifecycleDefinition, PluginControlConfig } from '../contracts/lifecycle.js';
+import type { PartialControlHeaders } from '../contracts/controlHeaders.js';
+import type { ForwardedRequest } from '../contracts/transport.js';
 
 /**
  * Values accepted by the canonical authoring model.
@@ -38,13 +39,13 @@ export type DslSlot<E = never, Value = JsonValue, Phase extends string = string,
 
 export interface EventCatalogEntry<E = never> {
   readonly type: string; // event type key
-  readonly payloadTemplate: Record<string, DslSlot<E, JsonValue, "event-hydration">>; // map fieldName → CEL/expression
+  readonly payloadTemplate: Record<string, DslSlot<E, JsonValue, 'event-hydration'>>; // map fieldName → CEL/expression
   /** Optional OpenAPI $ref path for runtime payload schema validation */
   readonly schemaRef?: string;
 }
 
 /** Named guard evaluated before match.condition; failure defaults to 422. */
-export interface RequiresGuard<E = never, Phase extends string = "behavior"> {
+export interface RequiresGuard<E = never, Phase extends string = 'behavior'> {
   readonly name: string;
   readonly condition: DslExpression<E, Phase>; // CEL boolean
   readonly errorCode: string;
@@ -55,7 +56,7 @@ export interface RequiresGuard<E = never, Phase extends string = "behavior"> {
 
 /** Conditional event emission entry */
 export interface EmitWhenEntry<E = never> {
-  readonly when: DslExpression<E, "behavior">; // CEL boolean
+  readonly when: DslExpression<E, 'behavior'>; // CEL boolean
   readonly emit: string; // event catalog key
 }
 
@@ -64,8 +65,8 @@ export interface BehaviorRule<E = never> {
   readonly match: {
     /** Canonical matcher: the OpenAPI operationId this behavior handles. */
     readonly operationId: string;
-    readonly condition: DslExpression<E, "behavior">;
-    readonly requires?: readonly RequiresGuard<E, "behavior">[];
+    readonly condition: DslExpression<E, 'behavior'>;
+    readonly requires?: readonly RequiresGuard<E, 'behavior'>[];
     /** RBAC scopes required to execute this behavior */
     readonly requiredScopes?: readonly string[];
     /** HTTP method for the generated HATEOAS link (e.g. 'GET', 'POST'). Not a request filter — operationId already pins the method. */
@@ -79,11 +80,11 @@ export interface BehaviorRule<E = never> {
   readonly emitWhen?: readonly EmitWhenEntry<E>[];
   readonly dispatchCommands?: readonly SecondaryCommandSpec<E>[];
   /** CEL expression evaluated post-projection; false → abort UoW */
-  readonly postcondition?: DslExpression<E, "behavior">;
+  readonly postcondition?: DslExpression<E, 'behavior'>;
   /** HATEOAS link name this behavior advertises (e.g. "convert"). */
   readonly linkName?: string;
   /** CEL boolean — link is only listed when this is true. Independent of match.condition. */
-  readonly linkCondition?: DslExpression<E, "behavior">;
+  readonly linkCondition?: DslExpression<E, 'behavior'>;
   /** Explicit HTTP response status for this behavior. */
   readonly responseStatus?: number;
 }
@@ -93,16 +94,16 @@ export interface SecondaryCommandSpec<E = never> {
   readonly intent: Intent;
   /** OpenAPI operationId of the target boundary's behavior this cascade invokes. */
   readonly operationId: string;
-  readonly targetId: DslExpression<E, "behavior">; // expression resolving to a string
-  readonly payload?: Record<string, DslSlot<E, JsonValue, "behavior">>; // expressions
+  readonly targetId: DslExpression<E, 'behavior'>; // expression resolving to a string
+  readonly payload?: Record<string, DslSlot<E, JsonValue, 'behavior'>>; // expressions
   /** Optional gate — false means skip this secondary command */
-  readonly condition?: DslExpression<E, "behavior">;
+  readonly condition?: DslExpression<E, 'behavior'>;
 }
 
 export interface ReducerRule<E = never> {
   readonly on: string; // event catalog key
   /** Patch list: { op, path, value }[]. Values are CEL expressions. */
-  readonly patches?: readonly ReducerPatchOp<E, "reducer">[];
+  readonly patches?: readonly ReducerPatchOp<E, 'reducer'>[];
   /**
    * Whole-payload replace: set state := the event payload object wholesale,
    * before any `patches:` apply. Cuts per-field boilerplate when an event carries
@@ -111,18 +112,18 @@ export interface ReducerRule<E = never> {
   readonly replaceState?: boolean;
 }
 
-export interface ReducerPatchOp<E = never, Phase extends string = "reducer"> {
+export interface ReducerPatchOp<E = never, Phase extends string = 'reducer'> {
   readonly op:
-    | "add"
-    | "remove"
-    | "replace"
-    | "append"
-    | "prepend"
-    | "increment"
-    | "merge"
-    | "upsert"
-    | "move"
-    | "copy";
+    | 'add'
+    | 'remove'
+    | 'replace'
+    | 'append'
+    | 'prepend'
+    | 'increment'
+    | 'merge'
+    | 'upsert'
+    | 'move'
+    | 'copy';
   readonly path: string;
   /** YAML patches carry plain JSON values; direct authoring additionally gains
    * the phase-specific callback/value slot. Keeping the YAML branch explicit
@@ -138,7 +139,7 @@ export interface ReducerPatchOp<E = never, Phase extends string = "reducer"> {
 /** Identity key extraction policy: where to find the entity key on an incoming request. */
 export interface IdentityKeyConfig {
   /** Source of the key value. */
-  readonly from?: "path" | "query" | "header" | "payload";
+  readonly from?: 'path' | 'query' | 'header' | 'payload';
   /** Parameter / header name (lowercased for headers) — used by path/query/header sources. */
   readonly name?: string;
   /** Dot-path within the JSON body — used by payload source. Defaults to `name` if omitted. */
@@ -146,7 +147,7 @@ export interface IdentityKeyConfig {
 }
 
 export interface IdentityConfig<E = never> {
-  readonly creation?: { readonly generate?: DslExpression<E, "identity"> }; // e.g. '$uuidv7()'
+  readonly creation?: { readonly generate?: DslExpression<E, 'identity'> }; // e.g. '$uuidv7()'
   /** DSL-driven key extraction (path/query/header/payload). */
   readonly key?: IdentityKeyConfig;
 }
@@ -154,19 +155,10 @@ export interface IdentityConfig<E = never> {
 /** A HATEOAS link entry: a relation name and its (templated) href. */
 export interface HateoasLinkEntry<E = never> {
   readonly rel: string;
-  readonly href: DslExpression<E, "response">;
+  readonly href: DslExpression<E, 'response'>;
 }
 
 /** Per-boundary deprecation envelope: emit Deprecation + Sunset headers. */
-export interface DeprecationConfig {
-  /** ISO-8601 deprecation date (becomes `Deprecation:` header). */
-  readonly date: string;
-  /** ISO-8601 sunset date (becomes `Sunset:` header). */
-  readonly sunset?: string;
-  /** Optional replacement path (becomes `Link: <path>; rel="successor-version"`). */
-  readonly replacement?: string;
-}
-
 /** Per-boundary configurable latency (uniform random in [min, max]). */
 export interface LatencyConfig {
   readonly min_ms?: number;
@@ -178,27 +170,27 @@ export interface LatencyConfig {
 /** Declarative query policy compiled into the source-neutral runtime model. */
 export interface QuerySortConfig {
   readonly field: string;
-  readonly direction?: "asc" | "desc";
+  readonly direction?: 'asc' | 'desc';
 }
 
 export interface QueryConfig<E = never> {
   /** Query-parameter names mapped to CEL predicates over the candidate state. */
-  readonly fields?: Record<string, DslExpression<E, "query">>;
+  readonly fields?: Record<string, DslExpression<E, 'query'>>;
   /** CEL predicate applied to every candidate state row. */
-  readonly filter?: DslExpression<E, "query">;
+  readonly filter?: DslExpression<E, 'query'>;
   /** Default ordering applied before a request-level `sort` override. */
   readonly sort?: readonly QuerySortConfig[];
   /** Literal page size or CEL expression resolving to a number. */
-  readonly pageSize?: DslSlot<E, number, "query", string | number>;
+  readonly pageSize?: DslSlot<E, number, 'query', string | number>;
   readonly maxPageSize?: number;
   /** CEL expression resolving to an opaque cursor string. */
-  readonly cursor?: DslExpression<E, "query">;
+  readonly cursor?: DslExpression<E, 'query'>;
   /** Related state fields to expand in every returned row. */
   readonly expand?: readonly string[];
-  readonly pagination?: "raw" | "envelope";
+  readonly pagination?: 'raw' | 'envelope';
   readonly includeDeleted?: boolean;
   /** Literal JSON value or CEL expression used when a targeted query has no row. */
-  readonly fallback?: DslSlot<E, JsonValue, "query", JsonValue>;
+  readonly fallback?: DslSlot<E, JsonValue, 'query', JsonValue>;
 }
 
 /**
@@ -239,7 +231,7 @@ export interface BoundaryConfig<E = never> {
   readonly fallbackOverride?: boolean;
   readonly identity?: IdentityConfig<E>;
   readonly query?: QueryConfig<E>;
-  readonly queryMapping?: Record<string, DslExpression<E, "query">>;
+  readonly queryMapping?: Record<string, DslExpression<E, 'query'>>;
   readonly behaviors: readonly BehaviorRule<E>[];
   readonly reducers: readonly ReducerRule<E>[];
   readonly eventCatalog: readonly EventCatalogEntry<E>[];
@@ -279,7 +271,7 @@ export interface BoundaryConfig<E = never> {
  * Allowed types for a component parameter declaration.
  * Distinct from the DSL field-type system — these are link-time substitution types.
  */
-export type ParameterType = "string" | "number" | "boolean";
+export type ParameterType = 'string' | 'number' | 'boolean';
 
 /** Declaration of a single named parameter in a component. */
 export interface ParameterDecl {
@@ -326,7 +318,7 @@ export interface IncludeEntry {
  * or included via `include:` (C4). Stored in YamlLinkedProgram.components.
  */
 export interface ComponentDefinition<E = never> {
-  readonly kind: "component";
+  readonly kind: 'component';
   /** Logical component name (must be unique across the catalog). */
   readonly name: string;
   /** Named parameter declarations for link-time substitution. */
@@ -372,17 +364,17 @@ export interface ReactionRule<E = never> {
   /** Trigger subscription: "Boundary:EventType" or bare "EventType". */
   readonly on: string;
   /** CEL gate — reaction fires only when true (default: true). */
-  readonly when?: DslExpression<E, "post-commit">;
+  readonly when?: DslExpression<E, 'post-commit'>;
   /** Reacting boundary name. Required when declared in the global file. */
   readonly boundary?: string;
   /** Event type to emit, resolved against the reacting boundary's event_catalog. */
   readonly emit: string;
   /** mutation (default) or creation. */
-  readonly intent?: "mutation" | "creation";
+  readonly intent?: 'mutation' | 'creation';
   /** CEL resolving to the aggregate id the emitted event applies to. */
-  readonly target?: DslExpression<E, "post-commit">;
+  readonly target?: DslExpression<E, 'post-commit'>;
   /** CEL map merged over the emitted event's payload_template. */
-  readonly payload?: Record<string, DslSlot<E, JsonValue, "post-commit">>;
+  readonly payload?: Record<string, DslSlot<E, JsonValue, 'post-commit'>>;
 }
 
 // ── Tier-2 DSL additions ──────────────────────────────────────────────────────
@@ -393,8 +385,8 @@ export interface SagaCompensation<E = never> {
   /** OpenAPI operationId of the target boundary behavior this compensation invokes. */
   readonly operationId: string;
   /** CEL expression resolving to target aggregate ID */
-  readonly targetId?: DslExpression<E, "saga">;
-  readonly payload?: Record<string, DslSlot<E, JsonValue, "saga">>; // expressions
+  readonly targetId?: DslExpression<E, 'saga'>;
+  readonly payload?: Record<string, DslSlot<E, JsonValue, 'saga'>>; // expressions
 }
 
 /** A single step in a saga */
@@ -405,8 +397,8 @@ export interface SagaStep<E = never> {
   /** OpenAPI operationId of the target boundary behavior this step invokes. */
   readonly operationId: string;
   /** CEL expression resolving to target aggregate ID */
-  readonly targetId?: DslExpression<E, "saga">;
-  readonly payload?: Record<string, DslSlot<E, JsonValue, "saga">>; // expressions
+  readonly targetId?: DslExpression<E, 'saga'>;
+  readonly payload?: Record<string, DslSlot<E, JsonValue, 'saga'>>; // expressions
   readonly compensation?: SagaCompensation<E>;
 }
 
@@ -414,7 +406,7 @@ export interface SagaStep<E = never> {
 export interface SagaTrigger<E = never> {
   readonly boundary: string;
   readonly intent: Intent;
-  readonly condition: DslExpression<E, "saga">; // CEL boolean
+  readonly condition: DslExpression<E, 'saga'>; // CEL boolean
 }
 
 /** Saga definition */
@@ -433,8 +425,8 @@ export interface IdempotencyConfig {
 
 /** Key expression (CEL) for derived projection — which entity gets updated */
 type DerivedProjectionPatch<E> = [E] extends [never]
-  ? ReducerPatchOp<E, "reducer">
-  : ReducerPatchOp<E, "projection">;
+  ? ReducerPatchOp<E, 'reducer'>
+  : ReducerPatchOp<E, 'projection'>;
 
 export interface DerivedProjectionReduceEntry<E = never> {
   readonly on: string; // qualified or unqualified event type
@@ -447,7 +439,7 @@ export interface DerivedProjectionReduceEntry<E = never> {
 export interface DerivedProjectionConfig<E = never> {
   readonly name: string;
   /** CEL expression that returns the derived entity key from the event context */
-  readonly key: DslExpression<E, "projection">;
+  readonly key: DslExpression<E, 'projection'>;
   /** Subscribed events in "<Boundary>:<EventType>" or just "<EventType>" format */
   readonly subscribe: readonly string[];
   readonly reduce: readonly DerivedProjectionReduceEntry<E>[];
@@ -477,9 +469,9 @@ export interface FaultRule<E = never> {
     /** Required-header matching: name → expected value (or "present" / "*" sentinel). */
     readonly headers?: Record<string, string>;
     /** CEL expression — main guard (defaults to "true"). */
-    readonly condition: DslExpression<E, "fault">;
+    readonly condition: DslExpression<E, 'fault'>;
     /** Named requires guards. */
-    readonly requires?: readonly RequiresGuard<E, "fault">[];
+    readonly requires?: readonly RequiresGuard<E, 'fault'>[];
     /** RBAC scopes required to apply this rule. */
     readonly requiredScopes?: readonly string[];
     /** Probability gate (0..1). */
@@ -498,7 +490,7 @@ export interface JwtAuthConfig {
   /** Shared secret for HS256. */
   readonly secret: string;
   /** Algorithm — must be 'HS256'. */
-  readonly algorithm?: "HS256";
+  readonly algorithm?: 'HS256';
   /** Required issuer. */
   readonly issuer?: string;
   /** Required audience. */
@@ -532,25 +524,9 @@ export interface SessionAuthConfig {
 
 /** Top-level auth mode selection. */
 export interface AuthConfig {
-  readonly mode?: "simple" | "jwt" | "session";
+  readonly mode?: 'simple' | 'jwt' | 'session';
   readonly jwt?: JwtAuthConfig;
   readonly session?: SessionAuthConfig;
-}
-
-/** Security response headers config. */
-export interface SecurityHeadersConfig {
-  /** Master switch. When false, no security headers are injected. Default: true. */
-  readonly enabled?: boolean;
-  /** Emit `Strict-Transport-Security`. */
-  readonly hsts?: boolean;
-  /** Emit `X-Content-Type-Options: nosniff`. */
-  readonly nosniff?: boolean;
-  /** Emit `X-Frame-Options: DENY`. */
-  readonly frame_deny?: boolean;
-  /** Emit `Referrer-Policy: <value>`. */
-  readonly referrer_policy?: string;
-  /** Arbitrary additional response headers (name → value). */
-  readonly custom_headers?: Record<string, string>;
 }
 
 /** HATEOAS link generation config. */
@@ -589,14 +565,14 @@ export interface WebhookConfig<E = never> {
     readonly boundary?: string;
     readonly intent?: Intent;
     /** CEL guard evaluated against the emitted event (defaults to "true"). */
-    readonly condition: DslExpression<E, "webhook">;
+    readonly condition: DslExpression<E, 'webhook'>;
   };
   /** Destination URL (CEL string expression or literal). */
-  readonly url: DslExpression<E, "webhook">;
+  readonly url: DslExpression<E, 'webhook'>;
   /** Shared secret used to compute the HMAC-SHA256 signature. */
   readonly secret?: string;
   /** Payload template (CEL string values), serialised to JSON for the POST body. */
-  readonly payload?: Record<string, DslSlot<E, JsonValue, "webhook">>;
+  readonly payload?: Record<string, DslSlot<E, JsonValue, 'webhook'>>;
   readonly retry?: {
     readonly maxAttempts?: number;
     readonly delayMs?: number;
@@ -694,7 +670,7 @@ export interface YamlLinkedProgram {
   readonly forwarding?: ForwardedRequest;
   readonly plugin?: PluginControlConfig;
   /** Validated in-memory equivalent of potemkin.yml, when supplied by TS. */
-  readonly potemkinConfig?: PotemkinConfig;
+  readonly potemkinConfig?: PotemkinConfiguration;
   readonly sagas?: readonly SagaConfig[];
   readonly idempotency?: IdempotencyConfig;
   readonly derivedProjections?: readonly DerivedProjectionConfig[];

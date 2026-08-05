@@ -97,7 +97,7 @@ export interface SpecmaticTestOptions {
   readonly examplesDir?: string;
   readonly filter?: string;
   /** Specmatic's actual v3 resiliency mode, written to --config. */
-  readonly testMode?: "all" | "positiveOnly" | "none";
+  readonly testMode?: 'all' | 'positiveOnly' | 'none';
   readonly maxTestRequestCombinations?: number;
   readonly cwd?: string;
   readonly env?: NodeJS.ProcessEnv;

@@ -8,13 +8,13 @@ fallback_override: false
 
 identity:
   creation:
-    generate: "$uuidv7()"
+    generate: '$uuidv7()'
 
 event_catalog:
   - type: FulfillmentScheduled
     payload_template:
-      id: "$uuidv7()"
-      orderId: "event.payload.orderId"
+      id: '$uuidv7()'
+      orderId: 'event.payload.orderId'
       status: "'SCHEDULED'"
 
 behaviors: []
@@ -24,16 +24,16 @@ reducers:
     patches:
       - op: add
         path: /id
-        value: "${event.payload.id}"
+        value: '${event.payload.id}'
       - op: add
         path: /orderId
-        value: "${event.payload.orderId}"
+        value: '${event.payload.orderId}'
       - op: add
         path: /status
-        value: "${event.payload.status}"
+        value: '${event.payload.status}'
 
 reactions:
   - name: schedule-fulfillment-on-inventory-reserved
-    on: "Inventory:InventoryReserved"
+    on: 'Inventory:InventoryReserved'
     intent: creation
     emit: FulfillmentScheduled

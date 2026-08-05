@@ -1,13 +1,13 @@
 /* eslint-disable no-console */
 
-import * as fs from "node:fs/promises";
-import * as os from "node:os";
-import * as path from "node:path";
-import { startSpecmaticTest, SpecmaticVerifierError } from "../_harness/specmatic-test";
+import * as fs from 'node:fs/promises';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { startSpecmaticTest, SpecmaticVerifierError } from '../_harness/specmatic-test';
 
-const CONFIG_PATH = path.resolve("tests/conformance/specmatic-positive-verifier.yaml");
-const BY_ID_CONFIG_PATH = path.resolve("tests/conformance/specmatic-positive-by-id-verifier.yaml");
-const EXAMPLES_DIR = path.resolve("tests/conformance/fixtures/crm");
+const CONFIG_PATH = path.resolve('tests/conformance/specmatic-positive-verifier.yaml');
+const BY_ID_CONFIG_PATH = path.resolve('tests/conformance/specmatic-positive-by-id-verifier.yaml');
+const EXAMPLES_DIR = path.resolve('tests/conformance/fixtures/crm');
 const COLLECTION_FILTER = "METHOD='GET' && PATH='/leads'";
 const BY_ID_FILTER = "METHOD='GET' && PATH='/leads/{id}'";
 
@@ -42,12 +42,12 @@ function assertPositiveRun(
   ) {
     throw new SpecmaticVerifierError(
       [
-        `${label} CRM Layer-B run failed: exit=${result.process.exitCode ?? "unknown"}, tests=${result.report.tests}, failures=${result.report.failures}, errors=${result.report.errors}.`,
+        `${label} CRM Layer-B run failed: exit=${result.process.exitCode ?? 'unknown'}, tests=${result.report.tests}, failures=${result.report.failures}, errors=${result.report.errors}.`,
         result.process.stderr.trim().slice(-4000),
         result.process.stdout.trim().slice(-4000),
       ]
         .filter(Boolean)
-        .join("\n"),
+        .join('\n'),
     );
   }
   const cases = result.report.testCases ?? [];
@@ -56,10 +56,10 @@ function assertPositiveRun(
     cases.some(
       (testCase) =>
         !testCase.passed ||
-        testCase.method !== "GET" ||
+        testCase.method !== 'GET' ||
         testCase.path !== expectedPath ||
-        testCase.expectedStatus !== "200" ||
-        testCase.actualStatus !== "200",
+        testCase.expectedStatus !== '200' ||
+        testCase.actualStatus !== '200',
     )
   ) {
     throw new SpecmaticVerifierError(
@@ -72,17 +72,17 @@ function assertPositiveRun(
 /** Run the positive CRM verifier twice against local pinned fixtures. */
 export async function verifyCrmPositive(): Promise<void> {
   const isolatedContractDir = await fs.mkdtemp(
-    path.join(os.tmpdir(), "potemkin-crm-layer-b-contract-"),
+    path.join(os.tmpdir(), 'potemkin-crm-layer-b-contract-'),
   );
-  const isolatedContractPath = path.join(isolatedContractDir, "nuisance-bureau.yaml");
-  const isolatedExamplesDir = path.join(isolatedContractDir, "nuisance-bureau_examples");
+  const isolatedContractPath = path.join(isolatedContractDir, 'nuisance-bureau.yaml');
+  const isolatedExamplesDir = path.join(isolatedContractDir, 'nuisance-bureau_examples');
   await fs.copyFile(
-    path.resolve("examples/crm/openapi/nuisance-bureau.yaml"),
+    path.resolve('examples/crm/openapi/nuisance-bureau.yaml'),
     isolatedContractPath,
   );
   await fs.cp(EXAMPLES_DIR, isolatedExamplesDir, { recursive: true });
   const options = {
-    exampleName: "crm",
+    exampleName: 'crm',
     contractPath: isolatedContractPath,
     examplesDir: isolatedExamplesDir,
     maxTestRequestCombinations: 10,
@@ -90,8 +90,8 @@ export async function verifyCrmPositive(): Promise<void> {
   const routeResults: string[] = [];
   try {
     for (const [expectedPath, routeFilter, configPath, testMode] of [
-      ["/leads", COLLECTION_FILTER, CONFIG_PATH, "none"],
-      ["/leads/{id}", BY_ID_FILTER, BY_ID_CONFIG_PATH, "positiveOnly"],
+      ['/leads', COLLECTION_FILTER, CONFIG_PATH, 'none'],
+      ['/leads/{id}', BY_ID_FILTER, BY_ID_CONFIG_PATH, 'positiveOnly'],
     ] as const) {
       const first = assertPositiveRun(
         `first ${expectedPath}`,
@@ -114,7 +114,7 @@ export async function verifyCrmPositive(): Promise<void> {
     await fs.rm(isolatedContractDir, { recursive: true, force: true });
   }
   console.log(
-    `Specmatic CRM Layer-B verification passed twice: ${routeResults.join(", ")} deterministic seeded testcase(s).`,
+    `Specmatic CRM Layer-B verification passed twice: ${routeResults.join(', ')} deterministic seeded testcase(s).`,
   );
 }
 

@@ -10,15 +10,15 @@
  *     {expression: "..."} object form was removed).
  */
 
-import { validateBoundaryConfig } from "../../../src/dsl/schema";
-import { BootError } from "../../../src/errors";
+import { validateBoundaryConfig } from '../../../src/dsl/schema';
+import { BootError } from '../../../src/errors';
 
 function makeBase() {
   return {
-    boundary: "Test",
-    contract_path: "/test",
-    event_catalog: [{ type: "Evt", payload_template: {} }],
-    reducers: [{ on: "Evt", patches: [{ op: "replace", path: "/x", value: '${"y"}' }] }],
+    boundary: 'Test',
+    contract_path: '/test',
+    event_catalog: [{ type: 'Evt', payload_template: {} }],
+    reducers: [{ on: 'Evt', patches: [{ op: 'replace', path: '/x', value: '${"y"}' }] }],
   };
 }
 
@@ -26,60 +26,60 @@ function makeBase() {
 // 1. scripts: key is removed — all forms throw BOOT_ERR_DSL_SYNTAX
 // ---------------------------------------------------------------------------
 
-describe("DSL removed syntax: scripts: key (B3)", () => {
-  const scriptBody = "export default function(ctx) { return ctx.state.x; }";
+describe('DSL removed syntax: scripts: key (B3)', () => {
+  const scriptBody = 'export default function(ctx) { return ctx.state.x; }';
 
-  it("throws BOOT_ERR_DSL_SYNTAX when scripts: block is present with code:", () => {
+  it('throws BOOT_ERR_DSL_SYNTAX when scripts: block is present with code:', () => {
     let caught: BootError | undefined;
     try {
       validateBoundaryConfig({
         ...makeBase(),
         behaviors: [
-          { name: "b", match: { operationId: "updateThing", condition: "true" }, emit: "Evt" },
+          { name: 'b', match: { operationId: 'updateThing', condition: 'true' }, emit: 'Evt' },
         ],
-        scripts: [{ name: "myScript", code: scriptBody }],
+        scripts: [{ name: 'myScript', code: scriptBody }],
       } as unknown as Record<string, unknown>);
     } catch (e) {
       caught = e as BootError;
     }
     expect(caught).toBeInstanceOf(BootError);
-    expect(caught!.code).toBe("BOOT_ERR_DSL_SYNTAX");
+    expect(caught!.code).toBe('BOOT_ERR_DSL_SYNTAX');
     expect(caught!.message).toContain('Unknown boundary key "scripts"');
   });
 
-  it("throws BOOT_ERR_DSL_SYNTAX when scripts: block is present with source:", () => {
+  it('throws BOOT_ERR_DSL_SYNTAX when scripts: block is present with source:', () => {
     let caught: BootError | undefined;
     try {
       validateBoundaryConfig({
         ...makeBase(),
         behaviors: [
-          { name: "b", match: { operationId: "updateThing", condition: "true" }, emit: "Evt" },
+          { name: 'b', match: { operationId: 'updateThing', condition: 'true' }, emit: 'Evt' },
         ],
-        scripts: [{ name: "myScript", source: scriptBody }],
+        scripts: [{ name: 'myScript', source: scriptBody }],
       } as unknown as Record<string, unknown>);
     } catch (e) {
       caught = e as BootError;
     }
     expect(caught).toBeInstanceOf(BootError);
-    expect(caught!.code).toBe("BOOT_ERR_DSL_SYNTAX");
+    expect(caught!.code).toBe('BOOT_ERR_DSL_SYNTAX');
     expect(caught!.message).toContain('Unknown boundary key "scripts"');
   });
 
-  it("throws BOOT_ERR_DSL_SYNTAX when scripts: block is present with no code field", () => {
+  it('throws BOOT_ERR_DSL_SYNTAX when scripts: block is present with no code field', () => {
     let caught: BootError | undefined;
     try {
       validateBoundaryConfig({
         ...makeBase(),
         behaviors: [
-          { name: "b", match: { operationId: "updateThing", condition: "true" }, emit: "Evt" },
+          { name: 'b', match: { operationId: 'updateThing', condition: 'true' }, emit: 'Evt' },
         ],
-        scripts: [{ name: "myScript" }],
+        scripts: [{ name: 'myScript' }],
       } as unknown as Record<string, unknown>);
     } catch (e) {
       caught = e as BootError;
     }
     expect(caught).toBeInstanceOf(BootError);
-    expect(caught!.code).toBe("BOOT_ERR_DSL_SYNTAX");
+    expect(caught!.code).toBe('BOOT_ERR_DSL_SYNTAX');
   });
 });
 
@@ -87,7 +87,7 @@ describe("DSL removed syntax: scripts: key (B3)", () => {
 // 2. requires[].condition (canonical only; "expression" removed)
 // ---------------------------------------------------------------------------
 
-describe("DSL canonical field: requires[].condition", () => {
+describe('DSL canonical field: requires[].condition', () => {
   const celExpr = "state.status == 'ACTIVE'";
 
   function makeRequiresBehavior(requiresEntry: Record<string, unknown>) {
@@ -95,9 +95,9 @@ describe("DSL canonical field: requires[].condition", () => {
       ...makeBase(),
       behaviors: [
         {
-          name: "b",
-          match: { operationId: "updateThing", condition: "true", requires: [requiresEntry] },
-          emit: "Evt",
+          name: 'b',
+          match: { operationId: 'updateThing', condition: 'true', requires: [requiresEntry] },
+          emit: 'Evt',
         },
       ],
     };
@@ -106,31 +106,31 @@ describe("DSL canonical field: requires[].condition", () => {
   it('canonical form "condition" parses correctly', () => {
     const config = validateBoundaryConfig(
       makeRequiresBehavior({
-        name: "isActive",
+        name: 'isActive',
         condition: celExpr,
-        error_code: "NOT_ACTIVE",
-        error_message: "Must be active",
+        error_code: 'NOT_ACTIVE',
+        error_message: 'Must be active',
       }),
     );
     const req = config.behaviors[0].match.requires![0];
     expect(req.condition).toBe(celExpr);
-    expect(req.errorCode).toBe("NOT_ACTIVE");
+    expect(req.errorCode).toBe('NOT_ACTIVE');
   });
 
   it('the removed alias "expression" is rejected — only "condition" is accepted', () => {
     expect(() =>
       validateBoundaryConfig(
         makeRequiresBehavior({
-          name: "isActive",
+          name: 'isActive',
           expression: celExpr,
-          error_code: "NOT_ACTIVE",
+          error_code: 'NOT_ACTIVE',
         }),
       ),
     ).toThrow(BootError);
   });
 
   it('throws BootError when "condition" is not provided', () => {
-    expect(() => validateBoundaryConfig(makeRequiresBehavior({ name: "isActive" }))).toThrow(
+    expect(() => validateBoundaryConfig(makeRequiresBehavior({ name: 'isActive' }))).toThrow(
       BootError,
     );
   });
@@ -140,35 +140,35 @@ describe("DSL canonical field: requires[].condition", () => {
 // 3. postcondition: canonical plain string (removed {expression} object form)
 // ---------------------------------------------------------------------------
 
-describe("DSL canonical field: postcondition (plain string only)", () => {
-  const celExpr = "state.balance >= 0";
+describe('DSL canonical field: postcondition (plain string only)', () => {
+  const celExpr = 'state.balance >= 0';
 
   function makeBehaviorWithPostcondition(postconditionValue: unknown) {
     return {
       ...makeBase(),
       behaviors: [
         {
-          name: "b",
-          match: { operationId: "updateThing", condition: "true" },
-          emit: "Evt",
+          name: 'b',
+          match: { operationId: 'updateThing', condition: 'true' },
+          emit: 'Evt',
           postcondition: postconditionValue,
         },
       ],
     };
   }
 
-  it("canonical form (plain string) parses correctly", () => {
+  it('canonical form (plain string) parses correctly', () => {
     const config = validateBoundaryConfig(makeBehaviorWithPostcondition(celExpr));
     expect(config.behaviors[0].postcondition).toBe(celExpr);
   });
 
-  it("the removed object form ({expression: ...}) is rejected", () => {
+  it('the removed object form ({expression: ...}) is rejected', () => {
     expect(() =>
       validateBoundaryConfig(makeBehaviorWithPostcondition({ expression: celExpr })),
     ).toThrow(BootError);
   });
 
-  it("throws BootError when postcondition is not a string", () => {
+  it('throws BootError when postcondition is not a string', () => {
     expect(() => validateBoundaryConfig(makeBehaviorWithPostcondition(42))).toThrow(BootError);
   });
 });

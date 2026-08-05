@@ -3,7 +3,7 @@ import type {
   GeneratedSequence,
   GenerationOptions,
   ModelTransition,
-} from "./types.js";
+} from './types.js';
 
 /** Breadth-first transition coverage suite for a finite Potemkin model. */
 export function generateModelSequences(
@@ -29,7 +29,7 @@ export function generateModelSequences(
   ].sort();
   while (queue.length > 0) {
     const item = queue.shift()!;
-    const key = `${item.state}|${item.steps.join(">")}`;
+    const key = `${item.state}|${item.steps.join('>')}`;
     if (seen.has(key) || item.steps.length > maxDepth) continue;
     seen.add(key);
     if (item.covered.length > 0)
@@ -64,9 +64,9 @@ export function generateModelSequences(
   }
   if (options.includeNegative !== true) return Object.freeze(result);
 
-  const unique = new Set(result.map((sequence) => sequence.steps.join("\u0000")));
+  const unique = new Set(result.map((sequence) => sequence.steps.join('\u0000')));
   for (const sequence of negativeSequences) {
-    const key = sequence.steps.join("\u0000");
+    const key = sequence.steps.join('\u0000');
     if (!unique.has(key)) {
       unique.add(key);
       result.push(sequence);

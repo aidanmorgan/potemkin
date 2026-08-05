@@ -7,13 +7,13 @@ fallback_override: false
 event_catalog:
   - type: ItemTagAppended
     payload_template:
-      tag: "command.payload.tag"
+      tag: 'command.payload.tag'
 
 behaviors:
   - name: appendTag
     match:
       operationId: appendTag
-      condition: "true"
+      condition: 'true'
     emit: ItemTagAppended
 
 reducers:
@@ -22,6 +22,6 @@ reducers:
       # op: append — push tag onto the END of /tags
       - op: append
         path: /tags
-        value: "${event.payload.tag}"
+        value: '${event.payload.tag}'
 
 initialization: []

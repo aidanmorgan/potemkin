@@ -8,23 +8,23 @@ identity:
 event_catalog:
   - type: LeadCreated
     payload_template:
-      id: "command.targetId"
-      companyName: "command.payload.companyName"
-      contactName: "command.payload.contactName"
-      phone: "command.payload.phone"
-      email: "command.payload.email"
-      source: "command.payload.source"
+      id: 'command.targetId'
+      companyName: 'command.payload.companyName'
+      contactName: 'command.payload.contactName'
+      phone: 'command.payload.phone'
+      email: 'command.payload.email'
+      source: 'command.payload.source'
       status: "'NEW'"
-      score: "50"
-      createdAt: "$now()"
-      callIds: "[]"
-      notes: "[]"
+      score: '50'
+      createdAt: '$now()'
+      callIds: '[]'
+      notes: '[]'
 
 behaviors:
   - name: createLead
     match:
       operationId: createLead
-      condition: "true"
+      condition: 'true'
     emit: LeadCreated
 
 reducers:
@@ -32,47 +32,47 @@ reducers:
     patches:
       - op: replace
         path: /id
-        value: "${event.payload.id}"
+        value: '${event.payload.id}'
       - op: replace
         path: /companyName
-        value: "${event.payload.companyName}"
+        value: '${event.payload.companyName}'
       - op: replace
         path: /contactName
-        value: "${event.payload.contactName}"
+        value: '${event.payload.contactName}'
       - op: replace
         path: /phone
-        value: "${event.payload.phone}"
+        value: '${event.payload.phone}'
       - op: replace
         path: /email
-        value: "${event.payload.email}"
+        value: '${event.payload.email}'
       - op: replace
         path: /source
-        value: "${event.payload.source}"
+        value: '${event.payload.source}'
       - op: replace
         path: /status
         value: "${'NEW'}"
       - op: replace
         path: /score
-        value: "${50}"
+        value: '${50}'
       - op: replace
         path: /createdAt
-        value: "${event.payload.createdAt}"
+        value: '${event.payload.createdAt}'
       - op: replace
         path: /callIds
-        value: "${[]}"
+        value: '${[]}'
       - op: replace
         path: /notes
-        value: "${[]}"
+        value: '${[]}'
 
 initialization:
-  - id: "00000000-0000-7000-8000-000000000010"
-    companyName: "Apex Solutions Ltd"
-    contactName: "Jordan Walsh"
-    phone: "+61 2 9000 0001"
-    email: "jordan@apexsolutions.com"
-    source: "WEBSITE"
-    status: "NEW"
+  - id: '00000000-0000-7000-8000-000000000010'
+    companyName: 'Apex Solutions Ltd'
+    contactName: 'Jordan Walsh'
+    phone: '+61 2 9000 0001'
+    email: 'jordan@apexsolutions.com'
+    source: 'WEBSITE'
+    status: 'NEW'
     score: 50
-    createdAt: "1970-01-01T00:00:00.000Z"
+    createdAt: '1970-01-01T00:00:00.000Z'
     callIds: []
     notes: []

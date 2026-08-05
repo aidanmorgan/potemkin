@@ -8,13 +8,13 @@ fallback_override: false
 
 identity:
   creation:
-    generate: "$uuidv7()"
+    generate: '$uuidv7()'
 
 event_catalog:
   - type: TrackingStarted
     payload_template:
-      id: "$uuidv7()"
-      shippingId: "event.aggregateId"
+      id: '$uuidv7()'
+      shippingId: 'event.aggregateId'
       status: "'IN_TRANSIT'"
 
 behaviors: []
@@ -24,16 +24,16 @@ reducers:
     patches:
       - op: add
         path: /id
-        value: "${event.payload.id}"
+        value: '${event.payload.id}'
       - op: add
         path: /shippingId
-        value: "${event.payload.shippingId}"
+        value: '${event.payload.shippingId}'
       - op: add
         path: /status
-        value: "${event.payload.status}"
+        value: '${event.payload.status}'
 
 reactions:
   - name: start-tracking-on-shipping-label-created
-    on: "Shipping:ShippingLabelCreated"
+    on: 'Shipping:ShippingLabelCreated'
     intent: creation
     emit: TrackingStarted

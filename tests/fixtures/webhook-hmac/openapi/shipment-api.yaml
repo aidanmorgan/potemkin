@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Shipment API (webhook-hmac fixture)
-  version: "1.0.0"
+  version: '1.0.0'
 # Minimal single-operation API used to demonstrate outbound webhook dispatch.
 # POST /shipments creates a shipment → engine emits ShipmentCreated → the
 # global webhook config fires an HMAC-signed POST to the configured receiver.
@@ -24,12 +24,12 @@ paths:
                 destination:
                   type: string
       responses:
-        "201":
+        '201':
           description: Shipment created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Shipment"
+                $ref: '#/components/schemas/Shipment'
   /shipments/{id}:
     get:
       operationId: getShipment
@@ -41,18 +41,18 @@ paths:
           schema:
             type: string
       responses:
-        "200":
+        '200':
           description: Shipment found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Shipment"
-        "404":
+                $ref: '#/components/schemas/Shipment'
+        '404':
           description: Not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
 components:
   schemas:
     Shipment:
@@ -71,7 +71,7 @@ components:
     # ShipmentById is the schema the engine resolves for the ShipmentById boundary.
     # Aliases Shipment so GET /shipments/{id} returns the same shape.
     ShipmentById:
-      $ref: "#/components/schemas/Shipment"
+      $ref: '#/components/schemas/Shipment'
     Error:
       type: object
       required: [error]

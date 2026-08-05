@@ -7,7 +7,7 @@
 // Snapshot env before each test and restore it after, so every test sees a
 // pristine, isolated environment regardless of what others do.
 
-import { runTeardowns, runFileTeardowns } from "./_support/testTeardown.js";
+import { runTeardowns, runFileTeardowns } from './_support/testTeardown.js';
 
 let envSnapshot: Record<string, string | undefined>;
 

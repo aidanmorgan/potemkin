@@ -20,16 +20,16 @@ import {
   type Production,
   type Sym,
   type Assoc,
-} from "./grammar.js";
+} from './grammar.js';
 
-export const EOF = "$end";
+export const EOF = '$end';
 const AUG_START = "S'";
 
 /** A shift/goto, reduce, or accept table entry. */
 export type Action =
-  | { type: "shift"; state: number }
-  | { type: "reduce"; production: number }
-  | { type: "accept" };
+  | { type: 'shift'; state: number }
+  | { type: 'reduce'; production: number }
+  | { type: 'accept' };
 
 export interface ParseTables {
   /** Number of states. */
@@ -240,11 +240,11 @@ function coreSignature(items: LR1Item[]): string {
   // LR(0) core: prod:dot pairs (ignore lookahead), sorted+deduped.
   const cores = new Set<string>();
   for (const it of items) cores.add(`${it.prod}:${it.dot}`);
-  return [...cores].sort().join("|");
+  return [...cores].sort().join('|');
 }
 
 function fullSignature(items: LR1Item[]): string {
-  return [...items].map(itemKey).sort().join("|");
+  return [...items].map(itemKey).sort().join('|');
 }
 
 // ---------------------------------------------------------------------------
@@ -328,7 +328,7 @@ export function buildTables(): ParseTables {
       if (g.nonterminals.has(sym)) {
         gotoTbl[s]![sym] = to;
       } else {
-        setAction(g, action[s]!, sym, { type: "shift", state: to }, s);
+        setAction(g, action[s]!, sym, { type: 'shift', state: to }, s);
       }
     }
     // Reduces / accept from items with the dot at the end.
@@ -337,10 +337,10 @@ export function buildTables(): ParseTables {
       if (it.dot !== prod.rhs.length) continue;
       if (it.prod === -1) {
         // S' → Expr ·  on $end ⇒ accept
-        if (it.look === EOF) setAction(g, action[s]!, EOF, { type: "accept" }, s);
+        if (it.look === EOF) setAction(g, action[s]!, EOF, { type: 'accept' }, s);
         continue;
       }
-      setAction(g, action[s]!, it.look, { type: "reduce", production: it.prod }, s);
+      setAction(g, action[s]!, it.look, { type: 'reduce', production: it.prod }, s);
     }
   }
 
@@ -365,15 +365,15 @@ export function buildTables(): ParseTables {
       return;
     }
     if (existing.type === next.type) {
-      if (existing.type === "shift" && next.type === "shift" && existing.state === next.state)
+      if (existing.type === 'shift' && next.type === 'shift' && existing.state === next.state)
         return;
       if (
-        existing.type === "reduce" &&
-        next.type === "reduce" &&
+        existing.type === 'reduce' &&
+        next.type === 'reduce' &&
         existing.production === next.production
       )
         return;
-      if (existing.type === "accept") return;
+      if (existing.type === 'accept') return;
     }
     const resolved = resolveConflict(gram, existing, next, term, stateIdx);
     row[term] = resolved;
@@ -388,8 +388,8 @@ function resolveConflict(
   term: Sym,
   stateIdx: number,
 ): Action {
-  const shift = a.type === "shift" ? a : b.type === "shift" ? b : undefined;
-  const reduce = a.type === "reduce" ? a : b.type === "reduce" ? b : undefined;
+  const shift = a.type === 'shift' ? a : b.type === 'shift' ? b : undefined;
+  const reduce = a.type === 'reduce' ? a : b.type === 'reduce' ? b : undefined;
 
   // shift/reduce
   if (shift && reduce) {
@@ -400,8 +400,8 @@ function resolveConflict(
       if (prodPrec.level > termPrec.level) return reduce; // reduce binds tighter
       if (prodPrec.level < termPrec.level) return shift; // shift binds tighter
       // equal precedence → use associativity of the level
-      if (prodPrec.assoc === "left") return reduce;
-      if (prodPrec.assoc === "right") return shift;
+      if (prodPrec.assoc === 'left') return reduce;
+      if (prodPrec.assoc === 'right') return shift;
       // nonassoc → error; but we have none in this grammar
     }
     throw new Error(
@@ -412,7 +412,7 @@ function resolveConflict(
 
   // reduce/reduce — prefer the earlier production (yacc convention) only when
   // it is safe; otherwise it is a genuine grammar ambiguity → throw.
-  if (a.type === "reduce" && b.type === "reduce") {
+  if (a.type === 'reduce' && b.type === 'reduce') {
     throw new Error(
       `LALR conflict: reduce/reduce on '${term}' in state ${stateIdx} ` +
         `(productions ${a.production} and ${b.production})`,

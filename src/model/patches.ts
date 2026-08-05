@@ -1,34 +1,12 @@
 // RFC 6902 patch operations plus Potemkin extensions (append/prepend/increment/merge/upsert).
 // Paths are RFC 6901 JSON Pointers; `/items/-` is the array-end sentinel for add/append.
 
-import type { JsonObject, JsonValue } from "../types.js";
-
-export type PatchSource =
-  | "reducer"
-  | "projection"
-  | "seed"
-  | "hateoas"
-  | "mask"
-  | "deprecation"
-  | "overlay";
-
-export type Patch =
-  // RFC 6902
-  | { op: "add"; path: string; value: JsonValue }
-  | { op: "remove"; path: string }
-  | { op: "replace"; path: string; value: JsonValue }
-  | { op: "move"; from: string; path: string }
-  | { op: "copy"; from: string; path: string }
-  // Potemkin extensions
-  | { op: "append"; path: string; value: JsonValue }
-  | { op: "prepend"; path: string; value: JsonValue }
-  | { op: "increment"; path: string; by: number }
-  | { op: "merge"; path: string; value: Record<string, JsonValue>; deep?: boolean }
-  | { op: "upsert"; path: string; key: string; value: Record<string, JsonValue> };
+import type { JsonObject, JsonValue, Patch, PatchSource } from '../contracts/value.js';
+import { jsonPath } from '../domain/references.js';
 
 export interface JournalEntry {
   readonly source: PatchSource;
-  readonly op: Patch["op"];
+  readonly op: Patch['op'];
   readonly path: string;
   /** Echo of `value`/`from`/`by` for the op. Optional for `remove`. */
   readonly value?: JsonValue;
@@ -38,7 +16,7 @@ export interface JournalEntry {
 
 function sameJson(left: JsonValue, right: JsonValue): boolean {
   if (left === right) return true;
-  if (left === null || right === null || typeof left !== "object" || typeof right !== "object") {
+  if (left === null || right === null || typeof left !== 'object' || typeof right !== 'object') {
     return false;
   }
   if (Array.isArray(left) !== Array.isArray(right)) return false;
@@ -65,9 +43,9 @@ function sameJson(left: JsonValue, right: JsonValue): boolean {
 function sameContainerKind(left: JsonValue, right: JsonValue): boolean {
   if (Array.isArray(left) || Array.isArray(right))
     return Array.isArray(left) && Array.isArray(right);
-  if (left !== null && typeof left === "object")
-    return right !== null && typeof right === "object" && !Array.isArray(right);
-  return right === null || typeof right !== "object";
+  if (left !== null && typeof left === 'object')
+    return right !== null && typeof right === 'object' && !Array.isArray(right);
+  return right === null || typeof right !== 'object';
 }
 
 function diffJsonValues(
@@ -79,7 +57,7 @@ function diffJsonValues(
 ): void {
   if (sameJson(before, after)) return;
   if (!sameContainerKind(before, after)) {
-    if (path !== "") journal.push({ source, op: "replace", path, value: after });
+    if (path !== '') journal.push({ source, op: 'replace', path, value: after });
     return;
   }
   if (Array.isArray(before) && Array.isArray(after)) {
@@ -87,32 +65,32 @@ function diffJsonValues(
     for (let index = 0; index < commonLength; index += 1)
       diffJsonValues(before[index]!, after[index]!, `${path}/${index}`, source, journal);
     for (let index = before.length - 1; index >= after.length; index -= 1)
-      journal.push({ source, op: "remove", path: `${path}/${index}` });
+      journal.push({ source, op: 'remove', path: `${path}/${index}` });
     for (let index = commonLength; index < after.length; index += 1)
-      journal.push({ source, op: "add", path: `${path}/${index}`, value: after[index]! });
+      journal.push({ source, op: 'add', path: `${path}/${index}`, value: after[index]! });
     return;
   }
   if (
     before !== null &&
     after !== null &&
-    typeof before === "object" &&
-    typeof after === "object"
+    typeof before === 'object' &&
+    typeof after === 'object'
   ) {
     const beforeObject = before as JsonObject;
     const afterObject = after as JsonObject;
     for (const key of Object.keys(beforeObject)) {
       if (!Object.prototype.hasOwnProperty.call(afterObject, key))
-        journal.push({ source, op: "remove", path: `${path}/${escapePointerSegment(key)}` });
+        journal.push({ source, op: 'remove', path: `${path}/${escapePointerSegment(key)}` });
     }
     for (const key of Object.keys(afterObject)) {
       const childPath = `${path}/${escapePointerSegment(key)}`;
       if (!Object.prototype.hasOwnProperty.call(beforeObject, key))
-        journal.push({ source, op: "add", path: childPath, value: afterObject[key]! });
+        journal.push({ source, op: 'add', path: childPath, value: afterObject[key]! });
       else diffJsonValues(beforeObject[key]!, afterObject[key]!, childPath, source, journal);
     }
     return;
   }
-  if (path !== "") journal.push({ source, op: "replace", path, value: after });
+  if (path !== '') journal.push({ source, op: 'replace', path, value: after });
 }
 
 /**
@@ -124,16 +102,16 @@ function diffJsonValues(
 export function diffJsonJournal(
   before: JsonValue,
   after: JsonValue,
-  source: PatchSource = "overlay",
+  source: PatchSource = 'overlay',
 ): readonly JournalEntry[] | undefined {
   if (!sameContainerKind(before, after)) return undefined;
   const journal: JournalEntry[] = [];
-  diffJsonValues(before, after, "", source, journal);
+  diffJsonValues(before, after, '', source, journal);
   return journal;
 }
 
 function escapePointerSegment(segment: string): string {
-  return segment.replace(/~/g, "~0").replace(/\//g, "~1");
+  return segment.replace(/~/g, '~0').replace(/\//g, '~1');
 }
 
 export interface ApplyResult {
@@ -148,19 +126,19 @@ export class PatchApplyError extends Error {
     message: string,
     public readonly patchIndex: number,
     public readonly path: string,
-    public readonly op: Patch["op"],
+    public readonly op: Patch['op'],
   ) {
     super(message);
-    this.name = "PatchApplyError";
+    this.name = 'PatchApplyError';
   }
 }
 
 export class JsonPointerError extends Error {
-  readonly code = "MODEL_INVALID_JSON_POINTER" as const;
+  readonly code = 'MODEL_INVALID_JSON_POINTER' as const;
 
   constructor(public readonly pointer: string) {
     super(`Invalid JSON Pointer (must start with '/'): ${pointer}`);
-    this.name = "JsonPointerError";
+    this.name = 'JsonPointerError';
     Object.setPrototypeOf(this, new.target.prototype);
   }
 }
@@ -170,20 +148,24 @@ export class JsonPointerError extends Error {
  * Throws on malformed pointers (must be empty or start with `/`).
  */
 export function parsePointer(pointer: string): string[] {
-  if (pointer === "" || pointer === "/") return pointer === "" ? [] : [""];
-  if (!pointer.startsWith("/")) {
+  if (pointer !== '' && !pointer.trim().startsWith('/')) {
     throw new JsonPointerError(pointer);
   }
-  return pointer
+  const validated = jsonPath(pointer);
+  if (validated === '' || validated === '/') return validated === '' ? [] : [''];
+  if (!validated.startsWith('/')) {
+    throw new JsonPointerError(validated);
+  }
+  return validated
     .slice(1)
-    .split("/")
-    .map((seg) => seg.replace(/~1/g, "/").replace(/~0/g, "~"));
+    .split('/')
+    .map((seg) => seg.replace(/~1/g, '/').replace(/~0/g, '~'));
 }
 
 /** Convert segments back to RFC 6901 (mostly for error messages / journal). */
 export function joinPointer(segments: readonly string[]): string {
-  if (segments.length === 0) return "";
-  return "/" + segments.map((s) => s.replace(/~/g, "~0").replace(/\//g, "~1")).join("/");
+  if (segments.length === 0) return '';
+  return '/' + segments.map((s) => s.replace(/~/g, '~0').replace(/\//g, '~1')).join('/');
 }
 
 /**
@@ -193,7 +175,7 @@ export function joinPointer(segments: readonly string[]): string {
  * recursive copy. Primitives (null, string, number, boolean) are returned as-is.
  */
 function cloneJson<T extends JsonValue>(v: T): T {
-  if (v === null || typeof v !== "object") return v;
+  if (v === null || typeof v !== 'object') return v;
   return structuredClone(v);
 }
 
@@ -207,7 +189,7 @@ interface NavResult {
 /** True when a path segment is an array index or the `-` end sentinel. */
 function segmentIsArrayIndex(seg: string | undefined): boolean {
   if (seg === undefined) return false;
-  if (seg === "-") return true;
+  if (seg === '-') return true;
   const idx = Number.parseInt(seg, 10);
   return Number.isInteger(idx) && String(idx) === seg && idx >= 0;
 }
@@ -221,17 +203,17 @@ function segmentIsArrayIndex(seg: string | undefined): boolean {
 function navigate(
   state: JsonValue,
   segments: readonly string[],
-  op: Patch["op"],
+  op: Patch['op'],
   patchIndex: number,
   autoVivify: boolean,
 ): NavResult {
   if (segments.length === 0) {
-    throw new PatchApplyError(`Operation '${op}' cannot target the root '/'`, patchIndex, "/", op);
+    throw new PatchApplyError(`Operation '${op}' cannot target the root '/'`, patchIndex, '/', op);
   }
   let cur: JsonValue = state;
   for (let i = 0; i < segments.length - 1; i++) {
     const seg = segments[i];
-    if (cur === null || typeof cur !== "object") {
+    if (cur === null || typeof cur !== 'object') {
       throw new PatchApplyError(
         `Path traverses non-object/array at segment '${seg}' (depth ${i})`,
         patchIndex,
@@ -272,7 +254,7 @@ function navigate(
   }
 
   const leaf = segments[segments.length - 1];
-  if (cur === null || typeof cur !== "object") {
+  if (cur === null || typeof cur !== 'object') {
     throw new PatchApplyError(
       `Path traverses non-object/array at leaf '${leaf}'`,
       patchIndex,
@@ -281,7 +263,7 @@ function navigate(
     );
   }
   if (Array.isArray(cur)) {
-    if (leaf === "-") {
+    if (leaf === '-') {
       return { parent: cur, key: cur.length, exists: false };
     }
     const idx = Number.parseInt(leaf, 10);
@@ -324,20 +306,20 @@ function writeAt(
 
 function applyOne(state: JsonValue, patch: Patch, patchIndex: number, autoVivify: boolean): void {
   switch (patch.op) {
-    case "add":
-    case "replace": {
+    case 'add':
+    case 'replace': {
       const segments = parsePointer(patch.path);
       if (segments.length === 0) {
         throw new PatchApplyError(
           `'${patch.op}' on root '/' is not supported`,
           patchIndex,
-          "/",
+          '/',
           patch.op,
         );
       }
       const { parent, key, exists } = navigate(state, segments, patch.op, patchIndex, autoVivify);
       // In autoVivify mode, `replace` upserts — a missing target is created.
-      if (patch.op === "replace" && !exists && !autoVivify) {
+      if (patch.op === 'replace' && !exists && !autoVivify) {
         throw new PatchApplyError(
           `'replace' target does not exist: ${patch.path}`,
           patchIndex,
@@ -346,7 +328,7 @@ function applyOne(state: JsonValue, patch: Patch, patchIndex: number, autoVivify
         );
       }
       if (Array.isArray(parent)) {
-        if (patch.op === "add" && exists) {
+        if (patch.op === 'add' && exists) {
           (parent as JsonValue[]).splice(key as number, 0, cloneJson(patch.value));
         } else {
           (parent as JsonValue[])[key as number] = cloneJson(patch.value);
@@ -356,7 +338,7 @@ function applyOne(state: JsonValue, patch: Patch, patchIndex: number, autoVivify
       }
       return;
     }
-    case "remove": {
+    case 'remove': {
       const segments = parsePointer(patch.path);
       const { parent, key, exists } = navigate(state, segments, patch.op, patchIndex, autoVivify);
       if (!exists) {
@@ -377,8 +359,8 @@ function applyOne(state: JsonValue, patch: Patch, patchIndex: number, autoVivify
       }
       return;
     }
-    case "move":
-    case "copy": {
+    case 'move':
+    case 'copy': {
       const fromSegs = parsePointer(patch.from);
       const toSegs = parsePointer(patch.path);
       const fromNav = navigate(state, fromSegs, patch.op, patchIndex, autoVivify);
@@ -392,7 +374,7 @@ function applyOne(state: JsonValue, patch: Patch, patchIndex: number, autoVivify
       }
       const value = readAt(fromNav.parent, fromNav.key);
       const clonedValue = cloneJson(value as JsonValue);
-      if (patch.op === "move") {
+      if (patch.op === 'move') {
         if (Array.isArray(fromNav.parent)) {
           (fromNav.parent as JsonValue[]).splice(fromNav.key as number, 1);
         } else {
@@ -407,8 +389,8 @@ function applyOne(state: JsonValue, patch: Patch, patchIndex: number, autoVivify
       }
       return;
     }
-    case "append":
-    case "prepend": {
+    case 'append':
+    case 'prepend': {
       const segments = parsePointer(patch.path);
       const { parent, key, exists } = navigate(state, segments, patch.op, patchIndex, autoVivify);
       let target = exists ? readAt(parent, key) : undefined;
@@ -427,15 +409,15 @@ function applyOne(state: JsonValue, patch: Patch, patchIndex: number, autoVivify
         writeAt(parent, key, target);
       }
       const cloned = cloneJson(patch.value);
-      if (patch.op === "append") (target as JsonValue[]).push(cloned);
+      if (patch.op === 'append') (target as JsonValue[]).push(cloned);
       else (target as JsonValue[]).unshift(cloned);
       return;
     }
-    case "increment": {
+    case 'increment': {
       const segments = parsePointer(patch.path);
       const { parent, key, exists } = navigate(state, segments, patch.op, patchIndex, autoVivify);
       const current = exists ? readAt(parent, key) : undefined;
-      if (typeof current !== "number") {
+      if (typeof current !== 'number') {
         if (!autoVivify) {
           throw new PatchApplyError(
             exists
@@ -452,11 +434,11 @@ function applyOne(state: JsonValue, patch: Patch, patchIndex: number, autoVivify
       writeAt(parent, key, current + patch.by);
       return;
     }
-    case "merge": {
+    case 'merge': {
       const segments = parsePointer(patch.path);
       const { parent, key, exists } = navigate(state, segments, patch.op, patchIndex, autoVivify);
       let target = exists ? readAt(parent, key) : undefined;
-      if (target === null || typeof target !== "object" || Array.isArray(target)) {
+      if (target === null || typeof target !== 'object' || Array.isArray(target)) {
         if (!autoVivify) {
           throw new PatchApplyError(
             exists
@@ -479,7 +461,7 @@ function applyOne(state: JsonValue, patch: Patch, patchIndex: number, autoVivify
       }
       return;
     }
-    case "upsert": {
+    case 'upsert': {
       const segments = parsePointer(patch.path);
       const { parent, key, exists } = navigate(state, segments, patch.op, patchIndex, autoVivify);
       let target = exists ? readAt(parent, key) : undefined;
@@ -506,7 +488,7 @@ function applyOne(state: JsonValue, patch: Patch, patchIndex: number, autoVivify
         const item = arr[i];
         if (
           item !== null &&
-          typeof item === "object" &&
+          typeof item === 'object' &&
           !Array.isArray(item) &&
           (item as Record<string, JsonValue>)[keyField] === matchValue
         ) {
@@ -532,10 +514,10 @@ function deepMergeInPlace(
     const existing = target[k];
     if (
       existing !== null &&
-      typeof existing === "object" &&
+      typeof existing === 'object' &&
       !Array.isArray(existing) &&
       v !== null &&
-      typeof v === "object" &&
+      typeof v === 'object' &&
       !Array.isArray(v)
     ) {
       deepMergeInPlace(existing as Record<string, JsonValue>, v as Record<string, JsonValue>);
@@ -562,7 +544,7 @@ export interface ApplyPatchesOptions {
 export function applyPatches(
   state: JsonValue,
   patches: readonly Patch[],
-  source: PatchSource = "reducer",
+  source: PatchSource = 'reducer',
   opts: ApplyPatchesOptions = {},
 ): ApplyResult {
   const autoVivify = opts.autoVivify ?? false;
@@ -574,7 +556,7 @@ export function applyPatches(
     applyOne(candidate, p, i, autoVivify);
     journal.push(buildJournalEntry(p, source));
     touched.add(p.path);
-    if (p.op === "move" || p.op === "copy") {
+    if (p.op === 'move' || p.op === 'copy') {
       touched.add(p.from);
     }
   }
@@ -583,13 +565,13 @@ export function applyPatches(
 
 function buildJournalEntry(p: Patch, source: PatchSource): JournalEntry {
   switch (p.op) {
-    case "remove":
-      return { source, op: "remove", path: p.path };
-    case "move":
-    case "copy":
+    case 'remove':
+      return { source, op: 'remove', path: p.path };
+    case 'move':
+    case 'copy':
       return { source, op: p.op, path: p.path, from: p.from };
-    case "increment":
-      return { source, op: "increment", path: p.path, by: p.by };
+    case 'increment':
+      return { source, op: 'increment', path: p.path, by: p.by };
     default:
       return { source, op: p.op, path: p.path, value: p.value as JsonValue };
   }

@@ -11,9 +11,9 @@ event_catalog:
   - type: ItemPayloadValidated
     # schema_ref resolves to StrictPayload: { amount: number (required) }
     # Sending amount as a string triggers SCHEMA_TYPE_MISMATCH at runtime.
-    schema_ref: "#/components/schemas/StrictPayload"
+    schema_ref: '#/components/schemas/StrictPayload'
     payload_template:
-      amount: "command.payload.amount"
+      amount: 'command.payload.amount'
       # has() + ternary: bare CEL in payload_template (no ${} needed here)
       label: "has(command.payload.label) ? command.payload.label : ''"
 
@@ -21,7 +21,7 @@ behaviors:
   - name: validatePayload
     match:
       operationId: validatePayload
-      condition: "true"
+      condition: 'true'
     emit: ItemPayloadValidated
 
 reducers:

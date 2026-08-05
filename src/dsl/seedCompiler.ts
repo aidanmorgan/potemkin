@@ -3,9 +3,8 @@
 // Specmatic-generated body when base==='contract', otherwise {}); journal
 // entries are tagged source: seed.
 
-import { applyPatches } from "../model/patches.js";
-import type { Patch } from "../model/patches.js";
-import type { JsonObject, JsonValue } from "../types.js";
+import { applyPatches } from '../model/patches.js';
+import type { Patch, JsonObject, JsonValue } from '../contracts/value.js';
 
 export interface SeedRequestMatcher {
   readonly method: string;
@@ -15,7 +14,7 @@ export interface SeedRequestMatcher {
 export interface SeedDeclaration {
   readonly description?: string;
   readonly request: SeedRequestMatcher;
-  readonly base: "contract" | "empty";
+  readonly base: 'contract' | 'empty';
   readonly patches: readonly Patch[];
 }
 
@@ -25,7 +24,7 @@ export interface CompiledSeed {
   /** Response body after applying the seed's patches to the base. */
   readonly body: JsonValue;
   /** Journal so observers can attribute mutations to `source: seed`. */
-  readonly journal: ReturnType<typeof applyPatches>["journal"];
+  readonly journal: ReturnType<typeof applyPatches>['journal'];
 }
 
 export interface SeedCompileContext {
@@ -38,8 +37,8 @@ export interface SeedCompileContext {
 }
 
 export function compileSeed(seed: SeedDeclaration, ctx: SeedCompileContext): CompiledSeed {
-  const base: JsonObject = seed.base === "contract" ? ctx.resolveContractBase(seed.request) : {};
-  const result = applyPatches(base, seed.patches, "seed");
+  const base: JsonObject = seed.base === 'contract' ? ctx.resolveContractBase(seed.request) : {};
+  const result = applyPatches(base, seed.patches, 'seed');
   return {
     ...(seed.description ? { description: seed.description } : {}),
     request: seed.request,

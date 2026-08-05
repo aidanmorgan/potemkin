@@ -11,7 +11,7 @@ hateoas:
 mask:
   - internalNotes
 deprecated:
-  sunset: "2027-01-01T00:00:00Z"
+  sunset: '2027-01-01T00:00:00Z'
   replacement: /v2/documents
 
 event_catalog: []

@@ -20,7 +20,7 @@ use:
     as: Document
     contract_path: /documents
     with:
-      initialStatus: "DRAFT"
+      initialStatus: 'DRAFT'
       createOp: createDocument
       updateOp: updateDocument
       auditOp: auditDocument
@@ -31,7 +31,7 @@ use:
     as: Draft
     contract_path: /drafts
     with:
-      initialStatus: "PENDING"
+      initialStatus: 'PENDING'
       createOp: createDraft
       updateOp: updateDraft
       auditOp: auditDraft

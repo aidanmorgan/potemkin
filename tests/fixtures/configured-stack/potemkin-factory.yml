@@ -12,5 +12,5 @@ typescript:
         - typescript/shared/**/*.ts
         - typescript/factory/**/*.ts
       exclude:
-        - "**/excluded/**/*.ts"
-        - "**/*.d.ts"
+        - '**/excluded/**/*.ts'
+        - '**/*.d.ts'

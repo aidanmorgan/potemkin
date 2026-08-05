@@ -6,7 +6,7 @@
  * engine never branches on the model or on the source which produced it.
  */
 
-import type { RuntimeModelCoverage } from "./runtime.js";
+import type { RuntimeModelCoverage } from './runtime.js';
 
 export interface TransitionWriteSet {
   readonly fields: readonly string[];
@@ -16,8 +16,8 @@ export interface TransitionWriteSet {
 }
 
 export interface Transition {
-  readonly from: string | "*";
-  readonly to: string | "UNKNOWN";
+  readonly from: string | '*';
+  readonly to: string | 'UNKNOWN';
   readonly op: string;
   readonly guardCel: string | null;
   readonly nextStateKnown: boolean;
@@ -69,7 +69,7 @@ export function mergeTransitionModels(...models: readonly TransitionModel[]): Tr
       machines.set(machine.aggregate, {
         aggregate: previous.aggregate,
         controlField:
-          previous.controlField === "state" ? machine.controlField : previous.controlField,
+          previous.controlField === 'state' ? machine.controlField : previous.controlField,
         states: [...new Set([...previous.states, ...machine.states])].sort(),
         transitions: [
           ...previous.transitions,
@@ -101,15 +101,15 @@ function mergeAnalysis(
 ): RuntimeModelCoverage {
   return {
     ...(left?.strict === true || right?.strict === true ? { strict: true } : {}),
-    ...mergeList("initialStates", left?.initialStates, right?.initialStates),
-    ...mergeList("terminalStates", left?.terminalStates, right?.terminalStates),
-    ...mergeList("operations", left?.operations, right?.operations),
-    ...mergeList("suppressStates", left?.suppressStates, right?.suppressStates),
+    ...mergeList('initialStates', left?.initialStates, right?.initialStates),
+    ...mergeList('terminalStates', left?.terminalStates, right?.terminalStates),
+    ...mergeList('operations', left?.operations, right?.operations),
+    ...mergeList('suppressStates', left?.suppressStates, right?.suppressStates),
   };
 }
 
 function mergeList(
-  key: "initialStates" | "terminalStates" | "operations" | "suppressStates",
+  key: 'initialStates' | 'terminalStates' | 'operations' | 'suppressStates',
   left: readonly string[] | undefined,
   right: readonly string[] | undefined,
 ): Partial<RuntimeModelCoverage> {

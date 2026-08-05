@@ -7,7 +7,7 @@ event_catalog:
   # Soft delete: marks the lead as deleted without removing it from the graph.
   - type: LeadDeleted
     payload_template:
-      deletedAt: "$now()"
+      deletedAt: '$now()'
 
 behaviors:
   # DELETE /leads/{id} → soft delete. The reducer sets _deleted/_deletedAt so the
@@ -16,7 +16,7 @@ behaviors:
     match:
       operationId: deleteLead
       method: DELETE
-      condition: "true"
+      condition: 'true'
     emit: LeadDeleted
 
 reducers:
@@ -24,9 +24,9 @@ reducers:
     patches:
       - op: replace
         path: /_deleted
-        value: "${true}"
+        value: '${true}'
       - op: replace
         path: /_deletedAt
-        value: "${event.payload.deletedAt}"
+        value: '${event.payload.deletedAt}'
 
 initialization: []

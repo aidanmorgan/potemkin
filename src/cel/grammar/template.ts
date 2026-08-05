@@ -6,12 +6,12 @@
  * tokens from `templateLexer.ts` while preserving the DSL value semantics.
  */
 
-import { lexTemplate, type TemplateToken } from "./templateLexer.js";
+import { lexTemplate, type TemplateToken } from './templateLexer.js';
 
 /** Typed template AST: a sequence of parts. */
 export type TemplatePart =
-  | { kind: "text"; text: string } // literal text (incl. unescaped $${...})
-  | { kind: "expr"; src: string }; // CEL source to evaluate
+  | { kind: 'text'; text: string } // literal text (incl. unescaped $${...})
+  | { kind: 'expr'; src: string }; // CEL source to evaluate
 
 /**
  * Evaluation plan for a DSL value:
@@ -20,9 +20,9 @@ export type TemplatePart =
  *  - `interp`:  evaluate each EXPR part, coerce to string, concatenate
  */
 export type TemplatePlan =
-  | { kind: "literal"; value: unknown }
-  | { kind: "whole"; expr: string }
-  | { kind: "interp"; parts: TemplatePart[] };
+  | { kind: 'literal'; value: unknown }
+  | { kind: 'whole'; expr: string }
+  | { kind: 'interp'; parts: TemplatePart[] };
 
 /**
  * Parse a DSL value into a {@link TemplatePlan}.
@@ -31,36 +31,36 @@ export type TemplatePlan =
  * `$${` is treated as a bare CEL expression (`whole`).
  */
 export function parseTemplate(value: unknown): TemplatePlan {
-  if (typeof value !== "string") return { kind: "literal", value };
+  if (typeof value !== 'string') return { kind: 'literal', value };
   const s = value;
 
   // Bare strings without ${} / $${} are whole CEL expressions.
-  if (!s.includes("${") && !s.includes("$${")) return { kind: "whole", expr: s };
+  if (!s.includes('${') && !s.includes('$${')) return { kind: 'whole', expr: s };
 
   const tokens = lexTemplate(s);
   const parts = toParts(tokens);
 
-  if (parts.length === 1 && parts[0]!.kind === "expr") {
-    return { kind: "whole", expr: parts[0]!.src };
+  if (parts.length === 1 && parts[0]!.kind === 'expr') {
+    return { kind: 'whole', expr: parts[0]!.src };
   }
-  if (parts.every((p) => p.kind === "text")) {
+  if (parts.every((p) => p.kind === 'text')) {
     return {
-      kind: "literal",
-      value: parts.map((p) => (p.kind === "text" ? p.text : "")).join(""),
+      kind: 'literal',
+      value: parts.map((p) => (p.kind === 'text' ? p.text : '')).join(''),
     };
   }
   return {
-    kind: "interp",
+    kind: 'interp',
     parts: parts.map((p) =>
-      p.kind === "expr"
-        ? { kind: "expr" as const, src: p.src }
-        : { kind: "text" as const, text: p.text },
+      p.kind === 'expr'
+        ? { kind: 'expr' as const, src: p.src }
+        : { kind: 'text' as const, text: p.text },
     ),
   };
 }
 
 /** Internal part shape carrying the EXPR source. */
-type InternalPart = { kind: "text"; text: string } | { kind: "expr"; src: string };
+type InternalPart = { kind: 'text'; text: string } | { kind: 'expr'; src: string };
 
 /**
  * Reduce template tokens into parts (the `Template → Part*` production). ESCAPED
@@ -70,19 +70,19 @@ function toParts(tokens: TemplateToken[]): InternalPart[] {
   const parts: InternalPart[] = [];
   const pushText = (text: string): void => {
     const last = parts[parts.length - 1];
-    if (last && last.kind === "text") last.text += text;
-    else parts.push({ kind: "text", text });
+    if (last && last.kind === 'text') last.text += text;
+    else parts.push({ kind: 'text', text });
   };
   for (const t of tokens) {
     switch (t.type) {
-      case "TEXT":
+      case 'TEXT':
         pushText(t.text);
         break;
-      case "ESCAPED":
-        pushText("${" + t.text + "}");
+      case 'ESCAPED':
+        pushText('${' + t.text + '}');
         break;
-      case "EXPR":
-        parts.push({ kind: "expr", src: t.src });
+      case 'EXPR':
+        parts.push({ kind: 'expr', src: t.src });
         break;
     }
   }

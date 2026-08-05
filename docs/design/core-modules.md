@@ -29,7 +29,7 @@ executes that canonical model.
   implementations,
   while production integrations can be injected through `RuntimeProgram`.
 - **Strategy registry:** query operators and response formats are selected from
-  registries in `queryPolicies.ts` and `responsePolicies.ts`. New behavior can be
+  registries in `domain/query.ts` and `responsePolicies.ts`. New behavior can be
   added without growing the request orchestration branches.
 - **Builder:** `src/model/builders.ts` provides immutable functional builders over the same
   runtime contracts used by direct object authoring.

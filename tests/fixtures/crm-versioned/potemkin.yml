@@ -1,16 +1,16 @@
 version: 1
 specmatic: ./specmatic.yaml
 modules:
-  - "dsl/**/*.yaml"
+  - 'dsl/**/*.yaml'
 typescript:
   scan:
     - include:
-        - "typescript/**/*.ts"
+        - 'typescript/**/*.ts'
       exclude:
-        - "**/*.test.ts"
-        - "**/*.d.ts"
+        - '**/*.test.ts'
+        - '**/*.d.ts'
 plugin:
   engine:
-    url: "${POTEMKIN_ENGINE_URL:http://localhost:3000}"
+    url: '${POTEMKIN_ENGINE_URL:http://localhost:3000}'
     timeoutMs: 30000
   controlPort: 0

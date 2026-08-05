@@ -7,9 +7,9 @@
  * responses served by this process.
  */
 
-import * as cp from "node:child_process";
-import * as http from "node:http";
-import { getFreePort } from "../../../src/conformance/portAllocator.js";
+import * as cp from 'node:child_process';
+import * as http from 'node:http';
+import { getFreePort } from '../../../src/conformance/portAllocator.js';
 
 export interface PlainSpecmaticOptions {
   readonly contractPath: string;
@@ -37,7 +37,7 @@ async function probeUntilUp(targetUrl: string, timeoutMs: number): Promise<void>
         response.resume();
         resolve(true);
       });
-      request.on("error", () => resolve(false));
+      request.on('error', () => resolve(false));
       request.setTimeout(1_000, () => {
         request.destroy();
         resolve(false);
@@ -54,20 +54,20 @@ export async function startPlainSpecmatic(
 ): Promise<PlainSpecmaticHandle> {
   const stubPort = options.stubPort ?? (await getFreePort());
   const launchArgs = [
-    "-Xmx512m",
-    "-XX:+UseSerialGC",
-    "-jar",
+    '-Xmx512m',
+    '-XX:+UseSerialGC',
+    '-jar',
     options.specmaticJar,
-    "stub",
-    "--port",
+    'stub',
+    '--port',
     String(stubPort),
-    "--data",
+    '--data',
     options.examplesDir,
     options.contractPath,
   ];
-  const child = cp.spawn("java", launchArgs, {
+  const child = cp.spawn('java', launchArgs, {
     env: { ...process.env, ...options.extraEnv },
-    stdio: ["ignore", "ignore", "ignore"],
+    stdio: ['ignore', 'ignore', 'ignore'],
   });
   child.unref();
 
@@ -86,13 +86,13 @@ export async function startPlainSpecmatic(
       if (child.exitCode !== null) return;
       await new Promise<void>((resolve) => {
         const timer = setTimeout(() => {
-          child.kill("SIGKILL");
+          child.kill('SIGKILL');
         }, 5_000);
-        child.once("exit", () => {
+        child.once('exit', () => {
           clearTimeout(timer);
           resolve();
         });
-        child.kill("SIGTERM");
+        child.kill('SIGTERM');
       });
     },
   };

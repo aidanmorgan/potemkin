@@ -14,23 +14,23 @@
  *   All CRM DSL boundary YAML files + global.yaml
  */
 
-import { startE2eApp } from "./_harness/e2e-test-app";
-import type { E2eApp } from "./_harness/e2e-test-app";
+import { startE2eApp } from './_harness/e2e-test-app';
+import type { E2eApp } from './_harness/e2e-test-app';
 import {
   requestThroughSpecmatic,
   getGraphNode,
   getEntityCount,
   getEventCount,
   adminReset,
-} from "./_harness/crm-e2e-helpers";
-import type { JsonObject } from "./_harness/crm-e2e-helpers";
-const APEX_LEAD_NEW = "00000000-0000-7000-8000-000000000010";
+} from './_harness/crm-e2e-helpers';
+import type { JsonObject } from './_harness/crm-e2e-helpers';
+const APEX_LEAD_NEW = '00000000-0000-7000-8000-000000000010';
 
 // ---------------------------------------------------------------------------
 // Section 1: Reset completeness
 // ---------------------------------------------------------------------------
 
-describe("Ephemeral Lifecycle: reset completeness (full Specmatic stack)", () => {
+describe('Ephemeral Lifecycle: reset completeness (full Specmatic stack)', () => {
   let app: E2eApp;
   let newLeadId: string;
   let idempotencyKey: string;
@@ -39,33 +39,33 @@ describe("Ephemeral Lifecycle: reset completeness (full Specmatic stack)", () =>
     app = await startE2eApp();
 
     // Create a new entity
-    const createRes = await requestThroughSpecmatic(app.stubUrl, "POST", "/leads", {
-      companyName: "Ephemeral Corp",
-      contactName: "EP User",
-      phone: "+61 2 9200 0001",
-      email: "ephemeral@test.com",
-      source: "WEBSITE",
+    const createRes = await requestThroughSpecmatic(app.stubUrl, 'POST', '/leads', {
+      companyName: 'Ephemeral Corp',
+      contactName: 'EP User',
+      phone: '+61 2 9200 0001',
+      email: 'ephemeral@test.com',
+      source: 'WEBSITE',
     });
     expect([200, 201]).toContain(createRes.status);
-    newLeadId = (createRes.body as JsonObject)["id"] as string;
+    newLeadId = (createRes.body as JsonObject)['id'] as string;
 
     // Modify a seeded entity (contact the Apex lead to change status to CONTACTED)
-    await requestThroughSpecmatic(app.stubUrl, "POST", `/leads/${APEX_LEAD_NEW}/contact`, {});
+    await requestThroughSpecmatic(app.stubUrl, 'POST', `/leads/${APEX_LEAD_NEW}/contact`, {});
 
     // Use an idempotency key so we can test cache clearing
     idempotencyKey = `reset-test-${Date.now()}`;
     await requestThroughSpecmatic(
       app.stubUrl,
-      "POST",
-      "/leads",
+      'POST',
+      '/leads',
       {
-        companyName: "Idem Reset Corp",
-        contactName: "IR",
-        phone: "+61 0",
-        email: "idemreset@t.com",
-        source: "COLD_LIST",
+        companyName: 'Idem Reset Corp',
+        contactName: 'IR',
+        phone: '+61 0',
+        email: 'idemreset@t.com',
+        source: 'COLD_LIST',
       },
-      { "idempotency-key": idempotencyKey },
+      { 'idempotency-key': idempotencyKey },
     );
   }, 120_000);
 
@@ -75,62 +75,62 @@ describe("Ephemeral Lifecycle: reset completeness (full Specmatic stack)", () =>
 
   // --- 1. POST /_admin/reset clears state ---
 
-  it("POST /_admin/reset succeeds", async () => {
+  it('POST /_admin/reset succeeds', async () => {
     await adminReset(app.engineUrl);
   }, 60_000);
 
   // --- 2. After reset: graph size === 10 (5 leads + 2 campaigns + 3 agents) ---
 
-  it("after reset: graph size matches baseline (10 seeded entities)", async () => {
+  it('after reset: graph size matches baseline (10 seeded entities)', async () => {
     const count = await getEntityCount(app.engineUrl);
     expect(count).toBe(10);
   }, 60_000);
 
   // --- 3. After reset: event count matches baseline ---
 
-  it("after reset: event count equals baseline (10 seeded events)", async () => {
+  it('after reset: event count equals baseline (10 seeded events)', async () => {
     const count = await getEventCount(app.engineUrl);
     expect(count).toBe(10);
   }, 60_000);
 
   // --- 4. After reset: created entity gone ---
 
-  it("after reset: dynamically created entity is gone from graph", async () => {
+  it('after reset: dynamically created entity is gone from graph', async () => {
     const node = await getGraphNode(app.engineUrl, newLeadId);
     expect(node).toBeNull();
   }, 60_000);
 
   // --- 5. After reset: seeded entity state restored ---
 
-  it("after reset: seeded entity status restored to NEW", async () => {
+  it('after reset: seeded entity status restored to NEW', async () => {
     const node = await getGraphNode(app.engineUrl, APEX_LEAD_NEW);
     expect(node).not.toBeNull();
-    expect(node!["status"]).toBe("NEW");
+    expect(node!['status']).toBe('NEW');
   }, 60_000);
 
   // --- 6. After reset: idempotency cache cleared ---
 
-  it("after reset: previously-used idempotency key succeeds as new request", async () => {
+  it('after reset: previously-used idempotency key succeeds as new request', async () => {
     // Replay the same idempotency key with the same body -- should succeed
     // as a new command (not replay), proving the cache was cleared
     const res = await requestThroughSpecmatic(
       app.stubUrl,
-      "POST",
-      "/leads",
+      'POST',
+      '/leads',
       {
-        companyName: "Idem Reset Corp",
-        contactName: "IR",
-        phone: "+61 0",
-        email: "idemreset@t.com",
-        source: "COLD_LIST",
+        companyName: 'Idem Reset Corp',
+        contactName: 'IR',
+        phone: '+61 0',
+        email: 'idemreset@t.com',
+        source: 'COLD_LIST',
       },
-      { "idempotency-key": idempotencyKey },
+      { 'idempotency-key': idempotencyKey },
     );
 
     expect([200, 201]).toContain(res.status);
     // If the idempotency cache was NOT cleared, this would be a replay
     // and would return the old entity ID. Since reset clears it, it creates a new one.
-    expect(res.headers?.["x-idempotency-replay"]).toBeUndefined();
+    expect(res.headers?.['x-idempotency-replay']).toBeUndefined();
   }, 60_000);
 });
 
@@ -138,8 +138,8 @@ describe("Ephemeral Lifecycle: reset completeness (full Specmatic stack)", () =>
 // Section 2: Boot determinism
 // ---------------------------------------------------------------------------
 
-describe("Ephemeral Lifecycle: boot determinism (full Specmatic stack)", () => {
-  it("two boots produce identical graph size, event counts, and seeded field values", async () => {
+describe('Ephemeral Lifecycle: boot determinism (full Specmatic stack)', () => {
+  it('two boots produce identical graph size, event counts, and seeded field values', async () => {
     // Boot A
     const appA = await startE2eApp();
     const sizeA = await getEntityCount(appA.engineUrl);
@@ -161,12 +161,12 @@ describe("Ephemeral Lifecycle: boot determinism (full Specmatic stack)", () => {
     expect(eventCountA).toBe(eventCountB);
 
     // 9. Identical seeded entity field values
-    expect(leadA!["companyName"]).toBe(leadB!["companyName"]);
-    expect(leadA!["status"]).toBe(leadB!["status"]);
-    expect(leadA!["score"]).toBe(leadB!["score"]);
-    expect(leadA!["companyName"]).toBe("Apex Solutions Ltd");
-    expect(leadA!["status"]).toBe("NEW");
-    expect(leadA!["score"]).toBe(50);
+    expect(leadA!['companyName']).toBe(leadB!['companyName']);
+    expect(leadA!['status']).toBe(leadB!['status']);
+    expect(leadA!['score']).toBe(leadB!['score']);
+    expect(leadA!['companyName']).toBe('Apex Solutions Ltd');
+    expect(leadA!['status']).toBe('NEW');
+    expect(leadA!['score']).toBe(50);
   }, 300_000);
 });
 
@@ -174,15 +174,15 @@ describe("Ephemeral Lifecycle: boot determinism (full Specmatic stack)", () => {
 // Section 3: Reload isolation
 // ---------------------------------------------------------------------------
 
-describe("Ephemeral Lifecycle: configuration reload isolation (full Specmatic stack)", () => {
-  it("reload clears mutations and restores the configured baseline", async () => {
+describe('Ephemeral Lifecycle: configuration reload isolation (full Specmatic stack)', () => {
+  it('reload clears mutations and restores the configured baseline', async () => {
     const app = await startE2eApp();
-    await requestThroughSpecmatic(app.stubUrl, "POST", `/leads/${APEX_LEAD_NEW}/contact`, {});
-    expect((await getGraphNode(app.engineUrl, APEX_LEAD_NEW))!["status"]).toBe("CONTACTED");
+    await requestThroughSpecmatic(app.stubUrl, 'POST', `/leads/${APEX_LEAD_NEW}/contact`, {});
+    expect((await getGraphNode(app.engineUrl, APEX_LEAD_NEW))!['status']).toBe('CONTACTED');
 
     const reloaded = await startE2eApp();
     expect(reloaded.stubUrl).toBe(app.stubUrl);
-    expect((await getGraphNode(reloaded.engineUrl, APEX_LEAD_NEW))!["status"]).toBe("NEW");
+    expect((await getGraphNode(reloaded.engineUrl, APEX_LEAD_NEW))!['status']).toBe('NEW');
     expect(await getEventCount(reloaded.engineUrl)).toBe(10);
   }, 300_000);
 });
@@ -191,8 +191,8 @@ describe("Ephemeral Lifecycle: configuration reload isolation (full Specmatic st
 // Section 4: Boot performance
 // ---------------------------------------------------------------------------
 
-describe("Ephemeral Lifecycle: boot performance (full Specmatic stack)", () => {
-  it("startE2eApp() completes in under 120 seconds", async () => {
+describe('Ephemeral Lifecycle: boot performance (full Specmatic stack)', () => {
+  it('startE2eApp() completes in under 120 seconds', async () => {
     const start = Date.now();
     const app = await startE2eApp();
     const elapsed = Date.now() - start;

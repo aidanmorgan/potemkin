@@ -20,15 +20,15 @@ identity:
 event_catalog:
   - type: NoteCreated
     payload_template:
-      id: "command.targetId"
-      title: "command.payload.title"
-      body: "command.payload.body"
+      id: 'command.targetId'
+      title: 'command.payload.title'
+      body: 'command.payload.body'
 
 behaviors:
   - name: createNote
     match:
       operationId: createNote
-      condition: "true"
+      condition: 'true'
     emit: NoteCreated
 
 reducers:
@@ -36,12 +36,12 @@ reducers:
     patches:
       - op: replace
         path: /id
-        value: "${event.payload.id}"
+        value: '${event.payload.id}'
       - op: replace
         path: /title
-        value: "${event.payload.title}"
+        value: '${event.payload.title}'
       - op: replace
         path: /body
-        value: "${event.payload.body}"
+        value: '${event.payload.body}'
 
 initialization: []

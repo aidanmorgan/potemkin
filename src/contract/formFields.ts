@@ -7,8 +7,8 @@
  * from the $ref-resolved OpenAPI — so the plugin (the HTTP/contract bridge) can
  * coerce Specmatic's parsed form fields to the contract's declared types.
  */
-import type { Request, Response } from "express";
-import type { OpenApiDoc } from "./loader.js";
+import type { Request, Response } from 'express';
+import type { OpenApiDoc } from './loader.js';
 
 /** The only runtime state needed by the form-field projection. */
 export interface FormFieldsRuntimeHost {
@@ -16,7 +16,7 @@ export interface FormFieldsRuntimeHost {
 }
 
 /** Coercible primitive types (string needs no coercion and is omitted). */
-export type FormFieldType = "integer" | "number" | "boolean";
+export type FormFieldType = 'integer' | 'number' | 'boolean';
 
 export interface FormFieldOperation {
   /** Uppercase HTTP method. */
@@ -32,19 +32,19 @@ export interface FormFieldsResponse {
   readonly engine: string;
 }
 
-const HTTP_METHODS = ["get", "put", "post", "delete", "patch", "options", "head"];
-const FORM_MEDIA_TYPE = "application/x-www-form-urlencoded";
+const HTTP_METHODS = ['get', 'put', 'post', 'delete', 'patch', 'options', 'head'];
+const FORM_MEDIA_TYPE = 'application/x-www-form-urlencoded';
 
 function asObject(v: unknown): Record<string, unknown> | undefined {
-  return v !== null && typeof v === "object" && !Array.isArray(v)
+  return v !== null && typeof v === 'object' && !Array.isArray(v)
     ? (v as Record<string, unknown>)
     : undefined;
 }
 
 /** The form-urlencoded request schema for an operation, if declared. */
 function formSchemaOf(op: Record<string, unknown>): Record<string, unknown> | undefined {
-  const content = asObject(asObject(op["requestBody"])?.["content"]);
-  const schema = asObject(asObject(content?.[FORM_MEDIA_TYPE])?.["schema"]);
+  const content = asObject(asObject(op['requestBody'])?.['content']);
+  const schema = asObject(asObject(content?.[FORM_MEDIA_TYPE])?.['schema']);
   return schema;
 }
 
@@ -53,7 +53,7 @@ function formSchemaOf(op: Record<string, unknown>): Record<string, unknown> | un
  * request body, the fields whose declared type is integer/number/boolean.
  */
 export function buildFormFieldOperations(openapi: OpenApiDoc): FormFieldOperation[] {
-  const paths = asObject(asObject(openapi.raw)?.["paths"]);
+  const paths = asObject(asObject(openapi.raw)?.['paths']);
   if (!paths) return [];
   const out: FormFieldOperation[] = [];
   for (const [pathPattern, pathItemRaw] of Object.entries(paths)) {
@@ -63,12 +63,12 @@ export function buildFormFieldOperations(openapi: OpenApiDoc): FormFieldOperatio
       const op = asObject(pathItem[method]);
       if (!op) continue;
       const schema = formSchemaOf(op);
-      const props = asObject(schema?.["properties"]);
+      const props = asObject(schema?.['properties']);
       if (!props) continue;
       const fields: Record<string, FormFieldType> = {};
       for (const [name, propRaw] of Object.entries(props)) {
-        const t = asObject(propRaw)?.["type"];
-        if (t === "integer" || t === "number" || t === "boolean") fields[name] = t;
+        const t = asObject(propRaw)?.['type'];
+        if (t === 'integer' || t === 'number' || t === 'boolean') fields[name] = t;
       }
       if (Object.keys(fields).length > 0) {
         out.push({ method: method.toUpperCase(), pathPattern, fields });
@@ -81,7 +81,7 @@ export function buildFormFieldOperations(openapi: OpenApiDoc): FormFieldOperatio
 /** GET /_engine/form-fields — static metadata computed once at registration. */
 export function createFormFieldsHandler(sys: FormFieldsRuntimeHost) {
   const operations = buildFormFieldOperations(sys.openapi);
-  const body: FormFieldsResponse = { operations, engine: "potemkin-stateful" };
+  const body: FormFieldsResponse = { operations, engine: 'potemkin-stateful' };
   return function formFieldsHandler(_req: Request, res: Response): void {
     res.status(200).json(body);
   };

@@ -1,29 +1,24 @@
-import type { JsonObject, JsonValue } from "../types.js";
-import { compositionError } from "./errors.js";
-import type {
-  RuntimeBehavior,
-  RuntimeBoundary,
-  RuntimeDeprecation,
-  RuntimeEvent,
-  RuntimeFault,
-  RuntimeIdentity,
-  RuntimeLatency,
-  RuntimeReaction,
-  RuntimeReducer,
-  RuntimeResponsePolicy,
-  RuntimeStateSchema,
-  RuntimeExportConfig,
-} from "../model/runtime.js";
+import type { JsonObject, JsonValue } from '../contracts/value.js';
+import { compositionError } from './errors.js';
 import type {
   BoundaryName,
   ComponentName,
   ContractPath,
   FieldPath,
-  OperationId,
   SchemaReference,
-  SagaName,
-} from "./references.js";
+} from '../domain/references.js';
 import type {
+  ComponentDefinition,
+  ComponentParameterDefinition,
+  ComponentParameterType,
+  ComponentReference,
+  ComponentInclude,
+  ComponentSource,
+  ComposableBoundary,
+  ExportDefinition,
+  UseDefinition,
+  YamlComponentReference,
+  ReducerDefinition,
   BehaviorDefinition,
   EventDefinition,
   FaultDefinition,
@@ -36,135 +31,100 @@ import type {
   DeprecationDefinition,
   LatencyDefinition,
   StateDefinition,
-} from "./runtimeModel.js";
-import type { NativeReducer } from "./nativeReducer.js";
+} from './types.js';
 
-/**
- * A direct TypeScript component is a factory over values, not a template
- * containing placeholders. YAML keeps its parameter substitution grammar in
- * the parser; TypeScript callers pass ordinary typed values to this factory.
- */
-export interface ComponentDefinition {
-  readonly name: ComponentName;
-  readonly instantiate: (parameters: Readonly<JsonObject>) => ComponentSource;
-}
-
-export interface ComponentInclude {
-  readonly component: ComponentDefinition;
-  readonly parameters?: Readonly<JsonObject>;
-}
-
-export interface ExportDefinition {
-  readonly states: readonly {
-    readonly name: string;
-    readonly steps: readonly {
-      readonly operationId: OperationId;
-      readonly body?: JsonObject;
-      readonly headers?: Readonly<Record<string, string>>;
-    }[];
-    readonly saga?: SagaName;
-  }[];
-}
-
-/** The boundary fields which a reusable component may contribute. */
-export interface ComponentSource {
-  readonly schema?: SchemaReference;
-  readonly fallbackOverride?: boolean;
-  readonly eventCatalog?: readonly EventDefinition[];
-  readonly behaviors?: readonly BehaviorDefinition[];
-  readonly reducers?: readonly NativeReducer<object, object>[];
-  readonly identity?: IdentityDefinition;
-  readonly query?: QueryDefinition;
-  readonly queryMapping?: QueryMappingDefinition;
-  readonly initialization?: readonly InitializationDefinition[];
-  readonly state?: StateDefinition;
-  readonly deprecated?: DeprecationDefinition;
-  readonly latency?: LatencyDefinition;
-  readonly response?: ResponseDefinition;
-  readonly mask?: readonly FieldPath[];
-  readonly faults?: readonly FaultDefinition[];
-  readonly reactions?: readonly ReactionDefinition[];
-  readonly include?: readonly ComponentInclude[];
-  readonly auditFields?: boolean;
-  readonly strictSchema?: boolean;
-  readonly export?: ExportDefinition;
-}
-
-/** A live boundary may include reusable fragments before compilation. */
-export type ComposableBoundary = Omit<RuntimeBoundary, "include"> & {
-  readonly include?: readonly ComponentInclude[];
+export type {
+  ComponentDefinition,
+  ComponentReference,
+  ComponentInclude,
+  ComponentParameterDefinition,
+  ComponentParameterType,
+  ComponentSource,
+  ComposableBoundary,
+  ExportDefinition,
+  UseDefinition,
+  YamlComponentReference,
 };
 
-export interface UseDefinition {
-  readonly component: ComponentDefinition;
-  readonly as: BoundaryName;
-  readonly contractPath: ContractPath;
-  readonly parameters?: Readonly<JsonObject>;
-  readonly bind?: Readonly<Record<string, string>>;
+export function yamlComponent(name: ComponentName): YamlComponentReference {
+  if (name.trim() === '')
+    throw compositionError('A YAML component reference requires a non-empty name');
+  return Object.freeze({ kind: 'yaml-component', name });
+}
+
+export function isYamlComponentReference(
+  value: ComponentReference,
+): value is YamlComponentReference {
+  return 'kind' in value && value.kind === 'yaml-component';
 }
 
 export function defineComponent(
   name: ComponentName,
   source: ComponentSource | ((parameters: Readonly<JsonObject>) => ComponentSource),
+  options: Readonly<{ parameters?: Readonly<Record<string, ComponentParameterDefinition>> }> = {},
 ): ComponentDefinition {
-  if (name.trim() === "") throw compositionError("A component requires a non-empty name");
-  const instantiate = typeof source === "function" ? source : () => source;
-  return Object.freeze({ name, instantiate });
+  if (name.trim() === '') throw compositionError('A component requires a non-empty name');
+  const instantiate = typeof source === 'function' ? source : () => source;
+  return Object.freeze({
+    name,
+    instantiate,
+    ...(options.parameters === undefined
+      ? {}
+      : { parameters: Object.freeze({ ...options.parameters }) }),
+  });
 }
 
 export function include(
-  component: ComponentDefinition,
+  component: ComponentReference,
   parameters: Readonly<JsonObject> = {},
 ): ComponentInclude {
   return { component, parameters };
 }
 
 export function use(
-  component: ComponentDefinition,
+  component: ComponentReference,
   as: BoundaryName,
   contractPath: ContractPath,
   parameters: Readonly<JsonObject> = {},
   bind: Readonly<Record<string, string>> = {},
 ): UseDefinition {
-  if (as.trim() === "")
-    throw compositionError("A component use requires a non-empty boundary name");
-  if (contractPath.trim() === "")
+  if (as.trim() === '')
+    throw compositionError('A component use requires a non-empty boundary name');
+  if (contractPath.trim() === '')
     throw compositionError(`Component use "${as}" requires a contract path`);
   return { component, as, contractPath, parameters, bind };
 }
 
 interface MutableSource {
-  schema?: string;
+  schema?: SchemaReference;
   fallbackOverride?: boolean;
-  identity?: RuntimeIdentity;
-  query?: RuntimeBoundary["query"];
-  queryMapping?: NonNullable<RuntimeBoundary["queryMapping"]>;
-  eventCatalog: RuntimeEvent[];
-  behaviors: RuntimeBehavior[];
-  reducers: RuntimeReducer[];
-  initialization?: RuntimeBoundary["initialization"];
-  response?: RuntimeResponsePolicy;
-  mask?: readonly string[];
-  latency?: RuntimeLatency;
+  identity?: IdentityDefinition;
+  query?: QueryDefinition;
+  queryMapping?: QueryMappingDefinition;
+  eventCatalog: EventDefinition[];
+  behaviors: BehaviorDefinition[];
+  reducers: ReducerDefinition[];
+  initialization?: readonly InitializationDefinition[];
+  response?: ResponseDefinition;
+  mask?: readonly FieldPath[];
+  latency?: LatencyDefinition;
   auditFields?: boolean;
-  deprecated?: RuntimeDeprecation;
-  state?: RuntimeStateSchema;
+  deprecated?: DeprecationDefinition;
+  state?: StateDefinition;
   strictSchema?: boolean;
-  faults?: readonly RuntimeFault[];
-  reactions?: readonly RuntimeReaction[];
-  export?: RuntimeExportConfig;
+  faults?: readonly FaultDefinition[];
+  reactions?: readonly ReactionDefinition[];
+  export?: ExportDefinition;
 }
 
-function sourceValue(source: ComponentSource | ComposableBoundary): MutableSource {
+function optionalSourceFields(
+  source: MutableSource | ComponentSource | ComposableBoundary,
+): Omit<MutableSource, 'eventCatalog' | 'behaviors' | 'reducers' | 'query'> {
   return {
     ...(source.schema === undefined ? {} : { schema: source.schema }),
     ...(source.fallbackOverride === undefined ? {} : { fallbackOverride: source.fallbackOverride }),
     ...(source.identity === undefined ? {} : { identity: source.identity }),
-    ...(source.query === undefined ? {} : { query: source.query }),
     ...(source.queryMapping === undefined ? {} : { queryMapping: source.queryMapping }),
-    eventCatalog: [...(source.eventCatalog ?? [])],
-    behaviors: [...(source.behaviors ?? [])],
-    reducers: [...(source.reducers ?? [])],
     ...(source.initialization === undefined ? {} : { initialization: source.initialization }),
     ...(source.response === undefined ? {} : { response: source.response }),
     ...(source.mask === undefined ? {} : { mask: source.mask }),
@@ -179,6 +139,16 @@ function sourceValue(source: ComponentSource | ComposableBoundary): MutableSourc
   };
 }
 
+function sourceValue(source: ComponentSource | ComposableBoundary): MutableSource {
+  return {
+    ...optionalSourceFields(source),
+    ...(source.query === undefined ? {} : { query: source.query }),
+    eventCatalog: [...(source.eventCatalog ?? [])],
+    behaviors: [...(source.behaviors ?? [])],
+    reducers: [...(source.reducers ?? [])],
+  };
+}
+
 function componentSource(
   component: ComponentDefinition,
   parameters: Readonly<JsonObject>,
@@ -186,14 +156,41 @@ function componentSource(
 ): MutableSource {
   if (stack.includes(component.name)) {
     throw compositionError(
-      `Cyclic TypeScript component composition: ${[...stack, component.name].join(" -> ")}`,
+      `Cyclic TypeScript component composition: ${[...stack, component.name].join(' -> ')}`,
     );
   }
 
-  const raw = component.instantiate(parameters);
+  const raw = component.instantiate(resolveParameters(component, parameters));
   const source = sourceValue(raw);
   const includes = raw.include ?? [];
   return mergeIncludes(source, includes, [...stack, component.name]);
+}
+
+function resolveParameters(
+  component: ComponentDefinition,
+  supplied: Readonly<JsonObject>,
+): JsonObject {
+  const declarations = component.parameters ?? {};
+  if (component.parameters === undefined) return { ...supplied };
+  const resolved: JsonObject = { ...supplied };
+  for (const [name, declaration] of Object.entries(declarations)) {
+    const value = supplied[name];
+    if (value === undefined) {
+      if (declaration.required === true && declaration.default === undefined)
+        throw compositionError(`Component "${component.name}" requires parameter "${name}"`);
+      if (declaration.default !== undefined) resolved[name] = declaration.default;
+      continue;
+    }
+    if (typeof value !== declaration.type)
+      throw compositionError(
+        `Component "${component.name}" parameter "${name}" must be a ${declaration.type}`,
+      );
+  }
+  for (const name of Object.keys(supplied)) {
+    if (declarations[name] === undefined)
+      throw compositionError(`Component "${component.name}" does not declare parameter "${name}"`);
+  }
+  return resolved;
 }
 
 function mergeIncludes(
@@ -211,17 +208,18 @@ function mergeIncludes(
   const behaviors = [...host.behaviors];
   const reducers = [...host.reducers];
   let identity = host.identity;
-  let identitySource = host.identity === undefined ? undefined : "host";
+  let identitySource = host.identity === undefined ? undefined : 'host';
   let schema = host.schema;
-  let schemaSource = host.schema === undefined ? undefined : "host";
+  let schemaSource = host.schema === undefined ? undefined : 'host';
   const computed = [...(host.state?.computed ?? [])];
   const internal = [...(host.state?.internal ?? [])];
   const fields = new Map<string, string>();
-  for (const field of computed) fields.set(field.name, "host");
-  for (const field of internal) fields.set(field.name, "host");
+  for (const field of computed) fields.set(field.name, 'host');
+  for (const field of internal) fields.set(field.name, 'host');
   let stateChanged = false;
 
   for (const entry of includes) {
+    if (isYamlComponentReference(entry.component)) continue;
     const fragment = componentSource(entry.component, entry.parameters ?? {}, stack);
     for (const event of fragment.eventCatalog) {
       if (localEvents.has(event.type)) continue;
@@ -263,26 +261,12 @@ function mergeIncludes(
       schema = fragment.schema;
       schemaSource = entry.component.name;
     }
-    for (const field of fragment.state?.computed ?? []) {
-      const previous = fields.get(field.name);
-      if (previous !== undefined)
-        throw compositionError(
-          `TypeScript component include clash: state field "${field.name}" is already supplied by ${previous}`,
-        );
-      fields.set(field.name, entry.component.name);
-      computed.push(field);
-      stateChanged = true;
-    }
-    for (const field of fragment.state?.internal ?? []) {
-      const previous = fields.get(field.name);
-      if (previous !== undefined)
-        throw compositionError(
-          `TypeScript component include clash: state field "${field.name}" is already supplied by ${previous}`,
-        );
-      fields.set(field.name, entry.component.name);
-      internal.push(field);
-      stateChanged = true;
-    }
+    stateChanged =
+      mergeStateFields(fragment.state?.computed ?? [], computed, fields, entry.component.name) ||
+      stateChanged;
+    stateChanged =
+      mergeStateFields(fragment.state?.internal ?? [], internal, fields, entry.component.name) ||
+      stateChanged;
   }
 
   return {
@@ -311,6 +295,26 @@ function resolveAlias(
   );
 }
 
+function mergeStateFields<T extends { readonly name: string }>(
+  incoming: readonly T[],
+  target: T[],
+  origins: Map<string, string>,
+  sourceName: string,
+): boolean {
+  let changed = false;
+  for (const field of incoming) {
+    const previous = origins.get(field.name);
+    if (previous !== undefined)
+      throw compositionError(
+        `TypeScript component include clash: state field "${field.name}" is already supplied by ${previous}`,
+      );
+    origins.set(field.name, sourceName);
+    target.push(field);
+    changed = true;
+  }
+  return changed;
+}
+
 function rewriteSource(source: MutableSource, useDefinition: UseDefinition): MutableSource {
   const componentName = useDefinition.component.name;
   const reactions = source.reactions?.map((reaction) => {
@@ -324,7 +328,7 @@ function rewriteSource(source: MutableSource, useDefinition: UseDefinition): Mut
             useDefinition.bind ?? {},
             useDefinition.as,
           );
-    const separator = reaction.on.indexOf(":");
+    const separator = reaction.on.indexOf(':');
     const on =
       separator < 0
         ? reaction.on
@@ -344,49 +348,44 @@ function rewriteSource(source: MutableSource, useDefinition: UseDefinition): Mut
               useDefinition.as,
               useDefinition.bind ?? {},
               useDefinition.as,
-            ),
+            ) as BoundaryName,
           })),
         }),
   }));
-  return { ...source, behaviors, ...(reactions === undefined ? {} : { reactions }) };
+  return {
+    ...source,
+    behaviors,
+    ...(reactions === undefined ? {} : { reactions: reactions as ReactionDefinition[] }),
+  };
 }
 
 function toBoundary(
   source: MutableSource,
   boundary: string,
   contractPath: string,
-): RuntimeBoundary {
+): ComposableBoundary {
   return {
-    boundary,
-    contractPath,
+    boundary: boundary as BoundaryName,
+    contractPath: contractPath as ContractPath,
     eventCatalog: source.eventCatalog,
     behaviors: source.behaviors,
     reducers: source.reducers,
-    ...(source.schema === undefined ? {} : { schema: source.schema }),
-    ...(source.fallbackOverride === undefined ? {} : { fallbackOverride: source.fallbackOverride }),
-    ...(source.identity === undefined ? {} : { identity: source.identity }),
+    ...optionalSourceFields(source),
     ...(source.query === undefined ? {} : { query: source.query }),
-    ...(source.queryMapping === undefined ? {} : { queryMapping: source.queryMapping }),
-    ...(source.initialization === undefined ? {} : { initialization: source.initialization }),
-    ...(source.response === undefined ? {} : { response: source.response }),
-    ...(source.mask === undefined ? {} : { mask: source.mask }),
-    ...(source.latency === undefined ? {} : { latency: source.latency }),
-    ...(source.auditFields === undefined ? {} : { auditFields: source.auditFields }),
-    ...(source.deprecated === undefined ? {} : { deprecated: source.deprecated }),
-    ...(source.state === undefined ? {} : { state: source.state }),
-    ...(source.strictSchema === undefined ? {} : { strictSchema: source.strictSchema }),
-    ...(source.faults === undefined ? {} : { faults: source.faults }),
-    ...(source.reactions === undefined ? {} : { reactions: source.reactions }),
-    ...(source.export === undefined ? {} : { export: source.export }),
   };
 }
 
-function materializeBoundary(boundary: ComposableBoundary): RuntimeBoundary {
+function materializeBoundary(boundary: ComposableBoundary): ComposableBoundary {
   const source = mergeIncludes(sourceValue(boundary), boundary.include ?? [], []);
   return toBoundary(source, boundary.boundary, boundary.contractPath);
 }
 
-function materializeUse(value: UseDefinition): RuntimeBoundary {
+function materializeUse(value: UseDefinition): ComposableBoundary {
+  if (isYamlComponentReference(value.component)) {
+    throw compositionError(
+      `YAML component "${value.component.name}" must be resolved by mixed compilation`,
+    );
+  }
   const source = rewriteSource(componentSource(value.component, value.parameters ?? {}, []), value);
   return toBoundary(source, value.as, value.contractPath);
 }
@@ -395,7 +394,7 @@ function materializeUse(value: UseDefinition): RuntimeBoundary {
 export function composeBoundaries(
   boundaries: readonly ComposableBoundary[],
   uses: readonly UseDefinition[] = [],
-): readonly RuntimeBoundary[] {
+): readonly ComposableBoundary[] {
   const result = [...boundaries.map(materializeBoundary), ...uses.map(materializeUse)];
   const names = new Set<string>();
   const paths = new Set<string>();

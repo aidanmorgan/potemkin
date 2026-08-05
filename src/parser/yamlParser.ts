@@ -1,13 +1,13 @@
-import * as yaml from "js-yaml";
-import { BootError } from "../errors.js";
-import { createNoopLogger, type Logger } from "../observability/logger.js";
-import { createNoopTracer, withSpan, type Tracer } from "../observability/tracing.js";
+import * as yaml from 'js-yaml';
+import { BootError } from '../errors.js';
+import { createNoopLogger, type Logger } from '../observability/logger.js';
+import { createNoopTracer, withSpan, type Tracer } from '../observability/tracing.js';
 import {
   validateBoundaryConfig,
   validateComponentConfig,
   validateGlobalConfig,
   validateUseEntries,
-} from "../dsl/schema.js";
+} from '../dsl/schema.js';
 import type {
   AuthConfig,
   BoundaryConfig,
@@ -21,14 +21,14 @@ import type {
   IdempotencyConfig,
   DerivedProjectionConfig,
   LatencyConfig,
-  SecurityHeadersConfig,
   UseEntry,
   VersioningConfig,
   WebhookConfig,
-} from "../dsl/types.js";
-import { linkComponents, mergeIncludes } from "../dsl/componentLinker.js";
-import { buildReactionRegistry, validateReactionCrossReferences } from "../dsl/reactionRegistry.js";
-import { boundaryConfigToInferenceInput, buildInferredSchema } from "../dsl/schemaInference.js";
+} from '../dsl/types.js';
+import type { SecurityHeadersConfig } from '../contracts/response.js';
+import { linkComponents, mergeIncludes } from '../dsl/componentLinker.js';
+import { buildReactionRegistry, validateReactionCrossReferences } from '../dsl/reactionRegistry.js';
+import { boundaryConfigToInferenceInput, buildInferredSchema } from '../dsl/schemaInference.js';
 
 export interface YamlCompilationObservability {
   readonly logger?: Logger;
@@ -43,36 +43,36 @@ export interface YamlCompilationObservability {
  */
 export function parseLatencyConfig(raw: unknown): LatencyConfig | undefined {
   if (raw === undefined) return undefined;
-  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new BootError("BOOT_ERR_DSL_SCHEMA_VIOLATION", "latency must be an object", {
-      field: "latency",
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new BootError('BOOT_ERR_DSL_SCHEMA_VIOLATION', 'latency must be an object', {
+      field: 'latency',
     });
   }
   const obj = raw as Record<string, unknown>;
   const out: { min_ms?: number; max_ms?: number; fixed_ms?: number } = {};
   for (const key of Object.keys(obj)) {
-    if (key !== "min_ms" && key !== "max_ms" && key !== "fixed_ms")
+    if (key !== 'min_ms' && key !== 'max_ms' && key !== 'fixed_ms')
       throw new BootError(
-        "BOOT_ERR_DSL_SCHEMA_VIOLATION",
+        'BOOT_ERR_DSL_SCHEMA_VIOLATION',
         `latency contains unknown field "${key}"`,
         { field: `latency.${key}` },
       );
   }
-  for (const key of ["min_ms", "max_ms", "fixed_ms"] as const) {
+  for (const key of ['min_ms', 'max_ms', 'fixed_ms'] as const) {
     const v = obj[key];
-    if (v !== undefined && (typeof v !== "number" || !Number.isFinite(v) || v < 0))
+    if (v !== undefined && (typeof v !== 'number' || !Number.isFinite(v) || v < 0))
       throw new BootError(
-        "BOOT_ERR_DSL_SCHEMA_VIOLATION",
+        'BOOT_ERR_DSL_SCHEMA_VIOLATION',
         `latency.${key} must be a finite non-negative number`,
         { field: `latency.${key}` },
       );
-    if (typeof v === "number") out[key] = v;
+    if (typeof v === 'number') out[key] = v;
   }
   if (out.min_ms !== undefined && out.max_ms !== undefined && out.max_ms < out.min_ms)
     throw new BootError(
-      "BOOT_ERR_DSL_SCHEMA_VIOLATION",
-      "latency.max_ms must be greater than or equal to latency.min_ms",
-      { field: "latency.max_ms" },
+      'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+      'latency.max_ms must be greater than or equal to latency.min_ms',
+      { field: 'latency.max_ms' },
     );
   return Object.keys(out).length > 0 ? out : undefined;
 }
@@ -89,14 +89,14 @@ export function parseYaml(text: string): BoundaryConfig {
     raw = yaml.load(text);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    throw new BootError("BOOT_ERR_DSL_SYNTAX", `YAML parse error: ${message}`, {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `YAML parse error: ${message}`, {
       message,
       source: text.slice(0, 200),
     });
   }
 
   const config = validateBoundaryConfig(raw);
-  const latency = parseLatencyConfig((raw as Record<string, unknown> | null)?.["latency"]);
+  const latency = parseLatencyConfig((raw as Record<string, unknown> | null)?.['latency']);
   return latency !== undefined ? { ...config, latency } : config;
 }
 
@@ -110,13 +110,13 @@ export function parseComponent(text: string): ComponentDefinition {
     raw = yaml.load(text);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    throw new BootError("BOOT_ERR_DSL_SYNTAX", `YAML parse error: ${message}`, {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `YAML parse error: ${message}`, {
       message,
       source: text.slice(0, 200),
     });
   }
   const config = validateComponentConfig(raw);
-  const latency = parseLatencyConfig((raw as Record<string, unknown> | null)?.["latency"]);
+  const latency = parseLatencyConfig((raw as Record<string, unknown> | null)?.['latency']);
   return latency !== undefined ? { ...config, latency } : config;
 }
 
@@ -130,25 +130,25 @@ export function parseUseMapping(text: string): readonly UseEntry[] {
     raw = yaml.load(text);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    throw new BootError("BOOT_ERR_DSL_SYNTAX", `YAML parse error: ${message}`, {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `YAML parse error: ${message}`, {
       message,
       source: text.slice(0, 200),
     });
   }
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new BootError(
-      "BOOT_ERR_DSL_SYNTAX",
-      "Use-mapping file root must be a YAML mapping object",
+      'BOOT_ERR_DSL_SYNTAX',
+      'Use-mapping file root must be a YAML mapping object',
       { received: typeof raw },
     );
   }
   const rec = raw as Record<string, unknown>;
-  const useEntries = validateUseEntries(rec["use"], "root");
+  const useEntries = validateUseEntries(rec['use'], 'root');
   if (useEntries === undefined || useEntries.length === 0) {
     throw new BootError(
-      "BOOT_ERR_DSL_SYNTAX",
+      'BOOT_ERR_DSL_SYNTAX',
       'Use-mapping file must have a non-empty "use" array',
-      { field: "use" },
+      { field: 'use' },
     );
   }
   return useEntries;
@@ -177,8 +177,8 @@ export async function compileYaml(
   observability: YamlCompilationObservability = {},
 ): Promise<YamlLinkedProgram> {
   const log = observability.logger ?? createNoopLogger();
-  return withSpan(observability.tracer ?? createNoopTracer(), "dsl.compile", (_span) => {
-    log.info({ moduleCount: modules.length }, "Compiling DSL modules");
+  return withSpan(observability.tracer ?? createNoopTracer(), 'dsl.compile', (_span) => {
+    log.info({ moduleCount: modules.length }, 'Compiling DSL modules');
 
     const boundaries: BoundaryConfig[] = [];
     const byContractPath: Record<string, BoundaryConfig> = {};
@@ -189,7 +189,7 @@ export async function compileYaml(
 
       if (Object.prototype.hasOwnProperty.call(byBoundaryName, config.boundary)) {
         throw new BootError(
-          "BOOT_ERR_DSL_DUPLICATE_BOUNDARY",
+          'BOOT_ERR_DSL_DUPLICATE_BOUNDARY',
           `Duplicate boundary name "${config.boundary}" found in module "${mod.name}"`,
           { boundary: config.boundary, module: mod.name },
         );
@@ -197,7 +197,7 @@ export async function compileYaml(
 
       if (Object.prototype.hasOwnProperty.call(byContractPath, config.contractPath)) {
         throw new BootError(
-          "BOOT_ERR_DSL_DUPLICATE_BOUNDARY",
+          'BOOT_ERR_DSL_DUPLICATE_BOUNDARY',
           `Duplicate contract_path "${config.contractPath}" found in module "${mod.name}" (boundary "${config.boundary}")`,
           {
             contractPath: config.contractPath,
@@ -218,11 +218,11 @@ export async function compileYaml(
           behaviorsCount: config.behaviors.length,
           reducersCount: config.reducers.length,
         },
-        "Registered boundary",
+        'Registered boundary',
       );
     }
 
-    log.info({ boundaryCount: boundaries.length }, "DSL compilation complete");
+    log.info({ boundaryCount: boundaries.length }, 'DSL compilation complete');
 
     // Parse component modules into the catalog.
     const componentsMap: Record<string, ComponentDefinition> = {};
@@ -231,13 +231,13 @@ export async function compileYaml(
         const componentDef = parseComponent(mod.yaml);
         if (Object.prototype.hasOwnProperty.call(componentsMap, componentDef.name)) {
           throw new BootError(
-            "BOOT_ERR_DSL_DUPLICATE_BOUNDARY",
+            'BOOT_ERR_DSL_DUPLICATE_BOUNDARY',
             `Duplicate component name "${componentDef.name}" found in module "${mod.name}"`,
             { component: componentDef.name, module: mod.name },
           );
         }
         componentsMap[componentDef.name] = componentDef;
-        log.debug({ component: componentDef.name }, "Registered component");
+        log.debug({ component: componentDef.name }, 'Registered component');
       }
     }
 
@@ -249,7 +249,7 @@ export async function compileYaml(
         allUseEntries.push(...useEntries);
         log.debug(
           { useCount: useEntries.length, module: mod.name },
-          "Registered use-mapping entries",
+          'Registered use-mapping entries',
         );
       }
     }
@@ -262,7 +262,7 @@ export async function compileYaml(
     if (allUseEntries.length > 0) {
       const linked = linkComponents(allUseEntries, componentsMap, byBoundaryName, byContractPath);
       boundaries.push(...linked);
-      log.info({ linkedCount: linked.length }, "Linked use: entries into concrete boundaries");
+      log.info({ linkedCount: linked.length }, 'Linked use: entries into concrete boundaries');
     }
 
     // C4: Merge include: fragments into their host boundaries.
@@ -272,7 +272,7 @@ export async function compileYaml(
     const hasAnyIncludes = boundaries.some((b) => b.include && b.include.length > 0);
     if (hasAnyIncludes) {
       mergeIncludes(boundaries, componentsMap, byBoundaryName, byContractPath);
-      log.info("Merged include: fragments into host boundaries");
+      log.info('Merged include: fragments into host boundaries');
     }
 
     // Validate the declarative state model before lowering it into runtime
@@ -285,7 +285,7 @@ export async function compileYaml(
         strict: boundary.strictSchema !== false,
       });
       for (const warning of inferred.warnings) {
-        log.warn({ boundary: boundary.boundary, warning }, "Non-strict computed-field dependency");
+        log.warn({ boundary: boundary.boundary, warning }, 'Non-strict computed-field dependency');
       }
     }
 
@@ -300,7 +300,7 @@ export async function compileYaml(
     let webhooks: readonly WebhookConfig[] | undefined;
     let globalReactions: readonly ReactionRule[] | undefined;
     let fallback: FallbackConfig | undefined;
-    let coverage: YamlLinkedProgram["coverage"] | undefined;
+    let coverage: YamlLinkedProgram['coverage'] | undefined;
 
     if (globalYaml) {
       let rawGlobal: unknown;
@@ -308,7 +308,7 @@ export async function compileYaml(
         rawGlobal = yaml.load(globalYaml);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        throw new BootError("BOOT_ERR_DSL_SYNTAX", `Global config YAML parse error: ${message}`, {
+        throw new BootError('BOOT_ERR_DSL_SYNTAX', `Global config YAML parse error: ${message}`, {
           message,
           source: globalYaml.slice(0, 200),
         });

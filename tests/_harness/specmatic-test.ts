@@ -8,16 +8,16 @@
  * Potemkin engine.
  */
 
-import * as fs from "node:fs";
-import * as fsPromises from "node:fs/promises";
-import * as os from "node:os";
-import * as path from "node:path";
-import { ensureSpecmaticJar } from "../../src/conformance/binaries.js";
-import { startExampleStack } from "../../src/conformance/exampleStack.js";
-import { runSpecmaticTest } from "../../src/conformance/specmatic";
-import type { SpecmaticTestResult } from "../../src/conformance/types";
+import * as fs from 'node:fs';
+import * as fsPromises from 'node:fs/promises';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { ensureSpecmaticJar } from '../../src/conformance/binaries.js';
+import { startExampleStack } from '../../src/conformance/exampleStack.js';
+import { runSpecmaticTest } from '../../src/conformance/specmatic';
+import type { SpecmaticTestResult } from '../../src/conformance/types';
 
-const SPECMATIC_VERSION = "2.46.2";
+const SPECMATIC_VERSION = '2.46.2';
 
 export interface SpecmaticTestHarnessOptions {
   /** Example directory under examples/, normally `crm`. */
@@ -31,22 +31,22 @@ export interface SpecmaticTestHarnessOptions {
   /** Explicit JAR path, primarily useful for isolated tests. */
   readonly jarPath?: string;
   readonly filter?: string;
-  readonly testMode?: "all" | "positiveOnly" | "none";
+  readonly testMode?: 'all' | 'positiveOnly' | 'none';
   readonly maxTestRequestCombinations?: number;
   readonly examplesDir?: string;
 }
 
 export class SpecmaticVerifierError extends Error {
-  readonly code = "SPECMATIC_VERIFIER_FAILED";
+  readonly code = 'SPECMATIC_VERIFIER_FAILED';
 
   constructor(message: string) {
     super(message);
-    this.name = "SpecmaticVerifierError";
+    this.name = 'SpecmaticVerifierError';
   }
 }
 
 function resolveContract(exampleName: string): string {
-  const directory = path.resolve("examples", exampleName, "openapi");
+  const directory = path.resolve('examples', exampleName, 'openapi');
   const files = fs
     .readdirSync(directory)
     .filter((file) => /\.(yaml|yml|json)$/i.test(file))
@@ -71,7 +71,7 @@ export async function startSpecmaticTest(
   const contractPath = options.contractPath ?? resolveContract(options.exampleName);
   const junitReportDir =
     options.junitReportDir ??
-    (await fsPromises.mkdtemp(path.join(os.tmpdir(), "potemkin-specmatic-test-")));
+    (await fsPromises.mkdtemp(path.join(os.tmpdir(), 'potemkin-specmatic-test-')));
   const jarPath = options.jarPath ?? (await ensureSpecmaticJar(SPECMATIC_VERSION));
   const stack = await startExampleStack({
     exampleName: options.exampleName,

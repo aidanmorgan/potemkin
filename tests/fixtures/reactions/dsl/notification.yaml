@@ -10,13 +10,13 @@ fallback_override: false
 
 identity:
   creation:
-    generate: "$uuidv7()"
+    generate: '$uuidv7()'
 
 event_catalog:
   - type: NotificationQueued
     payload_template:
-      id: "$uuidv7()"
-      orderId: "event.aggregateId"
+      id: '$uuidv7()'
+      orderId: 'event.aggregateId'
       channel: "'EMAIL'"
 
 behaviors: []
@@ -26,16 +26,16 @@ reducers:
     patches:
       - op: add
         path: /id
-        value: "${event.payload.id}"
+        value: '${event.payload.id}'
       - op: add
         path: /orderId
-        value: "${event.payload.orderId}"
+        value: '${event.payload.orderId}'
       - op: add
         path: /channel
-        value: "${event.payload.channel}"
+        value: '${event.payload.channel}'
 
 reactions:
   - name: queue-notification-on-order-placed
-    on: "Order:OrderPlaced"
+    on: 'Order:OrderPlaced'
     intent: creation
     emit: NotificationQueued

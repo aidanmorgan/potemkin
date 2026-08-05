@@ -3,7 +3,7 @@ contract_path: /orders
 fallback_override: false
 identity:
   creation:
-    generate: "command.payload.id"
+    generate: 'command.payload.id'
 hateoas:
   - rel: self
     href: /orders
@@ -30,13 +30,13 @@ behaviors:
       operationId: createOrder
       headers:
         x-parity-behavior-order: first
-      condition: "true"
+      condition: 'true'
     response_status: 202
     emit: OrderCreatedFirst
   - name: create-order
     match:
       operationId: createOrder
-      condition: "true"
+      condition: 'true'
     emit: OrderCreated
     dispatch_commands:
       - boundary: Receipt
@@ -51,33 +51,33 @@ reducers:
     patches:
       - op: replace
         path: /id
-        value: "${event.payload.id}"
+        value: '${event.payload.id}'
       - op: replace
         path: /name
-        value: "${event.payload.name}"
+        value: '${event.payload.name}'
       - op: replace
         path: /quantity
-        value: "${event.payload.quantity}"
+        value: '${event.payload.quantity}'
       - op: replace
         path: /internalNote
-        value: "${event.payload.internalNote}"
+        value: '${event.payload.internalNote}'
       - op: replace
         path: /status
-        value: "${event.payload.status}"
+        value: '${event.payload.status}'
   - on: OrderCreated
     patches:
       - op: replace
         path: /id
-        value: "${event.payload.id}"
+        value: '${event.payload.id}'
       - op: replace
         path: /name
-        value: "${event.payload.name}"
+        value: '${event.payload.name}'
       - op: replace
         path: /quantity
-        value: "${event.payload.quantity}"
+        value: '${event.payload.quantity}'
       - op: replace
         path: /internalNote
-        value: "${event.payload.internalNote}"
+        value: '${event.payload.internalNote}'
       - op: replace
         path: /status
-        value: "${event.payload.status}"
+        value: '${event.payload.status}'
