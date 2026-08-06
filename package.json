@@ -175,6 +175,10 @@
     "ts-node": "^10.9.2",
     "tsx": "^4.19.2"
   },
+  "overrides": {
+    "fast-uri": ">=3.1.5",
+    "uuid": "$uuid"
+  },
   "engines": {
     "node": ">=24.0.0"
   },
