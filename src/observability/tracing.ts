@@ -1,5 +1,10 @@
-import { metrics as apiMetrics, trace, SpanStatusCode } from '@opentelemetry/api';
-import type { Meter, Tracer, Span } from '@opentelemetry/api';
+import {
+  INVALID_SPAN_CONTEXT,
+  metrics as apiMetrics,
+  trace,
+  SpanStatusCode,
+} from '@opentelemetry/api';
+import type { Attributes, Context, Meter, Span, SpanOptions, Tracer } from '@opentelemetry/api';
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { resourceFromAttributes } from '@opentelemetry/resources';
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_INSTANCE_ID } from '@opentelemetry/semantic-conventions';
@@ -13,17 +18,26 @@ import { metrics as sdkMetrics } from '@opentelemetry/sdk-node';
 import { SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { randomUUID } from 'node:crypto';
-import { nextUuidv7 } from '../ids/uuidv7.js';
+import { v7 } from 'uuid';
 import { createNoopLogger, type Logger } from './logger.js';
 
 function loadServiceVersion(): string {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const pkg = require('../../package.json') as { version?: string };
-    return pkg.version ?? 'unknown';
+    const pkg: unknown = require('../../package.json');
+    return isVersionMetadata(pkg) ? (pkg.version ?? 'unknown') : 'unknown';
   } catch {
     return 'unknown';
   }
+}
+
+function isVersionMetadata(value: unknown): value is { readonly version?: string } {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    'version' in value &&
+    (value.version === undefined || typeof value.version === 'string')
+  );
 }
 
 const serviceVersion = loadServiceVersion();
@@ -37,27 +51,71 @@ export { SpanStatusCode };
  * the process-global OpenTelemetry provider.
  */
 export function createNoopTracer(): Tracer {
-  const span = {
-    setAttribute: () => span,
-    setAttributes: () => undefined,
-    setStatus: () => undefined,
-    recordException: () => undefined,
-    addEvent: () => span,
-    addLink: () => span,
-    addLinks: () => span,
-    end: () => undefined,
-    isRecording: () => false,
-    spanContext: () => ({ traceId: '', spanId: '', traceFlags: 0 }),
-  } as unknown as Span;
-
-  return {
-    startSpan: () => span,
-    startActiveSpan: (...args: unknown[]) => {
-      const callback = args[args.length - 1];
-      if (typeof callback !== 'function') throw new TypeError('A span callback is required');
-      return callback(span);
+  const span: Span = {
+    spanContext: () => INVALID_SPAN_CONTEXT,
+    setAttribute(_key, _value) {
+      return this;
     },
-  } as unknown as Tracer;
+    setAttributes(_attributes) {
+      return this;
+    },
+    addEvent(_name, _attributesOrStartTime, _startTime) {
+      return this;
+    },
+    addLink(_link) {
+      return this;
+    },
+    addLinks(_links) {
+      return this;
+    },
+    setStatus(_status) {
+      return this;
+    },
+    updateName(_name) {
+      return this;
+    },
+    end() {},
+    isRecording: () => false,
+    recordException(_exception, _time) {},
+  };
+
+  type SpanCallback = (activeSpan: Span) => unknown;
+
+  function resolveSpanCallback(
+    optionsOrCallback: SpanOptions | SpanCallback,
+    contextOrCallback: Context | SpanCallback | undefined,
+    callback: SpanCallback | undefined,
+  ): SpanCallback {
+    const activeCallback =
+      callback ??
+      (typeof contextOrCallback === 'function' ? contextOrCallback : undefined) ??
+      (typeof optionsOrCallback === 'function' ? optionsOrCallback : undefined);
+    if (activeCallback === undefined) throw new TypeError('A span callback is required');
+    return activeCallback;
+  }
+
+  function startActiveSpan<F extends SpanCallback>(_name: string, fn: F): ReturnType<F>;
+  function startActiveSpan<F extends SpanCallback>(
+    _name: string,
+    _options: SpanOptions,
+    fn: F,
+  ): ReturnType<F>;
+  function startActiveSpan<F extends SpanCallback>(
+    _name: string,
+    _options: SpanOptions,
+    _context: Context,
+    fn: F,
+  ): ReturnType<F>;
+  function startActiveSpan(
+    _name: string,
+    optionsOrCallback: SpanOptions | SpanCallback,
+    contextOrCallback?: Context | SpanCallback,
+    callback?: SpanCallback,
+  ): unknown {
+    return resolveSpanCallback(optionsOrCallback, contextOrCallback, callback)(span);
+  }
+
+  return { startSpan: () => span, startActiveSpan };
 }
 
 export interface TracingOptions {
@@ -102,7 +160,7 @@ export async function initTracing(opts?: TracingOptions): Promise<TracingHandle>
 
   let instanceId: string;
   try {
-    instanceId = nextUuidv7();
+    instanceId = v7();
   } catch {
     instanceId = randomUUID();
   }
@@ -174,12 +232,12 @@ export async function withSpan<T>(
   tracer: Tracer,
   name: string,
   fn: (span: Span) => Promise<T> | T,
-  attrs?: Record<string, unknown>,
+  attrs?: Attributes,
 ): Promise<T> {
   return tracer.startActiveSpan(name, async (span: Span) => {
     if (attrs) {
       for (const [k, v] of Object.entries(attrs)) {
-        span.setAttribute(k, v as string | number | boolean);
+        if (v !== undefined) span.setAttribute(k, v);
       }
     }
     try {

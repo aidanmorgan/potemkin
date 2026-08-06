@@ -1,13 +1,16 @@
 /** Source-neutral request-control contracts shared by authoring and HTTP adapters. */
 
-export type ErrorClass =
-  | 'timeout'
-  | 'throttle'
-  | 'outage'
-  | 'bad_gateway'
-  | 'conflict'
-  | 'auth'
-  | 'forbidden';
+export const ErrorClass = {
+  Timeout: 'timeout',
+  Throttle: 'throttle',
+  Outage: 'outage',
+  BadGateway: 'bad_gateway',
+  Conflict: 'conflict',
+  Auth: 'auth',
+  Forbidden: 'forbidden',
+} as const;
+
+export type ErrorClass = (typeof ErrorClass)[keyof typeof ErrorClass];
 
 /** Complete transport-neutral request controls used by direct and HTTP callers. */
 export interface RequestControls {
@@ -81,8 +84,19 @@ export interface TimeTravelControls {
   readonly replayEvent?: string;
 }
 
-export type ResponseFormat = 'hal' | 'jsonapi' | 'plain';
-export type PaginationStyle = 'envelope' | 'raw' | 'link-header';
+export const ResponseFormat = {
+  Hal: 'hal',
+  JsonApi: 'jsonapi',
+  Plain: 'plain',
+} as const;
+export type ResponseFormat = (typeof ResponseFormat)[keyof typeof ResponseFormat];
+
+export const PaginationStyle = {
+  Envelope: 'envelope',
+  Raw: 'raw',
+  LinkHeader: 'link-header',
+} as const;
+export type PaginationStyle = (typeof PaginationStyle)[keyof typeof PaginationStyle];
 
 export interface FormatControls {
   readonly responseFormat?: ResponseFormat;
@@ -90,7 +104,13 @@ export interface FormatControls {
   readonly maskFields?: readonly string[];
 }
 
-export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+export const LogLevel = {
+  Debug: 'debug',
+  Info: 'info',
+  Warn: 'warn',
+  Error: 'error',
+} as const;
+export type LogLevel = (typeof LogLevel)[keyof typeof LogLevel];
 
 export interface ObservabilityControls {
   readonly traceId?: string;

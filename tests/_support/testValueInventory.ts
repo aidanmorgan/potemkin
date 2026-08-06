@@ -152,9 +152,9 @@ const UNIT_POLICIES: Readonly<Record<string, TestValuePolicy>> = {
     id: 'unit-ids',
     pathPrefix: 'tests/unit/ids',
     role: 'property invariant',
-    purpose: 'UUIDv7 generation, ordering, and deterministic sources.',
-    canonicalBoundary: 'src/ids',
-    canonicalTests: ['tests/unit/ids/uuidv7.test.ts'],
+    purpose: 'UUID generation, ordering, validation, and deterministic runtime sources.',
+    canonicalBoundary: 'uuid dependency and runtime host',
+    canonicalTests: ['tests/unit/ids/uuid.test.ts'],
   },
   lifecycle: {
     id: 'unit-lifecycle',
@@ -252,7 +252,7 @@ const NON_UNIT_POLICIES: readonly TestValuePolicy[] = [
     pathPrefix: 'tests/property',
     role: 'property invariant',
     purpose: 'Generated-value and evaluator invariants that complement example-based contracts.',
-    canonicalBoundary: 'src/cel and src/ids',
+    canonicalBoundary: 'src/cel and the uuid dependency',
     canonicalTests: ['tests/property/cel.properties.test.ts'],
   },
   {

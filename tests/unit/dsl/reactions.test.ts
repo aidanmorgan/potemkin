@@ -25,6 +25,22 @@ const minimalBoundaryBase = {
   event_catalog: [],
 };
 
+function first<T>(values: readonly T[] | undefined): T {
+  const value = values?.[0];
+  if (value === undefined) throw new Error('Expected at least one parsed reaction');
+  return value;
+}
+
+function asError(value: unknown): Error {
+  if (!(value instanceof Error)) throw new Error('Expected a parsed error');
+  return value;
+}
+
+function asBootError(value: unknown): BootError {
+  if (!(value instanceof BootError)) throw new Error('Expected a BootError');
+  return value;
+}
+
 describe('reactions — boundary-file: valid reaction', () => {
   it('parses a fully-specified reaction into ReactionRule on the BoundaryConfig', () => {
     const cfg = validateBoundaryConfig({
@@ -43,7 +59,7 @@ describe('reactions — boundary-file: valid reaction', () => {
     });
 
     expect(cfg.reactions).toHaveLength(1);
-    const r = cfg.reactions![0]!;
+    const r = first(cfg.reactions);
     expect(r.name).toBe('record-conversion-on-campaign');
     expect(r.on).toBe('Lead:LeadConverted');
     expect(r.when).toBe('event.payload.campaignId != null');
@@ -68,7 +84,7 @@ describe('reactions — global file: valid reaction with explicit boundary', () 
     });
 
     expect(cfg.reactions).toHaveLength(1);
-    const r = cfg.reactions![0]!;
+    const r = first(cfg.reactions);
     expect(r.on).toBe('Lead:LeadConverted');
     expect(r.boundary).toBe('Campaign');
     expect(r.emit).toBe('CampaignConversionRecorded');
@@ -95,7 +111,7 @@ describe('reactions — rejection: missing on', () => {
     } catch (e) {
       err = e;
     }
-    expect((err as Error).message).toContain('"on"');
+    expect(asError(err).message).toContain('"on"');
   });
 });
 
@@ -119,7 +135,7 @@ describe('reactions — rejection: missing emit', () => {
     } catch (e) {
       err = e;
     }
-    expect((err as Error).message).toContain('"emit"');
+    expect(asError(err).message).toContain('"emit"');
   });
 });
 
@@ -135,8 +151,8 @@ describe('reactions — rejection: non-string target', () => {
       err = e;
     }
     expect(err).toBeInstanceOf(BootError);
-    expect((err as BootError).code).toBe('BOOT_ERR_DSL_SYNTAX');
-    expect((err as Error).message).toContain('target');
+    expect(asBootError(err).code).toBe('BOOT_ERR_DSL_SYNTAX');
+    expect(asError(err).message).toContain('target');
   });
 });
 
@@ -164,9 +180,9 @@ describe('reactions — rejection: invalid intent', () => {
     } catch (e) {
       err = e;
     }
-    expect((err as Error).message).toContain('intent');
-    expect((err as Error).message).toContain('mutation');
-    expect((err as Error).message).toContain('creation');
+    expect(asError(err).message).toContain('intent');
+    expect(asError(err).message).toContain('mutation');
+    expect(asError(err).message).toContain('creation');
   });
 });
 
@@ -188,8 +204,8 @@ describe('reactions — rejection: malformed when CEL', () => {
       err = e;
     }
     expect(err).toBeInstanceOf(BootError);
-    expect((err as BootError).code).toBe('BOOT_ERR_DSL_SYNTAX');
-    expect((err as Error).message).toContain('when');
+    expect(asBootError(err).code).toBe('BOOT_ERR_DSL_SYNTAX');
+    expect(asError(err).message).toContain('when');
   });
 });
 
@@ -211,8 +227,8 @@ describe('reactions — rejection: malformed target CEL', () => {
       err = e;
     }
     expect(err).toBeInstanceOf(BootError);
-    expect((err as BootError).code).toBe('BOOT_ERR_DSL_SYNTAX');
-    expect((err as Error).message).toContain('target');
+    expect(asBootError(err).code).toBe('BOOT_ERR_DSL_SYNTAX');
+    expect(asError(err).message).toContain('target');
   });
 });
 
@@ -234,8 +250,8 @@ describe('reactions — rejection: malformed payload CEL', () => {
       err = e;
     }
     expect(err).toBeInstanceOf(BootError);
-    expect((err as BootError).code).toBe('BOOT_ERR_DSL_SYNTAX');
-    expect((err as Error).message).toContain('payload');
+    expect(asBootError(err).code).toBe('BOOT_ERR_DSL_SYNTAX');
+    expect(asError(err).message).toContain('payload');
   });
 });
 
@@ -257,6 +273,6 @@ describe('reactions — rejection: global-file reaction missing boundary', () =>
     } catch (e) {
       err = e;
     }
-    expect((err as Error).message).toContain('boundary');
+    expect(asError(err).message).toContain('boundary');
   });
 });

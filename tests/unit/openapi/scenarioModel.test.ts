@@ -3,9 +3,24 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 import { loadOpenApi } from '../../../src/contract/loader.js';
-import { collectScenarioModel } from '../../../src/openapi/scenarioModel.js';
+import {
+  collectScenarioModel,
+  ScenarioFieldType,
+  ScenarioProjectFeatureName,
+  ScenarioProjectFeatureOwner,
+  ScenarioProjectFeatureSurface,
+  ScenarioReferenceKind,
+} from '../../../src/openapi/scenarioModel.js';
 
 describe('source-neutral scenario descriptor', () => {
+  it('exposes canonical finite vocabularies for editor and generator consumers', () => {
+    expect(ScenarioReferenceKind.Boundary).toBe('boundary');
+    expect(ScenarioFieldType.Unknown).toBe('unknown');
+    expect(ScenarioProjectFeatureName.TypeScript).toBe('typescript');
+    expect(ScenarioProjectFeatureOwner.PotemkinRuntime).toBe('potemkin-runtime');
+    expect(ScenarioProjectFeatureSurface.LanguageServer).toBe('language-server');
+  });
+
   it('retains validated authoring semantics and cross-language references', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'potemkin-scenario-model-'));
     const boundaryPath = path.join(root, 'agent.yaml');

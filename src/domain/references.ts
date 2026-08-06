@@ -7,9 +7,13 @@
 
 declare const referenceBrand: unique symbol;
 
-export type PotemkinReference<Kind extends string> = string & {
+type Brand<Value, Kind extends string> = Value & {
   readonly [referenceBrand]: Kind;
 };
+
+export type PotemkinReference<Kind extends string> = Brand<string, Kind>;
+
+type StringReference<Kind extends string, Value extends string> = Brand<Value, Kind>;
 
 export type BoundaryName = PotemkinReference<'boundary-name'>;
 export type BehaviorName = PotemkinReference<'behavior-name'>;
@@ -26,12 +30,14 @@ export type HelperName = PotemkinReference<'helper-name'>;
 export type FactoryName = PotemkinReference<'factory-name'>;
 export type ScopeName = PotemkinReference<'scope-name'>;
 export type LinkRelation = PotemkinReference<'link-relation'>;
-export type OperationId = PotemkinReference<'operation-id'>;
-export type EventType<Name extends string = string> = PotemkinReference<'event-type'> & Name;
+export type OperationId<Name extends string = string> = StringReference<'operation-id', Name>;
+export type EventType<Name extends string = string> = StringReference<'event-type', Name>;
 export type AggregateId = PotemkinReference<'aggregate-id'>;
 export type EventId = PotemkinReference<'event-id'>;
+export type CommandId = PotemkinReference<'command-id'>;
+export type FaultId = PotemkinReference<'fault-id'>;
 export type JsonPath = PotemkinReference<'json-path'>;
-export type SequenceVersion = number & { readonly [referenceBrand]: 'sequence-version' };
+export type SequenceVersion = Brand<number, 'sequence-version'>;
 
 /** Augmented by generated scenario bindings when a project has known events. */
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type -- generated declarations merge into this registry.
@@ -46,19 +52,73 @@ type AcceptedScenarioEventName<Name extends string> = [keyof ScenarioEventRegist
 export type EventReference<
   Boundary extends string = string,
   Name extends string = string,
-> = PotemkinReference<'event-reference'> & `${Boundary}:${Name}`;
+> = StringReference<'event-reference', `${Boundary}:${Name}`>;
 
 export type EventSelector<Boundary extends string = string, Name extends string = string> =
   | EventType<Name>
   | EventReference<Boundary, Name>;
 
 export type ContractPath = PotemkinReference<'contract-path'>;
-export type SchemaReference = PotemkinReference<'schema-reference'>;
+export type SchemaReference<Name extends string = string> = StringReference<
+  'schema-reference',
+  Name
+>;
 export type FieldPath = PotemkinReference<'field-path'>;
 export type QueryPath = PotemkinReference<'query-path'>;
 export type StateFieldName = PotemkinReference<'state-field-name'>;
 
-export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS' | 'TRACE';
+const HTTP_METHOD_NAMES = {
+  Get: 'GET',
+  Post: 'POST',
+  Put: 'PUT',
+  Patch: 'PATCH',
+  Delete: 'DELETE',
+  Head: 'HEAD',
+  Options: 'OPTIONS',
+  Trace: 'TRACE',
+} as const;
+
+export const httpMethods = [
+  HTTP_METHOD_NAMES.Get,
+  HTTP_METHOD_NAMES.Post,
+  HTTP_METHOD_NAMES.Put,
+  HTTP_METHOD_NAMES.Patch,
+  HTTP_METHOD_NAMES.Delete,
+  HTTP_METHOD_NAMES.Head,
+  HTTP_METHOD_NAMES.Options,
+  HTTP_METHOD_NAMES.Trace,
+] as const;
+
+export type HttpMethod = (typeof HTTP_METHOD_NAMES)[keyof typeof HTTP_METHOD_NAMES];
+
+const HTTP_METHOD_VALUES: ReadonlySet<string> = new Set(httpMethods);
+
+function isHttpMethod(value: string): value is HttpMethod {
+  return HTTP_METHOD_VALUES.has(value);
+}
+
+export function httpMethod(value: string): HttpMethod {
+  const normalized = value.trim().toUpperCase();
+  if (!isHttpMethod(normalized)) {
+    throw new ReferenceValidationError('http-method', `unsupported method "${value}"`);
+  }
+  return normalized;
+}
+
+export const HttpMethod = freezeCompanion(
+  {
+    Get: HTTP_METHOD_NAMES.Get,
+    Post: HTTP_METHOD_NAMES.Post,
+    Put: HTTP_METHOD_NAMES.Put,
+    Patch: HTTP_METHOD_NAMES.Patch,
+    Delete: HTTP_METHOD_NAMES.Delete,
+    Head: HTTP_METHOD_NAMES.Head,
+    Options: HTTP_METHOD_NAMES.Options,
+    Trace: HTTP_METHOD_NAMES.Trace,
+    parse: httpMethod,
+  },
+  ['parse'],
+);
 
 export interface ContractPathSegment {
   readonly kind: 'literal' | 'parameter';
@@ -70,7 +130,7 @@ export interface FieldPathSegment {
 }
 
 export class ReferenceValidationError extends Error {
-  readonly code = 'DOMAIN_REFERENCE_INVALID' as const;
+  readonly code = 'DOMAIN_REFERENCE_INVALID';
   readonly kind: string;
 
   constructor(kind: string, reason: string) {
@@ -81,10 +141,47 @@ export class ReferenceValidationError extends Error {
   }
 }
 
-function reference<Kind extends string>(kind: Kind, value: string): PotemkinReference<Kind> {
+function freezeCompanion<const Value extends object>(
+  value: Value,
+  nonEnumerableKeys: readonly (keyof Value)[],
+): Readonly<Value> {
+  for (const key of nonEnumerableKeys) {
+    Object.defineProperty(value, key, { enumerable: false });
+  }
+  return Object.freeze(value);
+}
+
+function reference<Kind extends string>(
+  kind: Kind,
+  value: string,
+  options: { readonly allowEmpty?: boolean } = {},
+): PotemkinReference<Kind> {
   const normalized = value.trim();
-  if (normalized === '') throw new ReferenceValidationError(kind, 'must not be empty');
+  if (normalized === '' && options.allowEmpty !== true) {
+    throw new ReferenceValidationError(kind, 'must not be empty');
+  }
+  // Runtime validation is the single construction boundary for branded strings.
   return normalized as PotemkinReference<Kind>;
+}
+
+function literalReference<Kind extends string, const Value extends string>(
+  kind: Kind,
+  value: Value,
+  options: { readonly allowEmpty?: boolean } = {},
+): StringReference<Kind, Value> {
+  if (value.trim() !== value) {
+    throw new ReferenceValidationError(
+      kind,
+      'must be canonical and must not contain surrounding whitespace',
+    );
+  }
+  // The exact-input check makes preserving Value sound after validation.
+  return reference(kind, value, options) as StringReference<Kind, Value>;
+}
+
+function sequence(value: number): SequenceVersion {
+  // Numbers cannot carry runtime brand metadata; validation happens at each caller.
+  return value as SequenceVersion;
 }
 
 export function boundaryName(value: string): BoundaryName {
@@ -136,8 +233,8 @@ export function scopeName(value: string): ScopeName {
 export function linkRelation(value: string): LinkRelation {
   return reference('link-relation', value);
 }
-export function operationId(value: string): OperationId {
-  return reference('operation-id', value);
+export function operationId<const Name extends string>(value: Name): OperationId<Name> {
+  return literalReference('operation-id', value);
 }
 export function aggregateId(value: string): AggregateId {
   return reference('aggregate-id', value);
@@ -145,59 +242,68 @@ export function aggregateId(value: string): AggregateId {
 export function eventId(value: string): EventId {
   return reference('event-id', value);
 }
+export function commandId(value: string): CommandId {
+  return reference('command-id', value);
+}
+export function faultId(value: string): FaultId {
+  return reference('fault-id', value);
+}
 export function sequenceVersion(value: number): SequenceVersion {
   if (!Number.isInteger(value) || value < 0) {
     throw new ReferenceValidationError('sequence-version', 'must be a non-negative integer');
   }
-  return value as SequenceVersion;
+  return sequence(value);
 }
 export function committedSequenceVersion(value: number): SequenceVersion {
   if (!Number.isInteger(value) || value < 1) {
     throw new ReferenceValidationError('committed-sequence-version', 'must be a positive integer');
   }
-  return value as SequenceVersion;
+  return sequence(value);
 }
 export function jsonPath(value: string): JsonPath {
   const normalized = value.trim();
   if (normalized !== '' && !normalized.startsWith('/')) {
     throw new ReferenceValidationError('json-path', 'must be an RFC 6901 pointer');
   }
-  return normalized as JsonPath;
+  return reference('json-path', normalized, { allowEmpty: true });
 }
 export function eventType<const Name extends string>(
   value: Name & AcceptedScenarioEventName<Name>,
 ): EventType<Name> {
-  return reference('event-type', value) as EventType<Name>;
+  return literalReference('event-type', value);
 }
 export function eventReference<const Boundary extends string, const Name extends string>(
   boundary: BoundaryName & Boundary,
   event: EventType<Name>,
 ): EventReference<Boundary, Name> {
-  return reference('event-reference', `${boundary}:${event}`) as EventReference<Boundary, Name>;
+  const value: `${Boundary}:${Name}` = `${boundary}:${event}`;
+  return literalReference('event-reference', value);
 }
-export function schemaReference(value: string): SchemaReference {
-  return reference('schema-reference', value);
+export function schemaReference<const Name extends string>(value: Name): SchemaReference<Name> {
+  return literalReference('schema-reference', value);
 }
 export function pathSegment(value: string): ContractPathSegment {
   const normalized = value.trim();
   if (normalized === '' || normalized.includes('/') || /[{}]/.test(normalized)) {
     throw new ReferenceValidationError('contract-path segment', 'must be a non-empty token');
   }
-  return Object.freeze({ kind: 'literal' as const, value: normalized });
+  const segment = { kind: 'literal', value: normalized } satisfies ContractPathSegment;
+  return Object.freeze(segment);
 }
 export function pathParameter(value: string): ContractPathSegment {
   const normalized = value.trim();
   if (normalized === '' || normalized.includes('/') || /[{}]/.test(normalized)) {
     throw new ReferenceValidationError('contract-path parameter', 'must be a non-empty name');
   }
-  return Object.freeze({ kind: 'parameter' as const, value: normalized });
+  const segment = { kind: 'parameter', value: normalized } satisfies ContractPathSegment;
+  return Object.freeze(segment);
 }
 export function contractPath(...segments: readonly ContractPathSegment[]): ContractPath {
-  if (segments.length === 0) return reference('contract-path', '/') as ContractPath;
+  if (segments.length === 0) return reference('contract-path', '/');
   const value = `/${segments
     .map((segment) => (segment.kind === 'parameter' ? `{${segment.value}}` : segment.value))
     .join('/')}`;
-  return reference('contract-path', value) as ContractPath;
+  return reference('contract-path', value);
 }
 export function parseContractPath(value: string): ContractPath {
   const normalized = value.trim();
@@ -222,9 +328,56 @@ export function fieldPath(...segments: readonly FieldPathSegment[]): FieldPath {
     .map((segment) => segment.value.replaceAll('~', '~0').replaceAll('/', '~1'))
     .join('/');
   const value = segments.length === 1 ? pointer : `/${pointer}`;
-  return reference('field-path', value) as FieldPath;
+  return reference('field-path', value);
 }
 export function queryPath(...segments: readonly FieldPathSegment[]): QueryPath {
   if (segments.length === 0) throw new ReferenceValidationError('query path', 'needs a segment');
-  return reference('query-path', segments.map((segment) => segment.value).join('.')) as QueryPath;
+  return reference('query-path', segments.map((segment) => segment.value).join('.'));
 }
+
+export const BoundaryName = freezeCompanion({ parse: boundaryName }, ['parse']);
+
+export const OperationId = freezeCompanion(
+  {
+    parse(value: string): OperationId {
+      return reference('operation-id', value);
+    },
+    literal<const Name extends string>(value: Name): OperationId<Name> {
+      return operationId(value);
+    },
+  },
+  ['parse', 'literal'],
+);
+
+export const EventType = freezeCompanion(
+  {
+    parse(value: string): EventType {
+      return reference('event-type', value);
+    },
+    literal<const Name extends string>(
+      value: Name & AcceptedScenarioEventName<Name>,
+    ): EventType<Name> {
+      return eventType(value);
+    },
+  },
+  ['parse', 'literal'],
+);
+
+export const AggregateId = freezeCompanion({ parse: aggregateId }, ['parse']);
+export const EventId = freezeCompanion({ parse: eventId }, ['parse']);
+export const CommandId = freezeCompanion({ parse: commandId }, ['parse']);
+export const FaultId = freezeCompanion({ parse: faultId }, ['parse']);
+
+export const SequenceVersion = freezeCompanion({ parse: sequenceVersion }, ['parse']);
+
+export const SchemaReference = freezeCompanion(
+  {
+    parse(value: string): SchemaReference {
+      return reference('schema-reference', value);
+    },
+    literal<const Name extends string>(value: Name): SchemaReference<Name> {
+      return schemaReference(value);
+    },
+  },
+  ['parse', 'literal'],
+);

@@ -13,6 +13,7 @@ import {
 } from '../../../src/authoring/builders.js';
 import { compileProgram } from '../../../src/authoring/compiler.js';
 import { reducerRule } from '../../../src/authoring/nativeReducer.js';
+import { authoringLatencyProblem } from '../../../src/authoring/latency.js';
 import {
   boundaryName,
   behaviorName,
@@ -91,7 +92,7 @@ function thingDefinition() {
 }
 
 const dependencies = {
-  contract: { operationIdFor: () => 'createThing' },
+  contract: { operationIdFor: () => operationId('createThing') },
   clock: {
     nowMs: () => 1_735_689_600_000,
     offsetMs: () => 0,
@@ -126,6 +127,16 @@ describe('TypeScript authoring API', () => {
     ).toBe(9);
     expect(mapReadonly([1, 2], (value) => value * 2)).toEqual([2, 4]);
     expect(concatReadonly([1], [2, 3])).toEqual([1, 2, 3]);
+  });
+
+  it('attaches expression metadata without mutating the supplied callback', () => {
+    const callback = () => 'value';
+    const authored = expression('event', callback);
+
+    expect(authored).not.toBe(callback);
+    expect(authored({})).toBe('value');
+    expect(authored.phase).toBe('event');
+    expect(callback).not.toHaveProperty('phase');
   });
 
   it('builds the canonical model without a YAML round trip', () => {
@@ -194,5 +205,12 @@ reducers:
         { dependencies },
       ),
     ).toThrow(/Duplicate runtime contract path/);
+  });
+
+  it('reports malformed latency shapes without unchecked object assertions', () => {
+    expect(authoringLatencyProblem(null)).toEqual({ message: 'latency must be an object' });
+    expect(authoringLatencyProblem({ unexpected: 1 })).toEqual({
+      message: 'latency contains unknown field "unexpected"',
+    });
   });
 });

@@ -1,7 +1,7 @@
 import { expandResourceModules } from '../../../src/dsl/resourceExpander';
 import type { OpenApiDoc } from '../../../src/contract/loader';
 
-const openapi = {
+const openapi: OpenApiDoc = {
   raw: {
     paths: {
       '/v1/customers': {
@@ -16,10 +16,32 @@ const openapi = {
     },
   },
   paths: {},
-} as unknown as OpenApiDoc;
+};
 
-function resourceModule(parsed: unknown) {
+type ResourceModule = Parameters<typeof expandResourceModules>[0][number];
+
+function resourceModule(parsed: unknown): [ResourceModule] {
   return [{ path: 'customer.resource.yaml', text: '', parsed }];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function parsedRecord(module: ResourceModule): Record<string, unknown> {
+  if (!isRecord(module.parsed)) throw new Error(`Expected ${module.path} to contain a mapping`);
+  return module.parsed;
+}
+
+function moduleAt(
+  modules: readonly ResourceModule[],
+  contractPath: string,
+): Record<string, unknown> {
+  const module = modules.find(
+    (candidate) => parsedRecord(candidate)['contract_path'] === contractPath,
+  );
+  if (module === undefined) throw new Error(`Missing expanded module for ${contractPath}`);
+  return parsedRecord(module);
 }
 
 const baseResource = {
@@ -41,14 +63,7 @@ describe('expandResourceModules', () => {
   it('expands a resource into one boundary per contract path, sharing the schema', () => {
     const out = expandResourceModules(resourceModule(baseResource), openapi);
     expect(out).toHaveLength(2);
-    const byPath = Object.fromEntries(
-      out.map((m) => [
-        (m.parsed as Record<string, unknown>)['contract_path'],
-        m.parsed as Record<string, unknown>,
-      ]),
-    );
-
-    const coll = byPath['/v1/customers'];
+    const coll = moduleAt(out, '/v1/customers');
     expect(coll['schema']).toBe('customer');
     expect(coll['fallback_override']).toBe(true); // GetCustomers is a query
     expect(coll['identity']).toEqual({
@@ -62,7 +77,7 @@ describe('expandResourceModules', () => {
       },
     ]);
 
-    const byId = byPath['/v1/customers/{customer}'];
+    const byId = moduleAt(out, '/v1/customers/{customer}');
     expect(byId['schema']).toBe('customer');
     expect(byId['identity']).toEqual({ key: { from: 'path', name: 'customer' } });
     expect(byId['behaviors']).toEqual([
@@ -82,6 +97,44 @@ describe('expandResourceModules', () => {
   it('rejects an operation that is not in the OpenAPI', () => {
     const bad = { ...baseResource, operations: [{ op: 'NoSuchOp', emit: 'X' }] };
     expect(() => expandResourceModules(resourceModule(bad), openapi)).toThrow(/not an operationId/);
+  });
+
+  it('constructs operation and event references at the resource parser boundary', () => {
+    const badOperation = { ...baseResource, operations: [{ op: '  ', emit: 'CustomerCreated' }] };
+    expect(() => expandResourceModules(resourceModule(badOperation), openapi)).toThrow(
+      /non-empty string "op"/,
+    );
+
+    const badEvent = { ...baseResource, operations: [{ op: 'PostCustomers', emit: '  ' }] };
+    expect(() => expandResourceModules(resourceModule(badEvent), openapi)).toThrow(
+      /non-empty event type/,
+    );
+  });
+
+  it('resolves every standard HTTP method through the shared method vocabulary', () => {
+    const headOpenapi: OpenApiDoc = {
+      raw: {
+        paths: {
+          '/v1/customers': {
+            head: { operationId: 'HeadCustomers' },
+          },
+        },
+      },
+      paths: {},
+    };
+    const resource = {
+      ...baseResource,
+      operations: [{ op: 'HeadCustomers', emit: 'CustomerCreated' }],
+    };
+
+    const [expanded] = expandResourceModules(resourceModule(resource), headOpenapi);
+    expect(parsedRecord(expanded)['behaviors']).toEqual([
+      {
+        name: 'HeadCustomers',
+        match: { operationId: 'HeadCustomers', method: 'HEAD', condition: 'true' },
+        emit: 'CustomerCreated',
+      },
+    ]);
   });
 
   it('requires emit on non-query operations and forbids it on queries', () => {
@@ -137,13 +190,13 @@ describe('expandResourceModules', () => {
       ],
     };
     const out = expandResourceModules(resourceModule(guarded), openapi);
-    const byId = out.find(
-      (m) => (m.parsed as Record<string, unknown>)['contract_path'] === '/v1/customers/{customer}',
-    )!;
-    const behavior = (
-      (byId.parsed as Record<string, unknown>)['behaviors'] as Record<string, unknown>[]
-    )[0];
-    const match = behavior['match'] as Record<string, unknown>;
+    const byId = moduleAt(out, '/v1/customers/{customer}');
+    const behaviors = byId['behaviors'];
+    if (!Array.isArray(behaviors) || !isRecord(behaviors[0])) {
+      throw new Error('Expected an expanded behavior');
+    }
+    const match = behaviors[0]['match'];
+    if (!isRecord(match)) throw new Error('Expected an expanded behavior match');
     expect(match['condition']).toBe("state.status == 'active'");
     expect(match['requires']).toEqual([
       { name: 'must-be-active', condition: "state.status == 'active'", error_code: 'INACTIVE' },
@@ -155,7 +208,7 @@ describe('expandResourceModules', () => {
     const out = expandResourceModules(resourceModule(withMask), openapi);
     expect(out.length).toBeGreaterThan(0);
     for (const m of out) {
-      expect((m.parsed as Record<string, unknown>)['mask']).toEqual(['email']);
+      expect(parsedRecord(m)['mask']).toEqual(['email']);
     }
   });
 });

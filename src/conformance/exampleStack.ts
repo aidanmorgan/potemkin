@@ -20,7 +20,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import type * as http from 'node:http';
 import { ensureSpecmaticJar, ensurePluginJar } from './binaries.js';
-import { startSpecmatic, type SpecmaticHandle } from './specmaticProcess.js';
+import { startSpecmatic, waitForReadiness, type SpecmaticHandle } from './specmaticProcess.js';
 import { getFreePort } from './portAllocator.js';
 import { bootYamlRuntimeFromConfig } from '../parser/files.js';
 import { createYamlRuntimeExtensions } from '../parser/gateway.js';
@@ -32,6 +32,8 @@ import { loadOpenApi } from '../contract/loader.js';
 import { resolveBindHost } from '../http/bindHost.js';
 import { createRuntimeWebhookTransport } from '../webhooks/transport.js';
 import { seedRuntimeFromExportedExamples } from './exportedCorpus.js';
+import { isRecord } from '../contracts/value.js';
+import { stringify } from 'yaml';
 
 const SPECMATIC_VERSION = '2.46.2';
 
@@ -66,46 +68,88 @@ export interface ExampleStackOptions {
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 
 /** Resolve the single OpenAPI contract file in examples/<name>/openapi/. */
-function resolveContractPath(exampleDir: string): string {
+export function resolveContractPath(exampleDir: string): string {
   const openapiDir = path.join(exampleDir, 'openapi');
   const files = fs
     .readdirSync(openapiDir)
-    .filter((f) => f.endsWith('.yaml') || f.endsWith('.yml') || f.endsWith('.json'));
+    .filter((file) => ['.yaml', '.yml', '.json'].includes(path.extname(file).toLowerCase()))
+    .sort();
   if (files.length === 0) {
     throw new Error(`No OpenAPI contract found in ${openapiDir}`);
+  }
+  if (files.length > 1) {
+    throw new Error(
+      `Expected exactly one OpenAPI contract in ${openapiDir}; found: ${files.join(', ')}`,
+    );
   }
   return path.join(openapiDir, files[0]);
 }
 
-/** Poll the plugin's forwarding-readiness endpoint until routes are discovered. */
-async function awaitForwardingReady(pluginControlUrl: string, timeoutMs = 30_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  let last = 'no response';
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(`${pluginControlUrl}/_potemkin/ready`, {
-        method: 'GET',
-        signal: AbortSignal.timeout(2_000),
-      });
-      if (res.ok) {
-        const body = (await res.json()) as { ready?: boolean };
-        if (body.ready === true) return;
-        last = `ready=false ${JSON.stringify(body)}`;
-      } else {
-        last = `HTTP ${res.status}`;
-      }
-    } catch (err) {
-      last = err instanceof Error ? err.message : String(err);
-    }
-    await new Promise((r) => setTimeout(r, 400));
-  }
-  throw new Error(`Plugin forwarding never became ready after ${timeoutMs}ms (last: ${last})`);
+/** Serialize the plugin-only configuration consumed by the Specmatic process. */
+export function createPluginConfig(
+  exampleDir: string,
+  enginePort: number,
+  pluginControlPort: number,
+): string {
+  return stringify({
+    version: 1,
+    specmatic: path.join(exampleDir, 'specmatic.yaml'),
+    plugin: {
+      engine: {
+        url: `http://127.0.0.1:${enginePort}`,
+        timeoutMs: 5_000,
+      },
+      controlPort: pluginControlPort,
+    },
+  });
 }
 
-function closeServer(srv: http.Server): Promise<void> {
-  return new Promise<void>((resolve) => {
+/** Poll the plugin's forwarding-readiness endpoint until routes are discovered. */
+export interface ForwardingReadinessOptions {
+  readonly timeoutMs?: number;
+  readonly attemptTimeoutMs?: number;
+  readonly intervalMs?: number;
+  readonly signal?: AbortSignal;
+}
+
+export async function awaitForwardingReady(
+  pluginControlUrl: string,
+  options: ForwardingReadinessOptions = {},
+): Promise<void> {
+  await waitForReadiness({
+    description: 'Plugin forwarding',
+    timeoutMs: options.timeoutMs ?? 30_000,
+    attemptTimeoutMs: options.attemptTimeoutMs ?? 2_000,
+    intervalMs: options.intervalMs ?? 400,
+    signal: options.signal,
+    probe: async (signal) => {
+      const res = await fetch(`${pluginControlUrl}/_potemkin/ready`, {
+        method: 'GET',
+        signal,
+      });
+      if (res.ok) {
+        const body: unknown = await res.json();
+        if (isRecord(body) && body['ready'] === true) return { ready: true };
+        return { ready: false, diagnostic: `ready=false ${JSON.stringify(body)}` };
+      }
+      await res.body?.cancel().catch(() => {
+        /* ignore response cleanup errors */
+      });
+      return { ready: false, diagnostic: `HTTP ${res.status}` };
+    },
+  });
+}
+
+export function closeServer(srv: http.Server): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
     srv.closeAllConnections?.();
-    srv.close(() => resolve());
+    srv.close((error) => {
+      if (error !== undefined) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
   });
 }
 
@@ -131,16 +175,7 @@ export async function startExampleStack(opts: ExampleStackOptions): Promise<Exam
 
   // The plugin reads only the `plugin:` block (engine URL + control port) from
   // POTEMKIN_CONFIG_PATH; the engine boots from the example's real potemkin.yml.
-  const tmpPluginConfig = [
-    'version: 1',
-    `specmatic: ${path.join(exampleDir, 'specmatic.yaml')}`,
-    'plugin:',
-    '  engine:',
-    `    url: "http://127.0.0.1:${enginePort}"`,
-    '    timeoutMs: 5000',
-    `  controlPort: ${pluginControlPort}`,
-    '',
-  ].join('\n');
+  const tmpPluginConfig = createPluginConfig(exampleDir, enginePort, pluginControlPort);
   const tmpConfigPath = path.join(
     os.tmpdir(),
     `potemkin-example-${opts.exampleName}-${enginePort}.yaml`,
@@ -235,9 +270,14 @@ export async function startExampleStack(opts: ExampleStackOptions): Promise<Exam
     },
 
     async shutdown(): Promise<void> {
-      await closeServer(boundServer).catch(() => {
-        /* ignore */
-      });
+      let serverCloseFailed = false;
+      let serverCloseError: unknown;
+      try {
+        await closeServer(boundServer);
+      } catch (error) {
+        serverCloseFailed = true;
+        serverCloseError = error;
+      }
       await boundSystem.dispose().catch(() => {
         /* ignore */
       });
@@ -250,6 +290,7 @@ export async function startExampleStack(opts: ExampleStackOptions): Promise<Exam
       } catch {
         /* ignore */
       }
+      if (serverCloseFailed) throw serverCloseError;
     },
   };
 }

@@ -15,8 +15,8 @@ import { BootError } from '../../../src/errors';
  *  The uncovered branch is `err instanceof Error ? ... : String(err)` —
  *  specifically the `String(err)` path when the thrown error is NOT an Error instance.
  *
- *  js-yaml normally throws YAMLException (an Error subclass). To trigger the non-Error
- *  branch, we need yaml.load to throw a non-Error value (string, number, etc.).
+ *  yaml normally throws a YAML parse error (an Error subclass). To trigger the non-Error
+ *  branch, we need yaml.parse to throw a non-Error value (string, number, etc.).
  *  We use jest.mock and jest.resetModules to achieve this.
  */
 
@@ -26,15 +26,14 @@ describe('parser/yamlParser.ts — line 19 non-Error throw coverage', () => {
     jest.restoreAllMocks();
   });
 
-  it('handles non-Error throw from yaml.load — message uses String(err)', async () => {
+  it('handles non-Error throw from yaml.parse — message uses String(err)', async () => {
     jest.resetModules();
 
-    // Mock js-yaml to throw a plain string (non-Error)
-    jest.mock('js-yaml', () => ({
-      load: () => {
+    // Mock yaml to throw a plain string (non-Error)
+    jest.mock('yaml', () => ({
+      parse: () => {
         throw 'non-error-string-42';
       },
-      dump: jest.fn(),
     }));
 
     const parserModule = await import('../../../src/parser/yamlParser');
@@ -57,14 +56,13 @@ describe('parser/yamlParser.ts — line 19 non-Error throw coverage', () => {
     expect(msg).toContain('non-error-string-42');
   });
 
-  it('handles numeric non-Error throw from yaml.load', async () => {
+  it('handles numeric non-Error throw from yaml.parse', async () => {
     jest.resetModules();
 
-    jest.mock('js-yaml', () => ({
-      load: () => {
+    jest.mock('yaml', () => ({
+      parse: () => {
         throw 42;
-      }, // numeric throw
-      dump: jest.fn(),
+      },
     }));
 
     const parserModule = await import('../../../src/parser/yamlParser');
@@ -83,14 +81,13 @@ describe('parser/yamlParser.ts — line 19 non-Error throw coverage', () => {
     expect(msg).toContain('42');
   });
 
-  it('handles null throw from yaml.load', async () => {
+  it('handles null non-Error throw from yaml.parse', async () => {
     jest.resetModules();
 
-    jest.mock('js-yaml', () => ({
-      load: () => {
+    jest.mock('yaml', () => ({
+      parse: () => {
         throw null;
       },
-      dump: jest.fn(),
     }));
 
     const parserModule = await import('../../../src/parser/yamlParser');
@@ -111,7 +108,7 @@ describe('parser/yamlParser.ts — line 19 non-Error throw coverage', () => {
 
   it('normal Error throw still uses err.message (existing path — control)', () => {
     // This verifies the positive branch (err instanceof Error) still works correctly.
-    // js-yaml throws YAMLException which IS an Error subclass.
+    // yaml throws a parse error which IS an Error subclass.
 
     let caughtError: unknown;
     try {

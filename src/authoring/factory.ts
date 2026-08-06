@@ -36,8 +36,8 @@ export class FactoryCollector implements FactoryRegistrar {
   }
 
   register(entry: RegisteredFactory): void {
-    if (this.entries.has(entry.name)) {
-      const existing = this.entries.get(entry.name)!;
+    const existing = this.entries.get(entry.name);
+    if (existing !== undefined) {
       throw new TypeScriptAuthoringError(
         'TS_FACTORY_CONFLICT',
         `Factory "${entry.name}" is already registered from ${existing.source}`,
@@ -69,6 +69,15 @@ function registerFactory(
   return implementation;
 }
 
+/**
+ * `MethodDecorator` exposes descriptor values as `any` because it is a
+ * reflection API. Keep that untyped boundary in one runtime guard instead of
+ * asserting a type at each use site.
+ */
+function isTypeScriptFactory(value: unknown): value is TypeScriptFactory {
+  return typeof value === 'function';
+}
+
 function configure(
   name: FactoryName | undefined,
   registrar: FactoryRegistrar | undefined,
@@ -82,7 +91,7 @@ function configure(
       );
     }
     const implementation = descriptor?.value;
-    if (typeof implementation !== 'function') {
+    if (!isTypeScriptFactory(implementation)) {
       throw new TypeScriptAuthoringError(
         'TS_DECORATOR_INVALID',
         `@PotemkinConfigure must decorate a callable method: "${String(propertyKey)}"`,
@@ -91,9 +100,11 @@ function configure(
     }
     const className = target.name || 'AnonymousFactory';
     const nameValue = name ?? factoryName(`${className}.${String(propertyKey)}`);
+    const boundImplementation: TypeScriptFactory = (context) =>
+      implementation.call(target, context);
     registerFactory(
       nameValue,
-      implementation.bind(target) as TypeScriptFactory,
+      boundImplementation,
       `class:${className}.${String(propertyKey)}`,
       registrar,
     );

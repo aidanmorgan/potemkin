@@ -11,7 +11,13 @@ export interface SourceLocation {
   readonly end?: SourcePosition;
 }
 
-export type DiagnosticSeverity = 'error' | 'warning' | 'information';
+export const DiagnosticSeverity = {
+  Error: 'error',
+  Warning: 'warning',
+  Information: 'information',
+} as const;
+
+export type DiagnosticSeverity = (typeof DiagnosticSeverity)[keyof typeof DiagnosticSeverity];
 
 export interface Diagnostic {
   readonly code: string;

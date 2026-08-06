@@ -25,6 +25,19 @@ import {
 export const EOF = '$end';
 const AUG_START = "S'";
 
+function required<T>(value: T | undefined, label: string): T {
+  if (value === undefined) throw new Error(`LALR invariant: missing ${label}`);
+  return value;
+}
+
+function arrayAt<T>(values: readonly T[], index: number, label: string): T {
+  return required(values[index], `${label}[${index}]`);
+}
+
+function mapAt<K, V>(values: ReadonlyMap<K, V>, key: K, label: string): V {
+  return required(values.get(key), `${label}[${String(key)}]`);
+}
+
 /** A shift/goto, reduce, or accept table entry. */
 export type Action =
   | { type: 'shift'; state: number }
@@ -88,7 +101,8 @@ function analyze(): AnalyzedGrammar {
 function productionPrec(g: AnalyzedGrammar, prod: Production): Sym | undefined {
   if (prod.prec) return prod.prec;
   for (let k = prod.rhs.length - 1; k >= 0; k--) {
-    const s = prod.rhs[k]!;
+    const s = prod.rhs[k];
+    if (s === undefined) continue;
     if (g.terminals.has(s)) return s;
   }
   return undefined;
@@ -107,11 +121,11 @@ function computeFirst(g: AnalyzedGrammar, nullable: Set<Sym>): Map<Sym, Set<Sym>
   while (changed) {
     changed = false;
     for (const p of g.productions) {
-      const fl = first.get(p.lhs)!;
+      const fl = mapAt(first, p.lhs, 'FIRST');
       // FIRST of the rhs sequence: add FIRST(s) for each leading symbol, and
       // continue past a symbol only when it is nullable.
       for (const s of p.rhs) {
-        const fs = first.get(s)!;
+        const fs = mapAt(first, s, 'FIRST');
         for (const t of fs) {
           if (!fl.has(t)) {
             fl.add(t);
@@ -152,7 +166,7 @@ function firstOfSeq(
   const result = new Set<Sym>();
   let allNullable = true;
   for (const s of seq) {
-    for (const t of first.get(s)!) result.add(t);
+    for (const t of mapAt(first, s, 'FIRST')) result.add(t);
     if (!nullable.has(s)) {
       allNullable = false;
       break;
@@ -175,7 +189,7 @@ interface LR1Item {
 const AUG_PROD: Production = { lhs: AUG_START, rhs: [START] };
 
 function prodOf(prod: number): Production {
-  return prod === -1 ? AUG_PROD : PRODUCTIONS[prod]!;
+  return prod === -1 ? AUG_PROD : required(PRODUCTIONS[prod], `production ${prod}`);
 }
 
 function itemKey(it: LR1Item): string {
@@ -198,7 +212,7 @@ function closure(
     }
   }
   while (queue.length) {
-    const it = queue.shift()!;
+    const it = required(queue.shift(), 'closure queue item');
     const prod = prodOf(it.prod);
     const sym = prod.rhs[it.dot];
     if (sym === undefined || !g.nonterminals.has(sym)) continue;
@@ -264,7 +278,7 @@ export function buildTables(): ParseTables {
   const transitions: Array<Map<Sym, number>> = [new Map()];
 
   for (let s = 0; s < states.length; s++) {
-    const items = states[s]!;
+    const items = arrayAt(states, s, 'states');
     // Symbols appearing immediately after a dot.
     const nextSyms = new Set<Sym>();
     for (const it of items) {
@@ -282,7 +296,7 @@ export function buildTables(): ParseTables {
         transitions.push(new Map());
         fullSigToState.set(sig, ts);
       }
-      transitions[s]!.set(sym, ts);
+      arrayAt(transitions, s, 'transitions').set(sym, ts);
     }
   }
 
@@ -291,14 +305,15 @@ export function buildTables(): ParseTables {
   const oldToMerged: number[] = Array.from({ length: states.length });
   const mergedItems: LR1Item[][] = [];
   for (let s = 0; s < states.length; s++) {
-    const core = coreSignature(states[s]!);
+    const stateItems = arrayAt(states, s, 'states');
+    const core = coreSignature(stateItems);
     let m = coreToMerged.get(core);
     if (m === undefined) {
       m = mergedItems.length;
       coreToMerged.set(core, m);
-      mergedItems.push([...states[s]!]);
+      mergedItems.push([...stateItems]);
     } else {
-      mergedItems[m]!.push(...states[s]!);
+      arrayAt(mergedItems, m, 'merged items').push(...stateItems);
     }
     oldToMerged[s] = m;
   }
@@ -312,9 +327,12 @@ export function buildTables(): ParseTables {
   // Merged transitions.
   const mTrans: Array<Map<Sym, number>> = mergedDedup.map(() => new Map());
   for (let s = 0; s < states.length; s++) {
-    const from = oldToMerged[s]!;
-    for (const [sym, to] of transitions[s]!) {
-      mTrans[from]!.set(sym, oldToMerged[to]!);
+    const from = arrayAt(oldToMerged, s, 'old-to-merged state');
+    for (const [sym, to] of arrayAt(transitions, s, 'transitions')) {
+      arrayAt(mTrans, from, 'merged transitions').set(
+        sym,
+        arrayAt(oldToMerged, to, 'old-to-merged target'),
+      );
     }
   }
 
@@ -324,23 +342,26 @@ export function buildTables(): ParseTables {
 
   for (let s = 0; s < mergedDedup.length; s++) {
     // GOTO + shifts from transitions.
-    for (const [sym, to] of mTrans[s]!) {
+    const transitionsForState = arrayAt(mTrans, s, 'merged transitions');
+    const actionRow = arrayAt(action, s, 'action rows');
+    const gotoRow = arrayAt(gotoTbl, s, 'goto rows');
+    for (const [sym, to] of transitionsForState) {
       if (g.nonterminals.has(sym)) {
-        gotoTbl[s]![sym] = to;
+        gotoRow[sym] = to;
       } else {
-        setAction(g, action[s]!, sym, { type: 'shift', state: to }, s);
+        setAction(g, actionRow, sym, { type: 'shift', state: to }, s);
       }
     }
     // Reduces / accept from items with the dot at the end.
-    for (const it of mergedDedup[s]!) {
+    for (const it of arrayAt(mergedDedup, s, 'merged item sets')) {
       const prod = prodOf(it.prod);
       if (it.dot !== prod.rhs.length) continue;
       if (it.prod === -1) {
         // S' → Expr ·  on $end ⇒ accept
-        if (it.look === EOF) setAction(g, action[s]!, EOF, { type: 'accept' }, s);
+        if (it.look === EOF) setAction(g, actionRow, EOF, { type: 'accept' }, s);
         continue;
       }
-      setAction(g, action[s]!, it.look, { type: 'reduce', production: it.prod }, s);
+      setAction(g, actionRow, it.look, { type: 'reduce', production: it.prod }, s);
     }
   }
 
@@ -394,7 +415,11 @@ function resolveConflict(
   // shift/reduce
   if (shift && reduce) {
     const termPrec = g.precOf.get(term);
-    const prodPrecTerm = productionPrec(g, PRODUCTIONS[reduce.production]!);
+    const reducedProduction = required(
+      PRODUCTIONS[reduce.production],
+      `production ${reduce.production}`,
+    );
+    const prodPrecTerm = productionPrec(g, reducedProduction);
     const prodPrec = prodPrecTerm ? g.precOf.get(prodPrecTerm) : undefined;
     if (termPrec && prodPrec) {
       if (prodPrec.level > termPrec.level) return reduce; // reduce binds tighter
@@ -406,7 +431,7 @@ function resolveConflict(
     }
     throw new Error(
       `LALR conflict: unresolved shift/reduce on '${term}' in state ${stateIdx} ` +
-        `(reduce by production ${reduce.production} ${PRODUCTIONS[reduce.production]!.lhs})`,
+        `(reduce by production ${reduce.production} ${reducedProduction.lhs})`,
     );
   }
 

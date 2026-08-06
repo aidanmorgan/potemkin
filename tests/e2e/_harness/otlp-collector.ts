@@ -59,6 +59,8 @@ export interface OtlpCollector {
 }
 
 export interface OtlpCollectorOptions {
+  /** Keep in-memory copies only when a caller needs direct collector access. */
+  readonly retainExports?: boolean;
   readonly onTraceExport?: (traceExport: OtlpTraceExport) => void;
   readonly onMetricExport?: (metricExport: OtlpMetricExport) => void;
 }
@@ -86,6 +88,7 @@ function readBody(request: http.IncomingMessage): Promise<string> {
 export async function startOtlpCollector(
   options: OtlpCollectorOptions = {},
 ): Promise<OtlpCollector> {
+  const retainExports = options.retainExports ?? true;
   const traces: OtlpTraceExport[] = [];
   const metrics: OtlpMetricExport[] = [];
   const server = http.createServer(async (request, response) => {
@@ -98,7 +101,7 @@ export async function startOtlpCollector(
     if (request.url === '/v1/traces') {
       try {
         const traceExport = JSON.parse(body) as OtlpTraceExport;
-        traces.push(traceExport);
+        if (retainExports) traces.push(traceExport);
         options.onTraceExport?.(traceExport);
       } catch {
         response.statusCode = 400;
@@ -109,7 +112,7 @@ export async function startOtlpCollector(
     if (request.url === '/v1/metrics') {
       try {
         const metricExport = JSON.parse(body) as OtlpMetricExport;
-        metrics.push(metricExport);
+        if (retainExports) metrics.push(metricExport);
         options.onMetricExport?.(metricExport);
       } catch {
         response.statusCode = 400;

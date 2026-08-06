@@ -1,6 +1,7 @@
 import type { Actor } from './identity.js';
 import type { Command, DomainEvent, ExecutionResult } from './domain.js';
 import type { JsonObject, JsonValue } from './value.js';
+import type { CommandId, HttpMethod } from '../domain/references.js';
 
 /** Persistence and time ports used by the source-neutral runtime application. */
 export interface RuntimeEventStore {
@@ -73,7 +74,7 @@ export interface RuntimeForwardingPort {
 
 export interface RuntimeCorrelationContext {
   readonly traceId?: string;
-  readonly commandId?: string;
+  readonly commandId?: CommandId;
 }
 
 export interface RuntimeRequestResponseObservation {
@@ -104,7 +105,7 @@ export interface RuntimeCapturedBody {
 }
 
 export interface RuntimeTransportRequest {
-  readonly method: string;
+  readonly method: HttpMethod;
   readonly path: string;
   readonly query: Readonly<Record<string, string | readonly string[]>>;
   readonly headers: Readonly<Record<string, string>>;

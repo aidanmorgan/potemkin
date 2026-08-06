@@ -2,7 +2,7 @@ import { buildFormFieldOperations } from '../../../src/contract/formFields';
 import type { OpenApiDoc } from '../../../src/contract/loader';
 
 function doc(raw: unknown): OpenApiDoc {
-  return { raw, paths: {} } as OpenApiDoc;
+  return { raw, paths: {} };
 }
 
 describe('buildFormFieldOperations', () => {
@@ -65,6 +65,48 @@ describe('buildFormFieldOperations', () => {
       }),
     );
     expect(ops).toHaveLength(0);
+  });
+
+  it('uses the shared HTTP method vocabulary, including TRACE', () => {
+    const ops = buildFormFieldOperations(
+      doc({
+        paths: {
+          '/trace': {
+            trace: {
+              requestBody: {
+                content: {
+                  'application/x-www-form-urlencoded': {
+                    schema: { properties: { enabled: { type: 'boolean' } } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      }),
+    );
+
+    expect(ops).toEqual([
+      {
+        method: 'TRACE',
+        pathPattern: '/trace',
+        fields: { enabled: 'boolean' },
+      },
+    ]);
+  });
+
+  it('ignores malformed path items and operations at the untyped OpenAPI boundary', () => {
+    expect(
+      buildFormFieldOperations(
+        doc({
+          paths: {
+            '/scalar': 'not-a-path-item',
+            '/array': [],
+            '/malformed': { post: null, put: [], patch: { requestBody: [] } },
+          },
+        }),
+      ),
+    ).toEqual([]);
   });
 
   it('returns an empty list when there are no paths', () => {

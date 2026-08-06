@@ -1,0 +1,8 @@
+version: 1
+specmatic: ./specmatic.yaml
+modules:
+  - 'dsl/empty.yaml'
+typescript:
+  scan:
+    - include:
+        - 'typescript/resource/**/*.ts'

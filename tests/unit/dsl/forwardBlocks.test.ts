@@ -114,7 +114,7 @@ describe('mergeForwardBlock (REQ-FWD-001 precedence)', () => {
 
   it('nested objects merge recursively', () => {
     expect(
-      mergeForwardBlock<Record<string, unknown>>(
+      mergeForwardBlock(
         { auth: { mode: 'jwt', issuer: 'a' } },
         { auth: { issuer: 'b', audience: 'x' } },
       ),

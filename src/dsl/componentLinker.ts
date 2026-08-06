@@ -80,7 +80,10 @@ function resolveAlias(
     return concreteAs;
   }
   if (Object.prototype.hasOwnProperty.call(bind, alias)) {
-    return bind[alias]!;
+    const boundAlias = bind[alias];
+    if (boundAlias !== undefined) {
+      return boundAlias;
+    }
   }
   throw new BootError(
     'BOOT_ERR_DSL_REFERENCE',
@@ -380,14 +383,15 @@ function mergeFragment(
   for (const entry of fragmentEventCatalog ?? []) {
     const key = entry.type;
     if (localEventTypes.has(key)) continue; // local wins
-    if (includedEventTypes.has(key)) {
+    const source1 = includedEventTypes.get(key);
+    if (source1 !== undefined) {
       throw new BootError(
         'BOOT_ERR_DSL_SYNTAX',
-        `boundary "${hostBoundaryName}": include: clash — event type "${key}" is contributed by both "${includedEventTypes.get(key)}" and "${sourceComponentName}" with no local override`,
+        `boundary "${hostBoundaryName}": include: clash — event type "${key}" is contributed by both "${source1}" and "${sourceComponentName}" with no local override`,
         {
           boundary: hostBoundaryName,
           key,
-          source1: includedEventTypes.get(key)!,
+          source1,
           source2: sourceComponentName,
         },
       );
@@ -411,14 +415,15 @@ function mergeFragment(
   for (const behavior of fragmentBehaviors ?? []) {
     const key = behavior.name;
     if (localBehaviorNames.has(key)) continue;
-    if (includedBehaviorNames.has(key)) {
+    const source1 = includedBehaviorNames.get(key);
+    if (source1 !== undefined) {
       throw new BootError(
         'BOOT_ERR_DSL_SYNTAX',
-        `boundary "${hostBoundaryName}": include: clash — behavior name "${key}" is contributed by both "${includedBehaviorNames.get(key)}" and "${sourceComponentName}" with no local override`,
+        `boundary "${hostBoundaryName}": include: clash — behavior name "${key}" is contributed by both "${source1}" and "${sourceComponentName}" with no local override`,
         {
           boundary: hostBoundaryName,
           key,
-          source1: includedBehaviorNames.get(key)!,
+          source1,
           source2: sourceComponentName,
         },
       );
@@ -461,8 +466,7 @@ export function mergeIncludes(
   byBoundaryName: Record<string, BoundaryConfig>,
   byContractPath: Record<string, BoundaryConfig>,
 ): void {
-  for (let i = 0; i < boundaries.length; i++) {
-    const host = boundaries[i]!;
+  for (const [index, host] of boundaries.entries()) {
     if (!host.include || host.include.length === 0) continue;
 
     const hostName = host.boundary;
@@ -660,7 +664,7 @@ export function mergeIncludes(
     };
 
     // Update the mutable arrays and indexes in place.
-    boundaries[i] = merged;
+    boundaries[index] = merged;
     byBoundaryName[hostName] = merged;
     byContractPath[host.contractPath] = merged;
   }

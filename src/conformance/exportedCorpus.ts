@@ -4,43 +4,80 @@ import { matchRoute } from '../contract/router.js';
 import type { RuntimeBoundary } from '../model/runtime.js';
 import type { RuntimeSystem } from '../runtime/system.js';
 import type { DomainEvent } from '../contracts/domain.js';
-import type { JsonObject } from '../contracts/value.js';
-
-interface ExportedExample {
-  readonly 'http-request'?: {
-    readonly method?: unknown;
-    readonly path?: unknown;
-  };
-  readonly 'http-response'?: {
-    readonly status?: unknown;
-    readonly body?: unknown;
-  };
-}
+import { isJsonObject, isJsonValue, type JsonObject } from '../contracts/value.js';
+import {
+  AggregateId,
+  BoundaryName,
+  EventId,
+  EventType,
+  HttpMethod,
+  SequenceVersion,
+} from '../domain/references.js';
+import {
+  isExportedCorpusExampleInput,
+  toConformanceFilePath,
+  toConformanceHttpMethod,
+  toConformanceRequestPath,
+  toConformanceStatusCode,
+  type ConformanceFilePath,
+  type ExportedCorpusExample,
+} from './types.js';
 
 interface CorpusSeed {
   readonly boundary: RuntimeBoundary;
-  readonly aggregateId: string;
+  readonly aggregateId: AggregateId;
   readonly state: JsonObject;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
+export function parseExportedCorpusExample(value: unknown): ExportedCorpusExample | undefined {
+  if (!isExportedCorpusExampleInput(value)) return undefined;
+  const request = value['http-request'];
+  const response = value['http-response'];
+  if (response.body !== undefined && !isJsonValue(response.body)) return undefined;
+  try {
+    return {
+      request: {
+        method: toConformanceHttpMethod(request.method),
+        path: toConformanceRequestPath(request.path),
+      },
+      response: {
+        status: toConformanceStatusCode(response.status),
+        ...(response.body === undefined ? {} : { body: response.body }),
+      },
+    };
+  } catch {
+    return undefined;
+  }
 }
 
-function isJsonObject(value: unknown): value is JsonObject {
-  return isRecord(value);
-}
-
-function readExamples(directory: string): readonly [string, ExportedExample][] {
-  return fs
+function readExamples(
+  directory: string,
+): readonly (readonly [ConformanceFilePath, ExportedCorpusExample])[] {
+  const examples: Array<readonly [ConformanceFilePath, ExportedCorpusExample]> = [];
+  for (const file of fs
     .readdirSync(directory)
-    .filter((file) => file.endsWith('.json'))
-    .sort()
-    .map((file) => {
-      const source = path.join(directory, file);
-      const parsed: unknown = JSON.parse(fs.readFileSync(source, 'utf8'));
-      return [source, isRecord(parsed) ? (parsed as ExportedExample) : {}] as const;
-    });
+    .filter((entry) => entry.endsWith('.json'))
+    .sort()) {
+    const source = toConformanceFilePath(path.join(directory, file));
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(fs.readFileSync(source, 'utf8'));
+    } catch (error) {
+      throw new Error(`Invalid exported corpus JSON in ${source}: ${errorMessage(error)}`, {
+        cause: error,
+      });
+    }
+    const example = parseExportedCorpusExample(parsed);
+    if (example === undefined) {
+      throw new Error(`Malformed exported corpus example in ${source}`);
+    }
+    examples.push([source, example]);
+  }
+  return examples;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function collectionBoundaryFor(
@@ -58,30 +95,23 @@ function collectionBoundaryFor(
 
 function seedsFrom(
   system: RuntimeSystem,
-  examples: readonly [string, ExportedExample][],
+  examples: readonly (readonly [ConformanceFilePath, ExportedCorpusExample])[],
 ): readonly CorpusSeed[] {
   const seeds: CorpusSeed[] = [];
   for (const [, candidate] of examples) {
-    const method = candidate['http-request']?.method;
-    const requestPath = candidate['http-request']?.path;
-    const status = candidate['http-response']?.status;
-    if (
-      method !== 'GET' ||
-      typeof requestPath !== 'string' ||
-      status !== 200 ||
-      !isJsonObject(candidate['http-response']?.body)
-    )
-      continue;
+    const { method, path: requestPath } = candidate.request;
+    const { status, body } = candidate.response;
+    if (method !== HttpMethod.Get || status !== 200 || !isJsonObject(body)) continue;
 
     const matched = matchRoute(system.openapi, method, requestPath);
     if (matched === null || Object.keys(matched.pathParams).length === 0) continue;
-    const aggregateId = Object.values(matched.pathParams)[0];
+    const rawAggregateId = Object.values(matched.pathParams)[0];
     const boundary = collectionBoundaryFor(system, matched.contractPath);
-    if (aggregateId === undefined || boundary === undefined) continue;
+    if (rawAggregateId === undefined || boundary === undefined) continue;
     seeds.push({
       boundary,
-      aggregateId,
-      state: candidate['http-response']!.body as JsonObject,
+      aggregateId: AggregateId.parse(rawAggregateId),
+      state: body,
     });
   }
   return seeds;
@@ -103,7 +133,7 @@ export function seedRuntimeFromExportedExamples(
   if (seeds.length === 0) return;
 
   const baseline = system.engine.snapshot();
-  const knownIds = new Set(baseline.state.map(([id]) => id));
+  const knownIds = new Set(baseline.state.map(([id]) => AggregateId.parse(id)));
   const events: DomainEvent[] = [...baseline.events];
   const state = [...baseline.state];
   for (const seed of seeds) {
@@ -111,13 +141,13 @@ export function seedRuntimeFromExportedExamples(
     knownIds.add(seed.aggregateId);
     state.push([seed.aggregateId, seed.state]);
     events.push({
-      eventId: `corpus-${seed.boundary.boundary}-${seed.aggregateId}`,
-      type: 'BaselineEntityCreatedEvent',
-      boundary: seed.boundary.boundary,
-      aggregateId: seed.aggregateId,
+      eventId: EventId.parse(`corpus-${seed.boundary.boundary}-${seed.aggregateId}`),
+      type: EventType.parse('BaselineEntityCreatedEvent'),
+      boundary: BoundaryName.parse(seed.boundary.boundary),
+      aggregateId: AggregateId.parse(seed.aggregateId),
       payload: seed.state,
       timestamp: new Date(system.clock.nowMs()).toISOString(),
-      sequenceVersion: 1,
+      sequenceVersion: SequenceVersion.parse(1),
       causedBy: null,
     });
   }

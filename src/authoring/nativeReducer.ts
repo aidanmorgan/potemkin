@@ -1,5 +1,6 @@
 import type { JsonObject } from '../contracts/value.js';
 import type { EventType } from '../domain/references.js';
+import { TypeScriptAuthoringError } from './errors.js';
 import type { ReducerDefinition, TypedReducerContext } from './types.js';
 
 /** TypeScript state transition context with the application shapes retained. */
@@ -11,16 +12,18 @@ export type NativeReducerContext<
 export type NativeReducer<
   EventPayload extends object = JsonObject,
   State extends object = JsonObject,
-> = ReducerDefinition<EventPayload, State>;
+  EventName extends string = string,
+> = ReducerDefinition<EventPayload, State, EventName>;
 
 export interface NativeReducerBuilder<
   EventPayload extends object = JsonObject,
   State extends object = JsonObject,
+  EventName extends string = string,
 > {
   apply(
     transition: (input: Readonly<NativeReducerContext<EventPayload, State>>) => State,
-  ): NativeReducerBuilder<EventPayload, State>;
-  build(): NativeReducer<EventPayload, State>;
+  ): NativeReducerBuilder<EventPayload, State, EventName>;
+  build(): NativeReducer<EventPayload, State, EventName>;
 }
 
 /**
@@ -43,16 +46,26 @@ export interface NativeReducerBuilder<
 export function reducerRule<
   EventPayload extends object = JsonObject,
   State extends object = JsonObject,
->(on: EventType): NativeReducerBuilder<EventPayload, State> {
+  const EventName extends string = string,
+>(on: EventType<EventName>): NativeReducerBuilder<EventPayload, State, EventName> {
   const build = (
-    value: Partial<NativeReducer<EventPayload, State>> & Pick<NativeReducer, 'on'>,
-  ): NativeReducerBuilder<EventPayload, State> => ({
+    value: Partial<NativeReducer<EventPayload, State, EventName>> &
+      Pick<NativeReducer<EventPayload, State, EventName>, 'on'>,
+  ): NativeReducerBuilder<EventPayload, State, EventName> => ({
     apply: (transition) =>
       build({
         ...value,
         reduce: transition,
       }),
-    build: () => Object.freeze({ ...value }) as NativeReducer<EventPayload, State>,
+    build: () => {
+      if (value.reduce === undefined) {
+        throw new TypeScriptAuthoringError(
+          'TS_BUILDER_INVALID',
+          `Reducer for event "${on}" requires an apply transition`,
+        );
+      }
+      return Object.freeze({ ...value, reduce: value.reduce });
+    },
   });
   return build({ on });
 }

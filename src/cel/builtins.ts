@@ -1,6 +1,7 @@
 import { CelPhase } from './phases.js';
-import { nextUuidv7 } from '../ids/uuidv7.js';
 import { runtimeSeedHash } from '../model/data.js';
+import equal from 'fast-deep-equal';
+import { v4, v7 } from 'uuid';
 
 const MULBERRY32_INCREMENT = 1831565813;
 
@@ -75,7 +76,9 @@ export function createFakeRng(random: () => number = Math.random): FakeRng {
 }
 
 function pick<T>(rng: FakeRng, arr: readonly T[]): T {
-  return arr[Math.floor(rng.next() * arr.length)]!;
+  const value = arr[Math.floor(rng.next() * arr.length)];
+  if (value === undefined) throw new Error('CEL_RUNTIME_ERROR: cannot pick from an empty list');
+  return value;
 }
 function randomDigits(rng: FakeRng, n: number): string {
   let s = '';
@@ -85,7 +88,11 @@ function randomDigits(rng: FakeRng, n: number): string {
 function randomAlphanumeric(rng: FakeRng, n: number): string {
   const alphabet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let s = '';
-  for (let i = 0; i < n; i++) s += alphabet[Math.floor(rng.next() * alphabet.length)]!;
+  for (let i = 0; i < n; i++) {
+    const digit = alphabet[Math.floor(rng.next() * alphabet.length)];
+    if (digit === undefined) throw new Error('CEL_RUNTIME_ERROR: random alphabet is empty');
+    s += digit;
+  }
   return s;
 }
 
@@ -117,8 +124,7 @@ const FAKE_DATA: Record<string, Record<string, (rng: FakeRng) => string>> = {
         'Walker',
         'Wright',
       ]),
-    fullName: (rng) =>
-      `${FAKE_DATA['person']!['firstName']!(rng)} ${FAKE_DATA['person']!['lastName']!(rng)}`,
+    fullName: (rng) => `${FAKE_DATA.person.firstName(rng)} ${FAKE_DATA.person.lastName(rng)}`,
   },
   internet: {
     email: (rng) =>
@@ -142,13 +148,13 @@ const FAKE_DATA: Record<string, Record<string, (rng: FakeRng) => string>> = {
 };
 
 function fakeUuid(rng: FakeRng): string {
-  // UUIDv4 — deterministic when the rng is seeded.
-  const hex = (n: number): string => {
-    let s = '';
-    for (let i = 0; i < n; i++) s += Math.floor(rng.next() * 16).toString(16);
-    return s;
-  };
-  return `${hex(8)}-${hex(4)}-4${hex(3)}-${pick(rng, ['8', '9', 'a', 'b'])}${hex(3)}-${hex(12)}`;
+  // UUIDv4 formatting, version, and variant bits belong to the dependency;
+  // only the random-byte source is supplied so seeded faker output remains stable.
+  const random = new Uint8Array(16);
+  for (let index = 0; index < random.length; index += 1) {
+    random[index] = Math.floor(rng.next() * 256);
+  }
+  return v4({ random });
 }
 
 // ── $fake* implementations ────────────────────────────────────────────────────
@@ -198,7 +204,7 @@ function fakeFromFormat(rng: FakeRng, ...args: unknown[]): unknown {
   }
   switch (fmt) {
     case 'email':
-      return FAKE_DATA['internet']!['email']!(rng);
+      return FAKE_DATA.internet.email(rng);
     case 'uuid':
       return fakeUuid(rng);
     case 'date':
@@ -207,37 +213,14 @@ function fakeFromFormat(rng: FakeRng, ...args: unknown[]): unknown {
       return fakeDate(rng).toISOString();
     case 'uri':
     case 'url':
-      return FAKE_DATA['internet']!['url']!(rng);
+      return FAKE_DATA.internet.url(rng);
     case 'hostname':
-      return FAKE_DATA['internet']!['domainName']!(rng);
+      return FAKE_DATA.internet.domainName(rng);
     case 'ipv4':
       return `${Math.floor(rng.next() * 256)}.${Math.floor(rng.next() * 256)}.${Math.floor(rng.next() * 256)}.${Math.floor(rng.next() * 256)}`;
     default:
       return randomAlphanumeric(rng, 10);
   }
-}
-
-// ---------------------------------------------------------------------------
-// Deep equality helper
-// ---------------------------------------------------------------------------
-
-function deepEqual(a: unknown, b: unknown): boolean {
-  if (a === b) return true;
-  if (a === null || b === null) return false;
-  if (typeof a !== typeof b) return false;
-  if (Array.isArray(a) && Array.isArray(b)) {
-    if (a.length !== b.length) return false;
-    return a.every((v, i) => deepEqual(v, b[i]));
-  }
-  if (typeof a === 'object' && typeof b === 'object') {
-    const aRec = a as Record<string, unknown>;
-    const bRec = b as Record<string, unknown>;
-    const aKeys = Object.keys(aRec);
-    const bKeys = Object.keys(bRec);
-    if (aKeys.length !== bKeys.length) return false;
-    return aKeys.every((k) => deepEqual(aRec[k], bRec[k]));
-  }
-  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -275,7 +258,7 @@ function parseDuration(s: string): number {
   const simpleMatch = /^(\d+(?:\.\d+)?)(s|m|h|d)$/.exec(s);
   if (simpleMatch) {
     const [, num, unit] = simpleMatch;
-    const val = parseFloat(num!);
+    const val = Number(num);
     switch (unit) {
       case 's':
         return val * 1000;
@@ -300,7 +283,7 @@ function parseDuration(s: string): number {
  * are stateless.
  */
 export const BUILTINS: Record<string, (...args: unknown[]) => unknown> = {
-  $uuidv7: (..._args: unknown[]): unknown => nextUuidv7(),
+  $uuidv7: (..._args: unknown[]): unknown => v7(),
 
   // Fallback: real time. callBuiltin routes $now through BuiltinContext.now
   // (offset-aware clock) when a context is provided.
@@ -383,9 +366,9 @@ export const BUILTINS: Record<string, (...args: unknown[]) => unknown> = {
     let flat: unknown[] = args;
     if (args.length === 1 && Array.isArray(args[0])) flat = args[0];
     if (flat.length === 0) throw new Error(`CEL_RUNTIME_ERROR: min() of empty list`);
-    if (!flat.every((a) => typeof a === 'number'))
+    if (!flat.every((a): a is number => typeof a === 'number'))
       throw new Error(`CEL_TYPE_ERROR: min() requires number arguments`);
-    return Math.min(...(flat as number[]));
+    return Math.min(...flat);
   },
 
   max: (...args: unknown[]): unknown => {
@@ -394,9 +377,9 @@ export const BUILTINS: Record<string, (...args: unknown[]) => unknown> = {
     let flat: unknown[] = args;
     if (args.length === 1 && Array.isArray(args[0])) flat = args[0];
     if (flat.length === 0) throw new Error(`CEL_RUNTIME_ERROR: max() of empty list`);
-    if (!flat.every((a) => typeof a === 'number'))
+    if (!flat.every((a): a is number => typeof a === 'number'))
       throw new Error(`CEL_TYPE_ERROR: max() requires number arguments`);
-    return Math.max(...(flat as number[]));
+    return Math.max(...flat);
   },
 
   floor: (...args: unknown[]): unknown => {
@@ -436,8 +419,7 @@ export const BUILTINS: Record<string, (...args: unknown[]) => unknown> = {
     const [x] = args;
     if (typeof x === 'string') return x.length;
     if (Array.isArray(x)) return x.length;
-    if (x !== null && typeof x === 'object')
-      return Object.keys(x as Record<string, unknown>).length;
+    if (x !== null && typeof x === 'object' && !Array.isArray(x)) return Object.keys(x).length;
     throw new Error(`CEL_TYPE_ERROR: size() requires string, list, or map`);
   },
 
@@ -447,8 +429,7 @@ export const BUILTINS: Record<string, (...args: unknown[]) => unknown> = {
     const [x] = args;
     if (typeof x === 'string') return x.length;
     if (Array.isArray(x)) return x.length;
-    if (x !== null && typeof x === 'object')
-      return Object.keys(x as Record<string, unknown>).length;
+    if (x !== null && typeof x === 'object' && !Array.isArray(x)) return Object.keys(x).length;
     throw new Error(`CEL_TYPE_ERROR: length() requires string, list, or map`);
   },
 
@@ -473,14 +454,14 @@ export const BUILTINS: Record<string, (...args: unknown[]) => unknown> = {
     const [x] = args;
     if (x === null || typeof x !== 'object' || Array.isArray(x))
       throw new Error(`CEL_TYPE_ERROR: keys() requires a map`);
-    return Object.keys(x as Record<string, unknown>);
+    return Object.keys(x);
   },
 
   values: (...args: unknown[]): unknown => {
     const [x] = args;
     if (x === null || typeof x !== 'object' || Array.isArray(x))
       throw new Error(`CEL_TYPE_ERROR: values() requires a map`);
-    return Object.values(x as Record<string, unknown>);
+    return Object.values(x);
   },
 
   range: (...args: unknown[]): unknown => {
@@ -576,8 +557,8 @@ const REDUCER_BANNED = new Set([
   '$fakeFromFormat',
 ]);
 
-// Export deepEqual for use in evaluator
-export { deepEqual, naturalCompare };
+// Export the established deep-equality implementation for use in evaluator.
+export { equal as deepEqual, naturalCompare };
 
 /**
  * Invoke a built-in by name, enforcing phase restrictions.
@@ -586,7 +567,8 @@ export { deepEqual, naturalCompare };
 export function callBuiltin(name: string, args: unknown[], ctx: BuiltinContext): unknown {
   const isFake = FAKE_BUILTINS.has(name);
   const custom = ctx.custom?.get(name);
-  if (!isFake && !(name in BUILTINS) && custom === undefined) {
+  const builtin = Object.hasOwn(BUILTINS, name) ? BUILTINS[name] : undefined;
+  if (!isFake && builtin === undefined && custom === undefined) {
     throw new Error(`CEL_UNKNOWN_BUILTIN: unknown function '${name}'`);
   }
 
@@ -601,7 +583,7 @@ export function callBuiltin(name: string, args: unknown[], ctx: BuiltinContext):
   // Dispatch with context-provided overrides for clock/RNG-sensitive builtins.
   switch (name) {
     case '$uuidv7':
-      return ctx.uuid ? ctx.uuid() : nextUuidv7();
+      return ctx.uuid ? ctx.uuid() : v7();
     case '$now':
       return ctx.now ? ctx.now() : new Date().toISOString();
     case '$unix': {
@@ -617,8 +599,10 @@ export function callBuiltin(name: string, args: unknown[], ctx: BuiltinContext):
     case '$fakeFromFormat':
       return fakeFromFormat(random, ...args);
     default:
-      return custom === undefined
-        ? BUILTINS[name]!(...args)
-        : custom(args, ctx.context ?? {}, ctx.phase);
+      if (custom !== undefined) return custom(args, ctx.context ?? {}, ctx.phase);
+      if (builtin === undefined) {
+        throw new Error(`CEL_UNKNOWN_BUILTIN: unknown function '${name}'`);
+      }
+      return builtin(...args);
   }
 }

@@ -18,7 +18,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import * as yaml from 'js-yaml';
+import { parse, stringify } from 'yaml';
 import { translateOverlayPatches } from '../../../src/dsl/forwardBlocks';
 import { resolveFixtureDir } from '../../fixtures/index';
 import type { Patch } from '../../../src/contracts/value';
@@ -76,7 +76,10 @@ export function buildSharedForwardBlocks(fixtureNames: readonly string[]): Share
   if (Object.keys(governance).length > 0) merged['governance'] = governance;
 
   const overlayFilePath = writeOverlayFile('shared', { patches: overlayPatches });
-  const pluginConfigYaml = Object.keys(merged).length === 0 ? '' : yaml.dump(merged);
+  const pluginConfigYaml =
+    Object.keys(merged).length === 0
+      ? ''
+      : stringify(merged, { schema: 'yaml-1.1', singleQuote: true });
   return {
     fixtureNames: [...fixtureNames],
     pluginConfigYaml,
@@ -86,7 +89,7 @@ export function buildSharedForwardBlocks(fixtureNames: readonly string[]): Share
 
 function readYaml(p: string): Record<string, unknown> {
   if (!fs.existsSync(p)) return {};
-  const doc = yaml.load(fs.readFileSync(p, 'utf8'));
+  const doc = parse(fs.readFileSync(p, 'utf8'));
   return doc !== null && typeof doc === 'object' ? (doc as Record<string, unknown>) : {};
 }
 
@@ -113,6 +116,10 @@ function writeOverlayFile(
   const overlayDoc = { overlay: '1.0.0', actions };
 
   const filePath = path.join(os.tmpdir(), `potemkin-overlay-${fixtureName}-${Date.now()}.yaml`);
-  fs.writeFileSync(filePath, yaml.dump(overlayDoc), 'utf8');
+  fs.writeFileSync(
+    filePath,
+    stringify(overlayDoc, { schema: 'yaml-1.1', singleQuote: true }),
+    'utf8',
+  );
   return filePath;
 }

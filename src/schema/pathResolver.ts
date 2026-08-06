@@ -38,7 +38,7 @@ export function resolvePath(schema: ObjectGraphSchema, dotPath: string): ObjectG
       if (!child) {
         // If additionalProperties is a schema, any key is valid but returns that schema
         if (typeof current.additionalProperties === 'object') {
-          current = current.additionalProperties as ObjectGraphSchema;
+          current = current.additionalProperties;
         } else if (current.additionalProperties === true) {
           // Wildcard — return an 'any' schema
           return { name: token, kind: 'any' };

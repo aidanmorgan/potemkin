@@ -7,6 +7,8 @@ import {
   ProposedFeatures,
   TextDocuments,
   type CompletionParams,
+  type CompletionItem,
+  CompletionItemKind,
   type DefinitionParams,
   type HoverParams,
   type InitializeParams,
@@ -14,13 +16,19 @@ import {
   type ReferenceParams,
   type RenameParams,
   type WorkspaceSymbolParams,
-  type CompletionItem,
-  type WorkspaceEdit,
   type SymbolInformation,
+  SymbolKind,
+  type TextEdit,
+  type WorkspaceEdit,
 } from 'vscode-languageserver/node.js';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
 import { PotemkinLanguageService, type AuthoringLanguage } from './service.js';
+import type {
+  SemanticCompletionItem,
+  SemanticSymbolInformation,
+  SemanticWorkspaceEdit,
+} from './contracts.js';
 
 const connection = createConnection(ProposedFeatures.all, process.stdin, process.stdout);
 const documents = new TextDocuments(TextDocument);
@@ -70,7 +78,7 @@ documents.onDidClose((event) => {
 connection.onCompletion(async (params: CompletionParams) => {
   const document = documents.get(params.textDocument.uri);
   if (document === undefined || service === undefined) return [];
-  return [...(await service.completions(document, params.position))] as CompletionItem[];
+  return toCompletionItems(await service.completions(document, params.position));
 });
 
 connection.onDefinition(async (params: DefinitionParams) => {
@@ -88,9 +96,7 @@ connection.onReferences(async (params: ReferenceParams) => {
 connection.onRenameRequest(async (params: RenameParams) => {
   const document = documents.get(params.textDocument.uri);
   if (document === undefined || service === undefined) return undefined;
-  return (await service.rename(document, params.position, params.newName)) as
-    | WorkspaceEdit
-    | undefined;
+  return toWorkspaceEdit(await service.rename(document, params.position, params.newName));
 });
 
 connection.onHover(async (params: HoverParams) => {
@@ -101,7 +107,7 @@ connection.onHover(async (params: HoverParams) => {
 
 connection.onWorkspaceSymbol(async (params: WorkspaceSymbolParams) => {
   if (service === undefined) return [];
-  return [...(await service.workspaceSymbols(params.query))] as SymbolInformation[];
+  return toSymbolInformation(await service.workspaceSymbols(params.query));
 });
 
 connection.onShutdown(async () => {
@@ -138,6 +144,52 @@ function languageFor(uri: string, languageId: string): AuthoringLanguage {
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
+    ? Object.fromEntries(Object.entries(value))
     : {};
+}
+
+function toCompletionItems(items: readonly SemanticCompletionItem[]): CompletionItem[] {
+  return items.map((item) => ({
+    label: item.label,
+    ...(item.kind !== undefined && isCompletionItemKind(item.kind) ? { kind: item.kind } : {}),
+  }));
+}
+
+function isCompletionItemKind(value: number): value is CompletionItemKind {
+  return Object.values(CompletionItemKind).some((candidate) => candidate === value);
+}
+
+function toWorkspaceEdit(edit: SemanticWorkspaceEdit | undefined): WorkspaceEdit | undefined {
+  if (edit === undefined) return undefined;
+  if (edit.changes === undefined) return {};
+  const changes: Record<string, TextEdit[]> = {};
+  for (const [uri, edits] of Object.entries(edit.changes)) {
+    changes[uri] = edits.map((textEdit) => ({
+      range: {
+        start: textEdit.range.start,
+        end: textEdit.range.end,
+      },
+      newText: textEdit.newText,
+    }));
+  }
+  return { changes };
+}
+
+function toSymbolInformation(symbols: readonly SemanticSymbolInformation[]): SymbolInformation[] {
+  return symbols.map((symbol) => ({
+    name: symbol.name,
+    kind: isSymbolKind(symbol.kind) ? symbol.kind : SymbolKind.String,
+    location: {
+      uri: symbol.location.uri,
+      range: {
+        start: symbol.location.range.start,
+        end: symbol.location.range.end,
+      },
+    },
+    ...(symbol.containerName === undefined ? {} : { containerName: symbol.containerName }),
+  }));
+}
+
+function isSymbolKind(value: number): value is SymbolKind {
+  return Object.values(SymbolKind).some((candidate) => candidate === value);
 }

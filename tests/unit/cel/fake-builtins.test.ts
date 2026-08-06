@@ -1,6 +1,7 @@
 import { callBuiltin, createFakeRng, type FakeRng } from '../../../src/cel/builtins';
 import { CelPhase } from '../../../src/cel/phases';
 import { createCelEvaluator } from '../../../src/cel/evaluator';
+import { validate, version } from 'uuid';
 
 // The $fake* builtins are no longer module-level functions in BUILTINS: their
 // seed + RNG state live per-CelEvaluator instance and are threaded in via
@@ -105,7 +106,8 @@ describe('cel/builtins — $fake, $fakeSeed, $fakeFromFormat (per-instance RNG)'
 
     it('generates uuid in uuid format', () => {
       const result = callBuiltin('$fakeFromFormat', ['uuid'], fakeCtx(CelPhase.Behavior)) as string;
-      expect(result).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+      expect(validate(result)).toBe(true);
+      expect(version(result)).toBe(4);
     });
 
     it('generates date-time as ISO string', () => {

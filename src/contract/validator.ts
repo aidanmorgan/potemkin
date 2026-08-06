@@ -1,7 +1,7 @@
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 import type { ValidateFunction } from 'ajv';
-import type { JsonObject, JsonValue } from '../contracts/value.js';
+import { isJsonObject, isJsonValue, type JsonObject, type JsonValue } from '../contracts/value.js';
 import type { OpenApiDoc } from './loader.js';
 import { decycleSchema } from './loader.js';
 import { InternalExecutionError } from '../errors.js';
@@ -11,6 +11,7 @@ import { createNoopLogger, type Logger } from '../observability/logger.js';
 import { createNoopTracer, type Tracer } from '../observability/tracing.js';
 import { createRequestValidator } from './requestValidator.js';
 import type { RequestHeaders } from './requestValidator.js';
+import { parsePointer } from '../model/patches.js';
 
 export interface ContractValidator {
   /**
@@ -106,7 +107,7 @@ export interface ContractValidator {
 function relaxAdditionalProperties(schema: JsonObject): JsonObject {
   const relax = (node: JsonValue): JsonValue => {
     if (Array.isArray(node)) return node.map(relax);
-    if (node === null || typeof node !== 'object') return node;
+    if (!isJsonObject(node)) return node;
     const out: JsonObject = {};
     for (const [key, value] of Object.entries(node)) {
       if ((key === 'additionalProperties' || key === 'unevaluatedProperties') && value === false) {
@@ -117,7 +118,8 @@ function relaxAdditionalProperties(schema: JsonObject): JsonObject {
     }
     return out;
   };
-  return relax(schema) as JsonObject;
+  const relaxed = relax(schema);
+  return isJsonObject(relaxed) ? relaxed : {};
 }
 
 export interface ContractValidatorCacheOptions {
@@ -149,6 +151,16 @@ export interface ContractValidatorObservability {
  */
 const NON_VALIDATING_DOCUMENT_FORMATS = ['currency', 'decimal', 'unix-time'] as const;
 
+function validationErrors(errors: ValidateFunction['errors']): JsonValue {
+  const candidate: unknown = errors ?? [];
+  return isJsonValue(candidate) ? candidate : [];
+}
+
+/** OpenAPI's dereferenced graph may contain cycles; inspect its shape shallowly. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 function registerDocumentFormats(ajv: Ajv): void {
   for (const format of NON_VALIDATING_DOCUMENT_FORMATS) ajv.addFormat(format, true);
 }
@@ -166,18 +178,14 @@ export function createContractValidator(
   registerDocumentFormats(ajv);
 
   // Case-insensitive schema map: boundary names that differ only in casing (e.g. "opportunity" vs "Opportunity") still resolve.
-  const caseInsensitiveSchemaMap = new Map<string, unknown>();
-  const rawDocForInit = doc.raw as Record<string, unknown>;
+  const caseInsensitiveSchemaMap = new Map<string, Record<string, unknown>>();
+  const rawDocForInit = isRecord(doc.raw) ? doc.raw : {};
   const componentsForInit = rawDocForInit['components'];
-  if (
-    componentsForInit &&
-    typeof componentsForInit === 'object' &&
-    !Array.isArray(componentsForInit)
-  ) {
-    const schemasForInit = (componentsForInit as Record<string, unknown>)['schemas'];
-    if (schemasForInit && typeof schemasForInit === 'object' && !Array.isArray(schemasForInit)) {
-      for (const [key, val] of Object.entries(schemasForInit as Record<string, unknown>)) {
-        caseInsensitiveSchemaMap.set(key.toLowerCase(), val);
+  if (isRecord(componentsForInit)) {
+    const schemasForInit = componentsForInit['schemas'];
+    if (isRecord(schemasForInit)) {
+      for (const [key, val] of Object.entries(schemasForInit)) {
+        if (isRecord(val)) caseInsensitiveSchemaMap.set(key.toLowerCase(), val);
       }
     }
   }
@@ -189,7 +197,7 @@ export function createContractValidator(
   const validatorCache = new WeakMap<object, ValidateFunction>();
   const validatorCacheByKey = new Map<string, ValidateFunction>();
 
-  function getValidator(schema: JsonObject): ValidateFunction {
+  function getValidator(schema: Record<string, unknown>): ValidateFunction {
     const cached = validatorCache.get(schema);
     if (cached) return cached;
 
@@ -198,7 +206,8 @@ export function createContractValidator(
     // would overflow JSON.stringify and Ajv. For small acyclic specs this is
     // behaviour-preserving — it only rewrites `nullable` nodes into the
     // equivalent type-union form, leaving validation outcomes unchanged.
-    const acyclic = decycleSchema(schema) as JsonObject;
+    const acyclicValue = decycleSchema(schema);
+    const acyclic = isJsonObject(acyclicValue) ? acyclicValue : {};
 
     const key = JSON.stringify(acyclic);
     const keyCached = validatorCacheByKey.get(key);
@@ -243,7 +252,9 @@ export function createContractValidator(
     if (mode === 'batch' && schema.type !== 'array') return;
     const itemSchema =
       mode === 'batch-item' && schema.type === 'array'
-        ? (schema.items as JsonObject | undefined)
+        ? isJsonObject(schema.items)
+          ? schema.items
+          : undefined
         : schema;
     if (itemSchema === undefined) return;
 
@@ -259,7 +270,7 @@ export function createContractValidator(
         'Response body validation failed',
       );
       throw new InternalExecutionError('Response failed contract validation', {
-        errors: validate.errors as JsonValue,
+        errors: validationErrors(validate.errors),
       });
     }
   }
@@ -297,33 +308,31 @@ export function createContractValidator(
   function validateEntity(boundary: string, entity: JsonObject): void {
     tracer.startActiveSpan('contract.validateEntity', (span) => {
       try {
-        const rawDoc = doc.raw as Record<string, unknown>;
+        const rawDoc = isRecord(doc.raw) ? doc.raw : {};
         const components = rawDoc['components'];
-        if (!components || typeof components !== 'object' || Array.isArray(components)) {
+        if (!isRecord(components)) {
           throw new InternalExecutionError('Entity violates contract', {
             boundary,
             errors: 'No components section in OpenAPI document',
           });
         }
-        const schemas = (components as Record<string, unknown>)['schemas'];
-        if (!schemas || typeof schemas !== 'object' || Array.isArray(schemas)) {
+        const schemas = components['schemas'];
+        if (!isRecord(schemas)) {
           throw new InternalExecutionError('Entity violates contract', {
             boundary,
             errors: 'No components.schemas section in OpenAPI document',
           });
         }
         // Exact-case lookup first; fall back to case-insensitive map.
-        const schema =
-          (schemas as Record<string, unknown>)[boundary] ??
-          caseInsensitiveSchemaMap.get(boundary.toLowerCase());
-        if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
+        const schema = schemas[boundary] ?? caseInsensitiveSchemaMap.get(boundary.toLowerCase());
+        if (!isRecord(schema)) {
           throw new InternalExecutionError('Entity violates contract', {
             boundary,
             errors: `No schema found for boundary '${boundary}'`,
           });
         }
 
-        const validate = getValidator(schema as JsonObject);
+        const validate = getValidator(schema);
         // `_deleted` and `_deletedAt` are runtime graph metadata. They are
         // intentionally not part of an API resource schema, so validate the
         // public entity shape without those internal markers while retaining
@@ -335,7 +344,7 @@ export function createContractValidator(
           logger.debug({ boundary, errors: validate.errors }, 'Entity validation failed');
           throw new InternalExecutionError('Entity violates contract', {
             boundary,
-            errors: validate.errors as JsonValue,
+            errors: validationErrors(validate.errors),
           });
         }
       } finally {
@@ -345,36 +354,32 @@ export function createContractValidator(
   }
 
   function validateSchema(schemaRef: string, payload: JsonObject): void {
-    const raw = doc.raw as Record<string, unknown>;
-    const segments = schemaRef
-      .replace(/^#\//, '')
-      .split('/')
-      .map((segment) => segment.replace(/~1/g, '/').replace(/~0/g, '~'));
+    const raw = isRecord(doc.raw) ? doc.raw : {};
+    // Component references are normally JSON References (`#/...`). Keep
+    // accepting the historical bare path form while delegating RFC 6901
+    // parsing and unescaping to the shared pointer utility.
+    const pointer = schemaRef.startsWith('#/') ? schemaRef.slice(1) : `/${schemaRef}`;
+    const segments = parsePointer(pointer);
     let current: unknown = raw;
     for (const segment of segments) {
-      if (current === null || typeof current !== 'object' || Array.isArray(current)) {
+      if (!isRecord(current)) {
         current = undefined;
         break;
       }
-      current = (current as Record<string, unknown>)[segment];
+      current = current[segment];
     }
-    if (
-      current === undefined ||
-      current === null ||
-      typeof current !== 'object' ||
-      Array.isArray(current)
-    ) {
+    if (current === undefined || current === null || !isRecord(current)) {
       throw new InternalExecutionError('Event payload schema reference was not found', {
         schemaRef,
         code: 'SCHEMA_TYPE_MISMATCH',
       });
     }
-    const validate = getValidator(current as JsonObject);
+    const validate = getValidator(current);
     if (!validate(payload)) {
       throw new InternalExecutionError('Event payload failed schema validation', {
         schemaRef,
         code: 'SCHEMA_TYPE_MISMATCH',
-        errors: validate.errors as JsonValue,
+        errors: validationErrors(validate.errors),
       });
     }
   }

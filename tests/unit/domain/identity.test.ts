@@ -1,4 +1,5 @@
 import { resolveAggregateId } from '../../../src/domain/identity.js';
+import { aggregateId } from '../../../src/domain/references.js';
 
 const base = {
   targetId: null,
@@ -21,14 +22,18 @@ describe('identity domain capability', () => {
 
   it('prioritizes an explicit id, then generation, then fallback', () => {
     expect(
-      resolveAggregateId({ ...base, targetId: 'explicit-7', generated: () => 'generated' }),
+      resolveAggregateId({
+        ...base,
+        targetId: aggregateId('explicit-7'),
+        generated: () => 'generated',
+      }),
     ).toBe('explicit-7');
     expect(resolveAggregateId({ ...base, generated: () => 'generated-7' })).toBe('generated-7');
     expect(resolveAggregateId({ ...base })).toBe('generated-7');
   });
 
   it('rejects empty identities instead of admitting them into runtime state', () => {
-    expect(() => resolveAggregateId({ ...base, targetId: ' ' })).toThrow(/aggregate-id/);
+    expect(() => aggregateId(' ')).toThrow(/aggregate-id/);
     expect(() => resolveAggregateId({ ...base, generated: () => '' })).toThrow(/aggregate-id/);
     expect(() => resolveAggregateId({ ...base, fallback: () => '' })).toThrow(/aggregate-id/);
   });

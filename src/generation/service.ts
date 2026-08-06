@@ -99,6 +99,7 @@ export async function watchConfiguredOpenApiBindings(
   let signatures = await signaturesFor(watchedFiles);
   let running = false;
   let closed = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const outputDirectory = path.resolve(
     options.outputDirectory ?? path.join(projectRoot, 'gen-src'),
   );
@@ -137,17 +138,27 @@ export async function watchConfiguredOpenApiBindings(
     }
   };
 
-  await refresh();
-  const timer = setInterval(() => {
-    void detectChanges();
-  }, intervalMs);
-
   const detectChanges = async (): Promise<void> => {
     if (closed || running) return;
-    const next = await signaturesFor(watchedFiles);
-    if (sameSignatures(signatures, next)) return;
-    await refresh();
+    try {
+      const next = await signaturesFor(watchedFiles);
+      if (sameSignatures(signatures, next)) return;
+      await refresh();
+    } finally {
+      scheduleNextDetection();
+    }
   };
+
+  const scheduleNextDetection = (): void => {
+    if (closed) return;
+    timer = setTimeout(() => {
+      timer = undefined;
+      void detectChanges();
+    }, intervalMs);
+  };
+
+  await refresh();
+  scheduleNextDetection();
 
   return {
     get outputFile() {
@@ -161,7 +172,8 @@ export async function watchConfiguredOpenApiBindings(
     },
     close() {
       closed = true;
-      clearInterval(timer);
+      if (timer !== undefined) clearTimeout(timer);
+      timer = undefined;
     },
   };
 }

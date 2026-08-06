@@ -21,6 +21,7 @@ describe('runtime control header parsing', () => {
       '20:30:40',
       '20:',
       ':20',
+      ':',
       '30:40000',
       'nope',
     ]) {

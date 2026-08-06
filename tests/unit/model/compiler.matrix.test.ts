@@ -46,6 +46,24 @@ describe('runtime model compiler validation', () => {
     expect(Object.isFrozen(model.boundaries[0])).toBe(true);
   });
 
+  it('preserves schema references as compiled metadata values', () => {
+    const model = compile({
+      boundaries: [
+        boundary('Orders', {
+          schema: '#/components/schemas/Order',
+          eventCatalog: [
+            { type: 'Created', payload: {}, schemaRef: '#/components/schemas/OrderCreated' },
+          ],
+        }),
+      ],
+    });
+
+    expect(model.boundaries[0]?.schema).toBe('#/components/schemas/Order');
+    expect(model.boundaries[0]?.eventCatalog[0]?.schemaRef).toBe(
+      '#/components/schemas/OrderCreated',
+    );
+  });
+
   it('rejects duplicate boundary names and contract paths', () => {
     expect(() => compile({ boundaries: [boundary('Orders'), boundary('Orders')] })).toThrow(
       expect.objectContaining({ code: 'RUNTIME_BOUNDARY_CONFLICT' }),

@@ -7,8 +7,9 @@
  *   - Reload isolation (a reloaded system starts from the new baseline)
  *   - Boot performance (completes within acceptable time)
  *
- * The E2E harness owns one JVM and one Node runtime for the Jest process. Each
- * describe block requests a fresh configuration reload through /_admin/force-reload.
+ * The E2E harness leases one JVM and one Node runtime per active describe block.
+ * Each block requests a fresh configuration reload through /_admin/force-reload,
+ * and releasing its final app handle tears down the external processes.
  *
  * DSL files under test:
  *   All CRM DSL boundary YAML files + global.yaml

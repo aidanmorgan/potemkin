@@ -1,38 +1,127 @@
 import * as fs from 'node:fs/promises';
-import * as path from 'node:path';
-import type { ConformanceFailure, ConformanceReport, ConformanceTestCase } from './types.js';
+import { glob } from 'tinyglobby';
+import { XMLParser } from 'fast-xml-parser';
+import { isRecord } from '../contracts/value.js';
+import {
+  toConformanceFilePath,
+  toConformanceHttpMethod,
+  toConformanceReportId,
+  toConformanceRequestPath,
+  toConformanceStatusToken,
+  type ConformanceFilePath,
+  type ConformanceHttpMethod,
+  type ConformanceReportId,
+  type ConformanceRequestPath,
+  type ConformanceStatusToken,
+  type ConformanceFailure,
+  type ConformanceReport,
+  type ConformanceTestCase,
+} from './types.js';
 
-function decodeXml(value: string): string {
-  return value
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&')
-    .replace(/&#(x[\da-f]+|\d+);/gi, (_match, code: string) => {
-      const number = code.toLowerCase().startsWith('x')
-        ? Number.parseInt(code.slice(1), 16)
-        : Number.parseInt(code, 10);
-      return Number.isFinite(number) ? String.fromCodePoint(number) : _match;
-    });
+const XML_TEXT_KEY = '#text';
+const XML_CDATA_KEY = '#' + 'cdata';
+const XML_ATTRIBUTES_KEY = ':@';
+
+interface XmlText {
+  readonly kind: 'text';
+  readonly value: string;
 }
 
-function attributes(source: string): Record<string, string> {
-  const result: Record<string, string> = {};
-  const pattern = /([A-Za-z_:][\w:.-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
-  for (const match of source.matchAll(pattern)) {
-    result[match[1]] = decodeXml(match[2] ?? match[3] ?? '');
+interface XmlElement {
+  readonly kind: 'element';
+  readonly name: string;
+  readonly attributes: Readonly<Record<string, string>>;
+  readonly children: readonly XmlContent[];
+}
+
+type XmlContent = XmlElement | XmlText;
+
+const xmlParser = new XMLParser({
+  attributeNamePrefix: '@_',
+  cdataPropName: XML_CDATA_KEY,
+  ignoreAttributes: false,
+  parseAttributeValue: false,
+  parseTagValue: false,
+  preserveOrder: true,
+  removeNSPrefix: true,
+  trimValues: false,
+});
+
+function asXmlValues(value: unknown): readonly unknown[] {
+  return Array.isArray(value) ? value : [value];
+}
+
+function attributes(record: Record<string, unknown>): Readonly<Record<string, string>> {
+  const raw = record[XML_ATTRIBUTES_KEY];
+  if (!isRecord(raw)) return {};
+  const values: Array<readonly [string, string]> = [];
+  for (const [name, value] of Object.entries(raw)) {
+    if (name.startsWith('@_') && typeof value === 'string') values.push([name.slice(2), value]);
   }
-  return result;
+  return Object.fromEntries(values);
 }
 
-function textContent(source: string): string {
-  return decodeXml(
-    source
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim(),
+function cdataContent(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return value.map(cdataContent).join('');
+  if (!isRecord(value)) return '';
+  return Object.entries(value)
+    .filter(([name]) => name === XML_TEXT_KEY || name === XML_CDATA_KEY)
+    .map(([, child]) => cdataContent(child))
+    .join('');
+}
+
+function orderedContents(value: unknown): readonly XmlContent[] {
+  return asXmlValues(value).flatMap((item): readonly XmlContent[] => {
+    if (typeof item === 'string') return [{ kind: 'text', value: item }];
+    if (!isRecord(item)) return [];
+    const text = item[XML_TEXT_KEY];
+    const cdata = item[XML_CDATA_KEY];
+    const element = Object.entries(item).find(
+      ([name]) =>
+        name !== XML_ATTRIBUTES_KEY &&
+        name !== XML_TEXT_KEY &&
+        name !== XML_CDATA_KEY &&
+        !name.startsWith('?'),
+    );
+    if (!element) {
+      const content: XmlText[] = [];
+      if (typeof text === 'string') content.push({ kind: 'text', value: text });
+      if (cdata !== undefined) content.push({ kind: 'text', value: cdataContent(cdata) });
+      return content;
+    }
+    const [name, children] = element;
+    return [
+      {
+        kind: 'element',
+        name,
+        attributes: attributes(item),
+        children: orderedContents(children),
+      },
+    ];
+  });
+}
+
+function parseXmlDocument(value: unknown): readonly XmlElement[] {
+  return orderedContents(value).filter((item): item is XmlElement => item.kind === 'element');
+}
+
+function childElements(node: XmlElement): readonly XmlElement[] {
+  return node.children.filter((child): child is XmlElement => child.kind === 'element');
+}
+
+function collectElements(nodes: readonly XmlElement[], name: string, result: XmlElement[]): void {
+  for (const node of nodes) {
+    if (node.name === name) result.push(node);
+    collectElements(childElements(node), name, result);
+  }
+}
+
+function textContent(node: XmlElement): string {
+  const chunks = node.children.map((child) =>
+    child.kind === 'text' ? child.value : ` ${textContent(child)} `,
   );
+  return chunks.join('').replace(/\s+/g, ' ').trim();
 }
 
 function field(details: string, names: readonly string[], fallback: string): string {
@@ -45,34 +134,44 @@ function field(details: string, names: readonly string[], fallback: string): str
   return fallback;
 }
 
-function diagnosticStatus(details: string, kind: 'expected' | 'actual'): string | undefined {
+function diagnosticStatus(
+  details: string,
+  kind: 'expected' | 'actual',
+): ConformanceStatusToken | undefined {
   const pattern =
     kind === 'expected'
       ? /specification\s+expected\s+status\s+([\w-]+)/i
       : /response\s+contained\s+status\s+([\w-]+)/i;
-  return details.match(pattern)?.[1];
+  const value = details.match(pattern)?.[1];
+  return value === undefined ? undefined : toConformanceStatusToken(value);
 }
 
-function diagnosticApi(details: string): { method: string; path: string } | undefined {
+function diagnosticApi(
+  details: string,
+): { readonly method: ConformanceHttpMethod; readonly path: ConformanceRequestPath } | undefined {
   const match = details.match(/(?:^|\s)API:\s*([A-Z]+)\s+(\S+)\s+->/im);
   if (!match) return undefined;
   return {
-    method: match[1].toUpperCase(),
+    method: toConformanceHttpMethod(match[1]),
     // Specmatic writes path parameters as `(id:uuid)` in JUnit diagnostics;
     // normalize that notation to the OpenAPI template used by allowlists.
-    path: match[2].replace(/\(([^/:()]+):[^()]+\)/g, '{$1}'),
+    path: toConformanceRequestPath(match[2].replace(/\(([^/:()]+):[^()]+\)/g, '{$1}')),
   };
 }
 
-function testcaseApi(
-  testName: string,
-): { method: string; path: string; status: string } | undefined {
+function testcaseApi(testName: string):
+  | {
+      readonly method: ConformanceHttpMethod;
+      readonly path: ConformanceRequestPath;
+      readonly status: ConformanceStatusToken;
+    }
+  | undefined {
   const match = testName.match(/Scenario:\s*([A-Z]+)\s+(\S+)\s*(?:->|→)\s*([\w-]+)/i);
   if (!match) return undefined;
   return {
-    method: match[1].toUpperCase(),
-    path: match[2].replace(/\(([^/:()]+):[^()]+\)/g, '{$1}'),
-    status: match[3],
+    method: toConformanceHttpMethod(match[1]),
+    path: toConformanceRequestPath(match[2].replace(/\(([^/:()]+):[^()]+\)/g, '{$1}')),
+    status: toConformanceStatusToken(match[3]),
   };
 }
 
@@ -84,31 +183,34 @@ function diagnosticScenario(details: string): string | undefined {
   return details.match(/Testing\s+scenario\s+["']([^"']+)["']/i)?.[1];
 }
 
-interface ParsedTestCase extends ConformanceTestCase {
+type ParsedTestCase = Omit<
+  ConformanceTestCase,
+  'testName' | 'method' | 'path' | 'expectedStatus' | 'actualStatus'
+> & {
+  readonly testName: ConformanceReportId;
+  readonly method: ConformanceHttpMethod;
+  readonly path: ConformanceRequestPath;
+  readonly expectedStatus: ConformanceStatusToken;
+  readonly actualStatus: ConformanceStatusToken;
   readonly failureKind?: 'failure' | 'error';
-}
+};
 
-function parseTestCase(source: string): ParsedTestCase | undefined {
-  const testMatch = source.match(
-    /^\s*<testcase\b([^>]*)(?:>([\s\S]*?)<\/testcase\s*>|\s*\/>)\s*$/i,
+function parseTestCase(node: XmlElement): ParsedTestCase {
+  const attrs = node.attributes;
+  const failureNode = childElements(node).find(
+    (child) => child.name === 'failure' || child.name === 'error',
   );
-  if (!testMatch) return undefined;
-
-  const attrs = attributes(testMatch[1]);
-  const body = testMatch[2] ?? '';
-  const failureMatch =
-    body.match(/<(failure|error)\b([^>]*)>([\s\S]*?)<\/\1\s*>/i) ??
-    body.match(/<(failure|error)\b([^>]*)\s*\/\s*>/i);
-  const skipped = /<skipped\b(?:[^>]*)\/?>(?:[\s\S]*?<\/skipped\s*>)?/i.test(body);
-  const failureAttrs = failureMatch ? attributes(failureMatch[2]) : {};
-  const details = failureMatch ? textContent(failureMatch[3] ?? '') : '';
+  const skipped = childElements(node).some((child) => child.name === 'skipped');
+  const failureName = failureNode?.name;
+  const failureAttrs = failureNode?.attributes ?? {};
+  const details = failureNode ? textContent(failureNode) : '';
   // Specmatic places the human-readable API/status diagnostic in the
   // failure's `message` attribute, while the element body is often only a
   // stack trace. Parse both so JUnit identities do not degrade to UNKNOWN.
-  const testName = attrs.name ?? 'unnamed Specmatic test';
+  const testName = toConformanceReportId(attrs.name ?? 'unnamed Specmatic test');
   const testcaseIdentity = testcaseApi(testName);
   const diagnosticText = [failureAttrs.message, details].filter(Boolean).join('\n');
-  const message = failureMatch
+  const message = failureNode
     ? failureAttrs.message || failureAttrs.type || details || 'Specmatic test failed'
     : '';
   const api = diagnosticApi(diagnosticText);
@@ -117,26 +219,32 @@ function parseTestCase(source: string): ParsedTestCase | undefined {
     diagnosticScenario(diagnosticText) ||
     testcaseScenario(testName) ||
     testName;
-  const method = (
+  const method = toConformanceHttpMethod(
     field(diagnosticText, ['method', 'http-method'], '') ||
-    api?.method ||
-    testcaseIdentity?.method ||
-    'UNKNOWN'
-  ).toUpperCase();
-  const requestPath =
+      api?.method ||
+      testcaseIdentity?.method ||
+      'UNKNOWN',
+  );
+  const requestPath = toConformanceRequestPath(
     field(diagnosticText, ['path', 'request-path', 'url'], '') ||
-    api?.path ||
-    testcaseIdentity?.path ||
-    'UNKNOWN';
+      api?.path ||
+      testcaseIdentity?.path ||
+      'UNKNOWN',
+  );
   const expectedFromDiagnostics =
     diagnosticStatus(diagnosticText, 'expected') ??
     field(diagnosticText, ['expected', 'expected-status', 'expected-status-code'], '');
   const actualFromDiagnostics =
     diagnosticStatus(diagnosticText, 'actual') ??
     field(diagnosticText, ['actual', 'actual-status', 'actual-status-code'], '');
-  const expectedStatus = expectedFromDiagnostics || testcaseIdentity?.status || 'UNKNOWN';
-  const actualStatus = actualFromDiagnostics || testcaseIdentity?.status || 'UNKNOWN';
+  const expectedStatus = toConformanceStatusToken(
+    expectedFromDiagnostics || testcaseIdentity?.status || 'UNKNOWN',
+  );
+  const actualStatus = toConformanceStatusToken(
+    actualFromDiagnostics || testcaseIdentity?.status || 'UNKNOWN',
+  );
   const ruleId = field(details, ['rule-id', 'rule'], '') || undefined;
+  const kind = failureName === 'failure' || failureName === 'error' ? failureName : undefined;
 
   return {
     testName,
@@ -148,32 +256,29 @@ function parseTestCase(source: string): ParsedTestCase | undefined {
     scenario,
     expectedStatus,
     actualStatus,
-    passed: failureMatch === null && !skipped,
+    passed: failureNode === undefined && !skipped,
     skipped,
     ...(ruleId ? { ruleId } : {}),
-    ...(failureMatch ? { failureKind: failureMatch[1].toLowerCase() as 'failure' | 'error' } : {}),
+    ...(kind === undefined ? {} : { failureKind: kind }),
   };
 }
 
 export function parseJunitXml(xml: string, sourceFile = '<memory>'): ConformanceReport {
-  const rootMatch = xml.match(/<testsuites\b([^>]*)>/i);
-  const suiteAttrs = [...xml.matchAll(/<testsuite\b([^>]*)>/gi)].map((match) =>
-    attributes(match[1]),
-  );
-  const totalsAttrs = rootMatch ? attributes(rootMatch[1]) : (suiteAttrs[0] ?? {});
-  // Match self-closing cases before paired cases. If the paired alternative
-  // is tried first, a self-closing testcase can consume the next testcase's
-  // failure element and corrupt its name/scenario fields.
-  const testCases = [
-    ...xml.matchAll(/<testcase\b[^>]*\/\s*>|<testcase\b[^>]*>[\s\S]*?<\/testcase\s*>/gi),
-  ]
-    .map((match) => parseTestCase(match[0]))
-    .filter((value): value is ParsedTestCase => value !== undefined);
+  const parsed = parseXmlDocument(xmlParser.parse(xml));
+  const root = parsed[0];
+  const suiteNodes: XmlElement[] = [];
+  collectElements(parsed, 'testsuite', suiteNodes);
+  const suiteAttrs = suiteNodes.map((suite) => suite.attributes);
+  const rootAttrs = root?.name === 'testsuites' ? root.attributes : {};
+  const totalsAttrs = Object.keys(rootAttrs).length > 0 ? rootAttrs : (suiteAttrs[0] ?? {});
+  const testcaseNodes: XmlElement[] = [];
+  collectElements(parsed, 'testcase', testcaseNodes);
+  const testCases = testcaseNodes.map(parseTestCase);
   const cases = testCases
     .filter((value) => value.failureKind !== undefined)
     .map((value) => parseCaseFromParsed(value));
 
-  const count = (name: string, fallback: number): number => {
+  const count = (name: 'tests' | 'failures' | 'errors' | 'skipped', fallback: number): number => {
     const rootValue = Number(totalsAttrs[name]);
     if (Number.isFinite(rootValue)) return rootValue;
     const suiteValues = suiteAttrs
@@ -208,26 +313,31 @@ function parseCaseFromParsed(testCase: ParsedTestCase): ConformanceFailure {
   };
 }
 
-export async function findJunitFiles(reportDir: string): Promise<string[]> {
-  const files: string[] = [];
-  async function visit(directory: string): Promise<void> {
-    let entries;
-    try {
-      entries = await fs.readdir(directory, { withFileTypes: true });
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
-      throw new Error(
-        `Specmatic did not produce a JUnit report directory at ${directory}: ${reason}`,
-      );
-    }
-    for (const entry of entries) {
-      const fullPath = path.join(directory, entry.name);
-      if (entry.isDirectory()) await visit(fullPath);
-      else if (entry.isFile() && /\.xml$/i.test(entry.name)) files.push(fullPath);
-    }
+export async function findJunitFiles(reportDir: string): Promise<ConformanceFilePath[]> {
+  try {
+    const stat = await fs.stat(reportDir);
+    if (!stat.isDirectory()) throw new Error('path is not a directory');
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Specmatic did not produce a JUnit report directory at ${reportDir}: ${reason}`,
+    );
   }
-  await visit(reportDir);
-  return files.sort();
+  try {
+    const files = await glob('**/*.xml', {
+      absolute: true,
+      caseSensitiveMatch: false,
+      cwd: reportDir,
+      dot: true,
+      onlyFiles: true,
+    });
+    return files.sort().map(toConformanceFilePath);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Specmatic did not produce a JUnit report directory at ${reportDir}: ${reason}`,
+    );
+  }
 }
 
 export async function parseJunitDirectory(reportDir: string): Promise<ConformanceReport> {

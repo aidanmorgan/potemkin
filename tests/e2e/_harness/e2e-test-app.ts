@@ -14,7 +14,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as http from 'node:http';
 import type { ChildProcess } from 'node:child_process';
-import * as yaml from 'js-yaml';
+import { parse, stringify } from 'yaml';
 import { ensureSpecmaticJar, ensurePluginJar } from '../../../src/conformance/binaries.js';
 import { startSpecmatic } from '../../../src/conformance/specmaticProcess.js';
 import { startEngine } from './engine-driver';
@@ -30,6 +30,7 @@ import { createRuntimeOtelMetricObserver } from '../../../src/observability/metr
 import { initTracing } from '../../../src/observability/tracing';
 import type { OtlpCollector, OtlpMetricExport, OtlpTraceExport } from './otlp-collector';
 import { startOtlpCollector } from './otlp-collector';
+import { OtlpFileWriter } from '../../../src/observability/otelFileWriter';
 
 export interface RuntimeLogObservation {
   readonly level: 'debug' | 'info' | 'warn' | 'error';
@@ -68,6 +69,7 @@ const E2E_FIXTURES = [
   'session-parity',
   'query-policy',
   'validation-controls',
+  'stripe',
 ] as const;
 
 /**
@@ -82,7 +84,9 @@ function resolveContractPath(fixtureName: string | undefined): string {
   const openapiDir = path.join(fixtureDir, 'openapi');
   if (!fs.existsSync(openapiDir))
     return path.join(resolveFixtureDir('crm'), 'openapi', 'nuisance-bureau.yaml');
-  const files = fs.readdirSync(openapiDir).filter((f) => f.endsWith('.yaml') || f.endsWith('.yml'));
+  const files = fs
+    .readdirSync(openapiDir)
+    .filter((f) => f.endsWith('.yaml') || f.endsWith('.yml') || f.endsWith('.json'));
   const fullContract = files.find((file) => file === 'specmatic-contract.yaml');
   if (fullContract !== undefined) return path.join(openapiDir, fullContract);
   if (!fixtureName) return path.join(resolveFixtureDir('crm'), 'openapi', 'nuisance-bureau.yaml');
@@ -99,7 +103,7 @@ function resolveAllContractPaths(): string[] {
     if (!fs.existsSync(openapiDir)) continue;
     const files = fs
       .readdirSync(openapiDir)
-      .filter((file) => file.endsWith('.yaml') || file.endsWith('.yml'));
+      .filter((file) => file.endsWith('.yaml') || file.endsWith('.yml') || file.endsWith('.json'));
     const selected = files.includes('specmatic-contract.yaml')
       ? ['specmatic-contract.yaml']
       : files.filter((file) => !file.startsWith('part-'));
@@ -408,10 +412,13 @@ interface SharedE2eSession {
   readonly metricObservations: RuntimeMetricObservation[];
   readonly otelTraceExports: OtlpTraceExport[];
   readonly otelMetricExports: OtlpMetricExport[];
+  readonly otelTraceWriter?: OtlpFileWriter<OtlpTraceExport>;
+  readonly otelMetricWriter?: OtlpFileWriter<OtlpMetricExport>;
   readonly otlpCollector?: OtlpCollector;
   readonly tracingShutdown?: () => Promise<void>;
   readonly owner: boolean;
   reload(input: E2eReloadInput): Promise<boolean>;
+  resetOtelObservations(): Promise<void>;
   shutdown(): Promise<void>;
 }
 
@@ -424,6 +431,7 @@ interface E2eReloadInput {
 
 interface E2eProcessState {
   sharedSession?: Promise<SharedE2eSession>;
+  leaseCount: number;
 }
 
 interface E2eRegistry {
@@ -448,7 +456,7 @@ const E2E_REGISTRY_PATH = path.join(
 
 function e2eProcessState(): E2eProcessState {
   const processWithState = process as typeof process & { __potemkinE2eState?: E2eProcessState };
-  processWithState.__potemkinE2eState ??= {};
+  processWithState.__potemkinE2eState ??= { leaseCount: 0 };
   return processWithState.__potemkinE2eState;
 }
 
@@ -474,7 +482,7 @@ function normalizedConfiguration(
   sharedForwardConfig: Record<string, unknown>,
 ): string {
   const sourceDir = path.dirname(path.resolve(sourcePath));
-  const root = asRecord(yaml.load(fs.readFileSync(sourcePath, 'utf8')));
+  const root = asRecord(parse(fs.readFileSync(sourcePath, 'utf8')));
   root['specmatic'] = path.resolve(sourceDir, String(root['specmatic'] ?? 'specmatic.yaml'));
   root['modules'] = absolutePatterns(root['modules'], sourceDir);
   root['openapi'] = absolutePatterns(root['openapi'] ?? [fallbackContractPath], sourceDir);
@@ -503,11 +511,11 @@ function normalizedConfiguration(
     controlPort: pluginControlPort,
   };
   Object.assign(root, sharedForwardConfig);
-  return yaml.dump(root);
+  return stringify(root, { schema: 'yaml-1.1', singleQuote: true });
 }
 
 function sharedForwardConfig(pluginConfigYaml: string): Record<string, unknown> {
-  return asRecord(yaml.load(pluginConfigYaml));
+  return asRecord(parse(pluginConfigYaml));
 }
 
 async function ensureEngineRunning(
@@ -556,8 +564,22 @@ function readTransportObservations(filePath: string): RuntimeTransportObservatio
 
 function readSharedArray<T>(filePath: string): T[] {
   try {
-    const value: unknown = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-    return Array.isArray(value) ? (value as T[]) : [];
+    const contents = fs.readFileSync(filePath, 'utf8').trim();
+    if (contents === '') return [];
+    try {
+      const value: unknown = JSON.parse(contents);
+      if (Array.isArray(value)) return value as T[];
+    } catch {
+      // OTEL streams are newline-delimited so the worker can append batches.
+    }
+    return contents.split('\n').flatMap((line) => {
+      try {
+        return [JSON.parse(line) as T];
+      } catch {
+        // A reader may observe the final line while an append is completing.
+        return [];
+      }
+    });
   } catch {
     return [];
   }
@@ -592,7 +614,7 @@ function writeTransportObservations(
   fs.writeFileSync(filePath, JSON.stringify(observations), 'utf8');
 }
 
-function sharedObservations<T>(filePath: string, owner: boolean): T[] {
+function sharedObservations<T>(filePath: string, owner: boolean, appendOnly = false): T[] {
   const local: T[] = [];
   let arrayOperationDepth = 0;
   const refresh = (): void => {
@@ -630,7 +652,10 @@ function sharedObservations<T>(filePath: string, owner: boolean): T[] {
     },
     set(target, property, value, receiver) {
       const result = Reflect.set(target, property, value, receiver);
-      if (!owner && property === 'length') writeSharedArray(filePath, target);
+      if (property === 'length') {
+        if (appendOnly && value === 0) fs.writeFileSync(filePath, '', 'utf8');
+        else if (!owner) writeSharedArray(filePath, target);
+      }
       return result;
     },
   });
@@ -765,10 +790,14 @@ async function connectToSharedSession(
       registry.metricObservationPath,
       false,
     ),
-    otelTraceExports: sharedObservations<OtlpTraceExport>(registry.otelTracePath, false),
-    otelMetricExports: sharedObservations<OtlpMetricExport>(registry.otelMetricPath, false),
+    otelTraceExports: sharedObservations<OtlpTraceExport>(registry.otelTracePath, false, true),
+    otelMetricExports: sharedObservations<OtlpMetricExport>(registry.otelMetricPath, false, true),
     owner: false,
     reload,
+    resetOtelObservations: async () => {
+      fs.writeFileSync(registry.otelTracePath, '', 'utf8');
+      fs.writeFileSync(registry.otelMetricPath, '', 'utf8');
+    },
     shutdown: async () => undefined,
   };
 }
@@ -819,17 +848,58 @@ async function bootSharedE2eSession(): Promise<SharedE2eSession> {
     metricObservationPath,
     true,
   );
+  const otelTraceExports = sharedObservations<OtlpTraceExport>(otelTracePath, true, true);
+  const otelMetricExports = sharedObservations<OtlpMetricExport>(otelMetricPath, true, true);
+  fs.writeFileSync(otelTracePath, '', 'utf8');
+  fs.writeFileSync(otelMetricPath, '', 'utf8');
+  const otelTraceWriter = new OtlpFileWriter<OtlpTraceExport>({
+    filePath: otelTracePath,
+    onDrop: (count) => {
+      metricObservations.push({
+        name: 'otel.file_writer.dropped',
+        value: count,
+        fields: { stream: 'traces' },
+      });
+      writeSharedArray(metricObservationPath, metricObservations);
+    },
+    onRestart: (count) => {
+      metricObservations.push({
+        name: 'otel.file_writer.restarts',
+        value: count,
+        fields: { stream: 'traces' },
+      });
+      writeSharedArray(metricObservationPath, metricObservations);
+    },
+  });
+  const otelMetricWriter = new OtlpFileWriter<OtlpMetricExport>({
+    filePath: otelMetricPath,
+    onDrop: (count) => {
+      metricObservations.push({
+        name: 'otel.file_writer.dropped',
+        value: count,
+        fields: { stream: 'metrics' },
+      });
+      writeSharedArray(metricObservationPath, metricObservations);
+    },
+    onRestart: (count) => {
+      metricObservations.push({
+        name: 'otel.file_writer.restarts',
+        value: count,
+        fields: { stream: 'metrics' },
+      });
+      writeSharedArray(metricObservationPath, metricObservations);
+    },
+  });
   const recordOtlpTraceExport = (traceExport: OtlpTraceExport): void => {
-    const exports = readSharedArray<OtlpTraceExport>(otelTracePath);
-    exports.push(traceExport);
-    writeSharedArray(otelTracePath, exports);
+    otelTraceExports.push(traceExport);
+    otelTraceWriter.enqueue(traceExport);
   };
   const recordOtlpMetricExport = (metricExport: OtlpMetricExport): void => {
-    const exports = readSharedArray<OtlpMetricExport>(otelMetricPath);
-    exports.push(metricExport);
-    writeSharedArray(otelMetricPath, exports);
+    otelMetricExports.push(metricExport);
+    otelMetricWriter.enqueue(metricExport);
   };
   const otlpCollector = await startOtlpCollector({
+    retainExports: false,
     onTraceExport: recordOtlpTraceExport,
     onMetricExport: recordOtlpMetricExport,
   });
@@ -837,8 +907,6 @@ async function bootSharedE2eSession(): Promise<SharedE2eSession> {
   writeTransportObservations(observationPath, transportObservations);
   writeSharedArray(logObservationPath, logObservations);
   writeSharedArray(metricObservationPath, metricObservations);
-  writeSharedArray(otelTracePath, []);
-  writeSharedArray(otelMetricPath, []);
   const observeTransportRequestResponse = (observation: RuntimeTransportObservation): void => {
     transportObservations.push(structuredClone(observation));
     writeTransportObservations(observationPath, transportObservations);
@@ -917,11 +985,17 @@ async function bootSharedE2eSession(): Promise<SharedE2eSession> {
       transportObservations,
       logObservations,
       metricObservations,
-      otelTraceExports: otlpCollector.traces,
-      otelMetricExports: otlpCollector.metrics,
+      otelTraceExports,
+      otelMetricExports,
+      otelTraceWriter,
+      otelMetricWriter,
       otlpCollector,
       tracingShutdown,
       owner: true,
+      resetOtelObservations: async () => {
+        await otelTraceWriter.reset();
+        await otelMetricWriter.reset();
+      },
     };
     let reloadQueue = Promise.resolve();
     const reload = async (input: E2eReloadInput): Promise<boolean> => {
@@ -985,6 +1059,16 @@ async function bootSharedE2eSession(): Promise<SharedE2eSession> {
           /* best effort */
         });
       }
+      if (session.otelTraceWriter !== undefined) {
+        await session.otelTraceWriter.close().catch(() => {
+          /* best effort */
+        });
+      }
+      if (session.otelMetricWriter !== undefined) {
+        await session.otelMetricWriter.close().catch(() => {
+          /* best effort */
+        });
+      }
       try {
         fs.unlinkSync(session.configPath);
       } catch {
@@ -1021,6 +1105,12 @@ async function bootSharedE2eSession(): Promise<SharedE2eSession> {
         } catch {
           /* best effort */
         }
+      }
+      try {
+        const registry = readRegistry();
+        if (registry?.ownerPid === process.pid) fs.unlinkSync(E2E_REGISTRY_PATH);
+      } catch {
+        /* best effort */
       }
     };
     const shared: SharedE2eSession = { ...session, reload, shutdown };
@@ -1112,6 +1202,12 @@ async function bootSharedE2eSession(): Promise<SharedE2eSession> {
     await otlpCollector.close().catch(() => {
       /* best effort */
     });
+    await otelTraceWriter.close().catch(() => {
+      /* best effort */
+    });
+    await otelMetricWriter.close().catch(() => {
+      /* best effort */
+    });
     try {
       fs.unlinkSync(configPath);
     } catch {
@@ -1145,29 +1241,60 @@ async function bootSharedE2eSession(): Promise<SharedE2eSession> {
 
 export async function startE2eApp(opts: E2eAppOptions = {}): Promise<E2eApp> {
   const state = e2eProcessState();
-  state.sharedSession ??= bootSharedE2eSession();
-  const session = await state.sharedSession;
+  const sharedSessionPromise = (state.sharedSession ??= bootSharedE2eSession());
+  state.leaseCount += 1;
+  let session: SharedE2eSession;
+  try {
+    session = await sharedSessionPromise;
+  } catch (error) {
+    state.leaseCount -= 1;
+    if (state.sharedSession === sharedSessionPromise && state.leaseCount === 0) {
+      state.sharedSession = undefined;
+    }
+    throw error;
+  }
+  let released = false;
+  const shutdown = async (): Promise<void> => {
+    if (released) return;
+    released = true;
+    state.leaseCount = Math.max(0, state.leaseCount - 1);
+    if (state.leaseCount > 0 || state.sharedSession !== sharedSessionPromise) return;
+    state.sharedSession = undefined;
+    // Releasing the final suite lease stops the JVM and engine. This keeps
+    // one suite's reload history from degrading later suites in the same
+    // Jest worker while still allowing multiple app handles in one suite.
+    await session.shutdown();
+  };
   const fixtureName = opts.fixtureName;
   const sourceConfigPath =
     opts.potemkinConfigPath ?? path.join(resolveFixtureDir(fixtureName ?? 'crm'), 'potemkin.yml');
-  const healthy = await session.reload({
-    configPath: sourceConfigPath,
-    ...(fixtureName === undefined ? {} : { fixtureName }),
-    ...(opts.warmupPath === undefined ? {} : { warmupPath: opts.warmupPath }),
-    ...(opts.warmupExpectedStatus === undefined
-      ? {}
-      : { warmupExpectedStatus: opts.warmupExpectedStatus }),
-  });
-  if (!healthy)
-    throw new Error(
-      `Specmatic did not forward an engine-owned route for fixture ${fixtureName ?? 'crm'}`,
-    );
+  let healthy: boolean;
+  try {
+    healthy = await session.reload({
+      configPath: sourceConfigPath,
+      ...(fixtureName === undefined ? {} : { fixtureName }),
+      ...(opts.warmupPath === undefined ? {} : { warmupPath: opts.warmupPath }),
+      ...(opts.warmupExpectedStatus === undefined
+        ? {}
+        : { warmupExpectedStatus: opts.warmupExpectedStatus }),
+    });
+    if (!healthy) {
+      throw new Error(
+        `Specmatic did not forward an engine-owned route for fixture ${fixtureName ?? 'crm'}`,
+      );
+    }
+  } catch (error) {
+    await shutdown();
+    throw error;
+  }
   // The health/warmup requests can finish their transport callbacks one tick
   // after the forwarding probe resolves. Leave each suite with a quiet,
   // deterministic observation boundary.
   session.transportObservations.length = 0;
   session.logObservations.length = 0;
   session.metricObservations.length = 0;
+  await session.resetOtelObservations();
+  session.otelTraceExports.length = 0;
   session.otelMetricExports.length = 0;
   await new Promise((resolve) => setTimeout(resolve, 100));
   session.transportObservations.length = 0;
@@ -1184,10 +1311,7 @@ export async function startE2eApp(opts: E2eAppOptions = {}): Promise<E2eApp> {
     metricObservations: session.metricObservations,
     otelTraceExports: session.otelTraceExports,
     otelMetricExports: session.otelMetricExports,
-    async shutdown() {
-      // The JVM and engine belong to the Jest process, not an individual suite.
-      // globalTeardown stops them after every suite has reused this session.
-    },
+    shutdown,
   };
 }
 
@@ -1210,5 +1334,6 @@ export async function shutdownSharedE2eApp(): Promise<void> {
   if (state.sharedSession === undefined) return;
   const session = await state.sharedSession.catch(() => undefined);
   state.sharedSession = undefined;
+  state.leaseCount = 0;
   if (session?.owner === true) await session.shutdown();
 }

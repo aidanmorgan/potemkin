@@ -1,10 +1,6 @@
-import type { JsonObject } from '../contracts/value.js';
+import { isJsonObject } from '../contracts/value.js';
 import type { RuntimeSystem } from '../runtime/system.js';
 import type { FixtureStub } from './specmaticTransport.js';
-
-function isJsonObject(value: unknown): value is JsonObject {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
 
 function getByIdTemplate(system: RuntimeSystem, collectionPath: string): string | undefined {
   return Object.entries(system.openapi.paths)

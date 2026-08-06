@@ -6,14 +6,15 @@
  * created it.
  */
 import type {
+  CompiledRuntimeProgram,
   RuntimeBoundary,
   RuntimeHelperDefinition,
   RuntimePolicies,
-  RuntimeProgram,
 } from './runtime.js';
 import type { RuntimeDependencies } from './runtime.js';
 
-export type RuntimeModel = RuntimeProgram;
+/** RuntimeModel is the branded, compiled form; RuntimeProgram is its producer input. */
+export type RuntimeModel = CompiledRuntimeProgram;
 
 export interface RuntimeDefinition {
   readonly boundaries: readonly RuntimeBoundary[];

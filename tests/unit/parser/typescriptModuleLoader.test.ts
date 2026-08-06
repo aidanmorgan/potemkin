@@ -6,6 +6,8 @@ import {
   createDefaultTypeScriptModuleLoaderDependencies,
   TypeScriptModuleLoader,
 } from '../../../src/parser/typescriptModuleLoader';
+import { createTypeScriptSdk, sdk as productionSdk } from '../../../src/sdk';
+import type { FactoryRegistrar } from '../../../src/authoring/factory';
 
 describe('TypeScript module loader', () => {
   let root: string;
@@ -33,7 +35,7 @@ describe('TypeScript module loader', () => {
     const loader = new TypeScriptModuleLoader({
       cwd: root,
       scan: [{ include: ['**/*.ts'] }],
-      sdk: {} as never,
+      sdk: productionSdk,
       dependencies: createDefaultTypeScriptModuleLoaderDependencies(),
     });
 
@@ -51,18 +53,18 @@ describe('TypeScript module loader', () => {
        }`,
     );
     const registrations: string[] = [];
-    const sdk = {
-      PotemkinConfigure:
-        (name: string) => (_target: object, _key: string, descriptor: PropertyDescriptor) => {
-          registrations.push(name);
-          return descriptor;
-        },
+    const registrar: FactoryRegistrar = {
+      register: ({ name }) => {
+        registrations.push(name);
+      },
+      snapshot: () => [],
     };
+    const sdk = createTypeScriptSdk(registrar);
 
     const loader = new TypeScriptModuleLoader({
       cwd: root,
       scan: [{ include: ['*.ts'] }],
-      sdk: sdk as never,
+      sdk,
       dependencies: createDefaultTypeScriptModuleLoaderDependencies(),
     });
 
@@ -76,7 +78,7 @@ describe('TypeScript module loader', () => {
     const loader = new TypeScriptModuleLoader({
       cwd: root,
       scan: [{ include: ['**/*'] }],
-      sdk: {} as never,
+      sdk: productionSdk,
     });
 
     const first = loader.load(entry);
@@ -94,7 +96,7 @@ describe('TypeScript module loader', () => {
     const loader = new TypeScriptModuleLoader({
       cwd: root,
       scan: [{ include: ['**/*.ts'] }],
-      sdk: {} as never,
+      sdk: productionSdk,
     });
 
     expect(() => loader.load(entry)).toThrow('Circular TypeScript import');
@@ -108,7 +110,7 @@ describe('TypeScript module loader', () => {
     const readFailure = new TypeScriptModuleLoader({
       cwd: root,
       scan: [{ include: ['**/*.ts'] }],
-      sdk: {} as never,
+      sdk: productionSdk,
       dependencies: {
         ...defaults,
         readFile: () => {
@@ -121,7 +123,7 @@ describe('TypeScript module loader', () => {
     const transpileFailure = new TypeScriptModuleLoader({
       cwd: root,
       scan: [{ include: ['**/*.ts'] }],
-      sdk: {} as never,
+      sdk: productionSdk,
       dependencies: {
         ...defaults,
         transpile: () => {
@@ -134,7 +136,7 @@ describe('TypeScript module loader', () => {
     const executionFailure = new TypeScriptModuleLoader({
       cwd: root,
       scan: [{ include: ['**/*.ts'] }],
-      sdk: {} as never,
+      sdk: productionSdk,
       dependencies: {
         ...defaults,
         runInContext: () => {
@@ -151,7 +153,7 @@ describe('TypeScript module loader', () => {
     const loader = new TypeScriptModuleLoader({
       cwd: root,
       scan: [{ include: ['**/*.ts'] }],
-      sdk: {} as never,
+      sdk: productionSdk,
     });
 
     expect(() => loader.load(entry)).toThrow(
@@ -165,7 +167,7 @@ describe('TypeScript module loader', () => {
     const loader = new TypeScriptModuleLoader({
       cwd: root,
       scan: [{ include: ['**/*.ts'] }],
-      sdk: {} as never,
+      sdk: productionSdk,
     });
     expect(() => loader.load(missing)).toThrow(
       expect.objectContaining({ code: 'TS_IMPORT_OUTSIDE_SCAN' }),
@@ -180,7 +182,7 @@ describe('TypeScript module loader', () => {
     const restrictedLoader = new TypeScriptModuleLoader({
       cwd: root,
       scan: [{ include: ['inside/**/*.ts'] }],
-      sdk: {} as never,
+      sdk: productionSdk,
     });
     expect(() => restrictedLoader.load(restricted)).toThrow(
       expect.objectContaining({ code: 'TS_IMPORT_OUTSIDE_SCAN' }),
@@ -194,7 +196,7 @@ describe('TypeScript module loader', () => {
     const loader = new TypeScriptModuleLoader({
       cwd: root,
       scan: [{ include: ['**/*.ts'] }],
-      sdk: {} as never,
+      sdk: productionSdk,
       dependencies: {
         ...defaults,
         exists: (file) => file === path.join(root, 'shared'),

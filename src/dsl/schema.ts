@@ -3,6 +3,7 @@ import { firstBareCelReference } from './celInterpolation.js';
 import { parsePointer } from '../model/patches.js';
 import { lexTemplate } from '../cel/grammar/templateLexer.js';
 import type { Intent } from '../contracts/domain.js';
+import { isJsonObject, isJsonValue, isRecord } from '../contracts/value.js';
 import type { JsonObject, JsonValue } from '../contracts/value.js';
 import type { DeprecationConfig, SecurityHeadersConfig } from '../contracts/response.js';
 import { POTEMKIN_SIGNAL_ALIASES } from '../contracts/requestSignals.js';
@@ -28,6 +29,7 @@ import type {
   ReactionRule,
   ReducerPatchOp,
   ReducerRule,
+  PatchValue,
   RequiresGuard,
   SecondaryCommandSpec,
   SessionAuthConfig,
@@ -74,8 +76,60 @@ function validateCelSyntax(expression: string): void {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
+function isIdentityKeySource(
+  value: string | undefined,
+): value is NonNullable<IdentityKeyConfig['from']> {
+  return value === 'path' || value === 'query' || value === 'header' || value === 'payload';
+}
+
+function parseIntent(value: unknown, ctx: string): Intent | undefined {
+  if (value === undefined) return undefined;
+  if (value === 'creation' || value === 'mutation' || value === 'query') return value;
+  throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx} must be creation|mutation|query`, {
+    context: ctx,
+  });
+}
+
+function parseAuthMode(value: unknown): AuthConfig['mode'] | undefined {
+  if (value === undefined) return undefined;
+  if (value === 'simple' || value === 'jwt' || value === 'session') return value;
+  throw new BootError('BOOT_ERR_DSL_SYNTAX', 'auth.mode must be simple|jwt|session', {
+    mode: typeof value === 'string' ? value : null,
+  });
+}
+
+function parseParameterType(value: string, ctx: string): ParameterType {
+  switch (value) {
+    case 'string':
+    case 'number':
+    case 'boolean':
+      return value;
+    default:
+      throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}: invalid parameter type "${value}"`, {
+        context: ctx,
+      });
+  }
+}
+
+function parseParameterDefault(
+  value: unknown,
+  type: ParameterType,
+  ctx: string,
+  parameterName: string,
+): string | number | boolean | undefined {
+  if (value === undefined) return undefined;
+  if (
+    (type === 'string' && typeof value === 'string') ||
+    (type === 'number' && typeof value === 'number') ||
+    (type === 'boolean' && typeof value === 'boolean')
+  ) {
+    return value;
+  }
+  throw new BootError(
+    'BOOT_ERR_DSL_SYNTAX',
+    `${ctx}: parameter "${parameterName}" default value type mismatch — declared type is ${type} but default is ${typeof value} (${JSON.stringify(value)})`,
+    { field: `${ctx}.default`, context: ctx },
+  );
 }
 
 function requireString(obj: Record<string, unknown>, key: string, ctx: string): string {
@@ -107,6 +161,22 @@ function optionalString(
   return v;
 }
 
+function optionalJsonValue(
+  obj: Record<string, unknown>,
+  key: string,
+  ctx: string,
+): JsonValue | undefined {
+  const value = obj[key];
+  if (value === undefined) return undefined;
+  if (!isJsonValue(value)) {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.${key} must be a JSON value`, {
+      field: key,
+      context: ctx,
+    });
+  }
+  return value;
+}
+
 function requireStringStringMap(
   obj: Record<string, unknown>,
   key: string,
@@ -121,6 +191,7 @@ function requireStringStringMap(
       { field: key, context: ctx },
     );
   }
+  const result: Record<string, string> = {};
   for (const [k, val] of Object.entries(v)) {
     if (typeof val !== 'string') {
       throw new BootError(
@@ -129,8 +200,9 @@ function requireStringStringMap(
         { field: `${key}.${k}`, context: ctx },
       );
     }
+    result[k] = val;
   }
-  return v as Record<string, string>;
+  return result;
 }
 
 /** Validate one YAML expression with the CEL compiler at parse time. */
@@ -616,18 +688,6 @@ function optionalPatchList(
       context: ctx,
     });
   }
-  const known = new Set([
-    'add',
-    'remove',
-    'replace',
-    'append',
-    'prepend',
-    'increment',
-    'merge',
-    'upsert',
-    'move',
-    'copy',
-  ]);
   return val.map((p, i): ReducerPatchOp => {
     if (!isRecord(p)) {
       throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.patches[${i}]: must be an object`, {
@@ -635,10 +695,10 @@ function optionalPatchList(
       });
     }
     const op = p['op'];
-    if (typeof op !== 'string' || !known.has(op)) {
+    if (!isReducerPatchOperation(op)) {
       throw new BootError(
         'BOOT_ERR_DSL_SYNTAX',
-        `${ctx}.patches[${i}].op: invalid op "${op as unknown}"`,
+        `${ctx}.patches[${i}].op: invalid op "${String(op)}"`,
         { context: ctx },
       );
     }
@@ -701,6 +761,37 @@ function optionalPatchList(
       }
     }
     const patchValue = p['value'];
+    if (patchValue !== undefined && !isPatchValue(patchValue)) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `${ctx}.patches[${i}].value: must be a JSON-compatible patch value`,
+        { context: ctx, path },
+      );
+    }
+    const patchBy = p['by'];
+    if (patchBy !== undefined && typeof patchBy !== 'number') {
+      throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.patches[${i}].by: must be a number`, {
+        context: ctx,
+      });
+    }
+    const patchKey = p['key'];
+    if (patchKey !== undefined && typeof patchKey !== 'string') {
+      throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.patches[${i}].key: must be a string`, {
+        context: ctx,
+      });
+    }
+    const patchDeep = p['deep'];
+    if (patchDeep !== undefined && typeof patchDeep !== 'boolean') {
+      throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.patches[${i}].deep: must be a boolean`, {
+        context: ctx,
+      });
+    }
+    const patchFrom = p['from'];
+    if (patchFrom !== undefined && typeof patchFrom !== 'string') {
+      throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.patches[${i}].from: must be a string`, {
+        context: ctx,
+      });
+    }
     // A CEL context reference (state./event./command./$builtin) must be
     // wrapped in ${...}. A bare reference is almost certainly an un-interpolated
     // mistake — reject it with a clear message.
@@ -722,7 +813,7 @@ function optionalPatchList(
     // Object-valued ops (merge, upsert) may contain ${...} in their nested
     // string fields — compile each leaf string value.
     if (typeof patchValue === 'object' && patchValue !== null && !Array.isArray(patchValue)) {
-      for (const [k, v] of Object.entries(patchValue as Record<string, unknown>)) {
+      for (const [k, v] of Object.entries(patchValue)) {
         if (typeof v === 'string') {
           validatePatchValueCel(v, `${ctx}.patches[${i}].value.${k}`);
         }
@@ -740,7 +831,6 @@ function optionalPatchList(
     // Guard for increment operand: `by` is the canonical field; `value` is accepted
     // as an alias. Non-finite numbers become null via JSON.stringify, silently
     // corrupting the field — reject them early.
-    const patchBy = p['by'];
     if (typeof patchBy === 'number' && !Number.isFinite(patchBy)) {
       throw new BootError(
         'BOOT_ERR_DSL_SYNTAX',
@@ -759,15 +849,44 @@ function optionalPatchList(
       );
     }
     return {
-      op: op as ReducerPatchOp['op'],
+      op,
       path,
-      ...(p['value'] !== undefined ? { value: p['value'] as ReducerPatchOp['value'] } : {}),
-      ...(p['by'] !== undefined ? { by: p['by'] as number } : {}),
-      ...(p['key'] !== undefined ? { key: p['key'] as string } : {}),
-      ...(p['deep'] !== undefined ? { deep: p['deep'] as boolean } : {}),
-      ...(p['from'] !== undefined ? { from: p['from'] as string } : {}),
+      ...(patchValue === undefined ? {} : { value: patchValue }),
+      ...(patchBy === undefined ? {} : { by: patchBy }),
+      ...(patchKey === undefined ? {} : { key: patchKey }),
+      ...(patchDeep === undefined ? {} : { deep: patchDeep }),
+      ...(patchFrom === undefined ? {} : { from: patchFrom }),
     };
   });
+}
+
+function isReducerPatchOperation(value: unknown): value is ReducerPatchOp['op'] {
+  switch (value) {
+    case 'add':
+    case 'remove':
+    case 'replace':
+    case 'append':
+    case 'prepend':
+    case 'increment':
+    case 'merge':
+    case 'upsert':
+    case 'move':
+    case 'copy':
+      return true;
+    default:
+      return false;
+  }
+}
+
+function isPatchValue(value: unknown): value is PatchValue {
+  return (
+    value === null ||
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean' ||
+    Array.isArray(value) ||
+    isRecord(value)
+  );
 }
 
 function validateEventCatalogEntry(raw: unknown, index: number): EventCatalogEntry {
@@ -811,7 +930,7 @@ function validateIdentityKeyConfig(raw: unknown, ctx: string): IdentityKeyConfig
   }
 
   const from = optionalString(raw, 'from', ctx);
-  if (from === undefined || !['path', 'query', 'header', 'payload'].includes(from)) {
+  if (!isIdentityKeySource(from)) {
     throw new BootError(
       'BOOT_ERR_DSL_SYNTAX',
       `${ctx}: "identity.key.from" is required and must be one of: path, query, header, payload (got "${String(from)}")`,
@@ -838,7 +957,7 @@ function validateIdentityKeyConfig(raw: unknown, ctx: string): IdentityKeyConfig
     );
   }
   return {
-    from: from as IdentityKeyConfig['from'],
+    from,
     ...(name !== undefined ? { name } : {}),
     ...(pointer !== undefined ? { pointer } : {}),
   };
@@ -1075,7 +1194,14 @@ function validateInitialization(raw: unknown, ctx: string): readonly JsonObject[
         context: ctx,
       });
     }
-    return item as JsonObject;
+    if (!isJsonObject(item)) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `${ctx}.initialization[${i}]: must be a JSON object`,
+        { context: ctx },
+      );
+    }
+    return item;
   });
 }
 
@@ -1329,7 +1455,7 @@ function validateParametersBlock(
         { field: `parameters.${paramName}.type`, context: pctx },
       );
     }
-    const paramType = typeRaw as ParameterType;
+    const paramType = parseParameterType(typeRaw, pctx);
     const defaultRaw = entry['default'];
     const requiredRaw = entry['required'];
 
@@ -1351,22 +1477,12 @@ function validateParametersBlock(
       );
     }
 
-    // default must match the declared type.
-    if (defaultRaw !== undefined) {
-      const defaultJsType = typeof defaultRaw;
-      if (defaultJsType !== paramType) {
-        throw new BootError(
-          'BOOT_ERR_DSL_SYNTAX',
-          `${pctx}: parameter "${paramName}" default value type mismatch — declared type is ${paramType} but default is ${defaultJsType} (${JSON.stringify(defaultRaw)})`,
-          { field: `parameters.${paramName}.default`, context: pctx },
-        );
-      }
-    }
+    const defaultValue = parseParameterDefault(defaultRaw, paramType, pctx, paramName);
 
     const decl: ParameterDecl = {
       type: paramType,
-      ...(defaultRaw !== undefined ? { default: defaultRaw as string | number | boolean } : {}),
-      ...(requiredRaw !== undefined ? { required: requiredRaw as boolean } : {}),
+      ...(defaultValue === undefined ? {} : { default: defaultValue }),
+      ...(requiredRaw === undefined ? {} : { required: requiredRaw }),
     };
     out[paramName] = decl;
   }
@@ -1632,15 +1748,6 @@ const KNOWN_BOUNDARY_KEYS: ReadonlySet<string> = new Set([
   'export',
 ]);
 
-function isJsonValue(value: unknown): value is JsonValue {
-  if (value === null) return true;
-  if (typeof value === 'number') return Number.isFinite(value);
-  if (typeof value === 'string' || typeof value === 'boolean') return true;
-  if (Array.isArray(value)) return value.every((entry) => isJsonValue(entry));
-  if (!isRecord(value)) return false;
-  return Object.values(value).every((entry) => isJsonValue(entry));
-}
-
 function validateExportStep(raw: unknown, ctx: string): ExportStep {
   if (!isRecord(raw)) {
     throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx} must be a mapping`, { context: ctx });
@@ -1656,7 +1763,7 @@ function validateExportStep(raw: unknown, ctx: string): ExportStep {
   }
   const operationId = requireString(raw, 'operationId', ctx);
   const body = raw['body'];
-  if (body !== undefined && (!isRecord(body) || !isJsonValue(body))) {
+  if (body !== undefined && !isJsonObject(body)) {
     throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.body must be a JSON object`, {
       context: ctx,
     });
@@ -1664,7 +1771,7 @@ function validateExportStep(raw: unknown, ctx: string): ExportStep {
   const headers = requireStringStringMap(raw, 'headers', ctx);
   return {
     operationId,
-    ...(body === undefined ? {} : { body: body as JsonObject }),
+    ...(body === undefined ? {} : { body }),
     ...(headers === undefined ? {} : { headers }),
   };
 }
@@ -1751,14 +1858,14 @@ function validateReactionRule(raw: unknown, idx: number, fileBoundary?: string):
   const boundaryRaw = raw['boundary'];
   let boundary: string | undefined;
   if (boundaryRaw !== undefined && boundaryRaw !== null) {
-    if (typeof boundaryRaw !== 'string' || (boundaryRaw as string).trim() === '') {
+    if (typeof boundaryRaw !== 'string' || boundaryRaw.trim() === '') {
       throw new BootError(
         'BOOT_ERR_DSL_SYNTAX',
         `${ctx}: optional field "boundary" must be a string (got ${JSON.stringify(boundaryRaw)})`,
         { field: 'boundary', context: ctx },
       );
     }
-    boundary = boundaryRaw as string;
+    boundary = boundaryRaw;
   } else if (fileBoundary !== undefined) {
     boundary = fileBoundary;
   } else {
@@ -2125,7 +2232,28 @@ function fieldTypeFromName(typeName: string, ctx: string): FieldType {
       { context: ctx, type: typeName },
     );
   }
-  return { kind: typeName as FieldKind, confidence: 'known' };
+  if (!isFieldKind(typeName)) {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.type "${typeName}" is not a field kind`, {
+      context: ctx,
+    });
+  }
+  return { kind: typeName, confidence: 'known' };
+}
+
+function isFieldKind(value: string): value is FieldKind {
+  switch (value) {
+    case 'string':
+    case 'integer':
+    case 'number':
+    case 'boolean':
+    case 'null':
+    case 'array':
+    case 'object':
+    case 'unknown':
+      return true;
+    default:
+      return false;
+  }
 }
 
 /** Parse an optional `deprecated:` envelope { date?, sunset?, replacement? }. */
@@ -2313,7 +2441,7 @@ function validateSagaConfig(raw: unknown, idx: number): SagaConfig {
       context: ctx,
     });
   }
-  const steps = (raw['steps'] as unknown[]).map((s, i) => validateSagaStep(s, i));
+  const steps = raw['steps'].map((s, i) => validateSagaStep(s, i));
   return { name, trigger, steps };
 }
 
@@ -2348,9 +2476,7 @@ function validateDerivedProjectionReduceEntry(
     }
   }
   const on = requireString(raw, 'on', ctx);
-  const patches = optionalPatchList(raw, ctx) as
-    | readonly ReducerPatchOp<never, 'reducer'>[]
-    | undefined;
+  const patches = optionalPatchList(raw, ctx);
   return {
     on,
     ...(patches !== undefined ? { patches } : {}),
@@ -2379,7 +2505,7 @@ function validateDerivedProjectionConfig(raw: unknown, idx: number): DerivedProj
       context: ctx,
     });
   }
-  const subscribe = (raw['subscribe'] as unknown[]).map((s, i) => {
+  const subscribe = raw['subscribe'].map((s, i) => {
     if (typeof s !== 'string') {
       throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}.subscribe[${i}]: must be a string`, {
         context: ctx,
@@ -2393,9 +2519,7 @@ function validateDerivedProjectionConfig(raw: unknown, idx: number): DerivedProj
       context: ctx,
     });
   }
-  const reduce = (raw['reduce'] as unknown[]).map((r, i) =>
-    validateDerivedProjectionReduceEntry(r, i),
-  );
+  const reduce = raw['reduce'].map((r, i) => validateDerivedProjectionReduceEntry(r, i));
 
   return { name, key, subscribe, reduce };
 }
@@ -2516,12 +2640,7 @@ function validateAuthConfig(raw: unknown): AuthConfig {
   if (!isRecord(raw)) {
     throw new BootError('BOOT_ERR_DSL_SYNTAX', 'auth must be a mapping', { received: typeof raw });
   }
-  const mode = raw['mode'];
-  if (mode !== undefined && mode !== 'simple' && mode !== 'jwt' && mode !== 'session') {
-    throw new BootError('BOOT_ERR_DSL_SYNTAX', 'auth.mode must be simple|jwt|session', {
-      mode: typeof mode === 'string' ? mode : null,
-    });
-  }
+  const mode = parseAuthMode(raw['mode']);
   const jwtRaw = raw['jwt'];
   let jwt: JwtAuthConfig | undefined;
   if (jwtRaw !== undefined && jwtRaw !== null) {
@@ -2543,9 +2662,7 @@ function validateAuthConfig(raw: unknown): AuthConfig {
     }
     jwt = {
       secret,
-      ...(typeof jwtRaw['algorithm'] === 'string'
-        ? { algorithm: jwtRaw['algorithm'] as 'HS256' }
-        : {}),
+      ...(jwtRaw['algorithm'] === 'HS256' ? { algorithm: 'HS256' } : {}),
       ...(typeof jwtRaw['issuer'] === 'string' ? { issuer: jwtRaw['issuer'] } : {}),
       ...(typeof jwtRaw['audience'] === 'string' ? { audience: jwtRaw['audience'] } : {}),
       ...(typeof jwtRaw['subject_claim'] === 'string'
@@ -2582,7 +2699,7 @@ function validateAuthConfig(raw: unknown): AuthConfig {
     };
   }
   return {
-    ...(typeof mode === 'string' ? { mode: mode as 'simple' | 'jwt' | 'session' } : {}),
+    ...(mode === undefined ? {} : { mode }),
     ...(jwt !== undefined ? { jwt } : {}),
     ...(session !== undefined ? { session } : {}),
   };
@@ -2640,7 +2757,7 @@ function validateGlobalVersioning(raw: unknown): VersioningConfig {
         { field: 'versioning.versions' },
       );
     }
-    versions = (raw['versions'] as unknown[]).map((v, i) => {
+    versions = raw['versions'].map((v, i) => {
       const ctx = `versioning.versions[${i}]`;
       if (!isRecord(v)) {
         throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx} must be a mapping`, { context: ctx });
@@ -2715,6 +2832,7 @@ function validateFaultRule(raw: unknown, i: number): FaultRule {
     });
   }
   const responseHeaders = requireStringStringMap(responseRaw, 'headers', `${ctx}.response`);
+  const responseBody = optionalJsonValue(responseRaw, 'body', `${ctx}.response`);
   // delay_ms may sit under `response:` or at the top level.
   const delayMs =
     typeof responseRaw['delay_ms'] === 'number'
@@ -2724,6 +2842,7 @@ function validateFaultRule(raw: unknown, i: number): FaultRule {
         : undefined;
 
   const intentRaw = matchRaw['intent'];
+  const intent = parseIntent(intentRaw, `${ctx}.match.intent`);
   const operationId =
     matchRaw['operationId'] === undefined
       ? undefined
@@ -2774,7 +2893,7 @@ function validateFaultRule(raw: unknown, i: number): FaultRule {
     name,
     match: {
       ...(typeof matchRaw['boundary'] === 'string' ? { boundary: matchRaw['boundary'] } : {}),
-      ...(typeof intentRaw === 'string' ? { intent: intentRaw as Intent } : {}),
+      ...(intent === undefined ? {} : { intent }),
       ...(operationId === undefined ? {} : { operationId }),
       ...(method === undefined ? {} : { method }),
       ...(Object.keys(expandedHeaders).length > 0 ? { headers: expandedHeaders } : {}),
@@ -2785,7 +2904,7 @@ function validateFaultRule(raw: unknown, i: number): FaultRule {
     },
     response: {
       status: responseRaw['status'],
-      ...(responseRaw['body'] !== undefined ? { body: responseRaw['body'] as JsonValue } : {}),
+      ...(responseBody === undefined ? {} : { body: responseBody }),
       ...(responseHeaders !== undefined ? { headers: responseHeaders } : {}),
     },
     ...(delayMs !== undefined ? { delay_ms: delayMs } : {}),
@@ -2808,6 +2927,7 @@ function validateWebhookConfig(raw: unknown, i: number): WebhookConfig {
     });
   }
   const condition = typeof triggerRaw['condition'] === 'string' ? triggerRaw['condition'] : 'true';
+  const intent = parseIntent(triggerRaw['intent'], `${ctx}.trigger.intent`);
 
   const payload = requireStringStringMap(raw, 'payload', ctx);
 
@@ -2829,9 +2949,7 @@ function validateWebhookConfig(raw: unknown, i: number): WebhookConfig {
     name,
     trigger: {
       ...(typeof triggerRaw['boundary'] === 'string' ? { boundary: triggerRaw['boundary'] } : {}),
-      ...(typeof triggerRaw['intent'] === 'string'
-        ? { intent: triggerRaw['intent'] as Intent }
-        : {}),
+      ...(intent === undefined ? {} : { intent }),
       condition,
     },
     url,
@@ -2859,9 +2977,10 @@ function validateFallbackResponse(raw: unknown, ctx: string): FallbackResponse {
       { context: ctx },
     );
   }
+  const body = optionalJsonValue(raw, 'body', ctx);
   return {
     status,
-    ...(raw['body'] !== undefined ? { body: raw['body'] as JsonValue } : {}),
+    ...(body === undefined ? {} : { body }),
   };
 }
 
@@ -2917,7 +3036,7 @@ function validateFallbackConfig(raw: unknown): FallbackConfig | undefined {
         field: 'rules',
       });
     }
-    rules = (raw['rules'] as unknown[]).map((r, i) => validateFallbackRule(r, i));
+    rules = raw['rules'].map((r, i) => validateFallbackRule(r, i));
   }
   const def =
     raw['default'] !== undefined && raw['default'] !== null
@@ -2953,7 +3072,7 @@ export function validateGlobalConfig(raw: unknown): GlobalConfig {
         field: 'sagas',
       });
     }
-    sagas = (raw['sagas'] as unknown[]).map((s, i) => validateSagaConfig(s, i));
+    sagas = raw['sagas'].map((s, i) => validateSagaConfig(s, i));
   }
 
   let idempotency: IdempotencyConfig | undefined;
@@ -2970,7 +3089,7 @@ export function validateGlobalConfig(raw: unknown): GlobalConfig {
         { field: 'derived_projections' },
       );
     }
-    derivedProjections = (raw['derived_projections'] as unknown[]).map((p, i) =>
+    derivedProjections = raw['derived_projections'].map((p, i) =>
       validateDerivedProjectionConfig(p, i),
     );
   }
@@ -3002,7 +3121,7 @@ export function validateGlobalConfig(raw: unknown): GlobalConfig {
         field: 'fault_rules',
       });
     }
-    faults = (raw['fault_rules'] as unknown[]).map((f, i) => validateFaultRule(f, i));
+    faults = raw['fault_rules'].map((f, i) => validateFaultRule(f, i));
   }
 
   let webhooks: readonly WebhookConfig[] | undefined;
@@ -3012,7 +3131,7 @@ export function validateGlobalConfig(raw: unknown): GlobalConfig {
         field: 'webhooks',
       });
     }
-    webhooks = (raw['webhooks'] as unknown[]).map((w, i) => validateWebhookConfig(w, i));
+    webhooks = raw['webhooks'].map((w, i) => validateWebhookConfig(w, i));
   }
 
   let reactions: readonly ReactionRule[] | undefined;
@@ -3023,9 +3142,7 @@ export function validateGlobalConfig(raw: unknown): GlobalConfig {
       });
     }
     // fileBoundary is undefined — boundary field is required on each entry
-    reactions = (raw['reactions'] as unknown[]).map((r, i) =>
-      validateReactionRule(r, i, undefined),
-    );
+    reactions = raw['reactions'].map((r, i) => validateReactionRule(r, i, undefined));
   }
 
   const fallback = validateFallbackConfig(raw['fallback']);

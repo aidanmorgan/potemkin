@@ -198,6 +198,10 @@ describe('cel/evaluator — permutations', () => {
     it('throws when object key is not a string', () => {
       expect(() => ev('{1: "val"}')).toThrow('CEL_EVAL');
     });
+
+    it('preserves __proto__ as a data key instead of mutating the prototype', () => {
+      expect(ev('{"__proto__": 1}["__proto__"]')).toBe(1);
+    });
   });
 
   // ── Array literals ──────────────────────────────────────────────────────────

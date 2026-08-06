@@ -16,15 +16,24 @@ import type {
 } from '../../../src/model/runtime.js';
 import type { Command, DomainEvent } from '../../../src/contracts/domain.js';
 import type { JsonObject } from '../../../src/contracts/value.js';
+import {
+  aggregateId,
+  boundaryName,
+  commandId,
+  eventId,
+  eventType,
+  httpMethod,
+  sequenceVersion,
+} from '../../../src/domain/references.js';
 
 const command: Command = {
-  commandId: 'response-policy-command',
-  boundary: 'Widget',
+  commandId: commandId('response-policy-command'),
+  boundary: boundaryName('Widget'),
   intent: 'query',
-  targetId: 'widget-1',
+  targetId: aggregateId('widget-1'),
   payload: {},
   queryParams: { tenant: ['acme', 'backup'], offset: '2', limit: '1', cursor: 'old' },
-  httpMethod: 'GET',
+  httpMethod: httpMethod('GET'),
   path: '/widgets',
   origin: 'inbound',
   depth: 0,
@@ -41,13 +50,13 @@ const boundary = {
 } as RuntimeBoundary;
 
 const event: DomainEvent = {
-  eventId: 'event-1',
-  type: 'WidgetChanged',
-  boundary: 'Widget',
-  aggregateId: 'widget-1',
+  eventId: eventId('event-1'),
+  type: eventType('WidgetChanged'),
+  boundary: boundaryName('Widget'),
+  aggregateId: aggregateId('widget-1'),
   payload: { secret: 'event-secret', visible: true },
   timestamp: '2026-01-01T00:00:00.000Z',
-  sequenceVersion: 1,
+  sequenceVersion: sequenceVersion(1),
   causedBy: null,
 };
 

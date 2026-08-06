@@ -32,6 +32,7 @@ import type {
   LatencyDefinition,
   StateDefinition,
 } from './types.js';
+import { boundaryName, eventReference, eventType } from '../domain/references.js';
 
 export type {
   ComponentDefinition,
@@ -52,10 +53,13 @@ export function yamlComponent(name: ComponentName): YamlComponentReference {
   return Object.freeze({ kind: 'yaml-component', name });
 }
 
-export function isYamlComponentReference(
-  value: ComponentReference,
-): value is YamlComponentReference {
-  return 'kind' in value && value.kind === 'yaml-component';
+export function isYamlComponentReference(value: unknown): value is YamlComponentReference {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    'kind' in value &&
+    value.kind === 'yaml-component'
+  );
 }
 
 export function defineComponent(
@@ -282,14 +286,14 @@ function mergeIncludes(
 
 function resolveAlias(
   alias: string,
-  componentName: string,
-  concreteName: string,
+  componentName: ComponentName,
+  concreteName: BoundaryName,
   bind: Readonly<Record<string, string>>,
   useName: string,
-): string {
+): BoundaryName {
   if (alias === componentName) return concreteName;
   const bound = bind[alias];
-  if (bound !== undefined) return bound;
+  if (bound !== undefined) return boundaryName(bound);
   throw compositionError(
     `TypeScript component use "${useName}" leaves boundary alias "${alias}" unbound`,
   );
@@ -328,11 +332,7 @@ function rewriteSource(source: MutableSource, useDefinition: UseDefinition): Mut
             useDefinition.bind ?? {},
             useDefinition.as,
           );
-    const separator = reaction.on.indexOf(':');
-    const on =
-      separator < 0
-        ? reaction.on
-        : `${resolveAlias(reaction.on.slice(0, separator), componentName, useDefinition.as, useDefinition.bind ?? {}, useDefinition.as)}${reaction.on.slice(separator)}`;
+    const on = rewriteEventSelector(reaction.on, componentName, useDefinition);
     return { ...reaction, ...(boundary === undefined ? {} : { boundary }), on };
   });
   const behaviors = source.behaviors.map((behavior) => ({
@@ -348,25 +348,44 @@ function rewriteSource(source: MutableSource, useDefinition: UseDefinition): Mut
               useDefinition.as,
               useDefinition.bind ?? {},
               useDefinition.as,
-            ) as BoundaryName,
+            ),
           })),
         }),
   }));
   return {
     ...source,
     behaviors,
-    ...(reactions === undefined ? {} : { reactions: reactions as ReactionDefinition[] }),
+    ...(reactions === undefined ? {} : { reactions }),
   };
+}
+
+function rewriteEventSelector(
+  selector: ReactionDefinition['on'],
+  componentName: ComponentName,
+  useDefinition: UseDefinition,
+): ReactionDefinition['on'] {
+  const separator = selector.indexOf(':');
+  if (separator < 0) return selector;
+  return eventReference(
+    resolveAlias(
+      selector.slice(0, separator),
+      componentName,
+      useDefinition.as,
+      useDefinition.bind ?? {},
+      useDefinition.as,
+    ),
+    eventType(selector.slice(separator + 1)),
+  );
 }
 
 function toBoundary(
   source: MutableSource,
-  boundary: string,
-  contractPath: string,
+  boundary: BoundaryName,
+  contractPath: ContractPath,
 ): ComposableBoundary {
   return {
-    boundary: boundary as BoundaryName,
-    contractPath: contractPath as ContractPath,
+    boundary,
+    contractPath,
     eventCatalog: source.eventCatalog,
     behaviors: source.behaviors,
     reducers: source.reducers,

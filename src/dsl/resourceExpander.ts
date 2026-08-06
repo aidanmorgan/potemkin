@@ -11,9 +11,19 @@
  * Expansion produces ordinary boundary YAML, so every generated boundary flows
  * through the same validateBoundaryConfig path — no special-casing downstream.
  */
-import * as yaml from 'js-yaml';
+import { stringify } from 'yaml';
 import { BootError } from '../errors.js';
 import type { OpenApiDoc } from '../contract/loader.js';
+import {
+  boundaryName,
+  eventType,
+  HttpMethod,
+  operationId,
+  type BoundaryName,
+  type EventType,
+  type OperationId,
+} from '../domain/references.js';
+import { isRecord } from '../contracts/value.js';
 
 export interface ResolvedModule {
   readonly path: string;
@@ -21,23 +31,31 @@ export interface ResolvedModule {
   readonly parsed: unknown;
 }
 
-const HTTP_METHODS = ['get', 'put', 'post', 'delete', 'patch'] as const;
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return v !== null && typeof v === 'object' && !Array.isArray(v);
-}
+const HTTP_METHODS = [
+  { key: 'get', method: HttpMethod.Get },
+  { key: 'post', method: HttpMethod.Post },
+  { key: 'put', method: HttpMethod.Put },
+  { key: 'patch', method: HttpMethod.Patch },
+  { key: 'delete', method: HttpMethod.Delete },
+  { key: 'head', method: HttpMethod.Head },
+  { key: 'options', method: HttpMethod.Options },
+  { key: 'trace', method: HttpMethod.Trace },
+] as const satisfies readonly { key: string; method: HttpMethod }[];
 
 /** operationId -> { path, method } reverse index from the OpenAPI. */
-function buildOperationIndex(openapi: OpenApiDoc): Map<string, { path: string; method: string }> {
-  const index = new Map<string, { path: string; method: string }>();
+function buildOperationIndex(
+  openapi: OpenApiDoc,
+): Map<OperationId, { path: string; method: HttpMethod }> {
+  const index = new Map<OperationId, { path: string; method: HttpMethod }>();
   const paths = isRecord(openapi.raw) ? openapi.raw['paths'] : undefined;
   if (!isRecord(paths)) return index;
   for (const [path, itemRaw] of Object.entries(paths)) {
     if (!isRecord(itemRaw)) continue;
-    for (const method of HTTP_METHODS) {
-      const op = itemRaw[method];
+    for (const { key, method } of HTTP_METHODS) {
+      const op = itemRaw[key];
       if (isRecord(op) && typeof op['operationId'] === 'string') {
-        index.set(op['operationId'], { path, method: method.toUpperCase() });
+        const value = op['operationId'];
+        if (value.trim() !== '') index.set(operationId(value), { path, method });
       }
     }
   }
@@ -63,8 +81,8 @@ function pathToNameSuffix(path: string): string {
 }
 
 interface OperationEntry {
-  readonly op: string;
-  readonly emit?: string;
+  readonly operationId: OperationId;
+  readonly emit?: EventType;
   readonly query?: boolean;
   /** CEL gate for the synthesized behavior (defaults to "true"). */
   readonly condition?: string;
@@ -74,6 +92,28 @@ interface OperationEntry {
   readonly emit_when?: unknown;
   /** Secondary commands dispatched by the synthesized behavior. */
   readonly dispatch_commands?: unknown;
+}
+
+function parseOperationId(value: unknown, ctx: string): OperationId {
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new BootError(
+      'BOOT_ERR_DSL_SYNTAX',
+      `${ctx}: requires a non-empty string "op" (operationId)`,
+      {
+        context: ctx,
+      },
+    );
+  }
+  return operationId(value);
+}
+
+function parseEventType(value: unknown, ctx: string): EventType {
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new BootError('BOOT_ERR_DSL_SYNTAX', `${ctx}: "emit" must be a non-empty event type`, {
+      context: ctx,
+    });
+  }
+  return eventType(value);
 }
 
 const KNOWN_OPERATION_KEYS = new Set([
@@ -131,40 +171,44 @@ function readOperations(raw: Record<string, unknown>, ctx: string): OperationEnt
     });
   }
   return opsRaw.map((entry, i) => {
-    if (!isRecord(entry) || typeof entry['op'] !== 'string') {
+    if (!isRecord(entry)) {
       throw new BootError(
         'BOOT_ERR_DSL_SYNTAX',
         `${ctx}.operations[${i}]: requires a string "op" (operationId)`,
         { context: ctx },
       );
     }
+    const operationIdValue = parseOperationId(entry['op'], `${ctx}.operations[${i}]`);
     for (const k of Object.keys(entry)) {
       if (!KNOWN_OPERATION_KEYS.has(k)) {
         throw new BootError(
           'BOOT_ERR_DSL_SYNTAX',
-          `${ctx}.operations[${i}] (${entry['op']}): unknown key "${k}" — expected ${[...KNOWN_OPERATION_KEYS].join(', ')}`,
+          `${ctx}.operations[${i}] (${operationIdValue}): unknown key "${k}" — expected ${[...KNOWN_OPERATION_KEYS].join(', ')}`,
           { context: ctx },
         );
       }
     }
     const query = entry['query'] === true;
-    const emit = typeof entry['emit'] === 'string' ? entry['emit'] : undefined;
+    const emit =
+      entry['emit'] === undefined
+        ? undefined
+        : parseEventType(entry['emit'], `${ctx}.operations[${i}]`);
     if (!query && emit === undefined) {
       throw new BootError(
         'BOOT_ERR_DSL_SYNTAX',
-        `${ctx}.operations[${i}] (${entry['op'] as string}): non-query operations require "emit: <EventType>"`,
+        `${ctx}.operations[${i}] (${operationIdValue}): non-query operations require "emit: <EventType>"`,
         { context: ctx },
       );
     }
     if (query && emit !== undefined) {
       throw new BootError(
         'BOOT_ERR_DSL_SYNTAX',
-        `${ctx}.operations[${i}] (${entry['op'] as string}): a query operation must not declare "emit"`,
+        `${ctx}.operations[${i}] (${operationIdValue}): a query operation must not declare "emit"`,
         { context: ctx },
       );
     }
     return {
-      op: entry['op'],
+      operationId: operationIdValue,
       ...(emit !== undefined ? { emit } : {}),
       query,
       ...(typeof entry['condition'] === 'string' ? { condition: entry['condition'] } : {}),
@@ -181,7 +225,7 @@ function readOperations(raw: Record<string, unknown>, ctx: string): OperationEnt
 function expandOne(
   raw: Record<string, unknown>,
   sourcePath: string,
-  opIndex: Map<string, { path: string; method: string }>,
+  opIndex: Map<OperationId, { path: string; method: HttpMethod }>,
 ): ResolvedModule[] {
   const ctx = `resource "${typeof raw['resource'] === 'string' ? raw['resource'] : '?'}" (${sourcePath})`;
   const resourceName = raw['resource'];
@@ -220,14 +264,14 @@ function expandOne(
   const operations = readOperations(raw, ctx);
 
   // Group operations by their resolved contract path.
-  const byPath = new Map<string, Array<OperationEntry & { method: string }>>();
+  const byPath = new Map<string, Array<OperationEntry & { method: HttpMethod }>>();
   for (const op of operations) {
-    const resolved = opIndex.get(op.op);
+    const resolved = opIndex.get(op.operationId);
     if (!resolved) {
       throw new BootError(
         'BOOT_ERR_DSL_SYNTAX',
-        `${ctx}: operation "${op.op}" is not an operationId in the OpenAPI contract`,
-        { context: ctx, operationId: op.op },
+        `${ctx}: operation "${op.operationId}" is not an operationId in the OpenAPI contract`,
+        { context: ctx, operationId: op.operationId },
       );
     }
     const arr = byPath.get(resolved.path) ?? [];
@@ -243,8 +287,11 @@ function expandOne(
     const isCollection = !hasPathParam(path);
     const hasQuery = ops.some((o) => o.query);
 
+    const generatedBoundary: BoundaryName = boundaryName(
+      `${resourceName}__${pathToNameSuffix(path)}`,
+    );
     const record: Record<string, unknown> = {
-      boundary: `${resourceName}__${pathToNameSuffix(path)}`,
+      boundary: generatedBoundary,
       schema,
       contract_path: path,
       // GET list/retrieve auto-serve a query when no behavior matches.
@@ -286,9 +333,9 @@ function expandOne(
     const behaviors = ops
       .filter((o) => !o.query)
       .map((o) => ({
-        name: o.op,
+        name: o.operationId,
         match: {
-          operationId: o.op,
+          operationId: o.operationId,
           method: o.method,
           condition: o.condition ?? 'true',
           ...(o.requires !== undefined ? { requires: o.requires } : {}),
@@ -301,14 +348,19 @@ function expandOne(
 
     // Resource reactions ride on the first generated boundary (reacting boundary
     // = that boundary); auto-fill the reacting boundary name when absent.
-    if (!attachedReactions && Array.isArray(raw['reactions']) && raw['reactions'].length > 0) {
-      record['reactions'] = (raw['reactions'] as unknown[]).map((r) =>
-        isRecord(r) && r['boundary'] === undefined ? { ...r, boundary: record['boundary'] } : r,
+    const reactions = raw['reactions'];
+    if (!attachedReactions && Array.isArray(reactions) && reactions.length > 0) {
+      record['reactions'] = reactions.map((r) =>
+        isRecord(r) && r['boundary'] === undefined ? { ...r, boundary: generatedBoundary } : r,
       );
       attachedReactions = true;
     }
 
-    out.push({ path: `${sourcePath}#${path}`, text: yaml.dump(record), parsed: record });
+    out.push({
+      path: `${sourcePath}#${path}`,
+      text: stringify(record, { schema: 'yaml-1.1', singleQuote: true }),
+      parsed: record,
+    });
   }
   return out;
 }

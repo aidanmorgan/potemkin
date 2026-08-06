@@ -1,15 +1,18 @@
-export interface DispatchCandidate<Context> {
-  readonly operationId: string;
-  readonly method?: string;
+import type { HttpMethod, OperationId } from './references.js';
+
+export interface DispatchCandidate<Context, Method extends string = HttpMethod> {
+  readonly operationId: OperationId;
+  readonly method?: Method;
   readonly headers?: Readonly<Record<string, string>>;
   readonly condition?: (context: Context) => boolean;
   readonly emitWhen?: readonly { readonly when: (context: Context) => boolean }[];
   readonly requires?: readonly { readonly check: (context: Context) => boolean }[];
 }
 
-export interface DispatchRequest<Context> {
-  readonly operationId?: string;
-  readonly method: string;
+export interface DispatchRequest<Context, Method extends string = HttpMethod> {
+  readonly operationId?: OperationId;
+  /** Transport methods may include extension verbs, so this remains generic. */
+  readonly method: Method;
   readonly inbound: boolean;
   readonly headers: Readonly<Record<string, string>>;
   readonly context: Context;
@@ -28,9 +31,14 @@ export function matchesHeaders(
 }
 
 /** Select the first compiled behavior whose operation and guards match. */
-export function selectBehavior<Context, Candidate extends DispatchCandidate<Context>>(
+export function selectBehavior<
+  Context,
+  CandidateMethod extends string,
+  RequestMethod extends string,
+  Candidate extends DispatchCandidate<Context, CandidateMethod>,
+>(
   candidates: readonly Candidate[],
-  request: DispatchRequest<Context>,
+  request: DispatchRequest<Context, RequestMethod>,
 ): Candidate | undefined {
   return candidates.find((candidate) => {
     if (candidate.operationId !== request.operationId) return false;

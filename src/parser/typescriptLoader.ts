@@ -8,7 +8,7 @@
  */
 
 import { FactoryCollector } from '../authoring/factory.js';
-import type { RegisteredFactory } from '../authoring/factory.js';
+import type { FactoryOutput, RegisteredFactory } from '../authoring/factory.js';
 import {
   createDefaultTypeScriptDiscoveryDependencies,
   isDecoratedTypeScriptModule,
@@ -17,7 +17,11 @@ import {
 import type { TypeScriptDiscoveryDependencies } from './typescriptDiscovery.js';
 import type { OpenApiDoc } from '../contract/loader.js';
 import type { PotemkinConfiguration, ScanConfig } from '../contracts/config.js';
-import type { GlobalDefinition, SimulationDefinition } from '../authoring/types.js';
+import type {
+  GlobalDefinition,
+  SimulationBuilder,
+  SimulationDefinition,
+} from '../authoring/types.js';
 import { mergeRuntimePolicies } from '../core/policyMerge.js';
 import { createTypeScriptSdk, sdk, type TypeScriptSdk } from '../sdk/index.js';
 import {
@@ -27,6 +31,7 @@ import {
 } from '../authoring/errors.js';
 import { TypeScriptModuleLoader } from './typescriptModuleLoader.js';
 import type { TypeScriptModuleLoaderDependencies } from './typescriptModuleLoader.js';
+import { isRecord } from '../contracts/value.js';
 
 export interface TypeScriptLoaderContext {
   readonly openapi: OpenApiDoc;
@@ -103,21 +108,13 @@ function compareFactories(left: RegisteredFactory, right: RegisteredFactory): nu
 }
 
 function normalizeFactoryOutput(
-  candidate: unknown,
+  candidate: FactoryOutput,
   source: string,
   factoryName: string,
 ): SimulationDefinition | undefined {
-  let value = candidate;
-  if (
-    value !== null &&
-    typeof value === 'object' &&
-    'build' in value &&
-    typeof (value as { build?: unknown }).build === 'function'
-  ) {
-    value = (value as { build: () => unknown }).build();
-  }
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined;
-  const record = value as Record<string, unknown>;
+  const definition = isSimulationBuilder(candidate) ? candidate.build() : candidate;
+  if (!isRecord(definition)) return undefined;
+  const record = definition;
   if (
     !Array.isArray(record['boundaries']) &&
     !Array.isArray(record['components']) &&
@@ -148,7 +145,16 @@ function normalizeFactoryOutput(
       { details: { source, factoryName }, source },
     );
   }
-  return value as SimulationDefinition;
+  return definition;
+}
+
+function isSimulationBuilder(value: FactoryOutput): value is SimulationBuilder {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    'build' in value &&
+    typeof value.build === 'function'
+  );
 }
 
 function mergeDefinitions(definitions: readonly SimulationDefinition[]): SimulationDefinition {

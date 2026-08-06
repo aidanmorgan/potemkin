@@ -1,5 +1,11 @@
 import { reducerRule } from '../../../src/authoring/nativeReducer.js';
-import { eventType } from '../../../src/domain/references.js';
+import {
+  aggregateId,
+  boundaryName,
+  eventId,
+  eventType,
+  sequenceVersion,
+} from '../../../src/domain/references.js';
 import type { RuntimeHelpers } from '../../../src/model/runtime.js';
 
 interface OrderCreated {
@@ -23,6 +29,15 @@ interface OrderState {
 const helpers = {} as RuntimeHelpers;
 
 describe('native TypeScript reducers', () => {
+  it('reports a typed authoring error when built without a transition', () => {
+    expect(() => reducerRule(eventType('MissingTransition')).build()).toThrow(
+      expect.objectContaining({
+        name: 'TypeScriptAuthoringError',
+        code: 'TS_BUILDER_INVALID',
+      }),
+    );
+  });
+
   it('exposes deeply readonly state and event projections', () => {
     type Created = { readonly item: { readonly tags: string[] } };
     type State = { item: { tags: string[] } };
@@ -74,16 +89,16 @@ describe('native TypeScript reducers', () => {
         counters: [0],
       },
       event: {
-        eventId: 'event-1',
-        boundary: 'Order',
-        aggregateId: 'order-1',
+        eventId: eventId('event-1'),
+        boundary: boundaryName('Order'),
+        aggregateId: aggregateId('order-1'),
         type: 'OrderCreated',
         payload: {
           order: { id: 'order-1', lines: [{ sku: 'A', quantity: 2 }] },
           approved: true,
         },
         timestamp: '2026-01-01T00:00:00.000Z',
-        sequenceVersion: 1,
+        sequenceVersion: sequenceVersion(1),
         causedBy: null,
       },
       payload: {

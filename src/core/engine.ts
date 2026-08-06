@@ -1,9 +1,28 @@
 import { createHmac } from 'node:crypto';
-import { deterministicUuidv7 } from '../ids/uuidv7.js';
-import { createSeededRandom } from '../model/data.js';
-import type { Command, DomainEvent, ExecutionResult } from '../contracts/domain.js';
+import { parse as parseCookie } from 'cookie';
+import picomatch from 'picomatch';
+import { createSeededRandom, uuidV7OptionsFromSeed } from '../model/data.js';
+import { v7 } from 'uuid';
+import {
+  Intent,
+  Origin,
+  type Command,
+  type DomainEvent,
+  type ExecutionResult,
+} from '../contracts/domain.js';
 import type { Actor } from '../contracts/identity.js';
-import type { JsonObject, JsonValue } from '../contracts/value.js';
+import { isJsonObject, isJsonValue, type JsonObject, type JsonValue } from '../contracts/value.js';
+import { AuthorizationReason } from '../domain/authorization.js';
+import {
+  AggregateId,
+  BoundaryName,
+  CommandId,
+  EventId,
+  EventType,
+  HttpMethod,
+  OperationId,
+  SequenceVersion,
+} from '../domain/references.js';
 import { applyPatches } from '../model/patches.js';
 import {
   cloneValue as clone,
@@ -25,16 +44,16 @@ import type {
   EventContext,
   FaultContext,
   MatchContext,
+  CompiledRuntimeBoundary,
   PostCommitContext,
   ProjectionContext,
   QueryContext,
   RuntimeBehavior,
-  RuntimeBoundary,
   RuntimeExecutionResult,
   RuntimeFault,
   RuntimeHelpers,
   RuntimePolicies,
-  RuntimeProgram,
+  CompiledRuntimeProgram,
   RuntimeReducerContext,
   RuntimeRequest,
   RuntimeBatchOptions,
@@ -44,7 +63,6 @@ import type {
   RuntimeSaga,
   RuntimeSagaStep,
   RuntimeValue,
-  RuntimeLifecycle,
   SagaContext,
   WebhookContext,
   RuntimeFaultStore,
@@ -77,19 +95,41 @@ const MAX_DEPTH = 5;
 const MAX_REACTION_EVENTS = 1_000;
 const GLOBAL_BOUNDARY = '__global__';
 type RuntimeLogLevel = NonNullable<RuntimeControls['logLevel']>;
+type RuntimeBoundary = CompiledRuntimeBoundary;
+
+type UnknownRecord = Readonly<Record<string, unknown>>;
+
+type LifecycleInvocation =
+  | { readonly phase: 'boot' | 'validation' | 'initialization' | 'reset' | 'shutdown' }
+  | { readonly phase: 'request'; readonly input: MatchContext }
+  | {
+      readonly phase: 'projection' | 'commit' | 'postCommit';
+      readonly input: PostCommitContext;
+    };
+
+function isRecord(value: unknown): value is UnknownRecord {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isStringRecord(value: unknown): value is Readonly<Record<string, string>> {
+  return isRecord(value) && Object.values(value).every((entry) => typeof entry === 'string');
+}
+
+function isRuntimeValueFunction<Input, Output>(
+  value: RuntimeValue<Input, Output>,
+): value is (input: Readonly<Input>) => Output {
+  return typeof value === 'function';
+}
 
 function resolveValue<Input, Output>(value: RuntimeValue<Input, Output>, input: Input): Output {
-  return typeof value === 'function' ? (value as (value: Input) => Output)(input) : value;
+  return isRuntimeValueFunction(value) ? value(input) : value;
 }
 
 function asObject(value: JsonValue | object | null | undefined): JsonObject {
-  if (value !== null && value !== undefined && typeof value === 'object' && !Array.isArray(value)) {
-    return clone(value as JsonObject);
-  }
-  return {};
+  return isObjectLike(value) ? clone(value) : {};
 }
 
-function isJsonObject(value: unknown): value is JsonObject {
+function isObjectLike(value: JsonValue | object | null | undefined): value is JsonObject {
   return (
     value !== null && value !== undefined && typeof value === 'object' && !Array.isArray(value)
   );
@@ -109,7 +149,37 @@ function matchesSubscription(subscription: string, event: DomainEvent): boolean 
 }
 
 function serialise(value: unknown): string {
-  return JSON.stringify(value, Object.keys((value ?? {}) as object).sort());
+  return JSON.stringify(value, Object.keys(Object(value ?? {})).sort());
+}
+
+function aggregateTarget(value: string | null): AggregateId | null {
+  return value === null ? null : AggregateId.parse(value);
+}
+
+function requestForCommand(command: Command): RuntimeRequest {
+  return { command, headers: {} };
+}
+
+function commandForEvent(
+  event: DomainEvent,
+  boundary: RuntimeBoundary,
+  overrides: Readonly<Partial<Pick<Command, 'httpMethod' | 'path' | 'intent' | 'origin'>>> = {},
+): Command {
+  return {
+    commandId: CommandId.parse(event.causedBy ?? event.eventId),
+    boundary: event.boundary,
+    intent: overrides.intent ?? event.intent ?? 'mutation',
+    targetId: event.aggregateId,
+    payload: event.payload,
+    queryParams: event.request?.query ?? {},
+    httpMethod: HttpMethod.parse(overrides.httpMethod ?? event.request?.method ?? 'POST'),
+    path: overrides.path ?? event.request?.path ?? boundary.contractPath,
+    origin: overrides.origin ?? 'secondary',
+    depth: 0,
+    ...(event.request?.actorId === undefined
+      ? {}
+      : { actor: { id: event.request.actorId, scopes: event.request.actorScopes ?? [] } }),
+  };
 }
 
 function matchesFaultSelectors(
@@ -161,11 +231,7 @@ function routeFallback(
 }
 
 function globMatch(pattern: string, value: string): boolean {
-  const escaped = pattern
-    .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
-    .replace(/\*\*/g, '.*')
-    .replace(/\*/g, '[^/]*');
-  return new RegExp(`^${escaped}$`).test(value);
+  return picomatch(pattern, { dot: true })(value);
 }
 
 function commandWith(command: Command, changes: Partial<Command>): Command {
@@ -185,7 +251,6 @@ interface Transaction {
 }
 
 interface PendingPostCommit {
-  readonly boundary: RuntimeBoundary;
   readonly request: RuntimeRequest;
   readonly events: readonly DomainEvent[];
   readonly response: RuntimeExecutionResult;
@@ -227,7 +292,7 @@ function seedId(value: JsonObject | RuntimeSeed, boundary: string, index: number
 
 export class RuntimeEngine {
   /** The active source-independent program. Replaced atomically by reload(). */
-  program: RuntimeProgram;
+  program: CompiledRuntimeProgram;
   private readonly events: RuntimeEventStore;
   private readonly state: RuntimeStateStore;
   private readonly idempotency: RuntimeIdempotencyStore;
@@ -242,7 +307,7 @@ export class RuntimeEngine {
   private initialized = false;
   private resetGeneration = 0;
 
-  constructor(program: RuntimeProgram) {
+  constructor(program: CompiledRuntimeProgram) {
     this.program = program;
     this.events = program.dependencies.events ?? createMemoryEventStore();
     this.state = program.dependencies.state ?? createMemoryStateStore();
@@ -281,7 +346,7 @@ export class RuntimeEngine {
           ? this.helpers.uuid
           : (() => {
               let uuidIndex = 0;
-              return () => deterministicUuidv7(`${seed}:${uuidIndex++}`);
+              return () => v7(uuidV7OptionsFromSeed(`${seed}:${uuidIndex++}`));
             })(),
       data:
         seededRandom === undefined ? this.helpers.data : this.helpers.data.withRandom(seededRandom),
@@ -384,7 +449,7 @@ export class RuntimeEngine {
         firstRequest !== undefined
       ) {
         this.program.dependencies.contract.validateBatchRequest?.(
-          operationId,
+          OperationId.parse(operationId),
           options.requestBody,
           firstRequest,
         );
@@ -402,12 +467,7 @@ export class RuntimeEngine {
       this.flushBatchIdempotency(batch);
       if (batch !== undefined)
         for (const pending of batch.postCommits) {
-          await this.runPostCommit(
-            pending.boundary,
-            pending.request,
-            pending.events,
-            pending.response,
-          );
+          await this.runPostCommit(pending.request, pending.events, pending.response);
         }
       if (batch !== undefined) {
         for (const pending of batch.observations)
@@ -498,42 +558,19 @@ export class RuntimeEngine {
             committed: false,
           }
         : (() => {
-            const candidate = error as {
-              readonly status?: unknown;
-              readonly code?: unknown;
-              readonly message?: unknown;
-              readonly details?: unknown;
-              readonly body?: unknown;
-              readonly headers?: unknown;
-            };
+            const candidate: UnknownRecord = isRecord(error) ? error : {};
             const status = typeof candidate.status === 'number' ? candidate.status : 500;
             const message =
               candidate.message === undefined ? String(error) : String(candidate.message);
-            const detailObject =
-              candidate.details !== null &&
-              typeof candidate.details === 'object' &&
-              !Array.isArray(candidate.details)
-                ? (candidate.details as JsonObject)
-                : undefined;
-            const body =
-              candidate.body !== undefined &&
-              candidate.body !== null &&
-              typeof candidate.body === 'object'
-                ? (candidate.body as JsonValue)
-                : ({
-                    code:
-                      typeof candidate.code === 'string'
-                        ? candidate.code
-                        : 'RUNTIME_EXECUTION_FAILED',
-                    message,
-                    ...(detailObject === undefined ? {} : { details: detailObject }),
-                  } as JsonObject);
-            const headers =
-              candidate.headers !== null &&
-              typeof candidate.headers === 'object' &&
-              !Array.isArray(candidate.headers)
-                ? (candidate.headers as Readonly<Record<string, string>>)
-                : {};
+            const details = isJsonObject(candidate.details) ? candidate.details : undefined;
+            const fallbackBody: JsonObject = {
+              code:
+                typeof candidate.code === 'string' ? candidate.code : 'RUNTIME_EXECUTION_FAILED',
+              message,
+              ...(details === undefined ? {} : { details }),
+            };
+            const body = isJsonValue(candidate.body) ? candidate.body : fallbackBody;
+            const headers = isStringRecord(candidate.headers) ? candidate.headers : {};
             return { status, body, headers, events: [], committed: false };
           })();
     return decorateStandaloneResponse(response, request, this.program.policies.securityHeaders);
@@ -564,9 +601,8 @@ export class RuntimeEngine {
     const boundary = this.program.byBoundaryName.get(effectiveRequest.command.boundary);
     if (boundary === undefined) {
       if (this.program.dependencies.forwarding !== undefined) {
-        return this.program.dependencies.forwarding.forward(
-          effectiveRequest,
-        ) as Promise<RuntimeExecutionResult>;
+        const forwarded = await this.program.dependencies.forwarding.forward(effectiveRequest);
+        return { ...forwarded, committed: false };
       }
       return decorateStandaloneResponse(
         routeFallback(this.program.policies, effectiveRequest, false),
@@ -610,18 +646,18 @@ export class RuntimeEngine {
       controls?.skipRequestValidation !== true
     ) {
       this.program.dependencies.contract.validateRequest?.(
-        command.operationId,
+        OperationId.parse(command.operationId),
         command.payload,
         normalizedRequest,
       );
     }
-    const context = this.context(boundary, normalizedRequest, this.readState(command.targetId));
+    const context = this.context(normalizedRequest, this.readState(command.targetId));
     this.writeLog(normalizedRequest, 'debug', 'Runtime request matched boundary', {
       boundary: boundary.boundary,
       operationId: command.operationId,
       commandId: command.commandId,
     });
-    await this.runLifecycle('request', context);
+    await this.runLifecycle({ phase: 'request', input: context });
 
     // Authorization for an already authenticated actor is a security gate, not
     // transport chaos. Resolve the selected behavior's authorization
@@ -673,7 +709,7 @@ export class RuntimeEngine {
     }
 
     if (command.intent === 'query') {
-      const replayed = await this.replayEvent(boundary, normalizedRequest);
+      const replayed = await this.replayEvent(normalizedRequest);
       if (replayed !== undefined) {
         if (
           idempotencyKey !== undefined &&
@@ -696,7 +732,7 @@ export class RuntimeEngine {
 
     const targetId = this.resolveIdentity(boundary, normalizedRequest);
     const withTarget = { ...normalizedRequest, command: commandWith(command, { targetId }) };
-    const lockKeys = [targetId ?? GLOBAL_BOUNDARY];
+    const lockKeys: string[] = [targetId ?? GLOBAL_BOUNDARY];
     if (idempotencyKey !== undefined) lockKeys.push(`__idempotency__${idempotencyKey}`);
     // Secondary commands execute inside the owning mutation's cascade lock.
     // Re-acquiring that non-reentrant lock would deadlock sagas and dispatch
@@ -741,9 +777,9 @@ export class RuntimeEngine {
   /** Run boot, validation, and initialization hooks for explicit startup management. */
   async start(): Promise<void> {
     await this.initializationPromise;
-    await this.runLifecycle('boot', undefined);
-    await this.runLifecycle('validation', undefined);
-    await this.runLifecycle('initialization', undefined);
+    await this.runLifecycle({ phase: 'boot' });
+    await this.runLifecycle({ phase: 'validation' });
+    await this.runLifecycle({ phase: 'initialization' });
   }
 
   async reset(): Promise<void> {
@@ -759,7 +795,7 @@ export class RuntimeEngine {
     this.aggregateBoundaries.clear();
     for (const projection of this.program.policies.derivedProjections ?? [])
       await projection.reset?.();
-    await this.runLifecycle('reset', undefined);
+    await this.runLifecycle({ phase: 'reset' });
     this.initialized = false;
     this.initializationPromise = this.initialize();
     await this.initializationPromise;
@@ -770,10 +806,10 @@ export class RuntimeEngine {
    * event log. The new callbacks and policies are projected over that log
    * before the method returns, so requests never observe a half-reloaded
    * state graph. Source-specific parsing belongs to the caller; this method
-   * accepts only the canonical RuntimeProgram.
+   * accepts only the canonical compiled runtime program.
    */
   async replaceProgram(
-    next: RuntimeProgram,
+    next: CompiledRuntimeProgram,
     options: Readonly<{ preserveEvents?: boolean }> = {},
   ): Promise<void> {
     await this.initializationPromise;
@@ -793,7 +829,7 @@ export class RuntimeEngine {
         this.projections.clear();
         this.aggregateBoundaries.clear();
         this.resetGeneration += 1;
-        await this.runLifecycle('reset', undefined);
+        await this.runLifecycle({ phase: 'reset' });
         this.initialized = false;
         this.initializationPromise = this.initialize();
         await this.initializationPromise;
@@ -829,21 +865,7 @@ export class RuntimeEngine {
         if (event.boundary === '__saga__') continue;
         const boundary = next.byBoundaryName.get(event.boundary);
         if (boundary === undefined) continue;
-        const command: Command = {
-          commandId: event.causedBy ?? event.eventId,
-          boundary: event.boundary,
-          intent: event.intent ?? 'mutation',
-          targetId: event.aggregateId,
-          payload: event.payload,
-          queryParams: event.request?.query ?? {},
-          httpMethod: event.request?.method ?? 'POST',
-          path: event.request?.path ?? boundary.contractPath,
-          origin: 'secondary',
-          depth: 0,
-          ...(event.request?.actorId === undefined
-            ? {}
-            : { actor: { id: event.request.actorId, scopes: event.request.actorScopes ?? [] } }),
-        };
+        const command = commandForEvent(event, boundary);
         this.applyEvent(
           boundary,
           event,
@@ -861,20 +883,21 @@ export class RuntimeEngine {
       if (sourceEvent !== undefined && next.policies.derivedProjections !== undefined) {
         const boundary = next.byBoundaryName.get(sourceEvent.boundary);
         if (boundary !== undefined) {
+          const command: Command = {
+            commandId: CommandId.parse('runtime-reload'),
+            boundary: boundary.boundary,
+            intent: Intent.Mutation,
+            targetId: null,
+            payload: {},
+            queryParams: {},
+            httpMethod: 'POST',
+            path: boundary.contractPath,
+            origin: Origin.Secondary,
+            depth: 0,
+          };
           const source: PostCommitContext = {
-            command: {
-              commandId: 'runtime-reload',
-              boundary: boundary.boundary,
-              intent: 'mutation',
-              targetId: null,
-              payload: {},
-              queryParams: {},
-              httpMethod: 'POST',
-              path: boundary.contractPath,
-              origin: 'secondary',
-              depth: 0,
-            },
-            request: { command: {} as Command, headers: {} },
+            command,
+            request: requestForCommand(command),
             state: null,
             payload: {},
             helpers: this.helpers,
@@ -886,7 +909,7 @@ export class RuntimeEngine {
           );
         }
       }
-      await this.runLifecycle('validation', undefined);
+      await this.runLifecycle({ phase: 'validation' });
       this.initialized = true;
       this.initializationPromise = Promise.resolve();
     } catch (error) {
@@ -900,7 +923,7 @@ export class RuntimeEngine {
   }
 
   async shutdown(): Promise<void> {
-    await this.runLifecycle('shutdown', undefined);
+    await this.runLifecycle({ phase: 'shutdown' });
   }
 
   snapshot(): Readonly<{
@@ -951,19 +974,20 @@ export class RuntimeEngine {
           const state = seedState(seed);
           const id = seedId(seed, boundary.boundary, index);
           baseline.push({
-            eventId: `baseline-${boundary.boundary}-${index}-event`,
-            type:
+            eventId: EventId.parse(`baseline-${boundary.boundary}-${index}-event`),
+            type: EventType.parse(
               isRuntimeSeed(seed) && seed.eventType !== undefined
                 ? seed.eventType
                 : 'BaselineEntityCreatedEvent',
-            boundary: boundary.boundary,
-            aggregateId: id,
+            ),
+            boundary: BoundaryName.parse(boundary.boundary),
+            aggregateId: AggregateId.parse(id),
             payload: state,
             timestamp:
               isRuntimeSeed(seed) && seed.timestamp !== undefined
                 ? seed.timestamp
                 : '1970-01-01T00:00:00.000Z',
-            sequenceVersion: 1,
+            sequenceVersion: SequenceVersion.parse(1),
             causedBy: null,
           });
         }
@@ -979,13 +1003,14 @@ export class RuntimeEngine {
       };
       for (const event of history) {
         const boundary = this.program.byBoundaryName.get(event.boundary);
-        if (boundary !== undefined)
-          this.applyEvent(
-            boundary,
-            event,
-            { command: {} as Command, request: { command: {} as Command, headers: {} } },
-            transaction,
-          );
+        if (boundary === undefined) continue;
+        const command = commandForEvent(event, boundary);
+        this.applyEvent(
+          boundary,
+          event,
+          { command, request: requestForCommand(command) },
+          transaction,
+        );
       }
       for (const [id, state] of transaction.states) this.state.set(id, state);
     }
@@ -999,20 +1024,21 @@ export class RuntimeEngine {
           '',
       );
       if (boundary !== undefined) {
+        const command: Command = {
+          commandId: CommandId.parse('baseline'),
+          boundary: boundary.boundary,
+          intent: Intent.Creation,
+          targetId: null,
+          payload: {},
+          queryParams: {},
+          httpMethod: 'POST',
+          path: boundary.contractPath,
+          origin: Origin.Inbound,
+          depth: 0,
+        };
         const source: PostCommitContext = {
-          command: {
-            commandId: 'baseline',
-            boundary: boundary.boundary,
-            intent: 'creation',
-            targetId: null,
-            payload: {},
-            queryParams: {},
-            httpMethod: 'POST',
-            path: boundary.contractPath,
-            origin: 'inbound',
-            depth: 0,
-          },
-          request: { command: {} as Command, headers: {} },
+          command,
+          request: requestForCommand(command),
           state: null,
           payload: {},
           helpers: this.helpers,
@@ -1061,7 +1087,7 @@ export class RuntimeEngine {
     try {
       return auth?.authenticate?.(request) ?? request.actor;
     } catch (error) {
-      const candidate = error as { readonly code?: unknown; readonly message?: unknown };
+      const candidate: UnknownRecord = isRecord(error) ? error : {};
       throw new RuntimeExecutionError(
         401,
         candidate.message === undefined ? 'Authentication failed' : String(candidate.message),
@@ -1080,12 +1106,7 @@ export class RuntimeEngine {
 
   private cookieValue(header: string | undefined, name: string): string | undefined {
     if (header === undefined) return undefined;
-    const entry = header
-      .split(';')
-      .map((part) => part.trim())
-      .find((part) => part.startsWith(`${name}=`));
-    if (entry === undefined) return undefined;
-    return decodeURIComponent(entry.slice(name.length + 1));
+    return parseCookie(header)[name];
   }
 
   private handleSessionEndpoint(request: RuntimeRequest): RuntimeExecutionResult | undefined {
@@ -1147,12 +1168,7 @@ export class RuntimeEngine {
     };
   }
 
-  private context(
-    boundary: RuntimeBoundary,
-    request: RuntimeRequest,
-    state: JsonObject | null,
-  ): MatchContext {
-    void boundary;
+  private context(request: RuntimeRequest, state: JsonObject | null): MatchContext {
     return {
       command: request.command,
       request,
@@ -1166,10 +1182,7 @@ export class RuntimeEngine {
     return id === null ? null : (this.state.get(id) ?? null);
   }
 
-  private async replayEvent(
-    boundary: RuntimeBoundary,
-    request: RuntimeRequest,
-  ): Promise<RuntimeExecutionResult | undefined> {
+  private async replayEvent(request: RuntimeRequest): Promise<RuntimeExecutionResult | undefined> {
     const eventId = request.controls?.replayEvent;
     if (eventId === undefined) return undefined;
     const event = this.events.events().find((candidate) => candidate.eventId === eventId);
@@ -1208,11 +1221,11 @@ export class RuntimeEngine {
       ...request.command,
       boundary: eventBoundary.boundary,
       targetId: event.aggregateId,
-      intent: 'mutation',
+      intent: Intent.Mutation,
       httpMethod: 'PUT',
       path: eventBoundary.contractPath,
       operationId: request.command.operationId,
-      origin: 'inbound',
+      origin: Origin.Inbound,
     };
     const replayRequest: RuntimeRequest = { ...request, command: replayCommand };
     const transaction: Transaction = {
@@ -1223,11 +1236,14 @@ export class RuntimeEngine {
     };
     const replayedEvent: DomainEvent = {
       ...clone(event),
-      eventId: this.helpersFor(replayRequest).uuid(),
+      eventId: EventId.parse(this.helpersFor(replayRequest).uuid()),
       timestamp: this.helpersFor(replayRequest).now(),
       sequenceVersion: this.nextSequence(event.aggregateId, transaction),
-      causedBy: replayRequest.controls?.causedBy ?? replayCommand.commandId,
-      intent: 'mutation',
+      causedBy:
+        replayRequest.controls?.causedBy === undefined
+          ? replayCommand.commandId
+          : EventId.parse(replayRequest.controls.causedBy),
+      intent: Intent.Mutation,
       request: {
         method: replayCommand.httpMethod,
         path: replayCommand.path,
@@ -1273,7 +1289,7 @@ export class RuntimeEngine {
         headers: response.headers ?? {},
       },
     };
-    await this.runLifecycle('commit', commitContext);
+    await this.runLifecycle({ phase: 'commit', input: commitContext });
     const committedEvent: DomainEvent = {
       ...replayedEvent,
       response: {
@@ -1296,13 +1312,12 @@ export class RuntimeEngine {
         committed: true,
       };
       const pending: PendingPostCommit = {
-        boundary: eventBoundary,
         request: replayRequest,
         events: [committedEvent],
         response: replayResponse,
       };
       if (this.activeBatch === undefined)
-        await this.runPostCommit(eventBoundary, replayRequest, [committedEvent], pending.response);
+        await this.runPostCommit(replayRequest, [committedEvent], pending.response);
       else this.activeBatch.postCommits.push(pending);
     }
     return this.decorateResult(
@@ -1338,23 +1353,13 @@ export class RuntimeEngine {
       // aggregate's owning boundary, not to whichever boundary exposed the
       // read route, so replay each event through its declaring runtime model.
       const owner = this.program.byBoundaryName.get(event.boundary) ?? boundary;
+      const command = commandForEvent(event, owner, { httpMethod: 'PUT', path: '' });
       this.applyEvent(
         owner,
         event,
         {
-          command: {
-            commandId: event.causedBy ?? event.eventId,
-            boundary: event.boundary,
-            intent: 'mutation',
-            targetId: event.aggregateId,
-            payload: event.payload,
-            queryParams: {},
-            httpMethod: 'PUT',
-            path: '',
-            origin: 'secondary',
-            depth: 0,
-          },
-          request: { command: {} as Command, headers: {} },
+          command,
+          request: requestForCommand(command),
         },
         transaction,
       );
@@ -1374,26 +1379,29 @@ export class RuntimeEngine {
     return eventsThroughVersion(scoped, aggregateId, version);
   }
 
-  private resolveIdentity(boundary: RuntimeBoundary, request: RuntimeRequest): string {
+  private resolveIdentity(boundary: RuntimeBoundary, request: RuntimeRequest): AggregateId {
     const identity = boundary.identity;
-    return resolveAggregateId({
-      targetId: request.command.targetId,
-      key: identity?.key,
-      generated:
-        identity?.generate === undefined
-          ? undefined
-          : () =>
-              identity.generate!({
-                ...this.context(boundary, request, null),
-                boundary: boundary.boundary,
-              }),
-      path: request.command.path,
-      contractPath: boundary.contractPath,
-      query: request.command.queryParams,
-      headers: request.headers,
-      payload: request.command.payload,
-      fallback: () => this.helpersFor(request).uuid(),
-    });
+    const generate = identity?.generate;
+    return AggregateId.parse(
+      resolveAggregateId({
+        targetId: request.command.targetId,
+        key: identity?.key,
+        generated:
+          generate === undefined
+            ? undefined
+            : () =>
+                generate({
+                  ...this.context(request, null),
+                  boundary: boundary.boundary,
+                }),
+        path: request.command.path,
+        contractPath: boundary.contractPath,
+        query: request.command.queryParams,
+        headers: request.headers,
+        payload: request.command.payload,
+        fallback: () => this.helpersFor(request).uuid(),
+      }),
+    );
   }
 
   private findFault(
@@ -1618,11 +1626,12 @@ export class RuntimeEngine {
     );
     let rows = entries.map(([, value]) => value);
     const policy = boundary.query;
-    if (policy?.filter !== undefined)
-      rows = rows.filter((row) => policy.filter!(queryContext(row)));
-    if (boundary.queryMapping !== undefined) {
+    const filter = policy?.filter;
+    if (filter !== undefined) rows = rows.filter((row) => filter(queryContext(row)));
+    const queryMapping = boundary.queryMapping;
+    if (queryMapping !== undefined) {
       rows = rows.filter((row) =>
-        Object.entries(boundary.queryMapping!).every(([name, predicate]) => {
+        Object.entries(queryMapping).every(([name, predicate]) => {
           const requested = request.command.queryParams[name];
           return (
             requested === undefined ||
@@ -1632,9 +1641,10 @@ export class RuntimeEngine {
       );
       entries = entries.filter(([, value]) => rows.includes(value));
     }
-    if (policy?.fields !== undefined) {
+    const fieldPolicies = policy?.fields;
+    if (fieldPolicies !== undefined) {
       rows = rows.filter((row) =>
-        Object.entries(policy.fields!).every(([name, predicate]) => {
+        Object.entries(fieldPolicies).every(([name, predicate]) => {
           return request.command.queryParams[name] === undefined || predicate(queryContext(row));
         }),
       );
@@ -1654,7 +1664,10 @@ export class RuntimeEngine {
       if (match === null) continue;
       const expected = queryValue(raw);
       if (expected === undefined) continue;
-      rows = rows.filter((row) => queryOperator(readPath(row, match[1]!), match[2]!, expected));
+      const field = match[1];
+      const operator = match[2];
+      if (field === undefined || operator === undefined) continue;
+      rows = rows.filter((row) => queryOperator(readPath(row, field), operator, expected));
     }
     entries = entries.filter(([, value]) => rows.includes(value));
     const q = queryValue(request.command.queryParams.q)?.toLowerCase();
@@ -1665,8 +1678,9 @@ export class RuntimeEngine {
         ),
       );
     entries = entries.filter(([, value]) => rows.includes(value));
-    if (policy?.sort !== undefined)
-      rows.sort((left, right) => policy.sort!(left, right, queryContext(left)));
+    const sortPolicy = policy?.sort;
+    if (sortPolicy !== undefined)
+      rows.sort((left, right) => sortPolicy(left, right, queryContext(left)));
     const sort = queryValue(request.command.queryParams.sort);
     if (sort !== undefined) {
       const sortItems = sort
@@ -1824,8 +1838,9 @@ export class RuntimeEngine {
     const sequence = this.events.currentSequenceVersion(targetId);
     const required =
       request.command.operationId !== undefined &&
-      this.program.dependencies.contract.requiresPrecondition?.(request.command.operationId) ===
-        true;
+      this.program.dependencies.contract.requiresPrecondition?.(
+        OperationId.parse(request.command.operationId),
+      ) === true;
     if (required && request.command.sequenceVersion === undefined)
       throw new RuntimeExecutionError(428, 'If-Match is required');
     if (
@@ -1849,7 +1864,7 @@ export class RuntimeEngine {
       reactionEvents: 0,
     };
     const command = request.command;
-    const response = await this.runCommands([{ command, request }], boundary, tx, 0);
+    const response = await this.runCommands([{ command, request }], tx, 0);
     if (response === undefined)
       throw new RuntimeExecutionError(404, 'No behavior matched the command');
     const commitContext: PostCommitContext = {
@@ -1862,7 +1877,7 @@ export class RuntimeEngine {
       committedEvents: tx.events,
       response: { status: response.status, body: response.body, headers: response.headers ?? {} },
     };
-    await this.runLifecycle('commit', commitContext);
+    await this.runLifecycle({ phase: 'commit', input: commitContext });
     const committedEvents = tx.events.map((event) => ({
       ...event,
       response: { status: response.status, body: response.body, headers: response.headers ?? {} },
@@ -1879,9 +1894,9 @@ export class RuntimeEngine {
       for (const [id] of this.state.entries()) if (!tx.states.has(id)) this.state.delete(id);
       this.events.append(committedEvents);
       if (generation === this.resetGeneration) {
-        const pending: PendingPostCommit = { boundary, request, events: committedEvents, response };
+        const pending: PendingPostCommit = { request, events: committedEvents, response };
         if (this.activeBatch === undefined)
-          await this.runPostCommit(boundary, request, committedEvents, response);
+          await this.runPostCommit(request, committedEvents, response);
         else this.activeBatch.postCommits.push(pending);
       }
     }
@@ -1894,12 +1909,16 @@ export class RuntimeEngine {
   }
 
   private pathForOperation(operationId: string, targetId: string | null, fallback: string): string {
-    return this.program.dependencies.contract.pathForOperation?.(operationId, targetId) ?? fallback;
+    return (
+      this.program.dependencies.contract.pathForOperation?.(
+        OperationId.parse(operationId),
+        targetId,
+      ) ?? fallback
+    );
   }
 
   private async runCommands(
     pending: readonly Pending[],
-    root: RuntimeBoundary,
     tx: Transaction,
     depth: number,
   ): Promise<RuntimeExecutionResult | undefined> {
@@ -1912,7 +1931,8 @@ export class RuntimeEngine {
     let firstResponse: RuntimeExecutionResult | undefined;
     const queue = [...pending];
     while (queue.length > 0) {
-      const item = queue.shift()!;
+      const item = queue.shift();
+      if (item === undefined) break;
       if (item.command.depth > maxDepth) {
         throw new RuntimeExecutionError(508, 'Cascade depth exceeded', {
           code: 'INFINITE_LOOP',
@@ -1953,12 +1973,8 @@ export class RuntimeEngine {
       const behavior = this.findBehavior(boundary, item.request, context);
       if (behavior === undefined) {
         if (boundary.fallbackOverride === true) {
-          const fallbackBehavior: RuntimeBehavior = {
-            name: 'fallback',
-            operationId: item.command.operationId ?? 'fallback',
-            emit: 'System.GenericUpdateEvent',
-          };
-          const event = this.createEvent(boundary, fallbackBehavior.emit!, context, tx);
+          const fallbackEventType = 'System.GenericUpdateEvent';
+          const event = this.createEvent(boundary, fallbackEventType, context, tx);
           this.applyEvent(boundary, event, item, tx);
           if (item.request.sideEffects?.skipReactions !== true)
             this.enqueueReactions(event, item, tx, queue);
@@ -2006,7 +2022,7 @@ export class RuntimeEngine {
           });
       }
 
-      const emitted = this.eventsForBehavior(boundary, behavior, context);
+      const emitted = this.eventsForBehavior(behavior, context);
       for (const eventName of emitted) {
         const event = this.createEvent(boundary, eventName, context, tx);
         this.applyEvent(boundary, event, item, tx);
@@ -2017,7 +2033,9 @@ export class RuntimeEngine {
         for (const secondary of behavior.dispatchCommands ?? []) {
           if (secondary.condition !== undefined && !secondary.condition(context)) continue;
           const targetId =
-            secondary.targetId === undefined ? null : resolveValue(secondary.targetId, context);
+            secondary.targetId === undefined
+              ? null
+              : aggregateTarget(resolveValue(secondary.targetId, context));
           const payload = Object.fromEntries(
             Object.entries(secondary.payload ?? {}).map(([key, value]) => [
               key,
@@ -2034,24 +2052,24 @@ export class RuntimeEngine {
             request: {
               ...item.request,
               command: commandWith(item.command, {
-                boundary: secondary.boundary,
+                boundary: BoundaryName.parse(secondary.boundary),
                 intent: secondary.intent,
-                operationId: secondary.operationId,
+                operationId: OperationId.parse(secondary.operationId),
                 targetId,
                 payload: asObject(payload),
-                origin: 'secondary',
+                origin: Origin.Secondary,
                 depth: item.command.depth + 1,
                 path: secondaryPath,
                 httpMethod: secondary.intent === 'creation' ? 'POST' : 'PUT',
               }),
             },
             command: commandWith(item.command, {
-              boundary: secondary.boundary,
+              boundary: BoundaryName.parse(secondary.boundary),
               intent: secondary.intent,
-              operationId: secondary.operationId,
+              operationId: OperationId.parse(secondary.operationId),
               targetId,
               payload: asObject(payload),
-              origin: 'secondary',
+              origin: Origin.Secondary,
               depth: item.command.depth + 1,
               path: secondaryPath,
               httpMethod: secondary.intent === 'creation' ? 'POST' : 'PUT',
@@ -2067,7 +2085,7 @@ export class RuntimeEngine {
           status:
             behavior.responseStatus ??
             this.program.dependencies.contract.responseStatusFor?.(
-              item.command.operationId ?? behavior.operationId,
+              OperationId.parse(item.command.operationId ?? behavior.operationId),
               item.command.intent,
             ) ??
             (item.command.intent === 'creation' ? 201 : 200),
@@ -2109,13 +2127,26 @@ export class RuntimeEngine {
     request: RuntimeRequest,
     context: MatchContext,
   ): RuntimeBehavior | undefined {
-    return selectBehavior(boundary.behaviors, {
-      operationId: request.command.operationId,
+    const candidates = boundary.behaviors.map((behavior) => ({
+      source: behavior,
+      operationId: OperationId.parse(behavior.operationId),
+      method: behavior.method,
+      headers: behavior.headers,
+      condition: behavior.condition,
+      emitWhen: behavior.emitWhen,
+      requires: behavior.requires,
+    }));
+    const selected = selectBehavior(candidates, {
+      operationId:
+        request.command.operationId === undefined
+          ? undefined
+          : OperationId.parse(request.command.operationId),
       method: request.command.httpMethod,
       inbound: request.command.origin === 'inbound',
       headers: request.headers,
       context,
     });
+    return selected?.source;
   }
 
   private assertAuthorized(
@@ -2132,7 +2163,7 @@ export class RuntimeEngine {
       behavior.requiredScopes ?? [],
       policyDecision,
     );
-    if (!decision.allowed && decision.reason === 'authentication-required') {
+    if (!decision.allowed && decision.reason === AuthorizationReason.AuthenticationRequired) {
       throw new RuntimeExecutionError(
         401,
         'Authentication is required for this operation',
@@ -2151,11 +2182,7 @@ export class RuntimeEngine {
     }
   }
 
-  private eventsForBehavior(
-    boundary: RuntimeBoundary,
-    behavior: RuntimeBehavior,
-    context: MatchContext,
-  ): string[] {
+  private eventsForBehavior(behavior: RuntimeBehavior, context: MatchContext): string[] {
     if (behavior.emitWhen !== undefined) {
       return behavior.emitWhen.filter((entry) => entry.when(context)).map((entry) => entry.event);
     }
@@ -2172,16 +2199,19 @@ export class RuntimeEngine {
     const catalog = boundary.eventCatalog.find((event) => event.type === type);
     if (catalog === undefined && type !== 'System.GenericUpdateEvent')
       throw new RuntimeExecutionError(500, `Event ${type} is not declared by ${boundary.boundary}`);
-    const aggregateId = context.command.targetId ?? context.helpers.uuid();
+    const aggregateId = AggregateId.parse(context.command.targetId ?? context.helpers.uuid());
     const provisional: DomainEvent = {
-      eventId: context.helpers.uuid(),
-      boundary: boundary.boundary,
+      eventId: EventId.parse(context.helpers.uuid()),
+      boundary: BoundaryName.parse(boundary.boundary),
       aggregateId,
-      type,
+      type: EventType.parse(type),
       payload: {},
       timestamp: context.helpers.now(),
       sequenceVersion: this.nextSequence(aggregateId, tx),
-      causedBy: context.request.controls?.causedBy ?? context.command.commandId,
+      causedBy:
+        context.request.controls?.causedBy === undefined
+          ? context.command.commandId
+          : EventId.parse(context.request.controls.causedBy),
       intent: context.command.intent,
       request: {
         method: context.command.httpMethod,
@@ -2212,7 +2242,7 @@ export class RuntimeEngine {
     const hydrated = asObject(payload);
     this.program.dependencies.contract.validateEvent?.(
       boundary.boundary,
-      type,
+      EventType.parse(type),
       hydrated,
       catalog?.schemaRef,
     );
@@ -2351,16 +2381,16 @@ export class RuntimeEngine {
         ]),
       );
       const command: Command = {
-        commandId: postContext.helpers.uuid(),
+        commandId: CommandId.parse(postContext.helpers.uuid()),
         boundary: reaction.boundary,
         intent,
-        targetId: target,
+        targetId: target === null ? null : AggregateId.parse(target),
         payload: asObject(payload),
         queryParams: {},
         httpMethod: intent === 'creation' ? 'POST' : 'PUT',
         path: '',
-        operationId: reaction.emit,
-        origin: 'secondary',
+        operationId: OperationId.parse(reaction.emit),
+        origin: Origin.Secondary,
         depth: source.command.depth,
         actor: source.request.actor,
       };
@@ -2390,7 +2420,6 @@ export class RuntimeEngine {
   }
 
   private async runPostCommit(
-    boundary: RuntimeBoundary,
     request: RuntimeRequest,
     events: readonly DomainEvent[],
     response: RuntimeExecutionResult,
@@ -2409,7 +2438,7 @@ export class RuntimeEngine {
       response: { status: response.status, body: response.body, headers: response.headers ?? {} },
       committedEvents: events,
     };
-    await this.runLifecycle('postCommit', context);
+    await this.runLifecycle({ phase: 'postCommit', input: context });
     if (request.sideEffects?.skipProjections !== true) await this.runProjections(events, context);
     if (request.sideEffects?.skipWebhooks !== true) await this.runWebhooks(events, context);
     if (request.sideEffects?.skipSagas !== true && this.program.policies.sagas !== undefined)
@@ -2442,7 +2471,7 @@ export class RuntimeEngine {
                 }),
               ) ?? null,
           };
-          await this.runLifecycle('projection', context);
+          await this.runLifecycle({ phase: 'projection', input: context });
           const key = resolveValue(projection.key, context);
           const current = stateMap.get(key) ?? {};
           const reducers = projection.reduce.filter(
@@ -2595,7 +2624,9 @@ export class RuntimeEngine {
           activeStepIndex = stepIndex;
           const stepContext = sagaContext();
           const target =
-            step.targetId === undefined ? null : resolveValue(step.targetId, stepContext);
+            step.targetId === undefined
+              ? null
+              : aggregateTarget(resolveValue(step.targetId, stepContext));
           const payload = Object.fromEntries(
             Object.entries(step.payload ?? {}).map(([key, value]) => [
               key,
@@ -2610,13 +2641,13 @@ export class RuntimeEngine {
           );
           const command: Command = {
             ...request.command,
-            commandId: source.helpers.uuid(),
-            boundary: step.boundary,
+            commandId: CommandId.parse(source.helpers.uuid()),
+            boundary: BoundaryName.parse(step.boundary),
             intent: step.intent,
-            operationId: step.operationId,
-            targetId: target,
+            operationId: OperationId.parse(step.operationId),
+            targetId: target === null ? null : AggregateId.parse(target),
             payload: asObject(payload),
-            origin: 'secondary',
+            origin: Origin.Secondary,
             depth: request.command.depth + 1,
             path: stepPath,
             httpMethod: step.intent === 'creation' ? 'POST' : 'PUT',
@@ -2668,8 +2699,8 @@ export class RuntimeEngine {
           const stepContext = sagaContext();
           const target =
             compensation.targetId === undefined
-              ? entry.target
-              : resolveValue(compensation.targetId, stepContext);
+              ? aggregateTarget(entry.target)
+              : aggregateTarget(resolveValue(compensation.targetId, stepContext));
           const payload = Object.fromEntries(
             Object.entries(compensation.payload ?? {}).map(([key, value]) => [
               key,
@@ -2684,13 +2715,13 @@ export class RuntimeEngine {
           );
           const command: Command = {
             ...request.command,
-            commandId: source.helpers.uuid(),
-            boundary: step.boundary,
+            commandId: CommandId.parse(source.helpers.uuid()),
+            boundary: BoundaryName.parse(step.boundary),
             intent: compensation.intent,
-            operationId: compensation.operationId,
-            targetId: target,
+            operationId: OperationId.parse(compensation.operationId),
+            targetId: target === null ? null : AggregateId.parse(target),
             payload: asObject(payload),
-            origin: 'secondary',
+            origin: Origin.Secondary,
             depth: request.command.depth + 1,
             path: compensationPath,
             httpMethod: compensation.intent === 'creation' ? 'POST' : 'PUT',
@@ -2747,15 +2778,15 @@ export class RuntimeEngine {
   ): void {
     this.events.append([
       {
-        eventId: helpers.uuid(),
-        boundary: '__saga__',
-        aggregateId,
-        type,
+        eventId: EventId.parse(helpers.uuid()),
+        boundary: BoundaryName.parse('__saga__'),
+        aggregateId: AggregateId.parse(aggregateId),
+        type: EventType.parse(type),
         payload,
         timestamp: helpers.now(),
-        sequenceVersion: this.events.currentSequenceVersion(aggregateId) + 1,
+        sequenceVersion: SequenceVersion.parse(this.events.currentSequenceVersion(aggregateId) + 1),
         causedBy: null,
-        intent: 'mutation',
+        intent: Intent.Mutation,
       },
     ]);
   }
@@ -2767,11 +2798,12 @@ export class RuntimeEngine {
     request: RuntimeRequest,
   ): JsonValue {
     const policy = this.program.policies.hateoas;
+    const isObjectOrArray = Array.isArray(body) || isJsonObject(body);
     if (
       !policy?.enabled ||
       request.command.queryParams.fields !== undefined ||
       body === null ||
-      typeof body !== 'object'
+      !isObjectOrArray
     )
       return body;
 
@@ -2783,8 +2815,8 @@ export class RuntimeEngine {
     const baseUrl =
       policy.baseUrl?.endsWith('/') === true ? policy.baseUrl.slice(0, -1) : (policy.baseUrl ?? '');
     const attach = (value: JsonValue): JsonValue => {
-      if (value === null || typeof value !== 'object' || Array.isArray(value)) return value;
-      const entity = value as JsonObject;
+      if (!isJsonObject(value)) return value;
+      const entity = value;
       const id = typeof entity.id === 'string' && entity.id.length > 0 ? entity.id : undefined;
       if (id === undefined || entityPathTemplate === undefined) return value;
       const expand = (path: string): string =>
@@ -2806,7 +2838,7 @@ export class RuntimeEngine {
           const predicate = behavior.linkCondition ?? behavior.condition;
           if (predicate !== undefined) {
             try {
-              if (!predicate(this.context(candidate, request, entity))) continue;
+              if (!predicate(this.context(request, entity))) continue;
             } catch {
               continue;
             }
@@ -2821,8 +2853,9 @@ export class RuntimeEngine {
       return { ...entity, _links: links };
     };
 
-    if (Array.isArray(body)) return body.map(attach) as JsonValue;
-    const object = body as JsonObject;
+    if (Array.isArray(body)) return body.map(attach);
+    if (!isJsonObject(body)) return body;
+    const object = body;
     if (Array.isArray(object.items)) return { ...object, items: object.items.map(attach) };
     return attach(body);
   }
@@ -2886,13 +2919,13 @@ export class RuntimeEngine {
         },
       };
     }
-    if (boundary.deprecated !== undefined || policy?.deprecated !== undefined) {
-      const deprecation = boundary.deprecated ?? policy!.deprecated!;
+    const deprecation = boundary.deprecated ?? policy?.deprecated;
+    if (deprecation !== undefined) {
       const httpDate = (value: string): string => {
         const parsed = new Date(value);
         return Number.isNaN(parsed.getTime()) ? value : parsed.toUTCString();
       };
-      const deprecationDate = (deprecation as { readonly date?: string }).date;
+      const deprecationDate = deprecation.date;
       const isEpochSentinel =
         deprecationDate !== undefined &&
         Number.isFinite(new Date(deprecationDate).getTime()) &&
@@ -2956,7 +2989,7 @@ export class RuntimeEngine {
     // valid domain response fail validation.
     if (request.command.operationId !== undefined && current.status >= 400) {
       const shaped = this.program.dependencies.contract.shapeError?.(
-        request.command.operationId,
+        OperationId.parse(request.command.operationId),
         current.status,
         current.body ?? null,
       );
@@ -2971,7 +3004,7 @@ export class RuntimeEngine {
       !sparseFieldset
     ) {
       this.program.dependencies.contract.validateResponse?.(
-        request.command.operationId,
+        OperationId.parse(request.command.operationId),
         current.status,
         current.body,
         request,
@@ -2989,41 +3022,31 @@ export class RuntimeEngine {
       successfulResponse &&
       (request.command.operationId === undefined ||
         this.program.dependencies.contract.responseSupportsHateoas?.(
-          request.command.operationId,
+          OperationId.parse(request.command.operationId),
           current.status,
           current.body ?? null,
         ) !== false);
-    if (
-      supportsHateoas &&
-      policy?.hateoas !== undefined &&
-      current.body !== null &&
-      typeof current.body === 'object' &&
-      !Array.isArray(current.body)
-    ) {
-      const links = Object.fromEntries(
+    if (supportsHateoas && policy?.hateoas !== undefined && isJsonObject(current.body)) {
+      const links: JsonObject = Object.fromEntries(
         policy.hateoas
           .filter((link) => link.condition?.(context) ?? true)
           .map((link) => [link.rel, { href: resolveValue(link.href, context) }]),
       );
-      current = { ...current, body: { ...(current.body as JsonObject), _links: links } };
+      current = { ...current, body: { ...current.body, _links: links } };
     }
     if (
       successfulResponse &&
       behavior?.linkName !== undefined &&
       (behavior.linkCondition?.(context) ?? true) &&
-      current.body !== null &&
-      typeof current.body === 'object' &&
-      !Array.isArray(current.body)
+      isJsonObject(current.body)
     ) {
-      const existing = (current.body as JsonObject)._links;
+      const existing = current.body._links;
       current = {
         ...current,
         body: {
-          ...(current.body as JsonObject),
+          ...current.body,
           _links: {
-            ...(existing && typeof existing === 'object' && !Array.isArray(existing)
-              ? existing
-              : {}),
+            ...(isJsonObject(existing) ? existing : {}),
             [behavior.linkName]: {
               href: request.command.path,
               method: behavior.method ?? request.command.httpMethod,
@@ -3097,13 +3120,38 @@ export class RuntimeEngine {
     return { ...result, body, headers: carrier.headers };
   }
 
-  private async runLifecycle(
-    phase: keyof RuntimeLifecycle,
-    input: MatchContext | PostCommitContext | undefined,
-  ): Promise<void> {
-    const hook = this.program.policies.lifecycle?.[phase];
-    if (hook === undefined) return;
-    await hook(input as never);
+  private async runLifecycle(invocation: LifecycleInvocation): Promise<void> {
+    const lifecycle = this.program.policies.lifecycle;
+    if (lifecycle === undefined) return;
+    switch (invocation.phase) {
+      case 'request':
+        await lifecycle.request?.(invocation.input);
+        return;
+      case 'projection':
+        await lifecycle.projection?.(invocation.input);
+        return;
+      case 'commit':
+        await lifecycle.commit?.(invocation.input);
+        return;
+      case 'postCommit':
+        await lifecycle.postCommit?.(invocation.input);
+        return;
+      case 'boot':
+        await lifecycle.boot?.();
+        return;
+      case 'validation':
+        await lifecycle.validation?.();
+        return;
+      case 'initialization':
+        await lifecycle.initialization?.();
+        return;
+      case 'reset':
+        await lifecycle.reset?.();
+        return;
+      case 'shutdown':
+        await lifecycle.shutdown?.();
+        return;
+    }
   }
 
   private async delay(milliseconds: number | undefined): Promise<void> {
@@ -3143,7 +3191,7 @@ export class RuntimeEngine {
     }
   }
 
-  private nextSequence(aggregateId: string, tx: Transaction): number {
+  private nextSequence(aggregateId: string, tx: Transaction) {
     return nextSequenceVersion(
       this.events.currentSequenceVersion(aggregateId),
       tx.events,
@@ -3233,7 +3281,7 @@ export class RuntimeEngine {
   }
 
   private async acquire(key: string): Promise<() => void> {
-    let releaseSlot!: () => void;
+    let releaseSlot: (() => void) | undefined;
     const slot = new Promise<void>((resolve) => {
       releaseSlot = resolve;
     });
@@ -3242,12 +3290,12 @@ export class RuntimeEngine {
     this.locks.set(key, chained);
     await previous;
     return () => {
-      releaseSlot();
+      releaseSlot?.();
       if (this.locks.get(key) === chained) this.locks.delete(key);
     };
   }
 }
 
-export function createRuntimeEngine(program: RuntimeProgram): RuntimeEngine {
+export function createRuntimeEngine(program: CompiledRuntimeProgram): RuntimeEngine {
   return new RuntimeEngine(program);
 }

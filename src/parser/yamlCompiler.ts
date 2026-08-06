@@ -14,10 +14,18 @@ import { resolveActor, JwtValidationError } from '../identity/actorResolver.js';
 import { createCelEvaluator, type CelEvaluator } from '../cel/evaluator.js';
 import { CelPhase } from '../cel/phases.js';
 import type { Command, DomainEvent } from '../contracts/domain.js';
-import type { JsonObject, JsonValue, Patch } from '../contracts/value.js';
+import {
+  isJsonObject,
+  isJsonValue,
+  type JsonObject,
+  type JsonValue,
+  type Patch,
+} from '../contracts/value.js';
+import { ErrorClass as ErrorClassKind, type ErrorClass } from '../contracts/controlHeaders.js';
 import type {
   EventContext,
   FaultContext,
+  IdentityContext,
   MatchContext,
   PostCommitContext,
   ProjectionContext,
@@ -26,7 +34,6 @@ import type {
   RuntimeBoundary,
   RuntimeDependencies,
   RuntimeHelperDefinition,
-  RuntimeControlDefaults,
   RuntimeDerivedProjection,
   RuntimeEmission,
   RuntimeEvent,
@@ -72,23 +79,153 @@ export interface ParserRuntimeOptions {
 const GLOBAL_BOUNDARY = '__global__';
 
 interface ExpressionContext {
-  readonly command?: Command;
+  readonly command?: Readonly<Command>;
   readonly request?: Readonly<RuntimeRequest>;
-  readonly state: JsonObject | null;
-  readonly payload: JsonObject;
+  readonly state: Readonly<JsonObject> | null;
+  readonly payload: Readonly<JsonObject>;
   readonly param?: string | readonly string[];
-  readonly helpers: RuntimeHelpers;
+  readonly helpers: Readonly<RuntimeHelpers>;
   readonly event?: DomainEvent;
   readonly operationId?: string;
-  readonly response?: { readonly status: number; readonly body: JsonValue | null };
+  readonly response?: {
+    readonly status: number;
+    readonly body: JsonValue | null;
+    readonly headers?: Readonly<Record<string, string>>;
+  };
   readonly steps?: Readonly<Record<string, Readonly<{ status: number; body: JsonValue | null }>>>;
   readonly prevStep?: Readonly<{ status: number; body: JsonValue | null }>;
   readonly committedEvents?: readonly DomainEvent[];
 }
 
-function celContext(context: Record<string, unknown>): Record<string, unknown> {
-  return context;
+/** Common shape shared by all source-independent runtime callback contexts. */
+interface ExpressionInput {
+  readonly command?: Readonly<Command>;
+  readonly request?: Readonly<RuntimeRequest>;
+  readonly state: Readonly<JsonObject> | null;
+  readonly payload?: Readonly<JsonObject>;
+  readonly param?: string | readonly string[];
+  readonly helpers: Readonly<RuntimeHelpers>;
+  readonly event?: DomainEvent;
+  readonly operationId?: string;
+  readonly response?: {
+    readonly status: number;
+    readonly body: JsonValue | null;
+    readonly headers?: Readonly<Record<string, string>>;
+  };
+  readonly steps?: Readonly<Record<string, Readonly<{ status: number; body: JsonValue | null }>>>;
+  readonly prevStep?: Readonly<{ status: number; body: JsonValue | null }>;
+  readonly committedEvents?: readonly DomainEvent[];
 }
+
+function expressionContext<Input extends ExpressionInput>(
+  context: Readonly<Input>,
+): ExpressionContext {
+  return {
+    ...(context.command === undefined ? {} : { command: context.command }),
+    ...(context.request === undefined ? {} : { request: context.request }),
+    state: context.state,
+    payload: context.payload ?? context.command?.payload ?? {},
+    helpers: context.helpers,
+    ...(context.param === undefined ? {} : { param: context.param }),
+    ...(context.event === undefined ? {} : { event: context.event }),
+    ...(context.operationId === undefined ? {} : { operationId: context.operationId }),
+    ...(context.response === undefined
+      ? {}
+      : {
+          response: {
+            status: context.response.status,
+            body: context.response.body,
+            ...(context.response.headers === undefined
+              ? {}
+              : { headers: context.response.headers }),
+          },
+        }),
+    ...(context.steps === undefined ? {} : { steps: context.steps }),
+    ...(context.prevStep === undefined ? {} : { prevStep: context.prevStep }),
+    ...(context.committedEvents === undefined ? {} : { committedEvents: context.committedEvents }),
+  };
+}
+
+type ValueDecoder<Output> = (value: unknown) => Output;
+
+function decodeJsonValue(value: unknown): JsonValue {
+  if (!isJsonValue(value)) {
+    throw new TypeError('YAML CEL expression did not produce a JSON value');
+  }
+  return value;
+}
+
+function decodeOptionalJsonValue(value: unknown): JsonValue | undefined {
+  return value === undefined ? undefined : decodeJsonValue(value);
+}
+
+function decodeString(value: unknown): string {
+  if (typeof value !== 'string') {
+    throw new TypeError('YAML CEL expression did not produce a string');
+  }
+  return value;
+}
+
+function decodeStringOrNull(value: unknown): string | null {
+  if (value !== null && typeof value !== 'string') {
+    throw new TypeError('YAML CEL expression did not produce a string or null');
+  }
+  return value;
+}
+
+function decodeStringOrUndefined(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function decodeNumber(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new TypeError('YAML CEL expression did not produce a finite number');
+  }
+  return value;
+}
+
+/** Identity generation historically stringifies CEL scalar results. */
+function stringifyIdentity(value: unknown): string {
+  return String(value);
+}
+
+function requiredField<T>(value: T | undefined, field: string): T {
+  if (value === undefined) {
+    throw new BootError('BOOT_ERR_DSL_SCHEMA_VIOLATION', `YAML patch is missing ${field}`, {
+      field,
+    });
+  }
+  return value;
+}
+
+function isErrorClass(value: string): value is ErrorClass {
+  return (
+    value === ErrorClassKind.Timeout ||
+    value === ErrorClassKind.Throttle ||
+    value === ErrorClassKind.Outage ||
+    value === ErrorClassKind.BadGateway ||
+    value === ErrorClassKind.Conflict ||
+    value === ErrorClassKind.Auth ||
+    value === ErrorClassKind.Forbidden
+  );
+}
+
+function jsonArguments(args: readonly unknown[]): readonly JsonValue[] {
+  const values: JsonValue[] = [];
+  for (const [index, argument] of args.entries()) {
+    if (!isJsonValue(argument)) {
+      throw new TypeError(`YAML CEL helper argument ${index} is not a JSON value`);
+    }
+    values.push(argument);
+  }
+  return values;
+}
+
+type MutableFaultSelectors = {
+  -readonly [Key in keyof NonNullable<RuntimeFault['selectors']>]?: NonNullable<
+    RuntimeFault['selectors']
+  >[Key];
+};
 
 function evaluate(
   value: unknown,
@@ -108,7 +245,7 @@ function evaluate(
             : { clockOffsetMs: controls.clockOffsetMs }),
           ...(controls.seed === undefined ? {} : { seed: controls.seed }),
         });
-  const ctx: Record<string, unknown> = celContext({
+  const ctx: Record<string, unknown> = {
     command: context.command,
     request: context.request,
     state: context.state,
@@ -127,39 +264,59 @@ function evaluate(
     ...('response' in context && context.response !== undefined
       ? { response: context.response }
       : {}),
-  });
+  };
   if (value.includes('${')) {
     return requestCel.evaluateDslValue(value, ctx, phase);
   }
   return requestCel.evaluate(value, ctx, phase);
 }
 
-function value<Input, Output>(
+function value<Input extends ExpressionInput, Output>(
   raw: unknown,
   phase: CelPhase,
   boundary: string,
   cel: CelEvaluator,
+  decode: ValueDecoder<Output>,
   fallbackLiteral = false,
 ): RuntimeValue<Input, Output> {
-  if (typeof raw !== 'string') return raw as Output;
+  if (typeof raw !== 'string') return decode(raw);
   return (context: Readonly<Input>): Output => {
     try {
-      return evaluate(raw, phase, boundary, context as unknown as ExpressionContext, cel) as Output;
+      return decode(evaluate(raw, phase, boundary, expressionContext(context), cel));
     } catch (error) {
-      if (fallbackLiteral && !raw.includes('${')) return raw as Output;
+      if (fallbackLiteral && !raw.includes('${')) return decode(raw);
       throw error;
     }
   };
 }
 
-function predicate<Input>(
+function callbackValue<Input extends ExpressionInput, Output>(
+  raw: unknown,
+  phase: CelPhase,
+  boundary: string,
+  cel: CelEvaluator,
+  decode: ValueDecoder<Output>,
+  fallbackLiteral = false,
+): (context: Readonly<Input>) => Output {
+  return (context: Readonly<Input>) => {
+    if (typeof raw !== 'string') return decode(raw);
+    try {
+      return decode(evaluate(raw, phase, boundary, expressionContext(context), cel));
+    } catch (error) {
+      if (fallbackLiteral && !raw.includes('${')) return decode(raw);
+      throw error;
+    }
+  };
+}
+
+function predicate<Input extends ExpressionInput>(
   raw: unknown,
   phase: CelPhase,
   boundary: string,
   cel: CelEvaluator,
 ): RuntimePredicate<Input> {
   return (context: Readonly<Input>) =>
-    Boolean(evaluate(raw, phase, boundary, context as unknown as ExpressionContext, cel));
+    Boolean(evaluate(raw, phase, boundary, expressionContext(context), cel));
 }
 
 function compileEvent(entry: EventCatalogEntry, boundary: string, cel: CelEvaluator): RuntimeEvent {
@@ -169,7 +326,14 @@ function compileEvent(entry: EventCatalogEntry, boundary: string, cel: CelEvalua
     payload: Object.fromEntries(
       Object.entries(entry.payloadTemplate).map(([key, raw]) => [
         key,
-        value<EventContext, JsonValue>(raw, CelPhase.EventHydration, boundary, cel, true),
+        value<EventContext, JsonValue>(
+          raw,
+          CelPhase.EventHydration,
+          boundary,
+          cel,
+          decodeJsonValue,
+          true,
+        ),
       ]),
     ),
   };
@@ -188,9 +352,7 @@ function compileGuard(
 ): RuntimeGuard {
   return {
     name: raw.name,
-    check: predicate(raw.condition, CelPhase.Behavior, boundary, cel) as RuntimePredicate<
-      MatchContext | FaultContext
-    >,
+    check: predicate<MatchContext | FaultContext>(raw.condition, CelPhase.Behavior, boundary, cel),
     errorCode: raw.errorCode,
     errorMessage: raw.errorMessage,
     ...(raw.errorStatus === undefined ? {} : { errorStatus: raw.errorStatus }),
@@ -221,12 +383,12 @@ function compileBehavior(raw: BehaviorRule, boundary: string, cel: CelEvaluator)
       : {}),
     ...(raw.postcondition
       ? {
-          postcondition: predicate(
+          postcondition: predicate<PostCommitContext>(
             raw.postcondition,
             CelPhase.Behavior,
             boundary,
             cel,
-          ) as RuntimePredicate<PostCommitContext>,
+          ),
         }
       : {}),
     ...(raw.linkName ? { linkName: raw.linkName } : {}),
@@ -245,6 +407,7 @@ function compileBehavior(raw: BehaviorRule, boundary: string, cel: CelEvaluator)
               CelPhase.Behavior,
               boundary,
               cel,
+              decodeStringOrNull,
             ),
             ...(command.payload
               ? {
@@ -256,6 +419,7 @@ function compileBehavior(raw: BehaviorRule, boundary: string, cel: CelEvaluator)
                         CelPhase.Behavior,
                         boundary,
                         cel,
+                        decodeJsonValue,
                         true,
                       ),
                     ]),
@@ -281,7 +445,7 @@ function patchValue(
 ): JsonValue {
   const evaluated = evaluate(raw, CelPhase.Reducer, boundary, context, cel);
   if (evaluated === undefined || typeof evaluated === 'function') return null;
-  return evaluated as JsonValue;
+  return decodeJsonValue(evaluated);
 }
 
 function compilePatch(
@@ -294,23 +458,23 @@ function compilePatch(
     case 'remove':
       return { op: 'remove', path: raw.path };
     case 'move':
-      return { op: 'move', path: raw.path, from: raw.from! };
+      return { op: 'move', path: raw.path, from: requiredField(raw.from, 'from') };
     case 'copy':
-      return { op: 'copy', path: raw.path, from: raw.from! };
+      return { op: 'copy', path: raw.path, from: requiredField(raw.from, 'from') };
     case 'increment':
       return { op: 'increment', path: raw.path, by: raw.by ?? 0 };
     case 'upsert':
       return {
         op: 'upsert',
         path: raw.path,
-        key: raw.key!,
-        value: patchValue(raw.value, context, boundary, cel) as JsonObject,
+        key: requiredField(raw.key, 'key'),
+        value: requireJsonObject(patchValue(raw.value, context, boundary, cel), 'upsert value'),
       };
     case 'merge':
       return {
         op: 'merge',
         path: raw.path,
-        value: patchValue(raw.value, context, boundary, cel) as JsonObject,
+        value: requireJsonObject(patchValue(raw.value, context, boundary, cel), 'merge value'),
         ...(raw.deep !== undefined ? { deep: raw.deep } : {}),
       };
     case 'add':
@@ -340,18 +504,26 @@ function compilePatch(
   }
 }
 
+function requireJsonObject(value: JsonValue, field: string): JsonObject {
+  if (!isJsonObject(value)) {
+    throw new TypeError(`YAML ${field} must evaluate to a JSON object`);
+  }
+  return value;
+}
+
 function compileReducer(
   raw: NonNullable<BoundaryConfig['reducers']>[number],
   boundary: string,
   cel: CelEvaluator,
 ): RuntimeReducer {
+  const patches = raw.patches;
   return {
     on: raw.on,
     replaceState: raw.replaceState,
     apply:
-      raw.patches === undefined
+      patches === undefined
         ? undefined
-        : (context) => raw.patches!.map((patch) => compilePatch(patch, boundary, cel, context)),
+        : (context) => patches.map((patch) => compilePatch(patch, boundary, cel, context)),
   };
 }
 
@@ -370,6 +542,7 @@ function compileState(
         CelPhase.Projection,
         boundary,
         cel,
+        decodeJsonValue,
         true,
       ),
     })),
@@ -386,12 +559,7 @@ function compileReaction(raw: ReactionRule, boundary: string, cel: CelEvaluator)
     intent: raw.intent,
     ...(raw.when
       ? {
-          when: predicate(
-            raw.when,
-            CelPhase.PostCommit,
-            boundary,
-            cel,
-          ) as RuntimePredicate<PostCommitContext>,
+          when: predicate<PostCommitContext>(raw.when, CelPhase.PostCommit, boundary, cel),
         }
       : {}),
     ...(raw.target
@@ -401,6 +569,7 @@ function compileReaction(raw: ReactionRule, boundary: string, cel: CelEvaluator)
             CelPhase.PostCommit,
             boundary,
             cel,
+            decodeStringOrNull,
           ),
         }
       : {}),
@@ -414,6 +583,7 @@ function compileReaction(raw: ReactionRule, boundary: string, cel: CelEvaluator)
                 CelPhase.PostCommit,
                 boundary,
                 cel,
+                decodeJsonValue,
                 true,
               ),
             ]),
@@ -426,27 +596,17 @@ function compileReaction(raw: ReactionRule, boundary: string, cel: CelEvaluator)
 function compileFault(raw: FaultRule, boundary: string, cel: CelEvaluator): RuntimeFault {
   const selector = (name: string): string | undefined =>
     Object.entries(raw.match.headers ?? {}).find(([key]) => key.toLowerCase() === name)?.[1];
-  const selectors = {
-    ...(selector('x-potemkin-signal') === undefined
-      ? {}
-      : { signal: selector('x-potemkin-signal') }),
-    ...(selector('x-potemkin-force-response') === undefined
-      ? {}
-      : { forceResponse: selector('x-potemkin-force-response') }),
-    ...(selector('x-potemkin-scenario') === undefined
-      ? {}
-      : { scenario: selector('x-potemkin-scenario') }),
-    ...(selector('x-potemkin-feature-flag') === undefined
-      ? {}
-      : { featureFlag: selector('x-potemkin-feature-flag') }),
-    ...(selector('x-potemkin-error-class') === undefined
-      ? {}
-      : {
-          errorClass: selector(
-            'x-potemkin-error-class',
-          ) as RuntimeFault['selectors'] extends Readonly<{ errorClass?: infer T }> ? T : never,
-        }),
-  };
+  const selectors: MutableFaultSelectors = {};
+  const signal = selector('x-potemkin-signal');
+  const forceResponse = selector('x-potemkin-force-response');
+  const scenario = selector('x-potemkin-scenario');
+  const featureFlag = selector('x-potemkin-feature-flag');
+  const errorClass = selector('x-potemkin-error-class');
+  if (signal !== undefined) selectors.signal = signal;
+  if (forceResponse !== undefined) selectors.forceResponse = forceResponse;
+  if (scenario !== undefined) selectors.scenario = scenario;
+  if (featureFlag !== undefined) selectors.featureFlag = featureFlag;
+  if (errorClass !== undefined && isErrorClass(errorClass)) selectors.errorClass = errorClass;
   return {
     name: raw.name,
     probability: raw.match.probability,
@@ -489,7 +649,7 @@ function compileFault(raw: FaultRule, boundary: string, cel: CelEvaluator): Runt
         })
       )
         return false;
-      return predicate(raw.match.condition, CelPhase.Fault, boundary, cel)(context);
+      return predicate<FaultContext>(raw.match.condition, CelPhase.Fault, boundary, cel)(context);
     },
     response: raw.response,
   };
@@ -518,16 +678,35 @@ function compileWebhook(raw: WebhookConfig, boundary: string, cel: CelEvaluator)
         return false;
       if (raw.trigger.intent !== undefined && raw.trigger.intent !== context.command.intent)
         return false;
-      return predicate(raw.trigger.condition, CelPhase.Webhook, boundary, cel)(context);
+      return predicate<WebhookContext>(
+        raw.trigger.condition,
+        CelPhase.Webhook,
+        boundary,
+        cel,
+      )(context);
     },
-    url: value<WebhookContext, string>(raw.url, CelPhase.Webhook, boundary, cel, true),
+    url: value<WebhookContext, string>(
+      raw.url,
+      CelPhase.Webhook,
+      boundary,
+      cel,
+      decodeString,
+      true,
+    ),
     ...(raw.secret ? { secret: raw.secret } : {}),
     ...(raw.payload
       ? {
           payload: Object.fromEntries(
             Object.entries(raw.payload).map(([key, rawValue]) => [
               key,
-              value<WebhookContext, JsonValue>(rawValue, CelPhase.Webhook, boundary, cel, true),
+              value<WebhookContext, JsonValue>(
+                rawValue,
+                CelPhase.Webhook,
+                boundary,
+                cel,
+                decodeJsonValue,
+                true,
+              ),
             ]),
           ),
         }
@@ -595,7 +774,13 @@ function compileSaga(raw: SagaConfig, boundary: string, cel: CelEvaluator): Runt
     operationId: item.operationId,
     ...(item.targetId
       ? {
-          targetId: value<SagaContext, string | null>(item.targetId, CelPhase.Saga, boundary, cel),
+          targetId: value<SagaContext, string | null>(
+            item.targetId,
+            CelPhase.Saga,
+            boundary,
+            cel,
+            decodeStringOrNull,
+          ),
         }
       : {}),
     ...(item.payload
@@ -603,7 +788,14 @@ function compileSaga(raw: SagaConfig, boundary: string, cel: CelEvaluator): Runt
           payload: Object.fromEntries(
             Object.entries(item.payload).map(([key, rawValue]) => [
               key,
-              value<SagaContext, JsonValue>(rawValue, CelPhase.Saga, boundary, cel, true),
+              value<SagaContext, JsonValue>(
+                rawValue,
+                CelPhase.Saga,
+                boundary,
+                cel,
+                decodeJsonValue,
+                true,
+              ),
             ]),
           ),
         }
@@ -620,6 +812,7 @@ function compileSaga(raw: SagaConfig, boundary: string, cel: CelEvaluator): Runt
                     CelPhase.Saga,
                     boundary,
                     cel,
+                    decodeStringOrNull,
                   ),
                 }
               : {}),
@@ -628,7 +821,14 @@ function compileSaga(raw: SagaConfig, boundary: string, cel: CelEvaluator): Runt
                   payload: Object.fromEntries(
                     Object.entries(item.compensation.payload).map(([key, rawValue]) => [
                       key,
-                      value<SagaContext, JsonValue>(rawValue, CelPhase.Saga, boundary, cel, true),
+                      value<SagaContext, JsonValue>(
+                        rawValue,
+                        CelPhase.Saga,
+                        boundary,
+                        cel,
+                        decodeJsonValue,
+                        true,
+                      ),
                     ]),
                   ),
                 }
@@ -642,12 +842,7 @@ function compileSaga(raw: SagaConfig, boundary: string, cel: CelEvaluator): Runt
     trigger: {
       boundary: raw.trigger.boundary,
       intent: raw.trigger.intent,
-      condition: predicate(
-        raw.trigger.condition,
-        CelPhase.Saga,
-        boundary,
-        cel,
-      ) as RuntimePredicate<SagaContext>,
+      condition: predicate<SagaContext>(raw.trigger.condition, CelPhase.Saga, boundary, cel),
     },
     steps: raw.steps.map(step),
   };
@@ -688,8 +883,8 @@ function responseHelper(
       response: context.response,
     };
     const result = helper.invoke([input], CelPhase.Response);
-    if (result === null || Array.isArray(result) || typeof result !== 'object') return undefined;
-    const output = result as JsonObject;
+    if (!isJsonObject(result)) return undefined;
+    const output = result;
     const headers = output['headers'];
     return {
       ...(typeof output['status'] === 'number' ? { status: output['status'] } : {}),
@@ -700,13 +895,7 @@ function responseHelper(
 }
 
 function isStringMap(value: JsonValue | undefined): value is Record<string, string> {
-  return (
-    value !== undefined &&
-    value !== null &&
-    typeof value === 'object' &&
-    !Array.isArray(value) &&
-    Object.values(value).every((entry) => typeof entry === 'string')
-  );
+  return isJsonObject(value) && Object.values(value).every((entry) => typeof entry === 'string');
 }
 
 function compileQuery(
@@ -721,13 +910,13 @@ function compileQuery(
           fields: Object.fromEntries(
             Object.entries(raw.fields).map(([name, expression]) => [
               name,
-              predicate(expression, CelPhase.Query, boundary, cel),
+              predicate<QueryContext>(expression, CelPhase.Query, boundary, cel),
             ]),
           ),
         }),
     ...(raw.filter === undefined
       ? {}
-      : { filter: predicate(raw.filter, CelPhase.Query, boundary, cel) }),
+      : { filter: predicate<QueryContext>(raw.filter, CelPhase.Query, boundary, cel) }),
     ...(raw.sort === undefined
       ? {}
       : {
@@ -744,21 +933,26 @@ function compileQuery(
         }),
     ...(raw.pageSize === undefined
       ? {}
-      : { pageSize: value<QueryContext, number>(raw.pageSize, CelPhase.Query, boundary, cel) }),
+      : {
+          pageSize: value<QueryContext, number>(
+            raw.pageSize,
+            CelPhase.Query,
+            boundary,
+            cel,
+            decodeNumber,
+          ),
+        }),
     ...(raw.maxPageSize === undefined ? {} : { maxPageSize: raw.maxPageSize }),
     ...(raw.cursor === undefined
       ? {}
       : {
-          cursor: (context: Readonly<QueryContext>) => {
-            const resolved = evaluate(
-              raw.cursor,
-              CelPhase.Query,
-              boundary,
-              context as unknown as ExpressionContext,
-              cel,
-            );
-            return typeof resolved === 'string' ? resolved : undefined;
-          },
+          cursor: value<QueryContext, string | undefined>(
+            raw.cursor,
+            CelPhase.Query,
+            boundary,
+            cel,
+            decodeStringOrUndefined,
+          ),
         }),
     ...(raw.expand === undefined ? {} : { expand: raw.expand }),
     ...(raw.pagination === undefined ? {} : { pagination: raw.pagination }),
@@ -766,14 +960,13 @@ function compileQuery(
     ...(raw.fallback === undefined
       ? {}
       : {
-          fallback: (context: Readonly<QueryContext>) =>
-            evaluate(
-              raw.fallback,
-              CelPhase.Query,
-              boundary,
-              context as unknown as ExpressionContext,
-              cel,
-            ) as JsonValue | undefined,
+          fallback: callbackValue<QueryContext, JsonValue | undefined>(
+            raw.fallback,
+            CelPhase.Query,
+            boundary,
+            cel,
+            decodeOptionalJsonValue,
+          ),
         }),
   };
 }
@@ -798,16 +991,13 @@ function compileBoundary(
               : { key: { ...raw.identity.key, from: raw.identity.key.from ?? 'path' } }),
             ...(raw.identity.creation?.generate
               ? {
-                  generate: (context) =>
-                    String(
-                      evaluate(
-                        raw.identity!.creation!.generate!,
-                        CelPhase.Identity,
-                        boundary,
-                        context as unknown as ExpressionContext,
-                        cel,
-                      ),
-                    ),
+                  generate: callbackValue<IdentityContext, string>(
+                    raw.identity.creation.generate,
+                    CelPhase.Identity,
+                    boundary,
+                    cel,
+                    stringifyIdentity,
+                  ),
                 }
               : {}),
           },
@@ -817,7 +1007,7 @@ function compileBoundary(
         : Object.fromEntries(
             Object.entries(raw.queryMapping).map(([key, expression]) => [
               key,
-              predicate(expression, CelPhase.Query, boundary, cel),
+              predicate<QueryContext>(expression, CelPhase.Query, boundary, cel),
             ]),
           ),
     query: raw.query === undefined ? undefined : compileQuery(raw.query, boundary, cel),
@@ -854,6 +1044,7 @@ function compileBoundary(
                 CelPhase.Response,
                 boundary,
                 cel,
+                decodeString,
                 true,
               ),
             })),
@@ -872,9 +1063,7 @@ function compilePolicies(
   const globalFaults = dsl.faults?.map((fault) => compileFault(fault, GLOBAL_BOUNDARY, cel));
   const coverage = compileCoverage(dsl.coverage);
   return {
-    ...(dsl.controlHeaders === undefined
-      ? {}
-      : { controlDefaults: dsl.controlHeaders as RuntimeControlDefaults }),
+    ...(dsl.controlHeaders === undefined ? {} : { controlDefaults: dsl.controlHeaders }),
     // Keep a default bearer actor resolver even when the YAML omits an
     // explicit auth block. The contract fixtures use the documented
     // `Bearer actor:scope` form without declaring a policy, and authorization
@@ -929,18 +1118,21 @@ function compilePolicies(
           CelPhase.Projection,
           GLOBAL_BOUNDARY,
           cel,
+          decodeString,
         ),
         subscribe: projection.subscribe,
-        reduce: projection.reduce.map((reducer) => ({
-          on: reducer.on,
-          apply:
-            reducer.patches === undefined
-              ? undefined
-              : (context) =>
-                  reducer.patches!.map((patch) =>
-                    compilePatch(patch, GLOBAL_BOUNDARY, cel, context),
-                  ),
-        })),
+        reduce: projection.reduce.map((reducer) => {
+          const patches = reducer.patches;
+          return {
+            on: reducer.on,
+            ...(patches === undefined
+              ? {}
+              : {
+                  apply: (context: Readonly<RuntimeReducerContext>) =>
+                    patches.map((patch) => compilePatch(patch, GLOBAL_BOUNDARY, cel, context)),
+                }),
+          };
+        }),
       }),
     ),
     faults: globalFaults,
@@ -985,7 +1177,7 @@ export function compileYamlDefinitionModel(
     (options.helpers ?? []).map((helper) => [
       helper.name,
       (args: readonly unknown[], _context: Readonly<Record<string, unknown>>, phase: CelPhase) =>
-        helper.invoke(args as readonly JsonValue[], phase),
+        helper.invoke(jsonArguments(args), phase),
     ]),
   );
   const cel =

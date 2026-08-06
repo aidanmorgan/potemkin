@@ -15,12 +15,7 @@ import { loadOpenApi } from '../../src/contract/loader.js';
 import { boundary, event, expression, simulation } from '../../src/authoring/builders.js';
 import { compileProgram } from '../../src/authoring/compiler.js';
 import { reducerRule } from '../../src/authoring/nativeReducer.js';
-import type {
-  EventContext,
-  IdentityContext,
-  MatchContext,
-  RuntimeReducerContext,
-} from '../../src/model/runtime.js';
+import type { EventContext, IdentityContext, MatchContext } from '../../src/model/runtime.js';
 import {
   withPersistentServer,
   type PersistentAgent,
@@ -77,7 +72,7 @@ function definition() {
         })
         .reducer(
           reducerRule(eventType('ThingCreated'))
-            .apply(({ state, event }: RuntimeReducerContext) => {
+            .apply(({ state, event }) => {
               const payload = event.payload as { id: string; name: string };
               return { ...state, id: payload.id, name: payload.name };
             })

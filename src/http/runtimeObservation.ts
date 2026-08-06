@@ -1,11 +1,13 @@
 import type { NextFunction, Request, Response } from 'express';
 import type { Express } from 'express';
 import type { RuntimeSystem } from '../runtime/system.js';
-import type { JsonValue } from '../contracts/value.js';
+import { isJsonValue, type JsonValue } from '../contracts/value.js';
+import { CommandId, httpMethod, type HttpMethod } from '../domain/references.js';
 import type {
   RuntimeCaptureDirection,
   RuntimeCapturedBody,
   RuntimeRequestResponseCapturePolicy,
+  RuntimeTransportRequest,
   RuntimeTransportObservation,
 } from '../contracts/ports.js';
 import { parseControlHeaders } from './controlHeaders.js';
@@ -23,6 +25,17 @@ export interface RuntimeTransportRequestInput {
   readonly body: JsonValue;
 }
 
+/** Express locals owned by the runtime transport observer and gateway. */
+export interface RuntimeObservationLocals {
+  potemkinCaptureRawRequestBody?: boolean;
+  potemkinRawRequestBody?: string;
+  potemkinTransportRequest?: RuntimeTransportRequestInput;
+  potemkinTransportResponseBody?: JsonValue | null;
+  potemkinObservedBody?: JsonValue | null;
+  potemkinTraceId?: string;
+  potemkinCommandId?: string;
+}
+
 /**
  * Immutable request metadata captured before Express parsing or runtime
  * execution begins. The transport observer must describe what arrived on the
@@ -35,6 +48,27 @@ interface RuntimeTransportRequestSnapshot {
   readonly query: Readonly<Record<string, string | readonly string[]>>;
   readonly headers: Readonly<Record<string, string>>;
   readonly contentType?: string;
+}
+
+/** Convert raw transport metadata into the runtime's supported HTTP vocabulary. */
+export function normalizeRuntimeTransportMethod(raw: string): HttpMethod {
+  return httpMethod(raw);
+}
+
+function observedTransportRequest(
+  method: string,
+  path: string,
+  query: Readonly<Record<string, string | readonly string[]>>,
+  headers: Readonly<Record<string, string>>,
+  body: RuntimeCapturedBody,
+): RuntimeTransportRequest {
+  return {
+    method: normalizeRuntimeTransportMethod(method),
+    path,
+    query,
+    headers,
+    body,
+  };
 }
 
 export function queryOf(request: Request): Record<string, string | string[]> {
@@ -107,14 +141,18 @@ function captureTransportBody(
   };
 }
 
-function captureParsedRequestBody(request: Request, response: Response, buffer: Buffer): void {
+function captureParsedRequestBody(
+  _request: Request,
+  response: Response<unknown, RuntimeObservationLocals>,
+  buffer: Buffer,
+): void {
   if (response.locals.potemkinCaptureRawRequestBody !== true) return;
   response.locals.potemkinRawRequestBody = buffer.toString('utf8');
 }
 
 function requestBodyForObservation(
   request: Request,
-  response: Response,
+  response: Response<unknown, RuntimeObservationLocals>,
   snapshot: RuntimeTransportRequestSnapshot,
 ): { readonly body: JsonValue; readonly raw?: string } {
   const raw =
@@ -128,7 +166,7 @@ function requestBodyForObservation(
   ) {
     if (raw === '') return { body: {}, raw };
     try {
-      return { body: structuredClone(JSON.parse(raw) as JsonValue), raw };
+      return { body: structuredClone(parseJsonValue(raw)), raw };
     } catch {
       // Preserve malformed input as a bounded string for the transport
       // observer; the normal Express error handler still returns the parser's
@@ -137,14 +175,15 @@ function requestBodyForObservation(
     }
   }
   if (request.body !== undefined) {
+    const body: unknown = request.body;
     return {
-      body: structuredClone(request.body as JsonValue),
+      body: isJsonValue(body) ? structuredClone(body) : {},
       ...(raw === undefined ? {} : { raw }),
     };
   }
   if (raw === undefined || raw === '') return { body: {} };
   try {
-    return { body: JSON.parse(raw) as JsonValue, raw };
+    return { body: parseJsonValue(raw), raw };
   } catch {
     // Preserve malformed input as a bounded string for the transport observer;
     // the normal Express error handler still returns the parser's 400 result.
@@ -152,142 +191,162 @@ function requestBodyForObservation(
   }
 }
 
+function parseJsonValue(raw: string): JsonValue {
+  const value: unknown = JSON.parse(raw);
+  if (!isJsonValue(value)) throw new Error('Parsed JSON value is not JSON-compatible');
+  return value;
+}
+
 export function installRuntimeObservation(app: Express, system: RuntimeSystem): void {
-  app.use((request: Request, response: Response, next: NextFunction) => {
-    const observer = system.program.dependencies.observability?.observeTransportRequestResponse;
-    if (observer === undefined) {
-      next();
-      return;
-    }
-    const policy = system.program.dependencies.observability?.requestResponseCapture;
-    const inboundHeaders = Object.freeze(headersOf(request));
-    const inboundQuery = Object.freeze(
-      Object.fromEntries(
-        Object.entries(queryOf(request)).map(([name, value]) => [
-          name,
-          Array.isArray(value) ? Object.freeze([...value]) : value,
-        ]),
-      ),
-    ) as Readonly<Record<string, string | readonly string[]>>;
-    const inboundSnapshot: RuntimeTransportRequestSnapshot = Object.freeze({
-      method: request.method.toUpperCase(),
-      path: request.originalUrl.split('?')[0] ?? request.path,
-      query: inboundQuery,
-      headers: inboundHeaders,
-      ...(typeof inboundHeaders['content-type'] === 'string'
-        ? { contentType: inboundHeaders['content-type'] }
-        : {}),
-    });
-    response.locals.potemkinCaptureRawRequestBody = policy !== undefined;
-    let outgoingBody: JsonValue | null = null;
-    let outgoingSerialised: string | undefined;
-    let observed = false;
-    const record = (connectionClosed: boolean): void => {
-      if (observed) return;
-      observed = true;
-      const transportRequest = response.locals.potemkinTransportRequest as
-        | RuntimeTransportRequestInput
-        | undefined;
-      const inbound =
-        transportRequest === undefined
-          ? (() => {
-              const inboundBody = requestBodyForObservation(request, response, inboundSnapshot);
-              return {
-                method: inboundSnapshot.method,
-                path: inboundSnapshot.path,
-                query: inboundSnapshot.query,
-                headers: inboundSnapshot.headers,
-                body: captureTransportBody(inboundBody.body, 'request', policy, inboundBody.raw),
-              };
-            })()
-          : {
-              method: transportRequest.method.toUpperCase(),
-              path: transportRequest.path,
-              query: transportRequest.query,
-              headers: transportRequest.headers,
-              body: captureTransportBody(transportRequest.body, 'request', policy),
-            };
-      const parsed = parseControlHeaders(
-        request.headers as Record<string, string | string[] | undefined>,
-      );
-      const transportResponseBody = response.locals.potemkinTransportResponseBody as
-        | JsonValue
-        | null
-        | undefined;
-      const hasTransportResponseBody = transportResponseBody !== undefined;
-      const observedBody = hasTransportResponseBody
-        ? transportResponseBody
-        : (response.locals.potemkinObservedBody ?? outgoingBody);
-      const traceId =
-        typeof response.locals.potemkinTraceId === 'string'
-          ? response.locals.potemkinTraceId
-          : parsed.observability.traceId;
-      const observation: RuntimeTransportObservation = {
-        request: inbound,
-        response: {
-          status: response.statusCode,
-          headers: responseHeadersOf(response),
-          body: captureTransportBody(
-            observedBody,
-            'response',
-            policy,
-            hasTransportResponseBody || response.locals.potemkinObservedBody !== undefined
-              ? undefined
-              : outgoingSerialised,
-          ),
-          ...(connectionClosed ? { connectionClosed: true } : {}),
-        },
-        correlation: {
-          ...(traceId === undefined ? {} : { traceId }),
-          ...(typeof response.locals.potemkinCommandId === 'string'
-            ? { commandId: response.locals.potemkinCommandId }
-            : {}),
-        },
-      };
-      Promise.resolve(observer(observation)).catch((error: unknown) => {
-        system.program.dependencies.observability?.log?.(
-          'error',
-          'Transport request/response observation failed',
-          { error: String(error) },
-        );
-      });
-    };
-    const originalJson = response.json.bind(response);
-    response.json = ((body: unknown) => {
-      outgoingBody = body === undefined ? null : (body as JsonValue);
-      return originalJson(body as never);
-    }) as Response['json'];
-    const originalEnd = response.end.bind(response);
-    response.end = ((chunk?: unknown, encoding?: unknown, callback?: unknown) => {
-      if (chunk === undefined || chunk === null || chunk === '') {
-        outgoingBody = null;
-        outgoingSerialised = undefined;
-      } else if (Buffer.isBuffer(chunk)) {
-        const text = chunk.toString(
-          typeof encoding === 'string' ? (encoding as BufferEncoding) : 'utf8',
-        );
-        outgoingSerialised = text;
-        try {
-          outgoingBody = JSON.parse(text) as JsonValue;
-        } catch {
-          outgoingBody = text;
-        }
-      } else if (typeof chunk === 'string') {
-        outgoingSerialised = chunk;
-        try {
-          outgoingBody = JSON.parse(chunk) as JsonValue;
-        } catch {
-          outgoingBody = chunk;
-        }
+  app.use(
+    (
+      request: Request,
+      response: Response<unknown, RuntimeObservationLocals>,
+      next: NextFunction,
+    ) => {
+      const observer = system.program.dependencies.observability?.observeTransportRequestResponse;
+      if (observer === undefined) {
+        next();
+        return;
       }
-      return originalEnd(chunk as never, encoding as never, callback as never);
-    }) as Response['end'];
-    response.once('finish', () => record(false));
-    response.once('close', () => {
-      if (!response.writableEnded) record(true);
-    });
-    next();
-  });
+      const policy = system.program.dependencies.observability?.requestResponseCapture;
+      const inboundHeaders = Object.freeze(headersOf(request));
+      const inboundQuery: Readonly<Record<string, string | readonly string[]>> = Object.freeze(
+        Object.fromEntries(
+          Object.entries(queryOf(request)).map(([name, value]) => [
+            name,
+            Array.isArray(value) ? Object.freeze([...value]) : value,
+          ]),
+        ),
+      );
+      const inboundSnapshot: RuntimeTransportRequestSnapshot = Object.freeze({
+        method: request.method,
+        path: request.originalUrl.split('?')[0] ?? request.path,
+        query: inboundQuery,
+        headers: inboundHeaders,
+        ...(typeof inboundHeaders['content-type'] === 'string'
+          ? { contentType: inboundHeaders['content-type'] }
+          : {}),
+      });
+      response.locals.potemkinCaptureRawRequestBody = policy !== undefined;
+      let outgoingBody: JsonValue | null = null;
+      let outgoingSerialised: string | undefined;
+      let observed = false;
+      const record = (connectionClosed: boolean): void => {
+        if (observed) return;
+        observed = true;
+        const transportRequest = response.locals.potemkinTransportRequest;
+        const inbound: RuntimeTransportRequest =
+          transportRequest === undefined
+            ? (() => {
+                const inboundBody = requestBodyForObservation(request, response, inboundSnapshot);
+                return observedTransportRequest(
+                  inboundSnapshot.method,
+                  inboundSnapshot.path,
+                  inboundSnapshot.query,
+                  inboundSnapshot.headers,
+                  captureTransportBody(inboundBody.body, 'request', policy, inboundBody.raw),
+                );
+              })()
+            : observedTransportRequest(
+                transportRequest.method,
+                transportRequest.path,
+                transportRequest.query,
+                transportRequest.headers,
+                captureTransportBody(transportRequest.body, 'request', policy),
+              );
+        const parsed = parseControlHeaders(headersOf(request));
+        const transportResponseBody = response.locals.potemkinTransportResponseBody;
+        const hasTransportResponseBody = transportResponseBody !== undefined;
+        const observedBody = hasTransportResponseBody
+          ? transportResponseBody
+          : (response.locals.potemkinObservedBody ?? outgoingBody);
+        const traceId =
+          typeof response.locals.potemkinTraceId === 'string'
+            ? response.locals.potemkinTraceId
+            : parsed.observability.traceId;
+        const observation: RuntimeTransportObservation = {
+          request: inbound,
+          response: {
+            status: response.statusCode,
+            headers: responseHeadersOf(response),
+            body: captureTransportBody(
+              observedBody,
+              'response',
+              policy,
+              hasTransportResponseBody || response.locals.potemkinObservedBody !== undefined
+                ? undefined
+                : outgoingSerialised,
+            ),
+            ...(connectionClosed ? { connectionClosed: true } : {}),
+          },
+          correlation: {
+            ...(traceId === undefined ? {} : { traceId }),
+            ...(typeof response.locals.potemkinCommandId === 'string'
+              ? { commandId: CommandId.parse(response.locals.potemkinCommandId) }
+              : {}),
+          },
+        };
+        Promise.resolve(observer(observation)).catch((error: unknown) => {
+          system.program.dependencies.observability?.log?.(
+            'error',
+            'Transport request/response observation failed',
+            { error: String(error) },
+          );
+        });
+      };
+      const originalJson = response.json.bind(response);
+      response.json = (body) => {
+        outgoingBody = body === undefined ? null : isJsonValue(body) ? body : null;
+        return originalJson(body);
+      };
+      const originalEnd = response.end.bind(response);
+      function observedEnd(this: Response): Response;
+      function observedEnd(this: Response, chunk: unknown, callback?: () => void): Response;
+      function observedEnd(
+        this: Response,
+        chunk: unknown,
+        encoding: BufferEncoding,
+        callback?: () => void,
+      ): Response;
+      function observedEnd(
+        this: Response,
+        chunk?: unknown,
+        encoding?: BufferEncoding | (() => void),
+        callback?: () => void,
+      ): Response {
+        if (chunk === undefined || chunk === null || chunk === '') {
+          outgoingBody = null;
+          outgoingSerialised = undefined;
+        } else if (Buffer.isBuffer(chunk)) {
+          const text = chunk.toString(typeof encoding === 'string' ? encoding : 'utf8');
+          outgoingSerialised = text;
+          try {
+            outgoingBody = parseJsonValue(text);
+          } catch {
+            outgoingBody = text;
+          }
+        } else if (typeof chunk === 'string') {
+          outgoingSerialised = chunk;
+          try {
+            outgoingBody = parseJsonValue(chunk);
+          } catch {
+            outgoingBody = chunk;
+          }
+        }
+        if (typeof encoding === 'string') return originalEnd(chunk, encoding, callback);
+        if (typeof encoding === 'function') return originalEnd(chunk, encoding);
+        if (chunk === undefined) return originalEnd(callback);
+        return originalEnd(chunk, callback);
+      }
+      response.end = observedEnd;
+      response.once('finish', () => record(false));
+      response.once('close', () => {
+        if (!response.writableEnded) record(true);
+      });
+      next();
+    },
+  );
 }
 
 export { captureParsedRequestBody };

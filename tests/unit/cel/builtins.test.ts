@@ -50,6 +50,12 @@ describe('cel/builtins', () => {
       );
     });
 
+    it('does not dispatch inherited object properties as builtins', () => {
+      expect(() => callBuiltin('toString', [], { phase: CelPhase.Behavior })).toThrow(
+        "CEL_UNKNOWN_BUILTIN: unknown function 'toString'",
+      );
+    });
+
     it('calls $uuidv7 in Behavior phase', () => {
       const result = callBuiltin('$uuidv7', [], { phase: CelPhase.Behavior });
       expect(typeof result).toBe('string');

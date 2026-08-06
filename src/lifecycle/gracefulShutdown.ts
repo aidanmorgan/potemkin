@@ -59,7 +59,9 @@ export interface GracefulShutdownConfig {
  * Call this once after `server.listen(...)` has been invoked.
  */
 export function installGracefulShutdown(config: GracefulShutdownConfig): void {
-  if (config.lifecycle !== undefined && config.lifecycleDependencies === undefined) {
+  const lifecycle = config.lifecycle;
+  const lifecycleDependencies = config.lifecycleDependencies;
+  if (lifecycle !== undefined && lifecycleDependencies === undefined) {
     throw new ConfigurationError(
       'GracefulShutdownConfig.lifecycleDependencies is required with lifecycle',
       { field: 'lifecycleDependencies' },
@@ -70,7 +72,7 @@ export function installGracefulShutdown(config: GracefulShutdownConfig): void {
     : undefined;
 
   const timeoutMs = config.timeoutMs ?? 10_000;
-  const signals = (config.signals ?? ['SIGTERM', 'SIGINT']) as NodeJS.Signals[];
+  const signals = [...(config.signals ?? ['SIGTERM', 'SIGINT'])];
 
   // Give load-balancers a chance to drain before stopping connections. The
   // composition root owns environment parsing; this lifecycle module receives
@@ -126,17 +128,17 @@ export function installGracefulShutdown(config: GracefulShutdownConfig): void {
     async onShutdown(): Promise<void> {
       log?.info('lifecycle.shutdown: engine drained — process exiting');
 
-      if (config.lifecycle) {
+      if (lifecycle !== undefined && lifecycleDependencies !== undefined) {
         await runLifecyclePhase(
-          config.lifecycle,
+          lifecycle,
           'shutdown',
           {
             reason: config.shutdownReason ?? 'signal',
-            helpers: createLifecycleHelpers(config.lifecycleDependencies!),
+            helpers: createLifecycleHelpers(lifecycleDependencies),
           },
           {
             failure: 'continue',
-            nowMs: config.lifecycleDependencies!.nowMs,
+            nowMs: lifecycleDependencies.nowMs,
             logger: log,
             onError: (err, hookName, phase) => {
               log?.warn(

@@ -1,4 +1,5 @@
 import type { OpenApiDoc } from '../contract/loader.js';
+import { asRecord } from '../contracts/value.js';
 import type { RuntimeModelCoverage } from '../model/runtime.js';
 import type {
   TransitionMachine,
@@ -114,8 +115,8 @@ function buildAnalysis(
   const initialStates = boundaries.flatMap((boundary) =>
     (boundary.initialization ?? [])
       .map((seed) => {
-        const value = record(seed);
-        const nestedState = record(value?.state);
+        const value = asRecord(seed);
+        const nestedState = asRecord(value?.state);
         return nestedState?.[controlField] ?? value?.[controlField];
       })
       .filter((value): value is string => typeof value === 'string'),
@@ -148,7 +149,7 @@ function aggregateName(key: string): string {
     .filter(Boolean)
     .map((part) => {
       const singular = part.length > 3 && part.endsWith('s') ? part.slice(0, -1) : part;
-      return singular[0]!.toUpperCase() + singular.slice(1);
+      return singular.charAt(0).toUpperCase() + singular.slice(1);
     })
     .join('');
 }
@@ -158,28 +159,28 @@ function resolveSchema(
   explicit: string | undefined,
   openapi: OpenApiDoc,
 ): Record<string, unknown> | undefined {
-  const raw = record(openapi.raw);
-  const schemas = record(record(raw?.components)?.schemas);
+  const raw = asRecord(openapi.raw);
+  const schemas = asRecord(asRecord(raw?.components)?.schemas);
   if (schemas === undefined) return undefined;
   const candidates = [explicit, key, aggregateName(key), aggregateName(key).toLowerCase()].filter(
     (value): value is string => value !== undefined,
   );
   const name = candidates.find((candidate) => schemas[candidate] !== undefined);
-  return name === undefined ? undefined : record(schemas[name]);
+  return name === undefined ? undefined : asRecord(schemas[name]);
 }
 
 function selectControlField(schema: Record<string, unknown> | undefined): string {
-  const fields = record(schema?.properties) ?? {};
+  const fields = asRecord(schema?.properties) ?? {};
   const enums = Object.entries(fields).filter(
-    ([, value]) => enumValues(record(value), '').length > 0,
+    ([, value]) => enumValues(asRecord(value), '').length > 0,
   );
   if (enums.length === 0) return 'state';
   return enums.sort(([left], [right]) => left.localeCompare(right))[0]![0];
 }
 
 function enumValues(schema: Record<string, unknown> | undefined, field: string): readonly string[] {
-  const value = field === '' ? schema : record(schema?.properties)?.[field];
-  const enumValues = record(value)?.enum;
+  const value = field === '' ? schema : asRecord(schema?.properties)?.[field];
+  const enumValues = asRecord(value)?.enum;
   return Array.isArray(enumValues)
     ? enumValues.filter((entry): entry is string => typeof entry === 'string')
     : [];
@@ -200,10 +201,4 @@ function uniqueTransitions<T extends { readonly op: string; readonly to: string 
   const result = new Map<string, T>();
   for (const value of values) result.set(JSON.stringify(value), value);
   return [...result.values()].sort((left, right) => left.op.localeCompare(right.op));
-}
-
-function record(value: unknown): Record<string, unknown> | undefined {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
 }

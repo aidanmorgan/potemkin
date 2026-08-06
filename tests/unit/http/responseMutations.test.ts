@@ -169,4 +169,18 @@ describe('buildOperationLookup', () => {
     } as unknown as OpenApiDoc;
     expect(buildOperationLookup(doc).resolveOperationPath('getLead')).toBe('/leads/{id}');
   });
+
+  it('ignores path-item metadata while indexing operations', () => {
+    const doc = {
+      paths: {
+        '/leads/{id}': {
+          parameters: { name: 'id', in: 'path' },
+          get: { operationId: 'getLead' },
+        },
+      },
+    } as unknown as OpenApiDoc;
+
+    expect(buildOperationLookup(doc).resolveOperationPath('getLead')).toBe('/leads/{id}');
+    expect(buildOperationLookup(doc).resolveOperationPath('id')).toBeUndefined();
+  });
 });

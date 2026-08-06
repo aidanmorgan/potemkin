@@ -46,12 +46,156 @@ import {
 import { ConfigurationError } from '../errors.js';
 import type {
   ControlHeaders,
-  LogLevel,
+  FormatControls,
+  IdentityControls,
   ObservabilityControls,
   PartialControlHeaders,
-  PaginationStyle,
-  ResponseFormat,
+  SideEffectControls,
+  TimeTravelControls,
+  TransparencyControls,
+  ValidationControls,
 } from '../contracts/controlHeaders.js';
+import { LogLevel, PaginationStyle, ResponseFormat } from '../contracts/controlHeaders.js';
+import { isRecord } from '../contracts/value.js';
+
+function isBoolean(value: unknown): value is boolean {
+  return typeof value === 'boolean';
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === 'string';
+}
+
+function isInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value);
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return isInteger(value) && value >= 0;
+}
+
+function isStringArray(value: unknown): value is readonly string[] {
+  return Array.isArray(value) && value.every(isString);
+}
+
+function isResponseFormat(value: unknown): value is ResponseFormat {
+  return (
+    value === ResponseFormat.Hal ||
+    value === ResponseFormat.JsonApi ||
+    value === ResponseFormat.Plain
+  );
+}
+
+function isPaginationStyle(value: unknown): value is PaginationStyle {
+  return (
+    value === PaginationStyle.Envelope ||
+    value === PaginationStyle.Raw ||
+    value === PaginationStyle.LinkHeader
+  );
+}
+
+function isLogLevel(value: unknown): value is LogLevel {
+  return (
+    value === LogLevel.Debug ||
+    value === LogLevel.Info ||
+    value === LogLevel.Warn ||
+    value === LogLevel.Error
+  );
+}
+
+type FieldGuard = (value: unknown) => boolean;
+
+function hasValidOptionalFields<T extends object>(
+  value: unknown,
+  fields: Readonly<Record<string, FieldGuard>>,
+): value is T {
+  if (!isRecord(value)) return false;
+  return Object.entries(value).every(([key, fieldValue]) => {
+    const guard = fields[key];
+    return guard === undefined || fieldValue === undefined || guard(fieldValue);
+  });
+}
+
+function isMetricTag(value: unknown): value is NonNullable<ObservabilityControls['metricTag']> {
+  return isRecord(value) && typeof value.key === 'string' && typeof value.value === 'string';
+}
+
+function isTransparencyControls(value: unknown): value is TransparencyControls {
+  return hasValidOptionalFields<TransparencyControls>(value, {
+    dryRun: isBoolean,
+    includeEvents: isBoolean,
+    echo: isBoolean,
+    seed: isString,
+    clockOffsetMs: isInteger,
+  });
+}
+
+function isSideEffectControls(value: unknown): value is SideEffectControls {
+  return hasValidOptionalFields<SideEffectControls>(value, {
+    skipSagas: isBoolean,
+    skipWebhooks: isBoolean,
+    skipProjections: isBoolean,
+    skipReactions: isBoolean,
+    skipDispatch: isBoolean,
+    maxCascadeDepth: isNonNegativeInteger,
+    bulkTransactional: isBoolean,
+  });
+}
+
+function isIdentityControls(value: unknown): value is IdentityControls {
+  return hasValidOptionalFields<IdentityControls>(value, {
+    actorOverride: isString,
+    causedBy: isString,
+    impersonate: isString,
+  });
+}
+
+function isTimeTravelControls(value: unknown): value is TimeTravelControls {
+  return hasValidOptionalFields<TimeTravelControls>(value, {
+    readAtVersion: isNonNegativeInteger,
+    replayEvent: isString,
+  });
+}
+
+function isFormatControls(value: unknown): value is FormatControls {
+  return hasValidOptionalFields<FormatControls>(value, {
+    responseFormat: isResponseFormat,
+    paginationStyle: isPaginationStyle,
+    maskFields: isStringArray,
+  });
+}
+
+function isObservabilityControls(value: unknown): value is ObservabilityControls {
+  return hasValidOptionalFields<ObservabilityControls>(value, {
+    traceId: isString,
+    spanName: isString,
+    logLevel: isLogLevel,
+    metricTag: isMetricTag,
+  });
+}
+
+function isValidationControls(value: unknown): value is ValidationControls {
+  return hasValidOptionalFields<ValidationControls>(value, {
+    skipRequestValidation: isBoolean,
+    skipResponseValidation: isBoolean,
+    allowAdditionalProperties: isBoolean,
+  });
+}
+
+function validateTier<T>(
+  input: Record<string, unknown>,
+  key: string,
+  guard: (value: unknown) => value is T,
+): T | undefined {
+  const value = input[key];
+  if (value === undefined) return undefined;
+  if (!guard(value)) {
+    throw new ConfigurationError(`controlHeaders.${key} has invalid values`, {
+      field: `controlHeaders.${key}`,
+    });
+  }
+  return value;
+}
 
 /** A complete, empty policy used when no authored defaults were supplied. */
 export const EMPTY_CONTROL_HEADERS: ControlHeaders = Object.freeze({
@@ -92,10 +236,10 @@ export function mergeControlHeaders(
  * authored default would otherwise affect every request in the process.
  */
 export function validateControlHeaders(raw: unknown): PartialControlHeaders {
-  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+  if (!isRecord(raw)) {
     throw new ConfigurationError('controlHeaders must be an object', { field: 'controlHeaders' });
   }
-  const input = raw as Record<string, unknown>;
+  const input = raw;
   const allowed = new Set([
     'transparency',
     'sideEffects',
@@ -110,14 +254,23 @@ export function validateControlHeaders(raw: unknown): PartialControlHeaders {
       throw new ConfigurationError(`controlHeaders: unknown tier "${key}"`, {
         field: `controlHeaders.${key}`,
       });
-    const tier = input[key];
-    if (tier !== undefined && (tier === null || typeof tier !== 'object' || Array.isArray(tier))) {
-      throw new ConfigurationError(`controlHeaders.${key} must be an object`, {
-        field: `controlHeaders.${key}`,
-      });
-    }
   }
-  return raw as PartialControlHeaders;
+  const transparency = validateTier(input, 'transparency', isTransparencyControls);
+  const sideEffects = validateTier(input, 'sideEffects', isSideEffectControls);
+  const identity = validateTier(input, 'identity', isIdentityControls);
+  const timeTravel = validateTier(input, 'timeTravel', isTimeTravelControls);
+  const format = validateTier(input, 'format', isFormatControls);
+  const observability = validateTier(input, 'observability', isObservabilityControls);
+  const validation = validateTier(input, 'validation', isValidationControls);
+  return {
+    ...(transparency === undefined ? {} : { transparency }),
+    ...(sideEffects === undefined ? {} : { sideEffects }),
+    ...(identity === undefined ? {} : { identity }),
+    ...(timeTravel === undefined ? {} : { timeTravel }),
+    ...(format === undefined ? {} : { format }),
+    ...(observability === undefined ? {} : { observability }),
+    ...(validation === undefined ? {} : { validation }),
+  };
 }
 
 function readHeader(
@@ -324,8 +477,8 @@ export function requiresAdminAuth(c: ControlHeaders): boolean {
 export function applyMask(body: unknown, fields: readonly string[]): unknown {
   if (fields.length === 0) return body;
   if (Array.isArray(body)) return body.map((item) => applyMask(item, fields));
-  if (body !== null && typeof body === 'object') {
-    const out: Record<string, unknown> = { ...(body as Record<string, unknown>) };
+  if (isRecord(body)) {
+    const out: Record<string, unknown> = { ...body };
     for (const field of fields) {
       if (field in out) out[field] = '[MASKED]';
     }

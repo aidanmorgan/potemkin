@@ -1,37 +1,38 @@
 import { RuntimeExecutionError } from '../core/errors.js';
 import type { RuntimeFault } from '../model/runtime.js';
-import type { JsonValue } from '../contracts/value.js';
+import { isJsonValue, isRecord } from '../contracts/value.js';
+import { ErrorClass, type ErrorClass as ErrorClassValue } from '../contracts/controlHeaders.js';
 
 export interface RuntimeFaultWireRegistration {
   readonly rule: RuntimeFault;
   readonly ttlMs?: number;
 }
 
-function recordValue(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-function jsonValue(value: unknown): value is JsonValue {
-  if (
-    value === null ||
-    typeof value === 'string' ||
-    typeof value === 'number' ||
-    typeof value === 'boolean'
-  )
-    return true;
-  if (Array.isArray(value)) return value.every(jsonValue);
-  return recordValue(value) && Object.values(value).every(jsonValue);
-}
-
 function stringMap(value: unknown, field: string): Readonly<Record<string, string>> | undefined {
   if (value === undefined) return undefined;
-  if (!recordValue(value) || Object.entries(value).some(([, entry]) => typeof entry !== 'string')) {
+  if (!isRecord(value)) {
     throw new RuntimeExecutionError(400, `Invalid ${field}`, {
       code: 'INVALID_FAULT_RULE',
       message: `${field} must be an object of strings`,
     });
   }
-  return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, entry as string]));
+  const entries = Object.entries(value);
+  if (entries.some(([, entry]) => typeof entry !== 'string')) {
+    throw new RuntimeExecutionError(400, `Invalid ${field}`, {
+      code: 'INVALID_FAULT_RULE',
+      message: `${field} must be an object of strings`,
+    });
+  }
+  const stringEntries = entries.filter(
+    (entry): entry is [string, string] => typeof entry[1] === 'string',
+  );
+  return Object.fromEntries(stringEntries);
+}
+
+const ERROR_CLASSES: ReadonlySet<string> = new Set(Object.values(ErrorClass));
+
+function isErrorClass(value: string): value is ErrorClassValue {
+  return ERROR_CLASSES.has(value);
 }
 
 function optionalNonNegativeNumber(value: unknown, field: string): number | undefined {
@@ -73,7 +74,7 @@ function ttlMilliseconds(value: Record<string, unknown>, nowMs: number): number 
 
 /** Parse the source-neutral JSON fault form accepted by the generic gateway. */
 export function parseRuntimeFaultWire(value: unknown, nowMs: number): RuntimeFaultWireRegistration {
-  if (!recordValue(value)) {
+  if (!isRecord(value)) {
     throw new RuntimeExecutionError(400, 'Invalid fault rule', {
       code: 'INVALID_FAULT_RULE',
       message: 'A fault rule must be an object',
@@ -81,7 +82,7 @@ export function parseRuntimeFaultWire(value: unknown, nowMs: number): RuntimeFau
   }
   const match = value.match === undefined ? {} : value.match;
   const response = value.response;
-  if (!recordValue(match) || !recordValue(response)) {
+  if (!isRecord(match) || !isRecord(response)) {
     throw new RuntimeExecutionError(400, 'Invalid fault rule', {
       code: 'INVALID_FAULT_RULE',
       message: 'A fault rule requires `match` and `response` objects',
@@ -95,7 +96,7 @@ export function parseRuntimeFaultWire(value: unknown, nowMs: number): RuntimeFau
     });
   }
   const body = response.body;
-  if (body !== undefined && !jsonValue(body)) {
+  if (body !== undefined && !isJsonValue(body)) {
     throw new RuntimeExecutionError(400, 'Invalid fault response body', {
       code: 'INVALID_FAULT_RULE',
       message: 'Fault response body must be JSON',
@@ -144,10 +145,10 @@ export function parseRuntimeFaultWire(value: unknown, nowMs: number): RuntimeFau
       : typeof match.featureFlag === 'string'
         ? { featureFlag: match.featureFlag }
         : {}),
-    ...(typeof match.error_class === 'string'
-      ? { errorClass: match.error_class as NonNullable<RuntimeFault['selectors']>['errorClass'] }
-      : typeof match.errorClass === 'string'
-        ? { errorClass: match.errorClass as NonNullable<RuntimeFault['selectors']>['errorClass'] }
+    ...(typeof match.error_class === 'string' && isErrorClass(match.error_class)
+      ? { errorClass: match.error_class }
+      : typeof match.errorClass === 'string' && isErrorClass(match.errorClass)
+        ? { errorClass: match.errorClass }
         : {}),
   };
   const requiredScopesValue = match.required_scopes ?? value.requiredScopes;
@@ -155,8 +156,8 @@ export function parseRuntimeFaultWire(value: unknown, nowMs: number): RuntimeFau
     requiredScopesValue === undefined
       ? undefined
       : Array.isArray(requiredScopesValue) &&
-          requiredScopesValue.every((entry) => typeof entry === 'string')
-        ? (requiredScopesValue as string[])
+          requiredScopesValue.every((entry): entry is string => typeof entry === 'string')
+        ? requiredScopesValue
         : (() => {
             throw new RuntimeExecutionError(400, 'Invalid fault scopes', {
               code: 'INVALID_FAULT_RULE',

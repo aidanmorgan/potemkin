@@ -8,6 +8,7 @@ import {
 import { createRuntimeDataGenerator } from '../../../src/model/data.js';
 import type { RuntimeHelpers } from '../../../src/model/runtime.js';
 import { RuntimeModelError } from '../../../src/model/errors.js';
+import { operationId } from '../../../src/domain/references.js';
 
 describe('functional TypeScript runtime builders', () => {
   it('builds an executable definition without YAML-shaped fields', async () => {
@@ -41,9 +42,15 @@ describe('functional TypeScript runtime builders', () => {
           advance: () => 0,
           reset: () => undefined,
         },
-        contract: { operationIdFor: () => 'createOrder' },
+        contract: { operationIdFor: () => operationId('createOrder') },
       });
-    expect(program.boundaries[0]).toBe(boundary);
+    expect(program.boundaries[0]).toMatchObject({
+      boundary: 'Order',
+      contractPath: '/orders',
+      eventCatalog: boundary.eventCatalog,
+      behaviors: [{ name: 'create', operationId: 'createOrder', emit: 'OrderCreated' }],
+      reducers: boundary.reducers,
+    });
     expect(boundary).not.toHaveProperty('event_catalog');
     expect(Object.isFrozen(boundary)).toBe(true);
   });

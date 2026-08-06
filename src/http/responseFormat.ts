@@ -167,7 +167,7 @@ export function applyResponseFormat(
   if (format === 'hal') {
     if (Array.isArray(body)) {
       return {
-        _embedded: { items: body as JsonValue[] },
+        _embedded: { items: body },
         _links: { self: { href: selfPath } },
       };
     }

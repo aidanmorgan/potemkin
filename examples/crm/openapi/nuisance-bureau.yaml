@@ -9,6 +9,11 @@ info:
 paths:
   # ── Leads ──────────────────────────────────────────────────────────────────
   /leads:
+    options:
+      operationId: leadsCorsPreflight
+      responses:
+        '204':
+          description: CORS preflight
     get:
       operationId: listLeads
       summary: List leads

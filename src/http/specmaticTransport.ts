@@ -1,4 +1,13 @@
-import type { JsonValue } from '../contracts/value.js';
+import {
+  isJsonObject,
+  isJsonValue,
+  PatchOperation,
+  PatchSource,
+  type JsonValue,
+  type PatchOperation as PatchOperationValue,
+  type PatchSource as PatchSourceValue,
+} from '../contracts/value.js';
+import { jsonPath } from '../domain/references.js';
 import type { JournalEntry } from '../model/patches.js';
 import { BootError } from '../errors.js';
 import type { ForwardedRequest } from '../contracts/transport.js';
@@ -84,14 +93,100 @@ export function validateForwardedResponse(raw: unknown): ForwardedResponse {
     throw malformed('body must be JSON, including null');
   if (raw['_patches'] !== undefined && !Array.isArray(raw['_patches']))
     throw malformed('_patches must be an array when present');
+  const patches =
+    raw['_patches'] === undefined ? undefined : validateJournalEntries(raw['_patches']);
   return {
     status: raw['status'],
     headers: lowerCaseHeaders(headers),
     body: raw['body'],
-    ...(raw['_patches'] === undefined
-      ? {}
-      : { _patches: raw['_patches'] as readonly JournalEntry[] }),
+    ...(patches === undefined ? {} : { _patches: patches }),
   };
+}
+
+type TransportJournalOperation = Exclude<PatchOperationValue, typeof PatchOperation.Upsert>;
+
+function validateJournalEntries(raw: unknown): readonly JournalEntry[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(isJournalEntry);
+}
+
+function isJournalEntry(raw: unknown): raw is JournalEntry {
+  if (!isJsonObject(raw)) return false;
+
+  const source = raw['source'];
+  const operation = raw['op'];
+  const path = raw['path'];
+  if (!isPatchSource(source) || !isTransportJournalOperation(operation)) return false;
+  if (!isJsonPointer(path)) return false;
+
+  if (hasField(raw, 'value') && !isJsonValue(raw['value'])) return false;
+  if (hasField(raw, 'from') && !isJsonPointer(raw['from'])) return false;
+  if (hasField(raw, 'by') && (typeof raw['by'] !== 'number' || !Number.isFinite(raw['by']))) {
+    return false;
+  }
+
+  switch (operation) {
+    case PatchOperation.Add:
+    case PatchOperation.Replace:
+    case PatchOperation.Append:
+    case PatchOperation.Prepend:
+      return hasField(raw, 'value');
+    case PatchOperation.Move:
+    case PatchOperation.Copy:
+      return hasField(raw, 'from');
+    case PatchOperation.Increment:
+      return hasField(raw, 'by');
+    case PatchOperation.Merge:
+      return hasField(raw, 'value') && isJsonObject(raw['value']);
+    case PatchOperation.Remove:
+      return true;
+  }
+}
+
+function isTransportJournalOperation(value: unknown): value is TransportJournalOperation {
+  switch (value) {
+    case PatchOperation.Add:
+    case PatchOperation.Remove:
+    case PatchOperation.Replace:
+    case PatchOperation.Move:
+    case PatchOperation.Copy:
+    case PatchOperation.Append:
+    case PatchOperation.Prepend:
+    case PatchOperation.Increment:
+    case PatchOperation.Merge:
+      return true;
+    default:
+      return false;
+  }
+}
+
+function isPatchSource(value: unknown): value is PatchSourceValue {
+  switch (value) {
+    case PatchSource.Reducer:
+    case PatchSource.Projection:
+    case PatchSource.Seed:
+    case PatchSource.Hateoas:
+    case PatchSource.Mask:
+    case PatchSource.Deprecation:
+    case PatchSource.Overlay:
+      return true;
+    default:
+      return false;
+  }
+}
+
+function isJsonPointer(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  try {
+    jsonPath(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function hasField(value: Record<string, unknown>, field: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, field);
 }
 
 function validateStringMap(raw: unknown, field: string): Record<string, string> {
@@ -110,7 +205,7 @@ function validateQueryMap(raw: unknown): Record<string, string | string[]> {
   for (const [key, value] of Object.entries(raw)) {
     if (typeof value === 'string') output[key] = value;
     else if (Array.isArray(value) && value.every((item) => typeof item === 'string'))
-      output[key] = [...value] as string[];
+      output[key] = value.filter((item): item is string => typeof item === 'string');
     else throw malformed(`query.${key} must be a string or string array`);
   }
   return output;
@@ -120,13 +215,6 @@ function lowerCaseHeaders(headers: Record<string, string>): Record<string, strin
   return Object.fromEntries(
     Object.entries(headers).map(([key, value]) => [key.toLowerCase(), value]),
   );
-}
-
-function isJsonValue(value: unknown): value is JsonValue {
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
-  if (typeof value === 'number') return Number.isFinite(value);
-  if (Array.isArray(value)) return value.every(isJsonValue);
-  return typeof value === 'object' && value !== null && Object.values(value).every(isJsonValue);
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

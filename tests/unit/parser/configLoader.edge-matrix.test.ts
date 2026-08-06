@@ -28,6 +28,51 @@ async function temporaryConfig(): Promise<{
 }
 
 describe('potemkin.yml file loader edge matrix', () => {
+  it('preserves YAML merge keys when loading the root configuration', async () => {
+    const fixture = await temporaryConfig();
+    try {
+      await fs.writeFile(
+        fixture.config,
+        '<<: &defaults\n  version: 1\n  specmatic: ./specmatic.yaml\n  modules: [modules/*.yaml]\n',
+      );
+      const boundaryPath = await fixture.write(
+        'boundary.yaml',
+        'boundary: Orders\ncontract_path: /orders\nspec_id: main\n',
+      );
+
+      await expect(
+        loadPotemkinConfig(fixture.config, {
+          specEndpoints: [{ specId: 'main', path: '/orders', method: 'GET' }],
+        }),
+      ).resolves.toMatchObject({ boundaryModulePaths: [boundaryPath] });
+    } finally {
+      await fs.rm(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  it('preserves js-yaml scalar resolution for dates and YAML 1.2 booleans', async () => {
+    const fixture = await temporaryConfig();
+    try {
+      await fs.writeFile(
+        fixture.config,
+        'version: 2020-01-01\nspecmatic: ./specmatic.yaml\nmodules: [modules/*.yaml]\n',
+      );
+      await expect(loadPotemkinConfig(fixture.config)).rejects.toMatchObject({
+        code: 'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+      });
+
+      await fs.writeFile(
+        fixture.config,
+        'version: yes\nspecmatic: ./specmatic.yaml\nmodules: [modules/*.yaml]\n',
+      );
+      await expect(loadPotemkinConfig(fixture.config)).rejects.toMatchObject({
+        code: 'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+      });
+    } finally {
+      await fs.rm(fixture.root, { recursive: true, force: true });
+    }
+  });
+
   it('partitions boundary, component, use, global, and resource modules and records watch paths', async () => {
     const fixture = await temporaryConfig();
     try {
@@ -49,9 +94,25 @@ describe('potemkin.yml file loader edge matrix', () => {
       expect(loaded.useMappingModulePaths).toEqual([usePath]);
       expect(loaded.globalModulePaths).toEqual([globalPath]);
       expect(loaded.yamlProgram.modules).toHaveLength(1);
-      expect(loaded.yamlProgram.globalYaml).toContain('idempotency');
+      expect(loaded.yamlProgram.globalYaml).toBe('idempotency: {}\n');
       expect(loaded.watchGlobs).toEqual([path.join(fixture.root, 'modules/*.yaml')]);
       expect(loaded.watchIgnores).toEqual([]);
+    } finally {
+      await fs.rm(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  it('preserves yaml.dump-compatible output when global modules are merged', async () => {
+    const fixture = await temporaryConfig();
+    try {
+      await fixture.write('first.yaml', 'auth: {mode: simple}\n');
+      await fixture.write('second.yaml', 'idempotency: {enabled: true}\n');
+
+      const loaded = await loadPotemkinConfig(fixture.config);
+
+      expect(loaded.yamlProgram.globalYaml).toBe(
+        'auth:\n  mode: simple\nidempotency:\n  enabled: true\n',
+      );
     } finally {
       await fs.rm(fixture.root, { recursive: true, force: true });
     }
@@ -86,6 +147,7 @@ describe('potemkin.yml file loader edge matrix', () => {
       await fs.writeFile(malformed, 'version: [');
       await expect(loadPotemkinConfig(malformed)).rejects.toMatchObject({
         code: 'BOOT_ERR_INVALID_YAML',
+        details: { source: malformed },
       });
 
       const empty = path.join(malformedRoot, 'empty.yml');

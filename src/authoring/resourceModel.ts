@@ -1,9 +1,14 @@
 import type { OpenApiDocumentDescriptor } from '../contracts/openapi.js';
 import type { ComposableBoundary } from './composition.js';
 import { definitionError } from './errors.js';
-import type { BehaviorDefinition } from './types.js';
-import type { HttpMethod } from '../domain/references.js';
-import { behaviorName } from '../domain/references.js';
+import type { BehaviorDefinition, IdentityDefinition } from './types.js';
+import {
+  behaviorName,
+  boundaryName,
+  httpMethod,
+  parseContractPath,
+  HttpMethod,
+} from '../domain/references.js';
 import type { ResourceDefinition, ResourceOperation } from './types.js';
 
 export type { ResourceDefinition, ResourceOperation };
@@ -11,23 +16,6 @@ export type { ResourceDefinition, ResourceOperation };
 interface IndexedOperation {
   readonly path: string;
   readonly method: HttpMethod;
-}
-
-function httpMethod(value: string): HttpMethod {
-  const normalized = value.toUpperCase();
-  switch (normalized) {
-    case 'GET':
-    case 'POST':
-    case 'PUT':
-    case 'PATCH':
-    case 'DELETE':
-    case 'HEAD':
-    case 'OPTIONS':
-    case 'TRACE':
-      return normalized;
-    default:
-      throw definitionError(`Unsupported HTTP method "${value}" in a resource operation`);
-  }
 }
 
 function pathSuffix(path: string): string {
@@ -45,6 +33,14 @@ function hasPathParameter(path: string): boolean {
 function lastPathParameter(path: string): string | undefined {
   const matches = [...path.matchAll(/\{([^}]+)\}/g)];
   return matches.at(-1)?.[1];
+}
+
+function requiredLastPathParameter(path: string): string {
+  const parameter = lastPathParameter(path);
+  if (parameter === undefined) {
+    throw definitionError(`Resource contract path "${path}" requires a path parameter`);
+  }
+  return parameter;
 }
 
 function operationIndex(
@@ -68,7 +64,7 @@ function resolveOperation(
   const indexed = index.get(operation.operationId);
   if (indexed !== undefined) return indexed;
   if (operation.contractPath !== undefined) {
-    return { path: operation.contractPath, method: operation.method ?? 'POST' };
+    return { path: operation.contractPath, method: operation.method ?? HttpMethod.Post };
   }
   throw definitionError(
     `Resource operation "${operation.operationId}" is not present in the OpenAPI contract`,
@@ -85,7 +81,7 @@ function resourceBehavior(
     method: resolved.method,
     ...operation.behavior,
     ...(operation.emit === undefined ? {} : { emit: operation.emit }),
-  } as BehaviorDefinition;
+  };
 }
 
 function resourceBoundary(
@@ -101,13 +97,13 @@ function resourceBoundary(
   const behaviors = operations
     .filter((operation) => operation.query !== true)
     .map((operation) => resourceBehavior(operation, resolveOperation(operation, index)));
-  const identity = collection
+  const identity: IdentityDefinition | undefined = collection
     ? resource.identity
-    : { key: { from: 'path' as const, name: lastPathParameter(path)! } };
+    : { key: { from: 'path', name: requiredLastPathParameter(path) } };
 
   return {
-    boundary: `${resource.resource}__${pathSuffix(path)}` as ComposableBoundary['boundary'],
-    contractPath: path as ComposableBoundary['contractPath'],
+    boundary: boundaryName(`${resource.resource}__${pathSuffix(path)}`),
+    contractPath: parseContractPath(path),
     schema: resource.schema,
     fallbackOverride: query,
     ...(identity === undefined ? {} : { identity }),

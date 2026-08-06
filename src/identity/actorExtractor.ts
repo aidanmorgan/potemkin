@@ -18,18 +18,8 @@ import type { Actor } from '../contracts/identity.js';
  *  - the token portion does not contain a `:` separator
  */
 export function extractActor(authorizationHeader: string | undefined): Actor | null {
-  if (!authorizationHeader || authorizationHeader.trim() === '') return null;
-
-  const BEARER_PREFIX = 'Bearer ';
-  if (
-    !authorizationHeader.startsWith(BEARER_PREFIX) &&
-    !authorizationHeader.startsWith('bearer ')
-  ) {
-    return null;
-  }
-
-  const token = authorizationHeader.slice(BEARER_PREFIX.length).trim();
-  if (!token) return null;
+  const token = extractBearerToken(authorizationHeader);
+  if (token === null) return null;
 
   const colonIdx = token.indexOf(':');
   if (colonIdx === -1) {
@@ -47,4 +37,19 @@ export function extractActor(authorizationHeader: string | undefined): Actor | n
   if (!id) return null;
 
   return { id, scopes };
+}
+
+/**
+ * Extract the opaque credential from a Bearer authorization header.
+ *
+ * Header names and the Bearer scheme are case-insensitive, while the token
+ * itself is returned verbatim apart from surrounding whitespace.
+ */
+export function extractBearerToken(authorizationHeader: string | undefined): string | null {
+  const header = authorizationHeader?.trim();
+  if (!header) return null;
+
+  const match = /^Bearer\s+(.+)$/i.exec(header);
+  const token = match?.[1]?.trim();
+  return token || null;
 }

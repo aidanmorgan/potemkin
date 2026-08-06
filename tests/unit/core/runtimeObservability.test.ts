@@ -3,6 +3,7 @@ import { RuntimeExecutionError } from '../../../src/core/errors.js';
 import { compileRuntime } from '../../../src/model/compiler.js';
 import { createRuntimeDataGenerator } from '../../../src/model/data.js';
 import type {
+  CompiledRuntimeProgram,
   RuntimeBoundary,
   RuntimeHelpers,
   RuntimeProgram,
@@ -11,6 +12,24 @@ import type { RuntimeClock } from '../../../src/contracts/ports.js';
 import type { RuntimeRequestResponseObservation } from '../../../src/contracts/ports.js';
 import type { Command } from '../../../src/contracts/domain.js';
 import type { JsonObject } from '../../../src/contracts/value.js';
+import {
+  aggregateId,
+  boundaryName,
+  commandId,
+  httpMethod,
+  operationId,
+} from '../../../src/domain/references.js';
+
+type CommandOverrides = Omit<
+  Partial<Command>,
+  'commandId' | 'targetId' | 'boundary' | 'httpMethod' | 'operationId'
+> & {
+  readonly commandId?: string;
+  readonly targetId?: string | null;
+  readonly boundary?: string;
+  readonly httpMethod?: string;
+  readonly operationId?: string;
+};
 
 const helpers: RuntimeHelpers = {
   now: () => '2026-01-01T00:00:00.000Z',
@@ -31,21 +50,35 @@ const clock: RuntimeClock = {
 };
 
 function request(
-  command: Partial<Command>,
+  command: CommandOverrides,
   controls?: Parameters<ReturnType<typeof createRuntimeEngine>['execute']>[0]['controls'],
 ): Parameters<ReturnType<typeof createRuntimeEngine>['execute']>[0] {
+  const {
+    commandId: rawCommandId,
+    targetId: rawTargetId,
+    boundary: rawBoundary,
+    httpMethod: rawHttpMethod,
+    operationId: rawOperationId,
+    ...rest
+  } = command;
   const value: Command = {
-    commandId: command.commandId ?? 'command-1',
-    boundary: command.boundary ?? 'Order',
+    commandId: commandId(rawCommandId ?? 'command-1'),
+    boundary: boundaryName(rawBoundary ?? 'Order'),
     intent: command.intent ?? 'creation',
-    targetId: command.targetId === undefined ? 'order-1' : command.targetId,
+    targetId:
+      rawTargetId === undefined
+        ? aggregateId('order-1')
+        : rawTargetId === null
+          ? null
+          : aggregateId(rawTargetId),
     payload: command.payload ?? { id: 'order-1', secret: 'not-for-response' },
     queryParams: command.queryParams ?? {},
-    httpMethod: command.httpMethod ?? 'POST',
+    httpMethod: httpMethod(rawHttpMethod ?? 'POST'),
     path: command.path ?? '/orders',
     origin: command.origin ?? 'inbound',
     depth: command.depth ?? 0,
-    ...command,
+    ...(rawOperationId === undefined ? {} : { operationId: operationId(rawOperationId) }),
+    ...rest,
   };
   return { command: value, headers: {}, controls };
 }
@@ -54,7 +87,7 @@ function contract(
   overrides: Partial<RuntimeProgram['dependencies']['contract']> = {},
 ): RuntimeProgram['dependencies']['contract'] {
   return {
-    operationIdFor: () => 'createOrder',
+    operationIdFor: () => operationId('createOrder'),
     ...overrides,
   };
 }
@@ -79,7 +112,7 @@ function program(
   definition: RuntimeBoundary,
   dependencies: Partial<RuntimeProgram['dependencies']>,
   policies: Parameters<typeof compileRuntime>[0]['policies'] = {},
-): RuntimeProgram {
+): CompiledRuntimeProgram {
   return compileRuntime(
     { boundaries: [definition], policies },
     { contract: contract(), helpers, clock, ...dependencies },

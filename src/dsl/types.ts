@@ -37,6 +37,49 @@ export type DslSlot<E = never, Value = JsonValue, Phase extends string = string,
   ? Yaml
   : Value | PhaseValue<E, Phase>;
 
+/** Operations supported by reducer and derived-projection patch entries. */
+export const ReducerPatchOperation = {
+  Add: 'add',
+  Remove: 'remove',
+  Replace: 'replace',
+  Append: 'append',
+  Prepend: 'prepend',
+  Increment: 'increment',
+  Merge: 'merge',
+  Upsert: 'upsert',
+  Move: 'move',
+  Copy: 'copy',
+} as const;
+
+export type ReducerPatchOperation =
+  (typeof ReducerPatchOperation)[keyof typeof ReducerPatchOperation];
+
+/** Sources from which an identity key may be extracted. */
+export const IdentityKeySource = {
+  Path: 'path',
+  Query: 'query',
+  Header: 'header',
+  Payload: 'payload',
+} as const;
+
+export type IdentityKeySource = (typeof IdentityKeySource)[keyof typeof IdentityKeySource];
+
+/** Sort directions accepted by declarative query policies. */
+export const QuerySortDirection = {
+  Ascending: 'asc',
+  Descending: 'desc',
+} as const;
+
+export type QuerySortDirection = (typeof QuerySortDirection)[keyof typeof QuerySortDirection];
+
+/** Query response shapes supported by the DSL. */
+export const QueryPagination = {
+  Raw: 'raw',
+  Envelope: 'envelope',
+} as const;
+
+export type QueryPagination = (typeof QueryPagination)[keyof typeof QueryPagination];
+
 export interface EventCatalogEntry<E = never> {
   readonly type: string; // event type key
   readonly payloadTemplate: Record<string, DslSlot<E, JsonValue, 'event-hydration'>>; // map fieldName → CEL/expression
@@ -113,17 +156,7 @@ export interface ReducerRule<E = never> {
 }
 
 export interface ReducerPatchOp<E = never, Phase extends string = 'reducer'> {
-  readonly op:
-    | 'add'
-    | 'remove'
-    | 'replace'
-    | 'append'
-    | 'prepend'
-    | 'increment'
-    | 'merge'
-    | 'upsert'
-    | 'move'
-    | 'copy';
+  readonly op: ReducerPatchOperation;
   readonly path: string;
   /** YAML patches carry plain JSON values; direct authoring additionally gains
    * the phase-specific callback/value slot. Keeping the YAML branch explicit
@@ -139,7 +172,7 @@ export interface ReducerPatchOp<E = never, Phase extends string = 'reducer'> {
 /** Identity key extraction policy: where to find the entity key on an incoming request. */
 export interface IdentityKeyConfig {
   /** Source of the key value. */
-  readonly from?: 'path' | 'query' | 'header' | 'payload';
+  readonly from?: IdentityKeySource;
   /** Parameter / header name (lowercased for headers) — used by path/query/header sources. */
   readonly name?: string;
   /** Dot-path within the JSON body — used by payload source. Defaults to `name` if omitted. */
@@ -170,7 +203,7 @@ export interface LatencyConfig {
 /** Declarative query policy compiled into the source-neutral runtime model. */
 export interface QuerySortConfig {
   readonly field: string;
-  readonly direction?: 'asc' | 'desc';
+  readonly direction?: QuerySortDirection;
 }
 
 export interface QueryConfig<E = never> {
@@ -187,7 +220,7 @@ export interface QueryConfig<E = never> {
   readonly cursor?: DslExpression<E, 'query'>;
   /** Related state fields to expand in every returned row. */
   readonly expand?: readonly string[];
-  readonly pagination?: 'raw' | 'envelope';
+  readonly pagination?: QueryPagination;
   readonly includeDeleted?: boolean;
   /** Literal JSON value or CEL expression used when a targeted query has no row. */
   readonly fallback?: DslSlot<E, JsonValue, 'query', JsonValue>;
@@ -271,7 +304,13 @@ export interface BoundaryConfig<E = never> {
  * Allowed types for a component parameter declaration.
  * Distinct from the DSL field-type system — these are link-time substitution types.
  */
-export type ParameterType = 'string' | 'number' | 'boolean';
+export const ParameterType = {
+  String: 'string',
+  Number: 'number',
+  Boolean: 'boolean',
+} as const;
+
+export type ParameterType = (typeof ParameterType)[keyof typeof ParameterType];
 
 /** Declaration of a single named parameter in a component. */
 export interface ParameterDecl {
@@ -490,7 +529,7 @@ export interface JwtAuthConfig {
   /** Shared secret for HS256. */
   readonly secret: string;
   /** Algorithm — must be 'HS256'. */
-  readonly algorithm?: 'HS256';
+  readonly algorithm?: JwtAlgorithm;
   /** Required issuer. */
   readonly issuer?: string;
   /** Required audience. */
@@ -502,6 +541,13 @@ export interface JwtAuthConfig {
   /** Claim path that contains scopes (string array or space-delimited string). Default: 'scopes'. */
   readonly scopesClaim?: string;
 }
+
+/** JWT algorithms currently supported by the DSL. */
+export const JwtAlgorithm = {
+  Hs256: 'HS256',
+} as const;
+
+export type JwtAlgorithm = (typeof JwtAlgorithm)[keyof typeof JwtAlgorithm];
 
 /** Session/cookie auth config. */
 export interface SessionAuthConfig {
@@ -523,8 +569,16 @@ export interface SessionAuthConfig {
 }
 
 /** Top-level auth mode selection. */
+export const AuthMode = {
+  Simple: 'simple',
+  Jwt: 'jwt',
+  Session: 'session',
+} as const;
+
+export type AuthMode = (typeof AuthMode)[keyof typeof AuthMode];
+
 export interface AuthConfig {
-  readonly mode?: 'simple' | 'jwt' | 'session';
+  readonly mode?: AuthMode;
   readonly jwt?: JwtAuthConfig;
   readonly session?: SessionAuthConfig;
 }

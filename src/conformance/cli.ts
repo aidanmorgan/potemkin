@@ -89,19 +89,20 @@ export async function runConformance(
         ? { seedExamplesDir: examplesDir }
         : {}),
     });
+    const activeStack = stack;
     const jarPath = await ensureSpecmaticJar('2.46.2');
     gateInvoked = true;
     const result = await runConformanceGate({
       provider: {
-        baseUrl: stack.stubUrl,
-        reset: () => stack!.reset(),
-        shutdown: () => stack!.shutdown(),
+        baseUrl: activeStack.stubUrl,
+        reset: () => activeStack.reset(),
+        shutdown: () => activeStack.shutdown(),
       },
       allowlist,
       verifier: () =>
         runSpecmaticTest({
           jarPath,
-          testBaseUrl: stack!.stubUrl,
+          testBaseUrl: activeStack.stubUrl,
           contractPath: specmaticContractPath,
           junitReportDir: reportDir,
           filter: layerOptions.filter,

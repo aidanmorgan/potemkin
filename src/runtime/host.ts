@@ -1,9 +1,13 @@
-import { createRuntimeDataGenerator, createSeededRandom } from '../model/data.js';
+import {
+  createRuntimeDataGenerator,
+  createSeededRandom,
+  uuidV7OptionsFromSeed,
+} from '../model/data.js';
 import type { RuntimeHelpers } from '../model/runtime.js';
 import type { RuntimeClock } from '../contracts/ports.js';
 import type { RuntimeTimerScheduler } from './ports.js';
 import { ConfigurationError } from '../errors.js';
-import { createDeterministicUuidv7Source, nextUuidv7 } from '../ids/uuidv7.js';
+import { v7 } from 'uuid';
 
 /** Host-owned services required to boot a source-independent runtime. */
 export interface RuntimeHostServices {
@@ -25,7 +29,7 @@ export function createDefaultRuntimeHost(): RuntimeHostServices {
   const random = () => Math.random();
   const helpers: RuntimeHelpers = {
     now: () => new Date().toISOString(),
-    uuid: nextUuidv7,
+    uuid: v7,
     random,
     data: createRuntimeDataGenerator(random),
     clone,
@@ -65,7 +69,8 @@ export function createDeterministicRuntimeHost(
     });
   }
   const random = createSeededRandom(options.randomSeed ?? 'potemkin-deterministic-host');
-  const uuid = createDeterministicUuidv7Source(options.uuidSeedIndex ?? 0);
+  let uuidSeedIndex = options.uuidSeedIndex ?? 0;
+  const uuid = () => v7(uuidV7OptionsFromSeed(String(uuidSeedIndex++)));
   const clock = createFixedClock(epochMs);
   const helpers: RuntimeHelpers = {
     now: () => new Date(clock.nowMs()).toISOString(),
@@ -86,11 +91,28 @@ export function createDeterministicRuntimeHost(
 function createRuntimeTimers(): RuntimeTimerScheduler {
   return {
     setInterval: (callback, milliseconds) => setInterval(callback, milliseconds),
-    clearInterval: (handle) => clearInterval(handle as NodeJS.Timeout),
+    clearInterval: (handle) => {
+      if (typeof handle === 'number') clearInterval(handle);
+      else if (isNodeTimerHandle(handle)) clearInterval(handle);
+    },
     setTimeout: (callback, milliseconds) => setTimeout(callback, milliseconds),
-    clearTimeout: (handle) => clearTimeout(handle as NodeJS.Timeout),
-    unref: (handle) => (handle as NodeJS.Timeout).unref(),
+    clearTimeout: (handle) => {
+      if (typeof handle === 'number') clearTimeout(handle);
+      else if (isNodeTimerHandle(handle)) clearTimeout(handle);
+    },
+    unref: (handle) => {
+      if (isNodeTimerHandle(handle)) handle.unref();
+    },
   };
+}
+
+function isNodeTimerHandle(value: unknown): value is ReturnType<typeof setTimeout> {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    'unref' in value &&
+    typeof value.unref === 'function'
+  );
 }
 
 function runtimeSleep(milliseconds: number): Promise<void> {
@@ -105,9 +127,10 @@ function clone<T>(value: T): T {
 
 function createSessionToken(random: () => number): string {
   const alphabet = '0123456789abcdef';
-  return Array.from({ length: 64 }, () => alphabet[Math.floor(random() * alphabet.length)]!).join(
-    '',
-  );
+  return Array.from(
+    { length: 64 },
+    () => alphabet[Math.floor(random() * alphabet.length)] ?? '0',
+  ).join('');
 }
 
 function createWallClock(): RuntimeClock {

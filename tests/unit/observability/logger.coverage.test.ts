@@ -3,14 +3,13 @@
  *
  * Uncovered lines 19 and 39:
  *  - Line 19: the `return undefined` (no pino-pretty) branch in resolvePrettyTransport
- *  - Line 39: the `instanceId = 'not-implemented'` catch branch when nextUuidv7 throws
+ *  - Line 39: the `instanceId = randomUUID()` catch branch when uuid.v7 throws
  *
  * Line 19: resolvePrettyTransport catches the require.resolve failure and returns undefined.
  *   Since pino-pretty IS installed in this project, we can't naturally trigger the catch.
  *   Instead we use jest.resetModules + mock to simulate absence.
  *
- * Line 39: createLogger's catch fires when nextUuidv7 throws (e.g. in environments
- *   where uuidv7 is not available). We can mock it to throw.
+ * Line 39: createLogger's catch fires when uuid.v7 throws. We can mock it to throw.
  */
 
 describe('observability/logger.ts — lines 19 and 39 coverage', () => {
@@ -19,35 +18,31 @@ describe('observability/logger.ts — lines 19 and 39 coverage', () => {
     jest.restoreAllMocks();
   });
 
-  // ── Line 39: instanceId fallback to 'not-implemented' ─────────────────────
+  // ── Line 39: instanceId fallback to randomUUID ────────────────────────────
 
-  describe('createLogger — nextUuidv7 throws → instanceId not-implemented (line 39)', () => {
-    it('creates logger successfully when nextUuidv7 throws', async () => {
+  describe('createLogger — uuid.v7 throws → instanceId randomUUID (line 39)', () => {
+    it('creates logger successfully when uuid.v7 throws', async () => {
       jest.resetModules();
 
-      jest.mock('../../../src/ids/uuidv7', () => ({
-        nextUuidv7: () => {
-          throw new Error('not-implemented');
-        },
-        epochAnchoredUuidv7: () => {
+      jest.mock('uuid', () => ({
+        ...jest.requireActual('uuid'),
+        v7: () => {
           throw new Error('not-implemented');
         },
       }));
 
       const { createLogger } = await import('../../../src/observability/logger');
 
-      // Should not throw even when nextUuidv7 throws
+      // Should not throw even when uuid.v7 throws
       expect(() => createLogger({ name: 'test-no-uuid', level: 'silent' })).not.toThrow();
     });
 
-    it('returns a functional logger when instanceId falls back to not-implemented', async () => {
+    it('returns a functional logger when instanceId falls back to randomUUID', async () => {
       jest.resetModules();
 
-      jest.mock('../../../src/ids/uuidv7', () => ({
-        nextUuidv7: () => {
-          throw new Error('not-implemented');
-        },
-        epochAnchoredUuidv7: () => {
+      jest.mock('uuid', () => ({
+        ...jest.requireActual('uuid'),
+        v7: () => {
           throw new Error('not-implemented');
         },
       }));
@@ -145,7 +140,7 @@ describe('logger instanceId fallback uses crypto.randomUUID()', () => {
     jest.restoreAllMocks();
   });
 
-  it('instanceId is a valid UUID (not "not-implemented") when nextUuidv7 throws', async () => {
+  it('instanceId is a valid UUID when uuid.v7 throws', async () => {
     jest.resetModules();
 
     // Capture bindings passed to pino's .child() to observe the instanceId
@@ -161,11 +156,9 @@ describe('logger instanceId fallback uses crypto.randomUUID()', () => {
       return Object.assign(() => mockedRoot, actual);
     });
 
-    jest.mock('../../../src/ids/uuidv7', () => ({
-      nextUuidv7: () => {
-        throw new Error('uuid-unavailable');
-      },
-      epochAnchoredUuidv7: () => {
+    jest.mock('uuid', () => ({
+      ...jest.requireActual('uuid'),
+      v7: () => {
         throw new Error('uuid-unavailable');
       },
     }));

@@ -1,6 +1,8 @@
 import type { Express, NextFunction, Request, Response } from 'express';
 import type { RuntimeFault } from '../model/runtime.js';
 import type { RuntimeSystem } from '../runtime/system.js';
+import { AggregateId, faultId } from '../domain/references.js';
+import { isRecord } from '../contracts/value.js';
 import { parseRuntimeFaultWire } from './runtimeFaultWire.js';
 import type { RuntimeGatewayExtensions } from './runtimeGatewayTypes.js';
 
@@ -79,9 +81,11 @@ export function registerRuntimeAdminRoutes(
       const entry = system.faults.list().find((candidate) => candidate.id === id);
       const ttlSeconds =
         entry?.expiresAt === undefined ? undefined : (entry.expiresAt - entry.createdAt) / 1_000;
-      response
-        .status(201)
-        .json({ id, name: input.rule.name, ...(ttlSeconds === undefined ? {} : { ttlSeconds }) });
+      response.status(201).json({
+        id: String(id),
+        name: input.rule.name,
+        ...(ttlSeconds === undefined ? {} : { ttlSeconds }),
+      });
     } catch (error) {
       next(error);
     }
@@ -89,13 +93,13 @@ export function registerRuntimeAdminRoutes(
   app.get('/_admin/faults', (_request, response) => {
     response.status(200).json(
       system.faults.list().map((entry) => ({
-        id: entry.id,
+        id: String(entry.id),
         rule: runtimeFaultWire(entry.rule),
       })),
     );
   });
   app.delete('/_admin/faults/:id', (request, response) => {
-    const id = request.params.id;
+    const id = faultId(request.params.id);
     if (!system.faults.remove(id)) {
       response.status(404).json({ error: 'NOT_FOUND', message: `No fault rule with id "${id}"` });
       return;
@@ -104,7 +108,7 @@ export function registerRuntimeAdminRoutes(
   });
   app.post('/_admin/clock/advance', (request, response, next) => {
     try {
-      const raw = (request.body as { ms?: unknown } | undefined)?.ms;
+      const raw = isRecord(request.body) ? request.body['ms'] : undefined;
       const milliseconds = typeof raw === 'number' ? raw : Number(raw);
       if (!Number.isFinite(milliseconds)) {
         response
@@ -155,7 +159,9 @@ export function registerRuntimeAdminRoutes(
               .map((event) => event.aggregateId),
           );
     const entities = Object.fromEntries(
-      snapshot.state.filter(([id]) => idsForBoundary === undefined || idsForBoundary.has(id)),
+      snapshot.state.filter(
+        ([id]) => idsForBoundary === undefined || idsForBoundary.has(AggregateId.parse(id)),
+      ),
     );
     response.status(200).json({ entities });
   });

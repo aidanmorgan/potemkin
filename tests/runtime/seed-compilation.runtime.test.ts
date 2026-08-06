@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import * as yaml from 'js-yaml';
+import { parse } from 'yaml';
 import { validatePotemkinConfig } from '../../src/dsl/configSchema.js';
 import type { PotemkinConfiguration } from '../../src/contracts/config.js';
 import { compileSeeds, type SeedCompileContext } from '../../src/dsl/seedCompiler.js';
@@ -11,7 +11,11 @@ describe('seeds: YAML compilation', () => {
   let config: PotemkinConfiguration;
 
   beforeAll(() => {
-    const raw = yaml.load(fs.readFileSync(path.join(FIXTURE_DIR, 'potemkin.yml'), 'utf8'));
+    const raw = parse(fs.readFileSync(path.join(FIXTURE_DIR, 'potemkin.yml'), 'utf8'), {
+      schema: 'core',
+      merge: true,
+      customTags: ['timestamp'],
+    });
     config = validatePotemkinConfig(raw, { source: 'seeds-engine/potemkin.yml' });
   });
 

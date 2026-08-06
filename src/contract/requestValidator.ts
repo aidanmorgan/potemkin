@@ -1,5 +1,5 @@
 import type { ValidateFunction } from 'ajv';
-import type { JsonObject, JsonValue } from '../contracts/value.js';
+import { isJsonObject, isJsonValue, type JsonObject, type JsonValue } from '../contracts/value.js';
 import type { OpenApiDoc } from './loader.js';
 import { ContractViolationError } from '../errors.js';
 import { matchRoute } from './router.js';
@@ -74,7 +74,7 @@ function validateParameter(
   );
   throw new ContractViolationError(
     `${parameter.in[0]?.toUpperCase()}${parameter.in.slice(1)} parameter '${parameter.name}' failed validation`,
-    { errors: validate.errors as JsonValue },
+    { errors: validationErrors(validate.errors) },
   );
 }
 
@@ -113,9 +113,7 @@ function validateBody(
   if (schema === undefined || (mode === 'batch' && schema.type !== 'array')) return;
   if (formEncoded) coerceFormPayload(payload, schema);
   const itemSchema =
-    mode === 'batch-item' && schema.type === 'array'
-      ? (schema.items as JsonObject | undefined)
-      : schema;
+    mode === 'batch-item' && schema.type === 'array' ? asSchema(schema.items) : schema;
   if (itemSchema === undefined) return;
 
   const validate = getValidator(itemSchema);
@@ -124,7 +122,7 @@ function validateBody(
   throw new ContractViolationError(
     `Request body failed contract validation for ${method} ${path}`,
     {
-      errors: validate.errors as JsonValue,
+      errors: validationErrors(validate.errors),
     },
   );
 }
@@ -180,13 +178,13 @@ function coerceFormPayload(payload: JsonValue, schema: JsonObject): void {
     if (itemSchema !== undefined) for (const item of payload) coerceFormPayload(item, itemSchema);
     return;
   }
-  if (payload === null || typeof payload !== 'object') return;
+  if (!isJsonObject(payload)) return;
   const properties = schemaProperties(schema);
   for (const [key, value] of Object.entries(payload)) {
     const fieldSchema = properties[key];
     if (fieldSchema === undefined) continue;
     const normalized = coerceFormValue(value, fieldSchema);
-    if (normalized !== value) (payload as JsonObject)[key] = normalized;
+    if (normalized !== value) payload[key] = normalized;
   }
 }
 
@@ -229,15 +227,17 @@ function schemaProperties(schema: JsonObject): Record<string, JsonObject> {
 }
 
 function asSchema(value: unknown): JsonObject | undefined {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? (value as JsonObject)
-    : undefined;
+  return isJsonObject(value) ? value : undefined;
+}
+
+function validationErrors(errors: ValidateFunction['errors']): JsonValue {
+  const candidate: unknown = errors ?? [];
+  return isJsonValue(candidate) ? candidate : [];
 }
 
 function matchesSchemaType(value: JsonValue, schema: JsonObject): boolean {
   const type = schema['type'];
-  if (type === 'object')
-    return value !== null && typeof value === 'object' && !Array.isArray(value);
+  if (type === 'object') return isJsonObject(value);
   if (type === 'array') return Array.isArray(value);
   if (type === 'boolean')
     return typeof value === 'boolean' || value === 'true' || value === 'false';

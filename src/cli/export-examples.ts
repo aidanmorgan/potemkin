@@ -25,7 +25,7 @@ import { deriveRuntimeFixtures } from '../http/runtimeFixtures.js';
 import { createRuntimeGateway } from '../http/runtimeGateway.js';
 import type { FixtureStub } from '../http/specmaticTransport.js';
 import { ExportError } from '../errors.js';
-import type { JsonValue } from '../contracts/value.js';
+import { isJsonValue, type JsonValue } from '../contracts/value.js';
 import { collectDeclaredErrorExamples } from './declared-error-examples.js';
 import type { ExportExample } from './exportContracts.js';
 import {
@@ -69,7 +69,9 @@ export function resolveExamplePaths(arg: string): {
     ? fs.readdirSync(openapiDir).filter(isContractFile).sort()
     : [];
   if (specs.length === 0) throw new Error(`No OpenAPI contract in ${openapiDir}`);
-  const contractPath = path.join(openapiDir, specs[0]!);
+  const [spec] = specs;
+  if (spec === undefined) throw new Error(`No OpenAPI contract in ${openapiDir}`);
+  const contractPath = path.join(openapiDir, spec);
   const stem = path.basename(contractPath, path.extname(contractPath));
   return {
     potemkinConfigPath,
@@ -144,16 +146,15 @@ function stableResponseHeaders(
     'transfer-encoding',
     'x-powered-by',
   ]);
-  return Object.fromEntries(
-    Object.entries(headers)
-      .filter(([name]) => !volatile.has(name.toLowerCase()))
-      .filter(([name]) => allowedHeaders.has(name.toLowerCase()))
-      .map(
-        ([name, value]) =>
-          [name.toLowerCase(), Array.isArray(value) ? value.join(', ') : (value ?? '')] as const,
-      )
-      .sort(([left], [right]) => left.localeCompare(right)),
-  ) as Record<string, string>;
+  const stable: Record<string, string> = {};
+  for (const [name, value] of Object.entries(headers)
+    .filter(([headerName]) => !volatile.has(headerName.toLowerCase()))
+    .filter(([headerName]) => allowedHeaders.has(headerName.toLowerCase()))
+    .sort(([left], [right]) => left.localeCompare(right))) {
+    stable[name.toLowerCase()] =
+      typeof value === 'string' ? value : value === undefined ? '' : [...value].join(', ');
+  }
+  return stable;
 }
 
 function declaredResponseHeaders(
@@ -209,7 +210,8 @@ async function collectionExample(
   if (!hasGetOperation(sys.openapi, contractPath)) return undefined;
   if (!sys.program.byBoundaryName.has(boundaryName)) return undefined;
   const response = await request(target).get(contractPath);
-  const body = (response.body === undefined ? null : response.body) as JsonValue;
+  const body: JsonValue =
+    response.body === undefined || !isJsonValue(response.body) ? null : response.body;
   return {
     name: `${safeName(boundaryName)}__collection`,
     httpRequest: { method: 'GET', path: contractPath },

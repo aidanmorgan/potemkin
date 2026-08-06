@@ -30,7 +30,8 @@ function staticErrorLocation(details: unknown): {
   readonly pointer?: string;
 } {
   if (details === null || typeof details !== 'object' || Array.isArray(details)) return {};
-  const values = details as Record<string, unknown>;
+  const values: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(details)) values[key] = value;
   const source = typeof values['source'] === 'string' ? values['source'] : undefined;
   const boundary = typeof values['boundary'] === 'string' ? values['boundary'] : undefined;
   const operationId = typeof values['operationId'] === 'string' ? values['operationId'] : undefined;

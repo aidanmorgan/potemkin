@@ -1,4 +1,5 @@
 import * as path from 'node:path';
+import { parseArgs as parseNodeArgs, type ParseArgsOptionsConfig } from 'node:util';
 
 export interface CliOptions {
   readonly exampleName: string;
@@ -33,6 +34,26 @@ export class ConformanceHelpRequested extends Error {
  */
 export const NEGATIVE_LAYER_FILTER = "STATUS='400'";
 
+const NODE_OPTIONS = {
+  example: { type: 'string' },
+  layer: { type: 'string' },
+  'specmatic-contract': { type: 'string' },
+  allowlist: { type: 'string' },
+  'allowlist-name': { type: 'string' },
+  filter: { type: 'string' },
+  'max-combinations': { type: 'string' },
+  help: { type: 'boolean', short: 'h' },
+} as const satisfies ParseArgsOptionsConfig;
+
+function parseNodeConformanceArgs(argv: readonly string[]) {
+  return parseNodeArgs({
+    args: [...argv],
+    allowPositionals: false,
+    strict: true,
+    options: NODE_OPTIONS,
+  });
+}
+
 function layerFilter(layer: CliOptions['layer'], requestedFilter?: string): string | undefined {
   const filter = requestedFilter?.trim();
   if (layer === 'positive') return filter;
@@ -65,52 +86,47 @@ function parseMaxCombinations(value: string): number {
 }
 
 export function parseArgs(argv: readonly string[]): CliOptions {
-  let exampleName = 'crm';
-  let layer: CliOptions['layer'] = 'negative';
-  let specmaticContractPath: string | undefined;
-  let allowlistPath: string | undefined;
-  let allowlistName: string | undefined;
-  let filter: string | undefined;
-  let maxCombinations = 25;
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    const next = argv[index + 1];
-    if (arg === '--') continue;
-    if (arg === '--example' && next) {
-      exampleName = next;
-      index += 1;
-    } else if (arg === '--layer' && (next === 'negative' || next === 'positive')) {
-      layer = next;
-      index += 1;
-    } else if (arg === '--specmatic-contract' && next) {
-      specmaticContractPath = path.resolve(next);
-      index += 1;
-    } else if (arg === '--allowlist' && next) {
-      allowlistPath = path.resolve(next);
-      index += 1;
-    } else if (arg === '--allowlist-name' && next) {
-      allowlistName = next;
-      index += 1;
-    } else if (arg === '--filter') {
-      if (next === undefined || next.trim() === '')
-        throw new Error("Conformance option '--filter' requires a non-empty expression");
-      filter = next;
-      index += 1;
-    } else if (arg === '--max-combinations' && next !== undefined) {
-      maxCombinations = parseMaxCombinations(next);
-      index += 1;
-    } else if (arg === '--help' || arg === '-h') {
-      throw new ConformanceHelpRequested();
-    } else {
-      throw new Error(`Unknown or incomplete conformance option '${arg}'`);
-    }
+  let parsed: ReturnType<typeof parseNodeConformanceArgs>;
+  try {
+    parsed = parseNodeConformanceArgs(argv);
+  } catch (error) {
+    throw new Error(
+      `Unknown or incomplete conformance option: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
   }
+
+  if (parsed.values.help === true) throw new ConformanceHelpRequested();
+
+  const exampleName = parsed.values.example;
+  if (exampleName !== undefined && exampleName.trim() === '')
+    throw new Error("Conformance option '--example' requires a non-empty name");
+
+  const rawLayer = parsed.values.layer;
+  if (rawLayer !== undefined && rawLayer !== 'negative' && rawLayer !== 'positive')
+    throw new Error(
+      `Conformance option '--layer' must be 'negative' or 'positive'; received '${rawLayer}'`,
+    );
+
+  const filter = parsed.values.filter;
+  if (filter !== undefined && filter.trim() === '')
+    throw new Error("Conformance option '--filter' requires a non-empty expression");
+
+  const maxCombinations =
+    parsed.values['max-combinations'] === undefined
+      ? 25
+      : parseMaxCombinations(parsed.values['max-combinations']);
+
   return {
-    exampleName,
-    layer,
-    specmaticContractPath,
-    allowlistPath,
-    allowlistName,
+    exampleName: exampleName ?? 'crm',
+    layer: rawLayer ?? 'negative',
+    specmaticContractPath:
+      parsed.values['specmatic-contract'] === undefined
+        ? undefined
+        : path.resolve(parsed.values['specmatic-contract']),
+    allowlistPath:
+      parsed.values.allowlist === undefined ? undefined : path.resolve(parsed.values.allowlist),
+    allowlistName: parsed.values['allowlist-name'],
     filter,
     maxCombinations,
   };

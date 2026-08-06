@@ -6,12 +6,12 @@ import type { OpenApiDoc } from '../../../src/contract/loader';
 import { bootYamlRuntimeFromConfig } from '../../../src/parser/files';
 import { createDefaultRuntimeHost } from '../../../src/runtime/host';
 
-const openapi = {
+const openapi: OpenApiDoc = {
   raw: {},
   paths: {
     '/widgets': { get: { operationId: 'listWidgets' } },
   },
-} as OpenApiDoc;
+};
 
 describe('configured runtime boot', () => {
   it('boots TypeScript endpoints selected by potemkin.yml', async () => {

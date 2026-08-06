@@ -1,4 +1,4 @@
-import { loadOpenApi } from '../../../src/contract/loader';
+import { decycleSchema, loadOpenApi } from '../../../src/contract/loader';
 
 const minimalOpenApiObject = {
   openapi: '3.0.0',
@@ -85,6 +85,51 @@ describe('contract/loader', () => {
       expect(doc.paths['/loans']?.['post']?.requestBodySchema).toBeDefined();
     });
 
+    it('produces JSON-safe schemas for recursive component references', async () => {
+      const doc = await loadOpenApi({
+        openapi: '3.0.0',
+        info: { title: 'Recursive schema', version: '1' },
+        components: {
+          schemas: {
+            Node: {
+              type: 'object',
+              properties: {
+                next: { $ref: '#/components/schemas/Node' },
+              },
+            },
+          },
+        },
+        paths: {
+          '/nodes': {
+            get: {
+              operationId: 'getNode',
+              responses: {
+                '200': {
+                  description: 'A node',
+                  content: {
+                    'application/json': {
+                      schema: { $ref: '#/components/schemas/Node' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+
+      const schema = doc.paths['/nodes']?.['get']?.responseSchemas?.['200'];
+      expect(schema).toMatchObject({ type: 'object', properties: { next: {} } });
+      expect(() => JSON.stringify(schema)).not.toThrow();
+    });
+
+    it('decycles arbitrary recursive records without retaining object identity', () => {
+      const schema: Record<string, unknown> = { type: 'object' };
+      schema['self'] = schema;
+
+      expect(decycleSchema(schema)).toEqual({ type: 'object', self: {} });
+    });
+
     it('extracts path parameters', async () => {
       const spec = {
         openapi: '3.0.0',
@@ -118,6 +163,53 @@ paths:
 `;
       const doc = await loadOpenApi(yaml);
       expect(doc.paths['/loans']).toBeDefined();
+    });
+
+    it('preserves YAML merge keys when loading inline contracts', async () => {
+      const yaml = `
+openapi: "3.0.0"
+info:
+  title: T
+  version: "1"
+paths:
+  /loans:
+    get:
+      <<: &listLoans
+        operationId: listLoans
+        responses: {}
+`;
+
+      const doc = await loadOpenApi(yaml);
+
+      expect(doc.paths['/loans']?.['get']?.operationId).toBe('listLoans');
+    });
+
+    it('preserves implicit timestamp resolution for inline contracts', async () => {
+      const yaml = `
+openapi: "3.0.0"
+info:
+  title: T
+  version: "1"
+x-generated-at: 2026-01-02T03:04:05.000Z
+paths: {}
+`;
+
+      const doc = await loadOpenApi(yaml);
+
+      expect(doc.source).toMatchObject({ 'x-generated-at': expect.any(Date) });
+    });
+
+    it('surfaces duplicate-key errors from inline YAML', async () => {
+      const yaml = `
+openapi: "3.0.0"
+openapi: "3.0.1"
+info:
+  title: T
+  version: "1"
+paths: {}
+`;
+
+      await expect(loadOpenApi(yaml)).rejects.toThrow(/Map keys must be unique/);
     });
   });
 });

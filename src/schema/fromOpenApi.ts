@@ -1,5 +1,5 @@
 import type { OpenApiDoc } from '../contract/loader.js';
-import type { JsonObject } from '../contracts/value.js';
+import { isJsonObject, isJsonValue, type JsonObject, type JsonValue } from '../contracts/value.js';
 import { BootError } from '../errors.js';
 import type {
   ObjectGraphSchema,
@@ -27,8 +27,56 @@ function collectArrayPaths(schema: ObjectGraphSchema, prefix: string): string[] 
   return paths;
 }
 
+function schemaType(value: unknown): string | readonly string[] | undefined {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value) && value.every((entry): entry is string => typeof entry === 'string')) {
+    return value;
+  }
+  return undefined;
+}
+
+function schemaObjects(value: unknown): readonly JsonObject[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const objects: JsonObject[] = [];
+  for (const entry of value) {
+    if (!isJsonObject(entry)) return undefined;
+    objects.push(entry);
+  }
+  return objects;
+}
+
+function schemaObjectMap(value: unknown): Readonly<Record<string, JsonObject>> | undefined {
+  if (!isJsonObject(value)) return undefined;
+  const schemas: Record<string, JsonObject> = {};
+  for (const [name, schema] of Object.entries(value)) {
+    if (!isJsonObject(schema)) return undefined;
+    schemas[name] = schema;
+  }
+  return schemas;
+}
+
+function stringArray(value: unknown): readonly string[] | undefined {
+  return Array.isArray(value) && value.every((entry): entry is string => typeof entry === 'string')
+    ? value
+    : undefined;
+}
+
+function jsonValueArray(value: unknown): readonly JsonValue[] | undefined {
+  return Array.isArray(value) && value.every(isJsonValue) ? value : undefined;
+}
+
+function optionalString(raw: JsonObject, key: string): string | undefined {
+  const value = raw[key];
+  return typeof value === 'string' ? value : undefined;
+}
+
+function optionalNumber(raw: JsonObject, key: string): number | undefined {
+  const value = raw[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
 function mapOasType(raw: JsonObject): SchemaTypeKind {
-  const t = raw['type'] as string | string[] | undefined;
+  const t = schemaType(raw['type']);
   if (Array.isArray(t)) {
     // e.g. ["string", "null"]
     const nonNull = t.filter((x) => x !== 'null');
@@ -41,8 +89,8 @@ function mapOasType(raw: JsonObject): SchemaTypeKind {
   if (t === 'boolean') return 'boolean';
   if (t === 'null') return 'null';
   if (t === 'array') return 'array';
-  if (t === 'object' || (!t && raw['properties'])) return 'object';
-  if (!t && !raw['properties'] && !raw['items']) return 'any';
+  if (t === 'object' || (!t && isJsonObject(raw['properties']))) return 'object';
+  if (!t && !isJsonObject(raw['properties']) && !isJsonObject(raw['items'])) return 'any';
   return 'any';
 }
 
@@ -87,7 +135,7 @@ function convertNodeInner(
   const nextDepth = depth + 1;
 
   // Handle nullable shorthand: nullable: true alongside type
-  const nullable = (raw['nullable'] as boolean | undefined) ?? false;
+  const nullable = raw['nullable'] === true;
 
   // Handle not: keyword
   if (raw['not']) {
@@ -99,24 +147,23 @@ function convertNodeInner(
   }
 
   // Handle oneOf → kind 'union' with unionVariant 'oneOf' (exactly one member must match)
-  if (raw['oneOf']) {
-    const members = (raw['oneOf'] as JsonObject[]).map((m, i) =>
-      convertNode(m as JsonObject, `${name}[${i}]`, stack, nextDepth),
-    );
+  const oneOf = schemaObjects(raw['oneOf']);
+  if (oneOf !== undefined) {
+    const members = oneOf.map((m, i) => convertNode(m, `${name}[${i}]`, stack, nextDepth));
     return { name, kind: 'union', union: members, nullable, unionVariant: 'oneOf' };
   }
 
   // Handle anyOf → kind 'union' with unionVariant 'anyOf' (at least one member must match)
-  if (raw['anyOf']) {
-    const members = (raw['anyOf'] as JsonObject[]).map((m, i) =>
-      convertNode(m as JsonObject, `${name}[${i}]`, stack, nextDepth),
-    );
+  const anyOf = schemaObjects(raw['anyOf']);
+  if (anyOf !== undefined) {
+    const members = anyOf.map((m, i) => convertNode(m, `${name}[${i}]`, stack, nextDepth));
     return { name, kind: 'union', union: members, nullable, unionVariant: 'anyOf' };
   }
 
   // Handle allOf → merge into object (merge properties, required, and constraints from
   // both the parent node and every sub-schema; additionalProperties:false is preserved).
-  if (raw['allOf']) {
+  const allOf = schemaObjects(raw['allOf']);
+  if (allOf !== undefined) {
     const merged: JsonObject = {};
     const allProps: Record<string, JsonObject> = {};
     const allRequired: string[] = [];
@@ -142,14 +189,11 @@ function convertNodeInner(
       if (raw[key] !== undefined) merged[key] = raw[key];
     }
 
-    for (const sub of raw['allOf'] as JsonObject[]) {
-      const s = sub as JsonObject;
+    for (const s of allOf) {
       if (s['properties']) {
-        Object.assign(allProps, s['properties'] as Record<string, JsonObject>);
+        Object.assign(allProps, schemaObjectMap(s['properties']) ?? {});
       }
-      if (Array.isArray(s['required'])) {
-        allRequired.push(...(s['required'] as string[]));
-      }
+      allRequired.push(...(stringArray(s['required']) ?? []));
       // Merge sub-schema keywords (last write wins for scalars; additionalProperties:false wins)
       for (const key of parentKeywords) {
         if (s[key] !== undefined) {
@@ -183,18 +227,18 @@ function convertNodeInner(
   const kind = mapOasType(raw);
 
   if (kind === 'object') {
-    const rawProps = (raw['properties'] as Record<string, JsonObject> | undefined) ?? {};
+    const rawProps = schemaObjectMap(raw['properties']) ?? {};
     const properties: Record<string, ObjectGraphSchema> = {};
     for (const [k, v] of Object.entries(rawProps)) {
-      properties[k] = convertNode(v as JsonObject, `${name}.${k}`, stack, nextDepth);
+      properties[k] = convertNode(v, `${name}.${k}`, stack, nextDepth);
     }
-    const required = Array.isArray(raw['required']) ? (raw['required'] as string[]) : undefined;
+    const required = stringArray(raw['required']);
 
     let addlProps: boolean | ObjectGraphSchema = false;
     const rawAddl = raw['additionalProperties'];
     if (rawAddl === true) addlProps = true;
-    else if (rawAddl && typeof rawAddl === 'object') {
-      addlProps = convertNode(rawAddl as JsonObject, `${name}.__additional`, stack, nextDepth);
+    else if (isJsonObject(rawAddl)) {
+      addlProps = convertNode(rawAddl, `${name}.__additional`, stack, nextDepth);
     }
 
     return {
@@ -204,33 +248,34 @@ function convertNodeInner(
       required,
       nullable,
       additionalProperties: addlProps,
-      description: raw['description'] as string | undefined,
+      description: optionalString(raw, 'description'),
     };
   }
 
   if (kind === 'array') {
-    const rawItems = raw['items'] as JsonObject | undefined;
+    const rawItems = isJsonObject(raw['items']) ? raw['items'] : undefined;
     const items = rawItems ? convertNode(rawItems, `${name}[]`, stack, nextDepth) : undefined;
-    return { name, kind, items, nullable, description: raw['description'] as string | undefined };
+    return { name, kind, items, nullable, description: optionalString(raw, 'description') };
   }
 
   if (kind === 'string') {
     return {
       name,
       kind,
-      format: raw['format'] as string | undefined,
-      enum: raw['enum'] as string[] | undefined,
+      format: optionalString(raw, 'format'),
+      enum: jsonValueArray(raw['enum']),
       nullable,
-      description: raw['description'] as string | undefined,
-      minLength: raw['minLength'] as number | undefined,
-      maxLength: raw['maxLength'] as number | undefined,
-      pattern: raw['pattern'] as string | undefined,
+      description: optionalString(raw, 'description'),
+      minLength: optionalNumber(raw, 'minLength'),
+      maxLength: optionalNumber(raw, 'maxLength'),
+      pattern: optionalString(raw, 'pattern'),
     };
   }
 
   if (kind === 'union') {
     // type was an array
-    const types = raw['type'] as string[];
+    const types = schemaType(raw['type']);
+    if (!Array.isArray(types)) return { name, kind: 'any', nullable: true };
     const nonNull = types.filter((t) => t !== 'null');
     const members = nonNull.map((t, i) => convertNode({ type: t }, `${name}[${i}]`));
     return { name, kind: 'union', union: members, nullable: true };
@@ -240,12 +285,12 @@ function convertNodeInner(
     name,
     kind,
     nullable,
-    description: raw['description'] as string | undefined,
-    enum: raw['enum'] as string[] | undefined,
-    minimum: raw['minimum'] as number | undefined,
-    maximum: raw['maximum'] as number | undefined,
-    exclusiveMinimum: raw['exclusiveMinimum'] as number | undefined,
-    exclusiveMaximum: raw['exclusiveMaximum'] as number | undefined,
+    description: optionalString(raw, 'description'),
+    enum: jsonValueArray(raw['enum']),
+    minimum: optionalNumber(raw, 'minimum'),
+    maximum: optionalNumber(raw, 'maximum'),
+    exclusiveMinimum: optionalNumber(raw, 'exclusiveMinimum'),
+    exclusiveMaximum: optionalNumber(raw, 'exclusiveMaximum'),
   };
 }
 
@@ -261,9 +306,9 @@ export function deriveSchemasFromOpenApi(
   doc: OpenApiDoc,
   boundaries: readonly SchemaBoundaryReference[],
 ): ObjectGraphSchemaRegistry {
-  const rawDoc = doc.raw as JsonObject;
-  const components = rawDoc['components'] as JsonObject | undefined;
-  const schemas = (components?.['schemas'] as Record<string, JsonObject> | undefined) ?? {};
+  const rawDoc = isJsonObject(doc.raw) ? doc.raw : {};
+  const components = isJsonObject(rawDoc['components']) ? rawDoc['components'] : undefined;
+  const schemas = schemaObjectMap(components?.['schemas']) ?? {};
 
   const byBoundary: Record<string, BoundarySchemas> = {};
 

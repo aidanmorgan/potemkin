@@ -1,0 +1,1 @@
+# TypeScript-only E2E configurations still require a non-empty module glob.

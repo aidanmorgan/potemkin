@@ -6,16 +6,22 @@ import { scanTypeScriptFactories } from '../../../src/parser/typescriptFactorySc
 import { createDefaultTypeScriptModuleLoaderDependencies } from '../../../src/parser/typescriptModuleLoader';
 import type { TypeScriptDiscoveryDependencies } from '../../../src/parser/typescriptDiscovery';
 import { loadTypeScriptConfiguration } from '../../../src/parser/typescriptLoader';
-import { PotemkinConfigure } from '../../../src/authoring/factory';
+import {
+  FactoryCollector,
+  PotemkinConfigure,
+  createPotemkinConfigure,
+} from '../../../src/authoring/factory';
 import { factoryName } from '../../../src/domain/references';
 import { TypeScriptAuthoringError } from '../../../src/authoring/errors';
+import type { OpenApiDoc } from '../../../src/contract/loader';
+import type { PotemkinConfiguration } from '../../../src/contracts/config';
 
-const openapi = { raw: {}, paths: {} } as never;
-const configuration = {
+const openapi: OpenApiDoc = { raw: {}, paths: {} };
+const configuration: PotemkinConfiguration = {
   version: 1,
   specmatic: 'specmatic.yaml',
   modules: ['yaml/**/*.yaml'],
-} as never;
+};
 
 describe('TypeScript static engine factories', () => {
   let root: string;
@@ -211,13 +217,37 @@ describe('TypeScript static engine factories', () => {
       }
     }
 
+    const descriptor = Object.getOwnPropertyDescriptor(Scenario.prototype, 'create');
+    if (descriptor === undefined) throw new Error('Expected the test method descriptor');
     expect(() =>
-      PotemkinConfigure(factoryName('invalid'))(
-        Scenario.prototype,
-        'create',
-        Object.getOwnPropertyDescriptor(Scenario.prototype, 'create')!,
-      ),
+      PotemkinConfigure(factoryName('invalid'))(Scenario.prototype, 'create', descriptor),
     ).toThrow(/static method/);
+  });
+
+  it('preserves the declaring class as this when invoking a registered factory', () => {
+    const collector = new FactoryCollector();
+    class Scenario {
+      static observedThis: typeof Scenario | undefined;
+
+      static create() {
+        Scenario.observedThis = this;
+        return { boundaries: [] };
+      }
+    }
+
+    const descriptor = Object.getOwnPropertyDescriptor(Scenario, 'create');
+    if (descriptor === undefined) throw new Error('Expected the test method descriptor');
+    createPotemkinConfigure(collector)(factoryName('context-bound'))(
+      Scenario,
+      'create',
+      descriptor,
+    );
+
+    const [entry] = collector.snapshot();
+    if (entry === undefined) throw new Error('Expected the factory to be registered');
+    entry.factory({ openapi, configuration, sourceFiles: [] });
+
+    expect(Scenario.observedThis).toBe(Scenario);
   });
 
   it('isolates factory discovery across concurrent scans', async () => {

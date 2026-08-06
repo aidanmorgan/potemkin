@@ -37,7 +37,6 @@ import type {
   BehaviorName,
   ContractPath,
   EventType,
-  OperationId,
   SchemaReference,
 } from '../domain/references.js';
 
@@ -70,18 +69,33 @@ export type {
   WebhookDefinition,
 };
 
-function freeze<T>(value: T): T {
+function freeze<T>(value: T): T;
+function freeze(value: unknown): unknown {
   if (value === null || typeof value !== 'object' || Object.isFrozen(value)) return value;
-  for (const child of Object.values(value as Record<string, unknown>)) freeze(child);
+  for (const key of Object.keys(value)) freeze(Reflect.get(value, key));
   return Object.freeze(value);
 }
 
-function copyValue<T>(value: T): T {
+function copyValue<T>(value: T): T;
+function copyValue(value: unknown): unknown {
   if (value === null || typeof value !== 'object') return value;
-  if (Array.isArray(value)) return value.map(copyValue) as T;
-  return Object.fromEntries(
-    Object.entries(value).map(([key, child]) => [key, copyValue(child)]),
-  ) as T;
+  if (Array.isArray(value)) return value.map(copyValue);
+  return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, copyValue(child)]));
+}
+
+function defineReadonlyProperty<ObjectValue extends object, Key extends PropertyKey, PropertyValue>(
+  value: ObjectValue,
+  key: Key,
+  propertyValue: PropertyValue,
+): ObjectValue & Readonly<Record<Key, PropertyValue>>;
+function defineReadonlyProperty(value: object, key: PropertyKey, propertyValue: unknown): object {
+  Object.defineProperty(value, key, {
+    configurable: false,
+    enumerable: true,
+    value: propertyValue,
+    writable: false,
+  });
+  return value;
 }
 
 function removedAliases<T extends object>(value: T, aliases: Readonly<Record<string, string>>): T {
@@ -109,7 +123,7 @@ export function expression<Context, Value, Phase extends ExpressionPhase>(
   phase: Phase,
   callback: (context: Readonly<Context>) => Value,
 ): Expression<Context, Value, Phase> {
-  return Object.assign(callback, { phase }) as Expression<Context, Value, Phase>;
+  return defineReadonlyProperty((context: Readonly<Context>) => callback(context), 'phase', phase);
 }
 
 export function query(predicate: QueryExpression): QueryExpression {
@@ -142,11 +156,8 @@ export function pipe<Input, Output>(
   input: Input,
   ...steps: readonly ((value: unknown) => unknown)[]
 ): Output;
-export function pipe<Input, Output>(
-  input: Input,
-  ...steps: readonly ((value: unknown) => unknown)[]
-): Output {
-  return steps.reduce<unknown>((value, step) => step(value), input) as Output;
+export function pipe(input: unknown, ...steps: readonly ((value: unknown) => unknown)[]): unknown {
+  return steps.reduce<unknown>((value, step) => step(value), input);
 }
 
 export function compose<Input, Output>(step: (value: Input) => Output): (value: Input) => Output;
@@ -157,10 +168,10 @@ export function compose<Input, A, Output>(
 export function compose<Input, Output>(
   ...steps: readonly ((value: unknown) => unknown)[]
 ): (value: Input) => Output;
-export function compose<Input, Output>(
+export function compose(
   ...steps: readonly ((value: unknown) => unknown)[]
-): (value: Input) => Output {
-  return (input) => steps.reduceRight<unknown>((value, step) => step(value), input) as Output;
+): (value: unknown) => unknown {
+  return (input) => steps.reduceRight<unknown>((value, step) => step(value), input);
 }
 
 export function mapReadonly<Input, Output>(
@@ -189,6 +200,47 @@ type EventPayloadExpressions<
   >;
 }>;
 
+type EventBuilderDefinition<
+  EventPayload extends object,
+  CommandPayload extends object,
+  State extends object,
+  EventName extends string,
+> = TypedEventDefinition<EventPayload, CommandPayload, State, EventName>;
+
+function mergeEventPayload<
+  Current extends object,
+  Added extends object,
+  CommandPayload extends object,
+  State extends object,
+>(
+  current: EventPayloadExpressions<Current, CommandPayload, State>,
+  added: EventPayloadExpressions<Added, CommandPayload, State>,
+): EventPayloadExpressions<Omit<Current, keyof Added> & Added, CommandPayload, State>;
+function mergeEventPayload(current: object, added: object): object {
+  return { ...current, ...added };
+}
+
+function eventBuilder<
+  EventPayload extends object,
+  CommandPayload extends object,
+  State extends object,
+  EventName extends string,
+>(
+  value: EventBuilderDefinition<EventPayload, CommandPayload, State, EventName>,
+): EventBuilder<EventPayload, CommandPayload, State, EventName> {
+  return {
+    payload: <AddedPayload extends object>(
+      next: EventPayloadExpressions<AddedPayload, CommandPayload, State>,
+    ) =>
+      eventBuilder({
+        ...value,
+        payload: mergeEventPayload(value.payload, next),
+      }),
+    schemaRef: (reference) => eventBuilder({ ...value, schemaRef: reference }),
+    build: () => freeze(copyValue(value)),
+  };
+}
+
 export function event<const Name extends string, const Definitions extends object>(
   type: EventType<Name>,
   payload: Definitions & Readonly<Record<string, AuthoringValue<EventContext, JsonValue>>>,
@@ -215,39 +267,36 @@ export function event(
   payload: Readonly<Record<string, AuthoringValue<EventContext, JsonValue>>> = {},
   schemaRef?: SchemaReference,
 ): EventDefinition | EventBuilder {
-  const build = <
-    EventPayload extends object = Record<never, never>,
-    CommandPayload extends object = JsonObject,
-    State extends object = JsonObject,
-    EventName extends string = string,
-  >(
-    value: EventDefinition<EventName>,
-  ): EventBuilder<EventPayload, CommandPayload, State, EventName> => ({
-    payload: <AddedPayload extends object>(
-      next: EventPayloadExpressions<AddedPayload, CommandPayload, State>,
-    ) =>
-      build<
-        Omit<EventPayload, keyof AddedPayload> & AddedPayload,
-        CommandPayload,
-        State,
-        EventName
-      >({ ...value, payload: { ...value.payload, ...next } }),
-    schemaRef: (reference) =>
-      build<EventPayload, CommandPayload, State, EventName>({ ...value, schemaRef: reference }),
-    build: () =>
-      freeze(copyValue(value)) as TypedEventDefinition<
-        EventPayload,
-        CommandPayload,
-        State,
-        EventName
-      >,
-  });
   const value: EventDefinition = {
     type,
     payload,
     ...(schemaRef === undefined ? {} : { schemaRef }),
   };
-  return arguments.length === 1 ? build(value) : freeze(copyValue(value));
+  return arguments.length === 1
+    ? eventBuilder({
+        type,
+        payload: {},
+      })
+    : freeze(copyValue(value));
+}
+
+type BehaviorBuilderState = Omit<BehaviorDefinition, 'operationId'> &
+  Partial<Pick<BehaviorDefinition, 'operationId'>>;
+
+function buildBehavior(
+  value: BehaviorBuilderState,
+  behaviorName: BehaviorName,
+): BehaviorDefinition {
+  const { operationId, ...definition } = value;
+  if (operationId === undefined || operationId === '')
+    throw definitionError(`Behavior "${behaviorName}" requires an operationId`);
+  if (
+    definition.emit === undefined &&
+    definition.emitWhen === undefined &&
+    definition.dispatchCommands === undefined
+  )
+    throw definitionError(`Behavior "${behaviorName}" requires an event or dispatch`);
+  return freeze(copyValue({ ...definition, operationId }));
 }
 
 export function behavior<Payload extends object = JsonObject, State extends object = JsonObject>(
@@ -258,7 +307,7 @@ export function behavior(
   valueOrName: BehaviorName | BehaviorDefinition,
 ): BehaviorBuilder | BehaviorDefinition {
   if (typeof valueOrName !== 'string') return freeze(copyValue(valueOrName));
-  const build = (value: BehaviorDefinition): BehaviorBuilder =>
+  const build = (value: BehaviorBuilderState): BehaviorBuilder =>
     removedAliases(
       {
         operation: (operationId) => build({ ...value, operationId }),
@@ -281,21 +330,11 @@ export function behavior(
             ...(condition === undefined ? {} : { linkCondition: condition }),
           }),
         status: (status) => build({ ...value, responseStatus: status }),
-        build: () => {
-          if (value.operationId === '')
-            throw definitionError(`Behavior "${valueOrName}" requires an operationId`);
-          if (
-            value.emit === undefined &&
-            value.emitWhen === undefined &&
-            value.dispatchCommands === undefined
-          )
-            throw definitionError(`Behavior "${valueOrName}" requires an event or dispatch`);
-          return freeze(copyValue(value));
-        },
+        build: () => buildBehavior(value, valueOrName),
       },
       { when: 'condition' },
     );
-  return build({ name: valueOrName as BehaviorName, operationId: '' as OperationId });
+  return build({ name: valueOrName });
 }
 
 export const defineSimulation = (value: SimulationDefinition): SimulationDefinition =>
@@ -370,13 +409,17 @@ export function boundary(name: BoundaryName, contractPath: ContractPath): Bounda
   return build({ boundary: name, contractPath, eventCatalog: [], behaviors: [], reducers: [] });
 }
 
-function built<T>(value: T | { build(): T }): T {
-  return typeof value === 'object' &&
+function isBuildable<T>(value: T | { build(): T }): value is { build(): T } {
+  return (
+    typeof value === 'object' &&
     value !== null &&
     'build' in value &&
     typeof value.build === 'function'
-    ? value.build()
-    : (value as T);
+  );
+}
+
+function built<T>(value: T | { build(): T }): T {
+  return isBuildable(value) ? value.build() : value;
 }
 
 export function simulation(initial: readonly BoundaryDefinition[] = []): SimulationBuilder {

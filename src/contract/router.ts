@@ -45,7 +45,7 @@ export function resolveVersion(
     return { path };
   }
 
-  const pathOnly = path.split('?')[0]!;
+  const pathOnly = path.split('?')[0] ?? '';
 
   // Longest prefix first for deterministic specificity (e.g. /v1/beta over /v1).
   const sorted = [...versioning.versions].sort((a, b) => b.prefix.length - a.prefix.length);
@@ -102,7 +102,7 @@ export function matchRoute(doc: OpenApiDoc, method: string, path: string): Match
   const lowerMethod = method.toLowerCase();
 
   // Strip query string before matching so callers passing raw req.url still match.
-  const normalizedPath = path.split('?')[0]!;
+  const normalizedPath = path.split('?')[0] ?? '';
 
   // Count the number of parameter (wildcard) segments in a path template.
   // Used as a secondary sort key: fewer params = more specific = wins ties.

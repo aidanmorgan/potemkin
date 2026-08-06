@@ -9,9 +9,11 @@
  * throwing.  We shut the SDK down immediately to avoid open handles.
  */
 
+import { context } from '@opentelemetry/api';
 import {
   initTracing,
   getTracer,
+  createNoopTracer,
   withSpan,
   recordException,
   SpanStatusCode,
@@ -133,6 +135,24 @@ describe('observability/tracing', () => {
     it('returns a tracer when given an explicit name', () => {
       const tracer = getTracer('my-service');
       expect(tracer).toBeDefined();
+    });
+  });
+
+  describe('createNoopTracer', () => {
+    it('implements the OpenTelemetry tracer and span contracts without global state', () => {
+      const tracer = createNoopTracer();
+      const span = tracer.startSpan('noop-span');
+
+      expect(span.isRecording()).toBe(false);
+      expect(span.spanContext()).toEqual({
+        traceId: '00000000000000000000000000000000',
+        spanId: '0000000000000000',
+        traceFlags: 0,
+      });
+      expect(span.setAttribute('answer', 42)).toBe(span);
+      expect(tracer.startActiveSpan('noop-callback', (activeSpan) => activeSpan)).toBe(span);
+      expect(tracer.startActiveSpan('noop-options', {}, () => 'value')).toBe('value');
+      expect(tracer.startActiveSpan('noop-context', {}, context.active(), () => 7)).toBe(7);
     });
   });
 

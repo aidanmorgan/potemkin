@@ -1,12 +1,12 @@
 import SwaggerParser from '@apidevtools/swagger-parser';
 import type { OpenAPI } from 'openapi-types';
-import * as yaml from 'js-yaml';
+import { parse } from 'yaml';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { glob } from 'tinyglobby';
 import { createNoopLogger, type Logger } from '../observability/logger.js';
 import { createNoopTracer, withSpan, type Tracer } from '../observability/tracing.js';
-import type { JsonObject } from '../contracts/value.js';
+import { asRecord, isJsonObject, isRecord, type JsonObject } from '../contracts/value.js';
 
 export interface OpenApiParameter {
   readonly name: string;
@@ -29,6 +29,10 @@ export interface OpenApiOperation {
 export interface OpenApiPathItem {
   readonly [method: string]: OpenApiOperation | undefined;
 }
+
+type MutableOpenApiPathItem = {
+  [method: string]: OpenApiOperation | undefined;
+};
 
 export interface OpenApiDoc {
   /** Original contract document, retained for source-oriented tooling such as type generation. */
@@ -57,10 +61,14 @@ function loadErrorCodeMap(source: string | object): Readonly<Record<string, stri
   if (!fs.existsSync(mapPath)) return undefined;
   try {
     const parsed: unknown = JSON.parse(fs.readFileSync(mapPath, 'utf8'));
-    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
-    const entries = Object.entries(parsed as Record<string, unknown>);
-    if (entries.some(([, value]) => typeof value !== 'string')) return undefined;
-    return Object.fromEntries(entries) as Readonly<Record<string, string>>;
+    const record = asRecord(parsed);
+    if (record === undefined) return undefined;
+    const result: Record<string, string> = {};
+    for (const [key, value] of Object.entries(record)) {
+      if (typeof value !== 'string') return undefined;
+      result[key] = value;
+    }
+    return result;
   } catch {
     return undefined;
   }
@@ -72,10 +80,11 @@ export interface OpenApiLoadObservability {
 }
 
 function asJsonObject(v: unknown): JsonObject | undefined {
-  if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
-    return v as JsonObject;
-  }
-  return undefined;
+  return isJsonObject(v) ? v : undefined;
+}
+
+function decycledJsonObject(value: unknown): JsonObject | undefined {
+  return asJsonObject(decycleSchema(value));
 }
 
 /**
@@ -113,7 +122,9 @@ export function decycleSchema(value: unknown, path: Set<object> = new Set(), dep
   path.add(value);
   try {
     const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    const source = asRecord(value);
+    if (source === undefined) return value;
+    for (const [k, v] of Object.entries(source)) {
       out[k] = decycleSchema(v, path, depth + 1);
     }
     return normalizeNullable(out);
@@ -141,8 +152,9 @@ function normalizeNullable(node: Record<string, unknown>): Record<string, unknow
   if (node['nullable'] !== true) return node;
   const { nullable: _drop, ...rest } = node;
   // An `enum` rejects null regardless of `type`, so add null to the allowed set.
-  if (Array.isArray(rest['enum']) && !(rest['enum'] as unknown[]).includes(null)) {
-    rest['enum'] = [...(rest['enum'] as unknown[]), null];
+  const enumValues = rest['enum'];
+  if (Array.isArray(enumValues) && !enumValues.includes(null)) {
+    rest['enum'] = [...enumValues, null];
   }
   const t = rest['type'];
   if (typeof t === 'string' && t !== 'null') {
@@ -162,7 +174,8 @@ function extractParameters(rawParams: unknown): readonly OpenApiParameter[] {
   const result: OpenApiParameter[] = [];
   for (const p of rawParams) {
     if (p === null || typeof p !== 'object' || Array.isArray(p)) continue;
-    const param = p as Record<string, unknown>;
+    const param = asRecord(p);
+    if (param === undefined) continue;
     if (typeof param['name'] !== 'string') continue;
     const inVal = param['in'];
     if (inVal !== 'path' && inVal !== 'query' && inVal !== 'header') continue;
@@ -174,7 +187,7 @@ function extractParameters(rawParams: unknown): readonly OpenApiParameter[] {
       name: param['name'],
       in: inVal,
       required: typeof param['required'] === 'boolean' ? param['required'] : undefined,
-      schema: asJsonObject(param['schema']),
+      schema: decycledJsonObject(param['schema']),
       ...extensions,
     });
   }
@@ -183,17 +196,20 @@ function extractParameters(rawParams: unknown): readonly OpenApiParameter[] {
 
 function extractOperation(rawOp: unknown): OpenApiOperation | undefined {
   if (rawOp === null || typeof rawOp !== 'object' || Array.isArray(rawOp)) return undefined;
-  const op = rawOp as Record<string, unknown>;
+  const op = asRecord(rawOp);
+  if (op === undefined) return undefined;
 
   const operationId = typeof op['operationId'] === 'string' ? op['operationId'] : undefined;
 
   let requestBodySchema: JsonObject | undefined;
   const rb = op['requestBody'];
   if (rb !== null && typeof rb === 'object' && !Array.isArray(rb)) {
-    const rbObj = rb as Record<string, unknown>;
+    const rbObj = asRecord(rb);
+    if (rbObj === undefined) return undefined;
     const content = rbObj['content'];
     if (content !== null && typeof content === 'object' && !Array.isArray(content)) {
-      const contentObj = content as Record<string, unknown>;
+      const contentObj = asRecord(content);
+      if (contentObj === undefined) return undefined;
       // Prefer JSON, but fall back to form-encoded media types so operations that
       // declare their body only as application/x-www-form-urlencoded (e.g. the
       // real Stripe spec) still get request-body validation. Without this, an
@@ -204,9 +220,8 @@ function extractOperation(rawOp: unknown): OpenApiOperation | undefined {
         contentObj['application/x-www-form-urlencoded'] ??
         contentObj['multipart/form-data'];
       if (mediaType !== null && typeof mediaType === 'object' && !Array.isArray(mediaType)) {
-        const mtObj = mediaType as Record<string, unknown>;
-        const rbSchema = asJsonObject(mtObj['schema']);
-        requestBodySchema = rbSchema ? (decycleSchema(rbSchema) as JsonObject) : undefined;
+        const mtObj = asRecord(mediaType);
+        requestBodySchema = mtObj === undefined ? undefined : decycledJsonObject(mtObj['schema']);
       }
     }
   }
@@ -215,7 +230,9 @@ function extractOperation(rawOp: unknown): OpenApiOperation | undefined {
   const responseHeaders: Record<string, readonly string[]> = {};
   const responses = op['responses'];
   if (responses !== null && typeof responses === 'object' && !Array.isArray(responses)) {
-    for (const [status, resp] of Object.entries(responses as Record<string, unknown>)) {
+    const responseMap = asRecord(responses);
+    if (responseMap === undefined) return undefined;
+    for (const [status, resp] of Object.entries(responseMap)) {
       // The runtime resolver intentionally supports only an exact numeric
       // status or `default`. OpenAPI also permits response ranges such as
       // `4XX`, but treating those as a catch-all here would make an operation
@@ -223,21 +240,24 @@ function extractOperation(rawOp: unknown): OpenApiOperation | undefined {
       // deterministic error mappers.
       if (status !== 'default' && !/^\d{3}$/.test(status)) continue;
       if (resp === null || typeof resp !== 'object' || Array.isArray(resp)) continue;
-      const respObj = resp as Record<string, unknown>;
+      const respObj = asRecord(resp);
+      if (respObj === undefined) continue;
       const headers = respObj['headers'];
       if (headers !== null && typeof headers === 'object' && !Array.isArray(headers)) {
-        responseHeaders[status] = Object.keys(headers as Record<string, unknown>).map((name) =>
-          name.toLowerCase(),
-        );
+        const headerMap = asRecord(headers);
+        if (headerMap !== undefined)
+          responseHeaders[status] = Object.keys(headerMap).map((name) => name.toLowerCase());
       }
       const content = respObj['content'];
       if (content === null || typeof content !== 'object' || Array.isArray(content)) continue;
-      const contentObj = content as Record<string, unknown>;
+      const contentObj = asRecord(content);
+      if (contentObj === undefined) continue;
       const json = contentObj['application/json'];
       if (json === null || typeof json !== 'object' || Array.isArray(json)) continue;
-      const jsonObj = json as Record<string, unknown>;
-      const schema = asJsonObject(jsonObj['schema']);
-      if (schema) responseSchemas[status] = decycleSchema(schema) as JsonObject;
+      const jsonObj = asRecord(json);
+      if (jsonObj === undefined) continue;
+      const schema = decycledJsonObject(jsonObj['schema']);
+      if (schema !== undefined) responseSchemas[status] = schema;
     }
   }
 
@@ -258,27 +278,41 @@ function extractOperation(rawOp: unknown): OpenApiOperation | undefined {
 
 const HTTP_METHODS = ['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace'] as const;
 
+/**
+ * Keep inline contract parsing compatible with the former js-yaml loader.
+ * `yaml` requires merge keys and timestamp resolution to be opted into when
+ * using its core schema; both are part of the contract-source dialect.
+ */
+function parseLegacyYaml(source: string): unknown {
+  return parse(source, {
+    schema: 'core',
+    merge: true,
+    customTags: ['timestamp'],
+  });
+}
+
 function normalisePaths(rawDoc: OpenAPI.Document): Record<string, OpenApiPathItem> {
   const paths: Record<string, OpenApiPathItem> = {};
-  const rawPaths = (rawDoc as Record<string, unknown>)['paths'];
+  const rawPaths = asRecord(rawDoc)?.['paths'];
   if (rawPaths === null || typeof rawPaths !== 'object' || Array.isArray(rawPaths)) {
     return paths;
   }
 
-  for (const [pathTemplate, rawPathItem] of Object.entries(rawPaths as Record<string, unknown>)) {
-    if (rawPathItem === null || typeof rawPathItem !== 'object' || Array.isArray(rawPathItem))
-      continue;
-    const pathItemObj = rawPathItem as Record<string, unknown>;
-    const pathItem: Record<string, OpenApiOperation> = {};
+  const pathMap = asRecord(rawPaths);
+  if (pathMap === undefined) return paths;
+  for (const [pathTemplate, rawPathItem] of Object.entries(pathMap)) {
+    const pathItemObj = asRecord(rawPathItem);
+    if (pathItemObj === undefined) continue;
+    const pathItem: MutableOpenApiPathItem = {};
 
     for (const method of HTTP_METHODS) {
-      const rawOp = pathItemObj[method as string];
+      const rawOp = pathItemObj[method];
       if (rawOp === undefined) continue;
       const op = extractOperation(rawOp);
-      if (op) pathItem[method as string] = op;
+      if (op !== undefined) pathItem[method] = op;
     }
 
-    paths[pathTemplate] = pathItem as OpenApiPathItem;
+    paths[pathTemplate] = pathItem;
   }
 
   return paths;
@@ -323,13 +357,13 @@ export async function loadOpenApi(
     let parseTarget: string | OpenAPI.Document;
 
     const normalizedSource: string | object = Buffer.isBuffer(source)
-      ? (source as Buffer).toString('utf8')
+      ? source.toString('utf8')
       : source;
 
     if (typeof normalizedSource === 'string') {
       const trimmed = normalizedSource.trimStart();
       if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
-        parseTarget = JSON.parse(normalizedSource) as OpenAPI.Document;
+        parseTarget = asOpenApiDocument(JSON.parse(normalizedSource));
       } else if (
         !normalizedSource.startsWith('http://') &&
         !normalizedSource.startsWith('https://') &&
@@ -338,12 +372,12 @@ export async function loadOpenApi(
         (normalizedSource.includes('\n') || normalizedSource.includes(':'))
       ) {
         // Likely inline YAML
-        parseTarget = yaml.load(normalizedSource) as OpenAPI.Document;
+        parseTarget = asOpenApiDocument(parseLegacyYaml(normalizedSource));
       } else {
         parseTarget = normalizedSource;
       }
     } else {
-      parseTarget = normalizedSource as OpenAPI.Document;
+      parseTarget = asOpenApiDocument(normalizedSource);
     }
 
     // Keep the authoring document separate from the dereferenced runtime graph. The
@@ -413,15 +447,16 @@ function mergeOpenApiDocuments(
       const existing = paths[routePath];
       if (existing === undefined) paths[routePath] = { ...item };
       else {
-        const mutable = existing as Record<string, OpenApiOperation | undefined>;
+        const mergedItem: MutableOpenApiPathItem = { ...existing };
         for (const [method, operation] of Object.entries(item)) {
-          if (existing[method] !== undefined) {
+          if (mergedItem[method] !== undefined) {
             throw new Error(
               `Duplicate OpenAPI operation ${method.toUpperCase()} ${routePath} in ${sources[index]}`,
             );
           }
-          mutable[method] = operation;
+          mergedItem[method] = operation;
         }
+        paths[routePath] = mergedItem;
       }
     }
     for (const [key, value] of Object.entries(document.errorCodeMap ?? {})) {
@@ -450,17 +485,17 @@ function mergeOpenApiDocuments(
 
 function mergeRawOpenApiDocuments(rawDocuments: readonly unknown[]): unknown {
   const merged = cloneRecord(rawDocuments[0]);
-  const mergedPaths = asRecord(merged['paths']);
-  const mergedComponents = asRecord(merged['components']);
+  const mergedPaths = asRecord(merged['paths']) ?? {};
+  const mergedComponents = asRecord(merged['components']) ?? {};
   for (const raw of rawDocuments.slice(1)) {
     const document = cloneRecord(raw);
-    const paths = asRecord(document['paths']);
+    const paths = asRecord(document['paths']) ?? {};
     for (const [routePath, item] of Object.entries(paths)) {
       const existing = asRecord(mergedPaths[routePath]);
       if (existing === undefined) mergedPaths[routePath] = item;
       else Object.assign(existing, item);
     }
-    const components = asRecord(document['components']);
+    const components = asRecord(document['components']) ?? {};
     for (const [kind, values] of Object.entries(components)) {
       const existing = asRecord(mergedComponents[kind]);
       if (existing === undefined) mergedComponents[kind] = values;
@@ -476,13 +511,25 @@ function mergeRawOpenApiDocuments(rawDocuments: readonly unknown[]): unknown {
 }
 
 function cloneRecord(value: unknown): Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? (structuredClone(value) as Record<string, unknown>)
-    : {};
+  if (asRecord(value) === undefined) return {};
+  const cloned: unknown = structuredClone(value);
+  return asRecord(cloned) ?? {};
 }
 
-function asRecord(value: unknown): Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
+function asOpenApiDocument(value: unknown): OpenAPI.Document {
+  if (!isOpenApiDocument(value)) {
+    throw new TypeError('OpenAPI document must declare a version and info.title/info.version');
+  }
+  return value;
+}
+
+function isOpenApiDocument(value: unknown): value is OpenAPI.Document {
+  if (!isRecord(value)) return false;
+  const info = asRecord(value['info']);
+  return (
+    info !== undefined &&
+    typeof info['title'] === 'string' &&
+    typeof info['version'] === 'string' &&
+    (typeof value['openapi'] === 'string' || typeof value['swagger'] === 'string')
+  );
 }

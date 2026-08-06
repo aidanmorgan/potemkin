@@ -4,6 +4,11 @@ info:
   version: '1.0.0'
 paths:
   /orders:
+    options:
+      operationId: ordersCorsPreflight
+      responses:
+        '204':
+          description: CORS preflight
     post:
       operationId: createOrder
       requestBody:

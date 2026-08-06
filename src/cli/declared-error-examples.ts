@@ -2,7 +2,14 @@ import request from 'supertest';
 import { matchRoute } from '../contract/router.js';
 import type { RuntimeBoundary } from '../model/runtime.js';
 import type { RuntimeSystem } from '../runtime/system.js';
-import type { JsonObject, JsonValue } from '../contracts/value.js';
+import { isJsonObject, isJsonValue, type JsonObject, type JsonValue } from '../contracts/value.js';
+import {
+  AggregateId,
+  BoundaryName,
+  EventId,
+  EventType,
+  SequenceVersion,
+} from '../domain/references.js';
 import {
   isFormOperation,
   operationRequest,
@@ -30,12 +37,8 @@ const VOLATILE_HEADERS = new Set([
   'x-powered-by',
 ]);
 
-function isObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
 function jsonObject(value: unknown): JsonObject | undefined {
-  return isObject(value) ? (value as JsonObject) : undefined;
+  return isJsonObject(value) ? value : undefined;
 }
 
 function safeName(value: string): string {
@@ -45,15 +48,14 @@ function safeName(value: string): string {
 function responseHeaders(
   headers: Readonly<Record<string, string | readonly string[] | undefined>>,
 ): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(headers)
-      .filter(([name]) => !VOLATILE_HEADERS.has(name.toLowerCase()))
-      .map(
-        ([name, value]) =>
-          [name.toLowerCase(), Array.isArray(value) ? value.join(', ') : (value ?? '')] as const,
-      )
-      .sort(([left], [right]) => left.localeCompare(right)),
-  ) as Record<string, string>;
+  const stable: Record<string, string> = {};
+  for (const [name, value] of Object.entries(headers)
+    .filter(([headerName]) => !VOLATILE_HEADERS.has(headerName.toLowerCase()))
+    .sort(([left], [right]) => left.localeCompare(right))) {
+    stable[name.toLowerCase()] =
+      typeof value === 'string' ? value : value === undefined ? '' : [...value].join(', ');
+  }
+  return stable;
 }
 
 function example(
@@ -81,7 +83,7 @@ function example(
     httpResponse: {
       status: response.status,
       headers: responseHeaders(response.headers),
-      body: (response.body ?? null) as JsonValue,
+      body: response.body === undefined || !isJsonValue(response.body) ? null : response.body,
     },
   };
 }
@@ -100,7 +102,9 @@ function collectionBoundaryForRoute(
 }
 
 function pathParameterNames(pathTemplate: string): readonly string[] {
-  return [...pathTemplate.matchAll(/\{([^}]+)\}/g)].map((match) => match[1]!);
+  return [...pathTemplate.matchAll(/\{([^}]+)\}/g)]
+    .map((match) => match[1])
+    .filter((name): name is string => name !== undefined);
 }
 
 function parameterSchema(route: OperationRoute, name: string): JsonObject | undefined {
@@ -150,13 +154,13 @@ function seedExamples(
 function restoreSeed(system: RuntimeSystem, seed: SeedExample, route: OperationRoute): void {
   const baseline = system.engine.snapshot();
   const seedEvent = {
-    eventId: `tier3-seed-${route.operation.operationId ?? route.path}-${seed.id}`,
-    type: 'BaselineEntityCreatedEvent',
-    boundary: seed.boundary.boundary,
-    aggregateId: seed.id,
+    eventId: EventId.parse(`tier3-seed-${route.operation.operationId ?? route.path}-${seed.id}`),
+    type: EventType.parse('BaselineEntityCreatedEvent'),
+    boundary: BoundaryName.parse(seed.boundary.boundary),
+    aggregateId: AggregateId.parse(seed.id),
     payload: seed.state,
     timestamp: new Date(system.clock.nowMs()).toISOString(),
-    sequenceVersion: 1,
+    sequenceVersion: SequenceVersion.parse(1),
     causedBy: null,
   } as const;
   system.engine.restore({
@@ -197,7 +201,6 @@ function requestExample(
 }
 
 async function collect404Examples(
-  system: RuntimeSystem,
   routes: readonly OperationRoute[],
   app: ExportRequestTarget,
 ): Promise<readonly ExportExample[]> {
@@ -304,7 +307,7 @@ export async function collectDeclaredErrorExamples(
   await system.engine.reset();
   const routes = routesFor(system.openapi);
   const seeds = seedExamples(system, seededExamples);
-  const missing = await collect404Examples(system, routes, app);
+  const missing = await collect404Examples(routes, app);
   const invalid = await collect422Examples(system, routes, seeds, app);
   return [...missing, ...invalid].sort((left, right) => left.name.localeCompare(right.name));
 }

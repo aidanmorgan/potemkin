@@ -106,6 +106,23 @@ describe('schema/typeCheck — additional branch coverage', () => {
     });
   });
 
+  describe('isAssignable – numeric constraints', () => {
+    it('enforces inclusive and exclusive numeric bounds', () => {
+      const schema: ObjectGraphSchema = {
+        name: 'bounded',
+        kind: 'number',
+        minimum: 1,
+        maximum: 10,
+        exclusiveMinimum: 2,
+        exclusiveMaximum: 9,
+      };
+
+      expect(isAssignable(2, schema)).toBe(false);
+      expect(isAssignable(2.1, schema)).toBe(true);
+      expect(isAssignable(9, schema)).toBe(false);
+    });
+  });
+
   describe('isAssignable – unknown kind falls through to false', () => {
     it('an unsupported kind returns false', () => {
       const badSchema = { name: 'bad', kind: 'unsupported' as 'string' };

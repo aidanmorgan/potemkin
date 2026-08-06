@@ -38,15 +38,15 @@ function firstBareRefInText(text: string): string | null {
     // (e.g. a '%' in free text) does not mask a real reference before it.
     tokens = lexLongestPrefix(text);
   }
-  for (let i = 0; i < tokens.length; i++) {
-    const t = tokens[i]!;
-    if (t.type === 'IDENT') {
-      const name = String(t.value);
+  for (const [index, token] of tokens.entries()) {
+    if (token.type === 'IDENT') {
+      const name = String(token.value);
       // `$builtin`: a `$` followed by a letter or underscore (e.g. `$now`).
       // A `$` followed by anything else (e.g. `$5`) is not a builtin token.
       if (/^\$[A-Za-z_]/.test(name)) return name;
       // `state.` / `event.` / `command.` — a context object followed by `.`.
-      if (CONTEXT_OBJECTS.has(name) && tokens[i + 1]?.type === '.') {
+      const nextToken = tokens[index + 1];
+      if (CONTEXT_OBJECTS.has(name) && nextToken?.type === '.') {
         return `${name}.`;
       }
     }

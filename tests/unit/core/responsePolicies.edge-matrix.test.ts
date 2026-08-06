@@ -11,16 +11,25 @@ import type {
   RuntimeExecutionResult,
   RuntimeRequest,
 } from '../../../src/model/runtime.js';
+import {
+  aggregateId,
+  boundaryName,
+  commandId,
+  eventId,
+  eventType,
+  httpMethod,
+  sequenceVersion,
+} from '../../../src/domain/references.js';
 
 const request: RuntimeRequest = {
   command: {
-    commandId: 'command',
-    boundary: 'Order',
+    commandId: commandId('command'),
+    boundary: boundaryName('Order'),
     intent: 'query',
     targetId: null,
     payload: {},
     queryParams: { limit: '1', offset: '1', cursor: 'old', tenant: ['one', 'two'] },
-    httpMethod: 'GET',
+    httpMethod: httpMethod('GET'),
     path: '/orders',
     origin: 'inbound',
     depth: 0,
@@ -83,13 +92,13 @@ describe('response policy edge matrix', () => {
 
   it('creates independent event-only and debug-only envelopes', () => {
     const event = {
-      eventId: 'event-1',
-      type: 'OrderCreated',
-      boundary: 'Order',
-      aggregateId: 'order-1',
+      eventId: eventId('event-1'),
+      type: eventType('OrderCreated'),
+      boundary: boundaryName('Order'),
+      aggregateId: aggregateId('order-1'),
       payload: { secret: 'hidden' },
       timestamp: '2030-01-01T00:00:00.000Z',
-      sequenceVersion: 1,
+      sequenceVersion: sequenceVersion(1),
       causedBy: null,
     };
     expect(

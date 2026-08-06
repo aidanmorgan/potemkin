@@ -10,6 +10,24 @@ import type {
 import type { RuntimeClock } from '../../../src/contracts/ports.js';
 import type { Command } from '../../../src/contracts/domain.js';
 import type { JsonObject } from '../../../src/contracts/value.js';
+import {
+  aggregateId,
+  boundaryName,
+  commandId,
+  httpMethod,
+  operationId,
+} from '../../../src/domain/references.js';
+
+type CommandOverrides = Omit<
+  Partial<Command>,
+  'commandId' | 'targetId' | 'boundary' | 'httpMethod' | 'operationId'
+> & {
+  readonly commandId?: string;
+  readonly targetId?: string | null;
+  readonly boundary?: string;
+  readonly httpMethod?: string;
+  readonly operationId?: string;
+};
 
 const helpers: RuntimeHelpers = {
   now: () => '2026-01-01T00:00:00.000Z',
@@ -31,25 +49,39 @@ const clock: RuntimeClock = {
 
 function contract(): RuntimeProgram['dependencies']['contract'] {
   return {
-    operationIdFor: (_path, method) => (method === 'POST' ? 'createOrder' : 'getOrder'),
+    operationIdFor: (_path, method) => operationId(method === 'POST' ? 'createOrder' : 'getOrder'),
   };
 }
 
 function request(
-  command: Partial<Command>,
+  command: CommandOverrides,
 ): Parameters<ReturnType<typeof createRuntimeEngine>['execute']>[0] {
+  const {
+    commandId: rawCommandId,
+    targetId: rawTargetId,
+    boundary: rawBoundary,
+    httpMethod: rawHttpMethod,
+    operationId: rawOperationId,
+    ...rest
+  } = command;
   const value: Command = {
-    commandId: command.commandId ?? 'command-1',
-    boundary: command.boundary ?? 'Order',
+    commandId: commandId(rawCommandId ?? 'command-1'),
+    boundary: boundaryName(rawBoundary ?? 'Order'),
     intent: command.intent ?? 'creation',
-    targetId: command.targetId === undefined ? 'order-1' : command.targetId,
+    targetId:
+      rawTargetId === undefined
+        ? aggregateId('order-1')
+        : rawTargetId === null
+          ? null
+          : aggregateId(rawTargetId),
     payload: command.payload ?? { id: 'order-1', status: 'new' },
     queryParams: command.queryParams ?? {},
-    httpMethod: command.httpMethod ?? 'POST',
+    httpMethod: httpMethod(rawHttpMethod ?? 'POST'),
     path: command.path ?? '/orders',
     origin: command.origin ?? 'inbound',
     depth: command.depth ?? 0,
-    ...command,
+    ...(rawOperationId === undefined ? {} : { operationId: operationId(rawOperationId) }),
+    ...rest,
   };
   return { command: value, headers: {} };
 }

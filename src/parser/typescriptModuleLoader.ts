@@ -248,7 +248,16 @@ function stripGlobTail(pattern: string): string {
   return head.endsWith(path.sep) ? head.slice(0, -1) : head;
 }
 
-function silentConsole(): Console {
+interface SilentConsole {
+  readonly log: (...args: unknown[]) => void;
+  readonly info: (...args: unknown[]) => void;
+  readonly warn: (...args: unknown[]) => void;
+  readonly error: (...args: unknown[]) => void;
+  readonly debug: (...args: unknown[]) => void;
+  readonly trace: (...args: unknown[]) => void;
+}
+
+function silentConsole(): SilentConsole {
   const swallow = (..._args: unknown[]): void => {
     /* trusted authoring modules stay quiet during discovery */
   };
@@ -259,5 +268,5 @@ function silentConsole(): Console {
     error: swallow,
     debug: swallow,
     trace: swallow,
-  } as unknown as Console;
+  };
 }

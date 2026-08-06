@@ -26,6 +26,49 @@ export class SpecmaticProcessError extends Error {
   }
 }
 
+const MAX_DIAGNOSTIC_OUTPUT_BYTES = 64 * 1024;
+
+/**
+ * Retains a bounded diagnostic tail for a child-process stream.
+ *
+ * Each stream keeps its last 64 KiB. Once that limit is exceeded, earlier
+ * bytes are discarded and a fixed marker is prepended to the returned text.
+ * The tail is useful for process failures, which generally report the final
+ * error after their progress output, while the fixed policy makes retained
+ * memory independent of process lifetime and output volume.
+ */
+class BoundedDiagnosticOutput {
+  private bytes = Buffer.alloc(0);
+  private truncated = false;
+
+  append(chunk: Buffer | string): void {
+    const incoming = typeof chunk === 'string' ? Buffer.from(chunk, 'utf8') : chunk;
+    if (incoming.length === 0) return;
+
+    if (incoming.length > MAX_DIAGNOSTIC_OUTPUT_BYTES) {
+      this.bytes = Buffer.from(incoming.subarray(incoming.length - MAX_DIAGNOSTIC_OUTPUT_BYTES));
+      this.truncated = true;
+      return;
+    }
+
+    const combined = Buffer.concat([this.bytes, incoming]);
+    if (combined.length > MAX_DIAGNOSTIC_OUTPUT_BYTES) {
+      this.bytes = Buffer.from(combined.subarray(combined.length - MAX_DIAGNOSTIC_OUTPUT_BYTES));
+      this.truncated = true;
+      return;
+    }
+
+    this.bytes = combined;
+  }
+
+  toString(streamName: 'stdout' | 'stderr'): string {
+    const output = this.bytes.toString('utf8');
+    return this.truncated
+      ? `[${streamName} truncated; retaining the last ${MAX_DIAGNOSTIC_OUTPUT_BYTES} bytes]\n${output}`
+      : output;
+  }
+}
+
 class ChildProcessRunner implements CommandRunner {
   run(options: {
     command: string;
@@ -39,13 +82,13 @@ class ChildProcessRunner implements CommandRunner {
         env: options.env,
         stdio: ['ignore', 'pipe', 'pipe'],
       });
-      let stdout = '';
-      let stderr = '';
+      const stdout = new BoundedDiagnosticOutput();
+      const stderr = new BoundedDiagnosticOutput();
       child.stdout?.on('data', (chunk: Buffer) => {
-        stdout += chunk.toString();
+        stdout.append(chunk);
       });
       child.stderr?.on('data', (chunk: Buffer) => {
-        stderr += chunk.toString();
+        stderr.append(chunk);
       });
       child.once('error', reject);
       child.once('close', (exitCode, signal) =>
@@ -55,8 +98,8 @@ class ChildProcessRunner implements CommandRunner {
           cwd: options.cwd,
           exitCode,
           signal,
-          stdout,
-          stderr,
+          stdout: stdout.toString('stdout'),
+          stderr: stderr.toString('stderr'),
         }),
       );
     });

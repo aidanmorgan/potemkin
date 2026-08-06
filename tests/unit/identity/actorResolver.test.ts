@@ -1,5 +1,5 @@
 import { resolveActor, JwtValidationError } from '../../../src/identity/actorResolver';
-import { signJwtHs256 } from '../../../src/identity/jwtValidator';
+import { signJwtHs256 } from '../../_support/jwt';
 import type { AuthConfig } from '../../../src/dsl/types';
 
 const SECRET = 'top-secret-key';

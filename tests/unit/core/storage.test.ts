@@ -6,6 +6,13 @@ import {
 } from '../../../src/core/storage.js';
 import type { ExecutionResult } from '../../../src/contracts/domain.js';
 import type { JsonObject } from '../../../src/contracts/value.js';
+import {
+  aggregateId,
+  boundaryName,
+  eventId,
+  eventType,
+  sequenceVersion,
+} from '../../../src/domain/references.js';
 
 describe('core storage implementations', () => {
   it('clones event and state values at the port boundary', () => {
@@ -13,13 +20,13 @@ describe('core storage implementations', () => {
     const state = createMemoryStateStore();
     const payload = { nested: { value: 1 } } as unknown as JsonObject;
     const event = {
-      eventId: 'event-1',
-      boundary: 'orders',
-      aggregateId: 'order-1',
-      type: 'Created',
+      eventId: eventId('event-1'),
+      boundary: boundaryName('orders'),
+      aggregateId: aggregateId('order-1'),
+      type: eventType('Created'),
       payload,
       timestamp: '2026-01-01T00:00:00.000Z',
-      sequenceVersion: 1,
+      sequenceVersion: sequenceVersion(1),
       causedBy: null,
       intent: 'creation' as const,
     };

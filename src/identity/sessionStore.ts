@@ -42,7 +42,7 @@ export interface SessionStore {
   get(sessionId: string, at?: number): Session | null;
   /** Destroy a session by id. Returns true if the entry existed. */
   destroy(sessionId: string): boolean;
-  /** Wipe all sessions and stop the background sweep timer. */
+  /** Wipe all sessions while keeping the reusable background sweep timer active. */
   reset(): void;
   /** Stop the background sweep timer and release the store. */
   dispose(): void;
@@ -79,6 +79,10 @@ export function createSessionStore(opts: SessionStoreOptions): SessionStore {
   const scheduler = opts.scheduler;
   const sweepIntervalMs = opts.sweepIntervalMs ?? 60_000;
   const maxSessions = opts.maxSessions ?? Infinity;
+  validateNonNegativeFinite(sweepIntervalMs, 'sweepIntervalMs');
+  if (maxSessions !== Infinity && (!Number.isSafeInteger(maxSessions) || maxSessions < 0)) {
+    throw new RangeError('maxSessions must be a non-negative safe integer or Infinity');
+  }
 
   /** Delete all map entries whose expiresAt is in the past. */
   function sweep(): void {
@@ -106,17 +110,18 @@ export function createSessionStore(opts: SessionStoreOptions): SessionStore {
 
   return {
     create(actor: Actor, ttlMs: number): Session {
+      validateNonNegativeFinite(ttlMs, 'ttlMs');
+
       // Count only live sessions toward the cap.
-      const current = now();
+      const created = now();
       let liveCount = 0;
       for (const session of sessions.values()) {
-        if (current < session.expiresAt) liveCount++;
+        if (created < session.expiresAt) liveCount++;
       }
       if (liveCount >= maxSessions) {
         throw new SessionLimitError(maxSessions);
       }
 
-      const created = now();
       const session: Session = {
         id: uuid(),
         actor,
@@ -165,4 +170,10 @@ export function createSessionStore(opts: SessionStoreOptions): SessionStore {
       return n;
     },
   };
+}
+
+function validateNonNegativeFinite(value: number, name: string): void {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new RangeError(`${name} must be a finite non-negative number`);
+  }
 }

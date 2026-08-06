@@ -9,7 +9,7 @@ export function buildReactionRegistry(allReactions: readonly ReactionRule[]): Re
     bucket.push(reaction);
     map.set(reaction.on, bucket);
   }
-  return map as ReactionsByTrigger;
+  return map;
 }
 
 /** Validate reaction targets and event subscriptions after composition is complete. */
@@ -27,7 +27,14 @@ export function validateReactionCrossReferences(
   }
 
   for (const reaction of allReactions) {
-    const boundaryName = reaction.boundary!;
+    const boundaryName = reaction.boundary;
+    if (boundaryName === undefined) {
+      throw new BootError(
+        'BOOT_ERR_DSL_REFERENCE',
+        `reaction on "${reaction.on}" is missing a target boundary`,
+        { reaction: reaction.name ?? reaction.on },
+      );
+    }
     const label =
       reaction.name === undefined ? `reaction on "${reaction.on}"` : `reaction "${reaction.name}"`;
     const target = byBoundaryName[boundaryName];
@@ -50,7 +57,9 @@ export function validateReactionCrossReferences(
       );
     }
     if (reaction.on.includes(':')) {
-      const [triggerBoundaryName, triggerEventType] = reaction.on.split(':', 2) as [string, string];
+      const separator = reaction.on.indexOf(':');
+      const triggerBoundaryName = reaction.on.slice(0, separator);
+      const triggerEventType = reaction.on.slice(separator + 1);
       const triggerBoundary = byBoundaryName[triggerBoundaryName];
       if (triggerBoundary === undefined) {
         throw new BootError(

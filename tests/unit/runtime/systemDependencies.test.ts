@@ -10,6 +10,7 @@ import { compileProgram } from '../../../src/authoring/compiler.js';
 import { simulation } from '../../../src/authoring/builders.js';
 import { createContractValidator } from '../../../src/contract/validator.js';
 import { runtimeContract } from '../../../src/runtime/system.js';
+import { operationId, type OperationId } from '../../../src/domain/references.js';
 
 const FIXED_NOW = '2030-01-02T03:04:05.000Z';
 
@@ -79,10 +80,20 @@ describe('runtime host dependency injection', () => {
     const contract = runtimeContract(openapi, createContractValidator(openapi));
     const generic = { code: 'UNHANDLED_OPERATION', message: 'guard failed' };
 
-    expect(contract.shapeError?.('guarded', 422, generic)).toEqual({
+    expect(contract.shapeError?.(operationId('guarded'), 422, generic)).toEqual({
       error: 'UNHANDLED_OPERATION',
     });
-    expect(contract.shapeError?.('undeclared', 422, generic)).toEqual(generic);
+    expect(contract.shapeError?.(operationId('undeclared'), 422, generic)).toEqual(generic);
+  });
+
+  it('returns branded operation IDs from the compiled contract route boundary', async () => {
+    const openapi = await loadOpenApi(OPENAPI);
+    const contract = runtimeContract(openapi, createContractValidator(openapi));
+
+    const operationId: OperationId | undefined = contract.operationIdFor('/empty', 'GET');
+
+    expect(operationId).toBe('getEmpty');
+    expect(contract.operationIdFor('/empty', 'get')).toBe(operationId);
   });
 
   it.each(['YAML', 'TypeScript'] as const)(

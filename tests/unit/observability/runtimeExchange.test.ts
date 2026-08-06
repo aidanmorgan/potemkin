@@ -1,6 +1,7 @@
 import { context, ROOT_CONTEXT } from '@opentelemetry/api';
 import type { Attributes, Span, Tracer } from '@opentelemetry/api';
 import type { RuntimeTransportObservation } from '../../../src/contracts/ports.js';
+import { commandId } from '../../../src/domain/references.js';
 import { createRuntimeOtelRequestResponseObserver } from '../../../src/observability/runtimeExchange.js';
 
 interface ExportedSpan {
@@ -94,7 +95,7 @@ describe('createRuntimeOtelRequestResponseObserver', () => {
       },
       correlation: {
         traceId: 'trace-success-01',
-        commandId: 'command-order-01',
+        commandId: commandId('command-order-01'),
       },
     };
 
@@ -162,7 +163,7 @@ describe('createRuntimeOtelRequestResponseObserver', () => {
       },
       correlation: {
         traceId: 'trace-failure-02',
-        commandId: 'command-order-02',
+        commandId: commandId('command-order-02'),
       },
     };
 
@@ -206,7 +207,7 @@ describe('createRuntimeOtelRequestResponseObserver', () => {
       },
       correlation: {
         traceId: 'trace-closed-03',
-        commandId: 'command-order-03',
+        commandId: commandId('command-order-03'),
       },
     };
 

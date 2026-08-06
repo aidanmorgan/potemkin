@@ -149,6 +149,52 @@ describe('contract/validator', () => {
     });
   });
 
+  describe('validateSchema', () => {
+    it('resolves RFC 6901 escaped schema-reference segments', () => {
+      const validator = createContractValidator(
+        makeDoc(
+          {},
+          {
+            components: {
+              schemas: {
+                'Error/Envelope~v1': { type: 'object', required: ['code'] },
+              },
+            },
+          },
+        ),
+        boundaries,
+      );
+
+      expect(() =>
+        validator.validateSchema('#/components/schemas/Error~1Envelope~0v1', { code: 'E-1' }),
+      ).not.toThrow();
+    });
+
+    it('continues to accept the legacy bare component path form', () => {
+      const validator = createContractValidator(
+        makeDoc(
+          {},
+          {
+            components: {
+              schemas: {
+                Error: {
+                  type: 'object',
+                  required: ['message'],
+                  properties: { message: { type: 'string' } },
+                },
+              },
+            },
+          },
+        ),
+        boundaries,
+      );
+
+      expect(() =>
+        validator.validateSchema('components/schemas/Error', { message: 'ok' }),
+      ).not.toThrow();
+    });
+  });
+
   describe('batch document validation', () => {
     function batchValidator() {
       return createContractValidator(

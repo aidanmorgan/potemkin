@@ -4,16 +4,22 @@ import {
   runLifecyclePhase,
 } from '../../../src/authoring/lifecycle.js';
 import type { JsonObject } from '../../../src/contracts/value.js';
+import {
+  aggregateId,
+  boundaryName,
+  commandId,
+  httpMethod,
+} from '../../../src/domain/references.js';
 
 const baseContext = {
   command: {
-    commandId: 'command-1',
-    boundary: 'Widget',
+    commandId: commandId('command-1'),
+    boundary: boundaryName('Widget'),
     intent: 'mutation' as const,
-    targetId: 'widget-1',
+    targetId: aggregateId('widget-1'),
     payload: { name: 'before' },
     queryParams: {},
-    httpMethod: 'PATCH',
+    httpMethod: httpMethod('PATCH'),
     path: '/widgets/widget-1',
     origin: 'inbound' as const,
     depth: 0,

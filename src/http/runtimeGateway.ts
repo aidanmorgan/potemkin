@@ -1,5 +1,4 @@
 import express, { type Express, type NextFunction, type Request, type Response } from 'express';
-import bodyParser from 'body-parser';
 import { createHash } from 'node:crypto';
 import type { RuntimeSystem } from '../runtime/system.js';
 import { RuntimeExecutionError } from '../core/errors.js';
@@ -10,9 +9,25 @@ import {
   type RuntimeRequest,
 } from '../model/runtime.js';
 import type { Actor } from '../contracts/identity.js';
-import type { Command } from '../contracts/domain.js';
-import type { JsonObject, JsonValue, Patch } from '../contracts/value.js';
+import { Intent, Origin, type Command } from '../contracts/domain.js';
+import type { PluginConfiguration, PotemkinConfiguration } from '../contracts/config.js';
+import {
+  isJsonObject,
+  isJsonValue,
+  isRecord,
+  type JsonObject,
+  type JsonValue,
+  type Patch,
+} from '../contracts/value.js';
 import { applyPatches, diffJsonJournal, type JournalEntry } from '../model/patches.js';
+import {
+  AggregateId,
+  BoundaryName,
+  CommandId,
+  HttpMethod,
+  OperationId,
+  SequenceVersion,
+} from '../domain/references.js';
 import { applyResponseFormat, compileMaskValuePatches } from '../core/responsePolicies.js';
 import { matchRoute, resolveVersion } from '../contract/router.js';
 import { parseControlHeaders } from './controlHeaders.js';
@@ -45,14 +60,14 @@ const DEFAULT_ROUTES_TTL_SECONDS = 30;
 interface RuntimeConfigurationResponse {
   readonly engine: 'potemkin-stateful';
   readonly version: string;
-  readonly potemkin: unknown;
-  readonly pluginMetadata?: unknown;
+  readonly potemkin: PotemkinConfiguration;
+  readonly pluginMetadata?: PluginConfiguration;
 }
 
 function runtimeConfigurationResponse(
   version: string,
-  potemkin: unknown,
-  pluginMetadata: unknown,
+  potemkin: PotemkinConfiguration,
+  pluginMetadata: PluginConfiguration | undefined,
 ): RuntimeConfigurationResponse {
   return {
     engine: 'potemkin-stateful',
@@ -93,10 +108,6 @@ function hasMatchingEtag(request: Request, value: string): boolean {
   return candidates.some((candidate) =>
     candidate.split(',').some((item: string) => stripEtag(item) === value),
   );
-}
-
-function isJsonObject(value: unknown): value is JsonObject {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function routesProjection(
@@ -148,14 +159,12 @@ function fixturesProjection(
 }
 
 function bodyValue(request: Request): JsonValue {
-  const body = request.body as unknown;
-  return body === undefined ? {} : (body as JsonValue);
+  const body: unknown = request.body;
+  return body === undefined ? {} : isJsonValue(body) ? body : {};
 }
 
 function objectBody(body: unknown): JsonObject {
-  return body !== null && typeof body === 'object' && !Array.isArray(body)
-    ? (body as JsonObject)
-    : {};
+  return isJsonObject(body) ? body : {};
 }
 
 function actorOverride(raw: string | undefined): Actor | undefined {
@@ -204,15 +213,21 @@ function targetFor(
   query: Record<string, string | string[]>,
   headers: Record<string, string>,
   body: JsonObject,
-): string | null {
+): AggregateId | null {
   const key = boundary.identity?.key;
-  if (key === undefined) return route.pathParams['id'] ?? null;
-  const read = (value: unknown): string | null =>
-    typeof value === 'string' && value.length > 0
-      ? value
-      : typeof value === 'number'
-        ? String(value)
-        : null;
+  if (key === undefined) {
+    const id = route.pathParams['id'];
+    return id === undefined ? null : AggregateId.parse(id);
+  }
+  const read = (value: unknown): AggregateId | null => {
+    const normalized =
+      typeof value === 'string' && value.length > 0
+        ? value
+        : typeof value === 'number'
+          ? String(value)
+          : null;
+    return normalized === null ? null : AggregateId.parse(normalized);
+  };
   if (key.from === 'path') return read(route.pathParams[key.name ?? 'id']);
   if (key.from === 'header')
     return read(
@@ -225,8 +240,8 @@ function targetFor(
   if (pointer === undefined) return null;
   let current: unknown = source;
   for (const segment of pointer.replace(/^\//, '').split(/[./]/).filter(Boolean)) {
-    if (current === null || typeof current !== 'object') return null;
-    current = (current as Record<string, unknown>)[segment];
+    if (!isRecord(current)) return null;
+    current = current[segment];
   }
   return read(Array.isArray(current) ? current[0] : current);
 }
@@ -246,8 +261,8 @@ function boundaryForRoute(
     .sort((left, right) => right.contractPath.length - left.contractPath.length)[0];
 }
 
-function commandId(system: RuntimeSystem): string {
-  return system.program.dependencies.helpers.uuid();
+function commandId(system: RuntimeSystem): CommandId {
+  return CommandId.parse(system.program.dependencies.helpers.uuid());
 }
 
 function adminControlRequested(headers: Record<string, string | string[] | undefined>): boolean {
@@ -286,34 +301,24 @@ function errorDetails(error: unknown): {
         : error.body;
     return { status: error.status, body, headers: { ...error.headers } };
   }
-  const candidate = error as {
-    readonly status?: unknown;
-    readonly body?: unknown;
-    readonly code?: unknown;
-    readonly message?: unknown;
-  };
+  const candidate = isRecord(error) ? error : {};
   const status = typeof candidate.status === 'number' ? candidate.status : 500;
   const message = candidate.message === undefined ? String(error) : String(candidate.message);
-  const details = (error as { readonly details?: unknown }).details;
-  const detailObject =
-    details !== null && typeof details === 'object' && !Array.isArray(details)
-      ? (details as Record<string, unknown>)
-      : undefined;
+  const detailObject = isJsonObject(candidate.details) ? candidate.details : undefined;
   const detailCode = typeof detailObject?.code === 'string' ? detailObject.code : undefined;
-  const body =
-    candidate.body !== undefined && candidate.body !== null && typeof candidate.body === 'object'
-      ? (candidate.body as JsonValue)
-      : {
-          code:
-            detailCode ??
-            (typeof candidate.code === 'string'
-              ? candidate.code
-              : status === 400
-                ? 'CONTRACT_VIOLATION'
-                : 'INTERNAL'),
-          message,
-          ...(detailObject === undefined ? {} : { details: detailObject as JsonObject }),
-        };
+  const body = isJsonValue(candidate.body)
+    ? candidate.body
+    : {
+        code:
+          detailCode ??
+          (typeof candidate.code === 'string'
+            ? candidate.code
+            : status === 400
+              ? 'CONTRACT_VIOLATION'
+              : 'INTERNAL'),
+        message,
+        ...(detailObject === undefined ? {} : { details: detailObject }),
+      };
   return { status, body, headers: status === 401 ? { 'WWW-Authenticate': 'Bearer' } : {} };
 }
 
@@ -324,7 +329,7 @@ function shapeContractError(
 ): ReturnType<typeof errorDetails> {
   if (operationId === undefined || result.status < 400) return result;
   const body = system.program.dependencies.contract.shapeError?.(
-    operationId,
+    OperationId.parse(operationId),
     result.status,
     result.body,
   );
@@ -381,10 +386,12 @@ function applyCors(
   allowedOrigins: AllowedOrigins = '*',
 ): void {
   const origin = typeof request.headers.origin === 'string' ? request.headers.origin : undefined;
-  const admitted = isCredentialed(request) && isOriginAdmitted(origin, allowedOrigins);
+  const admitted =
+    isCredentialed(request) && origin !== undefined && isOriginAdmitted(origin, allowedOrigins);
+  const admittedOrigin = admitted && origin !== undefined ? origin : undefined;
   response.setHeader(
     'Access-Control-Allow-Origin',
-    admitted ? origin! : getAllowedOrigin(origin, allowedOrigins),
+    admittedOrigin ?? getAllowedOrigin(origin, allowedOrigins),
   );
   response.setHeader('Access-Control-Allow-Methods', CORS_ALLOW_METHODS);
   response.setHeader('Access-Control-Allow-Headers', CORS_ALLOW_HEADERS);
@@ -414,13 +421,18 @@ function jsonObjectBody(value: JsonValue): JsonObject {
   return isJsonObject(value) ? value : {};
 }
 
+function copyJsonProperties(source: JsonObject, keys: readonly string[]): JsonObject {
+  const result: JsonObject = {};
+  for (const key of keys) {
+    const value = source[key];
+    if (value !== undefined) result[key] = value;
+  }
+  return result;
+}
+
 function preserveForwardDecorations(base: JsonValue, decorated: JsonValue): JsonValue {
   if (!isJsonObject(base) || !isJsonObject(decorated)) return base;
-  const decoration = Object.fromEntries(
-    ['_events', '_debug'].flatMap((key) =>
-      decorated[key] === undefined ? [] : [[key, decorated[key]]],
-    ),
-  ) as JsonObject;
+  const decoration = copyJsonProperties(decorated, ['_events', '_debug']);
   return Object.keys(decoration).length === 0 ? base : { ...base, ...decoration };
 }
 
@@ -438,15 +450,11 @@ function runtimeForwardResponse(result: {
   // still transport metadata and are safe to carry on the raw body.
   const hasResponsePatches = result.patches !== undefined && result.patches.length > 0;
   if (result.unmaskedBody !== undefined && isJsonObject(body) && isJsonObject(result.body)) {
-    const decorated = result.body as JsonObject;
+    const decorated = result.body;
     const decorationKeys = hasResponsePatches
       ? ['_events', '_debug']
       : ['_links', '_events', '_debug'];
-    const decoration = Object.fromEntries(
-      decorationKeys.flatMap((key) =>
-        decorated[key] === undefined ? [] : [[key, decorated[key]]],
-      ),
-    ) as JsonObject;
+    const decoration = copyJsonProperties(decorated, decorationKeys);
     if (Object.keys(decoration).length > 0) body = { ...body, ...decoration };
   }
   const headers = lowerCaseHeaders({
@@ -484,6 +492,26 @@ function observedForwardResponse(result: ForwardedResponse): ForwardedResponse {
     autoVivify: true,
   }).newState;
   return { ...result, body };
+}
+
+function forwardedResponseJson(result: ForwardedResponse): JsonObject {
+  return {
+    status: result.status,
+    headers: result.headers,
+    body: result.body,
+    ...(result._patches === undefined
+      ? {}
+      : {
+          _patches: result._patches.map((entry) => ({
+            source: entry.source,
+            op: entry.op,
+            path: entry.path,
+            ...(entry.value === undefined ? {} : { value: entry.value }),
+            ...(entry.from === undefined ? {} : { from: entry.from }),
+            ...(entry.by === undefined ? {} : { by: entry.by }),
+          })),
+        }),
+  };
 }
 
 function journalEntryToPatch(entry: JournalEntry): Patch {
@@ -583,7 +611,7 @@ async function handleRuntimeForward(
     const body =
       operationId !== undefined && result.status >= 400
         ? (system.program.dependencies.contract.shapeError?.(
-            operationId,
+            OperationId.parse(operationId),
             result.status,
             result.body,
           ) ?? result.body)
@@ -627,7 +655,7 @@ async function handleRuntimeForward(
             {
               op: 'add' as const,
               path: '/_links',
-              value: shapedResult.body['_links'] as JsonValue,
+              value: shapedResult.body['_links'],
               source: 'hateoas' as const,
             },
           ]
@@ -720,18 +748,18 @@ async function handleRuntimeForward(
   if (boundary === undefined && isSessionEndpoint) {
     const command: Command = {
       commandId: commandId(system),
-      boundary: '__session__',
-      intent: 'mutation',
+      boundary: BoundaryName.parse('__session__'),
+      intent: Intent.Mutation,
       targetId: null,
       payload: body,
       queryParams: forwarded.query,
-      httpMethod: method,
+      httpMethod: HttpMethod.parse(method),
       path: version.path,
-      origin: 'inbound',
+      origin: Origin.Inbound,
       depth: 0,
       ...(route.operation.operationId === undefined
         ? {}
-        : { operationId: route.operation.operationId }),
+        : { operationId: OperationId.parse(route.operation.operationId) }),
     };
     if (response !== undefined) {
       response.locals.potemkinCommandId = command.commandId;
@@ -771,22 +799,24 @@ async function handleRuntimeForward(
   // response envelope; the plugin must receive a typed 400 rather than treat
   // the gateway failure as an engine outage.
   const sequenceVersion =
-    parsedIfMatch === undefined || Number.isNaN(parsedIfMatch) ? undefined : parsedIfMatch;
+    parsedIfMatch === undefined || Number.isNaN(parsedIfMatch)
+      ? undefined
+      : SequenceVersion.parse(parsedIfMatch);
   const intent = intentFor(method, boundary, route);
   const commandFor = (payload: JsonObject): Command => ({
     commandId: commandId(system),
-    boundary: boundary.boundary,
+    boundary: BoundaryName.parse(boundary.boundary),
     intent,
     targetId: targetFor(boundary, route, forwarded.query, forwarded.headers, payload),
     payload,
     queryParams: forwarded.query,
-    httpMethod: method,
+    httpMethod: HttpMethod.parse(method),
     path: version.path,
-    origin: 'inbound',
+    origin: Origin.Inbound,
     depth: 0,
     ...(route.operation.operationId === undefined
       ? {}
-      : { operationId: route.operation.operationId }),
+      : { operationId: OperationId.parse(route.operation.operationId) }),
     ...(sequenceVersion === undefined || Number.isNaN(sequenceVersion) ? {} : { sequenceVersion }),
     ...(actor === undefined ? {} : { actor }),
   });
@@ -831,7 +861,7 @@ async function handleRuntimeForward(
       });
     }
     if (Array.isArray(rawBody) && intent !== 'query') {
-      const requests = rawBody.map((item, index) => {
+      const requests: RuntimeRequest[] = rawBody.map((item, index) => {
         const payload = jsonObjectBody(item);
         const itemCommand = commandFor(payload);
         return {
@@ -840,7 +870,7 @@ async function handleRuntimeForward(
           controls,
           batchItem: { index, size: rawBody.length },
           ...(actor === undefined ? {} : { actor }),
-        } as RuntimeRequest;
+        };
       });
       const results = await system.engine.executeBatch(requests, {
         transactional: controls.bulkTransactional === true,
@@ -850,7 +880,7 @@ async function handleRuntimeForward(
       const operationId = requests[0]?.command.operationId;
       if (first !== undefined && operationId !== undefined) {
         system.program.dependencies.contract.validateBatchResponse?.(
-          operationId,
+          OperationId.parse(operationId),
           first.status,
           results.map((result) => result.body),
           requests[0],
@@ -900,9 +930,9 @@ function registerRuntimeForwarding(
         originalForwarded satisfies RuntimeTransportRequestInput;
       // The observer records the complete forwarding envelope, matching the
       // transport response rather than only the nested simulated body.
-      response.locals.potemkinTransportResponseBody = observedForwardResponse(
-        result,
-      ) as unknown as JsonValue;
+      response.locals.potemkinTransportResponseBody = forwardedResponseJson(
+        observedForwardResponse(result),
+      );
       response.status(200).json(result);
     } catch (error) {
       // A malformed outer envelope cannot carry a meaningful nested HTTP
@@ -913,10 +943,8 @@ function registerRuntimeForwarding(
       response.status(400).json({
         error: 'MALFORMED_FORWARDED_REQUEST',
         code:
-          error instanceof Error &&
-          'code' in error &&
-          typeof (error as { code?: unknown }).code === 'string'
-            ? (error as { code: string }).code
+          isRecord(error) && typeof error.code === 'string'
+            ? error.code
             : 'BOOT_ERR_MALFORMED_FORWARDED_REQUEST',
         message:
           isJsonObject(result.body) && typeof result.body.message === 'string'
@@ -1025,14 +1053,14 @@ export function createRuntimeGateway(
   // other early transport errors still produce exactly one final observation.
   installRuntimeObservation(app, system);
   app.use(
-    bodyParser.json({
+    express.json({
       strict: false,
       limit: '10mb',
       type: ['application/json', 'text/json', 'application/*+json'],
       verify: captureParsedRequestBody,
     }),
   );
-  app.use(bodyParser.urlencoded({ extended: false, verify: captureParsedRequestBody }));
+  app.use(express.urlencoded({ extended: false, verify: captureParsedRequestBody }));
   app.use((request, response, next) => {
     applyCors(request, response, extensions.allowedOrigins);
     next();
@@ -1059,9 +1087,7 @@ export function createRuntimeGateway(
     const body = objectBody(rawBody);
     const controls = controlsOf(request, system.program.policies.controlDefaults);
     const actorHeader = headers['x-potemkin-actor'];
-    const parsedControls = parseControlHeaders(
-      request.headers as Record<string, string | string[] | undefined>,
-    );
+    const parsedControls = parseControlHeaders(Object.fromEntries(Object.entries(request.headers)));
     const actor =
       actorOverride(actorHeader) ??
       (parsedControls.identity.impersonate === undefined
@@ -1069,14 +1095,14 @@ export function createRuntimeGateway(
         : actorOverride(parsedControls.identity.impersonate));
     const provisionalCommand: Command = {
       commandId: commandId(system),
-      boundary: '__control__',
-      intent: 'query',
+      boundary: BoundaryName.parse('__control__'),
+      intent: Intent.Query,
       targetId: null,
       payload: body,
       queryParams: query,
-      httpMethod: effectiveMethod,
+      httpMethod: HttpMethod.parse(effectiveMethod),
       path: version.path,
-      origin: 'inbound',
+      origin: Origin.Inbound,
       depth: 0,
     };
     response.locals.potemkinCommandId = provisionalCommand.commandId;
@@ -1099,7 +1125,10 @@ export function createRuntimeGateway(
       return;
     }
     if (route === null) {
-      const command: Command = { ...provisionalCommand, boundary: '__unknown__' };
+      const command: Command = {
+        ...provisionalCommand,
+        boundary: BoundaryName.parse('__unknown__'),
+      };
       try {
         const result = await system.engine.execute({
           command,
@@ -1143,13 +1172,13 @@ export function createRuntimeGateway(
         try {
           const command: Command = {
             ...provisionalCommand,
-            boundary: '__session__',
-            intent: 'mutation',
-            httpMethod: effectiveMethod,
+            boundary: BoundaryName.parse('__session__'),
+            intent: Intent.Mutation,
+            httpMethod: HttpMethod.parse(effectiveMethod),
             path: version.path,
             ...(route.operation.operationId === undefined
               ? {}
-              : { operationId: route.operation.operationId }),
+              : { operationId: OperationId.parse(route.operation.operationId) }),
           };
           const result = await system.engine.execute({
             command,
@@ -1188,7 +1217,7 @@ export function createRuntimeGateway(
         route.operation.operationId === undefined
           ? fallbackBody
           : (system.program.dependencies.contract.shapeError?.(
-              route.operation.operationId,
+              OperationId.parse(route.operation.operationId),
               501,
               fallbackBody,
             ) ?? fallbackBody);
@@ -1210,7 +1239,8 @@ export function createRuntimeGateway(
           message: 'If-Match value is not a valid integer (weak validators are not supported)',
         });
       }
-      const sequenceVersion = parsedIfMatch;
+      const sequenceVersion =
+        parsedIfMatch === undefined ? undefined : SequenceVersion.parse(parsedIfMatch);
 
       if (Array.isArray(rawBody) && rawBody.length === 0 && intent !== 'query') {
         throw new RuntimeExecutionError(400, 'Request array must contain at least one item', {
@@ -1224,18 +1254,18 @@ export function createRuntimeGateway(
           const itemTarget = targetFor(boundary, route, query, headers, itemBody);
           const itemCommand: Command = {
             commandId: commandId(system),
-            boundary: boundary.boundary,
+            boundary: BoundaryName.parse(boundary.boundary),
             intent,
             targetId: itemTarget,
             payload: itemBody,
             queryParams: query,
-            httpMethod: effectiveMethod,
+            httpMethod: HttpMethod.parse(effectiveMethod),
             path: version.path,
-            origin: 'inbound',
+            origin: Origin.Inbound,
             depth: 0,
             ...(route.operation.operationId === undefined
               ? {}
-              : { operationId: route.operation.operationId }),
+              : { operationId: OperationId.parse(route.operation.operationId) }),
             ...(sequenceVersion === undefined || Number.isNaN(sequenceVersion)
               ? {}
               : { sequenceVersion }),
@@ -1264,7 +1294,7 @@ export function createRuntimeGateway(
         const operationId = batchRequests[0]?.command.operationId;
         if (operationId !== undefined) {
           system.program.dependencies.contract.validateBatchResponse?.(
-            operationId,
+            OperationId.parse(operationId),
             status,
             resultBody,
             batchRequests[0],
@@ -1281,18 +1311,18 @@ export function createRuntimeGateway(
       }
       const command: Command = {
         commandId: commandId(system),
-        boundary: boundary.boundary,
+        boundary: BoundaryName.parse(boundary.boundary),
         intent,
         targetId,
         payload: body,
         queryParams: query,
-        httpMethod: effectiveMethod,
+        httpMethod: HttpMethod.parse(effectiveMethod),
         path: version.path,
-        origin: 'inbound',
+        origin: Origin.Inbound,
         depth: 0,
         ...(route.operation.operationId === undefined
           ? {}
-          : { operationId: route.operation.operationId }),
+          : { operationId: OperationId.parse(route.operation.operationId) }),
         ...(sequenceVersion === undefined || Number.isNaN(sequenceVersion)
           ? {}
           : { sequenceVersion }),

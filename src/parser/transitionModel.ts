@@ -17,6 +17,7 @@ import type {
   TransitionModel,
   TransitionWriteSet,
 } from '../model/transitionModel.js';
+import { isRecord } from '../contracts/value.js';
 
 /** Input accepted by the pure static model builder. */
 export interface TransitionModelInput {
@@ -91,6 +92,11 @@ interface NextState {
   readonly nextStateKnown: boolean;
 }
 
+interface EmittedEvent {
+  readonly event: string;
+  readonly guard: string | null;
+}
+
 /**
  * Purely lift the linked YAML definition into the versioned transition model.
  * It deliberately does not execute CEL or reducer functions.
@@ -132,7 +138,7 @@ function aggregateName(boundary: BoundaryConfig): string {
     .filter(Boolean)
     .map((part) => {
       const singular = part.length > 3 && part.endsWith('s') ? part.slice(0, -1) : part;
-      return singular[0]!.toUpperCase() + singular.slice(1);
+      return singular.charAt(0).toUpperCase() + singular.slice(1);
     })
     .join('');
 }
@@ -170,7 +176,7 @@ function buildMachine(
     controlField,
     states: normalizedStates,
     transitions: uniqueTransitions(transitions),
-    writeSets: buildWriteSets(group.boundaries, allEvents, allBehaviors, controlField, schema),
+    writeSets: buildWriteSets(group.boundaries, allEvents, allBehaviors, schema),
     ...(policy === undefined && initialStates.length === 0
       ? {}
       : {
@@ -230,10 +236,8 @@ function transitionCandidates(
   const candidates: TransitionCandidate[] = [];
 
   for (const behavior of behaviors) {
-    const emitted = [
-      ...(behavior.emit === undefined
-        ? []
-        : [{ event: behavior.emit, guard: null as string | null }]),
+    const emitted: readonly EmittedEvent[] = [
+      ...(behavior.emit === undefined ? [] : [{ event: behavior.emit, guard: null }]),
       ...(behavior.emitWhen?.map((entry) => ({ event: entry.emit, guard: text(entry.when) })) ??
         []),
     ];
@@ -303,7 +307,9 @@ function resolveEventReference(expression: string, event: EventDefinition): stri
   const unwrapped = unwrapTemplate(expression).trim();
   const match = unwrapped.match(/^event\.payload\.([A-Za-z0-9_.-]+)$/);
   if (match === null) return expression;
-  const value = event.payloadTemplate[match[1]!];
+  const payloadPath = match[1];
+  if (payloadPath === undefined) return expression;
+  const value = event.payloadTemplate[payloadPath];
   return value === undefined ? expression : text(value);
 }
 
@@ -335,7 +341,8 @@ function fromGuard(behavior: BehaviorRule, controlField: string): string | '*' {
     const match = text(guard.condition).match(
       new RegExp(`^\\s*state\\.${escapeRegExp(controlField)}\\s*==\\s*(['"])([^'"]+)\\1\\s*$`),
     );
-    if (match !== null) return match[2]!;
+    const state = match?.[2];
+    if (state !== undefined) return state;
   }
   return '*';
 }
@@ -344,7 +351,6 @@ function buildWriteSets(
   boundaries: readonly BoundaryConfig[],
   events: readonly EventDefinition[],
   behaviors: readonly BehaviorRule[],
-  controlField: string,
   schema: Record<string, unknown> | undefined,
 ): Readonly<Record<string, TransitionWriteSet>> {
   const eventsByName = new Map(events.map((event) => [event.type, event]));
@@ -365,7 +371,7 @@ function buildWriteSets(
       const reducer = [...reducers.values()].find((candidate) => candidate.on === eventName);
       if (reducer === undefined) continue;
       const current = result.get(behavior.match.operationId);
-      const next = writeSetFor(reducer, event, controlField, boundaries, schema);
+      const next = writeSetFor(reducer, event, boundaries, schema);
       result.set(
         behavior.match.operationId,
         current === undefined ? next : mergeWriteSets(current, next),
@@ -380,7 +386,6 @@ function buildWriteSets(
 function writeSetFor(
   reducer: ReducerRule,
   event: EventDefinition,
-  controlField: string,
   boundaries: readonly BoundaryConfig[],
   schema: Record<string, unknown> | undefined,
 ): TransitionWriteSet {
@@ -421,7 +426,8 @@ function closure(
   const result = new Set<string>();
   const pending = [...fields];
   while (pending.length > 0) {
-    const field = pending.shift()!;
+    const field = pending.shift();
+    if (field === undefined) break;
     for (const item of computed) {
       if (item.dependsOn.includes(field) && !result.has(item.name)) {
         result.add(item.name);
@@ -456,14 +462,17 @@ function selectControlField(
   const referenced = new Set(
     behaviors.flatMap((behavior) =>
       (behavior.match.requires ?? []).flatMap((guard) =>
-        [...text(guard.condition).matchAll(/state\.([A-Za-z0-9_]+)/g)].map((match) => match[1]!),
+        [...text(guard.condition).matchAll(/state\.([A-Za-z0-9_]+)/g)].flatMap((match) =>
+          match[1] === undefined ? [] : [match[1]],
+        ),
       ),
     ),
   );
-  return enumFields
+  const selected = enumFields
     .sort(([left], [right]) => left.localeCompare(right))
     .sort(([left], [right]) => Number(patched.has(right)) - Number(patched.has(left)))
-    .sort(([left], [right]) => Number(referenced.has(right)) - Number(referenced.has(left)))[0]![0];
+    .sort(([left], [right]) => Number(referenced.has(right)) - Number(referenced.has(left)))[0];
+  return selected?.[0] ?? 'state';
 }
 
 function resolveAggregateSchema(
@@ -480,21 +489,28 @@ function resolveAggregateSchema(
 function resolveSchema(
   value: unknown,
   schemas: Record<string, unknown>,
+  resolving: Set<object> = new Set(),
 ): Record<string, unknown> | undefined {
   const source = record(value);
   if (source === undefined) return undefined;
-  const ref = source['$ref'];
-  if (typeof ref === 'string' && ref.startsWith('#/components/schemas/')) {
-    const target = schemas[ref.slice('#/components/schemas/'.length)];
-    return target === value ? source : resolveSchema(target, schemas);
+  if (resolving.has(source)) return source;
+  resolving.add(source);
+  try {
+    const ref = source['$ref'];
+    if (typeof ref === 'string' && ref.startsWith('#/components/schemas/')) {
+      const target = schemas[ref.slice('#/components/schemas/'.length)];
+      return target === value ? source : resolveSchema(target, schemas, resolving);
+    }
+    if (Array.isArray(source['allOf'])) {
+      return source['allOf'].reduce<Record<string, unknown>>(
+        (merged, part) => ({ ...merged, ...resolveSchema(part, schemas, resolving) }),
+        { ...source, allOf: undefined },
+      );
+    }
+    return source;
+  } finally {
+    resolving.delete(source);
   }
-  if (Array.isArray(source['allOf'])) {
-    return source['allOf'].reduce<Record<string, unknown>>(
-      (merged, part) => ({ ...merged, ...resolveSchema(part, schemas) }),
-      { ...source, allOf: undefined },
-    );
-  }
-  return source;
 }
 
 function properties(schema: Record<string, unknown> | undefined): Record<string, unknown> {
@@ -508,7 +524,7 @@ function schemaField(
   const parts = path.split('.').filter(Boolean);
   let current = schema;
   for (const part of parts) {
-    current = record(current?.['properties'])?.[part] as Record<string, unknown> | undefined;
+    current = record(record(current?.['properties'])?.[part]);
   }
   return current;
 }
@@ -528,7 +544,7 @@ function text(value: unknown): string {
 
 function unwrapTemplate(value: string): string {
   const match = value.match(/^\$\{([\s\S]*)\}$/);
-  return match === null ? value : match[1]!;
+  return match?.[1] ?? value;
 }
 
 function literalString(value: string): string | undefined {
@@ -545,7 +561,7 @@ function splitTernary(value: string): readonly [string, string, string] | undefi
   let question = -1;
   let quote: string | undefined;
   for (let index = 0; index < value.length; index++) {
-    const char = value[index]!;
+    const char = value.charAt(index);
     if (quote !== undefined) {
       if (char === quote && value[index - 1] !== '\\') quote = undefined;
       continue;
@@ -597,9 +613,7 @@ function isNonDeterministic(expression: string): boolean {
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
+  return isRecord(value) ? value : undefined;
 }
 
 function escapeRegExp(value: string): string {

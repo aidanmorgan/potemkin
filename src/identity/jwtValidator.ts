@@ -19,9 +19,9 @@
  */
 
 import jwt from 'jsonwebtoken';
-import type { Algorithm, SignOptions, VerifyOptions, JwtPayload } from 'jsonwebtoken';
+import type { Algorithm, Jwt, JwtPayload, VerifyOptions } from 'jsonwebtoken';
 import type { Actor, JwtValidationConfig } from '../contracts/identity.js';
-import type { JsonObject } from '../contracts/value.js';
+import { isRecord } from '../contracts/value.js';
 
 export type { JwtValidationConfig };
 
@@ -45,48 +45,6 @@ export class JwtValidationError extends Error {
     this.name = 'JwtValidationError';
     this.code = code;
   }
-}
-
-/**
- * Sign a JWT using HS256 via jsonwebtoken.
- * Returns the full compact token: `<header>.<payload>.<signature>`.
- *
- * When `headerOverrides.alg` is set to `'none'`, an unsecured JWT (no
- * signature) is produced — used only in tests that verify the validator
- * rejects alg:none tokens.
- *
- * This helper is exported so test fixtures can mint JWTs. Production code
- * should NOT call this — JWTs sent to Potemkin are signed externally.
- */
-export function signJwtHs256(
-  payload: JsonObject,
-  secret: string,
-  headerOverrides: { alg?: string; typ?: string } = {},
-): string {
-  const alg = (headerOverrides.alg ?? 'HS256') as Algorithm | 'none';
-
-  const options: SignOptions = {
-    algorithm: alg as Algorithm,
-    // Preserve any caller-supplied claims verbatim (exp/nbf/iss/aud may live in
-    // the payload); do not let jsonwebtoken inject its own iat/exp.
-    noTimestamp: true,
-  };
-  if (headerOverrides.typ !== undefined) {
-    options.header = { alg: alg as Algorithm, typ: headerOverrides.typ };
-  }
-
-  // alg:none yields an unsecured token (empty signature). jsonwebtoken signs
-  // 'none' with an empty key.
-  if (alg === 'none') {
-    return jwt.sign(payload, '', { ...options, algorithm: 'none' });
-  }
-
-  // Blank/whitespace secrets are used only by tests that verify validateJwt's
-  // blank-secret guard fires. jsonwebtoken refuses to sign with an empty key, so
-  // mint with a placeholder — the resulting token is rejected on validate before
-  // any signature check because the config secret is blank.
-  const signingSecret = secret.trim() === '' ? 'x' : secret;
-  return jwt.sign(payload, signingSecret, options);
 }
 
 /**
@@ -121,29 +79,7 @@ export function validateJwt(token: string, config: JwtValidationConfig): Actor {
     );
   }
 
-  const configuredAlg = (config.algorithm ?? 'HS256') as Algorithm;
-
-  // Enforce the algorithm allow-list from the token header BEFORE verification,
-  // rejecting alg:none and algorithm-confusion with a precise code. (Reading the
-  // header's alg field is not cryptographic work — jsonwebtoken still performs
-  // the signature and registered-claim verification below.)
-  let headerAlg: unknown;
-  try {
-    headerAlg = (
-      JSON.parse(Buffer.from(parts[0] as string, 'base64url').toString('utf8')) as Record<
-        string,
-        unknown
-      >
-    )['alg'];
-  } catch {
-    throw new JwtValidationError('JWT header is not a valid JSON object', 'JWT_MALFORMED');
-  }
-  if (headerAlg !== configuredAlg) {
-    throw new JwtValidationError(
-      `JWT algorithm "${String(headerAlg)}" is not supported (expected "${configuredAlg}")`,
-      'JWT_UNSUPPORTED_ALG',
-    );
-  }
+  const configuredAlg: Algorithm = config.algorithm ?? 'HS256';
 
   const verifyOptions: VerifyOptions = {
     // Allow-list the single configured algorithm: any other alg value
@@ -155,6 +91,35 @@ export function validateJwt(token: string, config: JwtValidationConfig): Actor {
   }
   if (config.audience !== undefined) {
     verifyOptions.audience = config.audience;
+  }
+
+  // Decode the complete token through jsonwebtoken before verification so the
+  // algorithm allow-list can be enforced before cryptographic verification.
+  // This is decoding only; signature and registered-claim checks still happen
+  // in jwt.verify below.
+  let decoded: Jwt | null;
+  try {
+    decoded = jwt.decode(token, { complete: true });
+  } catch {
+    // jsonwebtoken parses JWT payloads while decoding complete tokens. If that
+    // parsing fails, let verify produce the same dependency-owned error that
+    // the previous header-only path would have mapped.
+    try {
+      jwt.verify(token, config.secret, verifyOptions);
+    } catch (err) {
+      throw mapJwtError(err, configuredAlg);
+    }
+    throw new JwtValidationError('JWT validation failed', 'JWT_MALFORMED');
+  }
+  if (decoded === null || !isRecord(decoded.header)) {
+    throw new JwtValidationError('JWT header is not a valid JSON object', 'JWT_MALFORMED');
+  }
+  const headerAlg = decoded.header['alg'];
+  if (headerAlg !== configuredAlg) {
+    throw new JwtValidationError(
+      `JWT algorithm "${String(headerAlg)}" is not supported (expected "${configuredAlg}")`,
+      'JWT_UNSUPPORTED_ALG',
+    );
   }
 
   let payload: JwtPayload;
@@ -179,7 +144,7 @@ export function validateJwt(token: string, config: JwtValidationConfig): Actor {
     if (!(claim in payload)) {
       throw new JwtValidationError(`JWT missing required claim: ${claim}`, 'JWT_MISSING_CLAIM');
     }
-    if (expected !== '*' && String((payload as Record<string, unknown>)[claim]) !== expected) {
+    if (expected !== '*' && String(payload[claim]) !== expected) {
       throw new JwtValidationError(`JWT claim ${claim} mismatch`, 'JWT_CLAIM_MISMATCH');
     }
   }
@@ -188,7 +153,7 @@ export function validateJwt(token: string, config: JwtValidationConfig): Actor {
   const subjectClaim = config.subjectClaim ?? 'sub';
   const scopesClaim = config.scopesClaim ?? 'scopes';
 
-  const subjectValue = (payload as Record<string, unknown>)[subjectClaim];
+  const subjectValue = payload[subjectClaim];
   if (typeof subjectValue !== 'string' || subjectValue.trim() === '') {
     throw new JwtValidationError(
       `JWT is missing required subject claim "${subjectClaim}"`,
@@ -196,7 +161,7 @@ export function validateJwt(token: string, config: JwtValidationConfig): Actor {
     );
   }
 
-  const scopesValue = (payload as Record<string, unknown>)[scopesClaim];
+  const scopesValue = payload[scopesClaim];
   let scopes: readonly string[] = [];
   if (typeof scopesValue === 'string') {
     scopes = scopesValue
@@ -204,7 +169,7 @@ export function validateJwt(token: string, config: JwtValidationConfig): Actor {
       .map((s) => s.trim())
       .filter((s) => s.length > 0);
   } else if (Array.isArray(scopesValue)) {
-    scopes = (scopesValue as unknown[])
+    scopes = scopesValue
       .filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
       .map((s) => s.trim());
   }

@@ -15,7 +15,7 @@ import type {
   FiniteStateModel,
 } from '../../equivalence/types.js';
 
-function request(operation: string, path: string): EquivalenceRequest {
+function request(path: string): EquivalenceRequest {
   return { method: 'GET', path, headers: { accept: 'application/json' } };
 }
 
@@ -24,7 +24,7 @@ function step(
   model: EquivalenceStep['model'],
   real: EquivalenceStep['real'],
 ): EquivalenceStep {
-  return { operation, request: request(operation, `/orders/${operation}`), model, real };
+  return { operation, request: request(`/orders/${operation}`), model, real };
 }
 
 describe('equivalence observables', () => {
@@ -187,7 +187,7 @@ describe('equivalence observables', () => {
     const result = compareEquivalenceTrace([
       {
         operation: 'update',
-        request: request('update', '/orders/1'),
+        request: request('/orders/1'),
         preState: {
           model: { status: 'new', untouched: 1 },
           real: { status: 'new', untouched: 1 },
@@ -210,7 +210,7 @@ describe('equivalence observables', () => {
     const result = compareEquivalenceTrace([
       {
         operation: 'update',
-        request: request('update', '/orders/1'),
+        request: request('/orders/1'),
         preState: {
           model: { status: 'new', untouched: 1 },
           real: { status: 'new', untouched: 1 },
@@ -251,7 +251,7 @@ describe('equivalence observables', () => {
     const result = compareEquivalenceTrace([
       {
         operation: 'create',
-        request: request('create', '/orders'),
+        request: request('/orders'),
         preState: { model: null, real: null },
         writeSet: {
           fields: ['id', 'status'],
@@ -377,7 +377,7 @@ describe('equivalence observables', () => {
           code: 'ENUMERABLE_NARROWING',
           justification: 'The provider deliberately narrows this enum.',
           citation: 'EQ4-test-ledger',
-          pinnedSequence: [request('read', '/orders/read')],
+          pinnedSequence: [request('/orders/read')],
         },
       ]),
     ).toEqual([]);

@@ -1,7 +1,14 @@
-import type { JsonObject, JsonValue } from '../contracts/value.js';
-import { aggregateId } from './references.js';
+import { isJsonObject, type JsonObject, type JsonValue } from '../contracts/value.js';
+import { aggregateId, type AggregateId } from './references.js';
 
-export type IdentitySource = 'path' | 'query' | 'header' | 'payload';
+export const IdentitySource = {
+  Path: 'path',
+  Query: 'query',
+  Header: 'header',
+  Payload: 'payload',
+} as const;
+
+export type IdentitySource = (typeof IdentitySource)[keyof typeof IdentitySource];
 
 export interface IdentityKey {
   readonly from: IdentitySource;
@@ -10,7 +17,8 @@ export interface IdentityKey {
 }
 
 export interface IdentityResolutionInput {
-  readonly targetId: string | null;
+  /** An id already resolved by the command domain, or null before identity resolution. */
+  readonly targetId: AggregateId | null;
   readonly key?: IdentityKey;
   readonly generated?: () => string;
   readonly path: string;
@@ -35,7 +43,13 @@ function readPointer(
   let current = value;
   for (const segment of segments) {
     if (current === null || current === undefined || typeof current !== 'object') return undefined;
-    current = Array.isArray(current) ? current[Number(segment)] : (current as JsonObject)[segment];
+    if (Array.isArray(current)) {
+      current = current[Number(segment)];
+    } else if (isJsonObject(current)) {
+      current = current[segment];
+    } else {
+      return undefined;
+    }
   }
   return current;
 }
@@ -59,7 +73,7 @@ function candidateValue(input: IdentityResolutionInput): JsonValue | undefined {
   if (key.from === 'path') return pathValue(input.path, input.contractPath, key.name);
   if (key.from === 'header') return headerValue(input.headers, key.name ?? key.pointer ?? '');
   const source = key.from === 'payload' ? input.payload : input.query;
-  return readPointer(source as JsonValue, key.pointer ?? key.name);
+  return readPointer(source, key.pointer ?? key.name);
 }
 
 /** Resolve an aggregate identity from a compiled, transport-neutral policy. */

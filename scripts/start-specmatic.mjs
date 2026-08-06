@@ -3,11 +3,11 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import process from 'node:process';
 
-import yaml from 'js-yaml';
+import { parse } from 'yaml';
 import { glob } from 'tinyglobby';
 
 const configPath = path.resolve(process.env.POTEMKIN_CONFIG_PATH ?? '/workspace/potemkin.yml');
-const config = yaml.load(await readFile(configPath, 'utf8'));
+const config = parse(await readFile(configPath, 'utf8'));
 const patterns = config?.openapi;
 if (
   !Array.isArray(patterns) ||

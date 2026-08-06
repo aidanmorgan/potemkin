@@ -1,4 +1,7 @@
-import { parseJunitXml } from '../../../src/conformance/junit';
+import * as fs from 'node:fs/promises';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { findJunitFiles, parseJunitXml } from '../../../src/conformance/junit';
 
 describe('Specmatic JUnit parser', () => {
   it('parses totals and exact failure identity from the diagnostic fields', () => {
@@ -109,5 +112,72 @@ describe('Specmatic JUnit parser', () => {
         actualStatus: '400',
       }),
     );
+  });
+
+  it('normalizes external method and absolute URL path tokens at the parsed boundary', () => {
+    const report = parseJunitXml(`
+      <testsuite tests="1" failures="1">
+        <testcase name="extension method">
+          <failure message="bad">API: report https://example.test/leads/42 -&gt; 400</failure>
+        </testcase>
+      </testsuite>`);
+
+    expect(report.cases[0]).toEqual(
+      expect.objectContaining({ method: 'REPORT', path: '/leads/42' }),
+    );
+  });
+
+  it('preserves entities, CDATA, nested diagnostics, namespaces, and quoted attributes', () => {
+    const report = parseJunitXml(`
+      <j:testsuite xmlns:j="urn:junit" tests="2" failures="2">
+        <j:testcase classname="crm &gt; api" name="read &amp; write &gt; lead">
+          <j:failure message="status &lt; mismatch"><![CDATA[API: POST /leads/(id:uuid) -> 4xx
+            raw <stack>trace</stack>]]><j:diagnostic>Specification expected status 404 but response contained status 400</j:diagnostic></j:failure>
+        </j:testcase>
+        <j:testcase name="transport error">
+          <j:error type="Timeout"><j:trace><j:line>connection failed</j:line></j:trace></j:error>
+        </j:testcase>
+      </j:testsuite>`);
+
+    expect(report.testCases).toEqual([
+      expect.objectContaining({
+        classname: 'crm > api',
+        message: 'status < mismatch',
+        testName: 'read & write > lead',
+        details: expect.stringContaining('raw <stack>trace</stack>'),
+      }),
+      expect.objectContaining({
+        message: 'Timeout',
+        details: 'connection failed',
+      }),
+    ]);
+    expect(report.cases).toEqual([
+      expect.objectContaining({
+        method: 'POST',
+        path: '/leads/{id}',
+        expectedStatus: '404',
+        actualStatus: '400',
+      }),
+      expect.objectContaining({ message: 'Timeout' }),
+    ]);
+  });
+
+  it('discovers nested XML reports and preserves the missing-directory error', async () => {
+    const reportDir = await fs.mkdtemp(path.join(os.tmpdir(), 'potemkin-junit-'));
+    const nestedDir = path.join(reportDir, 'nested');
+    await fs.mkdir(nestedDir);
+    const rootReport = path.join(reportDir, 'root.XML');
+    const nestedReport = path.join(nestedDir, 'nested.xml');
+    await fs.writeFile(rootReport, '<testsuite tests="0" />');
+    await fs.writeFile(nestedReport, '<testsuite tests="0" />');
+
+    try {
+      expect(await findJunitFiles(reportDir)).toEqual([rootReport, nestedReport].sort());
+      await expect(findJunitFiles(path.join(reportDir, 'missing'))).rejects.toThrow(
+        `Specmatic did not produce a JUnit report directory at ${path.join(reportDir, 'missing')}`,
+      );
+    } finally {
+      await fs.rm(reportDir, { recursive: true, force: true });
+    }
   });
 });

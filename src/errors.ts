@@ -1,10 +1,4 @@
-import type { JsonObject, JsonValue } from './contracts/value.js';
-
-function isJsonObject(value: JsonValue | undefined): value is JsonObject {
-  return (
-    value !== undefined && value !== null && typeof value === 'object' && !Array.isArray(value)
-  );
-}
+import { isJsonObject, isJsonValue, type JsonValue } from './contracts/value.js';
 
 export abstract class SimError extends Error {
   abstract readonly code: string;
@@ -28,16 +22,46 @@ export abstract class SimError extends Error {
 }
 
 /**
+ * Shared mechanics for structured, non-HTTP diagnostics.
+ *
+ * This base intentionally has different JSON semantics from {@link SimError}:
+ * diagnostic details are omitted when absent, rather than represented as
+ * `null`. Keeping that distinction here lets authoring and model diagnostics
+ * share their error mechanics without coupling their public code contracts to
+ * runtime HTTP errors.
+ */
+export abstract class StructuredError<Code extends string> extends Error {
+  abstract readonly code: Code;
+  readonly details?: JsonValue;
+
+  constructor(message: string, details?: JsonValue) {
+    super(message);
+    this.name = new.target.name;
+    this.details = details;
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+
+  toJSON(): Record<string, unknown> {
+    return {
+      name: this.name,
+      code: this.code,
+      message: this.message,
+      ...(this.details === undefined ? {} : { details: this.details }),
+    };
+  }
+}
+
+/**
  * Reconstruct a typed SimError from an untrusted JSON value. This is a module
  * operation rather than a static service/factory on the error hierarchy, so
  * error construction has one explicit dependency-free boundary.
  */
 export function deserializeSimError(value: unknown): SimError | null {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
-  const json = value as Record<string, unknown>;
+  if (!isJsonObject(value)) return null;
+  const json = value;
   const code = json['code'];
   const message = typeof json['message'] === 'string' ? json['message'] : String(code ?? 'unknown');
-  const details = (json['details'] as JsonValue | undefined) ?? undefined;
+  const details = isJsonValue(json['details']) ? json['details'] : undefined;
 
   switch (code) {
     case 'CONTRACT_VIOLATION':
@@ -60,8 +84,8 @@ export function deserializeSimError(value: unknown): SimError | null {
       return new ReactionBudgetExceededError(message, details);
     case 'FAULT_SIMULATED': {
       const status = typeof json['status'] === 'number' ? json['status'] : 500;
-      const simulatedBody = (json['simulatedBody'] as JsonValue | undefined) ?? null;
-      const simulatedHeaders = json['simulatedHeaders'] as Record<string, string> | undefined;
+      const simulatedBody = isJsonValue(json['simulatedBody']) ? json['simulatedBody'] : null;
+      const simulatedHeaders = stringMap(json['simulatedHeaders']);
       return new FaultSimulatedError(status, simulatedBody, simulatedHeaders, details);
     }
     case 'AUTH_MISSING':
@@ -81,6 +105,16 @@ export function deserializeSimError(value: unknown): SimError | null {
     default:
       return null;
   }
+}
+
+function stringMap(value: unknown): Record<string, string> | undefined {
+  if (!isJsonObject(value)) return undefined;
+  const result: Record<string, string> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (typeof entry !== 'string') return undefined;
+    result[key] = entry;
+  }
+  return result;
 }
 
 // Boot-time error — no HTTP status (thrown before server starts)
@@ -316,7 +350,9 @@ export class FaultSimulatedError extends SimError {
     return this.simulatedBody !== null &&
       typeof this.simulatedBody === 'object' &&
       !Array.isArray(this.simulatedBody)
-      ? (this.simulatedBody as Record<string, unknown>)
+      ? isJsonObject(this.simulatedBody)
+        ? this.simulatedBody
+        : { body: this.simulatedBody }
       : { body: this.simulatedBody };
   }
 }

@@ -173,3 +173,28 @@ plus 265 audit tests, with no skipped tests in those runs. The observability
 E2E suite asserts the production OTLP/HTTP exporter, final spans, and
 source-independent outcome metrics through Specmatic for YAML, TypeScript,
 and mixed loading.
+
+## E2E coverage audit closure — 2026-08-06
+
+The 32-item audit in [`e2e-coverage-todo.md`](e2e-coverage-todo.md) is closed
+with one dedicated Specmatic-backed test per item. The new test paths are:
+
+`cors-yaml`, `cors-typescript`, `api-versioning-typescript`,
+`conditional-requests-typescript`, `conditional-reads-typescript`,
+`head-typescript`, `hateoas-typescript`, `resource-yaml`,
+`resource-typescript`, `composition-typescript`, `composition-mixed`,
+`sdk-functional-helpers`, `sdk-function-composition`, `sdk-expression`,
+`sdk-core-builders`, `sdk-policy-builders`, `sdk-side-effect-builders`,
+`sdk-reaction-projection-builders`, `sdk-saga-webhook-builders`,
+`query-mapping-typescript`, `audit-fields-typescript`,
+`state-fields-typescript`, `state-validation-typescript`,
+`strict-schema-typescript`, `control-defaults-typescript`,
+`authorization-typescript`, `lifecycle-typescript`,
+`programmatic-typescript-config`, `typescript-source-reload`,
+`yaml-only-validation`, `yaml-boot-errors`, and `typescript-boot-errors`.
+
+The dedicated closure run passed 32 suites and 32 tests; `tsc`, the authoring
+typecheck, and the no-skips check also passed. The required repository-wide
+`pnpm run test:e2e` command passes 110 suites and 992 tests, including the
+standalone `plain-specmatic-examples` suite. OTEL-001 is covered by focused
+writer tests for batching, backpressure, recovery, and producer latency.

@@ -1,4 +1,4 @@
-import type { JsonObject, JsonValue } from '../contracts/value.js';
+import { isJsonObject, type JsonObject, type JsonValue } from '../contracts/value.js';
 import type { OpenApiOperation } from './loader.js';
 
 /**
@@ -57,11 +57,6 @@ function schemaAcceptsHateoasProperty(schema: JsonObject): boolean {
   return true;
 }
 
-/** Narrow object guard for schema fragments and response bodies. */
-function isJsonObject(value: unknown): value is JsonObject {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
 /** Return an array item's schema, if the response schema describes an array. */
 function arrayItemSchema(schema: JsonObject): JsonObject | undefined {
   const items = schema['items'];
@@ -98,7 +93,7 @@ export function responseSupportsHateoas(
       const itemSchema = arrayItemSchema(itemsProperty);
       return (
         itemSchema === undefined ||
-        (body['items'] as JsonValue[]).every(
+        body['items'].every(
           (item) => !isJsonObject(item) || schemaAcceptsHateoasProperty(itemSchema),
         )
       );

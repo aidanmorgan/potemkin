@@ -78,12 +78,11 @@ describe('transition example request generation', () => {
 
     const app = express();
     for (const method of ['DELETE', 'PATCH', 'PUT', 'POST'] as const) {
-      const test = operationRequest(
+      await operationRequest(
         app,
         { ...create, method, form: method === 'POST', headers: { 'x-test': 'yes' } },
         { id: method },
-      );
-      expect(test).toBeDefined();
+      ).expect(404);
     }
   });
 

@@ -290,6 +290,38 @@ describe('contract error body builder', () => {
     });
   });
 
+  it('resolves RFC 6901 escaped segments in local schema references', () => {
+    const doc: OpenApiDoc = {
+      raw: {
+        components: {
+          schemas: {
+            'Error/Envelope~v1': {
+              type: 'object',
+              required: ['code'],
+              properties: { code: { type: 'string' } },
+            },
+          },
+        },
+      },
+      paths: {
+        '/escaped': {
+          get: {
+            responseSchemas: {
+              default: { $ref: '#/components/schemas/Error~1Envelope~0v1' },
+            },
+          },
+        },
+      },
+    };
+
+    const body = buildContractErrorBody(doc, 'GET', '/escaped', 400, { code: 'E-1' });
+
+    expect(body).toEqual({ code: 'E-1' });
+    expect(validateContractErrorBody(doc, 'GET', '/escaped', 400, body ?? null)).toEqual({
+      valid: true,
+    });
+  });
+
   it('uses mapped codes for enum fields and reports validation failures', () => {
     const doc = docFor({
       type: 'object',

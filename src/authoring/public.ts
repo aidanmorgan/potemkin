@@ -6,10 +6,12 @@ import { defineHelper } from './helpers.js';
 import { yamlComponent } from './composition.js';
 import type { TypeScriptHelperOptions } from './helpers.js';
 import {
+  BoundaryName,
   behaviorName,
   boundaryName,
   contractPath,
   eventReference,
+  EventType,
   eventType,
   faultName,
   guardName,
@@ -22,25 +24,26 @@ import {
   stateFieldName,
   helperName,
   linkRelation,
+  HttpMethod,
   operationId,
+  OperationId,
   projectionName,
   reactionName,
   pathParameter,
   pathSegment,
   resourceName,
   schemaReference,
+  SchemaReference,
   scopeName,
   ReferenceValidationError,
 } from '../domain/references.js';
 import type { NativeReducer, NativeReducerBuilder, NativeReducerContext } from './nativeReducer.js';
 import type {
-  BoundaryName,
   BehaviorName,
   ContractPath,
   ContractPathSegment,
   EventReference,
   EventSelector,
-  EventType,
   FieldPath,
   FieldPathSegment,
   QueryPath,
@@ -51,14 +54,11 @@ import type {
   SagaStepName,
   WebhookName,
   HelperName,
-  HttpMethod,
   LinkRelation,
-  OperationId,
   ProjectionName,
   ReactionName,
   ResourceName,
   ScopeName,
-  SchemaReference,
   ScenarioEventRegistry,
 } from '../domain/references.js';
 
@@ -167,15 +167,14 @@ const any: <Context>(
 ) => AuthoringPredicate<Context> = builders.any;
 const not: <Context>(predicate: AuthoringPredicate<Context>) => AuthoringPredicate<Context> =
   builders.not;
-const pipe = builders.pipe as Pipe;
-const compose = builders.compose as Compose;
-const mapReadonly = builders.mapReadonly as <Input, Output>(
+const pipe: Pipe = builders.pipe;
+const compose: Compose = builders.compose;
+const mapReadonly: <Input, Output>(
   values: readonly Input[],
   map: (value: Input) => Output,
-) => readonly Output[];
-const concatReadonly = builders.concatReadonly as <Value>(
-  ...values: readonly (readonly Value[])[]
-) => readonly Value[];
+) => readonly Output[] = builders.mapReadonly;
+const concatReadonly: <Value>(...values: readonly (readonly Value[])[]) => readonly Value[] =
+  builders.concatReadonly;
 const query: (predicate: QueryExpression) => QueryExpression = builders.query;
 const expression: <Context, Value, Phase extends ExpressionPhase>(
   phase: Phase,
@@ -225,10 +224,12 @@ export {
   defineQuery,
   boundary,
   simulation,
+  BoundaryName,
   boundaryName,
   behaviorName,
   contractPath,
   eventReference,
+  EventType,
   eventType,
   faultName,
   guardName,
@@ -241,7 +242,9 @@ export {
   stateFieldName,
   helperName,
   linkRelation,
+  HttpMethod,
   operationId,
+  OperationId,
   projectionName,
   reactionName,
   pathParameter,
@@ -249,6 +252,7 @@ export {
   resourceName,
   scopeName,
   schemaReference,
+  SchemaReference,
   ReferenceValidationError,
   defineHelper,
   yamlComponent,
@@ -347,13 +351,11 @@ export type {
   DataGenerator,
   DataFormat,
   WebhookDefinition,
-  BoundaryName,
   BehaviorName,
   ContractPath,
   ContractPathSegment,
   EventReference,
   EventSelector,
-  EventType,
   FieldPath,
   FieldPathSegment,
   QueryPath,
@@ -366,12 +368,9 @@ export type {
   SagaStepName,
   WebhookName,
   HelperName,
-  HttpMethod,
   LinkRelation,
-  OperationId,
   ResourceName,
   ScopeName,
-  SchemaReference,
   ScenarioEventRegistry,
 };
 

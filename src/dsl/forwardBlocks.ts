@@ -1,4 +1,4 @@
-import type { Patch } from '../contracts/value.js';
+import { isRecord, type Patch } from '../contracts/value.js';
 import { parsePointer } from '../model/patches.js';
 
 // Pure data transformations for the forward-blocks the plugin merges into Specmatic.
@@ -13,26 +13,27 @@ export interface WorkflowConfig {
 }
 
 export function validateWorkflowForward(raw: unknown): WorkflowConfig {
-  if (raw === null || typeof raw !== 'object') {
+  if (!isRecord(raw)) {
     throw new Error('workflow: must be an object');
   }
-  const ids = (raw as { ids?: unknown }).ids;
-  if (ids === undefined || ids === null || typeof ids !== 'object') {
+  const ids = raw['ids'];
+  if (!isRecord(ids)) {
     throw new Error('workflow.ids: must be an object');
   }
   const out: Record<string, WorkflowIdEntry> = {};
-  for (const [k, v] of Object.entries(ids as Record<string, unknown>)) {
-    if (v === null || typeof v !== 'object') {
+  for (const [k, v] of Object.entries(ids)) {
+    if (!isRecord(v)) {
       throw new Error(`workflow.ids.${k}: must be { extract, use }`);
     }
-    const obj = v as { extract?: unknown; use?: unknown };
-    if (typeof obj.extract !== 'string') {
+    const extract = v['extract'];
+    const use = v['use'];
+    if (typeof extract !== 'string') {
       throw new Error(`workflow.ids.${k}.extract: must be a JSONPath string`);
     }
-    if (typeof obj.use !== 'string') {
+    if (typeof use !== 'string') {
       throw new Error(`workflow.ids.${k}.use: must be a JSONPath string`);
     }
-    out[k] = { extract: obj.extract, use: obj.use };
+    out[k] = { extract, use };
   }
   return { ids: out };
 }
@@ -49,25 +50,25 @@ export interface GovernanceConfig {
 }
 
 export function validateGovernanceForward(raw: unknown): GovernanceConfig {
-  if (raw === null || typeof raw !== 'object') {
+  if (!isRecord(raw)) {
     throw new Error('governance: must be an object');
   }
-  const obj = raw as Record<string, unknown>;
+  const obj = raw;
   const out: { -readonly [K in keyof GovernanceConfig]: GovernanceConfig[K] } = {};
   if (obj['report'] !== undefined) {
-    if (obj['report'] === null || typeof obj['report'] !== 'object') {
+    if (!isRecord(obj['report'])) {
       throw new Error('governance.report: must be an object');
     }
-    const report = obj['report'] as Record<string, unknown>;
+    const report = obj['report'];
     if (report['format'] !== undefined && typeof report['format'] !== 'string') {
       throw new Error('governance.report.format: must be a string');
     }
     if (report['successCriteria'] !== undefined) {
       const criteria = report['successCriteria'];
-      if (criteria === null || typeof criteria !== 'object' || Array.isArray(criteria)) {
+      if (!isRecord(criteria)) {
         throw new Error('governance.report.successCriteria: must be an object');
       }
-      const values = criteria as Record<string, unknown>;
+      const values = criteria;
       if (
         values['minCoverage'] !== undefined &&
         (typeof values['minCoverage'] !== 'number' || !Number.isFinite(values['minCoverage']))
@@ -84,15 +85,23 @@ export function validateGovernanceForward(raw: unknown): GovernanceConfig {
         );
       }
     }
+    const successCriteria = report['successCriteria'];
     out.report = {
       ...(typeof report['format'] === 'string' ? { format: report['format'] } : {}),
-      ...(report['successCriteria'] !== undefined
+      ...(isRecord(successCriteria)
         ? {
-            successCriteria: report['successCriteria'] as GovernanceConfig['report'] extends {
-              successCriteria?: infer Criteria;
-            }
-              ? Criteria
-              : never,
+            successCriteria: {
+              ...(typeof successCriteria['minCoverage'] === 'number'
+                ? { minCoverage: successCriteria['minCoverage'] }
+                : {}),
+              ...(Array.isArray(successCriteria['excludedEndpoints'])
+                ? {
+                    excludedEndpoints: successCriteria['excludedEndpoints'].filter(
+                      (value): value is string => typeof value === 'string',
+                    ),
+                  }
+                : {}),
+            },
           }
         : {}),
     };
@@ -150,33 +159,23 @@ function pointerToJsonPath(pointer: string): string {
 
 // Merge forward-block configs: scalars override, lists concatenate, objects merge recursively.
 
-export function mergeForwardBlock<T extends Record<string, unknown>>(
-  specmatic: T | undefined,
-  potemkin: Partial<T> | undefined,
-): T {
-  if (specmatic === undefined && potemkin === undefined) return {} as T;
-  if (specmatic === undefined) return { ...(potemkin as T) };
+export function mergeForwardBlock(
+  specmatic: Readonly<Record<string, unknown>> | undefined,
+  potemkin: Readonly<Record<string, unknown>> | undefined,
+): Record<string, unknown> {
+  if (specmatic === undefined && potemkin === undefined) return {};
+  if (specmatic === undefined) return { ...potemkin };
   if (potemkin === undefined) return { ...specmatic };
   const result: Record<string, unknown> = { ...specmatic };
   for (const [k, v] of Object.entries(potemkin)) {
     const existing = result[k];
     if (Array.isArray(existing) && Array.isArray(v)) {
       result[k] = [...existing, ...v];
-    } else if (
-      existing !== null &&
-      typeof existing === 'object' &&
-      v !== null &&
-      typeof v === 'object' &&
-      !Array.isArray(existing) &&
-      !Array.isArray(v)
-    ) {
-      result[k] = mergeForwardBlock(
-        existing as Record<string, unknown>,
-        v as Record<string, unknown>,
-      );
+    } else if (isRecord(existing) && isRecord(v)) {
+      result[k] = mergeForwardBlock(existing, v);
     } else if (v !== undefined) {
       result[k] = v;
     }
   }
-  return result as T;
+  return result;
 }

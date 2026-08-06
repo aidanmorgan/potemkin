@@ -548,6 +548,7 @@ async function generatedSchemaDiagnostics(
   } catch {
     return [];
   }
+  if (typeof schema !== 'boolean' && !isRecord(schema)) return [];
   const parsed = parseDocument(document.getText());
   if (parsed.errors.length > 0) return [];
   let value: unknown;
@@ -556,9 +557,7 @@ async function generatedSchemaDiagnostics(
   } catch {
     return [];
   }
-  const validate = new Ajv({ allErrors: true, strict: false }).compile(
-    schema as Record<string, unknown>,
-  );
+  const validate = new Ajv({ allErrors: true, strict: false }).compile(schema);
   if (validate(value)) return [];
   return (validate.errors ?? []).slice(0, 8).map((error) => {
     const property = error.instancePath.split('/').filter(Boolean).at(-1);
@@ -667,8 +666,11 @@ function configurationKeysAt(documentText: string, lineNumber: number): readonly
   for (const sourceLine of lines.slice(0, lineNumber)) {
     const match = sourceLine.match(/^(\s*)([A-Za-z_][A-Za-z0-9_]*):(?:\s|$)/);
     if (match === null) continue;
-    const indent = match[1]!.length;
-    if (indent < currentIndent) parents.set(indent, match[2]!);
+    const indentation = match[1];
+    const key = match[2];
+    if (indentation === undefined || key === undefined) continue;
+    const indent = indentation.length;
+    if (indent < currentIndent) parents.set(indent, key);
     else if (indent <= currentIndent) parents.delete(indent);
   }
   const parent = [...parents.entries()]

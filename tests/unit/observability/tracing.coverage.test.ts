@@ -2,7 +2,7 @@
  * Coverage backfill for observability/tracing.ts
  *
  * Uncovered lines:
- *  - 54: `instanceId = 'not-implemented'` catch branch when nextUuidv7 throws
+ *  - 54: `instanceId = randomUUID()` catch branch when uuid.v7 throws
  *  - 57: serviceName resolved from env var (OTEL_SERVICE_NAME) when opts.serviceName absent
  *  - 67-68: `{}` branch in traceExporterOpts/metricsExporterOpts when otlpEndpoint is undefined
  */
@@ -63,15 +63,13 @@ describe('observability/tracing.ts — _serviceVersion fallback (line 24)', () =
 });
 
 describe('observability/tracing.ts — coverage backfill', () => {
-  describe('initTracing — nextUuidv7 throws → instanceId falls back to randomUUID (line 54)', () => {
-    it('uses a valid UUID instanceId when nextUuidv7 throws during SDK init', async () => {
+  describe('initTracing — uuid.v7 throws → instanceId falls back to randomUUID (line 54)', () => {
+    it('uses a valid UUID instanceId when uuid.v7 throws during SDK init', async () => {
       jest.resetModules();
 
-      jest.mock('../../../src/ids/uuidv7', () => ({
-        nextUuidv7: () => {
-          throw new Error('not-implemented');
-        },
-        epochAnchoredUuidv7: () => {
+      jest.mock('uuid', () => ({
+        ...jest.requireActual('uuid'),
+        v7: () => {
           throw new Error('not-implemented');
         },
       }));
@@ -92,7 +90,7 @@ describe('observability/tracing.ts — coverage backfill', () => {
         env: process.env,
       });
       try {
-        // When nextUuidv7 throws, instanceId falls back to crypto.randomUUID() —
+        // When uuid.v7 throws, instanceId falls back to crypto.randomUUID() —
         // a valid UUID, never the static 'not-implemented' placeholder.
         expect(typeof result.shutdown).toBe('function');
         const instanceId = capturedResourceAttrs.value?.['service.instance.id'] as
@@ -111,7 +109,7 @@ describe('observability/tracing.ts — coverage backfill', () => {
         else delete process.env['OTEL_EXPORTER_OTLP_ENDPOINT'];
 
         jest.resetModules();
-        jest.unmock('../../../src/ids/uuidv7');
+        jest.unmock('uuid');
       }
     }, 15000);
   });
@@ -255,14 +253,12 @@ describe('observability/tracing.ts — coverage backfill', () => {
 // ── fallback instanceId is a valid UUID, not 'not-implemented' ───────────────
 
 describe('instanceId fallback uses crypto.randomUUID()', () => {
-  it('fallback instanceId is a valid UUID when nextUuidv7 throws', async () => {
+  it('fallback instanceId is a valid UUID when uuid.v7 throws', async () => {
     jest.resetModules();
 
-    jest.mock('../../../src/ids/uuidv7', () => ({
-      nextUuidv7: () => {
-        throw new Error('uuid-unavailable');
-      },
-      epochAnchoredUuidv7: () => {
+    jest.mock('uuid', () => ({
+      ...jest.requireActual('uuid'),
+      v7: () => {
         throw new Error('uuid-unavailable');
       },
     }));
@@ -294,7 +290,7 @@ describe('instanceId fallback uses crypto.randomUUID()', () => {
       if (prevDisabled !== undefined) process.env['OTEL_SDK_DISABLED'] = prevDisabled;
       else delete process.env['OTEL_SDK_DISABLED'];
       jest.resetModules();
-      jest.unmock('../../../src/ids/uuidv7');
+      jest.unmock('uuid');
     }
   }, 15000);
 });

@@ -1,16 +1,27 @@
 import { createHash } from 'node:crypto';
 import type { Server } from 'node:http';
 import request, { type Test } from 'supertest';
+import { uuidV7OptionsFromSeed } from '../model/data.js';
+import { v7 } from 'uuid';
+import { Intent, Origin } from '../contracts/domain.js';
 import type { OpenApiDoc, OpenApiOperation } from '../contract/loader.js';
 import type { DomainEvent } from '../contracts/domain.js';
 import type { IdentityContext, RuntimeBoundary } from '../model/runtime.js';
 import type { RuntimeSystem } from '../runtime/system.js';
 import type { Transition, TransitionMachine } from '../model/transitionModel.js';
-import type { JsonObject, JsonValue } from '../contracts/value.js';
+import { isJsonObject, isJsonValue, type JsonObject, type JsonValue } from '../contracts/value.js';
+import {
+  AggregateId,
+  BoundaryName,
+  CommandId,
+  EventId,
+  EventType,
+  HttpMethod,
+  SequenceVersion,
+} from '../domain/references.js';
 import type { ExportExample } from './exportContracts.js';
 import type { createRuntimeGateway } from '../http/runtimeGateway.js';
 import { POTEMKIN_SEED } from '../http/potemkinHeaders.js';
-import { deterministicUuidv7 } from '../ids/uuidv7.js';
 import { ExportError } from '../errors.js';
 import type { ExportStatePlan, ExportStep } from '../dsl/types.js';
 
@@ -58,7 +69,7 @@ export function isObject(value: unknown): value is Record<string, unknown> {
 }
 
 export function jsonObject(value: unknown): JsonObject {
-  return isObject(value) ? (value as JsonObject) : {};
+  return isJsonObject(value) ? value : {};
 }
 
 export function routesFor(openapi: OpenApiDoc): readonly OperationRoute[] {
@@ -103,10 +114,11 @@ function primitiveFor(name: string, schema: Record<string, unknown>): JsonValue 
       name === 'currency' && enumValues.includes('usd')
         ? 'usd'
         : enumValues.find((value) => value !== null);
-    return (preferred ?? enumValues[0]) as JsonValue;
+    const selected = preferred ?? enumValues[0];
+    return isJsonValue(selected) ? selected : null;
   }
-  if (schema.default !== undefined) return schema.default as JsonValue;
-  if (schema.example !== undefined) return schema.example as JsonValue;
+  if (isJsonValue(schema.default)) return schema.default;
+  if (isJsonValue(schema.example)) return schema.example;
   if (name === 'currency') return 'usd';
   if (name === 'payment_method') return 'pm_card_visa';
   if (name === 'capture_method') return 'automatic';
@@ -250,7 +262,8 @@ function transitionPaths(
   const queue: TransitionBranch[] = [{ state: start, steps: [] }];
   const result: TransitionBranch[] = [];
   while (queue.length > 0) {
-    const current = queue.shift()!;
+    const current = queue.shift();
+    if (current === undefined) break;
     if (current.state === target) {
       result.push(current);
       continue;
@@ -278,13 +291,13 @@ async function restoreSeed(
   await system.engine.reset();
   const baseline = system.engine.snapshot();
   const seedEvent: DomainEvent = {
-    eventId: `transition-seed-${boundary.boundary}-${id}`,
-    type: 'BaselineEntityCreatedEvent',
-    boundary: boundary.boundary,
-    aggregateId: id,
+    eventId: EventId.parse(`transition-seed-${boundary.boundary}-${id}`),
+    type: EventType.parse('BaselineEntityCreatedEvent'),
+    boundary: BoundaryName.parse(boundary.boundary),
+    aggregateId: AggregateId.parse(id),
     payload: state,
     timestamp: new Date(system.clock.nowMs()).toISOString(),
-    sequenceVersion: 1,
+    sequenceVersion: SequenceVersion.parse(1),
     causedBy: null,
   };
   system.engine.restore({
@@ -330,7 +343,11 @@ function responseExample(
       method: 'GET',
       path: byIdPath(system.openapi, boundary.contractPath, id) ?? boundary.contractPath,
     },
-    httpResponse: { status: response.status, headers, body: (response.body ?? null) as JsonValue },
+    httpResponse: {
+      status: response.status,
+      headers,
+      body: response.body === undefined || !isJsonValue(response.body) ? null : response.body,
+    },
   };
 }
 
@@ -345,13 +362,13 @@ function rebaseIdentity(value: JsonValue, from: string, to: string): JsonValue {
     return value;
   }
   if (Array.isArray(value)) return value.map((entry) => rebaseIdentity(entry, from, to));
-  if (isObject(value))
-    return Object.fromEntries(
-      Object.entries(value).map(([key, entry]) => [
-        key,
-        rebaseIdentity(entry as JsonValue, from, to),
-      ]),
-    ) as JsonObject;
+  if (isJsonObject(value)) {
+    const rebased: JsonObject = {};
+    for (const [key, entry] of Object.entries(value)) {
+      rebased[key] = rebaseIdentity(entry, from, to);
+    }
+    return rebased;
+  }
   return value;
 }
 
@@ -364,15 +381,15 @@ function allocateIdentity(
   const generate = boundary.identity?.generate;
   if (generate === undefined) return undefined;
   const command = {
-    commandId: `transition-identity-${boundary.boundary}-${state}`,
-    boundary: boundary.boundary,
-    intent: 'creation' as const,
+    commandId: CommandId.parse(`transition-identity-${boundary.boundary}-${state}`),
+    boundary: BoundaryName.parse(boundary.boundary),
+    intent: Intent.Creation,
     targetId: null,
     payload: {},
     queryParams: {},
-    httpMethod: 'POST',
+    httpMethod: HttpMethod.parse('POST'),
     path: boundary.contractPath,
-    origin: 'inbound' as const,
+    origin: Origin.Inbound,
     depth: 0,
   };
   return generate({
@@ -387,7 +404,7 @@ function allocateIdentity(
     payload: {},
     helpers: {
       ...system.program.dependencies.helpers,
-      uuid: () => deterministicUuidv7(`potemkin-export-${seedIndex}`),
+      uuid: () => v7(uuidV7OptionsFromSeed(`potemkin-export-${seedIndex}`)),
     },
   } satisfies IdentityContext);
 }
@@ -431,13 +448,12 @@ async function capture(
 function resolveExportValue(value: JsonValue, targetId: string | undefined): JsonValue {
   if (value === '$targetId' && targetId !== undefined) return targetId;
   if (Array.isArray(value)) return value.map((entry) => resolveExportValue(entry, targetId));
-  if (isObject(value)) {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, entry]) => [
-        key,
-        resolveExportValue(entry as JsonValue, targetId),
-      ]),
-    ) as JsonObject;
+  if (isJsonObject(value)) {
+    const resolved: JsonObject = {};
+    for (const [key, entry] of Object.entries(value)) {
+      resolved[key] = resolveExportValue(entry, targetId);
+    }
+    return resolved;
   }
   return value;
 }
@@ -448,8 +464,8 @@ function bodyForExportStep(
   targetId: string | undefined,
 ): JsonObject {
   const generated = requestBody(route, 0);
-  const declared =
-    step.body === undefined ? {} : (resolveExportValue(step.body, targetId) as JsonObject);
+  const resolved = step.body === undefined ? undefined : resolveExportValue(step.body, targetId);
+  const declared = resolved !== undefined && isJsonObject(resolved) ? resolved : {};
   return { ...generated, ...declared };
 }
 
@@ -569,7 +585,7 @@ async function runDeclaredDirectPlan(
     system,
     boundary,
     targetId,
-    rebaseIdentity(createdState, createdId, targetId) as JsonObject,
+    jsonObject(rebaseIdentity(createdState, createdId, targetId)),
   );
   let finalBody: JsonObject = createdBody;
   for (const step of actions) {
@@ -749,9 +765,11 @@ async function runTarget(
     const current =
       stateOf(createdState, machine.controlField) ?? stateOf(createdBody, machine.controlField);
     if (current === undefined) continue;
-    const branches = transitionPaths(machine, current, target, create.operation.operationId!);
+    const operationId = create.operation.operationId;
+    if (operationId === undefined) continue;
+    const branches = transitionPaths(machine, current, target, operationId);
     for (const branch of branches) {
-      const rebasedState = rebaseIdentity(createdState, id, targetId) as JsonObject;
+      const rebasedState = jsonObject(rebaseIdentity(createdState, id, targetId));
       const seededState =
         (target === 'QUALIFIED' || target === 'CONVERTED') &&
         normalized(machine.aggregate) === 'lead'
@@ -838,7 +856,7 @@ export async function collectTransitionExamples(
       const create = createTransitions
         .map((transition) => ({ transition, route: createRouteFor(routes, boundary, transition) }))
         .find((entry) => entry.route !== undefined);
-      if (create === undefined) {
+      if (create === undefined || create.route === undefined) {
         console.warn(`Transition export coverage: no creation operation for ${machine.aggregate}`);
         continue;
       }
@@ -855,7 +873,7 @@ export async function collectTransitionExamples(
           app,
           machine,
           boundary,
-          create.route!,
+          create.route,
           target,
           targetId,
         );

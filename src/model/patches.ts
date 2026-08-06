@@ -1,11 +1,22 @@
 // RFC 6902 patch operations plus Potemkin extensions (append/prepend/increment/merge/upsert).
 // Paths are RFC 6901 JSON Pointers; `/items/-` is the array-end sentinel for add/append.
 
-import type { JsonObject, JsonValue, Patch, PatchSource } from '../contracts/value.js';
+import { isJsonObject, PatchOperation, PatchSource } from '../contracts/value.js';
+import type {
+  JsonObject,
+  JsonScalar,
+  JsonValue,
+  Patch,
+  PatchSource as PatchSourceValue,
+} from '../contracts/value.js';
 import { jsonPath } from '../domain/references.js';
 
+type MutableJsonObject = { [key: string]: MutableJsonValue };
+type MutableJsonArray = MutableJsonValue[];
+type MutableJsonValue = JsonScalar | MutableJsonArray | MutableJsonObject;
+
 export interface JournalEntry {
-  readonly source: PatchSource;
+  readonly source: PatchSourceValue;
   readonly op: Patch['op'];
   readonly path: string;
   /** Echo of `value`/`from`/`by` for the op. Optional for `remove`. */
@@ -21,13 +32,15 @@ function sameJson(left: JsonValue, right: JsonValue): boolean {
   }
   if (Array.isArray(left) !== Array.isArray(right)) return false;
   if (Array.isArray(left) && Array.isArray(right)) {
-    return (
-      left.length === right.length &&
-      left.every((value, index) => sameJson(value, right[index] as JsonValue))
-    );
+    if (left.length !== right.length) return false;
+    return left.every((value, index) => {
+      const rightValue = right.at(index);
+      return rightValue !== undefined && sameJson(value, rightValue);
+    });
   }
-  const leftObject = left as JsonObject;
-  const rightObject = right as JsonObject;
+  if (!isJsonObject(left) || !isJsonObject(right)) return false;
+  const leftObject = left;
+  const rightObject = right;
   const leftKeys = Object.keys(leftObject);
   const rightKeys = Object.keys(rightObject);
   return (
@@ -35,7 +48,7 @@ function sameJson(left: JsonValue, right: JsonValue): boolean {
     leftKeys.every(
       (key) =>
         Object.prototype.hasOwnProperty.call(rightObject, key) &&
-        sameJson(leftObject[key]!, rightObject[key]!),
+        sameJson(leftObject[key], rightObject[key]),
     )
   );
 }
@@ -52,45 +65,51 @@ function diffJsonValues(
   before: JsonValue,
   after: JsonValue,
   path: string,
-  source: PatchSource,
+  source: PatchSourceValue,
   journal: JournalEntry[],
 ): void {
   if (sameJson(before, after)) return;
   if (!sameContainerKind(before, after)) {
-    if (path !== '') journal.push({ source, op: 'replace', path, value: after });
+    if (path !== '') journal.push({ source, op: PatchOperation.Replace, path, value: after });
     return;
   }
   if (Array.isArray(before) && Array.isArray(after)) {
     const commonLength = Math.min(before.length, after.length);
-    for (let index = 0; index < commonLength; index += 1)
-      diffJsonValues(before[index]!, after[index]!, `${path}/${index}`, source, journal);
+    for (let index = 0; index < commonLength; index += 1) {
+      const beforeValue = before.at(index);
+      const afterValue = after.at(index);
+      if (beforeValue === undefined || afterValue === undefined) continue;
+      diffJsonValues(beforeValue, afterValue, `${path}/${index}`, source, journal);
+    }
     for (let index = before.length - 1; index >= after.length; index -= 1)
-      journal.push({ source, op: 'remove', path: `${path}/${index}` });
-    for (let index = commonLength; index < after.length; index += 1)
-      journal.push({ source, op: 'add', path: `${path}/${index}`, value: after[index]! });
+      journal.push({ source, op: PatchOperation.Remove, path: `${path}/${index}` });
+    for (let index = commonLength; index < after.length; index += 1) {
+      const value = after.at(index);
+      if (value !== undefined)
+        journal.push({ source, op: PatchOperation.Add, path: `${path}/${index}`, value });
+    }
     return;
   }
-  if (
-    before !== null &&
-    after !== null &&
-    typeof before === 'object' &&
-    typeof after === 'object'
-  ) {
-    const beforeObject = before as JsonObject;
-    const afterObject = after as JsonObject;
+  if (isJsonObject(before) && isJsonObject(after)) {
+    const beforeObject = before;
+    const afterObject = after;
     for (const key of Object.keys(beforeObject)) {
       if (!Object.prototype.hasOwnProperty.call(afterObject, key))
-        journal.push({ source, op: 'remove', path: `${path}/${escapePointerSegment(key)}` });
+        journal.push({
+          source,
+          op: PatchOperation.Remove,
+          path: `${path}/${escapePointerSegment(key)}`,
+        });
     }
     for (const key of Object.keys(afterObject)) {
       const childPath = `${path}/${escapePointerSegment(key)}`;
       if (!Object.prototype.hasOwnProperty.call(beforeObject, key))
-        journal.push({ source, op: 'add', path: childPath, value: afterObject[key]! });
-      else diffJsonValues(beforeObject[key]!, afterObject[key]!, childPath, source, journal);
+        journal.push({ source, op: PatchOperation.Add, path: childPath, value: afterObject[key] });
+      else diffJsonValues(beforeObject[key], afterObject[key], childPath, source, journal);
     }
     return;
   }
-  if (path !== '') journal.push({ source, op: 'replace', path, value: after });
+  if (path !== '') journal.push({ source, op: PatchOperation.Replace, path, value: after });
 }
 
 /**
@@ -102,7 +121,7 @@ function diffJsonValues(
 export function diffJsonJournal(
   before: JsonValue,
   after: JsonValue,
-  source: PatchSource = 'overlay',
+  source: PatchSourceValue = PatchSource.Overlay,
 ): readonly JournalEntry[] | undefined {
   if (!sameContainerKind(before, after)) return undefined;
   const journal: JournalEntry[] = [];
@@ -169,29 +188,84 @@ export function joinPointer(segments: readonly string[]): string {
 }
 
 /**
- * Deep-clone a JSON-compatible value using the built-in structuredClone.
- * Patches and state are always JSON-shaped (no cycles, no Dates, no functions),
- * so structuredClone is a direct drop-in that avoids maintaining a hand-rolled
- * recursive copy. Primitives (null, string, number, boolean) are returned as-is.
+ * Clone a JSON value into a mutable tree. The public JSON contract exposes
+ * arrays as readonly, while patch application necessarily mutates its private
+ * candidate tree. Keeping that distinction local avoids assertions around
+ * every array write and guarantees that the caller's input remains untouched.
  */
-function cloneJson<T extends JsonValue>(v: T): T {
-  if (v === null || typeof v !== 'object') return v;
-  return structuredClone(v);
+function cloneJson(value: JsonValue): MutableJsonValue {
+  if (value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.map((entry) => cloneJson(entry));
+
+  const clone: MutableJsonObject = {};
+  for (const [key, entry] of Object.entries(value)) {
+    Object.defineProperty(clone, key, {
+      configurable: true,
+      enumerable: true,
+      value: cloneJson(entry),
+      writable: true,
+    });
+  }
+  return clone;
 }
 
-interface NavResult {
-  readonly parent: Record<string, JsonValue> | JsonValue[];
-  readonly key: string | number;
-  /** True iff `key` already exists on `parent`. */
+interface ArrayNavigation {
+  readonly kind: 'array';
+  readonly parent: MutableJsonArray;
+  readonly key: number;
   readonly exists: boolean;
 }
 
-/** True when a path segment is an array index or the `-` end sentinel. */
-function segmentIsArrayIndex(seg: string | undefined): boolean {
-  if (seg === undefined) return false;
-  if (seg === '-') return true;
-  const idx = Number.parseInt(seg, 10);
-  return Number.isInteger(idx) && String(idx) === seg && idx >= 0;
+interface ObjectNavigation {
+  readonly kind: 'object';
+  readonly parent: MutableJsonObject;
+  readonly key: string;
+  readonly exists: boolean;
+}
+
+type NavResult = ArrayNavigation | ObjectNavigation;
+
+interface NavigationOptions {
+  readonly op: Patch['op'];
+  readonly patchIndex: number;
+  readonly autoVivify: boolean;
+}
+
+/** True for the mutable object branch of a cloned JSON value. */
+function isMutableJsonObject(value: unknown): value is MutableJsonObject {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** Read the value currently stored at a navigation result. */
+function readAt(navigation: NavResult): MutableJsonValue | undefined {
+  return navigation.kind === 'array'
+    ? navigation.parent[navigation.key]
+    : navigation.parent[navigation.key];
+}
+
+/** Replace or create a value at a navigation result. */
+function writeAt(navigation: NavResult, value: MutableJsonValue): void {
+  if (navigation.kind === 'array') navigation.parent[navigation.key] = value;
+  else navigation.parent[navigation.key] = value;
+}
+
+/** Insert an array value, or assign an object property. */
+function insertAt(navigation: NavResult, value: MutableJsonValue): void {
+  if (navigation.kind === 'array') navigation.parent.splice(navigation.key, 0, value);
+  else navigation.parent[navigation.key] = value;
+}
+
+/** Remove a value from an array or object. */
+function removeAt(navigation: NavResult): void {
+  if (navigation.kind === 'array') navigation.parent.splice(navigation.key, 1);
+  else delete navigation.parent[navigation.key];
+}
+
+/** True when a path segment names an array index or the `-` end sentinel. */
+function segmentIsArrayIndex(segment: string | undefined): boolean {
+  if (segment === undefined || segment === '-') return segment === '-';
+  const index = Number.parseInt(segment, 10);
+  return Number.isInteger(index) && String(index) === segment && index >= 0;
 }
 
 /**
@@ -201,60 +275,67 @@ function segmentIsArrayIndex(seg: string | undefined): boolean {
  * a numeric next-segment yields an array, anything else an object.
  */
 function navigate(
-  state: JsonValue,
+  state: MutableJsonValue,
   segments: readonly string[],
-  op: Patch['op'],
-  patchIndex: number,
-  autoVivify: boolean,
+  { op, patchIndex, autoVivify }: NavigationOptions,
 ): NavResult {
   if (segments.length === 0) {
     throw new PatchApplyError(`Operation '${op}' cannot target the root '/'`, patchIndex, '/', op);
   }
-  let cur: JsonValue = state;
-  for (let i = 0; i < segments.length - 1; i++) {
-    const seg = segments[i];
-    if (cur === null || typeof cur !== 'object') {
+  let current: MutableJsonValue = state;
+  for (let i = 0; i < segments.length - 1; i += 1) {
+    const segment = segments[i];
+    if (current === null || typeof current !== 'object') {
       throw new PatchApplyError(
-        `Path traverses non-object/array at segment '${seg}' (depth ${i})`,
+        `Path traverses non-object/array at segment '${segment}' (depth ${i})`,
         patchIndex,
         joinPointer(segments),
         op,
       );
     }
-    if (Array.isArray(cur)) {
-      const idx = Number.parseInt(seg, 10);
-      if (!Number.isInteger(idx) || idx < 0 || idx >= cur.length) {
-        if (autoVivify && Number.isInteger(idx) && idx >= 0) {
-          cur[idx] = segmentIsArrayIndex(segments[i + 1]) ? [] : {};
+    if (Array.isArray(current)) {
+      const index = Number.parseInt(segment, 10);
+      if (!Number.isInteger(index) || index < 0 || index >= current.length) {
+        if (autoVivify && Number.isInteger(index) && index >= 0) {
+          current[index] = segmentIsArrayIndex(segments[i + 1]) ? [] : {};
         } else {
           throw new PatchApplyError(
-            `Array index out of range at segment '${seg}'`,
+            `Array index out of range at segment '${segment}'`,
             patchIndex,
             joinPointer(segments),
             op,
           );
         }
       }
-      cur = cur[idx];
-    } else {
-      if (!Object.prototype.hasOwnProperty.call(cur, seg)) {
-        if (autoVivify) {
-          (cur as Record<string, JsonValue>)[seg] = segmentIsArrayIndex(segments[i + 1]) ? [] : {};
-        } else {
-          throw new PatchApplyError(
-            `Path traverses missing object key '${seg}'`,
-            patchIndex,
-            joinPointer(segments),
-            op,
-          );
-        }
-      }
-      cur = (cur as Record<string, JsonValue>)[seg];
+      current = current[index];
+      continue;
     }
+
+    if (!isMutableJsonObject(current)) {
+      throw new PatchApplyError(
+        `Path traverses non-object/array at segment '${segment}' (depth ${i})`,
+        patchIndex,
+        joinPointer(segments),
+        op,
+      );
+    }
+    if (!Object.prototype.hasOwnProperty.call(current, segment)) {
+      if (autoVivify) {
+        current[segment] = segmentIsArrayIndex(segments[i + 1]) ? [] : {};
+      } else {
+        throw new PatchApplyError(
+          `Path traverses missing object key '${segment}'`,
+          patchIndex,
+          joinPointer(segments),
+          op,
+        );
+      }
+    }
+    current = current[segment];
   }
 
   const leaf = segments[segments.length - 1];
-  if (cur === null || typeof cur !== 'object') {
+  if (current === null || typeof current !== 'object') {
     throw new PatchApplyError(
       `Path traverses non-object/array at leaf '${leaf}'`,
       patchIndex,
@@ -262,12 +343,10 @@ function navigate(
       op,
     );
   }
-  if (Array.isArray(cur)) {
-    if (leaf === '-') {
-      return { parent: cur, key: cur.length, exists: false };
-    }
-    const idx = Number.parseInt(leaf, 10);
-    if (!Number.isInteger(idx) || idx < 0) {
+  if (Array.isArray(current)) {
+    if (leaf === '-') return { kind: 'array', parent: current, key: current.length, exists: false };
+    const index = Number.parseInt(leaf, 10);
+    if (!Number.isInteger(index) || index < 0) {
       throw new PatchApplyError(
         `Invalid array index '${leaf}'`,
         patchIndex,
@@ -275,36 +354,35 @@ function navigate(
         op,
       );
     }
-    return { parent: cur, key: idx, exists: idx < cur.length };
+    return { kind: 'array', parent: current, key: index, exists: index < current.length };
   }
-  const exists = Object.prototype.hasOwnProperty.call(cur, leaf);
-  return { parent: cur as Record<string, JsonValue>, key: leaf, exists };
+  if (!isMutableJsonObject(current)) {
+    throw new PatchApplyError(
+      `Path traverses non-object/array at leaf '${leaf}'`,
+      patchIndex,
+      joinPointer(segments),
+      op,
+    );
+  }
+  return {
+    kind: 'object',
+    parent: current,
+    key: leaf,
+    exists: Object.prototype.hasOwnProperty.call(current, leaf),
+  };
 }
 
-/** Read the value currently stored at `parent[key]`. */
-function readAt(
-  parent: Record<string, JsonValue> | JsonValue[],
-  key: string | number,
-): JsonValue | undefined {
-  return Array.isArray(parent)
-    ? (parent as JsonValue[])[key as number]
-    : (parent as Record<string, JsonValue>)[key as string];
-}
-
-/** Write `value` at `parent[key]`. For arrays, index === length appends. */
-function writeAt(
-  parent: Record<string, JsonValue> | JsonValue[],
-  key: string | number,
-  value: JsonValue,
+/*
+ * The navigation result is deliberately discriminated instead of exposing a
+ * `string | number` key. This keeps array mutation APIs and object property
+ * APIs type-safe without assertions at every patch operation.
+ */
+function applyOne(
+  state: MutableJsonValue,
+  patch: Patch,
+  patchIndex: number,
+  autoVivify: boolean,
 ): void {
-  if (Array.isArray(parent)) {
-    (parent as JsonValue[])[key as number] = value;
-  } else {
-    (parent as Record<string, JsonValue>)[key as string] = value;
-  }
-}
-
-function applyOne(state: JsonValue, patch: Patch, patchIndex: number, autoVivify: boolean): void {
   switch (patch.op) {
     case 'add':
     case 'replace': {
@@ -317,9 +395,13 @@ function applyOne(state: JsonValue, patch: Patch, patchIndex: number, autoVivify
           patch.op,
         );
       }
-      const { parent, key, exists } = navigate(state, segments, patch.op, patchIndex, autoVivify);
+      const navigation = navigate(state, segments, {
+        op: patch.op,
+        patchIndex,
+        autoVivify,
+      });
       // In autoVivify mode, `replace` upserts — a missing target is created.
-      if (patch.op === 'replace' && !exists && !autoVivify) {
+      if (patch.op === 'replace' && !navigation.exists && !autoVivify) {
         throw new PatchApplyError(
           `'replace' target does not exist: ${patch.path}`,
           patchIndex,
@@ -327,21 +409,21 @@ function applyOne(state: JsonValue, patch: Patch, patchIndex: number, autoVivify
           patch.op,
         );
       }
-      if (Array.isArray(parent)) {
-        if (patch.op === 'add' && exists) {
-          (parent as JsonValue[]).splice(key as number, 0, cloneJson(patch.value));
-        } else {
-          (parent as JsonValue[])[key as number] = cloneJson(patch.value);
-        }
+      if (patch.op === 'add' && navigation.kind === 'array' && navigation.exists) {
+        navigation.parent.splice(navigation.key, 0, cloneJson(patch.value));
       } else {
-        (parent as Record<string, JsonValue>)[key as string] = cloneJson(patch.value);
+        writeAt(navigation, cloneJson(patch.value));
       }
       return;
     }
     case 'remove': {
       const segments = parsePointer(patch.path);
-      const { parent, key, exists } = navigate(state, segments, patch.op, patchIndex, autoVivify);
-      if (!exists) {
+      const navigation = navigate(state, segments, {
+        op: patch.op,
+        patchIndex,
+        autoVivify,
+      });
+      if (!navigation.exists) {
         // Under autoVivify (reducer) removing a non-existent path is a no-op;
         // under strict RFC 6902 it is an error.
         if (autoVivify) return;
@@ -352,19 +434,19 @@ function applyOne(state: JsonValue, patch: Patch, patchIndex: number, autoVivify
           patch.op,
         );
       }
-      if (Array.isArray(parent)) {
-        (parent as JsonValue[]).splice(key as number, 1);
-      } else {
-        delete (parent as Record<string, JsonValue>)[key as string];
-      }
+      removeAt(navigation);
       return;
     }
     case 'move':
     case 'copy': {
       const fromSegs = parsePointer(patch.from);
       const toSegs = parsePointer(patch.path);
-      const fromNav = navigate(state, fromSegs, patch.op, patchIndex, autoVivify);
-      if (!fromNav.exists) {
+      const fromNavigation = navigate(state, fromSegs, {
+        op: patch.op,
+        patchIndex,
+        autoVivify,
+      });
+      if (!fromNavigation.exists) {
         throw new PatchApplyError(
           `'${patch.op}' source does not exist: ${patch.from}`,
           patchIndex,
@@ -372,32 +454,40 @@ function applyOne(state: JsonValue, patch: Patch, patchIndex: number, autoVivify
           patch.op,
         );
       }
-      const value = readAt(fromNav.parent, fromNav.key);
-      const clonedValue = cloneJson(value as JsonValue);
+      const value = readAt(fromNavigation);
+      if (value === undefined) {
+        throw new PatchApplyError(
+          `'${patch.op}' source does not contain a JSON value: ${patch.from}`,
+          patchIndex,
+          patch.from,
+          patch.op,
+        );
+      }
+      const clonedValue = cloneJson(value);
       if (patch.op === 'move') {
-        if (Array.isArray(fromNav.parent)) {
-          (fromNav.parent as JsonValue[]).splice(fromNav.key as number, 1);
-        } else {
-          delete (fromNav.parent as Record<string, JsonValue>)[fromNav.key as string];
-        }
+        removeAt(fromNavigation);
       }
-      const toNav = navigate(state, toSegs, patch.op, patchIndex, autoVivify);
-      if (Array.isArray(toNav.parent)) {
-        (toNav.parent as JsonValue[]).splice(toNav.key as number, 0, clonedValue);
-      } else {
-        (toNav.parent as Record<string, JsonValue>)[toNav.key as string] = clonedValue;
-      }
+      const toNavigation = navigate(state, toSegs, {
+        op: patch.op,
+        patchIndex,
+        autoVivify,
+      });
+      insertAt(toNavigation, clonedValue);
       return;
     }
     case 'append':
     case 'prepend': {
       const segments = parsePointer(patch.path);
-      const { parent, key, exists } = navigate(state, segments, patch.op, patchIndex, autoVivify);
-      let target = exists ? readAt(parent, key) : undefined;
+      const navigation = navigate(state, segments, {
+        op: patch.op,
+        patchIndex,
+        autoVivify,
+      });
+      let target = navigation.exists ? readAt(navigation) : undefined;
       if (!Array.isArray(target)) {
         if (!autoVivify) {
           throw new PatchApplyError(
-            exists
+            navigation.exists
               ? `'${patch.op}' target is not an array: ${patch.path}`
               : `'${patch.op}' target does not exist: ${patch.path}`,
             patchIndex,
@@ -406,21 +496,25 @@ function applyOne(state: JsonValue, patch: Patch, patchIndex: number, autoVivify
           );
         }
         target = []; // autoVivify: missing/non-array becomes a fresh array
-        writeAt(parent, key, target);
+        writeAt(navigation, target);
       }
       const cloned = cloneJson(patch.value);
-      if (patch.op === 'append') (target as JsonValue[]).push(cloned);
-      else (target as JsonValue[]).unshift(cloned);
+      if (patch.op === 'append') target.push(cloned);
+      else target.unshift(cloned);
       return;
     }
     case 'increment': {
       const segments = parsePointer(patch.path);
-      const { parent, key, exists } = navigate(state, segments, patch.op, patchIndex, autoVivify);
-      const current = exists ? readAt(parent, key) : undefined;
+      const navigation = navigate(state, segments, {
+        op: patch.op,
+        patchIndex,
+        autoVivify,
+      });
+      const current = navigation.exists ? readAt(navigation) : undefined;
       if (typeof current !== 'number') {
         if (!autoVivify) {
           throw new PatchApplyError(
-            exists
+            navigation.exists
               ? `'increment' target is not numeric: ${patch.path}`
               : `'increment' target does not exist: ${patch.path}`,
             patchIndex,
@@ -428,20 +522,24 @@ function applyOne(state: JsonValue, patch: Patch, patchIndex: number, autoVivify
             patch.op,
           );
         }
-        writeAt(parent, key, patch.by); // autoVivify: missing/non-numeric target starts at 0
+        writeAt(navigation, patch.by); // autoVivify: missing/non-numeric target starts at 0
         return;
       }
-      writeAt(parent, key, current + patch.by);
+      writeAt(navigation, current + patch.by);
       return;
     }
     case 'merge': {
       const segments = parsePointer(patch.path);
-      const { parent, key, exists } = navigate(state, segments, patch.op, patchIndex, autoVivify);
-      let target = exists ? readAt(parent, key) : undefined;
-      if (target === null || typeof target !== 'object' || Array.isArray(target)) {
+      const navigation = navigate(state, segments, {
+        op: patch.op,
+        patchIndex,
+        autoVivify,
+      });
+      let target = navigation.exists ? readAt(navigation) : undefined;
+      if (!isMutableJsonObject(target)) {
         if (!autoVivify) {
           throw new PatchApplyError(
-            exists
+            navigation.exists
               ? `'merge' target is not an object: ${patch.path}`
               : `'merge' target does not exist: ${patch.path}`,
             patchIndex,
@@ -450,25 +548,29 @@ function applyOne(state: JsonValue, patch: Patch, patchIndex: number, autoVivify
           );
         }
         target = {}; // autoVivify: missing/non-object target becomes a fresh object
-        writeAt(parent, key, target);
+        writeAt(navigation, target);
       }
-      const obj = target as Record<string, JsonValue>;
-      const update = cloneJson(patch.value);
+      if (!isMutableJsonObject(target)) throw new TypeError('Expected a mutable JSON object');
+      const update = cloneJsonObject(patch.value);
       if (patch.deep) {
-        deepMergeInPlace(obj, update);
+        deepMergeInPlace(target, update);
       } else {
-        for (const [k, v] of Object.entries(update)) obj[k] = v;
+        for (const [key, value] of Object.entries(update)) target[key] = value;
       }
       return;
     }
     case 'upsert': {
       const segments = parsePointer(patch.path);
-      const { parent, key, exists } = navigate(state, segments, patch.op, patchIndex, autoVivify);
-      let target = exists ? readAt(parent, key) : undefined;
+      const navigation = navigate(state, segments, {
+        op: patch.op,
+        patchIndex,
+        autoVivify,
+      });
+      let target = navigation.exists ? readAt(navigation) : undefined;
       if (!Array.isArray(target)) {
         if (!autoVivify) {
           throw new PatchApplyError(
-            exists
+            navigation.exists
               ? `'upsert' target is not an array: ${patch.path}`
               : `'upsert' target does not exist: ${patch.path}`,
             patchIndex,
@@ -477,52 +579,36 @@ function applyOne(state: JsonValue, patch: Patch, patchIndex: number, autoVivify
           );
         }
         target = []; // autoVivify: missing/non-array target becomes a fresh array
-        writeAt(parent, key, target);
+        writeAt(navigation, target);
       }
-      const arr = target as JsonValue[];
       const keyField = patch.key;
-      const incoming = cloneJson(patch.value);
+      const incoming = cloneJsonObject(patch.value);
       const matchValue = incoming[keyField];
-      let idx = -1;
-      for (let i = 0; i < arr.length; i++) {
-        const item = arr[i];
-        if (
-          item !== null &&
-          typeof item === 'object' &&
-          !Array.isArray(item) &&
-          (item as Record<string, JsonValue>)[keyField] === matchValue
-        ) {
-          idx = i;
-          break;
-        }
-      }
-      if (idx >= 0) {
-        arr[idx] = incoming;
-      } else {
-        arr.push(incoming);
-      }
+      const existingIndex = target.findIndex(
+        (item) => isMutableJsonObject(item) && item[keyField] === matchValue,
+      );
+      if (existingIndex >= 0) target[existingIndex] = incoming;
+      else target.push(incoming);
       return;
     }
   }
 }
 
-function deepMergeInPlace(
-  target: Record<string, JsonValue>,
-  update: Record<string, JsonValue>,
-): void {
-  for (const [k, v] of Object.entries(update)) {
-    const existing = target[k];
-    if (
-      existing !== null &&
-      typeof existing === 'object' &&
-      !Array.isArray(existing) &&
-      v !== null &&
-      typeof v === 'object' &&
-      !Array.isArray(v)
-    ) {
-      deepMergeInPlace(existing as Record<string, JsonValue>, v as Record<string, JsonValue>);
+function cloneJsonObject(value: JsonObject): MutableJsonObject {
+  const clone = cloneJson(value);
+  if (!isMutableJsonObject(clone)) {
+    throw new TypeError('Expected a JSON object');
+  }
+  return clone;
+}
+
+function deepMergeInPlace(target: MutableJsonObject, update: MutableJsonObject): void {
+  for (const [key, value] of Object.entries(update)) {
+    const existing = target[key];
+    if (isMutableJsonObject(existing) && isMutableJsonObject(value)) {
+      deepMergeInPlace(existing, value);
     } else {
-      target[k] = v;
+      target[key] = value;
     }
   }
 }
@@ -544,7 +630,7 @@ export interface ApplyPatchesOptions {
 export function applyPatches(
   state: JsonValue,
   patches: readonly Patch[],
-  source: PatchSource = 'reducer',
+  source: PatchSourceValue = PatchSource.Reducer,
   opts: ApplyPatchesOptions = {},
 ): ApplyResult {
   const autoVivify = opts.autoVivify ?? false;
@@ -556,23 +642,23 @@ export function applyPatches(
     applyOne(candidate, p, i, autoVivify);
     journal.push(buildJournalEntry(p, source));
     touched.add(p.path);
-    if (p.op === 'move' || p.op === 'copy') {
+    if (p.op === PatchOperation.Move || p.op === PatchOperation.Copy) {
       touched.add(p.from);
     }
   }
   return { newState: candidate, journal, touchedPaths: touched };
 }
 
-function buildJournalEntry(p: Patch, source: PatchSource): JournalEntry {
+function buildJournalEntry(p: Patch, source: PatchSourceValue): JournalEntry {
   switch (p.op) {
-    case 'remove':
-      return { source, op: 'remove', path: p.path };
-    case 'move':
-    case 'copy':
+    case PatchOperation.Remove:
+      return { source, op: PatchOperation.Remove, path: p.path };
+    case PatchOperation.Move:
+    case PatchOperation.Copy:
       return { source, op: p.op, path: p.path, from: p.from };
-    case 'increment':
-      return { source, op: 'increment', path: p.path, by: p.by };
+    case PatchOperation.Increment:
+      return { source, op: PatchOperation.Increment, path: p.path, by: p.by };
     default:
-      return { source, op: p.op, path: p.path, value: p.value as JsonValue };
+      return { source, op: p.op, path: p.path, value: p.value };
   }
 }

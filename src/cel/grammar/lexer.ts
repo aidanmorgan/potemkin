@@ -77,7 +77,60 @@ const isWs = (c: string): boolean => /\s/.test(c);
 const isIdentStart = (c: string): boolean => /[A-Za-z_$]/.test(c);
 const isIdentPart = (c: string): boolean => /[A-Za-z0-9_$]/.test(c);
 
-const TWO_CHAR_OPS = new Set(['==', '!=', '<=', '>=', '&&', '||']);
+type TwoCharacterTerminal = Extract<Terminal, '==' | '!=' | '<=' | '>=' | '&&' | '||'>;
+type SingleCharacterTerminal = Exclude<
+  Terminal,
+  | 'NUMBER'
+  | 'STRING'
+  | 'BOOL'
+  | 'NULL'
+  | 'IDENT'
+  | TwoCharacterTerminal
+  | '?.'
+  | '?['
+  | 'in'
+  | '$end'
+>;
+
+function twoCharacterTerminal(value: string): TwoCharacterTerminal | undefined {
+  switch (value) {
+    case '==':
+    case '!=':
+    case '<=':
+    case '>=':
+    case '&&':
+    case '||':
+      return value;
+    default:
+      return undefined;
+  }
+}
+
+function singleCharacterTerminal(value: string): SingleCharacterTerminal | undefined {
+  switch (value) {
+    case '<':
+    case '>':
+    case '+':
+    case '-':
+    case '*':
+    case '/':
+    case '%':
+    case '!':
+    case '(':
+    case ')':
+    case '[':
+    case ']':
+    case '{':
+    case '}':
+    case ',':
+    case '.':
+    case ':':
+    case '?':
+      return value;
+    default:
+      return undefined;
+  }
+}
 
 /**
  * Tokenize CEL source. Throws {@link LexError} (message prefixed with
@@ -92,7 +145,7 @@ export function lex(src: string): Token[] {
   const here = (): Position => ({ line, col, offset: i });
 
   const advance = (): string => {
-    const c = src[i]!;
+    const c = src[i] ?? '';
     i++;
     if (c === '\n') {
       line++;
@@ -104,7 +157,7 @@ export function lex(src: string): Token[] {
   };
 
   while (i < src.length) {
-    const c = src[i]!;
+    const c = src[i] ?? '';
 
     if (isWs(c)) {
       advance();
@@ -197,7 +250,7 @@ export function lex(src: string): Token[] {
     if (isIdentStart(c)) {
       const start = here();
       let id = '';
-      while (i < src.length && isIdentPart(src[i]!)) {
+      while (i < src.length && isIdentPart(src[i] ?? '')) {
         id += advance();
       }
       if (id === 'true') {
@@ -222,11 +275,12 @@ export function lex(src: string): Token[] {
 
     // Two-character operators / null-safe accessors (longest match first).
     const two = src.slice(i, i + 2);
-    if (TWO_CHAR_OPS.has(two)) {
+    const twoTerminal = twoCharacterTerminal(two);
+    if (twoTerminal !== undefined) {
       const start = here();
       advance();
       advance();
-      tokens.push({ type: two as Terminal, pos: start });
+      tokens.push({ type: twoTerminal, pos: start });
       continue;
     }
     if (two === '?.') {
@@ -246,31 +300,12 @@ export function lex(src: string): Token[] {
 
     // Single-character tokens.
     const start = here();
-    switch (c) {
-      case '<':
-      case '>':
-      case '+':
-      case '-':
-      case '*':
-      case '/':
-      case '%':
-      case '!':
-      case '(':
-      case ')':
-      case '[':
-      case ']':
-      case '{':
-      case '}':
-      case ',':
-      case '.':
-      case ':':
-      case '?':
-        advance();
-        tokens.push({ type: c as Terminal, pos: start });
-        continue;
-      default:
-        throw new LexError(`CEL_TOKENIZE: unexpected character '${c}' at position ${i}`, start);
+    const singleTerminal = singleCharacterTerminal(c);
+    if (singleTerminal === undefined) {
+      throw new LexError(`CEL_TOKENIZE: unexpected character '${c}' at position ${i}`, start);
     }
+    advance();
+    tokens.push({ type: singleTerminal, pos: start });
   }
 
   tokens.push({ type: '$end', pos: here() });

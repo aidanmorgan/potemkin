@@ -171,9 +171,20 @@ async function loadSources(
 function createDefaultScheduler(): ConfiguredRuntimeWatcherScheduler {
   return {
     setTimeout: (callback, milliseconds) => setTimeout(callback, milliseconds),
-    clearTimeout: (handle) => clearTimeout(handle as NodeJS.Timeout),
+    clearTimeout: (handle) => {
+      if (typeof handle === 'number' || isNodeTimeoutHandle(handle)) clearTimeout(handle);
+    },
     sleep: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
   };
+}
+
+function isNodeTimeoutHandle(value: unknown): value is NodeJS.Timeout {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'hasRef' in value &&
+    typeof value.hasRef === 'function'
+  );
 }
 
 async function snapshotSources(sources: ConfiguredRuntimeSources): Promise<FileSnapshot> {

@@ -93,7 +93,7 @@ describe('State Transitions Exhaustive (full Specmatic stack)', () => {
 
   // ─── Helper: create opportunity via lead lifecycle + saga ─────────────────
 
-  async function createOpportunity(company: string, value: number): Promise<string> {
+  async function createOpportunity(value: number): Promise<string> {
     const leadId = await createFreshLead('REFERRAL');
     const callRes = await requestThroughSpecmatic(app.stubUrl, 'POST', '/calls', {
       leadId,
@@ -542,10 +542,10 @@ describe('State Transitions Exhaustive (full Specmatic stack)', () => {
 
     beforeAll(async () => {
       // Create opportunities for the various transition tests
-      oppAdvanceId = await createOpportunity('Opp Advance Corp', 50000);
-      oppLostFromProposedId = await createOpportunity('Opp Lost Corp', 30000);
-      oppWonId = await createOpportunity('Opp Won Corp', 70000);
-      oppLostId = await createOpportunity('Opp Lost Final', 25000);
+      oppAdvanceId = await createOpportunity(50000);
+      oppLostFromProposedId = await createOpportunity(30000);
+      oppWonId = await createOpportunity(70000);
+      oppLostId = await createOpportunity(25000);
     }, 60_000);
 
     // 16. PROPOSED -> NEGOTIATING (valid)

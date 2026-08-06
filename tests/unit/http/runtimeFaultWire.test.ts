@@ -2,6 +2,13 @@ import { parseRuntimeFaultWire } from '../../../src/http/runtimeFaultWire';
 import { createDefaultRuntimeHost } from '../../../src/runtime/host';
 import type { FaultContext } from '../../../src/model/runtime';
 import type { Command } from '../../../src/contracts/domain';
+import {
+  aggregateId,
+  boundaryName,
+  commandId,
+  httpMethod,
+  operationId,
+} from '../../../src/domain/references';
 
 const validRule = {
   name: 'temporary',
@@ -39,17 +46,17 @@ describe('parseRuntimeFaultWire TTL validation', () => {
 
 describe('parseRuntimeFaultWire validation and matching', () => {
   const command: Command = {
-    commandId: 'command-1',
-    boundary: 'Order',
+    commandId: commandId('command-1'),
+    boundary: boundaryName('Order'),
     intent: 'creation',
-    targetId: 'order-1',
+    targetId: aggregateId('order-1'),
     payload: {},
     queryParams: {},
-    httpMethod: 'post',
+    httpMethod: httpMethod('POST'),
     path: '/orders',
     origin: 'inbound',
     depth: 0,
-    operationId: 'createOrder',
+    operationId: operationId('createOrder'),
   };
   const contextFor = (candidate: Command): FaultContext => {
     const host = createDefaultRuntimeHost();
@@ -146,10 +153,12 @@ describe('parseRuntimeFaultWire validation and matching', () => {
       delayMs: 8,
     });
     expect(parsed.rule.matches(contextFor(command))).toBe(true);
-    expect(parsed.rule.matches(contextFor({ ...command, operationId: 'otherOperation' }))).toBe(
+    expect(
+      parsed.rule.matches(contextFor({ ...command, operationId: operationId('otherOperation') })),
+    ).toBe(false);
+    expect(parsed.rule.matches(contextFor({ ...command, boundary: boundaryName('Other') }))).toBe(
       false,
     );
-    expect(parsed.rule.matches(contextFor({ ...command, boundary: 'Other' }))).toBe(false);
     expect(parsed.rule.matches(contextFor({ ...command, intent: 'query' }))).toBe(false);
     expect(parsed.rule.matches(contextFor({ ...command, httpMethod: 'GET' }))).toBe(false);
   });
@@ -165,5 +174,17 @@ describe('parseRuntimeFaultWire validation and matching', () => {
         1_000,
       ),
     ).toThrow('Invalid fault response body');
+  });
+
+  it('does not manufacture a typed error class from an unknown wire value', () => {
+    const parsed = parseRuntimeFaultWire(
+      {
+        match: { errorClass: 'not-a-runtime-error' },
+        response: { status: 500 },
+      },
+      1_000,
+    );
+
+    expect(parsed.rule.selectors).toBeUndefined();
   });
 });

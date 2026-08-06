@@ -81,11 +81,11 @@ function freezeSnapshot<T>(value: T): T {
   const freeze = (entry: unknown): void => {
     if (entry === null || typeof entry !== 'object' || seen.has(entry)) return;
     seen.add(entry);
-    for (const child of Object.values(entry as Record<string, unknown>)) freeze(child);
+    for (const child of Object.values(entry)) freeze(child);
     Object.freeze(entry);
   };
   freeze(cloned);
-  return cloned as T;
+  return cloned;
 }
 
 function hookName(hook: LifecycleHook, phase: LifecyclePhase): string {

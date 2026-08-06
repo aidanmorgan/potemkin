@@ -1,4 +1,4 @@
-import * as yaml from 'js-yaml';
+import { parse } from 'yaml';
 import { BootError } from '../errors.js';
 import { createNoopLogger, type Logger } from '../observability/logger.js';
 import { createNoopTracer, withSpan, type Tracer } from '../observability/tracing.js';
@@ -26,6 +26,7 @@ import type {
   WebhookConfig,
 } from '../dsl/types.js';
 import type { SecurityHeadersConfig } from '../contracts/response.js';
+import { isRecord } from '../contracts/value.js';
 import { linkComponents, mergeIncludes } from '../dsl/componentLinker.js';
 import { buildReactionRegistry, validateReactionCrossReferences } from '../dsl/reactionRegistry.js';
 import { boundaryConfigToInferenceInput, buildInferredSchema } from '../dsl/schemaInference.js';
@@ -43,12 +44,12 @@ export interface YamlCompilationObservability {
  */
 export function parseLatencyConfig(raw: unknown): LatencyConfig | undefined {
   if (raw === undefined) return undefined;
-  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+  if (!isRecord(raw)) {
     throw new BootError('BOOT_ERR_DSL_SCHEMA_VIOLATION', 'latency must be an object', {
       field: 'latency',
     });
   }
-  const obj = raw as Record<string, unknown>;
+  const obj = raw;
   const out: { min_ms?: number; max_ms?: number; fixed_ms?: number } = {};
   for (const key of Object.keys(obj)) {
     if (key !== 'min_ms' && key !== 'max_ms' && key !== 'fixed_ms')
@@ -86,7 +87,7 @@ export function parseLatencyConfig(raw: unknown): LatencyConfig | undefined {
 export function parseYaml(text: string): BoundaryConfig {
   let raw: unknown;
   try {
-    raw = yaml.load(text);
+    raw = parseYamlDocument(text);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new BootError('BOOT_ERR_DSL_SYNTAX', `YAML parse error: ${message}`, {
@@ -96,7 +97,7 @@ export function parseYaml(text: string): BoundaryConfig {
   }
 
   const config = validateBoundaryConfig(raw);
-  const latency = parseLatencyConfig((raw as Record<string, unknown> | null)?.['latency']);
+  const latency = parseLatencyConfig(isRecord(raw) ? raw['latency'] : undefined);
   return latency !== undefined ? { ...config, latency } : config;
 }
 
@@ -107,7 +108,7 @@ export function parseYaml(text: string): BoundaryConfig {
 export function parseComponent(text: string): ComponentDefinition {
   let raw: unknown;
   try {
-    raw = yaml.load(text);
+    raw = parseYamlDocument(text);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new BootError('BOOT_ERR_DSL_SYNTAX', `YAML parse error: ${message}`, {
@@ -116,7 +117,7 @@ export function parseComponent(text: string): ComponentDefinition {
     });
   }
   const config = validateComponentConfig(raw);
-  const latency = parseLatencyConfig((raw as Record<string, unknown> | null)?.['latency']);
+  const latency = parseLatencyConfig(isRecord(raw) ? raw['latency'] : undefined);
   return latency !== undefined ? { ...config, latency } : config;
 }
 
@@ -127,7 +128,7 @@ export function parseComponent(text: string): ComponentDefinition {
 export function parseUseMapping(text: string): readonly UseEntry[] {
   let raw: unknown;
   try {
-    raw = yaml.load(text);
+    raw = parseYamlDocument(text);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new BootError('BOOT_ERR_DSL_SYNTAX', `YAML parse error: ${message}`, {
@@ -135,15 +136,14 @@ export function parseUseMapping(text: string): readonly UseEntry[] {
       source: text.slice(0, 200),
     });
   }
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+  if (!isRecord(raw)) {
     throw new BootError(
       'BOOT_ERR_DSL_SYNTAX',
       'Use-mapping file root must be a YAML mapping object',
       { received: typeof raw },
     );
   }
-  const rec = raw as Record<string, unknown>;
-  const useEntries = validateUseEntries(rec['use'], 'root');
+  const useEntries = validateUseEntries(raw['use'], 'root');
   if (useEntries === undefined || useEntries.length === 0) {
     throw new BootError(
       'BOOT_ERR_DSL_SYNTAX',
@@ -305,7 +305,7 @@ export async function compileYaml(
     if (globalYaml) {
       let rawGlobal: unknown;
       try {
-        rawGlobal = yaml.load(globalYaml);
+        rawGlobal = parseYamlDocument(globalYaml);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         throw new BootError('BOOT_ERR_DSL_SYNTAX', `Global config YAML parse error: ${message}`, {
@@ -357,7 +357,7 @@ export async function compileYaml(
     const hasUseEntries = allUseEntries.length > 0;
 
     const partialDsl: YamlLinkedProgram = {
-      boundaries: boundaries as readonly BoundaryConfig[],
+      boundaries,
       byContractPath,
       byBoundaryName,
       ...(sagas !== undefined ? { sagas } : {}),
@@ -374,9 +374,17 @@ export async function compileYaml(
       ...(reactions !== undefined ? { reactions } : {}),
       ...(reactionsByTrigger !== undefined ? { reactionsByTrigger } : {}),
       ...(hasComponents ? { components: componentsMap } : {}),
-      ...(hasUseEntries ? { use: allUseEntries as readonly UseEntry[] } : {}),
+      ...(hasUseEntries ? { use: allUseEntries } : {}),
     };
 
     return partialDsl;
+  });
+}
+
+function parseYamlDocument(source: string): unknown {
+  return parse(source, {
+    schema: 'core',
+    merge: true,
+    customTags: ['timestamp'],
   });
 }

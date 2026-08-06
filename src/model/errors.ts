@@ -1,3 +1,4 @@
+import { StructuredError } from '../errors.js';
 import type { JsonValue } from '../contracts/value.js';
 
 /** Stable diagnostics emitted while validating the source-independent model. */
@@ -11,24 +12,11 @@ export type RuntimeModelDiagnosticCode =
   | 'RUNTIME_LATENCY_INVALID'
   | 'RUNTIME_BUILDER_INVALID';
 
-export class RuntimeModelError extends Error {
+export class RuntimeModelError extends StructuredError<RuntimeModelDiagnosticCode> {
   readonly code: RuntimeModelDiagnosticCode;
-  readonly details?: JsonValue;
 
   constructor(code: RuntimeModelDiagnosticCode, message: string, details?: JsonValue) {
-    super(message);
-    this.name = 'RuntimeModelError';
+    super(message, details);
     this.code = code;
-    this.details = details;
-    Object.setPrototypeOf(this, new.target.prototype);
-  }
-
-  toJSON(): Record<string, unknown> {
-    return {
-      name: this.name,
-      code: this.code,
-      message: this.message,
-      ...(this.details === undefined ? {} : { details: this.details }),
-    };
   }
 }

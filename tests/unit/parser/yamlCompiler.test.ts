@@ -5,6 +5,13 @@ import { createRuntimeEngine } from '../../../src/core/engine.js';
 import type { RuntimeHelpers, RuntimeProgram } from '../../../src/model/runtime.js';
 import type { RuntimeClock } from '../../../src/contracts/ports.js';
 import type { Command } from '../../../src/contracts/domain.js';
+import {
+  aggregateId,
+  boundaryName,
+  commandId,
+  httpMethod,
+  operationId,
+} from '../../../src/domain/references.js';
 import { readFileSync } from 'node:fs';
 
 const helpers: RuntimeHelpers = {
@@ -22,19 +29,44 @@ const clock: RuntimeClock = {
   reset: () => undefined,
 };
 
-function command(overrides: Partial<Command> = {}): Command {
+type CommandOverrides = Omit<
+  Partial<Command>,
+  'commandId' | 'targetId' | 'boundary' | 'httpMethod' | 'operationId'
+> & {
+  readonly commandId?: string;
+  readonly targetId?: string | null;
+  readonly boundary?: string;
+  readonly httpMethod?: string;
+  readonly operationId?: string;
+};
+
+function command(overrides: CommandOverrides = {}): Command {
+  const {
+    commandId: rawCommandId,
+    targetId: rawTargetId,
+    boundary: rawBoundary,
+    httpMethod: rawHttpMethod,
+    operationId: rawOperationId,
+    ...rest
+  } = overrides;
   return {
-    commandId: 'command-1',
-    boundary: 'Order',
+    commandId: commandId(rawCommandId ?? 'command-1'),
+    boundary: boundaryName(rawBoundary ?? 'Order'),
     intent: 'creation',
-    targetId: 'order-1',
+    targetId:
+      rawTargetId === undefined
+        ? aggregateId('order-1')
+        : rawTargetId === null
+          ? null
+          : aggregateId(rawTargetId),
     payload: { id: 'order-1', status: 'new' },
     queryParams: {},
-    httpMethod: 'POST',
+    httpMethod: httpMethod(rawHttpMethod ?? 'POST'),
     path: '/orders',
     origin: 'inbound',
     depth: 0,
-    ...overrides,
+    ...(rawOperationId === undefined ? {} : { operationId: operationId(rawOperationId) }),
+    ...rest,
   };
 }
 
@@ -43,7 +75,8 @@ function dependencies(): RuntimeProgram['dependencies'] {
     helpers,
     clock,
     contract: {
-      operationIdFor: (_path, method) => (method === 'POST' ? 'createOrder' : 'getOrder'),
+      operationIdFor: (_path, method) =>
+        operationId(method === 'POST' ? 'createOrder' : 'getOrder'),
     },
   };
 }

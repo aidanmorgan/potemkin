@@ -11,7 +11,11 @@ export async function getFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const srv = net.createServer();
     srv.listen(0, '127.0.0.1', () => {
-      const addr = srv.address() as net.AddressInfo;
+      const addr = srv.address();
+      if (addr === null || typeof addr === 'string') {
+        srv.close(() => reject(new Error('Unable to determine the allocated port')));
+        return;
+      }
       srv.close((err) => {
         if (err) reject(err);
         else resolve(addr.port);

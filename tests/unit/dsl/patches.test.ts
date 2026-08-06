@@ -62,6 +62,17 @@ describe('patches.applyPatches — RFC 6902 ops', () => {
     expect(newState).toEqual({ a: 1, b: 1 });
   });
 
+  it('clones and patches an object property named __proto__ as data', () => {
+    const state = { ['__proto__']: { enabled: true } };
+    const { newState } = applyPatches(state, [
+      { op: 'replace', path: '/__proto__/enabled', value: false },
+    ]);
+
+    expect(newState).toEqual({ ['__proto__']: { enabled: false } });
+    expect(Object.prototype.hasOwnProperty.call(newState, '__proto__')).toBe(true);
+    expect(Object.prototype).not.toHaveProperty('enabled');
+  });
+
   it('add into an array at index inserts (does not replace)', () => {
     const state = { items: [10, 20] };
     const { newState } = applyPatches(state, [{ op: 'add', path: '/items/1', value: 15 }]);

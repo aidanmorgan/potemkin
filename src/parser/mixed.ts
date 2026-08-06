@@ -1,4 +1,4 @@
-import * as yaml from 'js-yaml';
+import { parse, stringify } from 'yaml';
 import type { OpenApiDoc } from '../contract/loader.js';
 import { compileAuthoringComposition, type AuthoringCompilation } from '../authoring/compiler.js';
 import { use } from '../authoring/composition.js';
@@ -19,6 +19,19 @@ import type { RuntimeCompilationContext } from '../runtime/system.js';
 import { compileYamlDefinition } from './public.js';
 import { parseUseMapping } from './yamlParser.js';
 import type { YamlModule, YamlProgramInput } from './public.js';
+import { isRecord } from '../contracts/value.js';
+
+function parseMixedYaml(source: string): unknown {
+  return parse(source, {
+    schema: 'core',
+    merge: true,
+    customTags: ['timestamp'],
+  });
+}
+
+function stringifyMixedYaml(value: unknown): string {
+  return stringify(value, { schema: 'yaml-1.1', singleQuote: true });
+}
 
 export interface MixedProgramInput {
   readonly yaml: YamlProgramInput;
@@ -110,12 +123,12 @@ export function prepareMixedYaml(
   const boundaryModules: YamlModule[] = [];
   const includes: ExternalYamlInclude[] = [];
   for (const module of input.modules) {
-    const raw = yaml.load(module.yaml);
-    if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    const raw = parseMixedYaml(module.yaml);
+    if (!isRecord(raw)) {
       boundaryModules.push(module);
       continue;
     }
-    const record = raw as Record<string, unknown>;
+    const record = raw;
     const boundary = typeof record['boundary'] === 'string' ? record['boundary'] : undefined;
     const rawIncludes = Array.isArray(record['include']) ? record['include'] : undefined;
     if (boundary === undefined || rawIncludes === undefined) {
@@ -124,8 +137,11 @@ export function prepareMixedYaml(
     }
     const remaining: unknown[] = [];
     for (const value of rawIncludes) {
-      const entry = value as Record<string, unknown>;
-      const name = typeof entry['component'] === 'string' ? entry['component'] : undefined;
+      if (!isRecord(value)) {
+        remaining.push(value);
+        continue;
+      }
+      const name = typeof value['component'] === 'string' ? value['component'] : undefined;
       const component = name === undefined ? undefined : typescriptComponents.get(name);
       if (component === undefined) remaining.push(value);
       else includes.push({ boundary, component });
@@ -135,7 +151,7 @@ export function prepareMixedYaml(
         ? module
         : {
             name: module.name,
-            yaml: yaml.dump({
+            yaml: stringifyMixedYaml({
               ...record,
               ...(remaining.length === 0 ? { include: undefined } : { include: remaining }),
             }),
@@ -170,7 +186,7 @@ export function prepareMixedYaml(
       }
     }
     if (remaining.length > 0)
-      yamlUseModules.push({ name: module.name, yaml: yaml.dump({ use: remaining }) });
+      yamlUseModules.push({ name: module.name, yaml: stringifyMixedYaml({ use: remaining }) });
   }
   return {
     input: {
@@ -201,7 +217,7 @@ async function compileYamlComponent(
       useMappingModules: [
         {
           name: `component:${reference.name}`,
-          yaml: yaml.dump({
+          yaml: stringifyMixedYaml({
             use: [
               {
                 component: reference.name,
@@ -349,8 +365,14 @@ async function applyCrossLanguageComposition(
       throw definitionError(
         `Cross-language YAML include host "${externalInclude.boundary}" was not compiled`,
       );
+    const host = yamlBoundaries.at(index);
+    if (host === undefined) {
+      throw definitionError(
+        `Cross-language YAML include host "${externalInclude.boundary}" was not compiled`,
+      );
+    }
     yamlBoundaries[index] = mergeFragment(
-      yamlBoundaries[index]!,
+      host,
       await compileTypeScriptComponent(externalInclude.component, context),
       externalInclude.component.name,
     );
@@ -364,7 +386,11 @@ async function applyCrossLanguageComposition(
     const index = directBoundaries.findIndex((boundary) => boundary.boundary === boundaryNameValue);
     if (index < 0)
       throw definitionError(`Cross-language include host "${boundaryNameValue}" was not compiled`);
-    let host = directBoundaries[index]!;
+    const initialHost = directBoundaries.at(index);
+    if (initialHost === undefined) {
+      throw definitionError(`Cross-language include host "${boundaryNameValue}" was not compiled`);
+    }
+    let host = initialHost;
     for (const reference of references)
       host = mergeFragment(host, await getYaml(reference), reference.name);
     directBoundaries[index] = host;

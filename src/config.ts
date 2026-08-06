@@ -77,7 +77,7 @@ function deepFreeze<T>(value: T): T {
   const copy = structuredClone(value);
   const visit = (entry: unknown): void => {
     if (entry === null || typeof entry !== 'object' || Object.isFrozen(entry)) return;
-    for (const child of Object.values(entry as Record<string, unknown>)) visit(child);
+    for (const child of Object.values(entry)) visit(child);
     Object.freeze(entry);
   };
   visit(copy);

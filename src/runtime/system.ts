@@ -1,17 +1,16 @@
 import type { OpenApiDoc } from '../contract/loader.js';
-import { lookupOperationId } from '../contract/loader.js';
-import { matchRoute } from '../contract/router.js';
 import { createContractValidator, type ContractValidator } from '../contract/validator.js';
 import type { PotemkinConfiguration } from '../contracts/config.js';
 import { createRuntimeEngine, type RuntimeEngine } from '../core/engine.js';
 import type {
+  CompiledRuntimeProgram,
   RuntimeDependencies,
   RuntimeContract,
   RuntimeProgram,
-  RuntimeRequest,
   RuntimeFaultStore,
   RuntimeHelpers,
 } from '../model/runtime.js';
+import { compileRuntimeMetadata } from '../model/runtime.js';
 import type {
   RuntimeClock,
   RuntimeForwardingPort,
@@ -24,23 +23,16 @@ import {
   createMemoryIdempotencyStore,
   createMemoryStateStore,
 } from '../core/storage.js';
-import { responseSupportsHateoas } from '../contract/hateoas.js';
-import { buildContractErrorBody, validateContractErrorBody } from '../contract/errorBody.js';
 import { createRuntimeAuthenticationPort } from '../identity/actorResolver.js';
 import { createSessionStore, type SessionStore } from '../identity/sessionStore.js';
 import type { Actor } from '../contracts/identity.js';
-import type { JsonObject, JsonValue } from '../contracts/value.js';
-import { ConfigurationError, InternalExecutionError } from '../errors.js';
+import { ConfigurationError } from '../errors.js';
 
-function isJsonObject(value: JsonValue | null | undefined): value is JsonObject {
-  return (
-    value !== null && value !== undefined && typeof value === 'object' && !Array.isArray(value)
-  );
-}
 import type { PluginControlClient } from '../contracts/lifecycle.js';
 import { createHash } from 'node:crypto';
 import type { RuntimeHostServices } from './host.js';
 import type { RuntimeTimerScheduler } from './ports.js';
+import { createRuntimeContract } from './contract.js';
 import { lintOrThrow } from '../lint/runner.js';
 import type { TransitionModel } from '../model/transitionModel.js';
 
@@ -57,212 +49,7 @@ export function runtimeContract(
   validator: ContractValidator,
   options: RuntimeContractOptions = {},
 ): RuntimeContract {
-  const operationRoutes = new Map<string, { method: string; path: string }>();
-  for (const [path, item] of Object.entries(doc.paths)) {
-    for (const [method, operation] of Object.entries(item)) {
-      if (operation?.operationId !== undefined)
-        operationRoutes.set(operation.operationId, { method, path });
-    }
-  }
-
-  const requestRoute = (operationId: string, request?: Readonly<RuntimeRequest>) => {
-    const route = operationRoutes.get(operationId);
-    if (route === undefined) return undefined;
-    const requestMatch =
-      request === undefined
-        ? null
-        : matchRoute(doc, request.command.httpMethod, request.command.path);
-    const matched =
-      request === undefined
-        ? matchRoute(doc, route.method, route.path)
-        : (requestMatch ?? matchRoute(doc, route.method, request.command.path));
-    return {
-      method:
-        matched === null || requestMatch === null
-          ? route.method
-          : (request?.command.httpMethod ?? route.method),
-      path: matched === null ? route.path : (request?.command.path ?? route.path),
-      pathParams: matched?.pathParams ?? {},
-    };
-  };
-
-  return {
-    operationIdFor: (path: string, method: string) => {
-      const matched = matchRoute(doc, method, path);
-      return matched?.operation.operationId ?? lookupOperationId(doc, path, method);
-    },
-    responseStatusFor: (operationId: string, intent: RuntimeRequest['command']['intent']) => {
-      const route = operationRoutes.get(operationId);
-      if (route === undefined) return undefined;
-      const operation = inputOperation(doc, route.path, route.method);
-      const statuses = Object.keys(operation?.responseSchemas ?? {})
-        .map(Number)
-        .filter((status) => Number.isInteger(status) && status >= 200 && status < 300)
-        .sort((left, right) => left - right);
-      if (statuses.length === 0) return undefined;
-      if (intent === 'creation' && statuses.includes(201)) return 201;
-      if (statuses.includes(200)) return 200;
-      return statuses[0];
-    },
-    pathForOperation: (operationId: string, targetId?: string | null) => {
-      const route = operationRoutes.get(operationId);
-      if (route === undefined) return undefined;
-      if (targetId === undefined || targetId === null) return route.path;
-      return route.path.replace(/\{[^}]+\}/g, encodeURIComponent(targetId));
-    },
-    validateRequest: (
-      operationId: string,
-      payload: JsonObject,
-      request?: Readonly<RuntimeRequest>,
-    ) => {
-      const resolved = requestRoute(operationId, request);
-      if (resolved === undefined) return;
-      // Secondary commands use the authored boundary path, which may be a
-      // resource identity path rather than the OpenAPI operation's route. The
-      // resolved route falls back to the operation route when needed.
-      const validate =
-        request?.batchItem === undefined
-          ? validator.validateRequest
-          : validator.validateRequestItem;
-      validate(
-        resolved.method,
-        resolved.path,
-        payload,
-        request?.command.queryParams ?? {},
-        resolved.pathParams,
-        request?.headers,
-      );
-    },
-    validateBatchRequest: (
-      operationId: string,
-      payload: JsonValue,
-      request?: Readonly<RuntimeRequest>,
-    ) => {
-      const resolved = requestRoute(operationId, request);
-      if (resolved === undefined) return;
-      validator.validateRequestBatch(
-        resolved.method,
-        resolved.path,
-        payload,
-        request?.command.queryParams ?? {},
-        resolved.pathParams,
-        request?.headers,
-      );
-    },
-    validateResponse: (
-      operationId: string,
-      status: number,
-      body: JsonValue,
-      request?: Readonly<RuntimeRequest>,
-      options?: Readonly<{ allowAdditionalProperties?: boolean }>,
-    ) => {
-      const resolved = requestRoute(operationId, request);
-      if (resolved === undefined) return;
-      const validate =
-        request?.batchItem === undefined
-          ? validator.validateResponse
-          : validator.validateResponseItem;
-      validate(resolved.method, resolved.path, status, body, options);
-    },
-    validateBatchResponse: (
-      operationId: string,
-      status: number,
-      body: JsonValue,
-      request?: Readonly<RuntimeRequest>,
-      options?: Readonly<{ allowAdditionalProperties?: boolean }>,
-    ) => {
-      const resolved = requestRoute(operationId, request);
-      if (resolved === undefined) return;
-      validator.validateResponseBatch(resolved.method, resolved.path, status, body, options);
-    },
-    shapeError: (operationId: string, status: number, body: JsonValue) => {
-      const route = operationRoutes.get(operationId);
-      if (route === undefined) return undefined;
-      const candidate = isJsonObject(body) ? body : {};
-      if (validateContractErrorBody(doc, route.method, route.path, status, body).valid) return body;
-      const code =
-        typeof candidate['code'] === 'string'
-          ? candidate['code']
-          : typeof candidate['error'] === 'string'
-            ? candidate['error']
-            : undefined;
-      return buildContractErrorBody(
-        doc,
-        route.method,
-        route.path,
-        status,
-        {
-          code,
-          message: typeof candidate['message'] === 'string' ? candidate['message'] : undefined,
-          details:
-            candidate['details'] ??
-            (code === undefined
-              ? undefined
-              : {
-                  code,
-                }),
-        },
-        {
-          ...(options.codeMap === undefined ? {} : { codeMap: options.codeMap }),
-          ...(options.now === undefined ? {} : { now: options.now }),
-        },
-      );
-    },
-    requiresPrecondition: (operationId: string) => {
-      const route = operationRoutes.get(operationId);
-      if (route === undefined) return false;
-      return (
-        doc.paths[route.path]?.[route.method]?.parameters?.some(
-          (parameter) =>
-            parameter.in === 'header' &&
-            parameter.name.toLowerCase() === 'if-match' &&
-            parameter.required === true,
-        ) ?? false
-      );
-    },
-    validateEvent: (
-      _boundary: string,
-      _eventType: string,
-      payload: JsonObject,
-      schemaRef?: string,
-    ) => {
-      if (schemaRef === undefined) return;
-      try {
-        validator.validateSchema(schemaRef, payload);
-      } catch (error) {
-        if (error instanceof InternalExecutionError) throw error;
-        throw new InternalExecutionError('Event payload failed schema validation', {
-          code: 'SCHEMA_TYPE_MISMATCH',
-          error: String(error),
-        });
-      }
-    },
-    validateEntity: (boundary: string, entity: JsonObject) => {
-      try {
-        validator.validateEntity(boundary, entity);
-      } catch (error) {
-        // A runtime boundary may intentionally omit a state schema when its
-        // OpenAPI response schema already validates the wire representation.
-        // In that case there is no entity-level schema to apply. Preserve all
-        // actual validation failures, including malformed entities.
-        const details = error instanceof InternalExecutionError ? error.details : undefined;
-        const errors = isJsonObject(details) ? details.errors : undefined;
-        if (errors === `No schema found for boundary '${boundary}'`) return;
-        throw error;
-      }
-    },
-    responseSupportsHateoas: (operationId: string, status: number, body: JsonValue) => {
-      const route = operationRoutes.get(operationId);
-      const operation =
-        route === undefined ? undefined : inputOperation(doc, route.path, route.method);
-      return responseSupportsHateoas(operation, status, body);
-    },
-    responseAllowsPaginationEnvelope: () => true,
-  };
-}
-
-function inputOperation(doc: OpenApiDoc, path: string, method: string) {
-  return doc.paths[path]?.[method];
+  return createRuntimeContract(doc, validator, options);
 }
 
 export interface RuntimeSystemDependencies {
@@ -313,7 +100,7 @@ export interface RuntimeSystem {
   openapi: OpenApiDoc;
   validator: ContractValidator;
   /** Active canonical runtime program. Updated after an atomic reload. */
-  program: RuntimeProgram;
+  program: CompiledRuntimeProgram;
   /** Source-independent static model exposed by the read-only admin surface. */
   transitionModel?: TransitionModel;
   readonly engine: RuntimeEngine;
@@ -403,6 +190,23 @@ function buildDependencies(
   };
 }
 
+function baselineEvents(engine: RuntimeEngine) {
+  return engine
+    .snapshot()
+    .events.filter((event) => event.eventId.startsWith('baseline-'))
+    .map((event) => ({
+      boundary: event.boundary,
+      aggregateId: event.aggregateId,
+      payload: event.payload,
+    }));
+}
+
+function baselineFixturesChecksum(engine: RuntimeEngine): string {
+  return createHash('sha256')
+    .update(JSON.stringify(baselineEvents(engine)))
+    .digest('hex');
+}
+
 /**
  * Boot the source-independent runtime. Source compilers supply a
  * `programFactory` when they need the runtime dependencies while compiling
@@ -446,15 +250,24 @@ export async function bootRuntime(input: RuntimeBootInput): Promise<RuntimeSyste
     helpers,
     stores,
   );
-  const compiledProgram =
-    input.program ??
-    (await input.programFactory!({
+  let sourceProgram: RuntimeProgram;
+  if (input.program !== undefined) {
+    sourceProgram = input.program;
+  } else {
+    const programFactory = input.programFactory;
+    if (programFactory === undefined) {
+      throw new ConfigurationError('bootRuntime requires a program or programFactory', {
+        field: 'programFactory',
+      });
+    }
+    sourceProgram = await programFactory({
       openapi: input.openapi,
       dependencies,
-    }));
-  const program =
+    });
+  }
+  const sourceWithDependencies =
     input.program === undefined
-      ? compiledProgram
+      ? sourceProgram
       : ({
           ...input.program,
           dependencies: {
@@ -474,6 +287,7 @@ export async function bootRuntime(input: RuntimeBootInput): Promise<RuntimeSyste
               : {}),
           },
         } satisfies RuntimeProgram);
+  const program = compileRuntimeMetadata(sourceWithDependencies);
   lintOrThrow({
     program,
     openapi: input.openapi,
@@ -485,17 +299,7 @@ export async function bootRuntime(input: RuntimeBootInput): Promise<RuntimeSyste
   const startedAt = helpers.now();
   const contractPaths = [...program.byContractPath.keys()].sort();
   const routesChecksum = createHash('sha256').update(contractPaths.join('\n')).digest('hex');
-  const baselineEvents = engine
-    .snapshot()
-    .events.filter((event) => event.eventId.startsWith('baseline-'))
-    .map((event) => ({
-      boundary: event.boundary,
-      aggregateId: event.aggregateId,
-      payload: event.payload,
-    }));
-  const fixturesChecksum = createHash('sha256')
-    .update(JSON.stringify(baselineEvents))
-    .digest('hex');
+  const fixturesChecksum = baselineFixturesChecksum(engine);
   const disposeHooks = new Set<() => Promise<void> | void>();
   let disposed = false;
   const system: RuntimeSystem = {
@@ -518,48 +322,53 @@ export async function bootRuntime(input: RuntimeBootInput): Promise<RuntimeSyste
       const nextWithContract =
         options.openapi === undefined
           ? nextProgram
-          : ({
-              ...nextProgram,
-              dependencies: {
-                ...nextProgram.dependencies,
-                contract: runtimeContract(options.openapi, nextValidator!, {
-                  now: helpers.now,
-                  codeMap: options.openapi.errorCodeMap,
-                }),
-              },
-            } satisfies RuntimeProgram);
+          : (() => {
+              if (nextValidator === undefined) {
+                throw new ConfigurationError('Reload validator was not initialized', {
+                  field: 'reload.openapi',
+                });
+              }
+              return {
+                ...nextProgram,
+                dependencies: {
+                  ...nextProgram.dependencies,
+                  contract: runtimeContract(options.openapi, nextValidator, {
+                    now: helpers.now,
+                    codeMap: options.openapi.errorCodeMap,
+                  }),
+                },
+              } satisfies RuntimeProgram;
+            })();
+      const nextProgramWithMetadata = compileRuntimeMetadata(nextWithContract);
       lintOrThrow({
-        program: nextWithContract,
+        program: nextProgramWithMetadata,
         openapi: options.openapi ?? system.openapi,
         sourceByBoundary: options.sourceByBoundary,
         transitionModel: options.transitionModel ?? system.transitionModel,
       });
       if (options.openapi !== undefined) {
+        if (nextValidator === undefined) {
+          throw new ConfigurationError('Reload validator was not initialized', {
+            field: 'reload.openapi',
+          });
+        }
         system.openapi = options.openapi;
-        system.validator = nextValidator!;
+        system.validator = nextValidator;
       }
-      await engine.replaceProgram(nextWithContract, { preserveEvents: options.clear !== true });
-      system.program = engine.program;
+      await engine.replaceProgram(nextProgramWithMetadata, {
+        preserveEvents: options.clear !== true,
+      });
+      system.program = nextProgramWithMetadata;
       if (options.transitionModel !== undefined) system.transitionModel = options.transitionModel;
       if (input.pluginControl !== undefined) {
         const nextContractPaths = [...engine.program.byContractPath.keys()].sort();
-        const nextBaselineEvents = engine
-          .snapshot()
-          .events.filter((event) => event.eventId.startsWith('baseline-'))
-          .map((event) => ({
-            boundary: event.boundary,
-            aggregateId: event.aggregateId,
-            payload: event.payload,
-          }));
         await input.pluginControl.notifyReady({
           engine: 'potemkin-stateful',
           version: runtimeVersion,
           startedAt: helpers.now(),
           contractPaths: nextContractPaths,
           routesChecksum: createHash('sha256').update(nextContractPaths.join('\n')).digest('hex'),
-          fixturesChecksum: createHash('sha256')
-            .update(JSON.stringify(nextBaselineEvents))
-            .digest('hex'),
+          fixturesChecksum: baselineFixturesChecksum(engine),
         });
       }
     },

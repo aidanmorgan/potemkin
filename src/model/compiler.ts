@@ -1,5 +1,12 @@
-import type { RuntimeBoundary, RuntimeDependencies } from './runtime.js';
-import type { RuntimeDefinition, RuntimeModel } from './index.js';
+import { compileRuntimeMetadata } from './runtime.js';
+import { deepFreeze } from './immutability.js';
+import type {
+  CompiledRuntimeProgram,
+  RuntimeBoundary,
+  RuntimeDependencies,
+  RuntimeProgram,
+} from './runtime.js';
+import type { RuntimeDefinition } from './index.js';
 import { RuntimeModelError } from '../model/errors.js';
 import { runtimeLatencyProblem } from '../model/latency.js';
 import {
@@ -10,12 +17,6 @@ import {
   parseContractPath,
 } from '../domain/references.js';
 
-function freeze<T>(value: T): T {
-  if (value === null || typeof value !== 'object' || Object.isFrozen(value)) return value;
-  for (const child of Object.values(value as Record<string, unknown>)) freeze(child);
-  return Object.freeze(value);
-}
-
 function readonlyMap<Key, Value>(source: Map<Key, Value>): ReadonlyMap<Key, Value> {
   const get = (key: Key) => source.get(key);
   const has = (key: Key) => source.has(key);
@@ -24,7 +25,7 @@ function readonlyMap<Key, Value>(source: Map<Key, Value>): ReadonlyMap<Key, Valu
   const values = () => source.values();
   const forEach = (callback: (value: Value, key: Key, map: ReadonlyMap<Key, Value>) => void) =>
     source.forEach((value, key) => callback(value, key, result));
-  const result = {
+  const result: ReadonlyMap<Key, Value> = {
     get,
     has,
     entries,
@@ -35,7 +36,7 @@ function readonlyMap<Key, Value>(source: Map<Key, Value>): ReadonlyMap<Key, Valu
       return source.size;
     },
     [Symbol.iterator]: entries,
-  } as ReadonlyMap<Key, Value>;
+  };
   return Object.freeze(result);
 }
 
@@ -67,8 +68,8 @@ function compilePolicies(
 export function compileRuntime(
   definition: RuntimeDefinition,
   dependencies: RuntimeDependencies,
-): RuntimeModel {
-  const boundaries = definition.boundaries.map((boundary) => freeze(boundary));
+): CompiledRuntimeProgram {
+  const boundaries = definition.boundaries.map((boundary) => deepFreeze(boundary));
   const byBoundaryName = new Map<string, RuntimeBoundary>();
   const byContractPath = new Map<string, RuntimeBoundary>();
 
@@ -228,15 +229,14 @@ export function compileRuntime(
           'RUNTIME_SAGA_REFERENCE_INVALID',
           `Runtime saga "${saga.name}" references unknown step operation "${step.operationId}"`,
         );
+      const compensation = step.compensation;
       if (
-        step.compensation !== undefined &&
-        !target.behaviors.some(
-          (candidate) => candidate.operationId === step.compensation!.operationId,
-        )
+        compensation !== undefined &&
+        !target.behaviors.some((candidate) => candidate.operationId === compensation.operationId)
       )
         throw new RuntimeModelError(
           'RUNTIME_SAGA_REFERENCE_INVALID',
-          `Runtime saga "${saga.name}" references unknown compensation operation "${step.compensation.operationId}"`,
+          `Runtime saga "${saga.name}" references unknown compensation operation "${compensation.operationId}"`,
         );
     }
   }
@@ -253,7 +253,7 @@ export function compileRuntime(
     helperNames.add(helper.name);
   }
 
-  return freeze({
+  const program: RuntimeProgram = deepFreeze({
     boundaries,
     byBoundaryName: readonlyMap(byBoundaryName),
     byContractPath: readonlyMap(byContractPath),
@@ -261,4 +261,5 @@ export function compileRuntime(
     helpers,
     dependencies,
   });
+  return compileRuntimeMetadata(program);
 }

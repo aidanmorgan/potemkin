@@ -1,12 +1,36 @@
+import { EventEmitter } from 'node:events';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
+
+const mockSpawn = jest.fn();
+jest.mock('node:child_process', () => ({
+  ...jest.requireActual('node:child_process'),
+  spawn: mockSpawn,
+}));
+
 import {
   ConformanceToolUnavailableError,
   runSpecmaticTest,
 } from '../../../src/conformance/specmatic';
 
+interface FakeChild extends EventEmitter {
+  stdout: EventEmitter;
+  stderr: EventEmitter;
+}
+
+function createFakeChild(): FakeChild {
+  const child = new EventEmitter() as FakeChild;
+  child.stdout = new EventEmitter();
+  child.stderr = new EventEmitter();
+  return child;
+}
+
 describe('Specmatic verifier runner', () => {
+  beforeEach(() => {
+    mockSpawn.mockReset();
+  });
+
   it('fails clearly when Java is unavailable', async () => {
     await expect(
       runSpecmaticTest({
@@ -159,6 +183,74 @@ describe('Specmatic verifier runner', () => {
       },
     });
     expect(receivedEnv).toHaveProperty('KEEP_THIS', 'true');
+  });
+
+  it('preserves child-process diagnostics that fit within the bound', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'potemkin-conformance-output-'));
+    const jarPath = path.join(root, 'specmatic.jar');
+    const reportDir = path.join(root, 'report');
+    await fs.writeFile(jarPath, 'test jar');
+    await fs.mkdir(reportDir);
+    await fs.writeFile(path.join(reportDir, 'results.xml'), '<testsuite tests="1" />');
+
+    const child = createFakeChild();
+    mockSpawn.mockImplementation(() => {
+      queueMicrotask(() => {
+        child.stdout.emit('data', Buffer.from('stdout remains unchanged\n'));
+        child.stderr.emit('data', Buffer.from('stderr remains unchanged\n'));
+        child.emit('close', 0, null);
+      });
+      return child;
+    });
+
+    const result = await runSpecmaticTest({
+      jarPath,
+      testBaseUrl: 'http://127.0.0.1:4321',
+      contractPath: '/tmp/crm.yaml',
+      junitReportDir: reportDir,
+      javaAvailable: () => true,
+    });
+    expect(result.process.stdout).toBe('stdout remains unchanged\n');
+    expect(result.process.stderr).toBe('stderr remains unchanged\n');
+  });
+
+  it('retains a deterministic tail when child-process diagnostics exceed the bound', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'potemkin-conformance-output-'));
+    const jarPath = path.join(root, 'specmatic.jar');
+    const reportDir = path.join(root, 'report');
+    await fs.writeFile(jarPath, 'test jar');
+    await fs.mkdir(reportDir);
+    await fs.writeFile(path.join(reportDir, 'results.xml'), '<testsuite tests="1" />');
+
+    const child = createFakeChild();
+    mockSpawn.mockReturnValue(child);
+    const retainedBytes = 64 * 1024;
+    const stdoutTail = 'stdout-tail\n';
+    const stderrTail = 'stderr-tail\n';
+    const stdoutInput = `${'stdout-prefix\n'}${'x'.repeat(retainedBytes)}${stdoutTail}`;
+    const stderrInput = `${'stderr-prefix\n'}${'y'.repeat(retainedBytes)}${stderrTail}`;
+    mockSpawn.mockImplementation(() => {
+      queueMicrotask(() => {
+        child.stdout.emit('data', Buffer.from(stdoutInput));
+        child.stderr.emit('data', Buffer.from(stderrInput));
+        child.emit('close', 1, null);
+      });
+      return child;
+    });
+
+    const result = await runSpecmaticTest({
+      jarPath,
+      testBaseUrl: 'http://127.0.0.1:4321',
+      contractPath: '/tmp/crm.yaml',
+      junitReportDir: reportDir,
+      javaAvailable: () => true,
+    });
+    expect(result.process.stdout).toBe(
+      `[stdout truncated; retaining the last ${retainedBytes} bytes]\n${stdoutInput.slice(-retainedBytes)}`,
+    );
+    expect(result.process.stderr).toBe(
+      `[stderr truncated; retaining the last ${retainedBytes} bytes]\n${stderrInput.slice(-retainedBytes)}`,
+    );
   });
 
   it('rejects a blank filter and an invalid direct combination cap', async () => {

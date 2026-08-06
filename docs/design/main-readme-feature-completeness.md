@@ -393,3 +393,22 @@ not an intermediate behaviour result. Body capture must use an explicit
 dependency-injected redaction or size policy; it must never be inferred from a
 debug log. This is implemented in the core observability port, with YAML and
 TypeScript real-use E2E coverage proving the same OTEL observation shape.
+
+## E2E coverage audit closure — 2026-08-06
+
+The end-to-end coverage audit is closed with 32 dedicated Specmatic suites and
+32 tests, one per item in [`e2e-coverage-todo.md`](e2e-coverage-todo.md). The
+paths are `cors-yaml`, `cors-typescript`, `api-versioning-typescript`,
+`conditional-requests-typescript`, `conditional-reads-typescript`,
+`head-typescript`, `hateoas-typescript`, `resource-yaml`,
+`resource-typescript`, `composition-typescript`, `composition-mixed`, the
+nine `sdk-*` suites, `query-mapping-typescript`, `audit-fields-typescript`,
+the two `state-*` suites, `strict-schema-typescript`,
+`control-defaults-typescript`, `authorization-typescript`,
+`lifecycle-typescript`, `programmatic-typescript-config`,
+`typescript-source-reload`, `yaml-only-validation`, `yaml-boot-errors`, and
+`typescript-boot-errors`.
+
+The complete repository-wide `pnpm run test:e2e` run passes 110 suites and
+992 tests. OTEL-001 is implemented with focused writer tests and the
+non-blocking writer is used by the shared E2E OTLP persistence path.

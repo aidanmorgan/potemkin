@@ -7,6 +7,7 @@ import { Eta } from 'eta';
 import openapiTS, { astToString, type OpenAPI3 } from 'openapi-typescript';
 
 import type { OpenApiDoc } from '../contract/loader.js';
+import { asRecord, isRecord } from '../contracts/value.js';
 import type { ScenarioFieldType, ScenarioModel } from './scenarioModel.js';
 
 /** Options shared by the CLI, language-service plugin, and future editor adapters. */
@@ -52,7 +53,9 @@ export async function generateOpenApiBindings(
   const moduleName = options.moduleName ?? DEFAULT_MODULE_NAME;
   const source = document.source ?? document.raw;
   const sourcePath = document.sourcePaths?.length === 1 ? document.sourcePaths[0] : undefined;
-  const generatorInput = sourcePath ? pathToFileURL(sourcePath) : (source as OpenAPI3);
+  const generatorInput = sourcePath
+    ? pathToFileURL(sourcePath)
+    : asOpenApiTypescriptDocument(source);
   const nodes = await openapiTS(generatorInput, {
     cwd: sourcePath ? path.dirname(sourcePath) : projectRoot,
     silent: true,
@@ -106,12 +109,27 @@ export async function generateOpenApiBindings(
 
 function componentSchemaNames(document: OpenApiDoc): readonly string[] {
   const source = document.source ?? document.raw;
-  if (source === null || typeof source !== 'object' || Array.isArray(source)) return [];
-  const components = (source as Record<string, unknown>).components;
-  if (components === null || typeof components !== 'object' || Array.isArray(components)) return [];
-  const schemas = (components as Record<string, unknown>).schemas;
-  if (schemas === null || typeof schemas !== 'object' || Array.isArray(schemas)) return [];
-  return Object.keys(schemas as Record<string, unknown>);
+  const sourceRecord = asRecord(source);
+  const components = sourceRecord?.['components'];
+  const componentRecord = asRecord(components);
+  const schemas = componentRecord?.['schemas'];
+  const schemaRecord = asRecord(schemas);
+  return schemaRecord === undefined ? [] : Object.keys(schemaRecord);
+}
+
+function asOpenApiTypescriptDocument(value: unknown): OpenAPI3 {
+  if (!isOpenApiTypescriptDocument(value)) {
+    throw new TypeError('OpenAPI TypeScript generation requires an OpenAPI 3 document');
+  }
+  return value;
+}
+
+function isOpenApiTypescriptDocument(value: unknown): value is OpenAPI3 {
+  if (!isRecord(value) || typeof value['openapi'] !== 'string') return false;
+  const info = asRecord(value['info']);
+  return (
+    info !== undefined && typeof info['title'] === 'string' && typeof info['version'] === 'string'
+  );
 }
 
 function operationTemplateModel(

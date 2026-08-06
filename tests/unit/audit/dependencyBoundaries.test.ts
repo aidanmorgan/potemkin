@@ -277,6 +277,7 @@ describe('dependency and legacy-surface boundaries', () => {
       'src/conformance/exampleStack.ts',
       'src/conformance/specmaticProcess.ts',
       'src/runtime/host.ts',
+      'src/observability/otelFileWriter.ts',
     ]);
     const patterns = [
       /Date\.now\(/,

@@ -9,7 +9,7 @@
 // tagged by source, and returns the mutated body, the headers to set, and the
 // full patch journal (used for the /_engine/forward `_patches` envelope).
 
-import type { JsonValue, JsonObject } from '../contracts/value.js';
+import { isJsonObject, type JsonValue } from '../contracts/value.js';
 import type {
   DeprecationConfig as BoundaryDeprecation,
   ResponseMutationBoundary,
@@ -46,15 +46,11 @@ export function buildOperationLookup(openapi: OpenApiDoc): OperationLookup {
   const byId = new Map<string, string>();
   for (const [path, item] of Object.entries(openapi.paths)) {
     for (const op of Object.values(item)) {
-      const id = (op as OpenApiOperation | undefined)?.operationId;
+      const id = op?.operationId;
       if (typeof id === 'string' && !byId.has(id)) byId.set(id, path);
     }
   }
   return { resolveOperationPath: (operationId) => byId.get(operationId) };
-}
-
-function isPlainObject(v: JsonValue): v is JsonObject {
-  return v !== null && typeof v === 'object' && !Array.isArray(v);
 }
 
 /**
@@ -71,7 +67,7 @@ function mutateEntities(
   journal: JournalEntry[],
 ): JsonValue {
   const apply = (entity: JsonValue): JsonValue => {
-    if (!isPlainObject(entity)) return entity;
+    if (!isJsonObject(entity)) return entity;
     let next: JsonValue = entity;
     if (hateoasPatches.length > 0) {
       const r = applyPatches(next, hateoasPatches, 'hateoas', { autoVivify: true });
@@ -90,8 +86,8 @@ function mutateEntities(
     return body.map(apply);
   }
   // Pagination envelope { items: [...] } — mutate each item, leave metadata.
-  if (isPlainObject(body) && Array.isArray(body['items'])) {
-    return { ...body, items: (body['items'] as JsonValue[]).map(apply) };
+  if (isJsonObject(body) && Array.isArray(body['items'])) {
+    return { ...body, items: body['items'].map(apply) };
   }
   return apply(body);
 }
@@ -138,9 +134,8 @@ export function applyResponseMutations(input: ResponseMutationInput): ResponseMu
   const deprecationPatches = compileResponseDeprecation(deprecation);
   if (deprecationPatches.length > 0) {
     const carrier = applyPatches({ headers: {} }, deprecationPatches, 'deprecation');
-    const carrierHeaders = (carrier.newState as JsonObject)['headers'];
-    if (isPlainObject(carrierHeaders as JsonValue)) {
-      for (const [k, v] of Object.entries(carrierHeaders as JsonObject)) {
+    if (isJsonObject(carrier.newState) && isJsonObject(carrier.newState['headers'])) {
+      for (const [k, v] of Object.entries(carrier.newState['headers'])) {
         headers[k] = String(v);
       }
     }

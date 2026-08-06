@@ -6,7 +6,8 @@
  * They are the stable shapes consumed by the evaluator's `evalExpr` switch.
  */
 
-export type ComprehensionKind = 'all' | 'exists' | 'exists_one' | 'filter' | 'map';
+const COMPREHENSION_METHOD_NAMES = ['all', 'exists', 'exists_one', 'filter', 'map'] as const;
+export type ComprehensionKind = (typeof COMPREHENSION_METHOD_NAMES)[number];
 
 export type Expr =
   | { kind: 'literal'; value: string | number | boolean | null }
@@ -61,13 +62,11 @@ export const LIST_METHODS = new Set([
   'distinct',
 ]);
 export const MAP_METHODS = new Set(['size', 'has', 'keys', 'values']);
-export const COMPREHENSION_METHODS = new Set<ComprehensionKind>([
-  'all',
-  'exists',
-  'exists_one',
-  'filter',
-  'map',
-]);
+export const COMPREHENSION_METHODS: ReadonlySet<string> = new Set(COMPREHENSION_METHOD_NAMES);
+
+export function isComprehensionKind(value: string): value is ComprehensionKind {
+  return COMPREHENSION_METHODS.has(value);
+}
 
 /** All identifiers that, when followed by `(` after a `.`, are method calls. */
 export const RECEIVER_METHODS = new Set<string>([

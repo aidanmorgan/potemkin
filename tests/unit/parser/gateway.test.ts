@@ -1,26 +1,23 @@
-import { createRuntimeDataGenerator } from '../../../src/model/data.js';
 import { createYamlRuntimeExtensions } from '../../../src/parser/gateway.js';
-import type { RuntimeSystem } from '../../../src/runtime/system.js';
 
-function systemWithReload(reloadConfiguration?: () => Promise<unknown>): RuntimeSystem {
+type YamlRuntimeSystem = Parameters<typeof createYamlRuntimeExtensions>[0];
+
+function systemWithReload(reloadConfiguration?: () => Promise<unknown>): YamlRuntimeSystem {
   const random = () => 0;
   return {
-    clock: { nowMs: () => 1_000, offsetMs: () => 0, advance: () => 0, reset: () => undefined },
+    clock: { nowMs: () => 1_000 },
     program: {
       dependencies: {
-        clock: { nowMs: () => 1_000, offsetMs: () => 0, advance: () => 0, reset: () => undefined },
+        clock: { offsetMs: () => 0 },
         helpers: {
           now: () => '2030-01-01T00:00:00.000Z',
           uuid: () => 'fault-1',
           random,
-          data: createRuntimeDataGenerator(random),
-          clone: <T>(value: T) => structuredClone(value),
         },
       },
-      policies: {},
     },
     ...(reloadConfiguration === undefined ? {} : { reloadConfiguration }),
-  } as unknown as RuntimeSystem;
+  };
 }
 
 describe('YAML runtime gateway extensions', () => {

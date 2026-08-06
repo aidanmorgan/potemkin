@@ -10,6 +10,8 @@
 
 import type { Intent, Origin, Command, DomainEvent, ExecutionResult } from './contracts/domain.js';
 import type { Actor } from './contracts/identity.js';
+import { aggregateId, commandId, eventId, sequenceVersion } from './domain/references.js';
+import type { AggregateId, CommandId, EventId, SequenceVersion } from './domain/references.js';
 import type {
   JsonScalar,
   JsonArray,
@@ -39,14 +41,6 @@ import {
   deserializeSimError,
   isConfigurationError,
 } from './errors.js';
-
-import {
-  createDeterministicUuidv7Source,
-  nextUuidv7,
-  epochAnchoredUuidv7,
-  deterministicUuidv7,
-  isUuidv7,
-} from './ids/uuidv7.js';
 
 import {
   definePotemkinConfig,
@@ -80,6 +74,10 @@ export type {
   DeepReadonly,
   Intent,
   Origin,
+  AggregateId,
+  CommandId,
+  EventId,
+  SequenceVersion,
   Actor,
   Command,
   DomainEvent,
@@ -117,11 +115,6 @@ export {
   SessionLimitError,
   deserializeSimError,
   isConfigurationError,
-  createDeterministicUuidv7Source,
-  nextUuidv7,
-  epochAnchoredUuidv7,
-  deterministicUuidv7,
-  isUuidv7,
   definePotemkinConfig,
   definePluginConfig,
   defineWorkflowConfig,
@@ -129,4 +122,8 @@ export {
   defineGovernanceConfig,
   defineSeedConfig,
   toEngineConfigurationResponse,
+  aggregateId,
+  commandId,
+  eventId,
+  sequenceVersion,
 };

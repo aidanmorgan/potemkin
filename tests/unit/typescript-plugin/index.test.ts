@@ -79,4 +79,31 @@ describe('TypeScript language-service adapter', () => {
       await fs.rm(root, { recursive: true, force: true });
     }
   });
+
+  it('ignores malformed plugin config values at the tsserver boundary', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'potemkin-ts-plugin-invalid-'));
+    try {
+      const project = { getCurrentDirectory: () => root } as unknown as ts.server.Project;
+      const languageService = {} as unknown as ts.LanguageService;
+      const module = plugin({ typescript: ts });
+
+      module.create({
+        project,
+        config: {
+          configPath: 42,
+          outputDirectory: { path: 'generated' },
+          intervalMs: 'fast',
+        },
+        languageService,
+      } as unknown as ts.server.PluginCreateInfo);
+
+      expect(module.getExternalFiles?.(project, 0 as ts.ProgramUpdateLevel)).toEqual([
+        path.join(root, 'gen-src', 'openapi.d.ts'),
+        path.join(root, 'gen-src', 'potemkin-sdk.d.ts'),
+      ]);
+      expect(watchConfiguredOpenApiBindings).not.toHaveBeenCalled();
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
 });

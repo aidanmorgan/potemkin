@@ -1,14 +1,21 @@
 import { eventsThroughVersion, nextSequenceVersion } from '../../../src/domain/eventSourcing.js';
 import type { DomainEvent } from '../../../src/contracts/domain.js';
+import {
+  AggregateId,
+  boundaryName,
+  eventId,
+  eventType,
+  SequenceVersion,
+} from '../../../src/domain/references.js';
 
 const event = (sequenceVersion: number, aggregateId = 'order-1'): DomainEvent => ({
-  eventId: `event-${sequenceVersion}`,
-  boundary: 'Orders',
-  aggregateId,
-  type: 'OrderUpdated',
+  eventId: eventId(`event-${sequenceVersion}`),
+  boundary: boundaryName('Orders'),
+  aggregateId: AggregateId.parse(aggregateId),
+  type: eventType('OrderUpdated'),
   payload: { sequenceVersion },
   timestamp: '2026-01-01T00:00:00.000Z',
-  sequenceVersion,
+  sequenceVersion: SequenceVersion.parse(sequenceVersion),
   causedBy: null,
 });
 

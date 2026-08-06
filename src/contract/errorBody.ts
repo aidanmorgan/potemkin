@@ -2,7 +2,8 @@ import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 import type { OpenApiDoc } from './loader.js';
 import { resolveResponseSchema } from './responseSchema.js';
-import type { JsonObject, JsonValue } from '../contracts/value.js';
+import { isJsonValue, type JsonObject, type JsonValue } from '../contracts/value.js';
+import { parsePointer } from '../model/patches.js';
 
 /** Context copied from a Potemkin error without coupling this module to error classes. */
 export interface ContractErrorContext {
@@ -29,24 +30,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function isJsonValue(value: unknown): value is JsonValue {
-  if (
-    value === null ||
-    typeof value === 'string' ||
-    typeof value === 'number' ||
-    typeof value === 'boolean'
-  )
-    return true;
-  if (Array.isArray(value)) return value.every(isJsonValue);
-  return isRecord(value) && Object.values(value).every(isJsonValue);
-}
-
 function localRefTarget(doc: OpenApiDoc, ref: string): unknown {
   if (!ref.startsWith('#/')) return undefined;
-  const parts = ref
-    .slice(2)
-    .split('/')
-    .map((part) => part.replace(/~1/g, '/').replace(/~0/g, '~'));
+  const parts = parsePointer(ref.slice(1));
   let cursor: unknown = doc.raw;
   for (const part of parts) {
     if (!isRecord(cursor)) return undefined;
@@ -447,7 +433,8 @@ export function validateContractErrorBody(
   addFormats(ajv);
   // The resolver preserves JSON-schema objects while replacing local refs;
   // narrow the result for Ajv's schema overload after that structural walk.
-  const validate = ajv.compile(resolveRefsForValidation(doc, schema) as Record<string, unknown>);
+  const resolvedSchema = resolveRefsForValidation(doc, schema);
+  const validate = ajv.compile(isRecord(resolvedSchema) ? resolvedSchema : {});
   const valid = validate(body);
   return valid ? { valid } : { valid, errors: validate.errors ?? [] };
 }

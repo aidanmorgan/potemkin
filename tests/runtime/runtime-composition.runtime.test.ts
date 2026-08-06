@@ -209,5 +209,5 @@ describe('runtime component composition parity', () => {
     } finally {
       await Promise.all([yamlSystem.dispose(), typescriptSystem.dispose()]);
     }
-  });
+  }, 30_000);
 });

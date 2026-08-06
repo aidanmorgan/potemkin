@@ -22,7 +22,7 @@ export function checkScopes(
   if (!actor) {
     throw new AuthenticationRequiredError(
       `Behavior "${behaviorName}" requires authentication (scopes: ${requiredScopes.join(', ')})`,
-      { behavior: behaviorName, requiredScopes: requiredScopes as string[] },
+      { behavior: behaviorName, requiredScopes: [...requiredScopes] },
     );
   }
 
@@ -35,9 +35,9 @@ export function checkScopes(
       {
         behavior: behaviorName,
         actorId: actor.id,
-        requiredScopes: requiredScopes as string[],
+        requiredScopes: [...requiredScopes],
         missingScopes: missing,
-        actorScopes: actor.scopes as string[],
+        actorScopes: [...actor.scopes],
       },
     );
   }

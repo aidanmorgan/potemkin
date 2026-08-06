@@ -9,7 +9,7 @@ import { simulation } from '../../../src/authoring/builders';
 import type { RegisteredFactory } from '../../../src/authoring/factory';
 import { factoryName } from '../../../src/domain/references';
 
-const openapi = { raw: {}, paths: {} } as OpenApiDoc;
+const openapi: OpenApiDoc = { raw: {}, paths: {} };
 
 describe('configuration-driven TypeScript static factories', () => {
   let root: string;

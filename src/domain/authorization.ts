@@ -1,8 +1,16 @@
+export const AuthorizationReason = {
+  AuthenticationRequired: 'authentication-required',
+  ScopeMissing: 'scope-missing',
+  PolicyDenied: 'policy-denied',
+} as const;
+
+export type AuthorizationReason = (typeof AuthorizationReason)[keyof typeof AuthorizationReason];
+
 export type AuthorizationDecision =
   | { readonly allowed: true }
   | {
       readonly allowed: false;
-      readonly reason: 'authentication-required' | 'scope-missing' | 'policy-denied';
+      readonly reason: AuthorizationReason;
     };
 
 export function hasRequiredScopes(
@@ -21,11 +29,13 @@ export function authorize(
   policyDecision: boolean | undefined,
 ): AuthorizationDecision {
   if (requiredScopes.length > 0 && actualScopes === undefined) {
-    return { allowed: false, reason: 'authentication-required' };
+    return { allowed: false, reason: AuthorizationReason.AuthenticationRequired };
   }
   if (!hasRequiredScopes(actualScopes, requiredScopes)) {
-    return { allowed: false, reason: 'scope-missing' };
+    return { allowed: false, reason: AuthorizationReason.ScopeMissing };
   }
-  if (policyDecision === false) return { allowed: false, reason: 'policy-denied' };
+  if (policyDecision === false) {
+    return { allowed: false, reason: AuthorizationReason.PolicyDenied };
+  }
   return { allowed: true };
 }

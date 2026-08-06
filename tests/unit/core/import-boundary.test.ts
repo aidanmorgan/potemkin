@@ -100,6 +100,22 @@ describe('core import boundary', () => {
     expect(sdk.sdk).toHaveProperty('PotemkinConfigure');
   });
 
+  it('keeps the injected SDK facade aligned with the curated authoring surface', async () => {
+    const authoring = await import('../../../src/authoring/public.js');
+    const sdk = await import('../../../src/sdk/index.js');
+    const typedOverrides = new Set(['eventType', 'operationId', 'schemaReference']);
+
+    for (const [name, value] of Object.entries(authoring)) {
+      if (name === 'default' || name === 'module.exports' || typedOverrides.has(name)) continue;
+      expect(sdk).toHaveProperty(name, value);
+      expect(sdk.sdk).toHaveProperty(name, value);
+    }
+
+    expect(sdk.eventType).not.toBe(authoring.eventType);
+    expect(sdk.operationId).not.toBe(authoring.operationId);
+    expect(sdk.schemaReference).not.toBe(authoring.schemaReference);
+  });
+
   it('keeps the SDK closure independent of runtime and transport implementation packages', () => {
     const sourceRoot = resolve(process.cwd(), 'src');
     const forbidden = [

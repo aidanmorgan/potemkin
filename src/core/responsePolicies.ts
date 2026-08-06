@@ -1,4 +1,5 @@
 import type { DomainEvent } from '../contracts/domain.js';
+import { isJsonObject } from '../contracts/value.js';
 import type { JsonObject, JsonValue, Patch } from '../contracts/value.js';
 import { applyPatches } from '../model/patches.js';
 import type {
@@ -15,12 +16,6 @@ function clone<T>(value: T): T {
 
 function firstQueryValue(value: string | readonly string[] | undefined): string | undefined {
   return typeof value === 'string' ? value : value?.[0];
-}
-
-function isJsonObject(value: JsonValue | null | undefined): value is JsonObject {
-  return (
-    value !== null && value !== undefined && typeof value === 'object' && !Array.isArray(value)
-  );
 }
 
 function isPaginationEnvelope(value: JsonValue | null | undefined): value is JsonObject & {
@@ -59,14 +54,13 @@ function transformMaskedBody(
   const pointers = paths.filter((path) => path.startsWith('/'));
   const visit = (value: JsonValue): JsonValue => {
     if (Array.isArray(value)) return value.map((item) => visit(item));
-    if (value === null || typeof value !== 'object') return value;
-    let current: JsonValue = clone(value as JsonObject);
-    if (typeof current !== 'object' || current === null || Array.isArray(current)) return current;
-    const object = current as JsonObject;
+    if (!isJsonObject(value)) return value;
+    let current: JsonValue = clone(value);
+    if (!isJsonObject(current)) return current;
     for (const field of bareFields) {
-      if (!Object.prototype.hasOwnProperty.call(object, field)) continue;
-      if (replacement === undefined) delete object[field];
-      else object[field] = clone(replacement);
+      if (!Object.prototype.hasOwnProperty.call(current, field)) continue;
+      if (replacement === undefined) delete current[field];
+      else current[field] = clone(replacement);
     }
     for (const path of pointers) {
       try {
@@ -79,10 +73,8 @@ function transformMaskedBody(
         // Masks are best-effort when a field is absent.
       }
     }
-    if (current !== null && typeof current === 'object' && !Array.isArray(current)) {
-      for (const [key, child] of Object.entries(current as JsonObject)) {
-        (current as JsonObject)[key] = visit(child);
-      }
+    if (isJsonObject(current)) {
+      for (const [key, child] of Object.entries(current)) current[key] = visit(child);
     }
     return current;
   };
@@ -134,9 +126,13 @@ export function compileMaskValuePatches(
         const index = Number(segment);
         if (!Number.isInteger(index) || index < 0 || index >= current.length)
           return { exists: false };
-        current = current[index]!;
+        const next = current[index];
+        if (next === undefined) return { exists: false };
+        current = next;
       } else if (isJsonObject(current) && Object.prototype.hasOwnProperty.call(current, segment)) {
-        current = current[segment]!;
+        const next = current[segment];
+        if (next === undefined) return { exists: false };
+        current = next;
       } else {
         return { exists: false };
       }
@@ -276,10 +272,15 @@ const responseFormatStrategies: Readonly<
     format: (body, _resourceType, path) => {
       if (body === null) return null;
       const self = path.split('?')[0] ?? path;
-      if (Array.isArray(body))
-        return { _embedded: { items: body }, _links: { self: { href: self } } } as JsonObject;
-      if (isPaginationEnvelope(body))
-        return {
+      if (Array.isArray(body)) {
+        const result: JsonObject = {
+          _embedded: { items: body },
+          _links: { self: { href: self } },
+        };
+        return result;
+      }
+      if (isPaginationEnvelope(body)) {
+        const result: JsonObject = {
           _embedded: { items: body.items },
           _links: { self: { href: self } },
           totalCount: body.totalCount,
@@ -287,10 +288,12 @@ const responseFormatStrategies: Readonly<
           limit: body.limit,
           hasMore: body.hasMore,
           ...(body.nextCursor === undefined ? {} : { nextCursor: body.nextCursor }),
-        } as JsonObject;
+        };
+        return result;
+      }
       if (isJsonObject(body)) {
         const existing = isJsonObject(body._links) ? body._links : {};
-        return { ...body, _links: { self: { href: self }, ...existing } } as JsonObject;
+        return { ...body, _links: { self: { href: self }, ...existing } };
       }
       return body;
     },
@@ -307,9 +310,12 @@ const responseFormatStrategies: Readonly<
           attributes,
         };
       };
-      if (Array.isArray(body)) return { data: body.map(resource) } as JsonObject;
-      if (isPaginationEnvelope(body))
-        return {
+      if (Array.isArray(body)) {
+        const result: JsonObject = { data: body.map(resource) };
+        return result;
+      }
+      if (isPaginationEnvelope(body)) {
+        const result: JsonObject = {
           data: body.items.map(resource),
           meta: {
             totalCount: body.totalCount,
@@ -317,8 +323,10 @@ const responseFormatStrategies: Readonly<
             limit: body.limit,
             hasMore: body.hasMore,
           },
-        } as JsonObject;
-      return { data: resource(body) } as JsonObject;
+        };
+        return result;
+      }
+      return { data: resource(body) };
     },
   },
 };

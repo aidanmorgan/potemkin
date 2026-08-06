@@ -120,6 +120,18 @@ describe('cel/evaluator', () => {
     it('throws when accessing property on non-object/array', () => {
       expect(() => eval_('a.b', { a: 42 })).toThrow('CEL_EVAL');
     });
+
+    it('treats inherited properties as absent CEL map fields', () => {
+      const obj = Object.create({ inherited: 'not-a-field' }) as Record<string, unknown>;
+      obj.own = 'field';
+
+      expect(eval_('obj.inherited', { obj })).toBeNull();
+      expect(eval_('obj?.inherited', { obj })).toBeNull();
+      expect(eval_('has(obj.inherited)', { obj })).toBe(false);
+      expect(eval_('"inherited" in obj', { obj })).toBe(false);
+      expect(eval_('obj.has("inherited")', { obj })).toBe(false);
+      expect(eval_('obj.own', { obj })).toBe('field');
+    });
   });
 
   // ── arithmetic operators ───────────────────────────────────────────────────
@@ -150,6 +162,11 @@ describe('cel/evaluator', () => {
 
     it('unary minus on non-number throws', () => {
       expect(() => eval_('-"hello"')).toThrow('CEL_EVAL');
+    });
+
+    it('rejects non-numeric operands instead of applying JavaScript coercion', () => {
+      expect(() => eval_('"10" - 1')).toThrow("CEL_EVAL: operator '-' requires number operands");
+      expect(() => eval_('null + null')).toThrow("CEL_EVAL: operator '+' requires number operands");
     });
   });
 
@@ -200,6 +217,10 @@ describe('cel/evaluator', () => {
 
     it('== with strings', () => {
       expect(eval_('"a" == "a"')).toBe(true);
+    });
+
+    it('orders strings lexicographically', () => {
+      expect(eval_('"a" < "b"')).toBe(true);
     });
   });
 

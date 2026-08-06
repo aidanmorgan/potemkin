@@ -8,18 +8,11 @@
 //    `Bearer <id>:<scopes>` simulation shortcut is parsed by extractActor.
 
 import type { Actor } from '../contracts/identity.js';
-import { extractActor } from './actorExtractor.js';
+import { extractActor, extractBearerToken } from './actorExtractor.js';
 import { validateJwt, JwtValidationError } from './jwtValidator.js';
 import type { RuntimeAuth, RuntimeAuthenticationPort, RuntimeRequest } from '../model/runtime.js';
 
 export { JwtValidationError };
-
-/** Pull the raw token out of an `Authorization: Bearer <token>` header. */
-function extractBearerToken(header: string | undefined): string | null {
-  if (!header) return null;
-  const m = /^bearer\s+(.+)$/i.exec(header.trim());
-  return m ? m[1].trim() : null;
-}
 
 /**
  * Resolve the Actor for a request.

@@ -6,13 +6,14 @@
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 
-import * as yaml from 'js-yaml';
+import { parse, stringify } from 'yaml';
 import { glob } from 'tinyglobby';
 
 import { BootError } from '../errors.js';
 import type { YamlProgramInput } from './public.js';
 import type { OpenApiDoc } from '../contract/loader.js';
 import type { PotemkinConfiguration, PluginConfiguration } from '../contracts/config.js';
+import { isRecord } from '../contracts/value.js';
 import { expandResourceModules } from '../dsl/resourceExpander.js';
 import { validatePotemkinConfig } from '../dsl/configSchema.js';
 
@@ -73,6 +74,10 @@ interface ResolvedModule {
   readonly parsed: unknown;
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export async function loadPotemkinConfig(
   potemkinConfigPath: string,
   opts: LoadOptions = {},
@@ -88,16 +93,16 @@ export async function loadPotemkinConfig(
     } catch (e) {
       throw new BootError(
         'BOOT_ERR_CONFIG_MISSING',
-        `Cannot read potemkin.yml at ${absConfigPath}: ${(e as Error).message}`,
+        `Cannot read potemkin.yml at ${absConfigPath}: ${errorMessage(e)}`,
         { source: absConfigPath },
       );
     }
   }
   let parsedConfig: unknown;
   try {
-    parsedConfig = yaml.load(configText);
+    parsedConfig = parseYaml(configText);
   } catch (e) {
-    throw new BootError('BOOT_ERR_INVALID_YAML', `${absConfigPath}: ${(e as Error).message}`, {
+    throw new BootError('BOOT_ERR_INVALID_YAML', `${absConfigPath}: ${errorMessage(e)}`, {
       source: absConfigPath,
     });
   }
@@ -126,20 +131,20 @@ export async function loadPotemkinConfig(
     } catch (e) {
       throw new BootError(
         'BOOT_ERR_INVALID_YAML',
-        `${filePath}: read failed — ${(e as Error).message}`,
+        `${filePath}: read failed — ${errorMessage(e)}`,
         { source: filePath },
       );
     }
     let parsed: unknown;
     try {
-      parsed = yaml.load(text);
+      parsed = parseYaml(text);
     } catch (e) {
-      throw new BootError('BOOT_ERR_INVALID_YAML', `${filePath}: ${(e as Error).message}`, {
+      throw new BootError('BOOT_ERR_INVALID_YAML', `${filePath}: ${errorMessage(e)}`, {
         source: filePath,
       });
     }
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      const rec = parsed as Record<string, unknown>;
+    if (isRecord(parsed)) {
+      const rec = parsed;
       if (rec['kind'] === 'component') {
         // Component file: stash in component catalog, produces no live boundary.
         componentModules.push({ path: filePath, text, parsed });
@@ -195,7 +200,7 @@ export async function loadPotemkinConfig(
   };
   const boundarySourcePaths: Record<string, string> = {};
   for (const m of boundaryModules) {
-    const rec = m.parsed as Record<string, unknown>;
+    const rec = isRecord(m.parsed) ? m.parsed : {};
     if (typeof rec['boundary'] === 'string') {
       boundarySourcePaths[rec['boundary']] = m.path;
     }
@@ -255,7 +260,7 @@ function mergeGlobalModules(modules: readonly ResolvedModule[]): string | undefi
 
   const merged: Record<string, unknown> = {};
   for (const m of modules) {
-    const rec = m.parsed as Record<string, unknown>;
+    const rec = isRecord(m.parsed) ? m.parsed : {};
     for (const [k, v] of Object.entries(rec)) {
       if (k in merged) {
         throw new BootError(
@@ -267,7 +272,27 @@ function mergeGlobalModules(modules: readonly ResolvedModule[]): string | undefi
       merged[k] = v;
     }
   }
-  return yaml.dump(merged);
+  return stringify(merged, {
+    schema: 'core',
+    merge: true,
+    customTags: ['timestamp'],
+  });
+}
+
+/**
+ * Keep the configuration dialect compatible with the former js-yaml loader.
+ * The core schema preserves YAML 1.2 scalar rules, while these options retain
+ * merge-key and implicit timestamp support. String keys are important here:
+ * YAML 1.2 otherwise converts a key spelled `null` into an empty JavaScript
+ * property name when materialising the parsed document.
+ */
+function parseYaml(source: string): unknown {
+  return parse(source, {
+    schema: 'core',
+    merge: true,
+    customTags: ['timestamp'],
+    stringKeys: true,
+  });
 }
 
 function runContractPathCrossCheck(
@@ -280,20 +305,24 @@ function runContractPathCrossCheck(
   for (const e of specEndpoints) {
     availableSpecIds.add(e.specId);
     const k = `${e.specId}|${e.path}`;
-    if (!bySpecPath.has(k)) bySpecPath.set(k, new Set());
-    bySpecPath.get(k)!.add(e.method.toUpperCase());
+    const methods = bySpecPath.get(k);
+    if (methods === undefined) bySpecPath.set(k, new Set([e.method.toUpperCase()]));
+    else methods.add(e.method.toUpperCase());
   }
 
   for (const m of modules) {
-    const rec = m.parsed as Record<string, unknown>;
+    if (!isRecord(m.parsed)) continue;
+    const rec = m.parsed;
     const boundaryName = String(rec['boundary']);
     if (rec['out_of_contract'] === true) continue;
 
-    const specId = typeof rec['spec_id'] === 'string' ? (rec['spec_id'] as string) : undefined;
+    const specId = typeof rec['spec_id'] === 'string' ? rec['spec_id'] : undefined;
     const contractPath =
       typeof rec['contractPath'] === 'string'
-        ? (rec['contractPath'] as string)
-        : (rec['contract_path'] as string | undefined);
+        ? rec['contractPath']
+        : typeof rec['contract_path'] === 'string'
+          ? rec['contract_path']
+          : undefined;
 
     if (typeof specId !== 'string') {
       throw new BootError(
@@ -310,7 +339,8 @@ function runContractPathCrossCheck(
       );
     }
     const cpKey = `${specId}|${contractPath}`;
-    if (!bySpecPath.has(cpKey)) {
+    const available = bySpecPath.get(cpKey);
+    if (available === undefined) {
       throw new BootError(
         'BOOT_ERR_UNKNOWN_CONTRACT_PATH',
         `${m.path}: boundary "${boundaryName}" contractPath "${String(contractPath)}" not present in spec "${specId}"`,
@@ -319,7 +349,6 @@ function runContractPathCrossCheck(
     }
     const methodsRaw = rec['methods'];
     if (Array.isArray(methodsRaw) && methodsRaw.length > 0) {
-      const available = bySpecPath.get(cpKey)!;
       for (const m_ of methodsRaw) {
         if (typeof m_ === 'string' && !available.has(m_.toUpperCase())) {
           throw new BootError(

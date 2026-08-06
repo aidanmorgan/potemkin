@@ -85,4 +85,48 @@ describe('parseRuntimeFaultRegistration TTL validation', () => {
     );
     expect(noDelay.rule.delayMs).toBeUndefined();
   });
+
+  it('preserves typed optional fault fields while crossing the admin boundary', () => {
+    const result = parseRuntimeFaultRegistration(
+      {
+        name: 'scoped-outage',
+        match: {
+          boundary: 'orders',
+          intent: 'mutation',
+          operationId: 'updateOrder',
+          method: 'patch',
+          headers: { 'x-tenant': 'acme' },
+          requiredScopes: ['orders:write'],
+          probability: 0.5,
+          requires: [
+            {
+              name: 'tenant-enabled',
+              condition: 'true',
+              errorCode: 'TENANT_DISABLED',
+              errorMessage: 'tenant is disabled',
+            },
+          ],
+        },
+        response: {
+          status: 503,
+          body: { error: 'outage' },
+          headers: { 'retry-after': '10' },
+        },
+      },
+      { nowMs: 1_000, cel },
+    );
+
+    expect(result.rule).toMatchObject({
+      name: 'scoped-outage',
+      headers: { 'x-tenant': 'acme' },
+      requiredScopes: ['orders:write'],
+      probability: 0.5,
+      response: {
+        status: 503,
+        body: { error: 'outage' },
+        headers: { 'retry-after': '10' },
+      },
+    });
+    expect(result.rule.requires).toHaveLength(1);
+  });
 });

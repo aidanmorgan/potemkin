@@ -89,7 +89,7 @@ export function lexTemplate(s: string): TemplateToken[] {
         // Unbalanced — treat the '$' as plain text.
         startBuf();
         buf += s[i];
-        advanceCols(s[i]!);
+        advanceCols(s[i] ?? '');
         i++;
         continue;
       }
@@ -107,7 +107,7 @@ export function lexTemplate(s: string): TemplateToken[] {
       if (close === -1) {
         startBuf();
         buf += s[i];
-        advanceCols(s[i]!);
+        advanceCols(s[i] ?? '');
         i++;
         continue;
       }
@@ -121,7 +121,7 @@ export function lexTemplate(s: string): TemplateToken[] {
 
     startBuf();
     buf += s[i];
-    advanceCols(s[i]!);
+    advanceCols(s[i] ?? '');
     i++;
   }
   flushText();

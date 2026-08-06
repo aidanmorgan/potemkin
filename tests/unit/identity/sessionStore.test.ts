@@ -382,5 +382,14 @@ describe('identity/sessionStore', () => {
       // The slot is freed (expired sessions don't count toward the cap).
       expect(() => store.create(ACTOR_BOB, TTL_MS)).not.toThrow();
     });
+
+    it('rejects invalid numeric session configuration at the boundary', () => {
+      expect(() => createTestSessionStore({ maxSessions: 1.5 })).toThrow(RangeError);
+      expect(() => createTestSessionStore({ sweepIntervalMs: Number.NaN })).toThrow(RangeError);
+
+      const store = createTestSessionStore({ sweepIntervalMs: 0 });
+      expect(() => store.create(ACTOR_ALICE, -1)).toThrow(RangeError);
+      expect(() => store.create(ACTOR_ALICE, Number.POSITIVE_INFINITY)).toThrow(RangeError);
+    });
   });
 });

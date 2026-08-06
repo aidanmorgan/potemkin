@@ -5,7 +5,12 @@
  * rebuilt around a request-local random source.
  */
 
+import { createHash } from 'node:crypto';
 import type { DataGenerator } from '../contracts/data.js';
+import { v4 } from 'uuid';
+import type { v7 } from 'uuid';
+
+type UuidV7Options = NonNullable<Parameters<typeof v7>[0]>;
 
 const FIRST_NAMES = [
   'Alex',
@@ -61,13 +66,39 @@ export function createSeededRandom(seed: string): () => number {
   };
 }
 
+/**
+ * Build deterministic inputs for uuid.v7 without reimplementing UUID layout.
+ * The dependency remains responsible for version bits, variants, and encoding.
+ */
+export function uuidV7OptionsFromSeed(seed: string): UuidV7Options {
+  const hash = createHash('sha256').update(seed).digest();
+  const byte = (index: number): number => hash[index] ?? 0;
+  const seq =
+    ((((byte(0) >>> 4) & 0x0f) << 28) |
+      (byte(1) << 20) |
+      ((byte(2) & 0x3f) << 14) |
+      (byte(3) << 6) |
+      (byte(4) >>> 2)) >>
+    0;
+  const random = new Uint8Array(16);
+  random[10] = byte(4) & 0x03;
+  random[11] = byte(5);
+  random[12] = byte(6);
+  random[13] = byte(7);
+  random[14] = byte(8);
+  random[15] = byte(9);
+  return { msecs: 0, seq, random };
+}
+
 function boundedRandom(random: () => number): number {
   const value = random();
   return Number.isFinite(value) ? Math.max(0, Math.min(value, 0.9999999999)) : 0;
 }
 
 function pick<T>(random: () => number, values: readonly T[]): T {
-  return values[Math.floor(boundedRandom(random) * values.length)]!;
+  const value = values[Math.floor(boundedRandom(random) * values.length)];
+  if (value === undefined) throw new Error('Cannot pick from an empty collection');
+  return value;
 }
 
 function digits(random: () => number, length: number): string {
@@ -77,14 +108,29 @@ function digits(random: () => number, length: number): string {
 function alphanumeric(random: () => number, length: number): string {
   return Array.from(
     { length },
-    () => ALPHANUMERIC[Math.floor(boundedRandom(random) * ALPHANUMERIC.length)]!,
+    () => ALPHANUMERIC[Math.floor(boundedRandom(random) * ALPHANUMERIC.length)] ?? '0',
   ).join('');
 }
 
 function uuid(random: () => number): string {
-  const hex = (length: number): string =>
-    Array.from({ length }, () => Math.floor(boundedRandom(random) * 16).toString(16)).join('');
-  return `${hex(8)}-${hex(4)}-4${hex(3)}-${pick(random, ['8', '9', 'a', 'b'])}${hex(3)}-${hex(12)}`;
+  const nibble = (): number => Math.floor(boundedRandom(random) * 16);
+  const nibbles = [
+    ...Array.from({ length: 8 }, nibble),
+    ...Array.from({ length: 4 }, nibble),
+    4,
+    ...Array.from({ length: 3 }, nibble),
+    Math.floor(boundedRandom(random) * 4) + 8,
+    ...Array.from({ length: 3 }, nibble),
+    ...Array.from({ length: 12 }, nibble),
+  ];
+  const bytes = Uint8Array.from({ length: 16 }, (_, index) => {
+    const high = nibbles[index * 2];
+    const low = nibbles[index * 2 + 1];
+    if (high === undefined || low === undefined)
+      throw new Error('UUID generator produced an incomplete byte sequence');
+    return (high << 4) | low;
+  });
+  return v4({ random: bytes });
 }
 
 function date(random: () => number): Date {

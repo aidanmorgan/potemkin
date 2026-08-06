@@ -1,4 +1,5 @@
 import type { OpenApiDoc } from '../../contract/loader.js';
+import { asRecord } from '../../contracts/value.js';
 import type { Transition, TransitionMachine } from '../../model/transitionModel.js';
 import type { LintCheck, LintFinding } from '../types.js';
 
@@ -114,7 +115,8 @@ function reachableStates(
   const reachable = new Set(initialStates);
   const pending = [...initialStates];
   while (pending.length > 0) {
-    const state = pending.shift()!;
+    const state = pending.shift();
+    if (state === undefined) break;
     for (const transition of outgoing(transitions, state)) {
       if (transition.to === 'UNKNOWN' || reachable.has(transition.to)) continue;
       reachable.add(transition.to);
@@ -183,7 +185,10 @@ function guardFindings(
   );
   for (const transition of machine.transitions) {
     if (transition.guardCel === null) continue;
-    for (const match of transition.guardCel.matchAll(pattern)) values.add(match[2]!);
+    for (const match of transition.guardCel.matchAll(pattern)) {
+      const state = match[2];
+      if (state !== undefined) values.add(state);
+    }
   }
   return [...values]
     .filter((state) => !produced.has(state))
@@ -198,14 +203,14 @@ function guardFindings(
 }
 
 function contractEnumStates(machine: TransitionMachine, openapi: OpenApiDoc): readonly string[] {
-  const schemas = record(record(record(openapi.raw)?.components)?.schemas);
+  const schemas = asRecord(asRecord(asRecord(openapi.raw)?.components)?.schemas);
   if (schemas === undefined) return [];
   const names = [machine.aggregate, machine.aggregate.toLowerCase()];
   const schemaName = names.find((name) => schemas[name] !== undefined);
   if (schemaName === undefined) return [];
   const schema = resolveSchema(schemas[schemaName], schemas);
-  const field = record(schema?.properties)?.[machine.controlField];
-  const values = record(field)?.enum;
+  const field = asRecord(schema?.properties)?.[machine.controlField];
+  const values = asRecord(field)?.enum;
   return Array.isArray(values)
     ? values.filter((value): value is string => typeof value === 'string')
     : [];
@@ -215,7 +220,7 @@ function resolveSchema(
   value: unknown,
   schemas: Record<string, unknown>,
 ): Record<string, unknown> | undefined {
-  const schema = record(value);
+  const schema = asRecord(value);
   if (schema === undefined) return undefined;
   const ref = schema['$ref'];
   if (typeof ref === 'string' && ref.startsWith('#/components/schemas/')) {
@@ -226,12 +231,6 @@ function resolveSchema(
     (merged, part) => ({ ...merged, ...resolveSchema(part, schemas) }),
     { ...schema },
   );
-}
-
-function record(value: unknown): Record<string, unknown> | undefined {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
 }
 
 function finding(

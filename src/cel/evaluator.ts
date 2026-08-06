@@ -32,11 +32,14 @@ import {
   type BuiltinContext,
   type FakeRng,
 } from './builtins.js';
-import { deterministicUuidv7 } from '../ids/uuidv7.js';
+import { uuidV7OptionsFromSeed } from '../model/data.js';
+import { v7 } from 'uuid';
 import { createNoopLogger, type Logger } from '../observability/logger.js';
 import { parse } from './grammar/parser.js';
-import type { Expr } from './grammar/ast.js';
+import type { ComprehensionKind, Expr } from './grammar/ast.js';
 import { parseTemplate } from './grammar/template.js';
+import { detectCatastrophicRegexShape } from '../schema/regexSafety.js';
+import { isRecord } from '../contracts/value.js';
 
 // ---------------------------------------------------------------------------
 // ReDoS protection for matches() — synchronous, shape-based guard.
@@ -57,117 +60,6 @@ import { parseTemplate } from './grammar/template.js';
 // ---------------------------------------------------------------------------
 
 /**
- * Detect a catastrophic-backtracking *shape* in a regex source string.
- *
- * This is a deliberately conservative heuristic (the well-known "safe-regex"
- * family of checks): it looks for an unbounded quantifier (`+`, `*`, or
- * open-ended `{n,}`) applied to a group that itself contains an unbounded
- * quantifier or an overlapping alternation. These are the classic exponential
- * shapes:
- *   - nested quantifier:        (a+)+   (a*)*   (a+)*   (\d+)+
- *   - quantified, open-repeat:  (a+){2,}
- *   - overlapping alternation:  (a|a)+  (a|ab)+
- *   - sequential unbounded:     a*a*a*  (>= 3 adjacent unbounded quantifiers)
- *
- * The sequential-quantifier check catches patterns like `'a*'.repeat(N) + 'b'`
- * which backtrack catastrophically but contain no nested groups. The threshold
- * of 3 is chosen so that normal patterns such as `a+b+c+` or `[A-Z]+@[a-z]+`
- * (two adjacent unbounded quantifiers, always anchored to disjoint character
- * classes that the engine resolves without backtracking) are unaffected, while
- * the pathological `a*a*a*...b` shape (same character class repeated, no
- * progress guarantee) is rejected.
- *
- * @returns a human-readable reason when the pattern looks ReDoS-prone, else null.
- */
-function detectCatastrophicRegexShape(pattern: string): string | null {
-  // An unbounded quantifier that closes a group: `)` followed by +, *, or {n,}.
-  const groupRepeat = /\)\s*(?:[+*]|\{\d+,\}?)/;
-
-  // Walk each parenthesised group and inspect its body.
-  // A group body that contains its own unbounded quantifier (`+`, `*`, `{n,}`)
-  // AND is itself repeated is the nested-quantifier shape.
-  const groupRe = /\(([^()]*)\)\s*([+*]|\{\d+,?\d*\}?)?/g;
-  let m: RegExpExecArray | null;
-  while ((m = groupRe.exec(pattern)) !== null) {
-    const body = m[1] ?? '';
-    const outerQuant = m[2] ?? '';
-    // Only an *unbounded* outer quantifier can cause exponential blow-up.
-    const outerUnbounded =
-      outerQuant === '+' || outerQuant === '*' || /^\{\d+,\}?$/.test(outerQuant);
-    if (!outerUnbounded) continue;
-
-    // (a) nested unbounded quantifier inside the repeated group.
-    if (/[+*]|\{\d+,/.test(body)) {
-      return `nested-quantifier shape /(${body})${outerQuant}/`;
-    }
-    // (b) overlapping alternation inside the repeated group, e.g. (a|a)+,
-    //     (a|ab)+. Any alternation under an unbounded repeat is treated as
-    //     potentially overlapping and rejected conservatively.
-    if (body.includes('|')) {
-      return `overlapping-alternation shape /(${body})${outerQuant}/`;
-    }
-  }
-
-  // Defensive catch-all for shapes the per-group scan above can miss because of
-  // nested parentheses (the body regex is intentionally non-recursive).
-  if (groupRepeat.test(pattern) && /\([^)]*[+*]/.test(pattern)) {
-    return 'nested-quantifier shape (nested groups)';
-  }
-
-  // Sequential-unbounded-quantifier check.
-  // Patterns like `a*a*a*b` have no nested groups but backtrack catastrophically:
-  // the engine tries all ways to split the input among the adjacent `*` groups
-  // before concluding no match. The pathological shape is the *same* atom
-  // repeated with an unbounded quantifier 3+ times consecutively — the overlapping
-  // match ranges cause exponential backtracking.
-  //
-  // `a+b+c+` is safe (distinct atoms, engine can split unambiguously).
-  // `a*a*a*b` is unsafe (same atom `a` repeated — splits are ambiguous).
-  // `[a-z]*[a-z]*[a-z]*b` is equally unsafe (same character class).
-  //
-  // Approach: normalise character classes to a canonical token, then scan for
-  // the same normalised atom token appearing with an unbounded quantifier 3+
-  // times in a row without an intervening different literal.
-  //
-  // We use a token-walk rather than a single regex to avoid false positives on
-  // patterns like `^[a-z]+@[a-z]+\.[a-z]+$` (same class, but different
-  // separator literals `@` and `\.` between the runs).
-  const tokenRe = /(\[[^\]]*\]|\\.|[^\\])/g;
-  let seqAtom: string | null = null;
-  let seqCount = 0;
-  const tokensArr: string[] = [];
-  let tokM: RegExpExecArray | null;
-  while ((tokM = tokenRe.exec(pattern)) !== null) {
-    tokensArr.push(tokM[1] ?? '');
-  }
-  for (let i = 0; i < tokensArr.length; i++) {
-    const tok = tokensArr[i] ?? '';
-    const next = tokensArr[i + 1] ?? '';
-    const isUnboundedQuant = next === '+' || next === '*' || /^\{\d+,\d*\}$/.test(next);
-    if (isUnboundedQuant) {
-      // Normalise character classes to 'CLS' so [a-z] and [a-z] match each other.
-      const norm = tok.startsWith('[') ? 'CLS' : tok;
-      if (norm === seqAtom) {
-        seqCount++;
-        if (seqCount >= 3) {
-          return 'sequential-unbounded-quantifier shape (>= 3 adjacent unbounded quantifiers on overlapping atoms)';
-        }
-      } else {
-        seqAtom = norm;
-        seqCount = 1;
-      }
-      i++; // consume the quantifier token
-    } else {
-      // A non-quantified token resets the run — it acts as a separator.
-      seqAtom = null;
-      seqCount = 0;
-    }
-  }
-
-  return null;
-}
-
-/**
  * Execute `new RegExp(pattern).test(input)` with a synchronous, shape-based
  * ReDoS guard. No Worker threads are involved.
  *
@@ -182,13 +74,12 @@ function evalMatchesSafe(pattern: string, input: string): boolean {
       `CEL_TYPE_ERROR: REGEX_REJECTED — regex /${pattern}/ has a ${reason} known to backtrack catastrophically`,
     );
   }
-  let re: RegExp;
   try {
-    re = new RegExp(pattern);
-  } catch (e) {
-    throw new Error(`CEL_TYPE_ERROR: matches() invalid regex pattern: ${(e as Error).message}`);
+    return new RegExp(pattern).test(input);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`CEL_TYPE_ERROR: matches() invalid regex pattern: ${message}`);
   }
-  return re.test(input);
 }
 
 export { detectCatastrophicRegexShape };
@@ -269,8 +160,9 @@ function scopeLookup(
   name: string,
 ): { found: true; value: unknown } | { found: false } {
   for (let i = scopes.length - 1; i >= 0; i--) {
-    if (scopes[i]!.has(name)) {
-      return { found: true, value: scopes[i]!.get(name) };
+    const scope = scopes[i];
+    if (scope?.has(name)) {
+      return { found: true, value: scope.get(name) };
     }
   }
   return { found: false };
@@ -280,8 +172,32 @@ function scopeLookup(
 // Evaluator
 // ---------------------------------------------------------------------------
 
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
+function numericOperands(
+  left: unknown,
+  right: unknown,
+  operator: string,
+): readonly [number, number] {
+  if (typeof left !== 'number' || typeof right !== 'number') {
+    throw new Error(`CEL_EVAL: operator '${operator}' requires number operands`);
+  }
+  return [left, right];
+}
+
+function compareValues(
+  left: unknown,
+  right: unknown,
+  operator: string,
+  compareNumbers: (left: number, right: number) => boolean,
+  compareStrings: (left: string, right: string) => boolean,
+): boolean {
+  if (left === null || right === null || left === undefined || right === undefined) return false;
+  if (typeof left === 'number' && typeof right === 'number') {
+    return compareNumbers(left, right);
+  }
+  if (typeof left === 'string' && typeof right === 'string') {
+    return compareStrings(left, right);
+  }
+  throw new Error(`CEL_EVAL: operator '${operator}' requires matching number or string operands`);
 }
 
 function evalExpr(
@@ -306,7 +222,7 @@ function evalExpr(
       const obj = evalExpr(expr.obj, ctx, builtinCtx, scopes);
       const key = evalExpr(expr.key, ctx, builtinCtx, scopes);
       if (typeof key === 'string' && isRecord(obj)) {
-        const val = obj[key];
+        const val = Object.hasOwn(obj, key) ? obj[key] : undefined;
         // Normalise absent keys to CEL null — never leak JS undefined.
         return val === undefined ? null : val;
       }
@@ -326,7 +242,7 @@ function evalExpr(
       if (obj === null || obj === undefined) return null;
       const key = evalExpr(expr.key, ctx, builtinCtx, scopes);
       if (typeof key === 'string' && isRecord(obj)) {
-        return obj[key] ?? null;
+        return Object.hasOwn(obj, key) ? (obj[key] ?? null) : null;
       }
       if (typeof key === 'number' && Array.isArray(obj)) {
         if (key < 0 || key >= obj.length) return null;
@@ -346,7 +262,7 @@ function evalExpr(
           typeof arg.key.value === 'string'
         ) {
           const objVal = evalExpr(arg.obj, ctx, builtinCtx, scopes);
-          if (isRecord(objVal)) return arg.key.value in objVal;
+          if (isRecord(objVal)) return Object.hasOwn(objVal, arg.key.value);
           if (Array.isArray(objVal)) return false;
           return false;
         }
@@ -359,15 +275,20 @@ function evalExpr(
     }
 
     case 'method': {
-      return evalMethod(expr.receiver, expr.method, expr.args, ctx, builtinCtx, scopes, false);
+      return evalMethod(
+        evalExpr(expr.receiver, ctx, builtinCtx, scopes),
+        expr.method,
+        expr.args,
+        ctx,
+        builtinCtx,
+        scopes,
+      );
     }
 
     case 'nullSafeMethod': {
       const receiver = evalExpr(expr.receiver, ctx, builtinCtx, scopes);
       if (receiver === null || receiver === undefined) return null;
-      return evalMethod(expr.receiver, expr.method, expr.args, ctx, builtinCtx, scopes, false, {
-        value: receiver,
-      });
+      return evalMethod(receiver, expr.method, expr.args, ctx, builtinCtx, scopes);
     }
 
     case 'comprehension': {
@@ -409,43 +330,76 @@ function evalExpr(
         case '!=':
           return !deepEqual(left, right);
         case '<':
-          return (left as number) < (right as number);
+          return compareValues(
+            left,
+            right,
+            op,
+            (a, b) => a < b,
+            (a, b) => a < b,
+          );
         case '<=':
-          return (left as number) <= (right as number);
+          return compareValues(
+            left,
+            right,
+            op,
+            (a, b) => a <= b,
+            (a, b) => a <= b,
+          );
         case '>':
-          return (left as number) > (right as number);
+          return compareValues(
+            left,
+            right,
+            op,
+            (a, b) => a > b,
+            (a, b) => a > b,
+          );
         case '>=':
-          return (left as number) >= (right as number);
+          return compareValues(
+            left,
+            right,
+            op,
+            (a, b) => a >= b,
+            (a, b) => a >= b,
+          );
         case '+': {
           if (typeof left === 'string' || typeof right === 'string') {
             const toStr = (v: unknown): string => {
               if (v === null || v === undefined) return 'null';
-              if (typeof v === 'object') return JSON.stringify(v);
+              if (typeof v === 'object') {
+                const json = JSON.stringify(v);
+                return json === undefined ? 'undefined' : json;
+              }
               return String(v);
             };
             return toStr(left) + toStr(right);
           }
-          return (left as number) + (right as number);
+          const [leftNumber, rightNumber] = numericOperands(left, right, op);
+          return leftNumber + rightNumber;
         }
-        case '-':
-          return (left as number) - (right as number);
-        case '*':
-          return (left as number) * (right as number);
+        case '-': {
+          const [leftNumber, rightNumber] = numericOperands(left, right, op);
+          return leftNumber - rightNumber;
+        }
+        case '*': {
+          const [leftNumber, rightNumber] = numericOperands(left, right, op);
+          return leftNumber * rightNumber;
+        }
         case '/': {
-          const divisor = right as number;
+          const [leftNumber, divisor] = numericOperands(left, right, op);
           if (divisor === 0) throw new Error(`CEL_RUNTIME_ERROR: divide by zero`);
-          return (left as number) / divisor;
+          return leftNumber / divisor;
         }
         case '%': {
-          const modulus = right as number;
+          const [leftNumber, modulus] = numericOperands(left, right, op);
           if (modulus === 0) throw new Error(`CEL_RUNTIME_ERROR: divide by zero`);
-          return (left as number) % modulus;
+          return leftNumber % modulus;
         }
         case 'in': {
           if (Array.isArray(right)) return right.some((v) => deepEqual(v, left));
-          if (isRecord(right)) return (left as string) in right;
+          if (isRecord(right)) return Object.hasOwn(right, String(left));
           throw new Error(`CEL_EVAL: 'in' requires an array or object on the right`);
         }
+
         /* istanbul ignore next — parser only emits known binary operators */
         default:
           throw new Error(`CEL_EVAL: unknown binary operator '${op}'`);
@@ -464,13 +418,13 @@ function evalExpr(
     }
 
     case 'object': {
-      const obj: Record<string, unknown> = {};
+      const entries: Array<readonly [string, unknown]> = [];
       for (const entry of expr.entries) {
         const k = evalExpr(entry.key, ctx, builtinCtx, scopes);
         if (typeof k !== 'string') throw new Error(`CEL_EVAL: object key must be a string`);
-        obj[k] = evalExpr(entry.value, ctx, builtinCtx, scopes);
+        entries.push([k, evalExpr(entry.value, ctx, builtinCtx, scopes)]);
       }
-      return obj;
+      return Object.fromEntries(entries);
     }
   }
 }
@@ -480,19 +434,13 @@ function evalExpr(
 // ---------------------------------------------------------------------------
 
 function evalMethod(
-  receiverExpr: Expr,
+  receiver: unknown,
   method: string,
   argExprs: Expr[],
   ctx: CelContext,
   builtinCtx: BuiltinContext,
   scopes: Scope[],
-  _nullSafe: boolean,
-  preEvaluatedReceiver?: { value: unknown },
 ): unknown {
-  const receiver =
-    preEvaluatedReceiver !== undefined
-      ? preEvaluatedReceiver.value
-      : evalExpr(receiverExpr, ctx, builtinCtx, scopes);
   const args = argExprs.map((a) => evalExpr(a, ctx, builtinCtx, scopes));
 
   // String methods
@@ -538,21 +486,23 @@ function evalStringMethod(s: string, method: string, args: unknown[]): unknown {
     case 'size':
       return s.length;
     case 'replace': {
-      if (typeof args[0] !== 'string' || typeof args[1] !== 'string')
+      const oldStr = args[0];
+      const newStr = args[1];
+      if (typeof oldStr !== 'string' || typeof newStr !== 'string')
         throw new Error(`CEL_TYPE_ERROR: replace requires string arguments`);
-      const [oldStr, newStr, maxN] = args;
+      const maxN = args[2];
       if (maxN !== undefined) {
         if (typeof maxN !== 'number') throw new Error(`CEL_TYPE_ERROR: replace n must be a number`);
         let result = s;
         let count = 0;
-        const n = Math.trunc(maxN as number);
-        while (count < n && result.includes(oldStr as string)) {
-          result = result.replace(oldStr as string, newStr as string);
+        const n = Math.trunc(maxN);
+        while (count < n && result.includes(oldStr)) {
+          result = result.replace(oldStr, newStr);
           count++;
         }
         return result;
       }
-      return s.split(oldStr as string).join(newStr as string);
+      return s.split(oldStr).join(newStr);
     }
     case 'split': {
       if (typeof args[0] !== 'string')
@@ -566,7 +516,7 @@ function evalStringMethod(s: string, method: string, args: unknown[]): unknown {
       if (args.length >= 2) {
         if (typeof args[1] !== 'number')
           throw new Error(`CEL_TYPE_ERROR: substring end must be a number`);
-        return s.substring(start, Math.trunc(args[1] as number));
+        return s.substring(start, Math.trunc(args[1]));
       }
       return s.substring(start);
     }
@@ -667,7 +617,7 @@ function evalMapMethod(m: Record<string, unknown>, method: string, args: unknown
       const key = args[0];
       if (typeof key !== 'string')
         throw new Error(`CEL_TYPE_ERROR: map.has() requires a string key`);
-      return key in m;
+      return Object.hasOwn(m, key);
     }
     case 'keys':
       return Object.keys(m);
@@ -681,8 +631,6 @@ function evalMapMethod(m: Record<string, unknown>, method: string, args: unknown
 // ---------------------------------------------------------------------------
 // Comprehension evaluation
 // ---------------------------------------------------------------------------
-
-type ComprehensionKind = 'all' | 'exists' | 'exists_one' | 'filter' | 'map';
 
 function evalComprehension(
   expr: {
@@ -812,8 +760,7 @@ function buildEvaluator(args: {
     compile,
 
     evaluate(expression: string | CompiledCel, ctx: CelContext, phase: CelPhase): unknown {
-      const compiled: CompiledCel =
-        typeof expression === 'string' ? compile(expression) : expression;
+      const compiled = typeof expression === 'string' ? compile(expression) : expression;
 
       const builtinCtx: BuiltinContext = {
         phase,
@@ -879,10 +826,10 @@ function buildEvaluator(args: {
       // Always layer onto the originating root's admin clock so chaining
       // withRequestContext never compounds one request's offset onto another's.
       const root = args.parentRoot ?? evaluator;
-      const reqOffset = Number.isFinite(reqCtx.clockOffsetMs ?? NaN)
-        ? (reqCtx.clockOffsetMs as number)
-        : 0;
-      const hasOffset = reqCtx.clockOffsetMs !== undefined && reqOffset !== 0;
+      const requestedOffset = reqCtx.clockOffsetMs;
+      const reqOffset =
+        requestedOffset !== undefined && Number.isFinite(requestedOffset) ? requestedOffset : 0;
+      const hasOffset = requestedOffset !== undefined && reqOffset !== 0;
       const hasSeed = reqCtx.seed !== undefined;
       if (!hasOffset && !hasSeed) return root;
 
@@ -896,7 +843,7 @@ function buildEvaluator(args: {
       let requestUuid = uuid;
       if (hasSeed) {
         let uuidIndex = 0;
-        requestUuid = () => deterministicUuidv7(`${reqCtx.seed}:${uuidIndex++}`);
+        requestUuid = () => v7(uuidV7OptionsFromSeed(`${reqCtx.seed}:${uuidIndex++}`));
       }
       return buildEvaluator({
         offsetOf: () => root.getClockOffset() + reqOffset,

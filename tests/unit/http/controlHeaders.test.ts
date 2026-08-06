@@ -2,8 +2,10 @@ import {
   parseControlHeaders,
   requiresAdminAuth,
   applyMask,
+  validateControlHeaders,
 } from '../../../src/http/controlHeaders';
 import { expandPotemkinAliases } from '../../../src/http/potemkinHeaders';
+import { ConfigurationError } from '../../../src/errors';
 
 describe('parseControlHeaders', () => {
   it('returns all-undefined tiers when no headers are present', () => {
@@ -244,6 +246,34 @@ describe('parseControlHeaders', () => {
       const c = parseControlHeaders({ 'x-potemkin-seed': ['first', 'second'] });
       expect(c.transparency.seed).toBe('first');
     });
+  });
+});
+
+describe('validateControlHeaders', () => {
+  it('returns a typed copy of valid authored defaults', () => {
+    expect(
+      validateControlHeaders({
+        transparency: { dryRun: true, clockOffsetMs: -10 },
+        sideEffects: { maxCascadeDepth: 4 },
+        format: { responseFormat: 'jsonapi', maskFields: ['email'] },
+        observability: { metricTag: { key: 'tenant', value: 'acme' } },
+      }),
+    ).toEqual({
+      transparency: { dryRun: true, clockOffsetMs: -10 },
+      sideEffects: { maxCascadeDepth: 4 },
+      format: { responseFormat: 'jsonapi', maskFields: ['email'] },
+      observability: { metricTag: { key: 'tenant', value: 'acme' } },
+    });
+  });
+
+  it.each([
+    ['not an object', null],
+    ['unknown tier', { unknown: {} }],
+    ['invalid tier', { transparency: [] }],
+    ['invalid field type', { transparency: { dryRun: 'true' } }],
+    ['invalid metric tag', { observability: { metricTag: { key: 'tenant' } } }],
+  ])('rejects %s', (_label, value) => {
+    expect(() => validateControlHeaders(value)).toThrow(ConfigurationError);
   });
 });
 

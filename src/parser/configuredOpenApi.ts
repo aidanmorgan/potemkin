@@ -1,11 +1,12 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
-import * as yaml from 'js-yaml';
+import { parse } from 'yaml';
 
 import { BootError } from '../errors.js';
 import type { OpenApiDoc, OpenApiLoadObservability } from '../contract/loader.js';
 import { loadOpenApiDocuments } from '../contract/loader.js';
+import { isRecord } from '../contracts/value.js';
 
 export async function loadConfiguredOpenApi(
   configPath: string,
@@ -29,7 +30,7 @@ export async function loadConfiguredOpenApi(
 
   let config: unknown;
   try {
-    config = yaml.load(configText);
+    config = parseLegacyYaml(configText);
   } catch (error) {
     throw new BootError(
       'BOOT_ERR_DSL_SYNTAX',
@@ -38,14 +39,11 @@ export async function loadConfiguredOpenApi(
     );
   }
   const configRecord = asRecord(config);
-  const configuredPaths = configRecord['openapi'];
-  if (
-    Array.isArray(configuredPaths) &&
-    configuredPaths.every((value) => typeof value === 'string')
-  ) {
+  const configuredPaths = stringArray(configRecord['openapi']);
+  if (configuredPaths !== undefined) {
     try {
       return await loadOpenApiDocuments(
-        configuredPaths as string[],
+        configuredPaths,
         path.dirname(path.resolve(configPath)),
         observability,
       );
@@ -72,7 +70,7 @@ export async function loadConfiguredOpenApi(
   }
   let documentValue: unknown;
   try {
-    documentValue = yaml.load(specmaticText);
+    documentValue = parseLegacyYaml(specmaticText);
   } catch (error) {
     throw new BootError(
       'BOOT_ERR_DSL_SYNTAX',
@@ -121,8 +119,25 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function asRecord(value: unknown): Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
+/**
+ * Keep the configured-file parser compatible with the former js-yaml loader.
+ * The core schema preserves its YAML 1.2 scalar rules, while these options
+ * retain the merge-key and implicit timestamp behavior used by js-yaml.
+ */
+function parseLegacyYaml(source: string): unknown {
+  return parse(source, {
+    schema: 'core',
+    merge: true,
+    customTags: ['timestamp'],
+  });
+}
+
+function asRecord(value: unknown): Readonly<Record<string, unknown>> {
+  return isRecord(value) ? value : {};
+}
+
+function stringArray(value: unknown): readonly string[] | undefined {
+  return Array.isArray(value) && value.every((entry) => typeof entry === 'string')
+    ? value
+    : undefined;
 }

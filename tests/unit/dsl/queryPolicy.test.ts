@@ -7,6 +7,13 @@ import { createRuntimeEngine } from '../../../src/core/engine.js';
 import type { RuntimeHelpers, RuntimeProgram } from '../../../src/model/runtime.js';
 import type { RuntimeClock } from '../../../src/contracts/ports.js';
 import type { Command } from '../../../src/contracts/domain.js';
+import {
+  aggregateId,
+  boundaryName,
+  commandId,
+  httpMethod,
+  operationId,
+} from '../../../src/domain/references.js';
 
 const helpers: RuntimeHelpers = {
   now: () => '2026-01-01T00:00:00.000Z',
@@ -28,7 +35,7 @@ function dependencies(): RuntimeProgram['dependencies'] {
     helpers,
     clock,
     contract: {
-      operationIdFor: () => 'listOrders',
+      operationIdFor: () => operationId('listOrders'),
     },
   };
 }
@@ -38,17 +45,17 @@ function queryCommand(
   queryParams: Command['queryParams'] = {},
 ): Command {
   return {
-    commandId: 'query-1',
-    boundary: 'Order',
+    commandId: commandId('query-1'),
+    boundary: boundaryName('Order'),
     intent: 'query',
-    targetId,
+    targetId: targetId === null ? null : aggregateId(targetId),
     payload: {},
     queryParams,
-    httpMethod: 'GET',
+    httpMethod: httpMethod('GET'),
     path: targetId === null ? '/orders' : `/orders/${targetId}`,
     origin: 'inbound',
     depth: 0,
-    operationId: 'listOrders',
+    operationId: operationId('listOrders'),
   };
 }
 

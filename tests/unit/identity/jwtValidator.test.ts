@@ -2,8 +2,10 @@
  * Unit tests for the JWT validator. Verifies signature, algorithm, claim
  * validation and Actor extraction for the configurable HS256 mode.
  */
-import { validateJwt, signJwtHs256, JwtValidationError } from '../../../src/identity/jwtValidator';
+import { validateJwt, JwtValidationError } from '../../../src/identity/jwtValidator';
+import { signJwtHs256 } from '../../_support/jwt';
 import type { JwtAuthConfig } from '../../../src/dsl/types';
+import jwt from 'jsonwebtoken';
 
 const SECRET = 'test-secret';
 
@@ -32,6 +34,21 @@ describe('identity/jwtValidator', () => {
     expect(actor.scopes).toEqual(['manager', 'admin']);
   });
 
+  it('decodes the complete token through jsonwebtoken before verification', async () => {
+    const token = await signJwtHs256(
+      { sub: 'alice', scopes: 'manager', iss: 'tester', aud: 'api', exp: nowSec() + 60 },
+      SECRET,
+    );
+    const decode = jest.spyOn(jwt, 'decode');
+
+    try {
+      expect(validateJwt(token, baseConfig())).toEqual({ id: 'alice', scopes: ['manager'] });
+      expect(decode).toHaveBeenCalledWith(token, { complete: true });
+    } finally {
+      decode.mockRestore();
+    }
+  });
+
   it('accepts a scopes[] array', async () => {
     const token = await signJwtHs256(
       { sub: 'bob', scopes: ['viewer', 'agent'], iss: 'tester', aud: 'api', exp: nowSec() + 60 },
@@ -52,6 +69,22 @@ describe('identity/jwtValidator', () => {
 
   it('rejects malformed JWTs (segment count)', () => {
     expect(() => validateJwt('not.a.valid.jwt.token', baseConfig())).toThrow(JwtValidationError);
+  });
+
+  it('rejects a JWT whose decoded header is not an object', () => {
+    const header = Buffer.from('null').toString('base64url');
+    expect(() => validateJwt(`${header}.payload.signature`, baseConfig())).toThrow(
+      expect.objectContaining({ code: 'JWT_MALFORMED' }),
+    );
+  });
+
+  it('rejects a token whose decoded payload is malformed', () => {
+    const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+    const token = `${header}.not-json.signature`;
+
+    expect(() => validateJwt(token, baseConfig())).toThrow(
+      expect.objectContaining({ code: 'JWT_MALFORMED' }),
+    );
   });
 
   it('rejects JWTs signed with the wrong secret', async () => {

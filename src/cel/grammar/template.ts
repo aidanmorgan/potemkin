@@ -40,8 +40,9 @@ export function parseTemplate(value: unknown): TemplatePlan {
   const tokens = lexTemplate(s);
   const parts = toParts(tokens);
 
-  if (parts.length === 1 && parts[0]!.kind === 'expr') {
-    return { kind: 'whole', expr: parts[0]!.src };
+  const [onlyPart] = parts;
+  if (parts.length === 1 && onlyPart?.kind === 'expr') {
+    return { kind: 'whole', expr: onlyPart.src };
   }
   if (parts.every((p) => p.kind === 'text')) {
     return {

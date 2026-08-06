@@ -2,18 +2,21 @@ import type { DataGenerator } from './data.js';
 import type { Command, DomainEvent } from './domain.js';
 import type { JsonObject, JsonValue } from './value.js';
 
-export type LifecyclePhase =
-  | 'boot'
-  | 'validation'
-  | 'initialization'
-  | 'request'
-  | 'projection'
-  | 'commit'
-  | 'post-commit'
-  | 'reset'
-  | 'shutdown'
-  | 'watch'
-  | 'reload';
+export const LifecyclePhase = {
+  Boot: 'boot',
+  Validation: 'validation',
+  Initialization: 'initialization',
+  Request: 'request',
+  Projection: 'projection',
+  Commit: 'commit',
+  PostCommit: 'post-commit',
+  Reset: 'reset',
+  Shutdown: 'shutdown',
+  Watch: 'watch',
+  Reload: 'reload',
+} as const;
+
+export type LifecyclePhase = (typeof LifecyclePhase)[keyof typeof LifecyclePhase];
 
 export interface LifecycleContext {
   readonly phase: LifecyclePhase;

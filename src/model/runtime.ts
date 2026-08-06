@@ -20,8 +20,20 @@ import type {
 } from '../types.js';
 import type { Command, ExecutionResult } from '../contracts/domain.js';
 import type { Actor, JwtValidationConfig } from '../contracts/identity.js';
-import type { JsonObject, JsonValue, Patch } from '../contracts/value.js';
+import { isJsonObject, type JsonObject, type JsonValue, type Patch } from '../contracts/value.js';
+import { deepFreeze } from './immutability.js';
 import type { RequestControls } from '../contracts/controlHeaders.js';
+import {
+  boundaryName,
+  eventType,
+  operationId,
+  schemaReference,
+  type BoundaryName,
+  type EventType,
+  type FaultId,
+  type OperationId,
+  type SchemaReference,
+} from '../domain/references.js';
 import type {
   RuntimeClock,
   RuntimeEventStore,
@@ -461,27 +473,31 @@ export interface RuntimeFallback {
 }
 
 export interface RuntimeContract {
-  readonly operationIdFor: (path: string, method: string) => string | undefined;
+  /** Resolve a transport route to the compiled model's branded operation ID. */
+  readonly operationIdFor: (path: string, method: string) => OperationId | undefined;
   /** Resolve the contract's preferred successful status for a runtime intent. */
   readonly responseStatusFor?: (
-    operationId: string,
+    operationId: OperationId,
     intent: Command['intent'],
   ) => number | undefined;
   /** Resolve an operation's route for a secondary command target. */
-  readonly pathForOperation?: (operationId: string, targetId?: string | null) => string | undefined;
+  readonly pathForOperation?: (
+    operationId: OperationId,
+    targetId?: string | null,
+  ) => string | undefined;
   readonly validateRequest?: (
-    operationId: string,
+    operationId: OperationId,
     payload: JsonObject,
     request?: Readonly<RuntimeRequest>,
   ) => void;
   /** Validate the original transport payload before it is expanded into commands. */
   readonly validateBatchRequest?: (
-    operationId: string,
+    operationId: OperationId,
     payload: JsonValue,
     request?: Readonly<RuntimeRequest>,
   ) => void;
   readonly validateResponse?: (
-    operationId: string,
+    operationId: OperationId,
     status: number,
     body: JsonValue,
     request?: Readonly<RuntimeRequest>,
@@ -489,7 +505,7 @@ export interface RuntimeContract {
   ) => void;
   /** Validate the aggregated response body for a transport batch. */
   readonly validateBatchResponse?: (
-    operationId: string,
+    operationId: OperationId,
     status: number,
     body: JsonValue,
     request?: Readonly<RuntimeRequest>,
@@ -497,36 +513,36 @@ export interface RuntimeContract {
   ) => void;
   /** Shape a runtime error with the transport contract's declared error schema. */
   readonly shapeError?: (
-    operationId: string,
+    operationId: OperationId,
     status: number,
     body: JsonValue,
   ) => JsonValue | undefined;
-  readonly requiresPrecondition?: (operationId: string) => boolean;
+  readonly requiresPrecondition?: (operationId: OperationId) => boolean;
   readonly validateEvent?: (
-    boundary: string,
-    eventType: string,
+    boundary: BoundaryName,
+    eventType: EventType,
     payload: JsonObject,
-    schemaRef?: string,
+    schemaRef?: SchemaReference,
   ) => void;
-  readonly validateEntity?: (boundary: string, entity: JsonObject) => void;
+  readonly validateEntity?: (boundary: BoundaryName | SchemaReference, entity: JsonObject) => void;
   readonly responseSupportsHateoas?: (
-    operationId: string,
+    operationId: OperationId,
     status: number,
     body: JsonValue,
   ) => boolean;
-  readonly responseAllowsPaginationEnvelope?: (operationId: string) => boolean;
+  readonly responseAllowsPaginationEnvelope?: (operationId: OperationId) => boolean;
 }
 
 export interface RuntimeFaultEntry {
-  readonly id: string;
+  readonly id: FaultId;
   readonly rule: RuntimeFault;
   readonly createdAt: number;
   readonly expiresAt?: number;
 }
 
 export interface RuntimeFaultStore {
-  readonly add: (rule: RuntimeFault, ttlMs?: number) => string;
-  readonly remove: (id: string) => boolean;
+  readonly add: (rule: RuntimeFault, ttlMs?: number) => FaultId;
+  readonly remove: (id: FaultId) => boolean;
   /** The optional time is request-local; it never changes the shared clock. */
   readonly list: (nowMs?: number) => readonly RuntimeFaultEntry[];
   readonly all: (nowMs?: number) => readonly RuntimeFault[];
@@ -621,6 +637,280 @@ export interface RuntimeProgram {
   /** Named functions contributed by TypeScript factories for CEL and TS use. */
   readonly helpers?: readonly RuntimeHelperDefinition[];
   readonly dependencies: RuntimeDependencies;
+}
+
+/**
+ * Runtime metadata after the source-independent model has been compiled.
+ *
+ * The producer-facing Runtime* interfaces intentionally remain string-based:
+ * parsers and TypeScript authoring code are source boundaries. The compiler
+ * seam below turns identifiers into their domain references exactly once so
+ * the executing program carries semantic types without changing its JSON or
+ * transport representation.
+ */
+export interface CompiledRuntimeEvent extends Omit<RuntimeEvent, 'type'> {
+  readonly type: EventType;
+  readonly schemaRef?: SchemaReference;
+}
+
+export interface CompiledRuntimeEmission extends Omit<RuntimeEmission, 'event'> {
+  readonly event: EventType;
+}
+
+export interface CompiledRuntimeSecondaryCommand extends Omit<
+  RuntimeSecondaryCommand,
+  'boundary' | 'operationId'
+> {
+  readonly boundary: BoundaryName;
+  readonly operationId: OperationId;
+}
+
+export interface CompiledRuntimeBehavior extends Omit<
+  RuntimeBehavior,
+  'operationId' | 'emit' | 'emitWhen' | 'dispatchCommands'
+> {
+  readonly operationId: OperationId;
+  readonly emit?: EventType;
+  readonly emitWhen?: readonly CompiledRuntimeEmission[];
+  readonly dispatchCommands?: readonly CompiledRuntimeSecondaryCommand[];
+}
+
+export interface CompiledRuntimeReducer extends Omit<RuntimeReducer, 'on'> {
+  readonly on: EventType;
+}
+
+export interface CompiledRuntimeReaction extends Omit<RuntimeReaction, 'on' | 'boundary' | 'emit'> {
+  readonly on: EventType;
+  readonly boundary: BoundaryName;
+  readonly emit: EventType;
+}
+
+export interface CompiledRuntimeSagaCompensation extends Omit<
+  RuntimeSagaCompensation,
+  'operationId'
+> {
+  readonly operationId: OperationId;
+}
+
+export interface CompiledRuntimeSagaStep extends Omit<
+  RuntimeSagaStep,
+  'boundary' | 'operationId' | 'compensation'
+> {
+  readonly boundary: BoundaryName;
+  readonly operationId: OperationId;
+  readonly compensation?: CompiledRuntimeSagaCompensation;
+}
+
+export interface CompiledRuntimeSaga extends Omit<RuntimeSaga, 'trigger' | 'steps'> {
+  readonly trigger: Omit<RuntimeSaga['trigger'], 'boundary'> & { readonly boundary: BoundaryName };
+  readonly steps: readonly CompiledRuntimeSagaStep[];
+}
+
+export interface CompiledRuntimeExportStep extends Omit<RuntimeExportStep, 'operationId'> {
+  readonly operationId: OperationId;
+}
+
+export interface CompiledRuntimeExportStatePlan extends Omit<RuntimeExportStatePlan, 'steps'> {
+  readonly steps: readonly CompiledRuntimeExportStep[];
+}
+
+export interface CompiledRuntimeExportConfig extends Omit<RuntimeExportConfig, 'states'> {
+  readonly states: readonly CompiledRuntimeExportStatePlan[];
+}
+
+export interface CompiledRuntimeSeed extends Omit<RuntimeSeed, 'eventType'> {
+  readonly eventType?: EventType;
+}
+
+export interface CompiledRuntimeBoundary extends Omit<
+  RuntimeBoundary,
+  | 'boundary'
+  | 'schema'
+  | 'eventCatalog'
+  | 'behaviors'
+  | 'reducers'
+  | 'initialization'
+  | 'reactions'
+  | 'export'
+> {
+  readonly boundary: BoundaryName;
+  readonly schema?: SchemaReference;
+  readonly eventCatalog: readonly CompiledRuntimeEvent[];
+  readonly behaviors: readonly CompiledRuntimeBehavior[];
+  readonly reducers: readonly CompiledRuntimeReducer[];
+  readonly initialization?: readonly (JsonObject | CompiledRuntimeSeed)[];
+  readonly reactions?: readonly CompiledRuntimeReaction[];
+  readonly export?: CompiledRuntimeExportConfig;
+}
+
+export interface CompiledRuntimePolicies extends Omit<RuntimePolicies, 'sagas' | 'reactions'> {
+  readonly sagas?: readonly CompiledRuntimeSaga[];
+  readonly reactions?: readonly CompiledRuntimeReaction[];
+}
+
+export interface CompiledRuntimeProgram extends Omit<
+  RuntimeProgram,
+  'boundaries' | 'byBoundaryName' | 'byContractPath' | 'policies'
+> {
+  readonly boundaries: readonly CompiledRuntimeBoundary[];
+  readonly byBoundaryName: ReadonlyMap<string, CompiledRuntimeBoundary>;
+  readonly byContractPath: ReadonlyMap<string, CompiledRuntimeBoundary>;
+  readonly policies: CompiledRuntimePolicies;
+}
+
+function compileRuntimeBehavior(behavior: RuntimeBehavior): CompiledRuntimeBehavior {
+  const { operationId: rawOperationId, emit, emitWhen, dispatchCommands, ...rest } = behavior;
+  return {
+    ...rest,
+    operationId: operationId(rawOperationId),
+    ...(emit === undefined ? {} : { emit: eventType(emit) }),
+    ...(emitWhen === undefined
+      ? {}
+      : {
+          emitWhen: emitWhen.map((emission) => ({
+            ...emission,
+            event: eventType(emission.event),
+          })),
+        }),
+    ...(dispatchCommands === undefined
+      ? {}
+      : {
+          dispatchCommands: dispatchCommands.map((command) => ({
+            ...command,
+            boundary: boundaryName(command.boundary),
+            operationId: operationId(command.operationId),
+          })),
+        }),
+  };
+}
+
+function compileRuntimeEvent(event: RuntimeEvent): CompiledRuntimeEvent {
+  const { type: rawType, schemaRef, ...rest } = event;
+  return {
+    ...rest,
+    type: eventType(rawType),
+    ...(schemaRef === undefined ? {} : { schemaRef: schemaReference(schemaRef) }),
+  };
+}
+
+function compileRuntimeReaction(reaction: RuntimeReaction): CompiledRuntimeReaction {
+  return {
+    ...reaction,
+    on: eventType(reaction.on),
+    boundary: boundaryName(reaction.boundary),
+    emit: eventType(reaction.emit),
+  };
+}
+
+function compileRuntimeSaga(saga: RuntimeSaga): CompiledRuntimeSaga {
+  const { trigger, steps, ...rest } = saga;
+  return {
+    ...rest,
+    trigger: {
+      ...trigger,
+      boundary: boundaryName(trigger.boundary),
+    },
+    steps: steps.map((step) => {
+      const { boundary: rawBoundary, operationId: rawOperationId, compensation, ...rest } = step;
+      return {
+        ...rest,
+        boundary: boundaryName(rawBoundary),
+        operationId: operationId(rawOperationId),
+        ...(compensation === undefined
+          ? {}
+          : {
+              compensation: {
+                ...compensation,
+                operationId: operationId(compensation.operationId),
+              },
+            }),
+      };
+    }),
+  };
+}
+
+function compileRuntimeBoundary(boundary: RuntimeBoundary): CompiledRuntimeBoundary {
+  const {
+    boundary: rawBoundary,
+    schema: rawSchema,
+    eventCatalog,
+    behaviors,
+    reducers,
+    initialization,
+    reactions,
+    export: exportConfig,
+    ...rest
+  } = boundary;
+  return {
+    ...rest,
+    boundary: boundaryName(rawBoundary),
+    ...(rawSchema === undefined ? {} : { schema: schemaReference(rawSchema) }),
+    eventCatalog: eventCatalog.map(compileRuntimeEvent),
+    behaviors: behaviors.map(compileRuntimeBehavior),
+    reducers: reducers.map((reducer) => ({
+      ...reducer,
+      on: eventType(reducer.on),
+    })),
+    ...(initialization === undefined
+      ? {}
+      : {
+          initialization: initialization.map((seed) =>
+            isRuntimeSeed(seed) ? compileRuntimeSeed(seed) : seed,
+          ),
+        }),
+    ...(reactions === undefined ? {} : { reactions: reactions.map(compileRuntimeReaction) }),
+    ...(exportConfig === undefined
+      ? {}
+      : {
+          export: {
+            ...exportConfig,
+            states: exportConfig.states.map((state) => ({
+              ...state,
+              steps: state.steps.map((step) => ({
+                ...step,
+                operationId: operationId(step.operationId),
+              })),
+            })),
+          },
+        }),
+  };
+}
+
+function isRuntimeSeed(value: JsonObject | RuntimeSeed): value is RuntimeSeed {
+  if (!isJsonObject(value) || !('state' in value) || !isJsonObject(value['state'])) return false;
+  const eventTypeValue = value['eventType'];
+  return eventTypeValue === undefined || typeof eventTypeValue === 'string';
+}
+
+function compileRuntimeSeed(seed: RuntimeSeed): CompiledRuntimeSeed {
+  const { eventType: rawEventType, ...rest } = seed;
+  return {
+    ...rest,
+    ...(rawEventType === undefined ? {} : { eventType: eventType(rawEventType) }),
+  };
+}
+
+/** Convert a producer-facing program into the typed metadata used by runtime execution. */
+export function compileRuntimeMetadata(program: RuntimeProgram): CompiledRuntimeProgram {
+  const boundaries = program.boundaries.map(compileRuntimeBoundary);
+  const byBoundaryName = new Map<string, CompiledRuntimeBoundary>();
+  const byContractPath = new Map<string, CompiledRuntimeBoundary>();
+  for (const boundary of boundaries) {
+    byBoundaryName.set(boundary.boundary, boundary);
+    byContractPath.set(boundary.contractPath, boundary);
+  }
+  const { sagas, reactions, ...rest } = program.policies;
+  return deepFreeze({
+    ...program,
+    boundaries,
+    byBoundaryName,
+    byContractPath,
+    policies: {
+      ...rest,
+      ...(sagas === undefined ? {} : { sagas: sagas.map(compileRuntimeSaga) }),
+      ...(reactions === undefined ? {} : { reactions: reactions.map(compileRuntimeReaction) }),
+    },
+  });
 }
 
 export interface RuntimeExecutionResult extends ExecutionResult {

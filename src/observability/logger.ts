@@ -2,9 +2,20 @@ import pino from 'pino';
 import type { Logger, LoggerOptions } from 'pino';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { nextUuidv7 } from '../ids/uuidv7.js';
+import { v7 } from 'uuid';
 
 const loadOptionalModule = createRequire(__filename);
+const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'] as const;
+
+function isLogLevel(value: string | undefined): value is pino.LevelWithSilent {
+  return value !== undefined && (LOG_LEVELS as readonly string[]).includes(value);
+}
+
+function isPrettyFactory(
+  value: unknown,
+): value is (options: Readonly<Record<string, unknown>>) => NodeJS.WritableStream {
+  return typeof value === 'function';
+}
 
 export type { Logger };
 
@@ -30,10 +41,8 @@ export interface CreateLoggerOptions {
 
 function resolvePrettyDestination(): NodeJS.WritableStream | undefined {
   try {
-    const prettyModule = loadOptionalModule(loadOptionalModule.resolve('pino-pretty')) as (
-      options: Readonly<Record<string, unknown>>,
-    ) => NodeJS.WritableStream;
-    return prettyModule({ colorize: true });
+    const prettyModule: unknown = loadOptionalModule(loadOptionalModule.resolve('pino-pretty'));
+    return isPrettyFactory(prettyModule) ? prettyModule({ colorize: true }) : undefined;
   } catch {
     return undefined;
   }
@@ -45,7 +54,7 @@ function createPino(
   dest?: NodeJS.WritableStream,
 ): Logger {
   const pinoOpts: LoggerOptions = {
-    level: level as string,
+    level,
     timestamp: pino.stdTimeFunctions.isoTime,
   };
   if (dest !== undefined) return pino(pinoOpts, dest);
@@ -56,7 +65,7 @@ function createPino(
 export function createLogger(opts?: CreateLoggerOptions): Logger {
   const env = opts?.env ?? {};
   const level: pino.LevelWithSilent =
-    opts?.level ?? (env['LOG_LEVEL'] as pino.LevelWithSilent | undefined) ?? 'info';
+    opts?.level ?? (isLogLevel(env['LOG_LEVEL']) ? env['LOG_LEVEL'] : undefined) ?? 'info';
 
   // When a custom dest is provided (test-only), skip pretty so JSON goes directly to the stream.
   const usePretty =
@@ -69,7 +78,7 @@ export function createLogger(opts?: CreateLoggerOptions): Logger {
   // Generate a stable instanceId for root loggers; may throw NotImplemented in tests
   let instanceId: string;
   try {
-    instanceId = nextUuidv7();
+    instanceId = v7();
   } catch {
     instanceId = randomUUID();
   }

@@ -7,7 +7,7 @@ import { definitionError } from './errors.js';
 import { expandResources } from './resourceModel.js';
 import { composeBoundaries } from './composition.js';
 import type { OpenApiDocumentDescriptor } from '../contracts/openapi.js';
-import type { JsonObject, JsonValue } from '../contracts/value.js';
+import type { JsonObject } from '../contracts/value.js';
 import type { BoundaryDefinition, SimulationDefinition } from './types.js';
 import { isYamlComponentReference } from './composition.js';
 import type {
@@ -140,9 +140,7 @@ function toRuntimeBoundary(boundary: BoundaryDefinition): RuntimeBoundary {
         ? {}
         : {
             fallback:
-              typeof fallback === 'function'
-                ? fallback
-                : (_context: Readonly<unknown>) => fallback as JsonValue | undefined,
+              typeof fallback === 'function' ? fallback : (_context: Readonly<unknown>) => fallback,
           }),
     } satisfies RuntimeBoundary['query'],
   };

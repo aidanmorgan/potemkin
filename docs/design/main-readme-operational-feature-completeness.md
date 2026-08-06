@@ -455,3 +455,12 @@ tests across YAML, TypeScript, and mixed loading; the observability suite is
 33/33, including production OTLP spans and metrics. Architecture, public API,
 cleanup, unused-code, duplicate-code, no-skips, strict TypeScript, and diff
 hygiene gates also pass.
+
+E2E coverage audit closure (2026-08-06): the 32 dedicated audit suites pass
+32/32 tests through the Specmatic path. Their test paths are recorded in
+[`e2e-coverage-todo.md`](e2e-coverage-todo.md) and summarized in
+[`typescript-yaml-parity.md`](typescript-yaml-parity.md). The repository-wide
+`pnpm run test:e2e` invocation passes 110 suites and 992 tests, including the
+standalone `plain-specmatic-examples` suite. OTEL-001 is implemented by the
+bounded worker-backed append writer used by the shared E2E OTLP persistence
+path.

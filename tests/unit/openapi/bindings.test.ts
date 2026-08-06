@@ -77,6 +77,28 @@ describe('OpenAPI TypeScript bindings', () => {
     }
   });
 
+  it('rejects an unsupported source document before calling openapi-typescript', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'potemkin-bindings-invalid-'));
+    try {
+      await expect(
+        generateOpenApiBindings(
+          {
+            source: {
+              swagger: '2.0',
+              info: { title: 'Swagger', version: '1.0.0' },
+              paths: {},
+            },
+            raw: {},
+            paths: {},
+          },
+          { outputDirectory: root },
+        ),
+      ).rejects.toThrow('requires an OpenAPI 3 document');
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   it('emits inferred event payload and operation registries for the SDK', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'potemkin-typed-bindings-'));
     try {

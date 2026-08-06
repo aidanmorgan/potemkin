@@ -1,8 +1,9 @@
 import type { DomainEvent } from '../contracts/domain.js';
 import {
-  aggregateId as validateAggregateId,
+  AggregateId,
   committedSequenceVersion,
   sequenceVersion,
+  type SequenceVersion,
 } from './references.js';
 
 /**
@@ -14,11 +15,11 @@ export function nextSequenceVersion(
   currentVersion: number,
   pendingEvents: readonly DomainEvent[],
   aggregate: string,
-): number {
+): SequenceVersion {
   const current = sequenceVersion(currentVersion);
-  const aggregateId = validateAggregateId(aggregate);
+  const aggregateId = AggregateId.parse(aggregate);
   const pending = pendingEvents.filter(
-    (event) => validateAggregateId(event.aggregateId) === aggregateId,
+    (event) => AggregateId.parse(event.aggregateId) === aggregateId,
   );
   pending.forEach((event) => committedSequenceVersion(event.sequenceVersion));
   return committedSequenceVersion(current + pending.length + 1);
@@ -30,17 +31,23 @@ export function eventsThroughVersion(
   aggregate: string,
   version: number,
 ): readonly DomainEvent[] {
-  const aggregateId = validateAggregateId(aggregate);
+  const aggregateId = AggregateId.parse(aggregate);
   const requested = sequenceVersion(version);
   const selected = events
     .filter(
       (event) =>
-        validateAggregateId(event.aggregateId) === aggregateId &&
+        AggregateId.parse(event.aggregateId) === aggregateId &&
         committedSequenceVersion(event.sequenceVersion) <= requested,
     )
     .sort((left, right) => left.sequenceVersion - right.sequenceVersion);
   for (let index = 1; index < selected.length; index += 1) {
-    if (selected[index]!.sequenceVersion <= selected[index - 1]!.sequenceVersion) {
+    const current = selected[index];
+    const previous = selected[index - 1];
+    if (
+      current !== undefined &&
+      previous !== undefined &&
+      current.sequenceVersion <= previous.sequenceVersion
+    ) {
       throw new Error(`Aggregate "${aggregate}" has duplicate event sequence versions`);
     }
   }

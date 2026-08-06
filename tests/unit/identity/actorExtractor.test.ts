@@ -1,7 +1,7 @@
 /**
  * Actor extraction from Authorization header
  */
-import { extractActor } from '../../../src/identity/actorExtractor';
+import { extractActor, extractBearerToken } from '../../../src/identity/actorExtractor';
 
 describe('identity/actorExtractor', () => {
   it('returns null for undefined header', () => {
@@ -43,5 +43,17 @@ describe('identity/actorExtractor', () => {
 
   it('returns null for Bearer with empty token', () => {
     expect(extractActor('Bearer ')).toBeNull();
+  });
+
+  it('treats the Bearer scheme as case-insensitive and trims the header', () => {
+    expect(extractActor('  bEaReR\talice:admin  ')).toEqual({
+      id: 'alice',
+      scopes: ['admin'],
+    });
+  });
+
+  it('shares opaque Bearer token extraction with JWT resolution', () => {
+    expect(extractBearerToken(' Bearer opaque-token ')).toBe('opaque-token');
+    expect(extractBearerToken('Basic opaque-token')).toBeNull();
   });
 });

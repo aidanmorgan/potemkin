@@ -6,12 +6,22 @@ import { BootError } from '../errors.js';
 import type {
   PotemkinConfiguration,
   ScanConfig,
+  PluginAuthConfig,
   PluginConfiguration,
+  PluginJwk,
   SeedDefinition,
   WorkflowDefinition,
   OverlayDefinition,
   GovernanceDefinition,
 } from '../contracts/config.js';
+import {
+  isJsonObject,
+  isJsonValue,
+  isRecord as isObject,
+  type JsonObject,
+  type JsonValue,
+  type Patch,
+} from '../contracts/value.js';
 
 export const PLUGIN_SUB_KEYS = [
   'engine',
@@ -68,7 +78,7 @@ export function validatePotemkinConfig(
   rejectSnakeCaseKeys(raw, ctx.source);
 
   for (const k of Object.keys(raw)) {
-    if (!(POTEMKIN_TOP_LEVEL_KEYS as readonly string[]).includes(k)) {
+    if (!includesString(POTEMKIN_TOP_LEVEL_KEYS, k)) {
       const suggestion = closestKey(k, POTEMKIN_TOP_LEVEL_KEYS);
       throw new BootError(
         'BOOT_ERR_UNKNOWN_KEY',
@@ -80,14 +90,16 @@ export function validatePotemkinConfig(
     }
   }
 
-  if (typeof raw['version'] !== 'number') {
+  const version = raw['version'];
+  if (typeof version !== 'number') {
     throw new BootError(
       'BOOT_ERR_DSL_SCHEMA_VIOLATION',
       `${ctx.source}: "version" must be a number`,
       { source: ctx.source },
     );
   }
-  if (typeof raw['specmatic'] !== 'string') {
+  const specmatic = raw['specmatic'];
+  if (typeof specmatic !== 'string') {
     throw new BootError(
       'BOOT_ERR_DSL_SCHEMA_VIOLATION',
       `${ctx.source}: "specmatic" must be a string path`,
@@ -95,11 +107,7 @@ export function validatePotemkinConfig(
     );
   }
   const modules = raw['modules'];
-  if (
-    !Array.isArray(modules) ||
-    modules.length === 0 ||
-    modules.some((m) => typeof m !== 'string')
-  ) {
+  if (!isNonEmptyStringArray(modules)) {
     throw new BootError(
       'BOOT_ERR_DSL_SCHEMA_VIOLATION',
       `${ctx.source}: "modules" must be a non-empty array of glob strings`,
@@ -107,12 +115,7 @@ export function validatePotemkinConfig(
     );
   }
   const openapi = raw['openapi'];
-  if (
-    openapi !== undefined &&
-    (!Array.isArray(openapi) ||
-      openapi.length === 0 ||
-      openapi.some((entry) => typeof entry !== 'string'))
-  ) {
+  if (openapi !== undefined && !isNonEmptyStringArray(openapi)) {
     throw new BootError(
       'BOOT_ERR_DSL_SCHEMA_VIOLATION',
       `${ctx.source}: "openapi" must be a non-empty array of file globs`,
@@ -128,10 +131,10 @@ export function validatePotemkinConfig(
   const governance = assertGovernanceBlock(raw['governance'], ctx.source);
 
   return {
-    version: raw['version'] as number,
-    specmatic: raw['specmatic'] as string,
-    modules: modules as readonly string[],
-    ...(openapi === undefined ? {} : { openapi: openapi as readonly string[] }),
+    version,
+    specmatic,
+    modules,
+    ...(openapi === undefined ? {} : { openapi }),
     typescript,
     plugin,
     seeds,
@@ -150,22 +153,17 @@ function assertTypescriptBlock(raw: unknown, source: string): ScanConfig | undef
       { source },
     );
   }
-  if (!Array.isArray(raw['scan']) || (raw['scan'] as unknown[]).length === 0) {
+  const scan = raw['scan'];
+  if (!Array.isArray(scan) || scan.length === 0) {
     throw new BootError(
       'BOOT_ERR_DSL_SCHEMA_VIOLATION',
       `${source}: "typescript.scan" must be a non-empty array of { include } entries`,
       { source },
     );
   }
-  for (let i = 0; i < (raw['scan'] as unknown[]).length; i++) {
-    const entry = (raw['scan'] as unknown[])[i];
+  const entries = scan.map((entry, i) => {
     const include = isObject(entry) ? entry['include'] : undefined;
-    if (
-      !isObject(entry) ||
-      !Array.isArray(include) ||
-      (include as unknown[]).length === 0 ||
-      (include as unknown[]).some((g) => typeof g !== 'string')
-    ) {
+    if (!isObject(entry) || !isNonEmptyStringArray(include)) {
       throw new BootError(
         'BOOT_ERR_DSL_SCHEMA_VIOLATION',
         `${source}: "typescript.scan[${i}].include" must be a non-empty array of glob strings`,
@@ -173,22 +171,24 @@ function assertTypescriptBlock(raw: unknown, source: string): ScanConfig | undef
       );
     }
     const exclude = isObject(entry) ? entry['exclude'] : undefined;
-    if (
-      exclude !== undefined &&
-      (!Array.isArray(exclude) || (exclude as unknown[]).some((g) => typeof g !== 'string'))
-    ) {
+    if (exclude !== undefined && !isStringArray(exclude)) {
       throw new BootError(
         'BOOT_ERR_DSL_SCHEMA_VIOLATION',
         `${source}: "typescript.scan[${i}].exclude" must be an array of glob strings`,
         { source },
       );
     }
-  }
+    return {
+      include,
+      ...(exclude === undefined ? {} : { exclude }),
+    };
+  });
+  const watchIntervalMs = raw['watchIntervalMs'];
   if (
-    raw['watchIntervalMs'] !== undefined &&
-    (typeof raw['watchIntervalMs'] !== 'number' ||
-      !Number.isFinite(raw['watchIntervalMs']) ||
-      raw['watchIntervalMs'] <= 0)
+    watchIntervalMs !== undefined &&
+    (typeof watchIntervalMs !== 'number' ||
+      !Number.isFinite(watchIntervalMs) ||
+      watchIntervalMs <= 0)
   ) {
     throw new BootError(
       'BOOT_ERR_DSL_SCHEMA_VIOLATION',
@@ -196,7 +196,10 @@ function assertTypescriptBlock(raw: unknown, source: string): ScanConfig | undef
       { source },
     );
   }
-  return raw as unknown as ScanConfig;
+  return {
+    scan: entries,
+    ...(watchIntervalMs === undefined ? {} : { watchIntervalMs }),
+  };
 }
 
 function assertPluginBlock(raw: unknown, source: string): PluginConfiguration | undefined {
@@ -207,7 +210,7 @@ function assertPluginBlock(raw: unknown, source: string): PluginConfiguration | 
     });
   }
   for (const k of Object.keys(raw)) {
-    if (!(PLUGIN_SUB_KEYS as readonly string[]).includes(k)) {
+    if (!includesString(PLUGIN_SUB_KEYS, k)) {
       const suggestion = closestKey(k, PLUGIN_SUB_KEYS);
       throw new BootError(
         'BOOT_ERR_UNKNOWN_KEY',
@@ -218,111 +221,173 @@ function assertPluginBlock(raw: unknown, source: string): PluginConfiguration | 
       );
     }
   }
-  assertIntegerRange(raw['controlPort'], 'plugin.controlPort', source, 0, 65535);
-  if (raw['engine'] !== undefined && !isObject(raw['engine'])) {
+  const controlPort = assertIntegerRange(
+    raw['controlPort'],
+    'plugin.controlPort',
+    source,
+    0,
+    65535,
+  );
+
+  const engineRaw = raw['engine'];
+  if (engineRaw !== undefined && !isObject(engineRaw)) {
     throw new BootError(
       'BOOT_ERR_DSL_SCHEMA_VIOLATION',
       `${source}: "plugin.engine" must be an object`,
       { source },
     );
   }
-  assertObjectKeys(raw['engine'], ['url', 'timeoutMs'], 'plugin.engine', source);
-  if (isObject(raw['engine'])) {
-    assertOptionalString(raw['engine']['url'], 'plugin.engine.url', source);
-    assertPositiveNumber(raw['engine']['timeoutMs'], 'plugin.engine.timeoutMs', source);
-  }
-  assertNumericObject(raw['resilience'], ['maxRetries', 'backoffMs'], 'plugin.resilience', source);
-  assertObjectKeys(
-    raw['healthProbe'],
-    ['initialMs', 'stableMs', 'path'],
+  assertObjectKeys(engineRaw, ['url', 'timeoutMs'], 'plugin.engine', source);
+  const engineUrl = isObject(engineRaw)
+    ? assertOptionalString(engineRaw['url'], 'plugin.engine.url', source)
+    : undefined;
+  const engineTimeoutMs = isObject(engineRaw)
+    ? assertPositiveNumber(engineRaw['timeoutMs'], 'plugin.engine.timeoutMs', source)
+    : undefined;
+  const engine =
+    engineRaw === undefined
+      ? undefined
+      : {
+          ...(engineUrl === undefined ? {} : { url: engineUrl }),
+          ...(engineTimeoutMs === undefined ? {} : { timeoutMs: engineTimeoutMs }),
+        };
+
+  const resilience = parseNonNegativeNumberBlock(
+    raw['resilience'],
+    ['maxRetries', 'backoffMs'],
+    'plugin.resilience',
+    source,
+  );
+
+  const healthProbeRaw = raw['healthProbe'];
+  assertObjectKeys(healthProbeRaw, ['initialMs', 'stableMs', 'path'], 'plugin.healthProbe', source);
+  const healthProbeNumbers = parseNonNegativeNumberBlock(
+    healthProbeRaw,
+    ['initialMs', 'stableMs'],
     'plugin.healthProbe',
     source,
   );
-  if (isObject(raw['healthProbe']))
-    assertOptionalString(raw['healthProbe']['path'], 'plugin.healthProbe.path', source);
-  assertNumericObject(
+  const healthProbePath = isObject(healthProbeRaw)
+    ? assertOptionalString(healthProbeRaw['path'], 'plugin.healthProbe.path', source)
+    : undefined;
+  const healthProbe =
+    healthProbeRaw === undefined
+      ? undefined
+      : {
+          ...healthProbeNumbers,
+          ...(healthProbePath === undefined ? {} : { path: healthProbePath }),
+        };
+
+  const discovery = parseNonNegativeNumberBlock(
     raw['discovery'],
     ['refreshOnFailureMs', 'ttlSeconds'],
     'plugin.discovery',
     source,
   );
-  assertNumericObject(
+
+  const circuitBreaker = parseNonNegativeNumberBlock(
     raw['circuitBreaker'],
     ['failureRate', 'waitMs'],
     'plugin.circuitBreaker',
     source,
   );
+  const authRaw = raw['auth'];
+  if (authRaw !== undefined && !isObject(authRaw)) {
+    throw schemaViolation(`${source}: "plugin.auth" must be an object`, source);
+  }
   assertObjectKeys(
-    raw['auth'],
+    authRaw,
     ['mode', 'algorithm', 'secret', 'jwks', 'jwksUrl', 'realm'],
     'plugin.auth',
     source,
   );
-  if (isObject(raw['auth'])) {
-    if (
-      raw['auth']['mode'] !== undefined &&
-      raw['auth']['mode'] !== 'none' &&
-      raw['auth']['mode'] !== 'jwt'
-    ) {
-      throw schemaViolation(`${source}: "plugin.auth.mode" must be "none" or "jwt"`, source);
-    }
-    if (
-      raw['auth']['algorithm'] !== undefined &&
-      raw['auth']['algorithm'] !== 'HS256' &&
-      raw['auth']['algorithm'] !== 'RS256'
-    ) {
-      throw schemaViolation(
-        `${source}: "plugin.auth.algorithm" must be "HS256" or "RS256"`,
-        source,
-      );
-    }
-    for (const field of ['secret', 'jwksUrl', 'realm']) {
-      assertOptionalString(raw['auth'][field], `plugin.auth.${field}`, source);
-    }
-    if (raw['auth']['jwks'] !== undefined) {
-      const jwks = raw['auth']['jwks'];
-      if (!Array.isArray(jwks))
-        throw schemaViolation(`${source}: "plugin.auth.jwks" must be an array`, source);
-      for (let i = 0; i < jwks.length; i++) {
-        const jwk = jwks[i];
-        if (!isObject(jwk))
-          throw schemaViolation(`${source}: "plugin.auth.jwks[${i}]" must be an object`, source);
-        assertObjectKeys(jwk, ['kty', 'kid', 'n', 'e'], `plugin.auth.jwks[${i}]`, source);
-        for (const field of ['kty', 'n', 'e']) {
-          if (typeof jwk[field] !== 'string' || jwk[field].length === 0) {
-            throw schemaViolation(
-              `${source}: "plugin.auth.jwks[${i}].${field}" must be a non-empty string`,
-              source,
-            );
-          }
-        }
-        assertOptionalString(jwk['kid'], `plugin.auth.jwks[${i}].kid`, source);
-      }
-    }
-  }
-  return raw as PluginConfiguration;
+  const auth = isObject(authRaw) ? parsePluginAuth(authRaw, source) : undefined;
+
+  return {
+    ...(engine === undefined ? {} : { engine }),
+    ...(controlPort === undefined ? {} : { controlPort }),
+    ...(resilience === undefined ? {} : { resilience }),
+    ...(healthProbe === undefined ? {} : { healthProbe }),
+    ...(discovery === undefined ? {} : { discovery }),
+    ...(circuitBreaker === undefined ? {} : { circuitBreaker }),
+    ...(auth === undefined ? {} : { auth }),
+  };
 }
 
-function assertNumericObject(
+function parseNonNegativeNumberBlock(
   raw: unknown,
   keys: readonly string[],
   field: string,
   source: string,
-): void {
+): Record<string, number> | undefined {
   if (raw === undefined) return;
   if (!isObject(raw)) throw schemaViolation(`${source}: "${field}" must be an object`, source);
   assertObjectKeys(raw, keys, field, source);
+  const parsed: Record<string, number> = {};
   for (const key of keys) {
-    if (
-      raw[key] !== undefined &&
-      (typeof raw[key] !== 'number' || !Number.isFinite(raw[key]) || raw[key] < 0)
-    ) {
+    const value = raw[key];
+    if (value === undefined) continue;
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
       throw schemaViolation(
         `${source}: "${field}.${key}" must be a finite non-negative number`,
         source,
       );
     }
+    parsed[key] = value;
   }
+  return parsed;
+}
+
+function parsePluginAuth(raw: Record<string, unknown>, source: string): PluginAuthConfig {
+  const mode = assertOptionalEnum(
+    raw['mode'],
+    ['none', 'jwt'] as const,
+    'plugin.auth.mode',
+    source,
+    'must be "none" or "jwt"',
+  );
+  const algorithm = assertOptionalEnum(
+    raw['algorithm'],
+    ['HS256', 'RS256'] as const,
+    'plugin.auth.algorithm',
+    source,
+    'must be "HS256" or "RS256"',
+  );
+  const secret = assertOptionalString(raw['secret'], 'plugin.auth.secret', source);
+  const jwksUrl = assertOptionalString(raw['jwksUrl'], 'plugin.auth.jwksUrl', source);
+  const realm = assertOptionalString(raw['realm'], 'plugin.auth.realm', source);
+  const jwks = parsePluginJwks(raw['jwks'], source);
+
+  return {
+    ...(mode === undefined ? {} : { mode }),
+    ...(algorithm === undefined ? {} : { algorithm }),
+    ...(secret === undefined ? {} : { secret }),
+    ...(jwks === undefined ? {} : { jwks }),
+    ...(jwksUrl === undefined ? {} : { jwksUrl }),
+    ...(realm === undefined ? {} : { realm }),
+  };
+}
+
+function parsePluginJwks(value: unknown, source: string): readonly PluginJwk[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) {
+    throw schemaViolation(`${source}: "plugin.auth.jwks" must be an array`, source);
+  }
+  return value.map((entry, index) => {
+    const field = `plugin.auth.jwks[${index}]`;
+    if (!isObject(entry)) throw schemaViolation(`${source}: "${field}" must be an object`, source);
+    assertObjectKeys(entry, ['kty', 'kid', 'n', 'e'], field, source);
+    const kty = assertNonEmptyString(entry['kty'], `${field}.kty`, source);
+    const n = assertNonEmptyString(entry['n'], `${field}.n`, source);
+    const e = assertNonEmptyString(entry['e'], `${field}.e`, source);
+    const kid = assertOptionalString(entry['kid'], `${field}.kid`, source);
+    return {
+      kty,
+      n,
+      e,
+      ...(kid === undefined ? {} : { kid }),
+    };
+  });
 }
 
 function assertObjectKeys(
@@ -344,16 +409,27 @@ function assertObjectKeys(
   }
 }
 
-function assertOptionalString(value: unknown, field: string, source: string): void {
-  if (value !== undefined && typeof value !== 'string') {
+function assertOptionalString(value: unknown, field: string, source: string): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string') {
     throw schemaViolation(`${source}: "${field}" must be a string`, source);
   }
+  return value;
 }
 
-function assertPositiveNumber(value: unknown, field: string, source: string): void {
-  if (value !== undefined && (typeof value !== 'number' || !Number.isFinite(value) || value <= 0)) {
+function assertNonEmptyString(value: unknown, field: string, source: string): string {
+  if (typeof value !== 'string' || value.length === 0) {
+    throw schemaViolation(`${source}: "${field}" must be a non-empty string`, source);
+  }
+  return value;
+}
+
+function assertPositiveNumber(value: unknown, field: string, source: string): number | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
     throw schemaViolation(`${source}: "${field}" must be a positive number`, source);
   }
+  return value;
 }
 
 function assertIntegerRange(
@@ -362,16 +438,28 @@ function assertIntegerRange(
   source: string,
   min: number,
   max: number,
-): void {
-  if (
-    value !== undefined &&
-    (typeof value !== 'number' || !Number.isInteger(value) || value < min || value > max)
-  ) {
+): number | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < min || value > max) {
     throw schemaViolation(
       `${source}: "${field}" must be an integer between ${min} and ${max}`,
       source,
     );
   }
+  return value;
+}
+
+function assertOptionalEnum<const Values extends readonly string[]>(
+  value: unknown,
+  values: Values,
+  field: string,
+  source: string,
+  expectation: string,
+): Values[number] | undefined {
+  if (value === undefined) return undefined;
+  if (!isOneOf(value, values))
+    throw schemaViolation(`${source}: "${field}" ${expectation}`, source);
+  return value;
 }
 
 function schemaViolation(message: string, source: string): BootError {
@@ -385,69 +473,40 @@ function assertSeedsBlock(raw: unknown, source: string): readonly SeedDefinition
       source,
     });
   }
-  for (let i = 0; i < raw.length; i++) {
-    const entry = raw[i];
-    if (!isObject(entry)) {
-      throw new BootError(
-        'BOOT_ERR_DSL_SCHEMA_VIOLATION',
-        `${source}: "seeds[${i}]" must be an object`,
-        { source },
+  return raw.map((entry, index) => {
+    const field = `seeds[${index}]`;
+    if (!isObject(entry)) throw schemaViolation(`${source}: "${field}" must be an object`, source);
+
+    const base = assertOptionalEnum(
+      entry['base'],
+      ['contract', 'empty'] as const,
+      `${field}.base`,
+      source,
+      'must be "contract" or "empty"',
+    );
+    if (base === undefined) {
+      throw schemaViolation(`${source}: "${field}.base" is required`, source);
+    }
+
+    const request = entry['request'];
+    if (!isObject(request)) {
+      throw schemaViolation(
+        `${source}: "${field}.request" must be an object with "method" and "path"`,
+        source,
       );
     }
-    if (entry['base'] !== 'contract' && entry['base'] !== 'empty') {
-      throw new BootError(
-        'BOOT_ERR_DSL_SCHEMA_VIOLATION',
-        `${source}: "seeds[${i}].base" must be "contract" or "empty"`,
-        { source },
-      );
-    }
-    if (!isObject(entry['request'])) {
-      throw new BootError(
-        'BOOT_ERR_DSL_SCHEMA_VIOLATION',
-        `${source}: "seeds[${i}].request" must be an object with "method" and "path"`,
-        { source },
-      );
-    }
-    const req = entry['request'] as Record<string, unknown>;
-    if (typeof req['method'] !== 'string' || req['method'].length === 0) {
-      throw new BootError(
-        'BOOT_ERR_DSL_SCHEMA_VIOLATION',
-        `${source}: "seeds[${i}].request.method" must be a non-empty string`,
-        { source },
-      );
-    }
-    if (typeof req['path'] !== 'string' || req['path'].length === 0) {
-      throw new BootError(
-        'BOOT_ERR_DSL_SCHEMA_VIOLATION',
-        `${source}: "seeds[${i}].request.path" must be a non-empty string`,
-        { source },
-      );
-    }
-    if (entry['patches'] !== undefined && !Array.isArray(entry['patches'])) {
-      throw new BootError(
-        'BOOT_ERR_DSL_SCHEMA_VIOLATION',
-        `${source}: "seeds[${i}].patches" must be an array`,
-        { source },
-      );
-    }
-    if (entry['description'] !== undefined && typeof entry['description'] !== 'string') {
-      throw new BootError(
-        'BOOT_ERR_DSL_SCHEMA_VIOLATION',
-        `${source}: "seeds[${i}].description" must be a string`,
-        { source },
-      );
-    }
-  }
-  return raw.map((entry) => ({
-    ...(entry as Record<string, unknown>),
-    patches:
-      entry &&
-      typeof entry === 'object' &&
-      !Array.isArray(entry) &&
-      Array.isArray((entry as Record<string, unknown>)['patches'])
-        ? (entry as Record<string, unknown>)['patches']
-        : [],
-  })) as unknown as readonly SeedDefinition[];
+    const method = assertNonEmptyString(request['method'], `${field}.request.method`, source);
+    const path = assertNonEmptyString(request['path'], `${field}.request.path`, source);
+    const description = assertOptionalString(entry['description'], `${field}.description`, source);
+    const patches = parsePatches(entry['patches'], `${field}.patches`, source) ?? [];
+
+    return {
+      ...(description === undefined ? {} : { description }),
+      request: { method, path },
+      base,
+      patches,
+    };
+  });
 }
 
 function assertWorkflowBlock(raw: unknown, source: string): WorkflowDefinition | undefined {
@@ -459,39 +518,44 @@ function assertWorkflowBlock(raw: unknown, source: string): WorkflowDefinition |
       { source },
     );
   }
-  if (raw['ids'] !== undefined) {
-    if (!isObject(raw['ids'])) {
+  const idsRaw = raw['ids'];
+  if (idsRaw === undefined) return {};
+  if (!isObject(idsRaw)) {
+    throw new BootError(
+      'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+      `${source}: "workflow.ids" must be an object`,
+      { source },
+    );
+  }
+
+  const ids: Record<string, { extract: string; use: string }> = {};
+  for (const [key, value] of Object.entries(idsRaw)) {
+    if (!isObject(value)) {
       throw new BootError(
         'BOOT_ERR_DSL_SCHEMA_VIOLATION',
-        `${source}: "workflow.ids" must be an object`,
+        `${source}: "workflow.ids.${key}" must be an object with "extract" and "use"`,
         { source },
       );
     }
-    for (const [k, v] of Object.entries(raw['ids'] as Record<string, unknown>)) {
-      if (!isObject(v)) {
-        throw new BootError(
-          'BOOT_ERR_DSL_SCHEMA_VIOLATION',
-          `${source}: "workflow.ids.${k}" must be an object with "extract" and "use"`,
-          { source },
-        );
-      }
-      if (typeof v['extract'] !== 'string') {
-        throw new BootError(
-          'BOOT_ERR_DSL_SCHEMA_VIOLATION',
-          `${source}: "workflow.ids.${k}.extract" must be a string`,
-          { source },
-        );
-      }
-      if (typeof v['use'] !== 'string') {
-        throw new BootError(
-          'BOOT_ERR_DSL_SCHEMA_VIOLATION',
-          `${source}: "workflow.ids.${k}.use" must be a string`,
-          { source },
-        );
-      }
+    const extract = assertOptionalString(value['extract'], `workflow.ids.${key}.extract`, source);
+    if (extract === undefined) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+        `${source}: "workflow.ids.${key}.extract" must be a string`,
+        { source },
+      );
     }
+    const use = assertOptionalString(value['use'], `workflow.ids.${key}.use`, source);
+    if (use === undefined) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SCHEMA_VIOLATION',
+        `${source}: "workflow.ids.${key}.use" must be a string`,
+        { source },
+      );
+    }
+    ids[key] = { extract, use };
   }
-  return raw as WorkflowDefinition;
+  return { ids };
 }
 
 function assertOverlayBlock(raw: unknown, source: string): OverlayDefinition | undefined {
@@ -501,17 +565,7 @@ function assertOverlayBlock(raw: unknown, source: string): OverlayDefinition | u
       source,
     });
   }
-  if (raw['patches'] !== undefined && !Array.isArray(raw['patches'])) {
-    throw new BootError(
-      'BOOT_ERR_DSL_SCHEMA_VIOLATION',
-      `${source}: "overlay.patches" must be an array`,
-      { source },
-    );
-  }
-  return {
-    ...(raw as Record<string, unknown>),
-    patches: Array.isArray(raw['patches']) ? raw['patches'] : [],
-  } as unknown as OverlayDefinition;
+  return { patches: parsePatches(raw['patches'], 'overlay.patches', source) ?? [] };
 }
 
 function assertGovernanceBlock(raw: unknown, source: string): GovernanceDefinition | undefined {
@@ -523,64 +577,206 @@ function assertGovernanceBlock(raw: unknown, source: string): GovernanceDefiniti
       { source },
     );
   }
-  if (raw['report'] !== undefined) {
-    if (!isObject(raw['report'])) {
-      throw new BootError(
-        'BOOT_ERR_DSL_SCHEMA_VIOLATION',
-        `${source}: "governance.report" must be an object`,
-        { source },
-      );
-    }
-    const report = raw['report'];
-    assertObjectKeys(report, ['format', 'successCriteria'], 'governance.report', source);
-    assertOptionalString(report['format'], 'governance.report.format', source);
-    if (report['successCriteria'] !== undefined) {
-      if (!isObject(report['successCriteria'])) {
-        throw schemaViolation(
-          `${source}: "governance.report.successCriteria" must be an object`,
-          source,
-        );
-      }
-      const criteria = report['successCriteria'];
-      assertObjectKeys(
-        criteria,
-        ['minCoverage', 'excludedEndpoints'],
-        'governance.report.successCriteria',
-        source,
-      );
-      if (
-        criteria['minCoverage'] !== undefined &&
-        (typeof criteria['minCoverage'] !== 'number' || !Number.isFinite(criteria['minCoverage']))
-      ) {
-        throw schemaViolation(
-          `${source}: "governance.report.successCriteria.minCoverage" must be a finite number`,
-          source,
-        );
-      }
-      if (
-        criteria['excludedEndpoints'] !== undefined &&
-        (!Array.isArray(criteria['excludedEndpoints']) ||
-          criteria['excludedEndpoints'].some((endpoint) => typeof endpoint !== 'string'))
-      ) {
-        throw schemaViolation(
-          `${source}: "governance.report.successCriteria.excludedEndpoints" must be an array of strings`,
-          source,
-        );
-      }
-    }
-  }
-  if (raw['successCriterion'] !== undefined && typeof raw['successCriterion'] !== 'string') {
+  const report =
+    raw['report'] === undefined ? undefined : parseGovernanceReport(raw['report'], source);
+  const successCriterion = assertOptionalString(
+    raw['successCriterion'],
+    'governance.successCriterion',
+    source,
+  );
+  return {
+    ...(report === undefined ? {} : { report }),
+    ...(successCriterion === undefined ? {} : { successCriterion }),
+  };
+}
+
+function parseGovernanceReport(
+  raw: unknown,
+  source: string,
+): NonNullable<GovernanceDefinition['report']> {
+  if (!isObject(raw)) {
     throw new BootError(
       'BOOT_ERR_DSL_SCHEMA_VIOLATION',
-      `${source}: "governance.successCriterion" must be a string`,
+      `${source}: "governance.report" must be an object`,
       { source },
     );
   }
-  return raw as GovernanceDefinition;
+  assertObjectKeys(raw, ['format', 'successCriteria'], 'governance.report', source);
+  const format = assertOptionalString(raw['format'], 'governance.report.format', source);
+  const criteriaRaw = raw['successCriteria'];
+  if (criteriaRaw === undefined) {
+    return format === undefined ? {} : { format };
+  }
+  if (!isObject(criteriaRaw)) {
+    throw schemaViolation(
+      `${source}: "governance.report.successCriteria" must be an object`,
+      source,
+    );
+  }
+  assertObjectKeys(
+    criteriaRaw,
+    ['minCoverage', 'excludedEndpoints'],
+    'governance.report.successCriteria',
+    source,
+  );
+  const minCoverage = assertFiniteNumber(
+    criteriaRaw['minCoverage'],
+    'governance.report.successCriteria.minCoverage',
+    source,
+  );
+  const excludedEndpoints = parseOptionalStringArray(
+    criteriaRaw['excludedEndpoints'],
+    'governance.report.successCriteria.excludedEndpoints',
+    source,
+  );
+  const successCriteria = {
+    ...(minCoverage === undefined ? {} : { minCoverage }),
+    ...(excludedEndpoints === undefined ? {} : { excludedEndpoints }),
+  };
+  return {
+    ...(format === undefined ? {} : { format }),
+    successCriteria,
+  };
 }
 
-function isObject(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
+function parsePatches(value: unknown, field: string, source: string): readonly Patch[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) {
+    throw schemaViolation(`${source}: "${field}" must be an array`, source);
+  }
+  return value.map((entry, index) => parsePatch(entry, `${field}[${index}]`, source));
+}
+
+function parsePatch(value: unknown, field: string, source: string): Patch {
+  if (!isObject(value)) throw schemaViolation(`${source}: "${field}" must be an object`, source);
+  const op = assertOptionalEnum(
+    value['op'],
+    [
+      'add',
+      'remove',
+      'replace',
+      'move',
+      'copy',
+      'append',
+      'prepend',
+      'increment',
+      'merge',
+      'upsert',
+    ] as const,
+    `${field}.op`,
+    source,
+    'must be a supported patch operation',
+  );
+  if (op === undefined) throw schemaViolation(`${source}: "${field}.op" is required`, source);
+  const path = assertPatchPath(value['path'], `${field}.path`, source);
+
+  switch (op) {
+    case 'add':
+    case 'replace':
+    case 'append':
+    case 'prepend':
+      return { op, path, value: parseJsonValue(value['value'], `${field}.value`, source) };
+    case 'remove':
+      return { op, path };
+    case 'move':
+    case 'copy':
+      return { op, path, from: assertPatchPath(value['from'], `${field}.from`, source) };
+    case 'increment': {
+      const by = assertFiniteNumber(value['by'], `${field}.by`, source);
+      if (by === undefined) throw schemaViolation(`${source}: "${field}.by" is required`, source);
+      return { op, path, by };
+    }
+    case 'merge': {
+      const deep = assertOptionalBoolean(value['deep'], `${field}.deep`, source);
+      return {
+        op,
+        path,
+        value: parseJsonObject(value['value'], `${field}.value`, source),
+        ...(deep === undefined ? {} : { deep }),
+      };
+    }
+    case 'upsert':
+      return {
+        op,
+        path,
+        key: assertString(value['key'], `${field}.key`, source),
+        value: parseJsonObject(value['value'], `${field}.value`, source),
+      };
+  }
+}
+
+function parseJsonValue(value: unknown, field: string, source: string): JsonValue {
+  if (!isJsonValue(value)) {
+    throw schemaViolation(`${source}: "${field}" must be a JSON value`, source);
+  }
+  return value;
+}
+
+function parseJsonObject(value: unknown, field: string, source: string): JsonObject {
+  if (!isJsonObject(value)) {
+    throw schemaViolation(`${source}: "${field}" must be a JSON object`, source);
+  }
+  return value;
+}
+
+function assertPatchPath(value: unknown, field: string, source: string): string {
+  const path = assertString(value, field, source);
+  if (!path.startsWith('/')) {
+    throw schemaViolation(`${source}: "${field}" must start with "/"`, source);
+  }
+  return path;
+}
+
+function assertString(value: unknown, field: string, source: string): string {
+  if (typeof value !== 'string')
+    throw schemaViolation(`${source}: "${field}" must be a string`, source);
+  return value;
+}
+
+function assertFiniteNumber(value: unknown, field: string, source: string): number | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw schemaViolation(`${source}: "${field}" must be a finite number`, source);
+  }
+  return value;
+}
+
+function assertOptionalBoolean(value: unknown, field: string, source: string): boolean | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'boolean')
+    throw schemaViolation(`${source}: "${field}" must be a boolean`, source);
+  return value;
+}
+
+function parseOptionalStringArray(
+  value: unknown,
+  field: string,
+  source: string,
+): readonly string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!isStringArray(value)) {
+    throw schemaViolation(`${source}: "${field}" must be an array of strings`, source);
+  }
+  return value;
+}
+
+function includesString(values: readonly string[], value: string): boolean {
+  return values.some((candidate) => candidate === value);
+}
+
+function isOneOf<const Values extends readonly string[]>(
+  value: unknown,
+  values: Values,
+): value is Values[number] {
+  return typeof value === 'string' && values.some((candidate) => candidate === value);
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === 'string');
+}
+
+function isNonEmptyStringArray(value: unknown): value is [string, ...string[]] {
+  return isStringArray(value) && value.length > 0;
 }
 
 function rejectSnakeCaseKeys(raw: Record<string, unknown>, source: string): void {

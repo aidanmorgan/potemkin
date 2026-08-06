@@ -1,5 +1,6 @@
 import type { JsonObject, JsonValue } from '../contracts/value.js';
 import { compileRuntime } from './compiler.js';
+import { deepFreeze } from './immutability.js';
 import type { RuntimeDefinition } from './index.js';
 import { RuntimeModelError } from './errors.js';
 import type {
@@ -15,12 +16,6 @@ import type {
   RuntimeResponsePolicy,
 } from '../model/runtime.js';
 
-function freeze<T>(value: T): T {
-  if (value === null || typeof value !== 'object' || Object.isFrozen(value)) return value;
-  for (const child of Object.values(value as Record<string, unknown>)) freeze(child);
-  return Object.freeze(value);
-}
-
 export interface RuntimeEventBuilder {
   payload(values: Readonly<Record<string, RuntimeEvent['payload'][string]>>): RuntimeEventBuilder;
   schemaRef(reference: string): RuntimeEventBuilder;
@@ -31,7 +26,7 @@ export function runtimeEvent(type: string): RuntimeEventBuilder {
   const build = (event: RuntimeEvent): RuntimeEventBuilder => ({
     payload: (values) => build({ ...event, payload: { ...event.payload, ...values } }),
     schemaRef: (reference) => build({ ...event, schemaRef: reference }),
-    build: () => freeze({ ...event, payload: { ...event.payload } }),
+    build: () => deepFreeze({ ...event, payload: { ...event.payload } }),
   });
   return build({ type, payload: {} });
 }
@@ -90,7 +85,7 @@ export function runtimeBehavior(name: string): RuntimeBehaviorBuilder {
           `Runtime behavior "${name}" requires an emission or dispatch`,
         );
       }
-      return freeze({ ...behavior });
+      return deepFreeze({ ...behavior });
     },
   });
   return build({ name, operationId: '' });
@@ -106,7 +101,7 @@ export function runtimeReducer(on: string): RuntimeReducerBuilder {
   const build = (reducer: RuntimeReducer): RuntimeReducerBuilder => ({
     apply: (fn) => build({ ...reducer, apply: fn }),
     replaceState: (enabled = true) => build({ ...reducer, replaceState: enabled }),
-    build: () => freeze({ ...reducer }),
+    build: () => deepFreeze({ ...reducer }),
   });
   return build({ on });
 }
@@ -157,7 +152,7 @@ export function runtimeBoundary(boundary: string, contractPath: string): Runtime
       build({ ...value, reactions: [...(value.reactions ?? []), ...reactions] }),
     state: (state) => build({ ...value, state }),
     build: () =>
-      freeze({
+      deepFreeze({
         ...value,
         eventCatalog: [...value.eventCatalog],
         behaviors: [...value.behaviors],
@@ -180,7 +175,7 @@ export function runtimeProgram(initial: readonly RuntimeBoundary[] = []): Runtim
       build({ ...definition, boundaries: [...definition.boundaries, boundary] }),
     policies: (policies) =>
       build({ ...definition, policies: { ...definition.policies, ...policies } }),
-    build: () => freeze({ ...definition, boundaries: [...definition.boundaries] }),
+    build: () => deepFreeze({ ...definition, boundaries: [...definition.boundaries] }),
     compile: (dependencies) => compileRuntime(definition, dependencies),
   });
   return build({ boundaries: [...initial] });

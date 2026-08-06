@@ -266,6 +266,50 @@ interface MutableSchema {
   readonly fields: Map<string, { type: FieldType; sources: string[] }>;
 }
 
+type PatchWithValue = Extract<Patch, { readonly value: unknown }>;
+
+/** Narrow the canonical patch union to operations that carry a value. */
+function isPatchWithValue(patch: Patch): patch is PatchWithValue {
+  switch (patch.op) {
+    case 'add':
+    case 'replace':
+    case 'append':
+    case 'prepend':
+    case 'merge':
+    case 'upsert':
+      return true;
+    case 'remove':
+    case 'move':
+    case 'copy':
+    case 'increment':
+      return false;
+  }
+}
+
+type ReducerPatchValue = NonNullable<ReducerPatchOp['value']>;
+type ReducerPatchWithValue = ReducerPatchOp & { readonly value: ReducerPatchValue };
+
+/**
+ * ReducerPatchOp is intentionally permissive at the authoring boundary, so
+ * narrow its optional value using the operation family before reading it.
+ */
+function isReducerPatchWithValue(patch: ReducerPatchOp): patch is ReducerPatchWithValue {
+  switch (patch.op) {
+    case 'add':
+    case 'replace':
+    case 'append':
+    case 'prepend':
+      return patch.value !== undefined;
+    case 'remove':
+    case 'increment':
+    case 'merge':
+    case 'upsert':
+    case 'move':
+    case 'copy':
+      return false;
+  }
+}
+
 function setOrMerge(s: MutableSchema, pointer: string, type: FieldType, source: string): void {
   const existing = s.fields.get(pointer);
   if (existing) {
@@ -297,7 +341,7 @@ function inferEventPayloadSchema(ev: EventDecl): Record<string, FieldType> {
       const segs = parsePointer(p.path);
       if (segs.length !== 1) continue; // only top-level keys map directly
       const key = segs[0];
-      const valueType = inferValueLiteral((p as { value?: unknown }).value);
+      const valueType = inferValueLiteral(isPatchWithValue(p) ? p.value : undefined);
       out[key] = valueType;
     }
   }
@@ -344,17 +388,17 @@ function walkReducerPatches(
       const segs = parsePointer(path);
       if (segs.length === 0) continue;
       const pointer = '/' + segs.join('/');
-      const valueLike = p.value;
 
       switch (p.op) {
         case 'add':
         case 'replace':
         case 'append':
         case 'prepend': {
-          const t =
-            typeof valueLike === 'string'
-              ? inferTypeFromCel(valueLike, eventSchema, stateSchema)
-              : inferValueLiteral(valueLike);
+          const t = isReducerPatchWithValue(p)
+            ? typeof p.value === 'string'
+              ? inferTypeFromCel(p.value, eventSchema, stateSchema)
+              : inferValueLiteral(p.value)
+            : ftUnknown();
           if (p.op === 'append' || p.op === 'prepend') {
             setOrMerge(out, pointer, ftArray(t, 'narrowed'), sourceTag);
           } else {
@@ -542,7 +586,7 @@ export function buildInferredSchema(input: BoundaryInferenceInput): BoundaryInfe
     if (ev.patches) {
       for (const p of ev.patches) {
         if (p.op === 'remove' || p.op === 'move' || p.op === 'copy') continue;
-        const segs = parsePointer((p as { path: string }).path);
+        const segs = parsePointer(p.path);
         if (segs.length === 1) eventDerivedNames.add(segs[0]);
       }
     }
@@ -561,7 +605,7 @@ export function buildInferredSchema(input: BoundaryInferenceInput): BoundaryInfe
   for (const r of input.reducers) {
     if (!r.patches) continue;
     for (const p of r.patches) {
-      const path = (p as { path?: string }).path;
+      const path = p.path;
       if (!path) continue;
       if (targetsComputed(path, computedPaths)) {
         throw new BootError(

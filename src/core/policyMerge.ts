@@ -2,7 +2,7 @@ import type { RuntimeModelCoverage, RuntimePolicies } from '../model/runtime.js'
 
 /** Merge source-independent policy fragments without source-specific branches. */
 export function mergeRuntimePolicies(policies: readonly RuntimePolicies[]): RuntimePolicies {
-  return {
+  const merged: RuntimePolicies = {
     ...policies.reduce<Record<string, unknown>>((merged, policy) => ({ ...merged, ...policy }), {}),
     faults: policies.flatMap((policy) => policy.faults ?? []),
     reactions: policies.flatMap((policy) => policy.reactions ?? []),
@@ -10,7 +10,8 @@ export function mergeRuntimePolicies(policies: readonly RuntimePolicies[]): Runt
     derivedProjections: policies.flatMap((policy) => policy.derivedProjections ?? []),
     webhooks: policies.flatMap((policy) => policy.webhooks ?? []),
     ...(mergeCoverage(policies) === undefined ? {} : { coverage: mergeCoverage(policies) }),
-  } as RuntimePolicies;
+  };
+  return merged;
 }
 
 function mergeCoverage(policies: readonly RuntimePolicies[]): RuntimePolicies['coverage'] {

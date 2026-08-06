@@ -267,6 +267,42 @@ describe('source-independent transition model', () => {
     });
   });
 
+  it('terminates when component schemas contain a cyclic reference chain', async () => {
+    const program = await compileYaml([
+      {
+        name: 'node.yaml',
+        yaml: `
+boundary: Node
+contract_path: /nodes
+behaviors: []
+reducers: []
+event_catalog: []
+`,
+      },
+    ]);
+
+    const model = buildTransitionModel({
+      program,
+      openapi: {
+        raw: {
+          components: {
+            schemas: {
+              Node: { $ref: '#/components/schemas/Other' },
+              Other: { $ref: '#/components/schemas/Node' },
+            },
+          },
+        },
+        paths: {},
+      },
+    });
+
+    expect(model.machines[0]).toMatchObject({
+      aggregate: 'Node',
+      controlField: 'state',
+      states: ['UNKNOWN'],
+    });
+  });
+
   it('expands computed-field dependencies into a non-replace write-set closure', () => {
     const program = {
       boundaries: [

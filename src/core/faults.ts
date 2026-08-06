@@ -1,11 +1,12 @@
 import type { RuntimeFaultEntry, RuntimeFaultStore } from '../model/runtime.js';
+import { faultId, type FaultId } from '../domain/references.js';
 
 /** Per-runtime dynamic fault storage; no process-global state is shared. */
 export function createRuntimeFaultStore(
   nowMs: () => number,
   uuid: () => string,
 ): RuntimeFaultStore {
-  const entries = new Map<string, RuntimeFaultEntry>();
+  const entries = new Map<FaultId, RuntimeFaultEntry>();
   const prune = (at = nowMs(), evict = true): void => {
     const now = at;
     for (const [id, entry] of entries) {
@@ -15,7 +16,7 @@ export function createRuntimeFaultStore(
   return {
     add(rule, ttlMs) {
       prune();
-      const id = uuid();
+      const id = faultId(uuid());
       const createdAt = nowMs();
       entries.set(id, {
         id,

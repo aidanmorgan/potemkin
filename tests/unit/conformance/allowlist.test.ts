@@ -1,10 +1,18 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import {
   assertAllowlistIsUnique,
   evaluateAllowlist,
+  loadAllowlists,
   parseAllowlistDocument,
   selectAllowlist,
 } from '../../../src/conformance/allowlist';
-import type { ConformanceFailure } from '../../../src/conformance/types';
+import {
+  toConformanceFilePath,
+  toConformanceReportId,
+  type ConformanceFailure,
+} from '../../../src/conformance/types';
 
 const failure: ConformanceFailure = {
   testName: 'read unknown lead',
@@ -18,6 +26,60 @@ const failure: ConformanceFailure = {
 };
 
 describe('Specmatic conformance allowlists', () => {
+  it('loads YAML anchors and merge keys with the same allowlist shape', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'potemkin-allowlist-'));
+    const filePath = path.join(directory, 'allowlist.yaml');
+    await writeFile(
+      filePath,
+      `version: 1
+name: crm
+entry_defaults: &entry_defaults
+  method: GET
+  scenario: read unknown lead
+  expected_status: 200
+  actual_status: 404
+  reason: an unseeded id is a valid stateful 404
+entries:
+  - <<: *entry_defaults
+    id: unknown-lead
+    path: /leads/{id}
+`,
+    );
+
+    try {
+      await expect(loadAllowlists(filePath)).resolves.toEqual([
+        {
+          name: 'crm',
+          entries: [
+            {
+              id: 'unknown-lead',
+              method: 'GET',
+              path: '/leads/{id}',
+              scenario: 'read unknown lead',
+              expectedStatus: '200',
+              actualStatus: '404',
+              reason: 'an unseeded id is a valid stateful 404',
+            },
+          ],
+        },
+      ]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects malformed YAML while loading an allowlist', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'potemkin-allowlist-'));
+    const filePath = path.join(directory, 'allowlist.yaml');
+    await writeFile(filePath, 'version: [1\n');
+
+    try {
+      await expect(loadAllowlists(filePath)).rejects.toThrow();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it('supports named allowlists and matches the complete case key', () => {
     const allowlists = parseAllowlistDocument({
       version: 1,
@@ -45,6 +107,45 @@ describe('Specmatic conformance allowlists', () => {
       unexpected: [],
       stale: [],
     });
+  });
+
+  it('uses canonical constructors to normalize allowlist case fields', () => {
+    const [allowlist] = parseAllowlistDocument({
+      version: 1,
+      name: 'normalized',
+      entries: [
+        {
+          id: 'normalized-case',
+          method: ' post ',
+          path: ' /leads/{id} ',
+          scenario: 'read unknown lead',
+          expected_status: ' 200 ',
+          actual_status: 404,
+          reason: 'normalized identity',
+        },
+      ],
+    });
+
+    expect(allowlist?.entries).toEqual([
+      {
+        id: 'normalized-case',
+        method: 'POST',
+        path: '/leads/{id}',
+        scenario: 'read unknown lead',
+        expectedStatus: '200',
+        actualStatus: '404',
+        reason: 'normalized identity',
+      },
+    ]);
+  });
+
+  it('returns normalized file paths and report identifiers', () => {
+    expect(toConformanceFilePath('  reports/specmatic.xml  ')).toBe('reports/specmatic.xml');
+    expect(toConformanceReportId('  testcase-42  ')).toBe('testcase-42');
+    expect(() => toConformanceFilePath(' \t ')).toThrow('Conformance file path must not be empty');
+    expect(() => toConformanceReportId(' \t ')).toThrow(
+      'Conformance report identifier must not be empty',
+    );
   });
 
   it('reports stale entries when a previously observed divergence disappears', () => {

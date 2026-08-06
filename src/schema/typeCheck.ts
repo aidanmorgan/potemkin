@@ -1,4 +1,6 @@
-import type { JsonValue, JsonObject } from '../contracts/value.js';
+import { validate as validateUuid } from 'uuid';
+import { isJsonObject } from '../contracts/value.js';
+import type { JsonObject, JsonValue } from '../contracts/value.js';
 import type { ObjectGraphSchema, SchemaTypeKind } from './types.js';
 import { createNoopTracer, withSpan, type Tracer } from '../observability/tracing.js';
 import { detectCatastrophicRegexShape } from './regexSafety.js';
@@ -22,16 +24,42 @@ function compilePatternSafe(pattern: string): RegExp {
 // ── format validation ─────────────────────────────────────────────────────────
 
 const FORMAT_PATTERNS: Record<string, RegExp> = {
-  uuid: /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/,
   'date-time': /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/,
   date: /^\d{4}-\d{2}-\d{2}$/,
   email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
 };
 
 function validateFormat(value: string, format: string): boolean {
+  if (format === 'uuid') return validateUuid(value);
   const pattern = FORMAT_PATTERNS[format];
   if (!pattern) return true; // unknown format → lenient
   return pattern.test(value);
+}
+
+function enumContains(schema: ObjectGraphSchema, value: JsonValue): boolean {
+  const values = schema.enum;
+  return values !== undefined && values.length > 0 && values.includes(value);
+}
+
+function unionMatchCount(value: JsonValue, schema: ObjectGraphSchema): number {
+  return (schema.union ?? []).filter((member) => isAssignable(value, member)).length;
+}
+
+function numericConstraintErrors(value: number, schema: ObjectGraphSchema): string[] {
+  const errors: string[] = [];
+  if (schema.minimum !== undefined && value < schema.minimum) {
+    errors.push(`value ${value} is less than minimum ${schema.minimum}`);
+  }
+  if (schema.maximum !== undefined && value > schema.maximum) {
+    errors.push(`value ${value} is greater than maximum ${schema.maximum}`);
+  }
+  if (schema.exclusiveMinimum !== undefined && value <= schema.exclusiveMinimum) {
+    errors.push(`value ${value} is not greater than exclusiveMinimum ${schema.exclusiveMinimum}`);
+  }
+  if (schema.exclusiveMaximum !== undefined && value >= schema.exclusiveMaximum) {
+    errors.push(`value ${value} is not less than exclusiveMaximum ${schema.exclusiveMaximum}`);
+  }
+  return errors;
 }
 
 // ── helpers ────────────────────────────────────────────────────────────────────
@@ -65,46 +93,35 @@ export function isAssignable(value: JsonValue, target: ObjectGraphSchema): boole
   const kind = typeOfJson(value);
 
   if (target.kind === 'union') {
-    const members = target.union ?? [];
     if (target.unionVariant === 'oneOf') {
-      const matchCount = members.filter((m) => isAssignable(value, m)).length;
-      return matchCount === 1;
+      return unionMatchCount(value, target) === 1;
     }
-    return members.some((member) => isAssignable(value, member));
+    return unionMatchCount(value, target) > 0;
   }
 
   if (target.kind === 'null') return value === null;
 
   // Enum check applies to all primitive kinds
-  if (target.enum && target.enum.length > 0) {
-    return (target.enum as JsonValue[]).includes(value);
-  }
+  if (enumContains(target, value)) return true;
+  if (target.enum !== undefined && target.enum.length > 0) return false;
 
   if (target.kind === 'integer') {
-    if (kind !== 'integer') return false;
-    const n = value as number;
-    if (target.minimum !== undefined && n < target.minimum) return false;
-    if (target.maximum !== undefined && n > target.maximum) return false;
-    if (target.exclusiveMinimum !== undefined && n <= target.exclusiveMinimum) return false;
-    if (target.exclusiveMaximum !== undefined && n >= target.exclusiveMaximum) return false;
-    return true;
+    return (
+      typeof value === 'number' &&
+      Number.isInteger(value) &&
+      numericConstraintErrors(value, target).length === 0
+    );
   }
 
   if (target.kind === 'number') {
-    if (kind !== 'integer' && kind !== 'number') return false;
-    const n = value as number;
-    if (target.minimum !== undefined && n < target.minimum) return false;
-    if (target.maximum !== undefined && n > target.maximum) return false;
-    if (target.exclusiveMinimum !== undefined && n <= target.exclusiveMinimum) return false;
-    if (target.exclusiveMaximum !== undefined && n >= target.exclusiveMaximum) return false;
-    return true;
+    return typeof value === 'number' && numericConstraintErrors(value, target).length === 0;
   }
 
   if (target.kind === 'boolean') return kind === 'boolean';
 
   if (target.kind === 'string') {
-    if (kind !== 'string') return false;
-    const s = value as string;
+    if (typeof value !== 'string') return false;
+    const s = value;
     if (target.minLength !== undefined && s.length < target.minLength) return false;
     if (target.maxLength !== undefined && s.length > target.maxLength) return false;
     if (target.pattern !== undefined && !compilePatternSafe(target.pattern).test(s)) return false;
@@ -114,15 +131,14 @@ export function isAssignable(value: JsonValue, target: ObjectGraphSchema): boole
 
   if (target.kind === 'array') {
     if (!Array.isArray(value)) return false;
-    if (target.items) {
-      return (value as JsonValue[]).every((item) => isAssignable(item, target.items!));
-    }
+    const items = target.items;
+    if (items !== undefined) return value.every((item) => isAssignable(item, items));
     return true;
   }
 
   if (target.kind === 'object') {
-    if (typeof value !== 'object' || Array.isArray(value)) return false;
-    const obj = value as JsonObject;
+    if (!isJsonObject(value)) return false;
+    const obj = value;
     const props = target.properties ?? {};
     const required = target.required ?? [];
     const addlProps = target.additionalProperties;
@@ -139,9 +155,7 @@ export function isAssignable(value: JsonValue, target: ObjectGraphSchema): boole
       } else {
         // Unknown property
         if (addlProps === false || addlProps === undefined) return false;
-        if (typeof addlProps === 'object') {
-          if (!isAssignable(v, addlProps as ObjectGraphSchema)) return false;
-        }
+        if (typeof addlProps === 'object' && !isAssignable(v, addlProps)) return false;
         // addlProps === true → allowed
       }
     }
@@ -175,12 +189,9 @@ function validateNode(
   }
 
   if (schema.kind === 'union') {
-    const members = schema.union ?? [];
-    let ok: boolean;
     if (schema.unionVariant === 'oneOf') {
-      const matchCount = members.filter((m) => isAssignable(value, m)).length;
-      ok = matchCount === 1;
-      if (!ok) {
+      const matchCount = unionMatchCount(value, schema);
+      if (matchCount !== 1) {
         errors.push({
           path,
           reason:
@@ -190,8 +201,7 @@ function validateNode(
         });
       }
     } else {
-      ok = members.some((m) => isAssignable(value, m));
-      if (!ok) {
+      if (unionMatchCount(value, schema) === 0) {
         errors.push({
           path,
           reason: `value does not match any union member`,
@@ -204,7 +214,7 @@ function validateNode(
   const kind = typeOfJson(value);
 
   // Enum check applies across all primitive kinds
-  if (schema.enum && schema.enum.length > 0 && !(schema.enum as JsonValue[]).includes(value)) {
+  if (schema.enum !== undefined && schema.enum.length > 0 && !enumContains(schema, value)) {
     errors.push({
       path,
       reason: `value '${String(value)}' not in enum ${JSON.stringify(schema.enum)}`,
@@ -223,57 +233,29 @@ function validateNode(
   }
 
   if (schema.kind === 'integer') {
-    if (kind !== 'integer') {
+    if (typeof value !== 'number' || !Number.isInteger(value)) {
       errors.push({ path, reason: `expected integer, got ${kind}` });
       return;
     }
-    const n = value as number;
-    if (schema.minimum !== undefined && n < schema.minimum)
-      errors.push({ path, reason: `value ${n} is less than minimum ${schema.minimum}` });
-    if (schema.maximum !== undefined && n > schema.maximum)
-      errors.push({ path, reason: `value ${n} is greater than maximum ${schema.maximum}` });
-    if (schema.exclusiveMinimum !== undefined && n <= schema.exclusiveMinimum)
-      errors.push({
-        path,
-        reason: `value ${n} is not greater than exclusiveMinimum ${schema.exclusiveMinimum}`,
-      });
-    if (schema.exclusiveMaximum !== undefined && n >= schema.exclusiveMaximum)
-      errors.push({
-        path,
-        reason: `value ${n} is not less than exclusiveMaximum ${schema.exclusiveMaximum}`,
-      });
+    for (const reason of numericConstraintErrors(value, schema)) errors.push({ path, reason });
     return;
   }
 
   if (schema.kind === 'number') {
-    if (kind !== 'integer' && kind !== 'number') {
+    if (typeof value !== 'number') {
       errors.push({ path, reason: `expected number, got ${kind}` });
       return;
     }
-    const n = value as number;
-    if (schema.minimum !== undefined && n < schema.minimum)
-      errors.push({ path, reason: `value ${n} is less than minimum ${schema.minimum}` });
-    if (schema.maximum !== undefined && n > schema.maximum)
-      errors.push({ path, reason: `value ${n} is greater than maximum ${schema.maximum}` });
-    if (schema.exclusiveMinimum !== undefined && n <= schema.exclusiveMinimum)
-      errors.push({
-        path,
-        reason: `value ${n} is not greater than exclusiveMinimum ${schema.exclusiveMinimum}`,
-      });
-    if (schema.exclusiveMaximum !== undefined && n >= schema.exclusiveMaximum)
-      errors.push({
-        path,
-        reason: `value ${n} is not less than exclusiveMaximum ${schema.exclusiveMaximum}`,
-      });
+    for (const reason of numericConstraintErrors(value, schema)) errors.push({ path, reason });
     return;
   }
 
   if (schema.kind === 'string') {
-    if (kind !== 'string') {
+    if (typeof value !== 'string') {
       errors.push({ path, reason: `expected string, got ${kind}` });
       return;
     }
-    const s = value as string;
+    const s = value;
     if (schema.minLength !== undefined && s.length < schema.minLength)
       errors.push({
         path,
@@ -299,20 +281,19 @@ function validateNode(
       errors.push({ path, reason: `expected array, got ${kind}` });
       return;
     }
-    if (schema.items) {
-      (value as JsonValue[]).forEach((item, i) => {
-        validateNode(item, schema.items!, `${path}[${i}]`, errors);
-      });
+    const items = schema.items;
+    if (items !== undefined) {
+      value.forEach((item, i) => validateNode(item, items, `${path}[${i}]`, errors));
     }
     return;
   }
 
   if (schema.kind === 'object') {
-    if (typeof value !== 'object' || Array.isArray(value)) {
+    if (!isJsonObject(value)) {
       errors.push({ path, reason: `expected object, got ${kind}` });
       return;
     }
-    const obj = value as JsonObject;
+    const obj = value;
     const props = schema.properties ?? {};
     const required = schema.required ?? [];
     const addlProps = schema.additionalProperties;
@@ -330,7 +311,7 @@ function validateNode(
       } else if (addlProps === false || addlProps === undefined) {
         errors.push({ path: childPath, reason: `additional property not allowed` });
       } else if (typeof addlProps === 'object') {
-        validateNode(v, addlProps as ObjectGraphSchema, childPath, errors);
+        validateNode(v, addlProps, childPath, errors);
       }
       // addlProps === true → allow any value
     }

@@ -2,6 +2,13 @@ import type { OpenApiDoc } from '../../../src/contract/loader.js';
 import { deriveRuntimeFixtures } from '../../../src/http/runtimeFixtures.js';
 import type { RuntimeSystem } from '../../../src/runtime/system.js';
 import type { DomainEvent } from '../../../src/contracts/domain.js';
+import {
+  AggregateId,
+  boundaryName,
+  eventId,
+  eventType,
+  sequenceVersion,
+} from '../../../src/domain/references.js';
 
 function testSystem(
   paths: OpenApiDoc['paths'],
@@ -24,13 +31,13 @@ function baselineEvent(
   payload: DomainEvent['payload'],
 ): DomainEvent {
   return {
-    eventId: `baseline-${aggregateId}`,
-    boundary,
-    aggregateId,
-    type: 'Created',
+    eventId: eventId(`baseline-${aggregateId}`),
+    boundary: boundaryName(boundary),
+    aggregateId: AggregateId.parse(aggregateId),
+    type: eventType('Created'),
     payload,
     timestamp: '1970-01-01T00:00:00.000Z',
-    sequenceVersion: 1,
+    sequenceVersion: sequenceVersion(1),
     causedBy: null,
   };
 }
@@ -50,9 +57,9 @@ describe('deriveRuntimeFixtures', () => {
         baselineEvent('Order', 'order-2', [] as unknown as DomainEvent['payload']),
         {
           ...baselineEvent('Unknown', 'unknown-1', { id: 'unknown-1' }),
-          eventId: 'baseline-unknown-1',
+          eventId: eventId('baseline-unknown-1'),
         },
-        { ...baselineEvent('Order', 'live-1', { id: 'live-1' }), eventId: 'live-1' },
+        { ...baselineEvent('Order', 'live-1', { id: 'live-1' }), eventId: eventId('live-1') },
       ],
     );
 

@@ -57,13 +57,61 @@ describe('configuration-driven OpenAPI discovery', () => {
     });
   });
 
+  it('preserves YAML merge-key discovery for legacy configurations', async () => {
+    await fs.writeFile(path.join(root, 'service.yaml'), document('getService', '/service'));
+    const specmatic = path.join(root, 'specmatic.yaml');
+    await fs.writeFile(
+      specmatic,
+      'systemUnderTest:\n  service:\n    definitions:\n      - source:\n          fileSystem:\n            directory: .\n        specs:\n          - path: service.yaml\n',
+    );
+    const config = path.join(root, 'potemkin.yml');
+    await fs.writeFile(config, 'defaults: &defaults\n  specmatic: specmatic.yaml\n<<: *defaults\n');
+
+    await expect(loadConfiguredOpenApi(config)).resolves.toMatchObject({
+      paths: { '/service': expect.any(Object) },
+    });
+  });
+
+  it('preserves implicit timestamp resolution at the configuration boundary', async () => {
+    const config = path.join(root, 'potemkin.yml');
+    await fs.writeFile(config, 'specmatic: 2020-01-01\n');
+
+    await expect(loadConfiguredOpenApi(config)).rejects.toMatchObject({
+      code: 'BOOT_ERR_CONTRACT_LOAD',
+      details: { path: config, field: 'specmatic' },
+    });
+  });
+
   it('uses an explicit fallback only when discovery is unavailable', async () => {
-    const fallback = { raw: {}, paths: { '/fallback': {} } } as OpenApiDoc;
+    const fallback: OpenApiDoc = { raw: {}, paths: { '/fallback': {} } };
     const config = path.join(root, 'potemkin.yml');
     await fs.writeFile(config, 'version: 1\n');
 
     await expect(loadConfiguredOpenApi(config, fallback)).resolves.toBe(fallback);
     await expect(loadConfiguredOpenApi(config)).rejects.toBeInstanceOf(BootError);
+  });
+
+  it('does not pass non-string OpenAPI entries through the config boundary', async () => {
+    const fallback: OpenApiDoc = { raw: {}, paths: { '/fallback': {} } };
+    const config = path.join(root, 'potemkin.yml');
+    await fs.writeFile(config, 'openapi:\n  - 42\n');
+
+    await expect(loadConfiguredOpenApi(config, fallback)).resolves.toBe(fallback);
+  });
+
+  it('preserves a useful diagnostic when Specmatic YAML is malformed', async () => {
+    const specmatic = path.join(root, 'specmatic.yaml');
+    await fs.writeFile(specmatic, 'systemUnderTest: [\n');
+    const config = path.join(root, 'potemkin.yml');
+    await fs.writeFile(config, 'specmatic: specmatic.yaml\n');
+
+    await expect(loadConfiguredOpenApi(config)).rejects.toMatchObject({
+      code: 'BOOT_ERR_DSL_SYNTAX',
+      details: {
+        path: specmatic,
+        reason: expect.stringContaining('line'),
+      },
+    });
   });
 
   it.each([

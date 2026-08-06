@@ -1,5 +1,5 @@
 import { metrics } from '@opentelemetry/api';
-import type { Meter, Counter, Histogram, Attributes } from '@opentelemetry/api';
+import type { Meter, Counter, Histogram } from '@opentelemetry/api';
 
 export type { Meter, Counter, Histogram };
 
@@ -37,7 +37,7 @@ export function createRuntimeOtelMetricObserver(meter?: Meter): RuntimeMetricObs
       });
       counters.set(name, counter);
     }
-    counter.add(value, fields as Attributes | undefined);
+    counter.add(value, fields);
   };
 }
 

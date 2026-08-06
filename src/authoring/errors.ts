@@ -1,3 +1,4 @@
+import { StructuredError } from '../errors.js';
 import type { JsonValue } from '../contracts/value.js';
 
 /** Stable source location attached to TypeScript authoring diagnostics. */
@@ -38,10 +39,8 @@ export interface TypeScriptAuthoringErrorOptions {
  * standard error handling, while `code`, `details`, and `location` provide a
  * stable machine-readable contract for expected failures.
  */
-export class TypeScriptAuthoringError extends Error {
-  override readonly name = 'TypeScriptAuthoringError';
+export class TypeScriptAuthoringError extends StructuredError<TypeScriptDiagnosticCode> {
   readonly code: TypeScriptDiagnosticCode;
-  readonly details?: JsonValue;
   readonly location?: TypeScriptSourceLocation;
   override readonly cause?: unknown;
 
@@ -50,20 +49,15 @@ export class TypeScriptAuthoringError extends Error {
     message: string,
     options: TypeScriptAuthoringErrorOptions = {},
   ) {
-    super(message);
+    super(message, options.details);
     this.code = code;
-    this.details = options.details;
     this.location = normalizeLocation(options.source);
     this.cause = options.cause;
-    Object.setPrototypeOf(this, new.target.prototype);
   }
 
-  toJSON(): Record<string, unknown> {
+  override toJSON(): Record<string, unknown> {
     return {
-      name: this.name,
-      code: this.code,
-      message: this.message,
-      ...(this.details === undefined ? {} : { details: this.details }),
+      ...super.toJSON(),
       ...(this.location === undefined ? {} : { location: this.location }),
     };
   }

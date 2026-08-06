@@ -26,12 +26,10 @@ import type {
   BehaviorRule,
   ComponentDefinition,
   EventCatalogEntry,
-  IdentityConfig,
   IncludeEntry,
   ReactionRule,
   ReducerRule,
 } from './types.js';
-import type { DeclaredState } from './schemaTypes.js';
 
 // ---------------------------------------------------------------------------
 // Token detection
@@ -163,7 +161,15 @@ export function substituteTokens(
         { token: name, component: componentName },
       );
     }
-    return resolved.get(name)!;
+    const replacement = resolved.get(name);
+    if (replacement === undefined) {
+      throw new BootError(
+        'BOOT_ERR_DSL_SYNTAX',
+        `component "${componentName}": parameter "${name}" has no resolved value`,
+        { token: name, component: componentName },
+      );
+    }
+    return replacement;
   }
 
   // Embedded-token substitution (always yields a string). Scan left-to-right,
@@ -190,7 +196,15 @@ export function substituteTokens(
             { token: name, component: componentName },
           );
         }
-        out += String(resolved.get(name)!);
+        const replacement = resolved.get(name);
+        if (replacement === undefined) {
+          throw new BootError(
+            'BOOT_ERR_DSL_SYNTAX',
+            `component "${componentName}": parameter "${name}" has no resolved value`,
+            { token: name, component: componentName },
+          );
+        }
+        out += String(replacement);
         i = close + 2;
         continue;
       }
@@ -209,18 +223,29 @@ export function substituteTokens(
  * Walk an arbitrary JSON-compatible value and substitute {{...}} tokens in
  * every string leaf (both object values and object keys).
  */
-function walkValue(v: unknown, resolved: ResolvedParams, componentName: string): unknown {
+function walkUnknown(v: unknown, resolved: ResolvedParams, componentName: string): unknown {
   if (typeof v === 'string') {
     return substituteTokens(v, resolved, componentName);
   }
   if (Array.isArray(v)) {
-    return v.map((item) => walkValue(item, resolved, componentName));
+    return v.map((item) => walkUnknown(item, resolved, componentName));
   }
   if (v !== null && typeof v === 'object') {
     return walkRecord(v, resolved, componentName);
   }
   // number, boolean, null — no tokens possible
   return v;
+}
+
+/**
+ * The substitution walk preserves the source shape and only changes string
+ * leaves. The overload exposes that invariant to typed callers while the
+ * implementation deliberately operates on `unknown`, because the DSL may
+ * contain arbitrary nested records and arrays at this adapter boundary.
+ */
+function walkValue<T>(value: T, resolved: ResolvedParams, componentName: string): T;
+function walkValue(value: unknown, resolved: ResolvedParams, componentName: string): unknown {
+  return walkUnknown(value, resolved, componentName);
 }
 
 function walkRecord(
@@ -232,16 +257,13 @@ function walkRecord(
   for (const [k, v] of Object.entries(obj)) {
     // Substitute tokens in the key too (e.g. JSON-Pointer path segments used as keys).
     const newKey = typeof k === 'string' ? String(substituteTokens(k, resolved, componentName)) : k;
-    out[newKey] = walkValue(v, resolved, componentName);
+    out[newKey] = walkUnknown(v, resolved, componentName);
   }
   return out;
 }
 
 // ---------------------------------------------------------------------------
 // Typed sub-section helpers
-// These cast the walked output back to the correct DSL types. The walk
-// preserves the object shape; casting is safe because substituteTokens only
-// changes string content, never structural types.
 // ---------------------------------------------------------------------------
 
 function walkEventCatalog(
@@ -250,7 +272,7 @@ function walkEventCatalog(
   componentName: string,
 ): readonly EventCatalogEntry[] | undefined {
   if (!entries) return undefined;
-  return entries.map((e) => walkValue(e, resolved, componentName) as EventCatalogEntry);
+  return entries.map((e) => walkValue(e, resolved, componentName));
 }
 
 function walkReducers(
@@ -259,7 +281,7 @@ function walkReducers(
   componentName: string,
 ): readonly ReducerRule[] | undefined {
   if (!rules) return undefined;
-  return rules.map((r) => walkValue(r, resolved, componentName) as ReducerRule);
+  return rules.map((r) => walkValue(r, resolved, componentName));
 }
 
 function walkBehaviors(
@@ -268,7 +290,7 @@ function walkBehaviors(
   componentName: string,
 ): readonly BehaviorRule[] | undefined {
   if (!rules) return undefined;
-  return rules.map((b) => walkValue(b, resolved, componentName) as BehaviorRule);
+  return rules.map((b) => walkValue(b, resolved, componentName));
 }
 
 function walkReactions(
@@ -277,7 +299,7 @@ function walkReactions(
   componentName: string,
 ): readonly ReactionRule[] | undefined {
   if (!rules) return undefined;
-  return rules.map((r) => walkValue(r, resolved, componentName) as ReactionRule);
+  return rules.map((r) => walkValue(r, resolved, componentName));
 }
 
 function walkInclude(
@@ -286,7 +308,7 @@ function walkInclude(
   componentName: string,
 ): readonly IncludeEntry[] | undefined {
   if (!entries) return undefined;
-  return entries.map((e) => walkValue(e, resolved, componentName) as IncludeEntry);
+  return entries.map((e) => walkValue(e, resolved, componentName));
 }
 
 // ---------------------------------------------------------------------------
@@ -323,73 +345,50 @@ export function substituteParameters(
       ? { behaviors: walkBehaviors(component.behaviors, resolved, component.name) }
       : {}),
     ...(component.identity !== undefined
-      ? { identity: walkValue(component.identity, resolved, component.name) as IdentityConfig }
+      ? { identity: walkValue(component.identity, resolved, component.name) }
       : {}),
     ...(component.state !== undefined
-      ? { state: walkValue(component.state, resolved, component.name) as DeclaredState }
+      ? { state: walkValue(component.state, resolved, component.name) }
       : {}),
     ...(component.schema !== undefined
-      ? { schema: substituteTokens(component.schema, resolved, component.name) as string }
+      ? { schema: walkValue(component.schema, resolved, component.name) }
       : {}),
     ...(component.fallbackOverride !== undefined
       ? { fallbackOverride: component.fallbackOverride }
       : {}),
     ...(component.query !== undefined
       ? {
-          query: walkValue(
-            component.query,
-            resolved,
-            component.name,
-          ) as ComponentDefinition['query'],
+          query: walkValue(component.query, resolved, component.name),
         }
       : {}),
     ...(component.queryMapping !== undefined
       ? {
-          queryMapping: walkValue(component.queryMapping, resolved, component.name) as Record<
-            string,
-            string
-          >,
+          queryMapping: walkValue(component.queryMapping, resolved, component.name),
         }
       : {}),
     ...(component.deprecated !== undefined
       ? {
-          deprecated: walkValue(
-            component.deprecated,
-            resolved,
-            component.name,
-          ) as ComponentDefinition['deprecated'],
+          deprecated: walkValue(component.deprecated, resolved, component.name),
         }
       : {}),
     ...(component.hateoas !== undefined
       ? {
-          hateoas: walkValue(
-            component.hateoas,
-            resolved,
-            component.name,
-          ) as ComponentDefinition['hateoas'],
+          hateoas: walkValue(component.hateoas, resolved, component.name),
         }
       : {}),
     ...(component.mask !== undefined
-      ? { mask: walkValue(component.mask, resolved, component.name) as ComponentDefinition['mask'] }
+      ? { mask: walkValue(component.mask, resolved, component.name) }
       : {}),
     ...(component.latency !== undefined
       ? {
-          latency: walkValue(
-            component.latency,
-            resolved,
-            component.name,
-          ) as ComponentDefinition['latency'],
+          latency: walkValue(component.latency, resolved, component.name),
         }
       : {}),
     ...(component.auditFields !== undefined ? { auditFields: component.auditFields } : {}),
     ...(component.strictSchema !== undefined ? { strictSchema: component.strictSchema } : {}),
     ...(component.faults !== undefined
       ? {
-          faults: walkValue(
-            component.faults,
-            resolved,
-            component.name,
-          ) as ComponentDefinition['faults'],
+          faults: walkValue(component.faults, resolved, component.name),
         }
       : {}),
     ...(component.reactions !== undefined

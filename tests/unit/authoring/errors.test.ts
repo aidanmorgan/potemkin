@@ -4,6 +4,7 @@ import {
   helperError,
   isTypeScriptAuthoringError,
 } from '../../../src/authoring/errors.js';
+import { StructuredError } from '../../../src/errors.js';
 
 describe('TypeScript authoring diagnostics', () => {
   it('exposes a stable code, structured details, and source location', () => {
@@ -13,6 +14,7 @@ describe('TypeScript authoring diagnostics', () => {
     });
 
     expect(error).toBeInstanceOf(Error);
+    expect(error).toBeInstanceOf(StructuredError);
     expect(error).toBeInstanceOf(TypeScriptAuthoringError);
     expect(error.code).toBe('TS_DEFINITION_INVALID');
     expect(error.details).toEqual({ field: 'boundary' });
@@ -23,6 +25,17 @@ describe('TypeScript authoring diagnostics', () => {
       message: 'bad definition',
       details: { field: 'boundary' },
       location: { source: 'scenario.ts', line: 12, column: 4 },
+    });
+  });
+
+  it('preserves the diagnostic name and omits absent details', () => {
+    const error = new TypeScriptAuthoringError('TS_SOURCE_READ', 'unavailable');
+
+    expect(error.name).toBe('TypeScriptAuthoringError');
+    expect(error.toJSON()).toEqual({
+      name: 'TypeScriptAuthoringError',
+      code: 'TS_SOURCE_READ',
+      message: 'unavailable',
     });
   });
 
